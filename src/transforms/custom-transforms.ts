@@ -6,6 +6,7 @@
  * not covered by the standard field transforms.
  */
 
+import * as crypto from 'crypto';
 import { RequestContext } from '@vendure/core';
 import { CustomTransformInfo } from './types';
 import { JsonValue } from '../types/index';
@@ -19,9 +20,8 @@ export const hashMd5Transform: CustomTransformInfo = {
     type: 'HASH_MD5',
     name: 'MD5 Hash',
     description: 'Generate MD5 hash of the value',
-    transform: async (ctx: RequestContext, value: JsonValue) => {
+    transform: async (_ctx: RequestContext, value: JsonValue) => {
         if (typeof value !== 'string') return value;
-        const crypto = require('crypto');
         return crypto.createHash('md5').update(value).digest('hex');
     },
 };
@@ -33,9 +33,8 @@ export const hashSha256Transform: CustomTransformInfo = {
     type: 'HASH_SHA256',
     name: 'SHA256 Hash',
     description: 'Generate SHA256 hash of the value',
-    transform: async (ctx: RequestContext, value: JsonValue) => {
+    transform: async (_ctx: RequestContext, value: JsonValue) => {
         if (typeof value !== 'string') return value;
-        const crypto = require('crypto');
         return crypto.createHash('sha256').update(value).digest('hex');
     },
 };

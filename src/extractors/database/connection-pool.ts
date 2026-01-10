@@ -1,5 +1,5 @@
 import { Pool as PgPool } from 'pg';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const mysql2 = require('mysql2/promise');
 import { ExtractorContext } from '../../types/index';
 import { DatabaseExtractorConfig, DATABASE_DEFAULT_PORTS } from './types';

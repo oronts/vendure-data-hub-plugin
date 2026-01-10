@@ -1,6 +1,7 @@
 import * as https from 'https';
 import * as http from 'http';
 import * as path from 'path';
+import { Readable } from 'stream';
 import { MIME_TYPES } from './types';
 import { DEFAULTS } from '../../constants/index';
 
@@ -52,7 +53,6 @@ export function getMimeType(url: string): string {
 }
 
 export function createReadStreamFromBuffer(data: Buffer): NodeJS.ReadableStream {
-    const { Readable } = require('stream');
     const stream = new Readable();
     stream.push(data);
     stream.push(null);

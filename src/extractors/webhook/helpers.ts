@@ -4,6 +4,7 @@
  * Helper functions for webhook processing.
  */
 
+import * as crypto from 'crypto';
 import { JsonObject } from '../../types/index';
 import { ExtractorContext } from '../../types/index';
 import { WebhookExtractorConfig } from './types';
@@ -55,7 +56,6 @@ export async function validateSignature(
         }
 
         // Compute expected signature
-        const crypto = require('crypto');
         const algorithm = config.signatureAlgorithm || 'sha256';
         const computedSignature = crypto
             .createHmac(algorithm, secret)

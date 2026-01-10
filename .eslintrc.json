@@ -27,6 +27,7 @@
     "node_modules/",
     "dashboard/",
     "dev-server/",
-    "e2e/"
+    "e2e/",
+    "src/__tests__/"
   ]
 }

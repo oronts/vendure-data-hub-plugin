@@ -249,7 +249,7 @@ export function validateAgainstSimpleSpec(
                 try {
                     const re = new RegExp(spec.pattern);
                     if (!re.test(v)) errors.push(`${key} does not match pattern`);
-                } catch {}
+                } catch { /* skip */ }
             }
         }
     }

@@ -276,26 +276,22 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
         ],
     };
 
+    // eslint-disable-next-line require-yield
     async *extract(
         context: ExtractorContext,
         config: DatabaseExtractorConfig,
     ): AsyncGenerator<RecordEnvelope, void, undefined> {
-        try {
-            context.logger.info('Starting database extraction', {
-                databaseType: config.databaseType,
-                host: config.host ?? null,
-                database: config.database ?? null,
-            });
+        context.logger.info('Starting database extraction', {
+            databaseType: config.databaseType,
+            host: config.host ?? null,
+            database: config.database ?? null,
+        });
 
-            throw new Error(
-                `Database extraction not yet implemented for ${config.databaseType}. ` +
-                    'Install the appropriate database driver (pg, mysql2, better-sqlite3, mssql, or oracledb) ' +
-                    'and implement the connection logic in this extractor.',
-            );
-        } catch (error) {
-            context.logger.error('Database extraction failed', error as Error);
-            throw error;
-        }
+        throw new Error(
+            `Database extraction not yet implemented for ${config.databaseType}. ` +
+                'Install the appropriate database driver (pg, mysql2, better-sqlite3, mssql, or oracledb) ' +
+                'and implement the connection logic in this extractor.',
+        );
     }
 
     async validate(

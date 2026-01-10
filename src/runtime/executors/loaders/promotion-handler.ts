@@ -69,7 +69,7 @@ export class PromotionHandler implements LoaderHandler {
                     if (channel) {
                         try {
                             await this.promotionService.assignPromotionsToChannel(opCtx, { promotionIds: [(updated as any).id], channelId: opCtx.channelId as any } as any);
-                        } catch {}
+                        } catch { /* optional */ }
                     }
                 } else {
                     const created = await this.promotionService.createPromotion(opCtx, {
@@ -84,7 +84,7 @@ export class PromotionHandler implements LoaderHandler {
                     if (channel) {
                         try {
                             await this.promotionService.assignPromotionsToChannel(opCtx, { promotionIds: [(created as any).id], channelId: opCtx.channelId as any } as any);
-                        } catch {}
+                        } catch { /* optional */ }
                     }
                 }
                 ok++;

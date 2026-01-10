@@ -355,14 +355,14 @@ export class TransformExecutor implements OnModuleInit {
                 }
                 return value;
 
-            default:
-                // Check for custom transforms
+            default: {
                 const customTransform = this.customTransforms.get(transform.type);
                 if (customTransform) {
                     return await customTransform(ctx, value, config, record);
                 }
                 this.logger.warn(`Unknown transform type: ${transform.type}`);
                 return value;
+            }
         }
     }
 }

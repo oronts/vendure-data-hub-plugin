@@ -150,17 +150,19 @@ export class ExportDestinationService implements OnModuleInit {
                 case 's3':
                     return { success: true, message: 'S3 connection configured', latencyMs: Date.now() - start };
 
-                case 'http':
+                case 'http': {
                     const httpConfig = destination as HTTPDestinationConfig;
                     const response = await fetch(httpConfig.url, { method: 'HEAD' }).catch(() => null);
                     if (response) {
                         return { success: true, message: `HTTP endpoint reachable (${response.status})`, latencyMs: Date.now() - start };
                     }
                     return { success: false, message: 'HTTP endpoint unreachable' };
+                }
 
-                case 'local':
+                case 'local': {
                     const result = testLocalDestination(destination as LocalDestinationConfig);
                     return { ...result, latencyMs: Date.now() - start };
+                }
 
                 default:
                     return { success: true, message: `${destination.type} configured`, latencyMs: Date.now() - start };

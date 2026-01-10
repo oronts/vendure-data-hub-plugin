@@ -1,6 +1,7 @@
 /**
  * REST POST loader handler
  */
+import * as crypto from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
@@ -90,7 +91,6 @@ export class RestPostHandler implements LoaderHandler {
                         for (const [k, v] of Object.entries(replMap)) {
                             strToSign = strToSign.split(k).join(v);
                         }
-                        const crypto = require('crypto');
                         if (secret) {
                             const signature = crypto.createHmac('sha256', secret).update(strToSign).digest('hex');
                             reqHeaders = { ...reqHeaders, [String(cfg.hmacHeader)]: signature, 'x-timestamp': String(ts) };
