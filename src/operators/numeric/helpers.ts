@@ -1,0 +1,380 @@
+import { JsonObject } from '../types';
+import { getNestedValue, setNestedValue, deepClone } from '../helpers';
+import { MathOperation, RoundingMode, UnitType } from './types';
+import {
+    WEIGHT_UNITS,
+    LENGTH_UNITS,
+    VOLUME_UNITS,
+    convertUnit,
+} from '../../constants/units';
+
+const UNIT_CATEGORIES: Record<string, UnitType[]> = {
+    weight: Object.values(WEIGHT_UNITS) as UnitType[],
+    length: Object.values(LENGTH_UNITS) as UnitType[],
+    volume: Object.values(VOLUME_UNITS) as UnitType[],
+};
+
+function parseOperand(record: JsonObject, operand: string | undefined): number | null {
+    if (operand === undefined || operand === '') {
+        return null;
+    }
+
+    if (operand.startsWith('$')) {
+        const path = operand.slice(1);
+        const value = getNestedValue(record, path);
+        return typeof value === 'number' ? value : null;
+    }
+
+    const num = parseFloat(operand);
+    return isNaN(num) ? null : num;
+}
+
+export function applyMath(
+    record: JsonObject,
+    operation: MathOperation,
+    source: string,
+    operand: string | undefined,
+    target: string,
+    decimals?: number,
+): JsonObject {
+    const result = deepClone(record);
+    const sourceValue = getNestedValue(record, source);
+
+    if (typeof sourceValue !== 'number') {
+        return result;
+    }
+
+    const operandValue = parseOperand(record, operand);
+    let computedValue: number;
+
+    switch (operation) {
+        case 'add':
+            computedValue = operandValue !== null ? sourceValue + operandValue : sourceValue;
+            break;
+        case 'subtract':
+            computedValue = operandValue !== null ? sourceValue - operandValue : sourceValue;
+            break;
+        case 'multiply':
+            computedValue = operandValue !== null ? sourceValue * operandValue : sourceValue;
+            break;
+        case 'divide':
+            computedValue = operandValue !== null && operandValue !== 0 ? sourceValue / operandValue : sourceValue;
+            break;
+        case 'modulo':
+            computedValue = operandValue !== null && operandValue !== 0 ? sourceValue % operandValue : sourceValue;
+            break;
+        case 'power':
+            computedValue = operandValue !== null ? Math.pow(sourceValue, operandValue) : sourceValue;
+            break;
+        case 'round':
+            computedValue = Math.round(sourceValue);
+            break;
+        case 'floor':
+            computedValue = Math.floor(sourceValue);
+            break;
+        case 'ceil':
+            computedValue = Math.ceil(sourceValue);
+            break;
+        case 'abs':
+            computedValue = Math.abs(sourceValue);
+            break;
+        default:
+            computedValue = sourceValue;
+    }
+
+    // Apply decimal rounding if specified
+    if (decimals !== undefined && decimals >= 0) {
+        const factor = Math.pow(10, decimals);
+        computedValue = Math.round(computedValue * factor) / factor;
+    }
+
+    setNestedValue(result, target, computedValue);
+    return result;
+}
+
+export function applyCurrency(
+    record: JsonObject,
+    source: string,
+    target: string,
+    decimals: number,
+    round: RoundingMode = 'round',
+): JsonObject {
+    const result = deepClone(record);
+    const value = getNestedValue(record, source);
+
+    if (typeof value !== 'number') {
+        return result;
+    }
+
+    const factor = Math.pow(10, decimals);
+    let minorUnits: number;
+
+    switch (round) {
+        case 'floor':
+            minorUnits = Math.floor(value * factor);
+            break;
+        case 'ceil':
+            minorUnits = Math.ceil(value * factor);
+            break;
+        default:
+            minorUnits = Math.round(value * factor);
+    }
+
+    setNestedValue(result, target, minorUnits);
+    return result;
+}
+
+function getUnitCategory(unit: UnitType): string | null {
+    for (const [category, units] of Object.entries(UNIT_CATEGORIES)) {
+        if (units.includes(unit)) {
+            return category;
+        }
+    }
+    return null;
+}
+
+export function applyUnit(
+    record: JsonObject,
+    source: string,
+    target: string,
+    from: UnitType,
+    to: UnitType,
+): JsonObject {
+    const result = deepClone(record);
+    const value = getNestedValue(record, source);
+
+    if (typeof value !== 'number') {
+        return result;
+    }
+
+    // Validate units are in same category
+    const fromCategory = getUnitCategory(from);
+    const toCategory = getUnitCategory(to);
+
+    if (!fromCategory || !toCategory || fromCategory !== toCategory) {
+        // Incompatible units - return unchanged
+        return result;
+    }
+
+    // Use the central convertUnit function from constants
+    const convertedValue = convertUnit(value, from, to);
+
+    if (convertedValue !== null) {
+        setNestedValue(result, target, convertedValue);
+    }
+
+    return result;
+}
+
+export function applyToNumber(
+    record: JsonObject,
+    source: string,
+    target: string | undefined,
+    defaultValue?: number,
+): JsonObject {
+    const result = deepClone(record);
+    const value = getNestedValue(record, source);
+    const targetPath = target || source;
+
+    let numValue: number | null = null;
+
+    if (typeof value === 'number') {
+        numValue = value;
+    } else if (typeof value === 'string') {
+        const parsed = parseFloat(value);
+        numValue = isNaN(parsed) ? null : parsed;
+    } else if (typeof value === 'boolean') {
+        numValue = value ? 1 : 0;
+    }
+
+    if (numValue === null && defaultValue !== undefined) {
+        numValue = defaultValue;
+    }
+
+    setNestedValue(result, targetPath, numValue);
+    return result;
+}
+
+export function applyToString(
+    record: JsonObject,
+    source: string,
+    target: string | undefined,
+): JsonObject {
+    const result = deepClone(record);
+    const value = getNestedValue(record, source);
+    const targetPath = target || source;
+
+    const strValue = value !== null && value !== undefined ? String(value) : '';
+    setNestedValue(result, targetPath, strValue);
+    return result;
+}
+
+/**
+ * Parse a string to a number with locale-aware handling.
+ * Handles different decimal and thousand separators based on locale.
+ */
+export function applyParseNumber(
+    record: JsonObject,
+    source: string,
+    target: string | undefined,
+    locale?: string,
+    defaultValue?: number,
+): JsonObject {
+    const result = deepClone(record);
+    const value = getNestedValue(record, source);
+    const targetPath = target || source;
+
+    let numValue: number | null = null;
+
+    if (typeof value === 'number') {
+        numValue = value;
+    } else if (typeof value === 'string') {
+        let cleanedValue = value.trim();
+
+        if (locale) {
+            // Get locale-specific separators
+            const parts = new Intl.NumberFormat(locale).formatToParts(1234.5);
+            const groupSep = parts.find(p => p.type === 'group')?.value || ',';
+            const decimalSep = parts.find(p => p.type === 'decimal')?.value || '.';
+
+            // Remove grouping separators and normalize decimal separator
+            cleanedValue = cleanedValue.split(groupSep).join('');
+            if (decimalSep !== '.') {
+                cleanedValue = cleanedValue.replace(decimalSep, '.');
+            }
+        } else {
+            // Default: remove commas (common thousand separator)
+            cleanedValue = cleanedValue.replace(/,/g, '');
+        }
+
+        const parsed = parseFloat(cleanedValue);
+        numValue = isNaN(parsed) ? null : parsed;
+    }
+
+    if (numValue === null && defaultValue !== undefined) {
+        numValue = defaultValue;
+    }
+
+    setNestedValue(result, targetPath, numValue);
+    return result;
+}
+
+/**
+ * Format a number as a string with locale and optional currency formatting.
+ */
+export function applyFormatNumber(
+    record: JsonObject,
+    source: string,
+    target: string,
+    locale?: string,
+    decimals?: number,
+    currency?: string,
+    style?: 'decimal' | 'currency' | 'percent',
+    useGrouping?: boolean,
+): JsonObject {
+    const result = deepClone(record);
+    const value = getNestedValue(record, source);
+
+    if (typeof value !== 'number') {
+        return result;
+    }
+
+    try {
+        const options: Intl.NumberFormatOptions = {
+            useGrouping: useGrouping ?? true,
+        };
+
+        if (style === 'currency' && currency) {
+            options.style = 'currency';
+            options.currency = currency;
+        } else if (style === 'percent') {
+            options.style = 'percent';
+        } else {
+            options.style = 'decimal';
+        }
+
+        if (decimals !== undefined) {
+            options.minimumFractionDigits = decimals;
+            options.maximumFractionDigits = decimals;
+        }
+
+        const formatted = new Intl.NumberFormat(locale || 'en-US', options).format(value);
+        setNestedValue(result, target, formatted);
+    } catch {
+        // Invalid locale or currency - set raw string value
+        setNestedValue(result, target, String(value));
+    }
+
+    return result;
+}
+
+/**
+ * Convert a decimal amount to cents (minor currency units).
+ * Multiplies by 100 and rounds to avoid floating point issues.
+ */
+export function applyToCents(
+    record: JsonObject,
+    source: string,
+    target: string,
+    round: RoundingMode = 'round',
+): JsonObject {
+    const result = deepClone(record);
+    const value = getNestedValue(record, source);
+
+    if (typeof value !== 'number') {
+        return result;
+    }
+
+    const cents = value * 100;
+    let roundedCents: number;
+
+    switch (round) {
+        case 'floor':
+            roundedCents = Math.floor(cents);
+            break;
+        case 'ceil':
+            roundedCents = Math.ceil(cents);
+            break;
+        default:
+            roundedCents = Math.round(cents);
+    }
+
+    setNestedValue(result, target, roundedCents);
+    return result;
+}
+
+/**
+ * Round a number to a specified number of decimal places.
+ */
+export function applyRound(
+    record: JsonObject,
+    source: string,
+    target: string | undefined,
+    decimals = 0,
+    mode: RoundingMode = 'round',
+): JsonObject {
+    const result = deepClone(record);
+    const value = getNestedValue(record, source);
+    const targetPath = target || source;
+
+    if (typeof value !== 'number') {
+        return result;
+    }
+
+    const factor = Math.pow(10, decimals);
+    let rounded: number;
+
+    switch (mode) {
+        case 'floor':
+            rounded = Math.floor(value * factor) / factor;
+            break;
+        case 'ceil':
+            rounded = Math.ceil(value * factor) / factor;
+            break;
+        default:
+            rounded = Math.round(value * factor) / factor;
+    }
+
+    setNestedValue(result, targetPath, rounded);
+    return result;
+}
