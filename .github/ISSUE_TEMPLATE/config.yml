@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Commercial Licensing
+    url: https://oronts.com
+    about: Contact us for commercial licensing options
+  - name: Custom Development
+    url: https://oronts.com
+    about: Need custom extractors, loaders, or integrations? Contact us.
+  - name: Documentation
+    url: https://github.com/oronts/data-hub-plugin/tree/main/docs
+    about: Check the documentation before opening an issue

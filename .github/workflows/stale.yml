@@ -1,0 +1,28 @@
+name: Stale
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/stale@v9
+        with:
+          stale-issue-message: 'This issue has been marked as stale due to inactivity. It will be closed in 14 days if no further activity occurs.'
+          stale-issue-label: 'stale'
+          days-before-issue-stale: 60
+          days-before-issue-close: 14
+          exempt-issue-labels: 'pinned,security,bug'
+
+          stale-pr-message: 'This PR has been marked as stale due to inactivity. It will be closed in 14 days if no further activity occurs.'
+          stale-pr-label: 'stale'
+          days-before-pr-stale: 30
+          days-before-pr-close: 14
+          exempt-pr-labels: 'pinned,work in progress'
