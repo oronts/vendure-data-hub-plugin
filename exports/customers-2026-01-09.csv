@@ -1,0 +1,3 @@
+customerId,email,firstName,lastName,fullName,phoneNumber,orderCount,primaryAddress,groups,createdAt
+1,john@example.com,John,Doe,John Doe,,0,", ,  , ",,2026-01-09 16:26:47
+2,jane@example.com,Jane,Smith,Jane Smith,,0,", ,  , ",,2026-01-09 16:26:47
