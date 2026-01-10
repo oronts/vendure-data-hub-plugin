@@ -1,0 +1,5 @@
+productId,productName,productSlug,sku,price,currency,imageFullUrl,description
+1,Demo Product 1,demo-product-1,DEMO-001,0,USD,,First demo product
+2,Demo Product 2,demo-product-2,DEMO-002,0,USD,,Second demo product
+3,iPhone 15 Pro,iphone-15-pro,iphone-15-pro,0,USD,,iPhone 15 Pro - $1199.99
+4,MacBook Air,macbook-air,macbook-air,0,USD,,MacBook Air - $999
