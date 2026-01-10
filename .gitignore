@@ -12,6 +12,11 @@ dev-server/gql/
 data-hub-uploads/
 vendure.sqlite
 
+# Generated output
+analytics/
+exports/
+feeds/
+
 # Test output
 coverage/
 .nyc_output/
