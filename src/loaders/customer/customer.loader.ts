@@ -1,0 +1,339 @@
+import { Injectable } from '@nestjs/common';
+import {
+    ID,
+    RequestContext,
+    TransactionalConnection,
+    CustomerService,
+    CustomerGroupService,
+    CountryService,
+} from '@vendure/core';
+import {
+    EntityLoader,
+    LoaderContext,
+    EntityLoadResult,
+    EntityValidationResult,
+    EntityFieldSchema,
+} from '../../types/index';
+import { TargetOperation } from '../../types/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
+import { LOGGER_CONTEXTS } from '../../constants/index';
+import {
+    CustomerInput,
+    ExistingEntityResult,
+    CUSTOMER_LOADER_METADATA,
+} from './types';
+import {
+    isValidEmail,
+    assignCustomerGroups,
+    createAddresses,
+    isRecoverableError,
+    shouldUpdateField,
+} from './helpers';
+
+@Injectable()
+export class CustomerLoader implements EntityLoader<CustomerInput> {
+    private readonly logger: DataHubLogger;
+
+    readonly entityType = CUSTOMER_LOADER_METADATA.entityType;
+    readonly name = CUSTOMER_LOADER_METADATA.name;
+    readonly description = CUSTOMER_LOADER_METADATA.description;
+    readonly supportedOperations: TargetOperation[] = [...CUSTOMER_LOADER_METADATA.supportedOperations];
+    readonly lookupFields = [...CUSTOMER_LOADER_METADATA.lookupFields];
+    readonly requiredFields = [...CUSTOMER_LOADER_METADATA.requiredFields];
+
+    constructor(
+        private _connection: TransactionalConnection,
+        private customerService: CustomerService,
+        private customerGroupService: CustomerGroupService,
+        private countryService: CountryService,
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.CUSTOMER_LOADER);
+    }
+
+    async load(context: LoaderContext, records: CustomerInput[]): Promise<EntityLoadResult> {
+        const result: EntityLoadResult = {
+            succeeded: 0,
+            failed: 0,
+            created: 0,
+            updated: 0,
+            skipped: 0,
+            errors: [],
+            affectedIds: [],
+        };
+
+        for (const record of records) {
+            try {
+                const validation = await this.validate(context.ctx, record, context.operation);
+                if (!validation.valid) {
+                    result.failed++;
+                    result.errors.push({
+                        record,
+                        message: validation.errors.map(e => e.message).join('; '),
+                        recoverable: false,
+                    });
+                    continue;
+                }
+
+                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
+
+                if (existing) {
+                    if (context.operation === 'CREATE') {
+                        if (context.options.skipDuplicates) {
+                            result.skipped++;
+                            continue;
+                        }
+                        result.failed++;
+                        result.errors.push({
+                            record,
+                            message: `Customer with email "${record.emailAddress}" already exists`,
+                            code: 'DUPLICATE',
+                            recoverable: false,
+                        });
+                        continue;
+                    }
+
+                    // UPDATE or UPSERT
+                    if (!context.dryRun) {
+                        await this.updateCustomer(context, existing.id, record);
+                    }
+                    result.updated++;
+                    result.affectedIds.push(existing.id);
+                } else {
+                    if (context.operation === 'UPDATE') {
+                        result.skipped++;
+                        continue;
+                    }
+
+                    // CREATE or UPSERT
+                    if (!context.dryRun) {
+                        const newId = await this.createCustomer(context, record);
+                        result.affectedIds.push(newId);
+                    }
+                    result.created++;
+                }
+
+                result.succeeded++;
+            } catch (error) {
+                result.failed++;
+                result.errors.push({
+                    record,
+                    message: error instanceof Error ? error.message : String(error),
+                    recoverable: isRecoverableError(error),
+                });
+                this.logger.error(`Failed to load customer`, error instanceof Error ? error : undefined);
+            }
+        }
+
+        return result;
+    }
+
+    async findExisting(
+        ctx: RequestContext,
+        lookupFields: string[],
+        record: CustomerInput,
+    ): Promise<ExistingEntityResult | null> {
+        // Primary lookup: by email
+        if (record.emailAddress && lookupFields.includes('emailAddress')) {
+            const customers = await this.customerService.findAll(ctx, {
+                filter: { emailAddress: { eq: record.emailAddress } },
+            });
+
+            if (customers.totalItems > 0) {
+                return { id: customers.items[0].id, entity: customers.items[0] };
+            }
+        }
+
+        // Fallback: by ID
+        if (record.id && lookupFields.includes('id')) {
+            const customer = await this.customerService.findOne(ctx, record.id as ID);
+            if (customer) {
+                return { id: customer.id, entity: customer };
+            }
+        }
+
+        return null;
+    }
+
+    async validate(
+        _ctx: RequestContext,
+        record: CustomerInput,
+        operation: TargetOperation,
+    ): Promise<EntityValidationResult> {
+        const errors: { field: string; message: string; code?: string }[] = [];
+        const warnings: { field: string; message: string }[] = [];
+
+        // Required field validation
+        if (operation === 'CREATE' || operation === 'UPSERT') {
+            if (!record.emailAddress || typeof record.emailAddress !== 'string' || record.emailAddress.trim() === '') {
+                errors.push({ field: 'emailAddress', message: 'Email address is required', code: 'REQUIRED' });
+            } else if (!isValidEmail(record.emailAddress)) {
+                errors.push({ field: 'emailAddress', message: 'Invalid email format', code: 'INVALID_FORMAT' });
+            }
+
+            if (!record.firstName || typeof record.firstName !== 'string' || record.firstName.trim() === '') {
+                errors.push({ field: 'firstName', message: 'First name is required', code: 'REQUIRED' });
+            }
+
+            if (!record.lastName || typeof record.lastName !== 'string' || record.lastName.trim() === '') {
+                errors.push({ field: 'lastName', message: 'Last name is required', code: 'REQUIRED' });
+            }
+        }
+
+        // Validate addresses if provided
+        if (record.addresses && Array.isArray(record.addresses)) {
+            for (let i = 0; i < record.addresses.length; i++) {
+                const addr = record.addresses[i];
+                if (!addr.streetLine1) {
+                    errors.push({ field: `addresses[${i}].streetLine1`, message: 'Street line 1 is required', code: 'REQUIRED' });
+                }
+                if (!addr.city) {
+                    errors.push({ field: `addresses[${i}].city`, message: 'City is required', code: 'REQUIRED' });
+                }
+                if (!addr.countryCode) {
+                    errors.push({ field: `addresses[${i}].countryCode`, message: 'Country code is required', code: 'REQUIRED' });
+                }
+            }
+        }
+
+        return {
+            valid: errors.length === 0,
+            errors,
+            warnings,
+        };
+    }
+
+    getFieldSchema(): EntityFieldSchema {
+        return {
+            entityType: 'Customer',
+            fields: [
+                {
+                    key: 'emailAddress',
+                    label: 'Email Address',
+                    type: 'string',
+                    required: true,
+                    lookupable: true,
+                    description: 'Unique email address',
+                    example: 'john.doe@example.com',
+                },
+                {
+                    key: 'firstName',
+                    label: 'First Name',
+                    type: 'string',
+                    required: true,
+                    description: 'Customer first name',
+                },
+                {
+                    key: 'lastName',
+                    label: 'Last Name',
+                    type: 'string',
+                    required: true,
+                    description: 'Customer last name',
+                },
+                {
+                    key: 'phoneNumber',
+                    label: 'Phone Number',
+                    type: 'string',
+                    description: 'Contact phone number',
+                },
+                {
+                    key: 'title',
+                    label: 'Title',
+                    type: 'string',
+                    description: 'Title (Mr, Mrs, etc.)',
+                },
+                {
+                    key: 'groupCodes',
+                    label: 'Customer Groups',
+                    type: 'array',
+                    description: 'Array of customer group codes to assign',
+                    example: ['vip', 'wholesale'],
+                },
+                {
+                    key: 'addresses',
+                    label: 'Addresses',
+                    type: 'array',
+                    description: 'Array of customer addresses',
+                    children: [
+                        { key: 'fullName', label: 'Full Name', type: 'string' },
+                        { key: 'streetLine1', label: 'Street Line 1', type: 'string', required: true },
+                        { key: 'streetLine2', label: 'Street Line 2', type: 'string' },
+                        { key: 'city', label: 'City', type: 'string', required: true },
+                        { key: 'province', label: 'Province/State', type: 'string' },
+                        { key: 'postalCode', label: 'Postal Code', type: 'string', required: true },
+                        { key: 'countryCode', label: 'Country Code', type: 'string', required: true },
+                        { key: 'phoneNumber', label: 'Phone Number', type: 'string' },
+                        { key: 'defaultShippingAddress', label: 'Default Shipping', type: 'boolean' },
+                        { key: 'defaultBillingAddress', label: 'Default Billing', type: 'boolean' },
+                    ],
+                },
+                {
+                    key: 'customFields',
+                    label: 'Custom Fields',
+                    type: 'object',
+                    description: 'Custom field values',
+                },
+            ],
+        };
+    }
+
+    private async createCustomer(context: LoaderContext, record: CustomerInput): Promise<ID> {
+        const { ctx } = context;
+
+        const result = await this.customerService.create(ctx, {
+            emailAddress: record.emailAddress,
+            firstName: record.firstName,
+            lastName: record.lastName,
+            phoneNumber: record.phoneNumber,
+            title: record.title,
+            customFields: record.customFields as Record<string, unknown>,
+        });
+
+        if ('errorCode' in result) {
+            throw new Error(`Failed to create customer: ${result.message}`);
+        }
+
+        const customer = result;
+
+        if (record.groupCodes && record.groupCodes.length > 0) {
+            await assignCustomerGroups(ctx, this.customerGroupService, customer.id, record.groupCodes, this.logger);
+        }
+
+        if (record.addresses && record.addresses.length > 0) {
+            await createAddresses(ctx, this.customerService, this.countryService, customer.id, record.addresses, this.logger);
+        }
+
+        this.logger.log(`Created customer ${record.emailAddress} (ID: ${customer.id})`);
+        return customer.id;
+    }
+
+    private async updateCustomer(context: LoaderContext, customerId: ID, record: CustomerInput): Promise<void> {
+        const { ctx, options } = context;
+
+        const updateInput: Record<string, unknown> = { id: customerId };
+
+        if (record.firstName !== undefined && shouldUpdateField('firstName', options.updateOnlyFields)) {
+            updateInput.firstName = record.firstName;
+        }
+        if (record.lastName !== undefined && shouldUpdateField('lastName', options.updateOnlyFields)) {
+            updateInput.lastName = record.lastName;
+        }
+        if (record.phoneNumber !== undefined && shouldUpdateField('phoneNumber', options.updateOnlyFields)) {
+            updateInput.phoneNumber = record.phoneNumber;
+        }
+        if (record.title !== undefined && shouldUpdateField('title', options.updateOnlyFields)) {
+            updateInput.title = record.title;
+        }
+        if (record.customFields !== undefined && shouldUpdateField('customFields', options.updateOnlyFields)) {
+            updateInput.customFields = record.customFields;
+        }
+
+        await this.customerService.update(ctx, updateInput as Parameters<typeof this.customerService.update>[1]);
+
+        if (record.groupCodes && shouldUpdateField('groupCodes', options.updateOnlyFields)) {
+            await assignCustomerGroups(ctx, this.customerGroupService, customerId, record.groupCodes, this.logger);
+        }
+
+        this.logger.debug(`Updated customer ${record.emailAddress} (ID: ${customerId})`);
+    }
+}
