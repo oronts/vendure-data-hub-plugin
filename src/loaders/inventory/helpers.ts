@@ -1,0 +1,59 @@
+import { ID, RequestContext, ProductVariantService, StockLocationService } from '@vendure/core';
+import { InventoryInput } from './types';
+
+export async function findVariantBySku(
+    productVariantService: ProductVariantService,
+    ctx: RequestContext,
+    sku: string,
+): Promise<{ id: ID } | null> {
+    const variants = await productVariantService.findAll(ctx, {
+        filter: { sku: { eq: sku } },
+    });
+
+    if (variants.totalItems === 0) {
+        return null;
+    }
+
+    return { id: variants.items[0].id };
+}
+
+export async function resolveStockLocationId(
+    stockLocationService: StockLocationService,
+    ctx: RequestContext,
+    record: InventoryInput,
+    cache: Map<string, ID>,
+): Promise<ID | undefined> {
+    if (record.stockLocationId) {
+        return record.stockLocationId as ID;
+    }
+
+    if (record.stockLocationName) {
+        if (cache.has(record.stockLocationName)) {
+            return cache.get(record.stockLocationName);
+        }
+
+        const locations = await stockLocationService.findAll(ctx, {
+            filter: { name: { eq: record.stockLocationName } },
+        });
+
+        if (locations.totalItems > 0) {
+            const id = locations.items[0].id;
+            cache.set(record.stockLocationName, id);
+            return id;
+        }
+    }
+
+    return undefined;
+}
+
+export function isRecoverableError(error: unknown): boolean {
+    if (error instanceof Error) {
+        const message = error.message.toLowerCase();
+        return (
+            message.includes('timeout') ||
+            message.includes('connection') ||
+            message.includes('temporarily')
+        );
+    }
+    return false;
+}
