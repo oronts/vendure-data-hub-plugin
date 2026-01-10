@@ -1,0 +1,52 @@
+# Source (dist is published)
+src/
+dashboard/
+.dashboard-build/
+
+# Development
+dev-server/
+e2e/
+sdk/
+
+# Tests
+*.spec.ts
+*.test.ts
+*.e2e-spec.ts
+__tests__/
+coverage/
+.nyc_output/
+
+# Config
+tsconfig.json
+tsconfig.build.json
+vite.config.mts
+codegen.ts
+.eslintrc*
+.prettierrc*
+jest.config.*
+vitest.config.*
+.editorconfig
+
+# Git and CI
+.git/
+.github/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+*.map
+*.tsbuildinfo
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log
+*.tgz
+.env
+.env.*
+tmp/
+temp/
+data-hub-uploads/
