@@ -118,7 +118,7 @@ export class ApplyCouponHandler implements LoaderHandler {
                 try {
                     const found = await this.connection.getRepository(ctx, Order as any).findOne({ where: { code: orderCode } } as any);
                     if (found) ordersFound++;
-                } catch { /* skip */ }
+                } catch {}
             }
         }
         return { ordersFound };

@@ -70,7 +70,7 @@ export class CollectionHandler implements LoaderHandler {
                 if (applyFilters && collectionId) {
                     try {
                         await this.collectionService.triggerApplyFiltersJob(opCtx, { collectionIds: [collectionId] });
-                    } catch { /* optional */ }
+                    } catch {}
                 }
                 ok++;
             } catch (e: any) {

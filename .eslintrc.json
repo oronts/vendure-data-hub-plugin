@@ -20,7 +20,8 @@
     "@typescript-eslint/explicit-module-boundary-types": "off",
     "@typescript-eslint/no-non-null-assertion": "off",
     "no-console": "warn",
-    "prefer-const": "warn"
+    "prefer-const": "warn",
+    "no-empty": ["error", { "allowEmptyCatch": true }]
   },
   "ignorePatterns": [
     "dist/",

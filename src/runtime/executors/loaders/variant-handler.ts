@@ -97,7 +97,7 @@ export class VariantHandler implements LoaderHandler {
                             if (!alreadyIn) {
                                 await this.channelService.assignToChannels(opCtx, ProductVariant as any, updated.id as any, [opCtx.channelId as any]);
                             }
-                        } catch { /* optional */ }
+                        } catch {}
                     }
                 } else {
                     // Need a productId to create a variant; best-effort: try to find product by slug/name

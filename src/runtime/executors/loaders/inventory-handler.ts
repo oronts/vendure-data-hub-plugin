@@ -75,7 +75,7 @@ export class StockAdjustHandler implements LoaderHandler {
                 if (id) {
                     result.push({ stockLocationId: id as any, stockOnHand: Math.max(0, Math.floor(qty)) });
                 }
-            } catch { /* skip */ }
+            } catch {}
         }
         return result;
     }
