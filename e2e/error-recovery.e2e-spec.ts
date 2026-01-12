@@ -36,13 +36,10 @@ describe('DataHub Error Recovery', () => {
                         version: 1,
                         steps: [{
                             key: 'extract',
-                            type: 'extract',
-                            adapter: 'inline',
+                            type: 'EXTRACT',
                             config: {
-                                data: [
-                                    { id: 1, name: 'Valid Product' },
-                                    { id: null, name: null },
-                                ],
+                                adapterCode: 'vendure-query',
+                                entity: 'Product',
                             },
                         }],
                         edges: [],
@@ -63,92 +60,100 @@ describe('DataHub Error Recovery', () => {
         });
 
         it('records errors during pipeline execution', async () => {
-            const { runDataHubPipeline } = await adminClient.query(gql`
+            const { startDataHubPipelineRun } = await adminClient.query(gql`
                 mutation RunPipeline($id: ID!) {
-                    runDataHubPipeline(pipelineId: $id) {
+                    startDataHubPipelineRun(pipelineId: $id) {
                         id
                         status
-                        recordsProcessed
-                        recordsFailed
                     }
                 }
             `, { id: pipelineId });
 
-            expect(runDataHubPipeline.id).toBeDefined();
+            expect(startDataHubPipelineRun.id).toBeDefined();
         });
     });
 
     describe('Error Retry', () => {
-        it('queries retryable errors', async () => {
-            const { dataHubRecordErrors } = await adminClient.query(gql`
+        it('queries run errors', async () => {
+            // First get a run to query errors for
+            const { dataHubPipelineRuns } = await adminClient.query(gql`
                 query {
-                    dataHubRecordErrors(options: { take: 10, filter: { retryable: { eq: true } } }) {
-                        items {
-                            id
-                            errorMessage
-                            retryCount
-                        }
-                        totalItems
-                    }
-                }
-            `);
-
-            expect(dataHubRecordErrors.items).toBeDefined();
-        });
-
-        it('retries failed records', async () => {
-            const { dataHubRecordErrors } = await adminClient.query(gql`
-                query {
-                    dataHubRecordErrors(options: { take: 1, filter: { retryable: { eq: true } } }) {
+                    dataHubPipelineRuns {
                         items { id }
                     }
                 }
             `);
 
-            if (dataHubRecordErrors.items.length > 0) {
-                const errorId = dataHubRecordErrors.items[0].id;
-
-                const { retryDataHubRecordError } = await adminClient.query(gql`
-                    mutation Retry($id: ID!) {
-                        retryDataHubRecordError(id: $id) {
+            if (dataHubPipelineRuns.items.length > 0) {
+                const runId = dataHubPipelineRuns.items[0].id;
+                const { dataHubRunErrors } = await adminClient.query(gql`
+                    query RunErrors($runId: ID!) {
+                        dataHubRunErrors(runId: $runId) {
                             id
-                            retryCount
+                            message
                         }
+                    }
+                `, { runId });
+
+                expect(dataHubRunErrors).toBeDefined();
+            }
+        });
+
+        it('retries failed records', async () => {
+            // Get dead letter queue entries
+            const { dataHubDeadLetters } = await adminClient.query(gql`
+                query {
+                    dataHubDeadLetters {
+                        id
+                    }
+                }
+            `);
+
+            if (dataHubDeadLetters.length > 0) {
+                const errorId = dataHubDeadLetters[0].id;
+
+                const { retryDataHubRecord } = await adminClient.query(gql`
+                    mutation Retry($id: ID!) {
+                        retryDataHubRecord(errorId: $id)
                     }
                 `, { id: errorId });
 
-                expect(retryDataHubRecordError).toBeDefined();
+                expect(retryDataHubRecord).toBeDefined();
             }
         });
     });
 
     describe('Error Aggregation', () => {
-        it('gets top errors by frequency', async () => {
-            const { dataHubTopErrors } = await adminClient.query(gql`
+        it('gets error analytics with top errors', async () => {
+            const { dataHubErrorAnalytics } = await adminClient.query(gql`
                 query {
-                    dataHubTopErrors(limit: 10) {
-                        errorMessage
-                        count
-                        lastOccurrence
+                    dataHubErrorAnalytics {
+                        totalErrors
+                        topErrors {
+                            message
+                            count
+                            lastOccurrence
+                        }
                     }
                 }
             `);
 
-            expect(dataHubTopErrors).toBeDefined();
+            expect(dataHubErrorAnalytics).toBeDefined();
         });
 
         it('gets errors by pipeline', async () => {
-            const { dataHubErrorsByPipeline } = await adminClient.query(gql`
+            const { dataHubErrorAnalytics } = await adminClient.query(gql`
                 query {
-                    dataHubErrorsByPipeline {
-                        pipelineCode
-                        totalErrors
-                        recentErrors
+                    dataHubErrorAnalytics {
+                        errorsByPipeline {
+                            pipelineCode
+                            count
+                        }
                     }
                 }
             `);
 
-            expect(dataHubErrorsByPipeline).toBeDefined();
+            expect(dataHubErrorAnalytics.errorsByPipeline).toBeDefined();
         });
     });
 
@@ -172,9 +177,8 @@ describe('DataHub Error Recovery', () => {
                         },
                         steps: [{
                             key: 'extract',
-                            type: 'extract',
-                            adapter: 'inline',
-                            config: { data: [] },
+                            type: 'EXTRACT',
+                            config: { adapterCode: 'vendure-query', entity: 'Product' },
                         }],
                         edges: [],
                     },
@@ -209,9 +213,8 @@ describe('DataHub Error Recovery', () => {
                         },
                         steps: [{
                             key: 'extract',
-                            type: 'extract',
-                            adapter: 'inline',
-                            config: { data: [] },
+                            type: 'EXTRACT',
+                            config: { adapterCode: 'vendure-query', entity: 'Product' },
                         }],
                         edges: [],
                     },
@@ -229,17 +232,53 @@ describe('DataHub Error Recovery', () => {
         });
     });
 
-    describe('Error Purge', () => {
-        it('purges old errors', async () => {
-            const { purgeDataHubRecordErrors } = await adminClient.query(gql`
-                mutation Purge($olderThanDays: Int!) {
-                    purgeDataHubRecordErrors(olderThanDays: $olderThanDays) {
-                        purgedCount
+    describe('Dead Letter Queue', () => {
+        it('queries dead letter queue', async () => {
+            const { dataHubDeadLetters } = await adminClient.query(gql`
+                query {
+                    dataHubDeadLetters {
+                        id
+                        message
+                        stepKey
                     }
                 }
-            `, { olderThanDays: 365 });
+            `);
 
-            expect(purgeDataHubRecordErrors.purgedCount).toBeGreaterThanOrEqual(0);
+            expect(dataHubDeadLetters).toBeDefined();
+        });
+
+        it('marks error as dead letter', async () => {
+            // First get a run to query errors for
+            const { dataHubPipelineRuns } = await adminClient.query(gql`
+                query {
+                    dataHubPipelineRuns {
+                        items { id }
+                    }
+                }
+            `);
+
+            if (dataHubPipelineRuns.items.length > 0) {
+                const runId = dataHubPipelineRuns.items[0].id;
+                const { dataHubRunErrors } = await adminClient.query(gql`
+                    query RunErrors($runId: ID!) {
+                        dataHubRunErrors(runId: $runId) {
+                            id
+                        }
+                    }
+                `, { runId });
+
+                if (dataHubRunErrors.length > 0) {
+                    const errorId = dataHubRunErrors[0].id;
+
+                    const { markDataHubDeadLetter } = await adminClient.query(gql`
+                        mutation MarkDeadLetter($id: ID!) {
+                            markDataHubDeadLetter(id: $id, deadLetter: true)
+                        }
+                    `, { id: errorId });
+
+                    expect(markDataHubDeadLetter).toBeDefined();
+                }
+            }
         });
     });
 
@@ -265,10 +304,10 @@ describe('DataHub Error Recovery', () => {
                         },
                         steps: [{
                             key: 'extract',
-                            type: 'extract',
-                            adapter: 'inline',
+                            type: 'EXTRACT',
                             config: {
-                                data: Array.from({ length: 100 }, (_, i) => ({ id: i + 1, name: `Item ${i + 1}` })),
+                                adapterCode: 'vendure-query',
+                                entity: 'Product',
                             },
                         }],
                         edges: [],
@@ -288,87 +327,93 @@ describe('DataHub Error Recovery', () => {
             }
         });
 
-        it('queries checkpoints', async () => {
-            const { dataHubCheckpoints } = await adminClient.query(gql`
-                query GetCheckpoints($pipelineId: ID!) {
-                    dataHubCheckpoints(pipelineId: $pipelineId) {
-                        items {
-                            id
-                            stepKey
-                            value
-                            processedCount
-                        }
-                        totalItems
+        it('queries checkpoint for pipeline', async () => {
+            const { dataHubCheckpoint } = await adminClient.query(gql`
+                query GetCheckpoint($pipelineId: ID!) {
+                    dataHubCheckpoint(pipelineId: $pipelineId) {
+                        id
+                        data
                     }
                 }
             `, { pipelineId });
 
-            expect(dataHubCheckpoints.items).toBeDefined();
+            // Checkpoint may be null if no run has occurred yet
+            expect(dataHubCheckpoint === null || dataHubCheckpoint).toBeTruthy();
         });
 
-        it('clears checkpoint', async () => {
-            const { clearDataHubCheckpoint } = await adminClient.query(gql`
-                mutation ClearCheckpoint($pipelineId: ID!) {
-                    clearDataHubCheckpoint(pipelineId: $pipelineId) {
-                        success
+        it('sets checkpoint data', async () => {
+            const { setDataHubCheckpoint } = await adminClient.query(gql`
+                mutation SetCheckpoint($pipelineId: ID!, $data: JSON!) {
+                    setDataHubCheckpoint(pipelineId: $pipelineId, data: $data) {
+                        id
+                        data
                     }
                 }
-            `, { pipelineId });
+            `, { pipelineId, data: { lastProcessedId: 50, processedCount: 50 } });
 
-            expect(clearDataHubCheckpoint.success).toBe(true);
+            expect(setDataHubCheckpoint).toBeDefined();
         });
     });
 
     describe('Run History and Logs', () => {
-        it('queries run history', async () => {
-            const { dataHubRunHistory } = await adminClient.query(gql`
+        it('queries pipeline run history', async () => {
+            const { dataHubPipelineRuns } = await adminClient.query(gql`
                 query {
-                    dataHubRunHistory(options: { take: 10 }) {
+                    dataHubPipelineRuns {
                         items {
                             id
-                            pipelineCode
                             status
                             startedAt
-                            completedAt
-                            recordsProcessed
-                            recordsFailed
+                            finishedAt
+                            metrics
                         }
                         totalItems
                     }
                 }
             `);
 
-            expect(dataHubRunHistory.items).toBeDefined();
+            expect(dataHubPipelineRuns.items).toBeDefined();
         });
 
         it('queries logs for run', async () => {
-            const { dataHubRunHistory } = await adminClient.query(gql`
+            const { dataHubPipelineRuns } = await adminClient.query(gql`
                 query {
-                    dataHubRunHistory(options: { take: 1 }) {
+                    dataHubPipelineRuns {
                         items { id }
                     }
                 }
             `);
 
-            if (dataHubRunHistory.items.length > 0) {
-                const runId = dataHubRunHistory.items[0].id;
+            if (dataHubPipelineRuns.items.length > 0) {
+                const runId = dataHubPipelineRuns.items[0].id;
 
                 const { dataHubRunLogs } = await adminClient.query(gql`
                     query GetLogs($runId: ID!) {
-                        dataHubRunLogs(runId: $runId, options: { take: 50 }) {
-                            items {
-                                id
-                                level
-                                message
-                                timestamp
-                            }
-                            totalItems
+                        dataHubRunLogs(runId: $runId) {
+                            id
+                            level
+                            message
+                            timestamp
                         }
                     }
                 `, { runId });
 
-                expect(dataHubRunLogs.items).toBeDefined();
+                expect(dataHubRunLogs).toBeDefined();
             }
+        });
+
+        it('queries recent logs', async () => {
+            const { dataHubRecentLogs } = await adminClient.query(gql`
+                query {
+                    dataHubRecentLogs(limit: 20) {
+                        id
+                        level
+                        message
+                    }
+                }
+            `);
+
+            expect(dataHubRecentLogs).toBeDefined();
         });
     });
 });

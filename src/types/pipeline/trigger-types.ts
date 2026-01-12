@@ -43,12 +43,44 @@ export interface FileWatchConfig {
  * Webhook trigger configuration
  */
 export interface WebhookTriggerConfig {
-    /** Unique webhook endpoint code */
-    webhookCode: string;
     /** Authentication type */
-    authentication?: 'NONE' | 'API_KEY' | 'HMAC' | 'JWT' | 'BASIC';
-    /** Secret code reference for authentication */
+    authentication?: 'NONE' | 'API_KEY' | 'HMAC' | 'BASIC' | 'JWT';
+    
+    /** Secret code reference for HMAC authentication */
     secretCode?: string;
+    
+    /** Secret code reference for API key authentication */
+    apiKeySecretCode?: string;
+    
+    /** Secret code reference for Basic authentication */
+    basicSecretCode?: string;
+    
+    /** Secret code reference for JWT authentication */
+    jwtSecretCode?: string;
+    
+    /** API key header name (default: 'X-API-Key') */
+    apiKeyHeaderName?: string;
+    
+    /** API key prefix (e.g., 'Bearer ') */
+    apiKeyPrefix?: string;
+    
+    /** HMAC header name (default: 'x-datahub-signature') */
+    hmacHeaderName?: string;
+    
+    /** HMAC algorithm (default: 'sha256') */
+    hmacAlgorithm?: 'sha256' | 'sha512';
+    
+    /** JWT header name (default: 'Authorization') */
+    jwtHeaderName?: string;
+    
+    /** Require idempotency key header */
+    requireIdempotencyKey?: boolean;
+    
+    /** Rate limit: max requests per minute */
+    rateLimit?: number;
+    
+    /** Allowed IP addresses (if specified, only these IPs allowed) */
+    allowedIps?: string[];
 }
 
 /**
@@ -71,8 +103,8 @@ export interface TriggerConfig {
     enabled?: boolean;
     /** Schedule configuration (for SCHEDULE type) */
     schedule?: ScheduleConfig;
-    /** Webhook code (for WEBHOOK type) */
-    webhookCode?: string;
+    /** Webhook configuration (for WEBHOOK type) */
+    webhook?: WebhookTriggerConfig;
     /** Vendure event type (for EVENT type) */
     eventType?: string;
     /** File watch configuration (for FILE type) */
@@ -83,7 +115,7 @@ export interface TriggerConfig {
  * Trigger payload passed when pipeline is triggered
  */
 export interface TriggerPayload {
-    /** Type of trigger that initiated the run */
+    /** Type of trigger that initiated run */
     type: TriggerType;
     /** Timestamp when trigger fired */
     timestamp: string;

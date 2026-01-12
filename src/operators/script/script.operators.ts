@@ -8,6 +8,7 @@ import { JsonObject } from '../../types';
 import { OperatorHelpers, AdapterDefinition } from '../../sdk/types';
 import { OperatorResult } from '../types';
 import { ScriptOperatorConfig, ScriptContext } from './types';
+import { validateUserCode, createCodeSandbox } from '../../utils/code-security.utils';
 
 const DEFAULT_TIMEOUT = 5000;
 
@@ -121,7 +122,10 @@ export function scriptOperator(
         return { records: [...records], errors: [{ message: 'Script code is required' }] };
     }
 
-    const sandboxGlobals = createSandboxGlobals();
+    // Validate user code before execution
+    validateUserCode(code);
+
+    const sandboxGlobals = createCodeSandbox();
 
     if (batch) {
         return executeBatchScript(records, code, timeout, failOnError, contextData, sandboxGlobals);
@@ -146,7 +150,10 @@ async function executeBatchScript(
         data: contextData,
     };
 
-    // Include records and context in the function parameters
+    // Validate user code before execution
+    validateUserCode(code);
+
+    // Include records and context in function parameters
     const fnBody = `
         "use strict";
         return (async function(records, context) {
@@ -196,6 +203,9 @@ async function executeSingleRecordScript(
 ): Promise<OperatorResult> {
     const results: JsonObject[] = [];
     const errors: Array<{ message: string; field?: string }> = [];
+
+    // Validate user code before execution
+    validateUserCode(code);
 
     // Include record, index, and context in the function parameters
     const fnBody = `

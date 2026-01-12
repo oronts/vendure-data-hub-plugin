@@ -17,6 +17,7 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { WebhookRetryService, WebhookConfig } from '../webhooks/webhook-retry.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { DEFAULTS, LOGGER_CONTEXTS } from '../../constants/index';
+import { validateUserCode, createCodeSandbox } from '../../utils/code-security.utils';
 
 const DEFAULT_INTERCEPTOR_TIMEOUT = 5000;
 
@@ -208,31 +209,41 @@ export class HookService implements OnModuleInit {
 
         // Create a sandboxed function with limited globals
         const sandboxGlobals = {
-            Array,
-            Object,
-            String,
-            Number,
-            Boolean,
-            Date,
-            JSON,
+            // Math functions
             Math,
-            parseInt,
-            parseFloat,
+            // Array functions
+            Array,
+            // Object functions
+            Object,
+            // String functions
+            String,
+            // Number functions
+            Number,
+            // Boolean
+            Boolean,
+            // JSON functions
+            JSON,
+            // Type checking
             isNaN,
             isFinite,
+            // URI encoding
             encodeURIComponent,
             decodeURIComponent,
+            // Console override (redirects to logger)
             console: {
                 log: (...args: any[]) => this.logger.debug('Interceptor console.log', { consoleArgs: args }),
                 warn: (...args: any[]) => this.logger.warn('Interceptor console.warn', { consoleArgs: args }),
                 error: (...args: any[]) => this.logger.warn('Interceptor console.error', { consoleArgs: args }),
             },
-            // Provide records and context in scope for the interceptor code
+            // Provide records and context in scope for interceptor code
             records,
             context,
         };
 
-        // Build the function - records and context are available in scope via sandboxGlobals
+        // Validate user code before execution
+        validateUserCode(action.code);
+
+        // Build function - records and context are available in scope via sandboxGlobals
         const fnBody = `
             "use strict";
             return (async function() {

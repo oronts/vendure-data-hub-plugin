@@ -62,7 +62,14 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             refreshIntervalMs: this.schedulerConfig.refreshIntervalMs,
             minIntervalMs: this.schedulerConfig.minIntervalMs,
         } as any);
-        await this.refresh();
+        try {
+            await this.refresh();
+        } catch (error) {
+            // Handle case where entity metadata is not yet available (e.g., during testing)
+            this.logger.warn('Failed to initialize schedules on startup, will retry on next refresh', {
+                error: error instanceof Error ? error.message : String(error),
+            } as any);
+        }
 
         // Periodically refresh schedules in case pipelines change
         const refreshHandle = setInterval(

@@ -221,13 +221,6 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
         // Find outgoing edges (edges FROM the deleted step)
         const outgoingEdges = existingEdges.filter(edge => edge.from === stepKey);
 
-        // Log if step had connections (for debugging and user awareness)
-        if (incomingEdges.length > 0 || outgoingEdges.length > 0) {
-            console.log(
-                `[Pipeline Editor] Removing step "${stepKey}" with ${incomingEdges.length} incoming and ${outgoingEdges.length} outgoing connection(s)`
-            );
-        }
-
         // Remove edges that reference the deleted step
         let newEdges = existingEdges.filter(
             edge => edge.from !== stepKey && edge.to !== stepKey
@@ -255,10 +248,6 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                 }
             }
             if (reconnectionEdges.length > 0) {
-                console.log(
-                    `[Pipeline Editor] Reconnecting graph with ${reconnectionEdges.length} new edge(s):`,
-                    reconnectionEdges.map(e => `${e.from} -> ${e.to}`).join(', ')
-                );
                 newEdges = [...newEdges, ...reconnectionEdges];
             }
         }

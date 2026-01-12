@@ -215,7 +215,7 @@ export class DataHubPipelineAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args() args: { pipelineId?: ID; options?: ListQueryOptions<PipelineRun> },
     ): Promise<PaginatedList<PipelineRun>> {
-        return this.pipelineService.listRuns(ctx, args.options, args.pipelineId);
+        return this.pipelineService.listRuns(ctx, args.options ?? {}, args.pipelineId);
     }
 
     @Query()

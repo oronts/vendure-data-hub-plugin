@@ -23,11 +23,14 @@ export default defineConfig({
         pool: 'forks',
         poolOptions: {
             forks: {
-                singleFork: true,
+                // Run each test file in its own fork for isolation
+                singleFork: false,
             },
         },
         sequence: {
             hooks: 'list',
         },
+        // Run test files sequentially to avoid port collision
+        fileParallelism: false,
     },
 });

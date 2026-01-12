@@ -122,6 +122,10 @@ export const LOGGER_CONTEXTS = {
 
     // Event Services
     EVENT_TRIGGER_SERVICE: 'EventTriggerService',
+
+    // Rate Limiting & Webhooks
+    RATE_LIMIT: 'RateLimitService',
+    WEBHOOK: 'WebhookController',
 } as const;
 
 export type LoggerContext = typeof LOGGER_CONTEXTS[keyof typeof LOGGER_CONTEXTS];

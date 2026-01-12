@@ -111,20 +111,24 @@ export function groupErrorsByKey<T>(
 export function getTopErrors(
     errors: Array<{ message: string; createdAt: Date }>,
     limit: number,
-): Array<{ message: string; count: number; lastOccurrence: Date }> {
-    const errorMessages: Map<string, { count: number; lastOccurrence: Date }> = new Map();
+): Array<{ message: string; count: number; firstOccurrence: Date; lastOccurrence: Date }> {
+    const errorMessages: Map<string, { count: number; firstOccurrence: Date; lastOccurrence: Date }> = new Map();
 
     for (const error of errors) {
         const normalizedMessage = normalizeErrorMessage(error.message);
         const existing = errorMessages.get(normalizedMessage);
         if (existing) {
             existing.count++;
+            if (error.createdAt < existing.firstOccurrence) {
+                existing.firstOccurrence = error.createdAt;
+            }
             if (error.createdAt > existing.lastOccurrence) {
                 existing.lastOccurrence = error.createdAt;
             }
         } else {
             errorMessages.set(normalizedMessage, {
                 count: 1,
+                firstOccurrence: error.createdAt,
                 lastOccurrence: error.createdAt,
             });
         }

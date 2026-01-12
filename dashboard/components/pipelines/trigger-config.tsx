@@ -80,11 +80,26 @@ export interface ScheduleTrigger {
     enabled: boolean;
 }
 
+export type WebhookAuthType = 'NONE' | 'API_KEY' | 'HMAC' | 'BASIC' | 'JWT';
+
 export interface WebhookTrigger {
     type: 'webhook';
     webhookPath: string;
     method: 'GET' | 'POST' | 'PUT';
-    secret?: string;
+    authentication: WebhookAuthType;
+    // Secret codes (reference to DataHubSecret)
+    secretCode?: string;          // For HMAC
+    apiKeySecretCode?: string;    // For API_KEY
+    basicSecretCode?: string;     // For BASIC
+    jwtSecretCode?: string;       // For JWT
+    // Configuration
+    apiKeyHeaderName?: string;
+    apiKeyPrefix?: string;
+    hmacHeaderName?: string;
+    hmacAlgorithm?: 'sha256' | 'sha512';
+    jwtHeaderName?: string;
+    rateLimit?: number;
+    requireIdempotencyKey?: boolean;
     validatePayload: boolean;
     enabled: boolean;
 }
@@ -310,7 +325,6 @@ interface WebhookTriggerConfigProps {
 }
 
 function WebhookTriggerConfig({ trigger, onChange, onRemove, baseUrl = 'https://your-store.com' }: WebhookTriggerConfigProps) {
-    const [showSecret, setShowSecret] = React.useState(false);
     const [pathTouched, setPathTouched] = React.useState(false);
 
     const webhookUrl = `${baseUrl}/data-hub/webhook/${trigger.webhookPath}`;
@@ -331,12 +345,31 @@ function WebhookTriggerConfig({ trigger, onChange, onRemove, baseUrl = 'https://
         toast.success('Webhook URL copied to clipboard');
     };
 
-    const generateSecret = () => {
-        const secret = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('');
-        onChange({ ...trigger, secret });
-        toast.success('Secret generated');
+    const authType = trigger.authentication || 'NONE';
+
+    const getAuthDescription = () => {
+        switch (authType) {
+            case 'API_KEY': return 'Requires API key in HTTP header';
+            case 'HMAC': return 'Requires HMAC-SHA256 signature of request body';
+            case 'BASIC': return 'Requires HTTP Basic Authentication';
+            case 'JWT': return 'Requires valid JWT Bearer token';
+            case 'NONE': return 'No authentication required';
+        }
+    };
+
+    const getExampleHeaders = () => {
+        switch (authType) {
+            case 'API_KEY':
+                return `  -H '${trigger.apiKeyHeaderName || 'x-api-key'}: ${trigger.apiKeyPrefix || ''}YOUR_API_KEY' \\`;
+            case 'HMAC':
+                return `  -H '${trigger.hmacHeaderName || 'x-datahub-signature'}: HMAC_SIGNATURE' \\`;
+            case 'BASIC':
+                return `  -H 'Authorization: Basic BASE64_CREDENTIALS' \\`;
+            case 'JWT':
+                return `  -H '${trigger.jwtHeaderName || 'Authorization'}: Bearer YOUR_JWT_TOKEN' \\`;
+            default:
+                return '';
+        }
     };
 
     return (
@@ -399,41 +432,196 @@ function WebhookTriggerConfig({ trigger, onChange, onRemove, baseUrl = 'https://
 
                 <Separator />
 
-                {/* Security */}
+                {/* Authentication */}
                 <div className="space-y-4">
                     <h4 className="font-medium flex items-center gap-2">
                         <Lock className="w-4 h-4" />
-                        Security
+                        Authentication
                     </h4>
 
                     <div className="space-y-2">
-                        <Label>Webhook Secret (HMAC Signature)</Label>
-                        <div className="flex gap-2">
-                            <div className="relative flex-1">
-                                <Input
-                                    type={showSecret ? 'text' : 'password'}
-                                    value={trigger.secret || ''}
-                                    onChange={e => onChange({ ...trigger, secret: e.target.value })}
-                                    placeholder="Optional secret for signature validation"
-                                    className="pr-10 font-mono"
-                                />
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="absolute right-0 top-0 h-full"
-                                    onClick={() => setShowSecret(!showSecret)}
-                                >
-                                    {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                </Button>
+                        <Label>Authentication Type</Label>
+                        <Select
+                            value={authType}
+                            onValueChange={v => onChange({ ...trigger, authentication: v as WebhookAuthType })}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="NONE">None (Not Recommended)</SelectItem>
+                                <SelectItem value="API_KEY">API Key (Recommended)</SelectItem>
+                                <SelectItem value="HMAC">HMAC Signature</SelectItem>
+                                <SelectItem value="BASIC">HTTP Basic Auth</SelectItem>
+                                <SelectItem value="JWT">JWT Bearer Token</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">{getAuthDescription()}</p>
+                    </div>
+
+                    {/* Security Warning for NONE */}
+                    {authType === 'NONE' && (
+                        <div className="p-3 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                            <div className="flex items-start gap-2">
+                                <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                                        Security Warning
+                                    </p>
+                                    <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                                        This webhook has no authentication. Anyone with the URL can trigger this pipeline.
+                                        For production use, we strongly recommend enabling API Key or HMAC authentication.
+                                    </p>
+                                </div>
                             </div>
-                            <Button variant="outline" onClick={generateSecret}>
-                                <Key className="w-4 h-4 mr-2" />
-                                Generate
-                            </Button>
                         </div>
+                    )}
+
+                    {/* API Key Config */}
+                    {authType === 'API_KEY' && (
+                        <div className="space-y-3 p-3 border rounded-lg">
+                            <div className="space-y-2">
+                                <Label>API Key Secret Code *</Label>
+                                <Input
+                                    value={trigger.apiKeySecretCode || ''}
+                                    onChange={e => onChange({ ...trigger, apiKeySecretCode: e.target.value })}
+                                    placeholder="my-api-key-secret"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Reference to a secret stored in DataHub Secrets
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Header Name</Label>
+                                <Input
+                                    value={trigger.apiKeyHeaderName || ''}
+                                    onChange={e => onChange({ ...trigger, apiKeyHeaderName: e.target.value })}
+                                    placeholder="x-api-key"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Key Prefix (optional)</Label>
+                                <Input
+                                    value={trigger.apiKeyPrefix || ''}
+                                    onChange={e => onChange({ ...trigger, apiKeyPrefix: e.target.value })}
+                                    placeholder="Bearer "
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* HMAC Config */}
+                    {authType === 'HMAC' && (
+                        <div className="space-y-3 p-3 border rounded-lg">
+                            <div className="space-y-2">
+                                <Label>HMAC Secret Code *</Label>
+                                <Input
+                                    value={trigger.secretCode || ''}
+                                    onChange={e => onChange({ ...trigger, secretCode: e.target.value })}
+                                    placeholder="my-hmac-secret"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Reference to a secret stored in DataHub Secrets
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Signature Header</Label>
+                                <Input
+                                    value={trigger.hmacHeaderName || ''}
+                                    onChange={e => onChange({ ...trigger, hmacHeaderName: e.target.value })}
+                                    placeholder="x-datahub-signature"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Algorithm</Label>
+                                <Select
+                                    value={trigger.hmacAlgorithm || 'sha256'}
+                                    onValueChange={v => onChange({ ...trigger, hmacAlgorithm: v as 'sha256' | 'sha512' })}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="sha256">SHA-256</SelectItem>
+                                        <SelectItem value="sha512">SHA-512</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Basic Auth Config */}
+                    {authType === 'BASIC' && (
+                        <div className="space-y-3 p-3 border rounded-lg">
+                            <div className="space-y-2">
+                                <Label>Credentials Secret Code *</Label>
+                                <Input
+                                    value={trigger.basicSecretCode || ''}
+                                    onChange={e => onChange({ ...trigger, basicSecretCode: e.target.value })}
+                                    placeholder="my-basic-auth-secret"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Secret should contain "username:password" format
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* JWT Config */}
+                    {authType === 'JWT' && (
+                        <div className="space-y-3 p-3 border rounded-lg">
+                            <div className="space-y-2">
+                                <Label>JWT Secret Code *</Label>
+                                <Input
+                                    value={trigger.jwtSecretCode || ''}
+                                    onChange={e => onChange({ ...trigger, jwtSecretCode: e.target.value })}
+                                    placeholder="my-jwt-secret"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Secret used to verify JWT signature (HS256)
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Authorization Header</Label>
+                                <Input
+                                    value={trigger.jwtHeaderName || ''}
+                                    onChange={e => onChange({ ...trigger, jwtHeaderName: e.target.value })}
+                                    placeholder="Authorization"
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <Separator />
+
+                {/* Rate Limiting & Options */}
+                <div className="space-y-4">
+                    <h4 className="font-medium flex items-center gap-2">
+                        <Settings className="w-4 h-4" />
+                        Options
+                    </h4>
+
+                    <div className="space-y-2">
+                        <Label>Rate Limit (requests/minute)</Label>
+                        <Input
+                            type="number"
+                            value={trigger.rateLimit ?? 100}
+                            onChange={e => onChange({ ...trigger, rateLimit: parseInt(e.target.value) || 0 })}
+                            min={0}
+                            max={10000}
+                        />
                         <p className="text-xs text-muted-foreground">
-                            If set, requests must include X-DataHub-Signature header with HMAC-SHA256 signature
+                            Maximum requests per minute per IP address (0 = unlimited)
                         </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={trigger.requireIdempotencyKey || false}
+                            onCheckedChange={v => onChange({ ...trigger, requireIdempotencyKey: v })}
+                        />
+                        <Label>Require X-Idempotency-Key header</Label>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -458,10 +646,9 @@ function WebhookTriggerConfig({ trigger, onChange, onRemove, baseUrl = 'https://
                             <pre className="p-4 bg-muted rounded-lg text-xs overflow-x-auto">
 {`curl -X ${trigger.method} \\
   '${webhookUrl}' \\
-  -H 'Content-Type: application/json' \\${trigger.secret ? `
-  -H 'X-DataHub-Signature: sha256=...' \\` : ''}
-  -d '{
-    "data": [
+  -H 'Content-Type: application/json' \\
+${getExampleHeaders()}  -d '{
+    "records": [
       { "sku": "ABC123", "name": "Product 1" }
     ]
   }'`}
@@ -726,6 +913,8 @@ export function TriggerConfig({ triggers, onChange, pipelineCode }: TriggerConfi
                     type: 'webhook',
                     webhookPath: pipelineCode || `webhook-${Date.now()}`,
                     method: 'POST',
+                    authentication: 'NONE',
+                    rateLimit: 100,
                     validatePayload: false,
                     enabled: true,
                 };

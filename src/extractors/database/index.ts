@@ -14,7 +14,6 @@ export {
     formatSqlValue,
     validateQuery,
     hasLimitClause,
-    extractSelectColumns,
 } from './query-builder';
 
 export {

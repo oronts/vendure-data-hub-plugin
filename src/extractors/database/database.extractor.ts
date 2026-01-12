@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     JsonObject,
+    JsonValue,
     DataExtractor,
     ExtractorContext,
     ExtractorValidationResult,
@@ -19,11 +20,15 @@ import {
 import {
     createDatabaseClient,
     getDefaultPort,
+    DatabaseClient,
 } from './connection-pool';
 import {
     validateQuery,
     hasLimitClause,
+    buildPaginatedQuery,
+    appendIncrementalFilter,
 } from './query-builder';
+import { PaginationState } from './types';
 
 @Injectable()
 export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig> {
@@ -276,7 +281,6 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
         ],
     };
 
-    // eslint-disable-next-line require-yield
     async *extract(
         context: ExtractorContext,
         config: DatabaseExtractorConfig,
@@ -287,11 +291,113 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
             database: config.database ?? null,
         });
 
-        throw new Error(
-            `Database extraction not yet implemented for ${config.databaseType}. ` +
-                'Install the appropriate database driver (pg, mysql2, better-sqlite3, mssql, or oracledb) ' +
-                'and implement the connection logic in this extractor.',
-        );
+        let client: DatabaseClient | null = null;
+
+        try {
+            client = await createDatabaseClient(context, config);
+
+            // Get incremental state from checkpoint if enabled
+            let lastIncrementalValue: JsonValue | undefined = undefined;
+            if (config.incremental?.enabled && context.checkpoint?.data) {
+                lastIncrementalValue = context.checkpoint.data.lastIncrementalValue;
+            }
+
+            // Apply incremental filter to base query
+            let baseQuery = config.query;
+            if (config.incremental?.enabled && lastIncrementalValue !== undefined) {
+                baseQuery = appendIncrementalFilter(baseQuery, config, lastIncrementalValue);
+            }
+
+            // Initialize pagination state
+            const paginationState: PaginationState = { offset: 0, cursor: undefined };
+            const maxPages = config.pagination?.maxPages ?? PAGINATION.MAX_PAGES;
+            const pageSize = config.pagination?.pageSize ?? PAGINATION.DATABASE_PAGE_SIZE;
+            let pageCount = 0;
+            let totalRecords = 0;
+            let latestIncrementalValue: JsonValue | undefined = lastIncrementalValue;
+
+            // Iterate through pages
+            while (pageCount < maxPages) {
+                // Check for cancellation
+                if (await context.isCancelled()) {
+                    context.logger.info('Database extraction cancelled');
+                    break;
+                }
+
+                // Build paginated query
+                const paginatedQuery = buildPaginatedQuery(baseQuery, config.pagination, paginationState);
+
+                context.logger.debug('Executing database query', {
+                    page: pageCount + 1,
+                    offset: paginationState.offset,
+                    cursor: paginationState.cursor as JsonValue,
+                });
+
+                // Execute query
+                const result = await client.query(paginatedQuery, config.parameters as unknown[]);
+
+                if (result.rows.length === 0) {
+                    context.logger.debug('No more records to fetch');
+                    break;
+                }
+
+                // Yield records
+                for (const row of result.rows) {
+                    totalRecords++;
+
+                    // Track incremental value
+                    if (config.incremental?.enabled && config.incremental.column) {
+                        const incrementalValue = row[config.incremental.column];
+                        if (incrementalValue !== undefined && incrementalValue !== null) {
+                            if (latestIncrementalValue === undefined ||
+                                (incrementalValue as string | number) > (latestIncrementalValue as string | number)) {
+                                latestIncrementalValue = incrementalValue as JsonValue;
+                            }
+                        }
+                    }
+
+                    yield {
+                        data: row as JsonObject,
+                        meta: {
+                            sourceId: `${config.databaseType}://${config.host ?? 'local'}/${config.database ?? 'db'}`,
+                            extractedAt: new Date().toISOString(),
+                        },
+                    };
+                }
+
+                // Update pagination state
+                pageCount++;
+
+                if (config.pagination?.type === 'cursor' && config.pagination.cursorColumn) {
+                    // For cursor pagination, get the last row's cursor value
+                    const lastRow = result.rows[result.rows.length - 1];
+                    paginationState.cursor = lastRow[config.pagination.cursorColumn] as JsonValue;
+                } else {
+                    // For offset pagination
+                    paginationState.offset += result.rows.length;
+                }
+
+                // If we got fewer rows than page size, we're done
+                if (result.rows.length < pageSize) {
+                    break;
+                }
+            }
+
+            // Save incremental state to checkpoint
+            if (config.incremental?.enabled && latestIncrementalValue !== undefined) {
+                context.setCheckpoint({ lastIncrementalValue: latestIncrementalValue });
+            }
+
+            context.logger.info('Database extraction completed', {
+                totalRecords,
+                pages: pageCount,
+                databaseType: config.databaseType,
+            });
+        } finally {
+            if (client) {
+                await client.close();
+            }
+        }
     }
 
     async validate(
@@ -356,9 +462,12 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
             });
         }
 
-        warnings.push({
-            message: 'Database extractor requires database driver for full functionality.',
-        });
+        // Add warning for unsupported database types
+        if (config.databaseType && ![DatabaseType.POSTGRESQL, DatabaseType.MYSQL].includes(config.databaseType)) {
+            warnings.push({
+                message: `${config.databaseType} requires additional driver installation. See documentation.`,
+            });
+        }
 
         return { valid: errors.length === 0, errors, warnings };
     }

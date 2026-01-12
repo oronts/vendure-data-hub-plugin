@@ -1,41 +1,163 @@
+/**
+ * Database Query Builder
+ * 
+ * Safe SQL query construction with validation and sanitization.
+ * Prevents SQL injection attacks through proper validation.
+ */
+
 import { JsonValue } from '../../types/index';
 import { DatabaseExtractorConfig, DatabasePaginationConfig, PaginationState } from './types';
+import { validateColumnName, escapeSqlIdentifier, validateLimitOffset, containsSqlInjection } from '../../utils/sql-security.utils';
 
+/**
+ * Format SQL value for safe interpolation
+ */
+export function formatSqlValue(value: JsonValue): string {
+    if (value === null) return 'NULL';
+    if (typeof value === 'number') return String(value);
+    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+    if (typeof value === 'string') {
+        return `'${value.replace(/'/g, "''")}'`;
+    }
+    if (value instanceof Date) {
+        return `'${value.toISOString()}'`;
+    }
+    return 'NULL';
+}
+
+/**
+ * Validate query for security issues
+ */
+export function validateQuery(query: string): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    const queryUpper = query.trim().toUpperCase();
+
+    if (!queryUpper.startsWith('SELECT')) {
+        errors.push('Query must be a SELECT statement');
+    }
+
+    if (containsSqlInjection(query)) {
+        errors.push('Query contains potentially dangerous patterns');
+    }
+
+    return {
+        valid: errors.length === 0,
+        errors,
+    };
+}
+
+/**
+ * Check if query has LIMIT clause
+ */
+export function hasLimitClause(query: string): boolean {
+    return /\bLIMIT\b/i.test(query);
+}
+
+/**
+ * Common column name whitelist for database operations
+ */
+const COMMON_COLUMN_WHITELIST = new Set([
+    'id', 'ID', '_id', 'Id',
+    'created_at', 'updated_at', 'deleted_at',
+    'createdAt', 'updatedAt', 'deletedAt',
+    'name', 'code', 'type', 'status', 'enabled',
+]);
+
+/**
+ * Validate column name against whitelist
+ */
+function validateColumnNameWithWhitelist(column: string | undefined): void {
+    if (!column) {
+        throw new Error('Column name is required');
+    }
+    validateColumnName(column, COMMON_COLUMN_WHITELIST);
+}
+
+/**
+ * Build SQL query with pagination
+ * 
+ * @param query - Base query
+ * @param pagination - Pagination configuration
+ * @param state - Current pagination state
+ * @returns SQL query with pagination
+ */
 export function buildPaginatedQuery(
     query: string,
     pagination: DatabasePaginationConfig | undefined,
     state: PaginationState,
 ): string {
+    if (!query) {
+        throw new Error('Query is required');
+    }
+
+    const validation = validateQuery(query);
+    if (!validation.valid) {
+        throw new Error(`Invalid query: ${validation.errors.join(', ')}`);
+    }
+
     if (!pagination?.enabled) return query;
 
+    const pageSize = validateLimitOffset(pagination.pageSize, 1, 100000);
+
     if (pagination.type === 'offset') {
-        return `${query} LIMIT ${pagination.pageSize} OFFSET ${state.offset}`;
+        const offset = validateLimitOffset(state.offset, 0, Number.MAX_SAFE_INTEGER);
+        return `${query} LIMIT ${pageSize} OFFSET ${offset}`;
     }
 
-    if (pagination.type === 'cursor' && state.cursor !== undefined) {
-        const cursorFilter = `${pagination.cursorColumn} > ${formatSqlValue(state.cursor)}`;
-        if (/WHERE/i.test(query)) {
-            return `${query} AND ${cursorFilter} ORDER BY ${pagination.cursorColumn} LIMIT ${pagination.pageSize}`;
+    if (pagination.type === 'cursor') {
+        if (!pagination.cursorColumn) {
+            throw new Error('cursorColumn is required for cursor-based pagination');
         }
-        return `${query} WHERE ${cursorFilter} ORDER BY ${pagination.cursorColumn} LIMIT ${pagination.pageSize}`;
+
+        validateColumnNameWithWhitelist(pagination.cursorColumn);
+
+        if (state.cursor !== undefined) {
+            const cursorValue = formatSqlValue(state.cursor);
+            const cursorFilter = `${escapeSqlIdentifier(pagination.cursorColumn)} > ${cursorValue}`;
+            if (/WHERE/i.test(query)) {
+                return `${query} AND ${cursorFilter} ORDER BY ${escapeSqlIdentifier(pagination.cursorColumn)} LIMIT ${pageSize}`;
+            }
+            return `${query} WHERE ${cursorFilter} ORDER BY ${escapeSqlIdentifier(pagination.cursorColumn)} LIMIT ${pageSize}`;
+        }
+
+        return `${query} ORDER BY ${escapeSqlIdentifier(pagination.cursorColumn)} LIMIT ${pageSize}`;
     }
 
-    return `${query} LIMIT ${pagination.pageSize}`;
+    return `${query} LIMIT ${pageSize}`;
 }
 
+/**
+ * Build SQL query with incremental sync filter
+ * 
+ * @param query - Base query
+ * @param config - Database extractor configuration
+ * @param lastValue - Last synced value
+ * @returns SQL query with incremental filter
+ */
 export function appendIncrementalFilter(
     query: string,
     config: DatabaseExtractorConfig,
     lastValue: JsonValue,
 ): string {
+    if (!query) {
+        throw new Error('Query is required');
+    }
+
+    const validation = validateQuery(query);
+    if (!validation.valid) {
+        throw new Error(`Invalid query: ${validation.errors.join(', ')}`);
+    }
+
     if (!config.incremental?.enabled || lastValue === undefined) {
         return query;
     }
 
     const column = config.incremental.column;
+    validateColumnNameWithWhitelist(column);
+
     const operator = '>';
     const value = formatSqlValue(lastValue);
-    const filter = `${column} ${operator} ${value}`;
+    const filter = `${escapeSqlIdentifier(column)} ${operator} ${value}`;
 
     if (/WHERE/i.test(query)) {
         const insertionPoint = findClauseInsertionPoint(query);
@@ -61,6 +183,9 @@ export function appendIncrementalFilter(
     return `${query} WHERE ${filter}`;
 }
 
+/**
+ * Find the best insertion point for a WHERE clause
+ */
 function findClauseInsertionPoint(query: string): number {
     const keywords = ['ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'INTERSECT', 'EXCEPT'];
 
@@ -75,75 +200,4 @@ function findClauseInsertionPoint(query: string): number {
     }
 
     return earliestPosition;
-}
-
-export function formatSqlValue(value: JsonValue): string {
-    if (value === null) return 'NULL';
-    if (typeof value === 'number') return String(value);
-    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
-    if (typeof value === 'string') {
-        return `'${value.replace(/'/g, "''")}'`;
-    }
-    if (value instanceof Date) {
-        return `'${value.toISOString()}'`;
-    }
-    return 'NULL';
-}
-
-export function validateQuery(query: string): { valid: boolean; errors: string[] } {
-    const errors: string[] = [];
-    const queryUpper = query.trim().toUpperCase();
-
-    if (!queryUpper.startsWith('SELECT')) {
-        errors.push('Query must be a SELECT statement');
-    }
-
-    const dangerousOperations = /\b(DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE|CREATE|GRANT|REVOKE)\b/i;
-    if (dangerousOperations.test(query)) {
-        errors.push('Query contains potentially dangerous operations. Only SELECT is allowed.');
-    }
-
-    return {
-        valid: errors.length === 0,
-        errors,
-    };
-}
-
-export function hasLimitClause(query: string): boolean {
-    return /\bLIMIT\b/i.test(query);
-}
-
-export function extractSelectColumns(query: string): string[] {
-    const selectMatch = query.match(/SELECT\s+(.+?)\s+FROM/i);
-    if (!selectMatch) return [];
-
-    const columnsPart = selectMatch[1];
-    if (columnsPart.trim() === '*') return ['*'];
-
-    const columns: string[] = [];
-    let depth = 0;
-    let current = '';
-
-    for (const char of columnsPart) {
-        if (char === '(') depth++;
-        else if (char === ')') depth--;
-        else if (char === ',' && depth === 0) {
-            const trimmed = current.trim();
-            if (trimmed) {
-                const aliasMatch = trimmed.match(/\bAS\s+(\w+)$/i);
-                columns.push(aliasMatch ? aliasMatch[1] : trimmed.split(/\s+/).pop() || trimmed);
-            }
-            current = '';
-            continue;
-        }
-        current += char;
-    }
-
-    const trimmed = current.trim();
-    if (trimmed) {
-        const aliasMatch = trimmed.match(/\bAS\s+(\w+)$/i);
-        columns.push(aliasMatch ? aliasMatch[1] : trimmed.split(/\s+/).pop() || trimmed);
-    }
-
-    return columns;
 }

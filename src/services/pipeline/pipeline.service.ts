@@ -251,7 +251,7 @@ export class PipelineService {
     ): Promise<PaginatedList<PipelineRun>> {
         const qb = this.listQueryBuilder.build(PipelineRun, options, { ctx });
         if (pipelineId) {
-            qb.andWhere('pipelineRun__pipeline.id = :pid', { pid: pipelineId });
+            qb.andWhere('pipelineRun.pipelineId = :pid', { pid: pipelineId });
         }
         const [items, totalItems] = await qb.getManyAndCount();
         return { items, totalItems };

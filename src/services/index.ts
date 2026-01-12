@@ -10,4 +10,5 @@ export * from './webhooks';
 export * from './logger';
 export * from './runtime';
 export * from './versioning';
+export * from './rate-limit';
 export { DataHubScheduleHandler } from '../jobs';

@@ -553,6 +553,11 @@ function TriggerConfigSection({ config, onChange }: TriggerConfigSectionProps) {
                         />
                         <Label className="text-xs">Require authentication</Label>
                     </div>
+
+                    {/* Authentication Configuration */}
+                    {config?.requireAuth !== false && (
+                        <WebhookAuthConfig config={config} onChange={onChange} />
+                    )}
                 </div>
             )}
 
@@ -679,6 +684,172 @@ function AdvancedEditorsSection({
 interface ConfigSectionProps {
     config: Record<string, any>;
     onChange: (key: string, value: any) => void;
+}
+
+type WebhookAuthType = 'NONE' | 'API_KEY' | 'HMAC' | 'BASIC' | 'JWT';
+
+function WebhookAuthConfig({ config, onChange }: ConfigSectionProps) {
+    const authType = (config?.authType as WebhookAuthType) || 'HMAC';
+
+    return (
+        <div className="space-y-3 p-3 border rounded-md bg-muted/30">
+            <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Authentication Type</Label>
+                <Select
+                    value={authType}
+                    onValueChange={(v) => onChange('authType', v)}
+                >
+                    <SelectTrigger className="h-8">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="HMAC">
+                            <div>
+                                <div className="font-medium text-sm">HMAC Signature</div>
+                                <div className="text-xs text-muted-foreground">Sign requests with shared secret</div>
+                            </div>
+                        </SelectItem>
+                        <SelectItem value="API_KEY">
+                            <div>
+                                <div className="font-medium text-sm">API Key</div>
+                                <div className="text-xs text-muted-foreground">Validate via header API key</div>
+                            </div>
+                        </SelectItem>
+                        <SelectItem value="BASIC">
+                            <div>
+                                <div className="font-medium text-sm">Basic Auth</div>
+                                <div className="text-xs text-muted-foreground">Username/password authentication</div>
+                            </div>
+                        </SelectItem>
+                        <SelectItem value="JWT">
+                            <div>
+                                <div className="font-medium text-sm">JWT Token</div>
+                                <div className="text-xs text-muted-foreground">Validate JWT bearer token</div>
+                            </div>
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            {/* HMAC Configuration */}
+            {authType === 'HMAC' && (
+                <div className="space-y-2">
+                    <div className="space-y-1">
+                        <Label className="text-xs">Secret Code *</Label>
+                        <Input
+                            value={config?.hmacSecretCode || ''}
+                            onChange={(e) => onChange('hmacSecretCode', e.target.value)}
+                            placeholder="my-hmac-secret"
+                            className="h-7 text-sm"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                            Reference to a secret stored in Data Hub Secrets
+                        </p>
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">Signature Header</Label>
+                        <Input
+                            value={config?.hmacHeader || 'x-datahub-signature'}
+                            onChange={(e) => onChange('hmacHeader', e.target.value)}
+                            placeholder="x-datahub-signature"
+                            className="h-7 text-sm"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">Algorithm</Label>
+                        <Select
+                            value={config?.hmacAlgorithm || 'sha256'}
+                            onValueChange={(v) => onChange('hmacAlgorithm', v)}
+                        >
+                            <SelectTrigger className="h-7 text-sm">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="sha256">SHA-256 (Recommended)</SelectItem>
+                                <SelectItem value="sha512">SHA-512</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            )}
+
+            {/* API Key Configuration */}
+            {authType === 'API_KEY' && (
+                <div className="space-y-2">
+                    <div className="space-y-1">
+                        <Label className="text-xs">Secret Code *</Label>
+                        <Input
+                            value={config?.apiKeySecretCode || ''}
+                            onChange={(e) => onChange('apiKeySecretCode', e.target.value)}
+                            placeholder="my-api-key-secret"
+                            className="h-7 text-sm"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                            Reference to a secret stored in Data Hub Secrets
+                        </p>
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">Header Name</Label>
+                        <Input
+                            value={config?.apiKeyHeader || 'x-api-key'}
+                            onChange={(e) => onChange('apiKeyHeader', e.target.value)}
+                            placeholder="x-api-key"
+                            className="h-7 text-sm"
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* Basic Auth Configuration */}
+            {authType === 'BASIC' && (
+                <div className="space-y-2">
+                    <div className="space-y-1">
+                        <Label className="text-xs">Credentials Secret Code *</Label>
+                        <Input
+                            value={config?.basicSecretCode || ''}
+                            onChange={(e) => onChange('basicSecretCode', e.target.value)}
+                            placeholder="my-basic-auth-secret"
+                            className="h-7 text-sm"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                            Secret should contain "username:password" format
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* JWT Configuration */}
+            {authType === 'JWT' && (
+                <div className="space-y-2">
+                    <div className="space-y-1">
+                        <Label className="text-xs">JWT Secret Code *</Label>
+                        <Input
+                            value={config?.jwtSecretCode || ''}
+                            onChange={(e) => onChange('jwtSecretCode', e.target.value)}
+                            placeholder="my-jwt-secret"
+                            className="h-7 text-sm"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                            Secret used to verify JWT signature
+                        </p>
+                    </div>
+                    <div className="space-y-1">
+                        <Label className="text-xs">Authorization Header</Label>
+                        <Input
+                            value={config?.jwtHeader || 'Authorization'}
+                            onChange={(e) => onChange('jwtHeader', e.target.value)}
+                            placeholder="Authorization"
+                            className="h-7 text-sm"
+                        />
+                    </div>
+                </div>
+            )}
+
+            <p className="text-[10px] text-muted-foreground mt-2">
+                Configure authentication in Data Hub → Secrets to store sensitive credentials securely.
+            </p>
+        </div>
+    );
 }
 
 function ConditionConfig({ config, onChange }: ConfigSectionProps) {

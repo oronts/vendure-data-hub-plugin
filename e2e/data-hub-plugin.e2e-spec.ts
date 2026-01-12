@@ -351,9 +351,8 @@ describe('DataHub Plugin', () => {
                     version: 1,
                     steps: [{
                         key: 'extract-1',
-                        type: 'extract',
-                        adapter: 'rest',
-                        config: { url: 'https://api.example.com/data' },
+                        type: 'EXTRACT',
+                        config: { adapterCode: 'rest', url: 'https://api.example.com/data' },
                     }],
                     edges: [],
                 },
@@ -376,9 +375,8 @@ describe('DataHub Plugin', () => {
                     version: 1,
                     steps: [{
                         key: 'invalid-step',
-                        type: 'extract',
-                        adapter: 'non-existent-adapter',
-                        config: {},
+                        type: 'EXTRACT',
+                        config: { adapterCode: 'non-existent-adapter' },
                     }],
                     edges: [],
                 },
@@ -472,9 +470,8 @@ describe('DataHub Plugin', () => {
                     version: 1,
                     steps: [{
                         key: 'step-1',
-                        type: 'extract',
-                        adapter: 'rest',
-                        config: { url: 'https://api.example.com' },
+                        type: 'EXTRACT',
+                        config: { adapterCode: 'rest', url: 'https://api.example.com' },
                     }],
                     edges: [],
                 },
@@ -497,8 +494,8 @@ describe('DataHub Plugin', () => {
                 definition: {
                     nodes: [{
                         id: 'node-1',
-                        type: 'extract',
-                        data: { adapter: 'rest', config: { url: 'https://api.example.com' } },
+                        type: 'source',
+                        data: { adapterCode: 'rest', config: { url: 'https://api.example.com' } },
                         position: { x: 0, y: 0 },
                     }],
                     edges: [],

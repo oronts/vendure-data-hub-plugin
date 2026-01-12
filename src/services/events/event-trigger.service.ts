@@ -76,7 +76,14 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
         if (!this.eventBus) return;
 
         // Initialize cache on startup (fresh start)
-        await this.refreshCache();
+        try {
+            await this.refreshCache();
+        } catch (error) {
+            // Handle case where entity metadata is not yet available (e.g., during testing)
+            this.logger.warn('Failed to initialize event trigger cache on startup, will retry on next refresh', {
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
 
         // Set up periodic cache refresh timer using configurable interval
         const cacheRefreshIntervalMs = this.eventTriggerConfig.cacheRefreshIntervalMs;

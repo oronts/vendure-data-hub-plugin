@@ -68,6 +68,11 @@ export interface PipelineDefinition {
 export type TriggerType = 'manual' | 'schedule' | 'webhook' | 'event';
 
 /**
+ * Webhook authentication type
+ */
+export type WebhookAuthType = 'NONE' | 'API_KEY' | 'HMAC' | 'BASIC' | 'JWT';
+
+/**
  * Pipeline trigger configuration
  *
  * FIELD NAME REFERENCE (must match backend):
@@ -91,6 +96,32 @@ export interface PipelineTrigger {
     webhookPath?: string;
     /** Webhook code for backend reference */
     webhookCode?: string;
+    /** HTTP method for webhook */
+    method?: 'GET' | 'POST' | 'PUT';
+    /** Authentication type for webhook */
+    authentication?: WebhookAuthType;
+    /** Secret code for HMAC authentication */
+    secretCode?: string;
+    /** Secret code for API key authentication */
+    apiKeySecretCode?: string;
+    /** Secret code for Basic authentication */
+    basicSecretCode?: string;
+    /** Secret code for JWT authentication */
+    jwtSecretCode?: string;
+    /** API key header name */
+    apiKeyHeaderName?: string;
+    /** API key prefix (e.g., "Bearer ") */
+    apiKeyPrefix?: string;
+    /** HMAC signature header name */
+    hmacHeaderName?: string;
+    /** HMAC algorithm */
+    hmacAlgorithm?: 'sha256' | 'sha512';
+    /** JWT authorization header name */
+    jwtHeaderName?: string;
+    /** Rate limit (requests per minute) */
+    rateLimit?: number;
+    /** Require idempotency key header */
+    requireIdempotencyKey?: boolean;
     /** Vendure event type */
     eventType?: string;
     conditions?: TriggerCondition[];
@@ -190,4 +221,81 @@ export interface NodeCatalogItem {
 
 export interface NodeCatalogItemWithType extends NodeCatalogItem {
     nodeType: PipelineNodeType;
+}
+
+// =============================================================================
+// VISUAL EDITOR TYPES
+// =============================================================================
+
+/**
+ * Visual node category type - matches all backend StepType values for lossless conversion
+ */
+export type VisualNodeCategory = 'trigger' | 'source' | 'transform' | 'validate' | 'condition' | 'load' | 'feed' | 'export' | 'sink' | 'enrich' | 'filter';
+
+// =============================================================================
+// VENDURE ENTITY SCHEMA
+// =============================================================================
+
+export interface VendureEntitySchema {
+    entity: string;
+    label: string;
+    description?: string;
+    fields: VendureSchemaField[];
+    lookupFields: string[];
+    importable: boolean;
+    exportable: boolean;
+}
+
+export interface VendureSchemaField {
+    key: string;
+    type: string;
+    required: boolean;
+    readonly: boolean;
+    description?: string;
+}
+
+// =============================================================================
+// COMPONENT PROPS - Common props for visual editor components
+// =============================================================================
+
+export interface VisualPipelineEditorProps {
+    definition: PipelineDefinition;
+    onChange: (definition: PipelineDefinition) => void;
+    onRun?: () => void;
+    onSave?: () => void;
+    readOnly?: boolean;
+}
+
+export interface NodePaletteProps {
+    onDragStart: (event: React.DragEvent, nodeType: string, category: string, label: string) => void;
+    adapters?: AdapterInfo[];
+}
+
+export interface NodePropertiesPanelProps {
+    node: PipelineNode | null;
+    vendureSchemas: VendureEntitySchema[];
+    onUpdate: (node: PipelineNode) => void;
+    onDelete: () => void;
+    onClose: () => void;
+}
+
+export interface TriggerPanelProps {
+    triggers: PipelineTrigger[];
+    onChange: (triggers: PipelineTrigger[]) => void;
+}
+
+export interface FileUploadDialogProps {
+    open: boolean;
+    onClose: () => void;
+    onFileSelected: (file: File, preview: any[]) => void;
+    acceptedFormats: string[];
+}
+
+export interface FieldMappingDialogProps {
+    open: boolean;
+    onClose: () => void;
+    sourceFields: string[];
+    targetSchema?: VendureEntitySchema;
+    mappings: Record<string, string>;
+    onSave: (mappings: Record<string, string>) => void;
 }

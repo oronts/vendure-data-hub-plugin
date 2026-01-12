@@ -66,6 +66,10 @@ export class AnalyticsService implements OnModuleInit {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
 
+        const startOfWeek = new Date();
+        startOfWeek.setDate(startOfWeek.getDate() - 7);
+        startOfWeek.setHours(0, 0, 0, 0);
+
         // Get pipeline counts
         const [totalPipelines, activePipelines] = await Promise.all([
             this.connection.rawConnection.getRepository(Pipeline).count(),
@@ -74,18 +78,32 @@ export class AnalyticsService implements OnModuleInit {
             }),
         ]);
 
-        const runsToday = await this.connection.rawConnection.getRepository(PipelineRun).count({
-            where: { createdAt: MoreThan(startOfDay) },
-        });
+        // Get run counts
+        const [runsToday, runsThisWeek] = await Promise.all([
+            this.connection.rawConnection.getRepository(PipelineRun).count({
+                where: { createdAt: MoreThan(startOfDay) },
+            }),
+            this.connection.rawConnection.getRepository(PipelineRun).count({
+                where: { createdAt: MoreThan(startOfWeek) },
+            }),
+        ]);
 
+        // Get today's runs for metrics
         const todayRuns = await this.connection.rawConnection.getRepository(PipelineRun).find({
             where: { createdAt: MoreThan(startOfDay) },
             select: ['status', 'metrics'],
         });
 
+        // Get week's runs for success rate
+        const weekRuns = await this.connection.rawConnection.getRepository(PipelineRun).find({
+            where: { createdAt: MoreThan(startOfWeek) },
+            select: ['status'],
+        });
+
         let recordsProcessedToday = 0;
         let recordsFailedToday = 0;
-        let successfulRuns = 0;
+        let successfulRunsToday = 0;
+        let successfulRunsWeek = 0;
         const durations: number[] = [];
 
         for (const run of todayRuns) {
@@ -96,18 +114,36 @@ export class AnalyticsService implements OnModuleInit {
                 durations.push(metrics.durationMs);
             }
             if (run.status === 'COMPLETED') {
-                successfulRuns++;
+                successfulRunsToday++;
             }
         }
+
+        for (const run of weekRuns) {
+            if (run.status === 'COMPLETED') {
+                successfulRunsWeek++;
+            }
+        }
+
+        // Count active jobs (RUNNING or PENDING status)
+        const activeJobs = await this.connection.rawConnection.getRepository(PipelineRun).count({
+            where: [
+                { status: RunStatus.RUNNING },
+                { status: RunStatus.PENDING },
+            ],
+        });
 
         return {
             totalPipelines,
             activePipelines,
+            totalJobs: runsToday, // Total jobs = runs today
+            activeJobs,
             runsToday,
+            runsThisWeek,
+            successRateToday: calculateSuccessRate(successfulRunsToday, todayRuns.length),
+            successRateWeek: calculateSuccessRate(successfulRunsWeek, weekRuns.length),
             recordsProcessedToday,
             recordsFailedToday,
-            successRate: calculateSuccessRate(successfulRuns, todayRuns.length),
-            avgDurationMs: calculateAverage(durations),
+            avgDurationMsToday: calculateAverage(durations),
         };
     }
 
@@ -220,14 +256,22 @@ export class AnalyticsService implements OnModuleInit {
             order: { createdAt: 'DESC' },
         });
 
-        // Group errors by step
-        const errorsByStep = groupErrorsByKey(errors, error => error.stepKey);
+        // Group errors by step (convert to array format)
+        const errorsByStepMap = groupErrorsByKey(errors, error => error.stepKey);
+        const errorsByStep = Object.entries(errorsByStepMap).map(([stepKey, count]) => ({
+            stepKey,
+            count,
+        }));
 
-        // Group errors by pipeline
-        const errorsByPipeline = groupErrorsByKey(
+        // Group errors by pipeline (convert to array format)
+        const errorsByPipelineMap = groupErrorsByKey(
             errors,
             error => error.run?.pipeline?.code || 'unknown',
         );
+        const errorsByPipeline = Object.entries(errorsByPipelineMap).map(([pipelineCode, count]) => ({
+            pipelineCode,
+            count,
+        }));
 
         // Get top errors
         const topErrors = getTopErrors(

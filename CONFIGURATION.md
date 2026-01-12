@@ -19,7 +19,7 @@ The following environment variables can be used to configure external service UR
 Configure the plugin when initializing it in your Vendure config:
 
 ```typescript
-import { DataHubPlugin } from '@vendure/data-hub-plugin';
+import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
 
 DataHubPlugin.init({
     enabled: true,
@@ -152,6 +152,27 @@ DataHubPlugin.init({
 | Initial Delay | 1000ms | Initial retry delay |
 | Max Delay | 3600000ms | Maximum retry delay (1 hour) |
 | Backoff Multiplier | 2 | Exponential backoff multiplier |
+
+### Webhook Trigger Authentication
+
+Configure authentication for incoming webhook requests in the pipeline trigger config:
+
+| Authentication Type | Secret Code Field | Description |
+|---------------------|-------------------|-------------|
+| `NONE` | - | No authentication (not recommended for production) |
+| `API_KEY` | `apiKeySecretCode` | API key in request header |
+| `HMAC` | `secretCode` | HMAC-SHA256 signature verification |
+| `BASIC` | `basicSecretCode` | HTTP Basic Authentication (username:password) |
+| `JWT` | `jwtSecretCode` | JWT Bearer token with signature verification |
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `rateLimit` | 100 | Requests per minute per IP (0 = unlimited) |
+| `apiKeyHeaderName` | `x-api-key` | Header name for API key authentication |
+| `hmacHeaderName` | `x-datahub-signature` | Header name for HMAC signature |
+| `hmacAlgorithm` | `sha256` | Hash algorithm (`sha256` or `sha512`) |
+| `jwtHeaderName` | `authorization` | Header name for JWT token |
+| `requireIdempotencyKey` | `false` | Require X-Idempotency-Key header |
 
 ### File Storage
 

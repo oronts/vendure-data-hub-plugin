@@ -122,11 +122,18 @@ export enum LanguageStrategy {
 }
 
 /**
- * Validation strictness modes
+ * Service Context Enum
  */
-export enum ValidationMode {
-    STRICT = 'strict',
-    LENIENT = 'lenient',
+export enum LOGGER_CONTEXTS {
+    PIPELINE_SERVICE = 'PipelineService',
+    PIPELINE_RUNNER = 'PipelineRunner',
+    SECRET_SERVICE = 'SecretService',
+    CONNECTION_SERVICE = 'ConnectionService',
+    EVENT_TRIGGER_SERVICE = 'EventTriggerService',
+    HOOK_SERVICE = 'HookService',
+    DATABASE_EXTRACTOR = 'DatabaseExtractor',
+    RATE_LIMIT = 'RateLimitService',
+    WEBHOOK = 'WebhookController',
 }
 
 /**
@@ -200,6 +207,14 @@ export enum DrainStrategy {
     BACKOFF = 'backoff',
     SHED = 'shed',
     QUEUE = 'queue',
+}
+
+/**
+ * Validation modes for data processing
+ */
+export enum ValidationMode {
+    STRICT = 'strict',
+    LENIENT = 'lenient',
 }
 
 /**

@@ -41,7 +41,7 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
 - **45+ Transform Operators** - String, numeric, date, JSON, array, validation, conditional, and custom script operations
 - **4 Feed Generators** - Google Merchant, Meta Catalog, Amazon, Custom (XML/CSV/JSON/TSV)
 - **4 Search Sinks** - Elasticsearch, MeiliSearch, Algolia, Typesense
-- **12 Hook Stages** - Interceptors and scripts to modify data at any pipeline stage
+- **18 Hook Stages** - Interceptors and scripts to modify data at any pipeline stage
 - **Scheduling** - Cron expressions, intervals, webhooks, and Vendure event triggers
 - **Checkpoint Recovery** - Resume failed pipelines from last successful record
 - **Real-time Monitoring** - Logs, analytics, error tracking, and dead letter queue
@@ -795,13 +795,42 @@ Common patterns:
 ```typescript
 .trigger('webhook', {
     type: 'webhook',
-    signature: 'hmac-sha256',
-    headerName: 'X-Signature',
-    requireIdempotencyKey: true,
+    authentication: 'API_KEY',      // 'NONE' | 'API_KEY' | 'HMAC' | 'BASIC' | 'JWT'
+    apiKeySecretCode: 'my-api-key', // Secret code storing the API key
+    apiKeyHeaderName: 'x-api-key',  // Header name for API key (default: x-api-key)
+    rateLimit: 100,                 // Requests per minute per IP (0 = unlimited)
+    requireIdempotencyKey: true,    // Require X-Idempotency-Key header
 })
 ```
 
-Endpoint: `POST /data-hub/webhook/{pipeline-code}`
+**Authentication Types:**
+
+| Type | Description | Configuration |
+|------|-------------|---------------|
+| `NONE` | No authentication (not recommended) | - |
+| `API_KEY` | API key in header | `apiKeySecretCode`, `apiKeyHeaderName`, `apiKeyPrefix` |
+| `HMAC` | HMAC-SHA256 signature | `secretCode`, `hmacHeaderName`, `hmacAlgorithm` |
+| `BASIC` | HTTP Basic Auth | `basicSecretCode` (stores `username:password`) |
+| `JWT` | JWT Bearer token | `jwtSecretCode`, `jwtHeaderName` |
+
+**Example - HMAC Authentication:**
+```typescript
+.trigger('webhook', {
+    type: 'webhook',
+    authentication: 'HMAC',
+    secretCode: 'hmac-secret',        // Secret code storing HMAC key
+    hmacHeaderName: 'x-signature',    // Header name (default: x-datahub-signature)
+    hmacAlgorithm: 'sha256',          // sha256 or sha512
+})
+```
+
+**Endpoint:** `POST /data-hub/webhook/{pipeline-code}`
+
+**Security Features:**
+- Timing-safe comparison for all credential checks
+- Configurable rate limiting per pipeline
+- IP-based rate limiting with sliding window
+- JWT expiration validation
 
 ### Event Trigger
 

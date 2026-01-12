@@ -23,11 +23,15 @@ export interface TimeSeriesPoint {
 export interface AnalyticsOverview {
     totalPipelines: number;
     activePipelines: number;
+    totalJobs: number;
+    activeJobs: number;
     runsToday: number;
+    runsThisWeek: number;
+    successRateToday: number;
+    successRateWeek: number;
     recordsProcessedToday: number;
     recordsFailedToday: number;
-    successRate: number;
-    avgDurationMs: number;
+    avgDurationMsToday: number;
 }
 
 /**
@@ -52,15 +56,32 @@ export interface PipelinePerformance {
 }
 
 /**
+ * Step error count for analytics
+ */
+export interface StepErrorCount {
+    stepKey: string;
+    count: number;
+}
+
+/**
+ * Pipeline error count for analytics
+ */
+export interface PipelineErrorCount {
+    pipelineCode: string;
+    count: number;
+}
+
+/**
  * Error analytics
  */
 export interface ErrorAnalytics {
     totalErrors: number;
-    errorsByStep: Record<string, number>;
-    errorsByPipeline: Record<string, number>;
+    errorsByStep: StepErrorCount[];
+    errorsByPipeline: PipelineErrorCount[];
     topErrors: Array<{
         message: string;
         count: number;
+        firstOccurrence: Date;
         lastOccurrence: Date;
     }>;
     errorTrend: TimeSeriesPoint[];

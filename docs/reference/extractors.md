@@ -384,6 +384,64 @@ This extractor is primarily used when pipelines are triggered via webhooks or AP
 
 ---
 
+## Database Extractor
+
+Code: `database`
+
+Extract data from SQL databases (PostgreSQL, MySQL, SQLite, SQL Server, Oracle).
+
+> **Note:** PostgreSQL and MySQL are fully supported. SQLite, SQL Server, and Oracle require installing the appropriate database driver (`better-sqlite3`, `mssql`, or `oracledb`).
+
+### Configuration
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `connectionCode` | string | No | Use a saved database connection |
+| `databaseType` | string | Yes | Database type: `postgresql`, `mysql`, `sqlite`, `mssql`, `oracle` |
+| `host` | string | Cond | Database host (required unless SQLite or using connectionStringSecretCode) |
+| `port` | number | No | Database port (defaults to standard port for database type) |
+| `database` | string | Cond | Database name (required unless SQLite) |
+| `username` | string | No | Database username |
+| `passwordSecretCode` | string | No | Secret code for password |
+| `connectionStringSecretCode` | string | No | Secret code for full connection string |
+| `query` | string | Yes | SQL SELECT query to execute |
+| `parameters` | array | No | Query parameters (JSON array) |
+| `schema` | string | No | Database schema/namespace (default: `public`) |
+| `ssl.enabled` | boolean | No | Enable SSL/TLS connection |
+| `ssl.rejectUnauthorized` | boolean | No | Verify SSL certificate |
+| `pagination.enabled` | boolean | No | Enable pagination. Default: `true` |
+| `pagination.type` | string | No | Pagination type: `offset` or `cursor`. Default: `offset` |
+| `pagination.pageSize` | number | No | Rows per page. Default: 1000 |
+| `pagination.cursorColumn` | string | No | Column for cursor pagination |
+| `pagination.maxPages` | number | No | Maximum pages (safety limit) |
+| `incremental.enabled` | boolean | No | Only fetch new/updated records |
+| `incremental.column` | string | No | Column to track for incremental extraction |
+| `incremental.type` | string | No | Column type: `timestamp`, `sequence`, `id` |
+| `queryTimeoutMs` | number | No | Query timeout in ms |
+
+### Example
+
+```typescript
+.extract('query-products', {
+    adapterCode: 'database',
+    databaseType: 'postgresql',
+    host: 'localhost',
+    port: 5432,
+    database: 'mydb',
+    username: 'user',
+    passwordSecretCode: 'db-password',
+    query: 'SELECT * FROM products WHERE updated_at > $1',
+    parameters: ['2024-01-01'],
+    pagination: {
+        enabled: true,
+        type: 'offset',
+        pageSize: 500,
+    },
+})
+```
+
+---
+
 ## Quick Reference
 
 | Code | Source Type | Use Case |
@@ -392,6 +450,7 @@ This extractor is primarily used when pipelines are triggered via webhooks or AP
 | `graphql` | GraphQL API | External GraphQL services with cursor/Relay pagination |
 | `csv` | CSV Files | File imports via upload, inline data, or filesystem path |
 | `json` | JSON Files | JSON data from uploads, inline text, or filesystem path |
+| `database` | SQL Database | PostgreSQL, MySQL, SQLite, SQL Server, Oracle |
 | `vendure-query` | Vendure | Internal data extraction for feeds, exports, and transformations |
 | `generator` | Test Data | Generate test records with templates and placeholders |
 | `inMemory` | Direct Data | Webhook payloads, API-triggered pipelines, inline arrays |

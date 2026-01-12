@@ -248,14 +248,22 @@ function TriggerConfig({ config, onChange }: TriggerConfigProps) {
                             onChange={(e) => updateField('webhookPath', e.target.value)}
                             placeholder="/my-webhook"
                         />
+                        <p className="text-xs text-muted-foreground">
+                            POST to: /data-hub/webhook/{(config.webhookPath as string) || '{path}'}
+                        </p>
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
-                            checked={Boolean(config.requireSignature)}
-                            onCheckedChange={(v) => updateField('requireSignature', v)}
+                            checked={config.requireAuth !== false}
+                            onCheckedChange={(v) => updateField('requireAuth', v)}
                         />
-                        <label className="text-sm">Require signature verification</label>
+                        <label className="text-sm">Require authentication</label>
                     </div>
+
+                    {/* Authentication Configuration */}
+                    {config.requireAuth !== false && (
+                        <WebhookAuthSection config={config} onChange={updateField} />
+                    )}
                 </>
             )}
 
@@ -277,6 +285,148 @@ function TriggerConfig({ config, onChange }: TriggerConfigProps) {
                             <SelectItem value="CustomerEvent">Customer Changed</SelectItem>
                         </SelectContent>
                     </Select>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// WEBHOOK AUTH SECTION
+
+interface WebhookAuthSectionProps {
+    readonly config: Record<string, unknown>;
+    readonly onChange: (key: string, value: unknown) => void;
+}
+
+type WebhookAuthType = 'HMAC' | 'API_KEY' | 'BASIC' | 'JWT';
+
+function WebhookAuthSection({ config, onChange }: WebhookAuthSectionProps) {
+    const authType = (config.authType as WebhookAuthType) || 'HMAC';
+
+    return (
+        <div className="space-y-3 p-3 border rounded-md bg-muted/30">
+            <div className="space-y-1">
+                <label className="text-sm font-medium">Authentication Type</label>
+                <Select
+                    value={authType}
+                    onValueChange={(v) => onChange('authType', v)}
+                >
+                    <SelectTrigger className="w-full">
+                        <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="HMAC">HMAC Signature</SelectItem>
+                        <SelectItem value="API_KEY">API Key</SelectItem>
+                        <SelectItem value="BASIC">Basic Auth</SelectItem>
+                        <SelectItem value="JWT">JWT Token</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            {/* HMAC Configuration */}
+            {authType === 'HMAC' && (
+                <div className="space-y-2">
+                    <div className="space-y-1">
+                        <label className="text-sm">Secret Code *</label>
+                        <Input
+                            value={(config.hmacSecretCode as string) || ''}
+                            onChange={(e) => onChange('hmacSecretCode', e.target.value)}
+                            placeholder="my-hmac-secret"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Reference to a secret in Data Hub → Secrets
+                        </p>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-sm">Signature Header</label>
+                        <Input
+                            value={(config.hmacHeader as string) || 'x-datahub-signature'}
+                            onChange={(e) => onChange('hmacHeader', e.target.value)}
+                            placeholder="x-datahub-signature"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-sm">Algorithm</label>
+                        <Select
+                            value={(config.hmacAlgorithm as string) || 'sha256'}
+                            onValueChange={(v) => onChange('hmacAlgorithm', v)}
+                        >
+                            <SelectTrigger className="w-full">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="sha256">SHA-256 (Recommended)</SelectItem>
+                                <SelectItem value="sha512">SHA-512</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            )}
+
+            {/* API Key Configuration */}
+            {authType === 'API_KEY' && (
+                <div className="space-y-2">
+                    <div className="space-y-1">
+                        <label className="text-sm">Secret Code *</label>
+                        <Input
+                            value={(config.apiKeySecretCode as string) || ''}
+                            onChange={(e) => onChange('apiKeySecretCode', e.target.value)}
+                            placeholder="my-api-key-secret"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Reference to a secret in Data Hub → Secrets
+                        </p>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-sm">Header Name</label>
+                        <Input
+                            value={(config.apiKeyHeader as string) || 'x-api-key'}
+                            onChange={(e) => onChange('apiKeyHeader', e.target.value)}
+                            placeholder="x-api-key"
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* Basic Auth Configuration */}
+            {authType === 'BASIC' && (
+                <div className="space-y-2">
+                    <div className="space-y-1">
+                        <label className="text-sm">Credentials Secret Code *</label>
+                        <Input
+                            value={(config.basicSecretCode as string) || ''}
+                            onChange={(e) => onChange('basicSecretCode', e.target.value)}
+                            placeholder="my-basic-auth-secret"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Secret should contain "username:password" format
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* JWT Configuration */}
+            {authType === 'JWT' && (
+                <div className="space-y-2">
+                    <div className="space-y-1">
+                        <label className="text-sm">JWT Secret Code *</label>
+                        <Input
+                            value={(config.jwtSecretCode as string) || ''}
+                            onChange={(e) => onChange('jwtSecretCode', e.target.value)}
+                            placeholder="my-jwt-secret"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Secret used to verify JWT signature
+                        </p>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-sm">Authorization Header</label>
+                        <Input
+                            value={(config.jwtHeader as string) || 'Authorization'}
+                            onChange={(e) => onChange('jwtHeader', e.target.value)}
+                            placeholder="Authorization"
+                        />
+                    </div>
                 </div>
             )}
         </div>

@@ -36,6 +36,7 @@ import {
     WebhookRetryService,
     ExportDestinationService,
     AnalyticsService,
+    RateLimitService,
 } from './services';
 import { DATAHUB_PERMISSION_DEFINITIONS } from './permissions';
 import { DataHubRunQueueHandler, DataHubScheduleHandler } from './jobs';
@@ -212,6 +213,8 @@ import {
         // Logger Factory and Execution Logger
         DataHubLoggerFactory,
         ExecutionLogger,
+        // Rate Limiting Service
+        RateLimitService,
         // Extractor Services
         ExtractorRegistryService,
         HttpApiExtractor,

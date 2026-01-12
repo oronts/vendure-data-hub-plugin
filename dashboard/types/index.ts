@@ -12,6 +12,7 @@ export type {
     PipelineStep,
     PipelineDefinition,
     TriggerType,
+    WebhookAuthType,
     PipelineTrigger,
     TriggerCondition,
     PipelineRun,
@@ -23,6 +24,15 @@ export type {
     AdapterInfo,
     NodeCatalogItem,
     NodeCatalogItemWithType,
+    VisualNodeCategory,
+    VendureEntitySchema,
+    VendureSchemaField,
+    VisualPipelineEditorProps,
+    NodePaletteProps,
+    NodePropertiesPanelProps,
+    TriggerPanelProps,
+    FileUploadDialogProps,
+    FieldMappingDialogProps,
 } from './pipeline';
 
 // Wizard types

@@ -181,3 +181,8 @@ export { LOADER_ADAPTERS } from './loader-adapters';
 export { EXPORTER_ADAPTERS } from './exporter-adapters';
 export { FEED_ADAPTERS } from './feed-adapters';
 export { SINK_ADAPTERS } from './sink-adapters';
+export {
+    WEBHOOK_TRIGGER_SCHEMA_FIELDS,
+    DEFAULT_WEBHOOK_CONFIG,
+} from './trigger-adapters';
+export type { WebhookAuthType, WebhookTriggerConfig } from './trigger-adapters';
