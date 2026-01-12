@@ -359,9 +359,16 @@ export const webhookOrderSync = createPipeline()
     .capabilities({ requires: ['UpdateOrder', 'UpdateCustomer'] })
     .trigger('start', {
         type: 'webhook',
-        path: '/webhooks/external-orders',
-        signature: 'hmac-sha256',
-        idempotencyKey: 'X-Order-Id',
+        webhookCode: 'external-orders',
+        // Authentication: HMAC-SHA256 signature verification
+        authentication: 'HMAC',
+        secretCode: 'webhook-hmac-secret',  // Reference to DataHub Secret
+        hmacHeaderName: 'x-webhook-signature',
+        hmacAlgorithm: 'sha256',
+        // Require idempotency key to prevent duplicate processing
+        requireIdempotencyKey: true,
+        // Rate limit: 100 requests per minute
+        rateLimit: 100,
     })
 
     // The webhook payload is the initial extract
@@ -509,4 +516,130 @@ export const lowStockAlert = createPipeline()
     .edge('start', 'get-variant-details')
     .edge('get-variant-details', 'prepare-alert')
     .edge('prepare-alert', 'send-alert')
+    .build();
+
+
+// =============================================================================
+// WEBHOOK AUTHENTICATION EXAMPLES
+// =============================================================================
+
+/**
+ * Webhook with API Key Authentication
+ * Simple header-based API key validation
+ */
+export const webhookApiKeyAuth = createPipeline()
+    .name('Webhook API Key Example')
+    .description('Webhook triggered pipeline with API Key authentication')
+    .capabilities({ requires: ['ReadCatalog'] })
+    .trigger('start', {
+        type: 'webhook',
+        webhookCode: 'api-key-webhook',
+        // Authentication: API Key in header
+        authentication: 'API_KEY',
+        apiKeySecretCode: 'webhook-api-key',  // Reference to DataHub Secret
+        apiKeyHeaderName: 'x-api-key',        // Custom header name (default: x-api-key)
+        // Rate limit: 50 requests per minute
+        rateLimit: 50,
+    })
+
+    .extract('parse-data', {
+        adapterCode: 'inMemory',
+    })
+
+    .transform('process', {
+        operators: [
+            { op: 'now', args: { target: 'processedAt', format: 'ISO' } },
+        ],
+    })
+
+    .load('log-result', {
+        adapterCode: 'restPost',
+        endpoint: 'https://your-system.com/api/log',
+        method: 'POST',
+    })
+
+    .edge('start', 'parse-data')
+    .edge('parse-data', 'process')
+    .edge('process', 'log-result')
+    .build();
+
+
+/**
+ * Webhook with JWT Authentication
+ * Bearer token validation with HS256 signature
+ */
+export const webhookJwtAuth = createPipeline()
+    .name('Webhook JWT Example')
+    .description('Webhook triggered pipeline with JWT Bearer token authentication')
+    .capabilities({ requires: ['ReadCatalog'] })
+    .trigger('start', {
+        type: 'webhook',
+        webhookCode: 'jwt-webhook',
+        // Authentication: JWT Bearer token
+        authentication: 'JWT',
+        jwtSecretCode: 'webhook-jwt-secret',  // Reference to DataHub Secret (HS256 key)
+        jwtHeaderName: 'Authorization',       // Standard Authorization header
+        // Rate limit: 200 requests per minute
+        rateLimit: 200,
+    })
+
+    .extract('parse-data', {
+        adapterCode: 'inMemory',
+    })
+
+    .transform('process', {
+        operators: [
+            { op: 'now', args: { target: 'processedAt', format: 'ISO' } },
+        ],
+    })
+
+    .load('log-result', {
+        adapterCode: 'restPost',
+        endpoint: 'https://your-system.com/api/log',
+        method: 'POST',
+    })
+
+    .edge('start', 'parse-data')
+    .edge('parse-data', 'process')
+    .edge('process', 'log-result')
+    .build();
+
+
+/**
+ * Webhook with Basic Authentication
+ * HTTP Basic Auth validation
+ */
+export const webhookBasicAuth = createPipeline()
+    .name('Webhook Basic Auth Example')
+    .description('Webhook triggered pipeline with HTTP Basic authentication')
+    .capabilities({ requires: ['ReadCatalog'] })
+    .trigger('start', {
+        type: 'webhook',
+        webhookCode: 'basic-auth-webhook',
+        // Authentication: HTTP Basic Auth
+        authentication: 'BASIC',
+        basicSecretCode: 'webhook-basic-creds',  // Secret contains "username:password"
+        // Rate limit: 30 requests per minute (more restrictive for basic auth)
+        rateLimit: 30,
+    })
+
+    .extract('parse-data', {
+        adapterCode: 'inMemory',
+    })
+
+    .transform('process', {
+        operators: [
+            { op: 'now', args: { target: 'processedAt', format: 'ISO' } },
+        ],
+    })
+
+    .load('log-result', {
+        adapterCode: 'restPost',
+        endpoint: 'https://your-system.com/api/log',
+        method: 'POST',
+    })
+
+    .edge('start', 'parse-data')
+    .edge('parse-data', 'process')
+    .edge('process', 'log-result')
     .build();
