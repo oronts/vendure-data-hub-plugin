@@ -42,6 +42,10 @@ import {
     Calendar,
     Webhook,
     Bell,
+    Lock,
+    Key,
+    Shield,
+    User,
 } from 'lucide-react';
 import { SchemaFormRenderer, FormSchemaField as SchemaField } from '../common';
 import { OperatorCheatSheetButton } from './shared/operator-cheatsheet';
@@ -839,6 +843,177 @@ function StepConfigEditor({ step, adapters, onChange, connectionCodes, secretOpt
 
 // TRIGGER CONFIG
 
+type WebhookAuthType = 'NONE' | 'API_KEY' | 'HMAC' | 'BASIC' | 'JWT';
+
+interface WebhookTriggerSectionProps {
+    readonly config: Record<string, unknown>;
+    readonly onChange: (config: Record<string, unknown>) => void;
+}
+
+function WebhookTriggerSection({ config, onChange }: WebhookTriggerSectionProps) {
+    const authType = (config.authentication as WebhookAuthType) || 'NONE';
+
+    return (
+        <div className="space-y-4">
+            <div className="space-y-2">
+                <label className="text-sm font-medium">Webhook Path</label>
+                <Input
+                    value={String(config.webhookPath ?? '')}
+                    onChange={(e) => onChange({ ...config, webhookPath: e.target.value })}
+                    placeholder="/webhook/my-pipeline"
+                />
+                <p className="text-xs text-muted-foreground">
+                    Full URL will be: /api/datahub/webhook/[path]
+                </p>
+            </div>
+
+            <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
+                    <Lock className="w-4 h-4" />
+                    Authentication
+                </label>
+                <Select
+                    value={authType}
+                    onValueChange={(v) => onChange({ ...config, authentication: v as WebhookAuthType })}
+                >
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select authentication method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="NONE">No Authentication</SelectItem>
+                        <SelectItem value="API_KEY">API Key</SelectItem>
+                        <SelectItem value="HMAC">HMAC Signature</SelectItem>
+                        <SelectItem value="BASIC">Basic Auth</SelectItem>
+                        <SelectItem value="JWT">JWT Token</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            {authType === 'NONE' && (
+                <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-950/50 border border-yellow-200 dark:border-yellow-800 rounded">
+                    <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <span className="text-sm text-yellow-700 dark:text-yellow-300">
+                        No authentication. Anyone with the URL can trigger this pipeline.
+                    </span>
+                </div>
+            )}
+
+            {authType === 'API_KEY' && (
+                <div className="space-y-3 p-3 border rounded bg-muted/30">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Key className="w-4 h-4" />
+                        API Key Configuration
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-sm">Secret Code *</Label>
+                        <Input
+                            value={String(config.apiKeySecretCode ?? '')}
+                            onChange={(e) => onChange({ ...config, apiKeySecretCode: e.target.value })}
+                            placeholder="my-api-key-secret"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-sm">Header Name</Label>
+                        <Input
+                            value={String(config.apiKeyHeaderName ?? '')}
+                            onChange={(e) => onChange({ ...config, apiKeyHeaderName: e.target.value })}
+                            placeholder="x-api-key"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Header name for the API key. Default: x-api-key
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {authType === 'HMAC' && (
+                <div className="space-y-3 p-3 border rounded bg-muted/30">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Shield className="w-4 h-4" />
+                        HMAC Configuration
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-sm">Secret Code *</Label>
+                        <Input
+                            value={String(config.secretCode ?? '')}
+                            onChange={(e) => onChange({ ...config, secretCode: e.target.value })}
+                            placeholder="my-hmac-secret"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-sm">Signature Header</Label>
+                        <Input
+                            value={String(config.hmacHeaderName ?? '')}
+                            onChange={(e) => onChange({ ...config, hmacHeaderName: e.target.value })}
+                            placeholder="x-datahub-signature"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-sm">Algorithm</Label>
+                        <Select
+                            value={String(config.hmacAlgorithm ?? 'sha256')}
+                            onValueChange={(v) => onChange({ ...config, hmacAlgorithm: v })}
+                        >
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="sha256">SHA-256</SelectItem>
+                                <SelectItem value="sha512">SHA-512</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            )}
+
+            {authType === 'BASIC' && (
+                <div className="space-y-3 p-3 border rounded bg-muted/30">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <User className="w-4 h-4" />
+                        Basic Auth Configuration
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-sm">Credentials Secret Code *</Label>
+                        <Input
+                            value={String(config.basicSecretCode ?? '')}
+                            onChange={(e) => onChange({ ...config, basicSecretCode: e.target.value })}
+                            placeholder="my-basic-auth-secret"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            Secret should contain "username:password" format
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {authType === 'JWT' && (
+                <div className="space-y-3 p-3 border rounded bg-muted/30">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Key className="w-4 h-4" />
+                        JWT Configuration
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-sm">JWT Secret Code *</Label>
+                        <Input
+                            value={String(config.jwtSecretCode ?? '')}
+                            onChange={(e) => onChange({ ...config, jwtSecretCode: e.target.value })}
+                            placeholder="my-jwt-secret"
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <Label className="text-sm">Authorization Header</Label>
+                        <Input
+                            value={String(config.jwtHeaderName ?? '')}
+                            onChange={(e) => onChange({ ...config, jwtHeaderName: e.target.value })}
+                            placeholder="Authorization"
+                        />
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 interface TriggerConfigFormProps {
     readonly config: Record<string, unknown>;
     readonly onChange: (config: Record<string, unknown>) => void;
@@ -883,14 +1058,7 @@ function TriggerConfigForm({ config, onChange }: TriggerConfigFormProps) {
             )}
 
             {triggerType === 'webhook' && (
-                <div className="space-y-2">
-                    <label className="text-sm font-medium">Webhook Path</label>
-                    <Input
-                        value={String(config.webhookPath ?? '')}
-                        onChange={(e) => onChange({ ...config, webhookPath: e.target.value })}
-                        placeholder="/my-webhook"
-                    />
-                </div>
+                <WebhookTriggerSection config={config} onChange={onChange} />
             )}
 
             {triggerType === 'event' && (
