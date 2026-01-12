@@ -78,6 +78,10 @@ export {
     webhookOrderSync,
     // Event-triggered low stock alerts
     lowStockAlert,
+    // Webhook authentication examples
+    webhookApiKeyAuth,
+    webhookJwtAuth,
+    webhookBasicAuth,
 } from './scheduled-pipelines';
 
 // =============================================================================
@@ -133,6 +137,9 @@ import {
     weeklyCustomerCleanup,
     webhookOrderSync,
     lowStockAlert,
+    webhookApiKeyAuth,
+    webhookJwtAuth,
+    webhookBasicAuth,
 } from './scheduled-pipelines';
 
 import {
@@ -176,6 +183,9 @@ export const examplePipelines = {
         weeklyCustomerCleanup,
         webhookOrderSync,
         lowStockAlert,
+        webhookApiKeyAuth,
+        webhookJwtAuth,
+        webhookBasicAuth,
     },
     advanced: {
         interceptorHooksPipeline,
@@ -215,6 +225,9 @@ export const allExamplePipelines = [
     weeklyCustomerCleanup,
     webhookOrderSync,
     lowStockAlert,
+    webhookApiKeyAuth,
+    webhookJwtAuth,
+    webhookBasicAuth,
     // Advanced
     interceptorHooksPipeline,
     scriptHooksPipeline,
