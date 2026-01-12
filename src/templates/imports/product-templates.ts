@@ -27,7 +27,7 @@ export const simpleProductsTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'CSV',
+                format: 'csv',
                 csv: {
                     delimiter: ',',
                     headerRow: true,
@@ -101,7 +101,7 @@ export const productsWithVariantsTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'CSV',
+                format: 'csv',
                 csv: {
                     delimiter: ',',
                     headerRow: true,
@@ -177,7 +177,7 @@ export const shopifyProductsTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'CSV',
+                format: 'csv',
                 csv: {
                     delimiter: ',',
                     headerRow: true,

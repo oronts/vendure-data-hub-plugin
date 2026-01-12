@@ -124,11 +124,7 @@ export const FILE_SOURCE_ADAPTERS = [
 // VENDURE LOADER ADAPTER CODES
 // =============================================================================
 
-export const VENDURE_LOADER_ADAPTERS = [
-    'productUpsert',
-    'variantUpsert',
-    'customerUpsert',
-];
+export { VENDURE_LOADER_ADAPTERS } from '../../../utils/step-helpers';
 
 // =============================================================================
 // NODE TYPE TO DEFAULT COLOR MAPPING

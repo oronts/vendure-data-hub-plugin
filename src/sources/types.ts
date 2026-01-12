@@ -1,26 +1,11 @@
 /**
  * DataHub Sources - Common Types
- *
- * Type definitions for data sources across all source types.
  */
 
 import { JsonObject } from '../types/index';
+import { DataSourceType } from '../constants/enums';
 
-// SOURCE CONFIGURATION TYPES
-
-/**
- * Supported source types
- */
-export type SourceType =
-    | 'local-file'
-    | 'remote-file'
-    | 'rest-api'
-    | 'graphql-api'
-    | 'sql-database'
-    | 'ftp'
-    | 'sftp'
-    | 's3'
-    | 'webhook';
+export type SourceType = DataSourceType;
 
 /**
  * Base source configuration

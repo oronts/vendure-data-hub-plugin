@@ -311,6 +311,61 @@ export enum FileEncoding {
 }
 
 /**
+ * Supported file formats for parsing and export
+ */
+export enum FileFormat {
+    CSV = 'csv',
+    JSON = 'json',
+    XML = 'xml',
+    XLSX = 'xlsx',
+    NDJSON = 'ndjson',
+    TSV = 'tsv',
+    PARQUET = 'parquet',
+}
+
+/**
+ * File format type (lowercase string literal union for backwards compatibility)
+ */
+export type FileFormatType = 'csv' | 'json' | 'xml' | 'xlsx' | 'ndjson' | 'tsv' | 'parquet';
+
+/**
+ * Export-specific formats (subset commonly used for exports)
+ */
+export type ExportFormatType = 'csv' | 'json' | 'xml' | 'xlsx' | 'ndjson' | 'parquet';
+
+/**
+ * Parse-specific formats (subset used for file parsing)
+ */
+export type ParseFormatType = 'csv' | 'json' | 'xml' | 'xlsx';
+
+/**
+ * Pipeline source types (high-level data origin)
+ */
+export type PipelineSourceType =
+    | 'FILE_UPLOAD'
+    | 'WEBHOOK'
+    | 'HTTP_API'
+    | 'FTP'
+    | 'S3'
+    | 'DATABASE'
+    | 'VENDURE_QUERY'
+    | 'EVENT';
+
+/**
+ * Source service types (implementation-level)
+ */
+export type DataSourceType =
+    | 'local-file'
+    | 'remote-file'
+    | 'rest-api'
+    | 'graphql-api'
+    | 'sql-database'
+    | 'ftp'
+    | 'sftp'
+    | 's3'
+    | 'webhook';
+
+/**
  * Network error codes that are retryable
  */
 export enum RetryableNetworkErrorCode {

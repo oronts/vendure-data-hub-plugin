@@ -28,7 +28,7 @@ export const collectionsTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'CSV',
+                format: 'csv',
                 csv: {
                     delimiter: ',',
                     headerRow: true,
@@ -91,7 +91,7 @@ export const facetsTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'CSV',
+                format: 'csv',
                 csv: {
                     delimiter: ',',
                     headerRow: true,

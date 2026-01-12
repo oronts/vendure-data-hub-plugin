@@ -209,7 +209,8 @@ export interface LoadStepConfig {
 
 // EXPORT STEP CONFIG
 
-export type ExportFormat = 'csv' | 'json' | 'xml' | 'xlsx' | 'ndjson';
+import { ExportFormatType } from '../../constants/enums';
+export type ExportFormat = ExportFormatType;
 export type ExportTarget = 'file' | 'api' | 'webhook' | 's3' | 'sftp' | 'email';
 
 export interface ExportStepConfig {

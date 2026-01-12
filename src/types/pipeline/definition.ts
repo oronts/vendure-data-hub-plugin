@@ -19,6 +19,7 @@ import {
 } from './step-types';
 import { PipelineContext, PipelineCheckpoint } from './context-types';
 import { PipelineMetrics } from './execution-types';
+import { FileFormatType, PipelineSourceType } from '../../constants/enums';
 
 // CORE ENUMS (re-exported from constants for convenience)
 
@@ -54,19 +55,9 @@ export type VendureEntityType =
     | 'StockLocation'
     | 'Inventory';
 
-/** Source types for data extraction */
-export type SourceType =
-    | 'FILE_UPLOAD'      // Manual file upload (CSV, JSON, XML, Excel)
-    | 'WEBHOOK'          // Incoming webhook POST
-    | 'HTTP_API'         // Fetch from REST/GraphQL API
-    | 'FTP'              // Fetch from FTP/SFTP
-    | 'S3'               // Fetch from S3/cloud storage
-    | 'DATABASE'         // Query external database
-    | 'VENDURE_QUERY'    // Query Vendure entities (for export)
-    | 'EVENT';           // Vendure event trigger
+export type SourceType = PipelineSourceType;
 
-/** File formats for file-based sources */
-export type FileFormat = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'TSV';
+export type FileFormat = FileFormatType;
 
 /** Destination types for export */
 export type DestinationType =

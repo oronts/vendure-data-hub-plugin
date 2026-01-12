@@ -24,6 +24,7 @@ import {
     OperatorResult,
 } from './result-types';
 import { OperatorHelpers } from './transform-types';
+import { ExportFormatType } from '../../constants/enums';
 
 // ADAPTER CATEGORIES AND TYPES
 
@@ -414,10 +415,7 @@ export type ExportTargetType =
     | 'messaging'   // Kafka, RabbitMQ, SQS
     | 'storage';    // S3, GCS, Azure Blob
 
-/**
- * Export file formats
- */
-export type ExportFormat = 'json' | 'csv' | 'xml' | 'ndjson' | 'parquet' | 'xlsx';
+export type ExportFormat = ExportFormatType;
 
 /**
  * Context provided to exporter adapters

@@ -1,13 +1,10 @@
 /**
  * DataHub Parsers - Common Types
- *
- * Type definitions for file parsing across all supported formats.
  */
 
-/**
- * Supported file formats
- */
-export type FileFormat = 'csv' | 'json' | 'xml' | 'xlsx';
+import { ParseFormatType } from '../constants/enums';
+
+export type FileFormat = ParseFormatType;
 
 /**
  * CSV delimiter options

@@ -1,16 +1,11 @@
 /**
  * DataHub File Upload Utilities
- *
- * Helper functions for parsing multipart form data, detecting MIME types,
- * and file format detection. Used by DataHubFileUploadController.
  */
 
 import { StoredFile } from '../../services';
+import { ParseFormatType } from '../../constants/enums';
 
-/**
- * Supported file format types
- */
-export type FileFormat = 'csv' | 'json' | 'xml' | 'xlsx';
+export type FileFormat = ParseFormatType;
 
 /**
  * MIME type to file extension mapping

@@ -27,7 +27,7 @@ export const simpleCustomersTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'CSV',
+                format: 'csv',
                 csv: {
                     delimiter: ',',
                     headerRow: true,
@@ -105,7 +105,7 @@ export const customersWithAddressesTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'CSV',
+                format: 'csv',
                 csv: {
                     delimiter: ',',
                     headerRow: true,

@@ -1,52 +1,8 @@
 import type { ParsedColumn, SchemaField, FieldMapping } from './types';
+import { parseCSV, parseCSVLine } from '../../../utils/parsers';
 
-// =============================================================================
-// CSV PARSER (Browser-based)
-// =============================================================================
-
-export function parseCSV(content: string, delimiter = ','): Record<string, any>[] {
-    const lines = content.split('\n').filter(line => line.trim());
-    if (lines.length === 0) return [];
-
-    const headers = parseCSVLine(lines[0], delimiter);
-    const rows: Record<string, any>[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-        const values = parseCSVLine(lines[i], delimiter);
-        const row: Record<string, any> = {};
-        headers.forEach((header, idx) => {
-            row[header.trim()] = values[idx]?.trim() ?? '';
-        });
-        rows.push(row);
-    }
-
-    return rows;
-}
-
-export function parseCSVLine(line: string, delimiter: string): string[] {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-            if (inQuotes && line[i + 1] === '"') {
-                current += '"';
-                i++;
-            } else {
-                inQuotes = !inQuotes;
-            }
-        } else if (char === delimiter && !inQuotes) {
-            result.push(current);
-            current = '';
-        } else {
-            current += char;
-        }
-    }
-    result.push(current);
-    return result;
-}
+// Re-export parsers for convenience
+export { parseCSV, parseCSVLine };
 
 // =============================================================================
 // TYPE DETECTION
@@ -63,19 +19,16 @@ export function detectColumnType(values: any[]): ParsedColumn['type'] {
     for (const val of nonNullValues) {
         const str = String(val).trim().toLowerCase();
 
-        // Boolean check
         if (['true', 'false', '1', '0', 'yes', 'no'].includes(str)) {
             boolCount++;
             continue;
         }
 
-        // Number check
         if (!isNaN(Number(val)) && str !== '') {
             numCount++;
             continue;
         }
 
-        // Date check
         const date = new Date(val);
         if (!isNaN(date.getTime()) && str.length > 4) {
             dateCount++;
@@ -120,7 +73,6 @@ export function autoMap(sourceColumns: ParsedColumn[], targetSchema: SchemaField
     const mappings: FieldMapping[] = [];
 
     for (const target of targetSchema) {
-        // Try exact match first
         const exactMatch = sourceColumns.find(
             s => s.name.toLowerCase() === target.name.toLowerCase()
         );
@@ -129,7 +81,6 @@ export function autoMap(sourceColumns: ParsedColumn[], targetSchema: SchemaField
             continue;
         }
 
-        // Try fuzzy match (contains, common variations)
         const fuzzyMatch = sourceColumns.find(s => {
             const src = s.name.toLowerCase().replace(/[_\-\s]/g, '');
             const tgt = target.name.toLowerCase().replace(/[_\-\s]/g, '');
@@ -140,7 +91,6 @@ export function autoMap(sourceColumns: ParsedColumn[], targetSchema: SchemaField
             continue;
         }
 
-        // Add required fields as unmapped
         if (target.required) {
             mappings.push({ sourceField: '', targetField: target.name });
         }
