@@ -548,14 +548,14 @@ function TriggerConfigSection({ config, onChange }: TriggerConfigSectionProps) {
                     </div>
                     <div className="flex items-center gap-2">
                         <Switch
-                            checked={config?.requireAuth !== false}
-                            onCheckedChange={(v) => onChange('requireAuth', v)}
+                            checked={config?.authentication !== 'NONE'}
+                            onCheckedChange={(v) => onChange('authentication', v ? 'HMAC' : 'NONE')}
                         />
                         <Label className="text-xs">Require authentication</Label>
                     </div>
 
                     {/* Authentication Configuration */}
-                    {config?.requireAuth !== false && (
+                    {config?.authentication !== 'NONE' && (
                         <WebhookAuthConfig config={config} onChange={onChange} />
                     )}
                 </div>
@@ -689,7 +689,7 @@ interface ConfigSectionProps {
 type WebhookAuthType = 'NONE' | 'API_KEY' | 'HMAC' | 'BASIC' | 'JWT';
 
 function WebhookAuthConfig({ config, onChange }: ConfigSectionProps) {
-    const authType = (config?.authType as WebhookAuthType) || 'HMAC';
+    const authType = (config?.authentication as WebhookAuthType) || 'HMAC';
 
     return (
         <div className="space-y-3 p-3 border rounded-md bg-muted/30">
@@ -697,7 +697,7 @@ function WebhookAuthConfig({ config, onChange }: ConfigSectionProps) {
                 <Label className="text-xs font-medium">Authentication Type</Label>
                 <Select
                     value={authType}
-                    onValueChange={(v) => onChange('authType', v)}
+                    onValueChange={(v) => onChange('authentication', v)}
                 >
                     <SelectTrigger className="h-8">
                         <SelectValue />
@@ -737,8 +737,8 @@ function WebhookAuthConfig({ config, onChange }: ConfigSectionProps) {
                     <div className="space-y-1">
                         <Label className="text-xs">Secret Code *</Label>
                         <Input
-                            value={config?.hmacSecretCode || ''}
-                            onChange={(e) => onChange('hmacSecretCode', e.target.value)}
+                            value={config?.secretCode || ''}
+                            onChange={(e) => onChange('secretCode', e.target.value)}
                             placeholder="my-hmac-secret"
                             className="h-7 text-sm"
                         />
@@ -749,8 +749,8 @@ function WebhookAuthConfig({ config, onChange }: ConfigSectionProps) {
                     <div className="space-y-1">
                         <Label className="text-xs">Signature Header</Label>
                         <Input
-                            value={config?.hmacHeader || 'x-datahub-signature'}
-                            onChange={(e) => onChange('hmacHeader', e.target.value)}
+                            value={config?.hmacHeaderName || 'x-datahub-signature'}
+                            onChange={(e) => onChange('hmacHeaderName', e.target.value)}
                             placeholder="x-datahub-signature"
                             className="h-7 text-sm"
                         />
@@ -791,8 +791,8 @@ function WebhookAuthConfig({ config, onChange }: ConfigSectionProps) {
                     <div className="space-y-1">
                         <Label className="text-xs">Header Name</Label>
                         <Input
-                            value={config?.apiKeyHeader || 'x-api-key'}
-                            onChange={(e) => onChange('apiKeyHeader', e.target.value)}
+                            value={config?.apiKeyHeaderName || 'x-api-key'}
+                            onChange={(e) => onChange('apiKeyHeaderName', e.target.value)}
                             placeholder="x-api-key"
                             className="h-7 text-sm"
                         />
@@ -836,8 +836,8 @@ function WebhookAuthConfig({ config, onChange }: ConfigSectionProps) {
                     <div className="space-y-1">
                         <Label className="text-xs">Authorization Header</Label>
                         <Input
-                            value={config?.jwtHeader || 'Authorization'}
-                            onChange={(e) => onChange('jwtHeader', e.target.value)}
+                            value={config?.jwtHeaderName || 'Authorization'}
+                            onChange={(e) => onChange('jwtHeaderName', e.target.value)}
                             placeholder="Authorization"
                             className="h-7 text-sm"
                         />

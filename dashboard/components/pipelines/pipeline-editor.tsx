@@ -75,9 +75,17 @@ interface TriggerConfig {
     cron?: string;
     timezone?: string;
     webhookCode?: string;
-    webhookPath?: string;
     eventType?: string;
     fileWatch?: { connectionCode: string; path: string; pattern?: string };
+    authentication?: 'NONE' | 'API_KEY' | 'HMAC' | 'BASIC' | 'JWT';
+    secretCode?: string;
+    apiKeySecretCode?: string;
+    basicSecretCode?: string;
+    jwtSecretCode?: string;
+    apiKeyHeaderName?: string;
+    hmacHeaderName?: string;
+    hmacAlgorithm?: 'sha256' | 'sha512';
+    jwtHeaderName?: string;
 }
 
 interface ErrorHandlingConfig {
@@ -856,14 +864,14 @@ function WebhookTriggerSection({ config, onChange }: WebhookTriggerSectionProps)
     return (
         <div className="space-y-4">
             <div className="space-y-2">
-                <label className="text-sm font-medium">Webhook Path</label>
+                <label className="text-sm font-medium">Webhook Code</label>
                 <Input
-                    value={String(config.webhookPath ?? '')}
-                    onChange={(e) => onChange({ ...config, webhookPath: e.target.value })}
-                    placeholder="/webhook/my-pipeline"
+                    value={String(config.webhookCode ?? '')}
+                    onChange={(e) => onChange({ ...config, webhookCode: e.target.value })}
+                    placeholder="my-webhook"
                 />
                 <p className="text-xs text-muted-foreground">
-                    Full URL will be: /api/datahub/webhook/[path]
+                    POST to: /data-hub/webhook/{config.webhookCode || '{code}'}
                 </p>
             </div>
 

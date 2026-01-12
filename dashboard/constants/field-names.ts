@@ -28,11 +28,6 @@ export type {
     CanonicalLoaderConfig,
 } from '../../src/types/shared';
 
-// Aliases for UI backward compatibility
-export { LOAD_STRATEGIES as LOADER_STRATEGIES } from '../../src/types/shared';
-export type { LoadStrategyValue as LoadStrategy } from '../../src/types/shared';
-export type { ConflictResolutionValue as ConflictResolution } from '../../src/types/shared';
-
 // Condition field names for UI
 export const CONDITION_FIELDS = {
     FIELD: 'field',

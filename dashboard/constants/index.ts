@@ -16,7 +16,6 @@ export {
     DEPRECATED_OPERATION,
     DEPRECATED_CRON_EXPR,
 } from './field-names';
-export type { LoadStrategy } from './field-names';
 
 // Navigation
 export {

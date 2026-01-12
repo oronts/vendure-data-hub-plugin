@@ -1,8 +1,7 @@
 /**
  * Visual Editor Types
  *
- * Re-exports from central dashboard types for backwards compatibility.
- * New code should import directly from '@dashboard/types'.
+ * Re-exports from central dashboard types for module convenience.
  */
 
 export type {
