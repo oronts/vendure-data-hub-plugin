@@ -24,10 +24,8 @@ import {
     TabsList,
     TabsTrigger,
 } from '@vendure/dashboard';
-import { DATAHUB_NAV_SECTION, UI_DEFAULTS } from '../../constants/index';
-import { graphql } from '@/gql';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@vendure/dashboard';
+import { DATAHUB_NAV_SECTION, UI_DEFAULTS, ROUTES, BUILT_IN_ADAPTER_PREFIXES, DATAHUB_PERMISSIONS, ADAPTER_TYPES, TEXTAREA_HEIGHTS, TOAST_ADAPTER } from '../../constants';
+import { StatCard } from '../../components/shared';
 import { DashboardRouteDefinition } from '@vendure/dashboard';
 import { ColumnDef } from '@tanstack/react-table';
 import {
@@ -43,60 +41,24 @@ import {
     Settings2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-
-// GRAPHQL
-
-const adaptersDocument = graphql(`
-    query DataHubAdapters {
-        dataHubAdapters {
-            type
-            code
-            description
-            pure
-            requires
-            schema {
-                fields { key label type required description options { value label } }
-            }
-        }
-    }
-`);
-
-// ROUTE DEFINITION
+import { ErrorState, LoadingState } from '../../components/shared';
+import { useAdapters } from '../../hooks';
+import type { DataHubAdapter } from '../../types';
 
 export const adaptersList: DashboardRouteDefinition = {
     navMenuItem: {
         sectionId: DATAHUB_NAV_SECTION,
         id: 'data-hub-adapters',
-        url: '/data-hub/adapters',
+        url: ROUTES.ADAPTERS,
         title: 'Adapters',
     },
-    path: '/data-hub/adapters',
+    path: ROUTES.ADAPTERS,
     loader: () => ({ breadcrumb: 'Adapters' }),
     component: () => (
-        <PermissionGuard requires={['ManageDataHubAdapters']}>
+        <PermissionGuard requires={[DATAHUB_PERMISSIONS.MANAGE_ADAPTERS]}>
             <AdaptersPage />
         </PermissionGuard>
     ),
-};
-
-// TYPES
-
-type AdapterRow = {
-    type: 'extractor' | 'operator' | 'loader';
-    code: string;
-    description?: string | null;
-    pure?: boolean | null;
-    requires?: string[] | null;
-    schema: {
-        fields: Array<{
-            key: string;
-            label?: string | null;
-            type: string;
-            required?: boolean | null;
-            description?: string | null;
-            options?: Array<{ value: string; label: string }> | null;
-        }>;
-    };
 };
 
 const ADAPTER_TYPE_INFO = {
@@ -120,27 +82,41 @@ const ADAPTER_TYPE_INFO = {
     },
 };
 
-// MAIN PAGE
-
 function AdaptersPage() {
-    const { data, isLoading, refetch } = useQuery({
-        queryKey: ['DataHubAdapters'],
-        queryFn: () => api.query(adaptersDocument, {}),
-    });
+    const { data: rows = [], isLoading, isError, error, refetch } = useAdapters();
+    const [selected, setSelected] = React.useState<DataHubAdapter | null>(null);
 
-    const rows: AdapterRow[] = (data?.dataHubAdapters ?? []) as AdapterRow[];
-    const [selected, setSelected] = React.useState<AdapterRow | null>(null);
+    const extractors = rows.filter(r => r.type === ADAPTER_TYPES.EXTRACTOR);
+    const operators = rows.filter(r => r.type === ADAPTER_TYPES.OPERATOR);
+    const loaders = rows.filter(r => r.type === ADAPTER_TYPES.LOADER);
 
-    // Group adapters by type
-    const extractors = rows.filter(r => r.type === 'extractor');
-    const operators = rows.filter(r => r.type === 'operator');
-    const loaders = rows.filter(r => r.type === 'loader');
-
-    // Identify built-in vs custom (built-in usually have specific prefixes)
     const isBuiltIn = (code: string) => {
-        const builtInPrefixes = ['vendure-', 'csv-', 'json-', 'http-', 'file-', 'filter-', 'map-', 'validate-'];
-        return builtInPrefixes.some(p => code.startsWith(p));
+        return BUILT_IN_ADAPTER_PREFIXES.some(p => code.startsWith(p));
     };
+
+    if (isError) {
+        return (
+            <Page pageId="data-hub-adapters">
+                <PageBlock column="main" blockId="error">
+                    <ErrorState
+                        title="Failed to load adapters"
+                        message={error instanceof Error ? error.message : 'An unknown error occurred'}
+                        onRetry={() => refetch()}
+                    />
+                </PageBlock>
+            </Page>
+        );
+    }
+
+    if (isLoading && rows.length === 0) {
+        return (
+            <Page pageId="data-hub-adapters">
+                <PageBlock column="main" blockId="loading">
+                    <LoadingState type="card" rows={3} message="Loading adapters..." />
+                </PageBlock>
+            </Page>
+        );
+    }
 
     return (
         <Page pageId="data-hub-adapters">
@@ -153,7 +129,6 @@ function AdaptersPage() {
                 </PageActionBarRight>
             </PageActionBar>
 
-            {/* Introduction */}
             <PageBlock column="main" blockId="intro">
                 <Card>
                     <CardHeader className="pb-3">
@@ -170,28 +145,26 @@ function AdaptersPage() {
                         <div className="grid grid-cols-3 gap-4">
                             <StatCard
                                 icon={ADAPTER_TYPE_INFO.extractor.icon}
-                                label="Extractors"
+                                title="Extractors"
                                 value={extractors.length}
-                                color="text-blue-600"
+                                variant="info"
                             />
                             <StatCard
                                 icon={ADAPTER_TYPE_INFO.operator.icon}
-                                label="Operators"
+                                title="Operators"
                                 value={operators.length}
-                                color="text-purple-600"
                             />
                             <StatCard
                                 icon={ADAPTER_TYPE_INFO.loader.icon}
-                                label="Loaders"
+                                title="Loaders"
                                 value={loaders.length}
-                                color="text-green-600"
+                                variant="success"
                             />
                         </div>
                     </CardContent>
                 </Card>
             </PageBlock>
 
-            {/* Adapter Tabs */}
             <PageBlock column="main" blockId="adapters">
                 <Tabs defaultValue="extractors" className="w-full">
                     <TabsList className="mb-4">
@@ -251,7 +224,6 @@ function AdaptersPage() {
                 </Tabs>
             </PageBlock>
 
-            {/* Adapter Detail Drawer */}
             <Drawer open={!!selected} onOpenChange={open => !open && setSelected(null)}>
                 <DrawerContent>
                     <DrawerHeader>
@@ -272,29 +244,6 @@ function AdaptersPage() {
     );
 }
 
-// COMPONENTS
-
-function StatCard({
-    icon,
-    label,
-    value,
-    color,
-}: Readonly<{
-    icon: React.ReactNode;
-    label: string;
-    value: number;
-    color: string;
-}>) {
-    return (
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-            <div className={color}>{icon}</div>
-            <div>
-                <div className="text-2xl font-bold">{value}</div>
-                <div className="text-sm text-muted-foreground">{label}</div>
-            </div>
-        </div>
-    );
-}
 
 function AdapterTypeSection({
     type,
@@ -303,8 +252,8 @@ function AdapterTypeSection({
     isBuiltIn,
 }: Readonly<{
     type: 'extractor' | 'operator' | 'loader';
-    adapters: AdapterRow[];
-    onSelect: (adapter: AdapterRow) => void;
+    adapters: DataHubAdapter[];
+    onSelect: (adapter: DataHubAdapter) => void;
     isBuiltIn: (code: string) => boolean;
 }>) {
     const info = ADAPTER_TYPE_INFO[type];
@@ -332,7 +281,7 @@ function AdapterTypeSection({
                             <AdapterCard
                                 key={adapter.code}
                                 adapter={adapter}
-                                onClick={() => onSelect(adapter)}
+                                onSelect={onSelect}
                                 isBuiltIn
                             />
                         ))}
@@ -351,7 +300,7 @@ function AdapterTypeSection({
                             <AdapterCard
                                 key={adapter.code}
                                 adapter={adapter}
-                                onClick={() => onSelect(adapter)}
+                                onSelect={onSelect}
                             />
                         ))}
                     </div>
@@ -369,19 +318,23 @@ function AdapterTypeSection({
     );
 }
 
-function AdapterCard({
+const AdapterCard = React.memo(function AdapterCard({
     adapter,
-    onClick,
+    onSelect,
     isBuiltIn = false,
 }: Readonly<{
-    adapter: AdapterRow;
-    onClick: () => void;
+    adapter: DataHubAdapter;
+    onSelect: (adapter: DataHubAdapter) => void;
     isBuiltIn?: boolean;
 }>) {
+    const handleClick = React.useCallback(() => {
+        onSelect(adapter);
+    }, [onSelect, adapter]);
+
     return (
         <div
             className="border rounded-lg p-3 cursor-pointer hover:border-primary hover:shadow-sm transition-all"
-            onClick={onClick}
+            onClick={handleClick}
         >
             <div className="flex items-start justify-between mb-2">
                 <code className="text-sm font-medium">{adapter.code}</code>
@@ -412,7 +365,7 @@ function AdapterCard({
             </div>
         </div>
     );
-}
+});
 
 function AdaptersTable({
     adapters,
@@ -420,12 +373,12 @@ function AdaptersTable({
     isBuiltIn,
     isLoading,
 }: Readonly<{
-    adapters: AdapterRow[];
-    onSelect: (adapter: AdapterRow) => void;
+    adapters: DataHubAdapter[];
+    onSelect: (adapter: DataHubAdapter) => void;
     isBuiltIn: (code: string) => boolean;
     isLoading: boolean;
 }>) {
-    const columns: ColumnDef<AdapterRow, unknown>[] = [
+    const columns: ColumnDef<DataHubAdapter, unknown>[] = React.useMemo(() => [
         {
             id: 'type',
             header: 'Type',
@@ -477,7 +430,7 @@ function AdaptersTable({
                 </Badge>
             ),
         },
-    ];
+    ], [onSelect, isBuiltIn]);
 
     return (
         <DataTable
@@ -492,8 +445,18 @@ function AdaptersTable({
     );
 }
 
-function AdapterDetail({ adapter }: Readonly<{ adapter: AdapterRow }>) {
+function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>) {
     const [copied, setCopied] = React.useState(false);
+    const copyTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Cleanup timeout on unmount
+    React.useEffect(() => {
+        return () => {
+            if (copyTimeoutRef.current) {
+                clearTimeout(copyTimeoutRef.current);
+            }
+        };
+    }, []);
 
     const exampleConfig = React.useMemo(() => {
         const config: Record<string, unknown> = { adapterCode: adapter.code };
@@ -509,16 +472,19 @@ function AdapterDetail({ adapter }: Readonly<{ adapter: AdapterRow }>) {
         try {
             await navigator.clipboard.writeText(exampleConfig);
             setCopied(true);
-            toast.success('Config copied to clipboard');
-            setTimeout(() => setCopied(false), UI_DEFAULTS.COPY_FEEDBACK_TIMEOUT_MS);
+            toast.success(TOAST_ADAPTER.CONFIG_COPIED);
+            // Clear any existing timeout before setting a new one
+            if (copyTimeoutRef.current) {
+                clearTimeout(copyTimeoutRef.current);
+            }
+            copyTimeoutRef.current = setTimeout(() => setCopied(false), UI_DEFAULTS.COPY_FEEDBACK_TIMEOUT_MS);
         } catch {
-            toast.error('Failed to copy');
+            toast.error(TOAST_ADAPTER.COPY_ERROR);
         }
     };
 
     return (
         <div className="p-4 space-y-6">
-            {/* Properties */}
             <div className="grid grid-cols-3 gap-4">
                 <div className="p-3 rounded-lg bg-muted/50">
                     <div className="text-xs text-muted-foreground mb-1">Type</div>
@@ -538,7 +504,6 @@ function AdapterDetail({ adapter }: Readonly<{ adapter: AdapterRow }>) {
                 </div>
             </div>
 
-            {/* Configuration Fields */}
             <div>
                 <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
                     <Settings2 className="w-4 h-4" />
@@ -598,7 +563,6 @@ function AdapterDetail({ adapter }: Readonly<{ adapter: AdapterRow }>) {
                 </div>
             </div>
 
-            {/* Example Configuration */}
             <div>
                 <div className="flex items-center justify-between mb-3">
                     <h4 className="text-sm font-medium flex items-center gap-2">
@@ -617,14 +581,12 @@ function AdapterDetail({ adapter }: Readonly<{ adapter: AdapterRow }>) {
                 <Textarea
                     value={exampleConfig}
                     readOnly
-                    className="font-mono text-sm min-h-[160px]"
+                    className={`font-mono text-sm ${TEXTAREA_HEIGHTS.ADAPTER_SCHEMA}`}
                 />
             </div>
         </div>
     );
 }
-
-// HELPERS
 
 function guessExampleValue(
     type: string,

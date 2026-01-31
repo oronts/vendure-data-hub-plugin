@@ -1,51 +1,31 @@
 import * as React from 'react';
 import { Button, DashboardRouteDefinition, DetailFormGrid, FormFieldWrapper, Input, Page, PageActionBar, PageActionBarRight, PageBlock, PageLayout, PageTitle, detailPageRouteLoader, useDetailPage, Select, SelectTrigger, SelectContent, SelectItem, SelectValue, PermissionGuard } from '@vendure/dashboard';
-import { graphql } from '@/gql';
 import { AnyRoute, useNavigate } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
 import { useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import {
     ConnectionConfigEditor,
     CONNECTION_TYPE_OPTIONS,
-    ConnectionType,
     createDefaultConnectionConfig,
     normalizeConnectionConfig,
 } from '../../components/common/connection-config-editor';
-import { api } from '@vendure/dashboard';
+import type { UIConnectionType } from '../../types';
 import { CODE_PATTERN } from '../../utils/form-validation';
-import { FieldError } from '../../components/common/validation-feedback';
+import { FieldError } from '../../components/common';
+import { QUERY_LIMITS, DATAHUB_PERMISSIONS, ROUTES, CONNECTION_DEFAULT_TYPE, SELECT_WIDTHS, TOAST_CONNECTION, ERROR_MESSAGES } from '../../constants';
+import {
+    connectionDetailDocument,
+    createConnectionDocument,
+    updateConnectionDocument,
+    useSecrets,
+} from '../../hooks';
 
-const detailDocument = graphql(`
-    query DataHubConnectionDetail($id: ID!) {
-        dataHubConnection(id: $id) {
-            id
-            code
-            type
-            config
-        }
-    }
-`);
-const createDocument = graphql(`
-    mutation CreateDataHubConnection($input: CreateDataHubConnectionInput!) { createDataHubConnection(input: $input) { id } }
-`);
-const updateDocument = graphql(`
-    mutation UpdateDataHubConnection($input: UpdateDataHubConnectionInput!) { updateDataHubConnection(input: $input) { id } }
-`);
-
-const secretCodesDocument = graphql(`
-    query DataHubConnectionSecretCodes($options: DataHubSecretListOptions) {
-        dataHubSecrets(options: $options) {
-            items { id code provider }
-        }
-    }
-`);
 
 export const connectionDetail: DashboardRouteDefinition = {
-    path: '/data-hub/connections/$id',
-    loader: detailPageRouteLoader({ queryDocument: detailDocument, breadcrumb: (isNew, entity) => ['Data Hub', 'Connections', isNew ? 'New connection' : (entity?.code ?? '')] }),
+    path: `${ROUTES.CONNECTIONS}/$id`,
+    loader: detailPageRouteLoader({ queryDocument: connectionDetailDocument, breadcrumb: (isNew, entity) => ['Data Hub', 'Connections', isNew ? 'New connection' : (entity?.code ?? '')] }),
     component: route => (
-        <PermissionGuard requires={['ManageDataHubConnections']}>
+        <PermissionGuard requires={[DATAHUB_PERMISSIONS.MANAGE_CONNECTIONS]}>
             <ConnectionDetailPage route={route} />
         </PermissionGuard>
     ),
@@ -56,34 +36,30 @@ function ConnectionDetailPage({ route }: { route: AnyRoute }) {
     const navigate = useNavigate();
     const creating = params.id === 'new';
 
-    const { data: secretData } = useQuery({
-        queryKey: ['DataHubConnectionSecretCodes'],
-        queryFn: async () => {
-            try {
-                return await api.query(secretCodesDocument, { options: { take: 200 } });
-            } catch (err) {
-                return null;
-            }
-        },
-        staleTime: 60 * 1000,
-    });
+    const { data: secretsData, isError: secretsError } = useSecrets({ take: QUERY_LIMITS.SECRETS_LIST });
 
-    const secretOptions = (secretData?.dataHubSecrets?.items ?? []).map(item => ({
+    React.useEffect(() => {
+        if (secretsError) {
+            toast.error(TOAST_CONNECTION.SECRETS_LOAD_ERROR);
+        }
+    }, [secretsError]);
+
+    const secretOptions = (secretsData?.items ?? []).map(item => ({
         code: item.code,
         provider: item.provider ?? undefined,
     }));
 
     const { form, submitHandler, entity, isPending, resetForm } = useDetailPage({
-        queryDocument: detailDocument,
-        createDocument,
-        updateDocument,
+        queryDocument: connectionDetailDocument,
+        createDocument: createConnectionDocument,
+        updateDocument: updateConnectionDocument,
         setValuesForCreate: () => ({
             code: '',
-            type: 'http',
-            config: createDefaultConnectionConfig('http'),
+            type: CONNECTION_DEFAULT_TYPE,
+            config: createDefaultConnectionConfig(CONNECTION_DEFAULT_TYPE),
         }),
         setValuesForUpdate: s => {
-            const type = (s?.type ?? 'http') as ConnectionType;
+            const type = (s?.type ?? CONNECTION_DEFAULT_TYPE) as UIConnectionType;
             return {
                 id: s?.id ?? '',
                 code: s?.code ?? '',
@@ -93,29 +69,27 @@ function ConnectionDetailPage({ route }: { route: AnyRoute }) {
         },
         params: { id: params.id },
         onSuccess: async data => {
-            toast('Connection saved successfully');
+            toast.success(TOAST_CONNECTION.SAVE_SUCCESS);
             resetForm();
             if (creating) {
                 await navigate({ to: `../$id`, params: { id: data.id } });
             }
         },
         onError: err => {
-            toast('Failed to save connection', {
+            toast.error(TOAST_CONNECTION.SAVE_ERROR, {
                 description: err instanceof Error ? err.message : 'Unknown error',
             });
         },
     });
 
-    // Cache per-type configs so toggling type and back restores previous values
     const configCacheRef = React.useRef<Record<string, Record<string, unknown>>>({});
 
     React.useEffect(() => {
         if (!entity) {
             return;
         }
-        const type = (entity.type ?? form.getValues('type') ?? 'http') as ConnectionType;
+        const type = (entity.type ?? form.getValues('type') ?? CONNECTION_DEFAULT_TYPE) as UIConnectionType;
         const normalized = normalizeConnectionConfig(type, entity.config ?? {});
-        // Prime the cache with the server config for this type
         configCacheRef.current[type] = normalized as Record<string, unknown>;
         form.reset(
             {
@@ -128,8 +102,8 @@ function ConnectionDetailPage({ route }: { route: AnyRoute }) {
         );
     }, [entity?.id]);
 
-    const watchedType = useWatch({ control: form.control, name: 'type', defaultValue: entity?.type || 'http' });
-    const connectionType = (watchedType || entity?.type || 'http') as ConnectionType;
+    const watchedType = useWatch({ control: form.control, name: 'type', defaultValue: entity?.type || CONNECTION_DEFAULT_TYPE });
+    const connectionType = (watchedType || entity?.type || CONNECTION_DEFAULT_TYPE) as UIConnectionType;
 
     return (
         <Page pageId="data-hub-connection-detail" form={form} submitHandler={submitHandler}>
@@ -149,10 +123,10 @@ function ConnectionDetailPage({ route }: { route: AnyRoute }) {
                             label="Code"
                             control={form.control}
                             rules={{
-                                required: 'Code is required',
+                                required: ERROR_MESSAGES.CODE_REQUIRED,
                                 pattern: {
                                     value: CODE_PATTERN,
-                                    message: 'Must start with a letter and contain only letters, numbers, hyphens, and underscores',
+                                    message: ERROR_MESSAGES.CODE_PATTERN,
                                 },
                             }}
                             render={({ field, fieldState }) => (
@@ -175,31 +149,28 @@ function ConnectionDetailPage({ route }: { route: AnyRoute }) {
                             name="type"
                             label="Connection Type"
                             control={form.control}
-                            rules={{ required: 'Connection type is required' }}
+                            rules={{ required: ERROR_MESSAGES.CONNECTION_TYPE_REQUIRED }}
                             render={({ field, fieldState }) => (
                                 <div>
                                 <Select
                                     value={
                                         (typeof field.value === 'string' && field.value.length > 0)
                                             ? field.value
-                                            : String(entity?.type ?? 'http')
+                                            : String(entity?.type ?? CONNECTION_DEFAULT_TYPE)
                                     }
                                     onValueChange={val => {
-                                        const prevType = (field.value as ConnectionType | undefined) ?? (entity?.type as ConnectionType | undefined);
-                                        const nextType = val as ConnectionType;
-                                        // Stash current config under previous type key
+                                        const prevType = (field.value as UIConnectionType | undefined) ?? (entity?.type as UIConnectionType | undefined);
+                                        const nextType = val as UIConnectionType;
                                         const prevConfig = form.getValues('config') as Record<string, unknown> | undefined;
                                         if (prevType && prevConfig && typeof prevConfig === 'object') {
                                             configCacheRef.current[prevType] = prevConfig;
                                         }
-                                        // Update type field first
                                         field.onChange(nextType);
-                                        // Restore cached config for new type, or defaults if none
                                         const restored = configCacheRef.current[nextType] ?? createDefaultConnectionConfig(nextType);
                                         form.setValue('config', restored, { shouldDirty: true });
                                     }}
                                 >
-                                    <SelectTrigger className="w-[250px]">
+                                    <SelectTrigger className={SELECT_WIDTHS.CONNECTION_TYPE}>
                                         <SelectValue placeholder="Select type" />
                                     </SelectTrigger>
                                     <SelectContent>

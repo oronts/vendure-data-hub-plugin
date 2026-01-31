@@ -1,4 +1,1 @@
-/**
- * Settings Routes
- */
-export { settingsRoute } from './settings';
+export { settingsPage } from './settings';

@@ -20,84 +20,39 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@vendure/dashboard';
-import { graphql } from '@/gql';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@vendure/dashboard';
 import { toast } from 'sonner';
-import { Save, Clock, Info, FileText, AlertCircle } from 'lucide-react';
-import { DATAHUB_NAV_SECTION } from '../../constants/index';
-import { FieldError, FormErrorSummary } from '../../components/common/validation-feedback';
+import { Save, Clock, Info, FileText } from 'lucide-react';
+import { DATAHUB_NAV_SECTION, LOG_PERSISTENCE_LEVELS, ROUTES, DATAHUB_PERMISSIONS, RETENTION, TOAST_SETTINGS, ERROR_MESSAGES } from '../../constants';
+import { FieldError } from '../../components/common';
+import { LoadingState, ErrorState } from '../../components/shared';
+import { useSettings, useUpdateSettings } from '../../hooks';
 
-// CONSTANTS
-
-const LOG_PERSISTENCE_LEVELS = [
-    { value: 'ERROR_ONLY', label: 'Errors Only', description: 'Only persist errors to database' },
-    { value: 'PIPELINE', label: 'Pipeline Events', description: 'Pipeline start/complete/fail + errors (default)' },
-    { value: 'STEP', label: 'Step Events', description: 'All pipeline events + step start/complete' },
-    { value: 'DEBUG', label: 'Debug', description: 'All events including debug information' },
-] as const;
-
-// GRAPHQL
-
-const settingsQuery = graphql(`
-    query DataHubSettings {
-        dataHubSettings {
-            retentionDaysRuns
-            retentionDaysErrors
-            retentionDaysLogs
-            logPersistenceLevel
-        }
-    }
-`);
-
-const setSettingsMutation = graphql(`
-    mutation SetDataHubSettings($input: DataHubSettingsInput!) {
-        setDataHubSettings(input: $input) {
-            retentionDaysRuns
-            retentionDaysErrors
-            retentionDaysLogs
-            logPersistenceLevel
-        }
-    }
-`);
-
-// ROUTE DEFINITION
-
-export const settingsRoute: DashboardRouteDefinition = {
+export const settingsPage: DashboardRouteDefinition = {
     navMenuItem: {
         sectionId: DATAHUB_NAV_SECTION,
         id: 'data-hub-settings',
-        url: '/data-hub/settings',
+        url: ROUTES.SETTINGS,
         title: 'Settings',
     },
-    path: '/data-hub/settings',
+    path: ROUTES.SETTINGS,
     loader: () => ({ breadcrumb: 'Settings' }),
     component: () => (
-        <PermissionGuard requires={['UpdateDataHubSettings']}>
+        <PermissionGuard requires={[DATAHUB_PERMISSIONS.UPDATE_SETTINGS]}>
             <SettingsPage />
         </PermissionGuard>
     ),
 };
 
-// MAIN PAGE
-
 function SettingsPage() {
-    const queryClient = useQueryClient();
-    const { data, isLoading } = useQuery({
-        queryKey: ['DataHubSettings'],
-        queryFn: () => api.query(settingsQuery, {}),
-    });
+    const { data: settings, isLoading, isError, error, refetch } = useSettings();
+    const updateSettings = useUpdateSettings();
 
-    const settings = data?.dataHubSettings ?? {};
-
-    // Form state
     const [runsDays, setRunsDays] = React.useState<string>('');
     const [errorsDays, setErrorsDays] = React.useState<string>('');
     const [logsDays, setLogsDays] = React.useState<string>('');
     const [logLevel, setLogLevel] = React.useState<string>('PIPELINE');
     const [isDirty, setIsDirty] = React.useState(false);
 
-    // Validation state
     const [errors, setErrors] = React.useState<{
         runsDays?: string;
         errorsDays?: string;
@@ -109,14 +64,13 @@ function SettingsPage() {
         logsDays?: boolean;
     }>({});
 
-    // Validation function
-    const validateRetentionDays = (value: string, fieldName: string): string | undefined => {
-        if (value === '') return undefined; // Empty is valid (uses default)
+    const validateRetentionDays = (value: string): string | undefined => {
+        if (value === '') return undefined;
         const num = Number(value);
-        if (isNaN(num)) return 'Please enter a valid number';
-        if (!Number.isInteger(num)) return 'Please enter a whole number';
-        if (num < 1) return 'Must be at least 1 day';
-        if (num > 365) return 'Must be no more than 365 days';
+        if (isNaN(num)) return ERROR_MESSAGES.INVALID_NUMBER;
+        if (!Number.isInteger(num)) return ERROR_MESSAGES.INVALID_INTEGER;
+        if (num < RETENTION.MIN_DAYS) return ERROR_MESSAGES.TOO_SMALL(RETENTION.MIN_DAYS);
+        if (num > RETENTION.MAX_DAYS) return ERROR_MESSAGES.TOO_LARGE(RETENTION.MAX_DAYS);
         return undefined;
     };
 
@@ -124,89 +78,77 @@ function SettingsPage() {
         return !errors.runsDays && !errors.errorsDays && !errors.logsDays;
     }, [errors]);
 
-    // Sync with server data
     React.useEffect(() => {
-        if (settings.retentionDaysRuns != null) {
+        if (settings?.retentionDaysRuns != null) {
             setRunsDays(String(settings.retentionDaysRuns));
         }
-        if (settings.retentionDaysErrors != null) {
+        if (settings?.retentionDaysErrors != null) {
             setErrorsDays(String(settings.retentionDaysErrors));
         }
-        if (settings.retentionDaysLogs != null) {
+        if (settings?.retentionDaysLogs != null) {
             setLogsDays(String(settings.retentionDaysLogs));
         }
-        if (settings.logPersistenceLevel) {
+        if (settings?.logPersistenceLevel) {
             setLogLevel(settings.logPersistenceLevel);
         }
         setIsDirty(false);
         setErrors({});
         setTouched({});
-    }, [settings.retentionDaysRuns, settings.retentionDaysErrors, settings.retentionDaysLogs, settings.logPersistenceLevel]);
-
-    const mutation = useMutation({
-        mutationFn: (vars: { runs?: number | null; errors?: number | null; logs?: number | null; logLevel?: string }) =>
-            api.mutate(setSettingsMutation, {
-                input: {
-                    retentionDaysRuns: vars.runs ?? null,
-                    retentionDaysErrors: vars.errors ?? null,
-                    retentionDaysLogs: vars.logs ?? null,
-                    logPersistenceLevel: vars.logLevel ?? null,
-                },
-            }),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['DataHubSettings'] });
-            toast('Settings saved successfully');
-            setIsDirty(false);
-        },
-        onError: (err: any) => {
-            toast('Failed to save settings', {
-                description: err?.message ?? 'Unknown error',
-            });
-        },
-    });
+    }, [settings?.retentionDaysRuns, settings?.retentionDaysErrors, settings?.retentionDaysLogs, settings?.logPersistenceLevel]);
 
     const handleSave = () => {
-        // Validate all fields before save
         const newErrors = {
-            runsDays: validateRetentionDays(runsDays, 'Pipeline Run History'),
-            errorsDays: validateRetentionDays(errorsDays, 'Error Records'),
-            logsDays: validateRetentionDays(logsDays, 'Log Retention'),
+            runsDays: validateRetentionDays(runsDays),
+            errorsDays: validateRetentionDays(errorsDays),
+            logsDays: validateRetentionDays(logsDays),
         };
         setErrors(newErrors);
         setTouched({ runsDays: true, errorsDays: true, logsDays: true });
 
-        // Don't save if there are errors
         if (newErrors.runsDays || newErrors.errorsDays || newErrors.logsDays) {
-            toast('Please fix validation errors before saving');
+            toast.error(TOAST_SETTINGS.VALIDATION_ERRORS);
             return;
         }
 
-        mutation.mutate({
-            runs: runsDays === '' ? null : Number(runsDays),
-            errors: errorsDays === '' ? null : Number(errorsDays),
-            logs: logsDays === '' ? null : Number(logsDays),
-            logLevel,
-        });
+        updateSettings.mutate(
+            {
+                retentionDaysRuns: runsDays === '' ? null : Number(runsDays),
+                retentionDaysErrors: errorsDays === '' ? null : Number(errorsDays),
+                retentionDaysLogs: logsDays === '' ? null : Number(logsDays),
+                logPersistenceLevel: logLevel,
+            },
+            {
+                onSuccess: () => {
+                    toast.success(TOAST_SETTINGS.SAVE_SUCCESS);
+                    setIsDirty(false);
+                },
+                onError: (err: Error) => {
+                    toast.error(TOAST_SETTINGS.SAVE_ERROR, {
+                        description: err.message || 'Unknown error',
+                    });
+                },
+            }
+        );
     };
 
     const handleRunsDaysChange = (value: string) => {
         setRunsDays(value);
         setIsDirty(true);
-        const error = validateRetentionDays(value, 'Pipeline Run History');
+        const error = validateRetentionDays(value);
         setErrors(prev => ({ ...prev, runsDays: error }));
     };
 
     const handleErrorsDaysChange = (value: string) => {
         setErrorsDays(value);
         setIsDirty(true);
-        const error = validateRetentionDays(value, 'Error Records');
+        const error = validateRetentionDays(value);
         setErrors(prev => ({ ...prev, errorsDays: error }));
     };
 
     const handleLogsDaysChange = (value: string) => {
         setLogsDays(value);
         setIsDirty(true);
-        const error = validateRetentionDays(value, 'Log Retention');
+        const error = validateRetentionDays(value);
         setErrors(prev => ({ ...prev, logsDays: error }));
     };
 
@@ -219,11 +161,35 @@ function SettingsPage() {
         setTouched(prev => ({ ...prev, [field]: true }));
     };
 
+    if (isError) {
+        return (
+            <Page pageId="data-hub-settings">
+                <PageBlock column="main" blockId="error">
+                    <ErrorState
+                        title="Failed to load settings"
+                        message={error instanceof Error ? error.message : 'An unexpected error occurred'}
+                        onRetry={() => refetch()}
+                    />
+                </PageBlock>
+            </Page>
+        );
+    }
+
+    if (isLoading) {
+        return (
+            <Page pageId="data-hub-settings">
+                <PageBlock column="main" blockId="loading">
+                    <LoadingState type="form" rows={4} message="Loading settings..." />
+                </PageBlock>
+            </Page>
+        );
+    }
+
     return (
         <Page pageId="data-hub-settings">
             <PageActionBar>
                 <PageActionBarRight>
-                    <Button onClick={handleSave} disabled={mutation.isPending || !isDirty || !isFormValid}>
+                    <Button onClick={handleSave} disabled={updateSettings.isPending || !isDirty || !isFormValid}>
                         <Save className="w-4 h-4 mr-2" />
                         Save Settings
                     </Button>
@@ -244,64 +210,60 @@ function SettingsPage() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        {isLoading ? (
-                            <div className="py-4 text-muted-foreground">Loading...</div>
-                        ) : (
-                            <div className="space-y-6">
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="runs-days">Pipeline Run History</Label>
-                                        <Input
-                                            id="runs-days"
-                                            type="number"
-                                            min="1"
-                                            max="365"
-                                            placeholder="7"
-                                            value={runsDays}
-                                            onChange={e => handleRunsDaysChange(e.target.value)}
-                                            onBlur={() => handleBlur('runsDays')}
-                                            className={errors.runsDays && touched.runsDays ? 'border-destructive focus-visible:ring-destructive' : ''}
-                                        />
-                                        <FieldError error={errors.runsDays} touched={touched.runsDays} />
-                                        {!errors.runsDays && (
-                                            <p className="text-xs text-muted-foreground">
-                                                Days to keep completed pipeline runs. Leave empty for default (7 days).
-                                            </p>
-                                        )}
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="errors-days">Error Records</Label>
-                                        <Input
-                                            id="errors-days"
-                                            type="number"
-                                            min="1"
-                                            max="365"
-                                            placeholder="30"
-                                            value={errorsDays}
-                                            onChange={e => handleErrorsDaysChange(e.target.value)}
-                                            onBlur={() => handleBlur('errorsDays')}
-                                            className={errors.errorsDays && touched.errorsDays ? 'border-destructive focus-visible:ring-destructive' : ''}
-                                        />
-                                        <FieldError error={errors.errorsDays} touched={touched.errorsDays} />
-                                        {!errors.errorsDays && (
-                                            <p className="text-xs text-muted-foreground">
-                                                Days to keep failed record entries. Leave empty for default (30 days).
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="p-3 bg-muted rounded-lg flex items-start gap-2">
-                                    <Info className="w-4 h-4 text-muted-foreground mt-0.5" />
-                                    <div className="text-sm text-muted-foreground">
-                                        <p>
-                                            Retention cleanup runs automatically. Older data is permanently deleted
-                                            to free up database space.
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <Label htmlFor="runs-days">Pipeline Run History</Label>
+                                    <Input
+                                        id="runs-days"
+                                        type="number"
+                                        min="1"
+                                        max={String(RETENTION.MAX_DAYS)}
+                                        placeholder="7"
+                                        value={runsDays}
+                                        onChange={e => handleRunsDaysChange(e.target.value)}
+                                        onBlur={() => handleBlur('runsDays')}
+                                        className={errors.runsDays && touched.runsDays ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                    />
+                                    <FieldError error={errors.runsDays} touched={touched.runsDays} />
+                                    {!errors.runsDays && (
+                                        <p className="text-xs text-muted-foreground">
+                                            Days to keep completed pipeline runs. Leave empty for default (7 days).
                                         </p>
-                                    </div>
+                                    )}
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="errors-days">Error Records</Label>
+                                    <Input
+                                        id="errors-days"
+                                        type="number"
+                                        min="1"
+                                        max={String(RETENTION.MAX_DAYS)}
+                                        placeholder="30"
+                                        value={errorsDays}
+                                        onChange={e => handleErrorsDaysChange(e.target.value)}
+                                        onBlur={() => handleBlur('errorsDays')}
+                                        className={errors.errorsDays && touched.errorsDays ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                    />
+                                    <FieldError error={errors.errorsDays} touched={touched.errorsDays} />
+                                    {!errors.errorsDays && (
+                                        <p className="text-xs text-muted-foreground">
+                                            Days to keep failed record entries. Leave empty for default (30 days).
+                                        </p>
+                                    )}
                                 </div>
                             </div>
-                        )}
+
+                            <div className="p-3 bg-muted rounded-lg flex items-start gap-2">
+                                <Info className="w-4 h-4 text-muted-foreground mt-0.5" />
+                                <div className="text-sm text-muted-foreground">
+                                    <p>
+                                        Retention cleanup runs automatically. Older data is permanently deleted
+                                        to free up database space.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
             </PageBlock>
@@ -320,64 +282,60 @@ function SettingsPage() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        {isLoading ? (
-                            <div className="py-4 text-muted-foreground">Loading...</div>
-                        ) : (
-                            <div className="space-y-6">
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="log-level">Log Persistence Level</Label>
-                                        <Select value={logLevel} onValueChange={handleLogLevelChange}>
-                                            <SelectTrigger id="log-level">
-                                                <SelectValue placeholder="Select level..." />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {LOG_PERSISTENCE_LEVELS.map(level => (
-                                                    <SelectItem key={level.value} value={level.value}>
-                                                        <div className="flex flex-col">
-                                                            <span>{level.label}</span>
-                                                        </div>
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <p className="text-xs text-muted-foreground">
-                                            {LOG_PERSISTENCE_LEVELS.find(l => l.value === logLevel)?.description}
-                                        </p>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="logs-days">Log Retention</Label>
-                                        <Input
-                                            id="logs-days"
-                                            type="number"
-                                            min="1"
-                                            max="365"
-                                            placeholder="30"
-                                            value={logsDays}
-                                            onChange={e => handleLogsDaysChange(e.target.value)}
-                                            onBlur={() => handleBlur('logsDays')}
-                                            className={errors.logsDays && touched.logsDays ? 'border-destructive focus-visible:ring-destructive' : ''}
-                                        />
-                                        <FieldError error={errors.logsDays} touched={touched.logsDays} />
-                                        {!errors.logsDays && (
-                                            <p className="text-xs text-muted-foreground">
-                                                Days to keep log entries. Leave empty for default (30 days).
-                                            </p>
-                                        )}
-                                    </div>
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <Label htmlFor="log-level">Log Persistence Level</Label>
+                                    <Select value={logLevel} onValueChange={handleLogLevelChange}>
+                                        <SelectTrigger id="log-level">
+                                            <SelectValue placeholder="Select level..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {LOG_PERSISTENCE_LEVELS.map(level => (
+                                                <SelectItem key={level.value} value={level.value}>
+                                                    <div className="flex flex-col">
+                                                        <span>{level.label}</span>
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        {LOG_PERSISTENCE_LEVELS.find(l => l.value === logLevel)?.description}
+                                    </p>
                                 </div>
-
-                                <div className="p-3 bg-muted rounded-lg flex items-start gap-2">
-                                    <Info className="w-4 h-4 text-muted-foreground mt-0.5" />
-                                    <div className="text-sm text-muted-foreground">
-                                        <p>
-                                            <strong>Console logging is always full</strong> - this setting only controls what gets saved to the database
-                                            and shown in the Log Explorer. Higher levels provide more visibility but use more database space.
+                                <div className="space-y-2">
+                                    <Label htmlFor="logs-days">Log Retention</Label>
+                                    <Input
+                                        id="logs-days"
+                                        type="number"
+                                        min="1"
+                                        max={String(RETENTION.MAX_DAYS)}
+                                        placeholder="30"
+                                        value={logsDays}
+                                        onChange={e => handleLogsDaysChange(e.target.value)}
+                                        onBlur={() => handleBlur('logsDays')}
+                                        className={errors.logsDays && touched.logsDays ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                    />
+                                    <FieldError error={errors.logsDays} touched={touched.logsDays} />
+                                    {!errors.logsDays && (
+                                        <p className="text-xs text-muted-foreground">
+                                            Days to keep log entries. Leave empty for default (30 days).
                                         </p>
-                                    </div>
+                                    )}
                                 </div>
                             </div>
-                        )}
+
+                            <div className="p-3 bg-muted rounded-lg flex items-start gap-2">
+                                <Info className="w-4 h-4 text-muted-foreground mt-0.5" />
+                                <div className="text-sm text-muted-foreground">
+                                    <p>
+                                        <strong>Console logging is always full</strong> - this setting only controls what gets saved to the database
+                                        and shown in the Log Explorer. Higher levels provide more visibility but use more database space.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
             </PageBlock>

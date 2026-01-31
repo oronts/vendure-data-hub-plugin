@@ -20,48 +20,34 @@ import {
     SelectValue,
     PermissionGuard,
 } from '@vendure/dashboard';
-import { graphql } from '@/gql';
 import { AnyRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { AlertCircle, Key, Server } from 'lucide-react';
 import { CODE_PATTERN } from '../../utils/form-validation';
-import { FieldError } from '../../components/common/validation-feedback';
+import { DATAHUB_PERMISSIONS, ROUTES, SECRET_PROVIDER, SELECT_WIDTHS, TOAST_SECRET, ERROR_MESSAGES } from '../../constants';
+import { FieldError } from '../../components/common';
+import {
+    secretDetailDocument,
+    createSecretDocument,
+    updateSecretDocument,
+} from '../../hooks';
+import type { DataHubSecret } from '../../types';
 
-const detailDocument = graphql(`
-    query DataHubSecretDetail($id: ID!) {
-        dataHubSecret(id: $id) {
-            id
-            code
-            provider
-            value
-            metadata
-        }
-    }
-`);
-
-const createDocument = graphql(`
-    mutation CreateDataHubSecret($input: CreateDataHubSecretInput!) {
-        createDataHubSecret(input: $input) { id }
-    }
-`);
-
-const updateDocument = graphql(`
-    mutation UpdateDataHubSecret($input: UpdateDataHubSecretInput!) {
-        updateDataHubSecret(input: $input) { id }
-    }
-`);
+type SecretFormInput = Pick<DataHubSecret, 'id' | 'code' | 'provider' | 'value' | 'metadata'> & {
+    hasValue: boolean;
+};
 
 export const secretDetail: DashboardRouteDefinition = {
-    path: '/data-hub/secrets/$id',
+    path: `${ROUTES.SECRETS}/$id`,
     loader: detailPageRouteLoader({
-        queryDocument: detailDocument,
+        queryDocument: secretDetailDocument,
         breadcrumb: (isNew, entity) => [
-            { path: '/data-hub/secrets', label: 'Secrets' },
+            { path: ROUTES.SECRETS, label: 'Secrets' },
             isNew ? 'New Secret' : (entity?.code ?? ''),
         ],
     }),
     component: route => (
-        <PermissionGuard requires={['ReadDataHubSecret']}>
+        <PermissionGuard requires={[DATAHUB_PERMISSIONS.READ_SECRET]}>
             <SecretDetailPage route={route} />
         </PermissionGuard>
     ),
@@ -73,12 +59,12 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
     const creating = params.id === 'new';
 
     const { form, submitHandler, entity, isPending, resetForm } = useDetailPage({
-        queryDocument: detailDocument,
-        createDocument,
-        updateDocument,
+        queryDocument: secretDetailDocument,
+        createDocument: createSecretDocument,
+        updateDocument: updateSecretDocument,
         setValuesForCreate: () => ({
             code: '',
-            provider: 'inline',
+            provider: SECRET_PROVIDER.INLINE,
             value: '',
             metadata: null,
             hasValue: false,
@@ -86,45 +72,45 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
         setValuesForUpdate: s => ({
             id: s?.id ?? '',
             code: s?.code ?? '',
-            provider: s?.provider ?? 'inline',
+            provider: s?.provider ?? SECRET_PROVIDER.INLINE,
             value: '',
             metadata: s?.metadata ?? null,
             hasValue: Boolean(s?.value),
         }),
-        transformInput: input => {
-            const { hasValue, ...rest } = input as any;
+        transformInput: (input: SecretFormInput) => {
+            const { hasValue, ...rest } = input;
+            const result: Record<string, unknown> = { ...rest };
             if (!rest.value && hasValue && rest.id) {
-                delete rest.value;
+                delete result.value;
             }
-            if (rest.provider === 'inline' && rest.value === '') {
-                rest.value = null;
+            if (rest.provider === SECRET_PROVIDER.INLINE && rest.value === '') {
+                result.value = null;
             }
-            return rest;
+            return result;
         },
         params: { id: params.id },
         onSuccess: async data => {
-            toast('Secret saved successfully');
+            toast.success(TOAST_SECRET.SAVE_SUCCESS);
             resetForm();
             if (creating) {
                 await navigate({ to: `../$id`, params: { id: data.id } });
             }
         },
         onError: err => {
-            toast('Failed to save secret', {
+            toast.error(TOAST_SECRET.SAVE_ERROR, {
                 description: err instanceof Error ? err.message : 'Unknown error',
             });
         },
     });
 
-    // Ensure form shows server values immediately after load
     React.useEffect(() => {
         if (!entity) return;
         form.reset(
             {
                 id: entity.id ?? '',
                 code: entity.code ?? '',
-                provider: entity.provider ?? 'inline',
-                value: '', // never hydrate masked values
+                provider: entity.provider ?? SECRET_PROVIDER.INLINE,
+                value: '',
                 metadata: entity.metadata ?? null,
                 hasValue: Boolean(entity.value),
             },
@@ -132,7 +118,7 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
         );
     }, [entity?.id]);
 
-    const provider = (form.watch('provider') || entity?.provider || 'inline') as 'inline' | 'env';
+    const provider = (form.watch('provider') || entity?.provider || SECRET_PROVIDER.INLINE) as 'inline' | 'env';
     const hasStoredValue = Boolean(form.watch('hasValue') ?? (entity?.value ? true : false));
     const currentValue = form.watch('value');
 
@@ -141,7 +127,7 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
             <PageTitle>{creating ? 'New Secret' : (entity?.code ?? '')}</PageTitle>
             <PageActionBar>
                 <PageActionBarRight>
-                    <PermissionGuard requires={creating ? ['CreateDataHubSecret'] : ['UpdateDataHubSecret']}>
+                    <PermissionGuard requires={creating ? [DATAHUB_PERMISSIONS.CREATE_SECRET] : [DATAHUB_PERMISSIONS.UPDATE_SECRET]}>
                         <Button type="submit" disabled={!form.formState.isDirty || !form.formState.isValid || isPending}>
                             {creating ? 'Create' : 'Update'}
                         </Button>
@@ -156,10 +142,10 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                             name="code"
                             label="Code"
                             rules={{
-                                required: 'Code is required',
+                                required: ERROR_MESSAGES.CODE_REQUIRED,
                                 pattern: {
                                     value: CODE_PATTERN,
-                                    message: 'Must start with a letter and contain only letters, numbers, hyphens, and underscores',
+                                    message: ERROR_MESSAGES.CODE_PATTERN,
                                 },
                             }}
                             render={({ field, fieldState }) => (
@@ -182,24 +168,24 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                             control={form.control}
                             name="provider"
                             label="Provider"
-                            rules={{ required: 'Provider is required' }}
+                            rules={{ required: ERROR_MESSAGES.PROVIDER_REQUIRED }}
                             render={({ field, fieldState }) => (
                                 <div>
                                     <Select
-                                        value={(field.value as string) || (entity?.provider ?? 'inline')}
+                                        value={(field.value as string) || (entity?.provider ?? SECRET_PROVIDER.INLINE)}
                                         onValueChange={field.onChange}
                                     >
-                                        <SelectTrigger className="w-[220px]">
+                                        <SelectTrigger className={SELECT_WIDTHS.PROVIDER}>
                                             <SelectValue placeholder="Select provider" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="inline">
+                                            <SelectItem value={SECRET_PROVIDER.INLINE}>
                                                 <div className="flex items-center gap-2">
                                                     <Key className="w-4 h-4" />
                                                     Inline Value
                                                 </div>
                                             </SelectItem>
-                                            <SelectItem value="env">
+                                            <SelectItem value={SECRET_PROVIDER.ENV}>
                                                 <div className="flex items-center gap-2">
                                                     <Server className="w-4 h-4" />
                                                     Environment Variable
@@ -231,17 +217,14 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                             label={provider === 'env' ? 'Environment Variable Name' : 'Secret Value'}
                             rules={{
                                 validate: (value: string) => {
-                                    // For env provider, value is always required
-                                    if (provider === 'env' && (!value || value.trim() === '')) {
-                                        return 'Environment variable name is required';
+                                    if (provider === SECRET_PROVIDER.ENV && (!value || value.trim() === '')) {
+                                        return ERROR_MESSAGES.ENV_VAR_NAME_REQUIRED;
                                     }
-                                    // For inline provider when creating, value is required
-                                    if (creating && provider === 'inline' && (!value || value.trim() === '')) {
-                                        return 'Secret value is required when creating a new secret';
+                                    if (creating && provider === SECRET_PROVIDER.INLINE && (!value || value.trim() === '')) {
+                                        return ERROR_MESSAGES.SECRET_VALUE_REQUIRED;
                                     }
-                                    // For env variables, validate the format (uppercase letters, numbers, underscores)
-                                    if (provider === 'env' && value && !/^[A-Z][A-Z0-9_]*$/.test(value)) {
-                                        return 'Environment variable names should be uppercase with underscores (e.g., MY_API_KEY)';
+                                    if (provider === SECRET_PROVIDER.ENV && value && !/^[A-Z][A-Z0-9_]*$/.test(value)) {
+                                        return ERROR_MESSAGES.ENV_VAR_FORMAT;
                                     }
                                     return true;
                                 },
@@ -249,16 +232,16 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                             render={({ field, fieldState }) => (
                                 <div>
                                     <Input
-                                        type={provider === 'env' ? 'text' : 'password'}
+                                        type={provider === SECRET_PROVIDER.ENV ? 'text' : 'password'}
                                         {...field}
                                         value={field.value || ''}
-                                        placeholder={provider === 'env' ? 'MY_API_KEY' : 'Enter secret value'}
+                                        placeholder={provider === SECRET_PROVIDER.ENV ? 'MY_API_KEY' : 'Enter secret value'}
                                         className={fieldState.error ? 'border-destructive focus-visible:ring-destructive' : ''}
                                     />
                                     <FieldError error={fieldState.error?.message} touched={fieldState.isTouched} />
                                     {!fieldState.error && (
                                         <p className="mt-1 text-xs text-muted-foreground">
-                                            {provider === 'env'
+                                            {provider === SECRET_PROVIDER.ENV
                                                 ? 'Name of the environment variable to read at runtime'
                                                 : 'The actual secret value (stored encrypted)'}
                                         </p>
@@ -268,7 +251,7 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                         />
                     </div>
 
-                    {hasStoredValue && provider !== 'env' && !currentValue && (
+                    {hasStoredValue && provider !== SECRET_PROVIDER.ENV && !currentValue && (
                         <div className="mt-4 p-3 bg-muted rounded-lg flex items-start gap-2">
                             <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
                             <div className="text-sm text-muted-foreground">
@@ -278,7 +261,7 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                         </div>
                     )}
 
-                    {provider === 'env' && (
+                    {provider === SECRET_PROVIDER.ENV && (
                         <div className="mt-4 p-3 bg-muted rounded-lg flex items-start gap-2">
                             <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
                             <div className="text-sm text-muted-foreground">

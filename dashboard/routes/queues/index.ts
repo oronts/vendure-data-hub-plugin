@@ -1,4 +1,1 @@
-/**
- * Queue Routes
- */
-export { queuesRoute } from './queues';
+export { queuesPage } from './queues';

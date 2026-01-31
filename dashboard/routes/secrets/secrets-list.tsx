@@ -1,38 +1,24 @@
-import * as React from 'react';
 import { Button, DashboardRouteDefinition, DetailPageButton, ListPage, PageActionBarRight, PermissionGuard } from '@vendure/dashboard';
-import { DATAHUB_NAV_SECTION } from '../../constants/index';
-import { graphql } from '@/gql';
+import { DATAHUB_NAV_SECTION, DATAHUB_PERMISSIONS, ROUTES } from '../../constants';
+import { secretsListDocument, deleteSecretDocument } from '../../hooks';
 import { Link } from '@tanstack/react-router';
-
-const listDocument = graphql(`
-    query DataHubSecrets($options: DataHubSecretListOptions) {
-        dataHubSecrets(options: $options) {
-            items { id code provider }
-            totalItems
-        }
-    }
-`);
-
-const deleteDocument = graphql(`
-    mutation DeleteDataHubSecret($id: ID!) { deleteDataHubSecret(id: $id) { result } }
-`);
 
 export const secretsList: DashboardRouteDefinition = {
     navMenuItem: {
         sectionId: DATAHUB_NAV_SECTION,
         id: 'data-hub-secrets',
-        url: '/data-hub/secrets',
+        url: ROUTES.SECRETS,
         title: 'Secrets',
     },
-    path: '/data-hub/secrets',
+    path: ROUTES.SECRETS,
     loader: () => ({ breadcrumb: 'Secrets' }),
     component: route => (
-        <PermissionGuard requires={['ReadDataHubSecret']}>
+        <PermissionGuard requires={[DATAHUB_PERMISSIONS.READ_SECRET]}>
             <ListPage
                 pageId="data-hub-secrets-list"
                 title="Secrets"
-                listQuery={listDocument}
-                deleteMutation={deleteDocument}
+                listQuery={secretsListDocument}
+                deleteMutation={deleteSecretDocument}
                 route={route}
                 customizeColumns={{
                     code: { header: 'Code', cell: ({ row }) => <DetailPageButton id={row.original.id} label={row.original.code} /> },
