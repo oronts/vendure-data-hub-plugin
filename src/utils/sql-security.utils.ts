@@ -1,18 +1,26 @@
 /**
  * SQL Security Utilities
- * 
- * Provides safe SQL query construction with column whitelisting and validation.
- * Prevents SQL injection attacks by validating all SQL identifiers.
+ *
+ * Provides protection against SQL injection attacks through:
+ * - Column/table name validation
+ * - Identifier escaping
+ * - SQL injection pattern detection
+ *
+ * IMPORTANT: These utilities should be used alongside parameterized queries,
+ * not as a replacement. Always use parameterized queries for user input.
  */
+
+/** Maximum allowed identifier length (most DBs support at least 128) */
+const MAX_IDENTIFIER_LENGTH = 128;
 
 const VALID_COLUMN_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 const VALID_TABLE_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$/;
 
 /**
- * Validate a column name against whitelist and pattern
- * 
- * @param column - Column name to validate
- * @param allowedColumns - Whitelist of allowed column names
+ * Validates a column name for SQL safety.
+ *
+ * @param column - The column name to validate
+ * @param allowedColumns - Optional whitelist of allowed column names
  * @throws Error if column is invalid or not in whitelist
  */
 export function validateColumnName(
@@ -21,6 +29,10 @@ export function validateColumnName(
 ): void {
     if (!column) {
         throw new Error('Column name is required');
+    }
+
+    if (column.length > MAX_IDENTIFIER_LENGTH) {
+        throw new Error(`Column name exceeds maximum length of ${MAX_IDENTIFIER_LENGTH} characters`);
     }
 
     if (!VALID_COLUMN_PATTERN.test(column)) {
@@ -33,14 +45,20 @@ export function validateColumnName(
 }
 
 /**
- * Validate a table name
- * 
- * @param table - Table name to validate
+ * Validates a table name for SQL safety.
+ * Supports schema-qualified names (e.g., "schema.table").
+ *
+ * @param table - The table name to validate
  * @throws Error if table name is invalid
  */
 export function validateTableName(table: string | undefined): void {
     if (!table) {
         throw new Error('Table name is required');
+    }
+
+    // Check total length (schema.table could be up to 2x + 1)
+    if (table.length > (MAX_IDENTIFIER_LENGTH * 2 + 1)) {
+        throw new Error(`Table name exceeds maximum allowed length`);
     }
 
     if (!VALID_TABLE_PATTERN.test(table)) {
@@ -49,9 +67,13 @@ export function validateTableName(table: string | undefined): void {
 }
 
 /**
- * Escape a SQL identifier for safe use in queries
- * 
- * @param identifier - SQL identifier to escape
+ * Escapes an SQL identifier (column/table name) for safe interpolation.
+ * Uses double-quote escaping per SQL standard.
+ *
+ * IMPORTANT: Prefer using parameterized queries when possible.
+ * This function is for cases where identifiers must be interpolated.
+ *
+ * @param identifier - The identifier to escape
  * @returns Escaped identifier wrapped in double quotes
  */
 export function escapeSqlIdentifier(identifier: string): string {
@@ -59,15 +81,6 @@ export function escapeSqlIdentifier(identifier: string): string {
     return `"${identifier.replace(/"/g, '""')}"`;
 }
 
-/**
- * Validate and sanitize a LIMIT/OFFSET value
- * 
- * @param value - Numeric value to validate
- * @param min - Minimum allowed value (default: 0)
- * @param max - Maximum allowed value (default: 1000000)
- * @returns Sanitized integer value
- * @throws Error if value is invalid
- */
 export function validateLimitOffset(
     value: number | string | undefined,
     min: number = 0,
@@ -87,28 +100,53 @@ export function validateLimitOffset(
 }
 
 /**
- * Check if a string contains SQL injection patterns
- * 
- * @param str - String to check
- * @returns true if potentially dangerous patterns found
+ * Maximum string length to check for SQL injection patterns.
+ * Prevents ReDoS attacks on very long strings.
  */
-export function containsSqlInjection(str: string): boolean {
-    const dangerousPatterns = [
-        /;.*\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE|EXEC)\b/i,
-        /--/,
-        /\/\*/,
-        /\*\//,
-        /xp_/i,
-        /\bUNION\b.*SELECT\b/i,
-        /'.*'.*/,
-    ];
-    
-    return dangerousPatterns.some(pattern => pattern.test(str));
-}
+const MAX_SQL_CHECK_LENGTH = 10_000;
 
 /**
- * Common column name whitelists for database operations
+ * Check if a string contains potential SQL injection patterns.
+ * Note: This is a heuristic check and should be used alongside parameterized queries.
+ *
+ * @param str - String to check
+ * @returns true if potential SQL injection detected
  */
+export function containsSqlInjection(str: string): boolean {
+    // Truncate very long strings to prevent ReDoS
+    const checkStr = str.length > MAX_SQL_CHECK_LENGTH ? str.slice(0, MAX_SQL_CHECK_LENGTH) : str;
+
+    // Use simpler patterns that are less susceptible to ReDoS
+    // Pattern 1: Statement terminator followed by DDL/DML commands
+    if (/;\s*(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE|EXEC)\b/i.test(checkStr)) {
+        return true;
+    }
+
+    // Pattern 2: SQL comment indicators
+    if (/--/.test(checkStr) || /\/\*/.test(checkStr) || /\*\//.test(checkStr)) {
+        return true;
+    }
+
+    // Pattern 3: xp_ extended stored procedures (SQL Server specific)
+    if (/\bxp_\w/i.test(checkStr)) {
+        return true;
+    }
+
+    // Pattern 4: UNION-based injection (simplified to avoid ReDoS)
+    if (/\bUNION\b[\s\S]{0,50}\bSELECT\b/i.test(checkStr)) {
+        return true;
+    }
+
+    // Pattern 5: Multiple single quotes (potential string escape attack)
+    // Count single quotes instead of using regex that could ReDoS
+    const quoteCount = (checkStr.match(/'/g) || []).length;
+    if (quoteCount >= 4) {
+        return true;
+    }
+
+    return false;
+}
+
 export const COMMON_WHITELISTS = {
     ID_COLUMNS: new Set(['id', 'ID', '_id', 'Id']),
     TIMESTAMP_COLUMNS: new Set(['created_at', 'updated_at', 'deleted_at', 'createdAt', 'updatedAt', 'deletedAt']),
