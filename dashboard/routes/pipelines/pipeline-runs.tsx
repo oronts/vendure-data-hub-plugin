@@ -1,174 +1,100 @@
-import { Button, DataTable, PageBlock, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, PermissionGuard, Input } from '@vendure/dashboard';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ColumnDef, SortingState } from '@tanstack/react-table';
 import * as React from 'react';
-import { graphql } from '@/gql';
-import { api } from '@vendure/dashboard';
-import { Json } from '@vendure/dashboard';
-import { POLLING_INTERVALS } from '../../constants';
-
-// =============================================================================
-// TYPE DEFINITIONS
-// =============================================================================
-
-/** Run metrics structure from GraphQL */
-interface RunMetrics {
-    processed?: number;
-    succeeded?: number;
-    failed?: number;
-    durationMs?: number;
-    details?: StepMetricsDetail[];
-    [key: string]: unknown;
-}
-
-/** Step-level metrics detail */
-interface StepMetricsDetail {
-    stepKey?: string;
-    type?: string;
-    adapterCode?: string;
-    /** Number of successfully processed records (canonical field name) */
-    ok?: number;
-    fail?: number;
-    durationMs?: number;
-    counters?: Record<string, number>;
-    [key: string]: unknown;
-}
-
-const pipelineRunsDocument = graphql(`
-    query DataHubPipelineRuns($pipelineId: ID, $options: DataHubPipelineListOptions) {
-        dataHubPipelineRuns(pipelineId: $pipelineId, options: $options) {
-            items {
-                id
-                status
-                startedAt
-                finishedAt
-                metrics
-            }
-            totalItems
-        }
-    }
-`);
-
-const cancelRunDocument = graphql(`
-    mutation CancelDataHubPipelineRun($id: ID!) {
-        cancelDataHubPipelineRun(id: $id) {
-            id
-            status
-        }
-    }
-`);
+import {
+    Button,
+    DataTable,
+    PageBlock,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+    Drawer,
+    DrawerContent,
+    DrawerHeader,
+    DrawerTitle,
+    DrawerDescription,
+    PermissionGuard,
+    Input,
+    Json,
+} from '@vendure/dashboard';
+import { ColumnDef, SortingState } from '@tanstack/react-table';
+import { toast } from 'sonner';
+import { ErrorState, LoadingState } from '../../components/shared';
+import { formatDateTime } from '../../utils/formatters';
+import { QUERY_LIMITS, DATAHUB_PERMISSIONS, RUN_STATUS, FILTER_VALUES, SELECT_WIDTHS, TOAST_PIPELINE } from '../../constants';
+import {
+    usePipelineRuns,
+    usePipelineRun,
+    useRunErrors,
+    useErrorAudits,
+    useCancelRun,
+    useRetryError,
+    useRunPipeline,
+    handleMutationError,
+} from '../../hooks';
+import type {
+    IndividualRunMetrics,
+    StepMetricsDetail,
+    RunRow,
+    RunDetailsPanelProps,
+    RunErrorsListProps,
+} from '../../types';
 
 export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
-    const queryClient = useQueryClient();
     const [page, setPage] = React.useState(1);
-    const [itemsPerPage, setItemsPerPage] = React.useState(10);
+    const [itemsPerPage, setItemsPerPage] = React.useState(QUERY_LIMITS.PAGINATION_DEFAULT);
     const [sorting, setSorting] = React.useState<SortingState>([
         { id: 'startedAt', desc: true },
     ]);
     const [status, setStatus] = React.useState<string>('');
+    const [selectedRun, setSelectedRun] = React.useState<RunRow | null>(null);
 
     const sortVar = sorting.length
         ? { [sorting[0].id]: sorting[0].desc ? 'DESC' : 'ASC' }
         : undefined;
 
-    // Note: GraphQL types for sort/filter may be looser than TypeScript expects
-    // These casts are necessary for compatibility with the generated GraphQL types
-    const { data, isLoading, refetch } = useQuery({
-        queryKey: ['DataHubPipelineRuns', pipelineId, page, itemsPerPage, sortVar, status],
-        queryFn: () =>
-            api.query(pipelineRunsDocument, {
-                pipelineId,
-                options: {
-                    take: itemsPerPage,
-                    skip: (page - 1) * itemsPerPage,
-                    sort: sortVar as Record<string, 'ASC' | 'DESC'> | undefined,
-                    filter: status ? { status: { eq: status } } : undefined,
-                },
-            }),
-        enabled: !!pipelineId,
-        refetchInterval: POLLING_INTERVALS.PIPELINE_RUNS,
+    const { data, isLoading, isError, error, refetch } = usePipelineRuns(pipelineId, {
+        take: itemsPerPage,
+        skip: (page - 1) * itemsPerPage,
+        sort: sortVar as Record<string, 'ASC' | 'DESC'> | undefined,
+        filter: status ? { status: { eq: status } } : undefined,
     });
 
-    const cancelRunMutation = useMutation({
-        mutationFn: (vars: { id: string }) => api.mutate(cancelRunDocument, vars),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['DataHubPipelineRuns', pipelineId] });
-        },
-    });
+    const cancelRun = useCancelRun();
+    const runPipeline = useRunPipeline();
 
-    type RunRow = {
-        id: string;
-        status: string;
-        startedAt?: string | null;
-        finishedAt?: string | null;
-        metrics?: RunMetrics;
-    };
+    const runs: RunRow[] = data?.items ?? [];
+    const totalItems = data?.totalItems ?? 0;
 
-    const runs: RunRow[] = data?.dataHubPipelineRuns.items ?? [];
-    const totalItems = data?.dataHubPipelineRuns.totalItems ?? 0;
+    const handleSelectRun = React.useCallback((run: RunRow) => {
+        setSelectedRun(run);
+    }, []);
 
-    const [selectedRun, setSelectedRun] = React.useState<RunRow | null>(null);
+    const handleCancelRun = React.useCallback((runId: string) => {
+        cancelRun.mutate(runId);
+    }, [cancelRun]);
 
-    const runDetailsDocument = graphql(`
-        query DataHubPipelineRunDetail($id: ID!) {
-            dataHubPipelineRun(id: $id) {
-                id
-                status
-                startedAt
-                finishedAt
-                metrics
-                error
-                pipeline { id }
-                startedByUserId
-            }
-        }
-    `);
+    const handleStatusChange = React.useCallback((v: string) => {
+        setPage(1);
+        setStatus(v === FILTER_VALUES.ALL ? '' : v);
+    }, []);
 
-    const runDetails = useQuery({
-        queryKey: ['DataHubPipelineRunDetail', selectedRun?.id],
-        queryFn: () => api.query(runDetailsDocument, { id: selectedRun?.id! }),
-        enabled: !!selectedRun?.id,
-        refetchInterval: selectedRun ? POLLING_INTERVALS.PIPELINE_RUN_DETAILS : false,
-    });
+    const handleCloseDrawer = React.useCallback((open: boolean) => {
+        if (!open) setSelectedRun(null);
+    }, []);
 
-    const runErrorsDocument = graphql(`
-        query DataHubRunErrors($runId: ID!) {
-            dataHubRunErrors(runId: $runId) {
-                id
-                stepKey
-                message
-                payload
-            }
-        }
-    `);
+    const handleOnCancel = React.useCallback((id: string) => {
+        cancelRun.mutate(id);
+    }, [cancelRun]);
 
-    const runErrorAuditsDocument = graphql(`
-        query DataHubRecordRetryAudits($errorId: ID!) {
-            dataHubRecordRetryAudits(errorId: $errorId) {
-                id
-                createdAt
-                userId
-                previousPayload
-                patch
-                resultingPayload
-            }
-        }
-    `);
+    const handleOnRerun = React.useCallback((pipelineId: string) => {
+        runPipeline.mutate(pipelineId, {
+            onSuccess: () => toast.success(TOAST_PIPELINE.RUN_STARTED),
+            onError: (err) => handleMutationError('start pipeline run', err),
+        });
+    }, [runPipeline]);
 
-    const runErrors = useQuery({
-        queryKey: ['DataHubRunErrors', selectedRun?.id],
-        queryFn: () => api.query(runErrorsDocument, { runId: selectedRun?.id! }),
-        enabled: !!selectedRun?.id,
-        refetchInterval: selectedRun ? POLLING_INTERVALS.RUN_ERRORS : false,
-    });
-
-    const retryRecordDocument = graphql(`
-        mutation RetryDataHubRecord($errorId: ID!, $patch: JSON) {
-            retryDataHubRecord(errorId: $errorId, patch: $patch)
-        }
-    `);
-
-    const columns: ColumnDef<RunRow, unknown>[] = [
+    const columns: ColumnDef<RunRow, unknown>[] = React.useMemo(() => [
         {
             id: 'id',
             header: 'ID',
@@ -176,7 +102,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             cell: ({ row }) => (
                 <button
                     className="font-mono text-muted-foreground underline-offset-2 hover:underline"
-                    onClick={() => setSelectedRun(row.original)}
+                    onClick={() => handleSelectRun(row.original)}
                 >
                     {row.original.id}
                 </button>
@@ -193,13 +119,13 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             id: 'startedAt',
             header: 'Started',
             accessorFn: row => row.startedAt ?? '',
-            cell: ({ row }) => formatDate(row.original.startedAt),
+            cell: ({ row }) => formatDateTime(row.original.startedAt),
         },
         {
             id: 'finishedAt',
             header: 'Finished',
             accessorFn: row => row.finishedAt ?? '',
-            cell: ({ row }) => formatDate(row.original.finishedAt),
+            cell: ({ row }) => formatDateTime(row.original.finishedAt),
         },
         {
             id: 'processed',
@@ -213,13 +139,13 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             header: 'Actions',
             cell: ({ row }) => {
                 const st = row.original.status;
-                const canCancel = st === 'RUNNING' || st === 'PENDING';
+                const canCancel = st === RUN_STATUS.RUNNING || st === RUN_STATUS.PENDING;
                 return canCancel ? (
                     <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => cancelRunMutation.mutate({ id: row.original.id })}
-                        disabled={cancelRunMutation.isPending}
+                        onClick={() => handleCancelRun(row.original.id)}
+                        disabled={cancelRun.isPending}
                     >
                         Cancel
                     </Button>
@@ -229,270 +155,306 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             },
             enableSorting: false,
         },
-    ];
+    ], [handleSelectRun, handleCancelRun, cancelRun.isPending]);
+
+    if (isError && !data) {
+        return (
+            <PageBlock column="main" blockId="runs-error">
+                <ErrorState
+                    title="Failed to load pipeline runs"
+                    message={error instanceof Error ? error.message : 'An unknown error occurred'}
+                    onRetry={() => refetch()}
+                />
+            </PageBlock>
+        );
+    }
+
+    if (isLoading && runs.length === 0) {
+        return (
+            <PageBlock column="main" blockId="runs-loading">
+                <LoadingState type="table" rows={5} message="Loading pipeline runs..." />
+            </PageBlock>
+        );
+    }
 
     return (
         <>
-        <PageBlock column="main" blockId="runs">
-            <div className="flex items-center justify-between mb-2">
-                <h3 className="text-base font-semibold">Runs</h3>
-                <div className="flex items-center gap-2">
-                    <Select value={status || '__all__'} onValueChange={v => { setPage(1); setStatus(v === '__all__' ? '' : v); }}>
-                        <SelectTrigger className="w-[160px]">
-                            <SelectValue placeholder="All statuses" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="__all__">All</SelectItem>
-                            <SelectItem value="PENDING">Pending</SelectItem>
-                            <SelectItem value="RUNNING">Running</SelectItem>
-                            <SelectItem value="COMPLETED">Completed</SelectItem>
-                            <SelectItem value="FAILED">Failed</SelectItem>
-                            <SelectItem value="CANCEL_REQUESTED">Cancel requested</SelectItem>
-                            <SelectItem value="CANCELLED">Cancelled</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <Button variant="ghost" onClick={() => refetch()} disabled={isLoading}>
-                        Refresh
-                    </Button>
-                </div>
-            </div>
-            <DataTable
-                columns={columns}
-                data={runs}
-                totalItems={totalItems}
-                isLoading={isLoading}
-                page={page}
-                itemsPerPage={itemsPerPage}
-                sorting={sorting}
-                onPageChange={p => setPage(p)}
-                onSortChange={setSorting}
-                onRefresh={refetch}
-                disableViewOptions
-            />
-        </PageBlock>
-        <Drawer open={!!selectedRun} onOpenChange={open => !open && setSelectedRun(null)}>
-            <DrawerContent>
-                <DrawerHeader>
-                    <DrawerTitle>Run details</DrawerTitle>
-                    <DrawerDescription>
-                        {selectedRun ? `Run ${selectedRun.id}` : 'Details'}
-                    </DrawerDescription>
-                </DrawerHeader>
-                {selectedRun ? (
-                    <div className="p-4 space-y-4">
-                        {(() => {
-                            const d = runDetails.data?.dataHubPipelineRun;
-                            const status = d?.status ?? selectedRun.status;
-                            const metrics: RunMetrics = (d?.metrics as RunMetrics) ?? selectedRun.metrics ?? {};
-                            const processed = Number(metrics.processed ?? 0);
-                            const succeeded = Number(metrics.succeeded ?? 0);
-                            const failed = Number(metrics.failed ?? 0);
-                            const summary = `${processed} processed • ${succeeded} succeeded • ${failed} failed`;
-                            return (
-                                <>
-                                    <div className="flex items-center justify-between">
-                                        <div className="text-sm">Status: {status}</div>
-                                        <div>
-                                            <Button variant="ghost" size="sm" onClick={() => runDetails.refetch()} disabled={runDetails.isFetching}>
-                                                Refresh
-                                            </Button>
-                                        </div>
-                                    </div>
-                                    <div className="text-sm text-muted-foreground">{summary}</div>
-                                    <div className="text-xs text-muted-foreground">Started by: {d?.startedByUserId ?? '—'}</div>
-                                    {(() => {
-                                        const metricsTyped = d?.metrics as RunMetrics | undefined;
-                                        const detailsArr: StepMetricsDetail[] = Array.isArray(metricsTyped?.details)
-                                            ? metricsTyped.details
-                                            : [];
-                                        const countersObj = detailsArr.find(x => x && typeof x === 'object' && x.counters);
-                                        if (!countersObj?.counters) return null;
-                                        const c = countersObj.counters;
-                                        return (
-                                            <div className="mt-2">
-                                                <div className="text-sm font-medium mb-1">Counters</div>
-                                                <table className="text-sm">
-                                                    <tbody>
-                                                        {Object.entries(c).map(([k, v]) => (
-                                                            <tr key={k}>
-                                                                <td className="pr-3 text-muted-foreground">{k}</td>
-                                                                <td>{String(v)}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        );
-                                    })()}
-                                    {(() => {
-                                        const metricsTyped = d?.metrics as RunMetrics | undefined;
-                                        const details: StepMetricsDetail[] = Array.isArray(metricsTyped?.details)
-                                            ? metricsTyped.details
-                                            : [];
-                                        if (!details.length) return null;
-                                        return (
-                                            <div className="mt-2">
-                                                <div className="text-sm font-medium mb-1">Step summary</div>
-                                                <table className="w-full text-sm">
-                                                    <thead>
-                                                        <tr className="bg-muted">
-                                                            <th className="text-left px-2 py-1">Step</th>
-                                                            <th className="text-left px-2 py-1">Type</th>
-                                                            <th className="text-left px-2 py-1">Adapter</th>
-                                                            <th className="text-left px-2 py-1">Out/OK/Fail</th>
-                                                            <th className="text-left px-2 py-1">Duration</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {details.map((s, i) => (
-                                                            <tr key={i} className="border-t">
-                                                                <td className="px-2 py-1 font-mono text-muted-foreground">{s.stepKey}</td>
-                                                                <td className="px-2 py-1">{s.type}</td>
-                                                                <td className="px-2 py-1">{s.adapterCode ?? '—'}</td>
-                                                                <td className="px-2 py-1">{s.ok ?? 0}{typeof s.fail === 'number' ? ` / ${s.fail}` : ''}</td>
-                                                                <td className="px-2 py-1">{typeof s.durationMs === 'number' ? `${s.durationMs} ms` : '—'}</td>
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        );
-                                    })()}
-                                    <div>
-                                        <div className="text-sm font-medium mb-1">Metrics</div>
-                                        <Json value={d?.metrics ?? selectedRun.metrics ?? {}} />
-                                    </div>
-                                    <div className="text-sm">
-                                        <div className="text-sm font-medium mb-1">Started</div>
-                                        <div>{formatDate(d?.startedAt ?? selectedRun.startedAt)}</div>
-                                    </div>
-                                    <div className="text-sm">
-                                        <div className="text-sm font-medium mb-1">Finished</div>
-                                        <div>{formatDate(d?.finishedAt ?? selectedRun.finishedAt)}</div>
-                                    </div>
-                                    {d?.error ? (
-                                        <div className="text-sm">
-                                            <div className="text-sm font-medium mb-1">Error</div>
-                                            <pre className="bg-muted p-3 rounded text-xs overflow-auto">{String(d.error)}</pre>
-                                        </div>
-                                    ) : null}
-                                    {(status === 'RUNNING' || status === 'PENDING') && (
-                                        <div>
-                                            <Button
-                                                variant="secondary"
-                                                onClick={() => {
-                                                    const id = d?.id ?? selectedRun.id;
-                                                    cancelRunMutation.mutate({ id });
-                                                }}
-                                                disabled={cancelRunMutation.isPending}
-                                            >
-                                                Cancel run
-                                            </Button>
-                                        </div>
-                                    )}
-                                    {d?.pipeline?.id && (
-                                        <div>
-                                            <Button
-                                                variant="outline"
-                                                onClick={async () => {
-                                                    try {
-                                                        await api.mutate(graphql(`
-                                                            mutation ReRun($pipelineId: ID!) {
-                                                                startDataHubPipelineRun(pipelineId: $pipelineId) { id status }
-                                                            }
-                                                        `), { pipelineId: d.pipeline.id });
-                                                    } catch {}
-                                                }}
-                                            >
-                                                Re-run
-                                            </Button>
-                                        </div>
-                                    )}
-                                    <div className="mt-4">
-                                        <div className="text-sm font-medium mb-1">Record errors</div>
-                                        <div className="text-sm text-muted-foreground mb-2">Failed records captured during this run</div>
-                                        <PermissionGuard requires={['ViewQuarantine']}>
-                                            <RunErrorsList
-                                                runId={selectedRun.id}
-                                                items={runErrors.data?.dataHubRunErrors ?? []}
-                                                onRetry={async (errorId, patch) => {
-                                                    try {
-                                                        await api.mutate(retryRecordDocument, { errorId, patch });
-                                                        await runErrors.refetch();
-                                                    } catch {}
-                                                }}
-                                            />
-                                        </PermissionGuard>
-                                    </div>
-                                </>
-                            );
-                        })()}
+            <PageBlock column="main" blockId="runs">
+                <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-base font-semibold">Runs</h3>
+                    <div className="flex items-center gap-2">
+                        <Select value={status || FILTER_VALUES.ALL} onValueChange={handleStatusChange}>
+                            <SelectTrigger className={SELECT_WIDTHS.RUN_STATUS}>
+                                <SelectValue placeholder="All statuses" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={FILTER_VALUES.ALL}>All</SelectItem>
+                                <SelectItem value={RUN_STATUS.PENDING}>Pending</SelectItem>
+                                <SelectItem value={RUN_STATUS.RUNNING}>Running</SelectItem>
+                                <SelectItem value={RUN_STATUS.COMPLETED}>Completed</SelectItem>
+                                <SelectItem value={RUN_STATUS.FAILED}>Failed</SelectItem>
+                                <SelectItem value={RUN_STATUS.CANCEL_REQUESTED}>Cancel requested</SelectItem>
+                                <SelectItem value={RUN_STATUS.CANCELLED}>Cancelled</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Button variant="ghost" onClick={() => refetch()} disabled={isLoading}>
+                            Refresh
+                        </Button>
                     </div>
-                ) : null}
-            </DrawerContent>
-        </Drawer>
+                </div>
+                <DataTable
+                    columns={columns}
+                    data={runs}
+                    totalItems={totalItems}
+                    isLoading={isLoading}
+                    page={page}
+                    itemsPerPage={itemsPerPage}
+                    sorting={sorting}
+                    onPageChange={setPage}
+                    onSortChange={setSorting}
+                    onRefresh={refetch}
+                    disableViewOptions
+                />
+            </PageBlock>
+            <Drawer open={!!selectedRun} onOpenChange={handleCloseDrawer}>
+                <DrawerContent>
+                    <DrawerHeader>
+                        <DrawerTitle>Run details</DrawerTitle>
+                        <DrawerDescription>
+                            {selectedRun ? `Run ${selectedRun.id}` : 'Details'}
+                        </DrawerDescription>
+                    </DrawerHeader>
+                    {selectedRun && (
+                        <RunDetailsPanel
+                            runId={selectedRun.id}
+                            initialData={selectedRun}
+                            onCancel={handleOnCancel}
+                            onRerun={handleOnRerun}
+                            isCancelling={cancelRun.isPending}
+                        />
+                    )}
+                </DrawerContent>
+            </Drawer>
         </>
     );
 }
 
-function RunErrorsList({ runId, items, onRetry }: Readonly<{ runId: string; items: Array<{ id: string; stepKey: string; message: string; payload: unknown }>; onRetry: (errorId: string, patch: unknown) => Promise<void> }>) {
+function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCancelling }: RunDetailsPanelProps) {
+    const { data: runData, refetch, isFetching } = usePipelineRun(runId);
+    const { data: errors } = useRunErrors(runId);
+    const retryError = useRetryError();
+
+    const d = runData;
+    const status = d?.status ?? initialData.status;
+    const metrics: IndividualRunMetrics = (d?.metrics as IndividualRunMetrics) ?? initialData.metrics ?? {};
+    const processed = Number(metrics.processed ?? 0);
+    const succeeded = Number(metrics.succeeded ?? 0);
+    const failed = Number(metrics.failed ?? 0);
+    const summary = `${processed} processed • ${succeeded} succeeded • ${failed} failed`;
+
+    const handleRetry = React.useCallback(async (errorId: string, patch: Record<string, unknown>) => {
+        try {
+            await retryError.mutateAsync({ errorId, patch });
+            toast.success(TOAST_PIPELINE.RECORD_RETRY_QUEUED);
+        } catch (err) {
+            handleMutationError('retry record', err);
+        }
+    }, [retryError]);
+
+    const handleCancel = React.useCallback(() => {
+        onCancel(d?.id ?? runId);
+    }, [onCancel, d?.id, runId]);
+
+    const handleRerun = React.useCallback(() => {
+        onRerun(String(d!.pipeline!.id));
+    }, [onRerun, d]);
+
+    return (
+        <div className="p-4 space-y-4">
+            <div className="flex items-center justify-between">
+                <div className="text-sm">Status: {status}</div>
+                <Button variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
+                    Refresh
+                </Button>
+            </div>
+            <div className="text-sm text-muted-foreground">{summary}</div>
+            <div className="text-xs text-muted-foreground">Started by: {d?.startedByUserId ?? '—'}</div>
+
+            <StepCounters metrics={metrics} />
+            <StepSummaryTable metrics={metrics} />
+
+            <div>
+                <div className="text-sm font-medium mb-1">Metrics</div>
+                <Json value={d?.metrics ?? initialData.metrics ?? {}} />
+            </div>
+            <div className="text-sm">
+                <div className="text-sm font-medium mb-1">Started</div>
+                <div>{formatDateTime(d?.startedAt ?? initialData.startedAt)}</div>
+            </div>
+            <div className="text-sm">
+                <div className="text-sm font-medium mb-1">Finished</div>
+                <div>{formatDateTime(d?.finishedAt ?? initialData.finishedAt)}</div>
+            </div>
+
+            {d?.error && (
+                <div className="text-sm">
+                    <div className="text-sm font-medium mb-1">Error</div>
+                    <pre className="bg-muted p-3 rounded text-xs overflow-auto">{String(d.error)}</pre>
+                </div>
+            )}
+
+            {(status === RUN_STATUS.RUNNING || status === RUN_STATUS.PENDING) && (
+                <Button variant="secondary" onClick={handleCancel} disabled={isCancelling}>
+                    Cancel run
+                </Button>
+            )}
+
+            {d?.pipeline?.id && (
+                <Button variant="outline" onClick={handleRerun}>
+                    Re-run
+                </Button>
+            )}
+
+            <div className="mt-4">
+                <div className="text-sm font-medium mb-1">Record errors</div>
+                <div className="text-sm text-muted-foreground mb-2">Failed records captured during this run</div>
+                <PermissionGuard requires={[DATAHUB_PERMISSIONS.VIEW_QUARANTINE]}>
+                    <RunErrorsList
+                        runId={runId}
+                        items={errors ?? []}
+                        onRetry={handleRetry}
+                    />
+                </PermissionGuard>
+            </div>
+        </div>
+    );
+}
+
+function StepCounters({ metrics }: { metrics: IndividualRunMetrics }) {
+    const details: StepMetricsDetail[] = Array.isArray(metrics?.details) ? metrics.details : [];
+    const countersObj = details.find(x => x && typeof x === 'object' && x.counters);
+    if (!countersObj?.counters) return null;
+
+    return (
+        <div className="mt-2">
+            <div className="text-sm font-medium mb-1">Counters</div>
+            <table className="text-sm">
+                <tbody>
+                    {Object.entries(countersObj.counters).map(([k, v]) => (
+                        <tr key={k}>
+                            <td className="pr-3 text-muted-foreground">{k}</td>
+                            <td>{String(v)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function StepSummaryTable({ metrics }: { metrics: IndividualRunMetrics }) {
+    const details: StepMetricsDetail[] = Array.isArray(metrics?.details) ? metrics.details : [];
+    if (!details.length) return null;
+
+    return (
+        <div className="mt-2">
+            <div className="text-sm font-medium mb-1">Step summary</div>
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="bg-muted">
+                        <th className="text-left px-2 py-1">Step</th>
+                        <th className="text-left px-2 py-1">Type</th>
+                        <th className="text-left px-2 py-1">Adapter</th>
+                        <th className="text-left px-2 py-1">Out/OK/Fail</th>
+                        <th className="text-left px-2 py-1">Duration</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {/* stepKey is unique within a run, safe to use as key */}
+                    {details.map((s) => (
+                        <tr key={s.stepKey} className="border-t">
+                            <td className="px-2 py-1 font-mono text-muted-foreground">{s.stepKey}</td>
+                            <td className="px-2 py-1">{s.type}</td>
+                            <td className="px-2 py-1">{s.adapterCode ?? '—'}</td>
+                            <td className="px-2 py-1">{s.ok ?? 0}{typeof s.fail === 'number' ? ` / ${s.fail}` : ''}</td>
+                            <td className="px-2 py-1">{typeof s.durationMs === 'number' ? `${s.durationMs} ms` : '—'}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function RunErrorsList({ runId, items, onRetry }: RunErrorsListProps) {
     const [editing, setEditing] = React.useState<{ id: string; patch: string } | null>(null);
+
+    const handleStartEditing = React.useCallback((itemId: string) => {
+        setEditing({ id: itemId, patch: '{}' });
+    }, []);
+
+    const handlePatchChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setEditing(prev => prev ? { ...prev, patch: e.target.value } : null);
+    }, []);
+
+    const handlePatchHelperChange = React.useCallback((p: Record<string, unknown>) => {
+        setEditing(prev => prev ? { ...prev, patch: JSON.stringify(p, null, 2) } : null);
+    }, []);
+
+    const handleRetryClick = React.useCallback(async () => {
+        if (!editing) return;
+        try {
+            const patch = JSON.parse(editing.patch);
+            await onRetry(editing.id, patch);
+            setEditing(null);
+        } catch {
+            toast.error(TOAST_PIPELINE.INVALID_JSON_PATCH);
+        }
+    }, [editing, onRetry]);
+
+    const handleCancelEditing = React.useCallback(() => {
+        setEditing(null);
+    }, []);
+
+    if (items.length === 0) {
+        return <div className="text-sm text-muted-foreground">No record errors</div>;
+    }
+
     return (
         <div className="space-y-2">
-            {items.length === 0 ? (
-                <div className="text-sm text-muted-foreground">No record errors</div>
-            ) : (
-                <table className="w-full text-sm">
-                    <thead>
-                        <tr className="bg-muted">
-                            <th className="text-left px-2 py-1">Step</th>
-                            <th className="text-left px-2 py-1">Message</th>
-                            <th className="text-left px-2 py-1">Payload</th>
-                            <th className="text-left px-2 py-1">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {items.map(item => (
-                            <React.Fragment key={item.id}>
-                                <tr className="border-t align-top">
-                                    <td className="px-2 py-1 font-mono text-muted-foreground">{item.stepKey}</td>
-                                    <td className="px-2 py-1">{item.message}</td>
-                                    <td className="px-2 py-1 align-top">
-                                        <Json value={item.payload} />
-                                        <ErrorAuditList errorId={item.id} />
-                                    </td>
-                                    <td className="px-2 py-1 align-top">
-                                    <PermissionGuard requires={['ReplayRecord']}>
-                                        <Button variant="outline" size="sm" onClick={() => setEditing({ id: item.id, patch: '{}' })}>Retry with patch</Button>
-                                    </PermissionGuard>
-                                    </td>
-                                </tr>
-                            </React.Fragment>
-                        ))}
-                    </tbody>
-                </table>
-            )}
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="bg-muted">
+                        <th className="text-left px-2 py-1">Step</th>
+                        <th className="text-left px-2 py-1">Message</th>
+                        <th className="text-left px-2 py-1">Payload</th>
+                        <th className="text-left px-2 py-1">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {items.map(item => (
+                        <ErrorRow
+                            key={item.id}
+                            item={item}
+                            onStartEditing={handleStartEditing}
+                        />
+                    ))}
+                </tbody>
+            </table>
             {editing && (
                 <div className="border rounded p-2 space-y-2">
                     <div className="text-sm font-medium">Patch JSON</div>
-                    <textarea className="w-full h-32 font-mono p-2 border rounded" value={editing.patch} onChange={e => setEditing({ ...editing, patch: e.target.value })} />
-                    <RetryPatchHelper errorId={editing.id} onChange={p => setEditing({ ...editing, patch: JSON.stringify(p, null, 2) })} />
+                    <textarea
+                        className="w-full h-32 font-mono p-2 border rounded"
+                        value={editing.patch}
+                        onChange={handlePatchChange}
+                    />
+                    <RetryPatchHelper onChange={handlePatchHelperChange} />
                     <div className="flex items-center gap-2">
-                        <Button
-                            size="sm"
-                            onClick={async () => {
-                                try {
-                                    const patch = JSON.parse(editing.patch);
-                                    await onRetry(editing.id, patch);
-                                    setEditing(null);
-                                } catch {
-                                    // ignore parse error
-                                }
-                            }}
-                        >
+                        <Button size="sm" onClick={handleRetryClick}>
                             Retry
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
+                        <Button variant="ghost" size="sm" onClick={handleCancelEditing}>Cancel</Button>
                     </div>
                 </div>
             )}
@@ -500,52 +462,98 @@ function RunErrorsList({ runId, items, onRetry }: Readonly<{ runId: string; item
     );
 }
 
-function RetryPatchHelper({ errorId, onChange }: Readonly<{ errorId: string; onChange: (p: any) => void }>) {
-    // Best-effort helper: provide common fields for loaders
-    const [values, setValues] = React.useState<Record<string, any>>({});
-    function set(k: string, v: any) {
-        const next = { ...values, [k]: v };
-        setValues(next);
-        onChange(next);
-    }
+interface ErrorRowProps {
+    item: { id: string; stepKey?: string | null; message?: string | null; payload?: unknown };
+    onStartEditing: (itemId: string) => void;
+}
+
+function ErrorRow({ item, onStartEditing }: ErrorRowProps) {
+    const handleClick = React.useCallback(() => {
+        onStartEditing(item.id);
+    }, [onStartEditing, item.id]);
+
+    return (
+        <tr className="border-t align-top">
+            <td className="px-2 py-1 font-mono text-muted-foreground">{item.stepKey}</td>
+            <td className="px-2 py-1">{item.message}</td>
+            <td className="px-2 py-1 align-top">
+                <Json value={item.payload} />
+                <ErrorAuditList errorId={item.id} />
+            </td>
+            <td className="px-2 py-1 align-top">
+                <PermissionGuard requires={[DATAHUB_PERMISSIONS.REPLAY_RECORD]}>
+                    <Button variant="outline" size="sm" onClick={handleClick}>
+                        Retry with patch
+                    </Button>
+                </PermissionGuard>
+            </td>
+        </tr>
+    );
+}
+
+function RetryPatchHelper({ onChange }: { onChange: (p: Record<string, unknown>) => void }) {
+    const [values, setValues] = React.useState<Record<string, unknown>>({});
+
+    const handleFieldChange = React.useCallback((key: string, value: string) => {
+        setValues(prev => {
+            const next = { ...prev, [key]: value };
+            onChange(next);
+            return next;
+        });
+    }, [onChange]);
+
+    const handleSlugChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        handleFieldChange('slug', e.target.value);
+    }, [handleFieldChange]);
+
+    const handleSkuChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        handleFieldChange('sku', e.target.value);
+    }, [handleFieldChange]);
+
+    const handleCodeChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        handleFieldChange('code', e.target.value);
+    }, [handleFieldChange]);
+
+    const handleNameChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        handleFieldChange('name', e.target.value);
+    }, [handleFieldChange]);
+
     return (
         <div className="grid grid-cols-4 gap-2">
             <div>
                 <label className="text-xs text-muted-foreground">slug</label>
-                <Input value={values.slug ?? ''} onChange={e => set('slug', e.target.value)} />
+                <Input value={String(values.slug ?? '')} onChange={handleSlugChange} />
             </div>
             <div>
                 <label className="text-xs text-muted-foreground">sku</label>
-                <Input value={values.sku ?? ''} onChange={e => set('sku', e.target.value)} />
+                <Input value={String(values.sku ?? '')} onChange={handleSkuChange} />
             </div>
             <div>
                 <label className="text-xs text-muted-foreground">code</label>
-                <Input value={values.code ?? ''} onChange={e => set('code', e.target.value)} />
+                <Input value={String(values.code ?? '')} onChange={handleCodeChange} />
             </div>
             <div>
                 <label className="text-xs text-muted-foreground">name</label>
-                <Input value={values.name ?? ''} onChange={e => set('name', e.target.value)} />
+                <Input value={String(values.name ?? '')} onChange={handleNameChange} />
             </div>
         </div>
     );
 }
 
-function ErrorAuditList({ errorId }: Readonly<{ errorId: string }>) {
-    const { data, isFetching } = useQuery({
-        queryKey: ['DataHubRecordRetryAudits', errorId],
-        queryFn: () => api.query(runErrorAuditsDocument, { errorId }),
-        enabled: !!errorId,
-        refetchInterval: POLLING_INTERVALS.ERROR_AUDITS,
-    });
-    const rows = data?.dataHubRecordRetryAudits ?? [];
-    if (rows.length === 0) return null;
+function ErrorAuditList({ errorId }: { errorId: string }) {
+    const { data: audits, isFetching } = useErrorAudits(errorId);
+
+    if (!audits?.length) return null;
+
     return (
         <div className="mt-2 border rounded p-2">
             <div className="text-xs font-medium mb-1">Retry audit trail</div>
             <div className="space-y-2">
-                {rows.map(a => (
+                {audits.map(a => (
                     <div key={a.id} className="text-xs">
-                        <div className="text-muted-foreground">{new Date(String(a.createdAt)).toLocaleString()} · user {a.userId ?? '—'}</div>
+                        <div className="text-muted-foreground">
+                            {new Date(String(a.createdAt)).toLocaleString()} · user {a.userId ?? '—'}
+                        </div>
                         <div className="grid grid-cols-3 gap-2">
                             <div>
                                 <div className="font-medium">Previous</div>
@@ -565,14 +573,4 @@ function ErrorAuditList({ errorId }: Readonly<{ errorId: string }>) {
             </div>
         </div>
     );
-}
-
-function formatDate(value?: string | null) {
-    if (!value) return '—';
-    try {
-        const d = new Date(value);
-        return d.toLocaleString();
-    } catch {
-        return String(value);
-    }
 }

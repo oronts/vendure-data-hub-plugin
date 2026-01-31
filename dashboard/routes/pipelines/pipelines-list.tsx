@@ -9,78 +9,34 @@ import {
 } from '@vendure/dashboard';
 import { Link } from '@tanstack/react-router';
 import { PlusIcon } from 'lucide-react';
-import { graphql } from '@/gql';
-import { DATAHUB_NAV_ID, DATAHUB_NAV_SECTION, DATAHUB_ROUTE_BASE } from '../../constants/index';
+import { DATAHUB_NAV_ID, DATAHUB_NAV_SECTION, DATAHUB_PERMISSIONS, ROUTES, getStatusBadgeVariant, PIPELINE_STATUS } from '../../constants';
+import { pipelinesListDocument, deletePipelineDocument } from '../../hooks';
+import type { DataHubPipeline } from '../../types';
 
-const getPipelines = graphql(`
-    query GetDataHubPipelines($options: DataHubPipelineListOptions) {
-        dataHubPipelines(options: $options) {
-            items {
-                id
-                createdAt
-                updatedAt
-                code
-                name
-                enabled
-                status
-                version
-            }
-            totalItems
-        }
-    }
-`);
-
-/** Status badge colors */
-const STATUS_COLORS: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-    PUBLISHED: 'default',
-    DRAFT: 'secondary',
-    REVIEW: 'outline',
-};
-
-/** Pipeline entity with status and version from GraphQL query */
-interface PipelineListItem {
-    id: string;
-    createdAt: string;
-    updatedAt: string;
-    code: string;
-    name: string;
-    enabled: boolean;
-    status?: string | null;
-    version?: number | null;
-}
-
-/** Status badge component */
 function StatusBadge({ status }: { status?: string | null }) {
-    const s = status || 'DRAFT';
+    const s = status || PIPELINE_STATUS.DRAFT;
     return (
-        <Badge variant={STATUS_COLORS[s] ?? 'secondary'}>
+        <Badge variant={getStatusBadgeVariant(s)}>
             {s}
         </Badge>
     );
 }
 
-const deletePipelineDocument = graphql(`
-    mutation DeleteDataHubPipeline($id: ID!) {
-        deleteDataHubPipeline(id: $id) { result }
-    }
-`);
-
-
 export const pipelinesList: DashboardRouteDefinition = {
     navMenuItem: {
         sectionId: DATAHUB_NAV_SECTION,
         id: DATAHUB_NAV_ID,
-        url: DATAHUB_ROUTE_BASE,
+        url: ROUTES.PIPELINES,
         title: 'Pipelines',
     },
-    path: DATAHUB_ROUTE_BASE,
+    path: ROUTES.PIPELINES,
     loader: () => ({ breadcrumb: 'Data Hub' }),
     component: route => (
-        <PermissionGuard requires={['ReadDataHubPipeline']}>
+        <PermissionGuard requires={[DATAHUB_PERMISSIONS.READ_PIPELINE]}>
             <ListPage
                 pageId="data-hub-pipelines-list"
                 title="Pipelines"
-                listQuery={getPipelines}
+                listQuery={pipelinesListDocument}
                 deleteMutation={deletePipelineDocument}
                 route={route}
                 defaultColumns={['name', 'code', 'status', 'version', 'enabled', 'createdAt']}
@@ -93,13 +49,13 @@ export const pipelinesList: DashboardRouteDefinition = {
                     },
                     status: {
                         header: 'Status',
-                        cell: ({ row }) => <StatusBadge status={(row.original as PipelineListItem).status} />,
+                        cell: ({ row }) => <StatusBadge status={(row.original as DataHubPipeline).status} />,
                     },
                     version: {
                         header: 'Version',
                         cell: ({ row }) => (
                             <span className="text-muted-foreground">
-                                v{(row.original as PipelineListItem).version ?? 0}
+                                v{(row.original as DataHubPipeline).version ?? 0}
                             </span>
                         ),
                     },
