@@ -1,46 +1,22 @@
-/**
- * Dashboard Utilities
- * Barrel export for utility functions
- */
-
-// Formatters
 export {
     formatValue,
     formatCellValue,
-    formatNumber,
-    formatPercent,
-    formatCurrency,
-    formatBytes,
+    formatKey,
+    formatDiffValue,
     formatDate,
     formatDateTime,
-    formatRelativeTime,
+    formatSmartDateTime,
     formatDuration,
-    truncate,
-    toTitleCase,
-    humanize,
-    pluralize,
-    generateId,
-    generateNodeId,
-    generateEdgeId,
-    generateStepId,
+    formatCompactNumber,
+    formatFileSize,
+    cn,
 } from './formatters';
 
-// Parsers
 export {
     parseCSVLine,
     parseCSV,
-    toCSV,
-    safeParseJSON,
-    parseJSON,
-    prettyJSON,
-    parseNDJSON,
-    toNDJSON,
-    parseXML,
-    coerceValue,
-    coerceRecord,
 } from './parsers';
 
-// Validators
 export {
     isEmpty,
     isNotEmpty,
@@ -49,45 +25,115 @@ export {
     isBoolean,
     isEmail,
     isURL,
-    matchesPattern,
-    hasMinLength,
-    hasMaxLength,
-    isInRange,
-    isGreaterThan,
-    isLessThan,
-    isPositive,
-    isNegative,
     isDate,
-    isPastDate,
-    isFutureDate,
-    isOneOf,
-    areUnique,
-    hasMinItems,
-    hasMaxItems,
-    validateRecord,
-    validateRecords,
 } from './field-validators';
 
-export type {
-    ValidationRule,
-    ValidationError,
-} from './field-validators';
-
-// Step helpers
 export {
     STEP_TO_ADAPTER_TYPE,
-    FILE_SOURCE_ADAPTERS,
-    VENDURE_LOADER_ADAPTERS,
-    ADAPTER_FILE_FORMATS,
     getAdapterType,
     stepRequiresAdapter,
     isFileSourceAdapter,
     isVendureLoaderAdapter,
     getTargetSchemaEntity,
-    getAcceptedFormats,
     validateStepConfig,
     getAdapterTypeLabel,
     getStepConfig,
+    normalizeStepType,
+    getAdapterTypeForStep,
 } from './step-helpers';
 
-export type { StepValidationResult } from './step-helpers';
+export type { SimpleStepValidation } from './step-helpers';
+
+export {
+    groupAdaptersByType,
+    groupAdaptersByCategory,
+    filterAdapters,
+    filterAndGroupAdaptersByType,
+    filterAndGroupAdaptersByCategory,
+} from './adapter-grouping';
+
+export type { FilterOptions } from './adapter-grouping';
+
+export {
+    normalizeString,
+    generateStableKey,
+} from './string-helpers';
+
+export {
+    FIELD_VARIATIONS,
+    computeAutoMappings,
+    mappingsToRecord,
+    recordToMappings,
+} from './field-mapping';
+
+export type {
+    FieldMappingResult,
+    AutoMapOptions,
+} from './field-mapping';
+
+export {
+    prepareDynamicFields,
+} from './field-preparation';
+
+export type {
+    PrepareDynamicFieldsOptions,
+} from './field-preparation';
+
+export {
+    detectColumnType,
+    analyzeColumns,
+    getFileType,
+} from './column-analysis';
+
+export type { ParsedColumn, FileType } from './column-analysis';
+
+export {
+    CODE_PATTERN,
+    IDENTIFIER_PATTERN,
+    EMAIL_PATTERN,
+    URL_PATTERN,
+    CRON_PATTERN,
+    HOSTNAME_PATTERN,
+    PORT_PATTERN,
+    ERROR_MESSAGES,
+    createValidationResult,
+    validateRequired,
+    validateCode,
+    validateEmail,
+    validateUrl,
+    validateCron,
+    validateHostname,
+    validatePort,
+    validateNumber,
+    validateLength,
+    validateJson,
+    composeValidators,
+    validateForm,
+    validatePipelineForm,
+    validateConnectionForm,
+    validateSecretForm,
+    validateSettingsForm,
+    validateTriggerConfig,
+    validateImportWizardStep,
+    validateExportWizardStep,
+} from './form-validation';
+
+export type {
+    FieldValidationError,
+    FormValidationResult,
+    ValidatorFn,
+} from './form-validation';
+
+export {
+    getTriggerStep,
+    getTriggerSteps,
+    stepToTrigger,
+    stepsToTriggers,
+    triggerToStep,
+    triggersToSteps,
+    getCombinedTriggers,
+    updateDefinitionWithTriggers,
+    hasTrigger,
+    getPrimaryTrigger,
+    findTriggersByConfigType,
+} from './trigger-sync';

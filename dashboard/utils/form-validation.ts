@@ -1,13 +1,10 @@
-/**
- * Form Validation Utilities
- *
- * Provides reusable validation functions and React hooks for form validation
- * throughout the DataHub dashboard.
- */
-
-// =============================================================================
-// VALIDATION RESULT TYPES
-// =============================================================================
+import { isEmpty, isEmail as checkIsEmail, isURL as checkIsURL } from './field-validators';
+import { RETENTION } from '../constants/defaults';
+import { EMAIL_REGEX } from '../constants/validation-patterns';
+import { SOURCE_TYPE, DESTINATION_TYPE } from '../constants/wizard-options';
+import { TRIGGER_TYPES } from '../constants';
+import { SECRET_PROVIDER } from '../constants/ui-types';
+import { CONNECTION_TYPE } from '../constants/connection-types';
 
 export interface FieldValidationError {
     field: string;
@@ -21,40 +18,16 @@ export interface FormValidationResult {
     errorsByField: Record<string, string>;
 }
 
-// =============================================================================
-// VALIDATION PATTERNS
-// =============================================================================
-
-/** Valid code pattern: alphanumeric, hyphens, underscores, must start with letter */
 export const CODE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
-
-/** Valid identifier: alphanumeric and underscores only */
 export const IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-
-/** Email pattern */
-export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** URL pattern - basic validation */
+export const EMAIL_PATTERN = EMAIL_REGEX;
 export const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
-
-/** Cron expression pattern - basic 5-part validation */
 export const CRON_PATTERN = /^(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)$/;
-
-/** Hostname pattern */
 export const HOSTNAME_PATTERN = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/;
-
-/** Port number pattern (1-65535) */
 export const PORT_PATTERN = /^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$/;
 
-// =============================================================================
-// USER-FRIENDLY ERROR MESSAGES
-// =============================================================================
-
 export const ERROR_MESSAGES = {
-    // Required field errors
     required: (field: string) => `${field} is required`,
-
-    // Format errors
     invalidCode: 'Must start with a letter and contain only letters, numbers, hyphens, and underscores',
     invalidEmail: 'Please enter a valid email address',
     invalidUrl: 'Please enter a valid URL (e.g., https://example.com)',
@@ -63,36 +36,27 @@ export const ERROR_MESSAGES = {
     invalidPort: 'Please enter a valid port number (1-65535)',
     invalidNumber: 'Please enter a valid number',
     invalidJson: 'Please enter valid JSON',
-
-    // Range errors
     minLength: (min: number) => `Must be at least ${min} characters`,
     maxLength: (max: number) => `Must be no more than ${max} characters`,
     minValue: (min: number) => `Must be at least ${min}`,
     maxValue: (max: number) => `Must be no more than ${max}`,
-
-    // Custom errors
     codeTaken: 'This code is already in use',
     passwordMismatch: 'Passwords do not match',
     invalidSelection: 'Please select a valid option',
 };
 
-// =============================================================================
-// VALIDATOR FUNCTIONS
-// =============================================================================
-
-/**
- * Check if a value is empty (null, undefined, or empty string)
- */
-export function isEmpty(value: unknown): boolean {
-    if (value === null || value === undefined) return true;
-    if (typeof value === 'string') return value.trim() === '';
-    if (Array.isArray(value)) return value.length === 0;
-    return false;
+export function createValidationResult(errors: FieldValidationError[]): FormValidationResult {
+    const errorsByField: Record<string, string> = {};
+    for (const error of errors) {
+        errorsByField[error.field] = error.message;
+    }
+    return {
+        isValid: errors.length === 0,
+        errors,
+        errorsByField,
+    };
 }
 
-/**
- * Validate a required field
- */
 export function validateRequired(value: unknown, fieldName: string): FieldValidationError | null {
     if (isEmpty(value)) {
         return {
@@ -104,11 +68,8 @@ export function validateRequired(value: unknown, fieldName: string): FieldValida
     return null;
 }
 
-/**
- * Validate a code field (alphanumeric + hyphens/underscores)
- */
 export function validateCode(value: string, fieldName: string = 'Code'): FieldValidationError | null {
-    if (isEmpty(value)) return null; // Let required validator handle empty
+    if (isEmpty(value)) return null;
 
     if (!CODE_PATTERN.test(value)) {
         return {
@@ -120,13 +81,10 @@ export function validateCode(value: string, fieldName: string = 'Code'): FieldVa
     return null;
 }
 
-/**
- * Validate an email field
- */
 export function validateEmail(value: string, fieldName: string = 'Email'): FieldValidationError | null {
     if (isEmpty(value)) return null;
 
-    if (!EMAIL_PATTERN.test(value)) {
+    if (!checkIsEmail(value)) {
         return {
             field: fieldName,
             message: ERROR_MESSAGES.invalidEmail,
@@ -136,31 +94,22 @@ export function validateEmail(value: string, fieldName: string = 'Email'): Field
     return null;
 }
 
-/**
- * Validate a URL field
- */
 export function validateUrl(value: string, fieldName: string = 'URL'): FieldValidationError | null {
     if (isEmpty(value)) return null;
 
-    try {
-        new URL(value);
-        return null;
-    } catch {
+    if (!checkIsURL(value)) {
         return {
             field: fieldName,
             message: ERROR_MESSAGES.invalidUrl,
             type: 'format',
         };
     }
+    return null;
 }
 
-/**
- * Validate a cron expression
- */
 export function validateCron(value: string, fieldName: string = 'Cron expression'): FieldValidationError | null {
     if (isEmpty(value)) return null;
 
-    // Basic 5-part cron validation
     const parts = value.trim().split(/\s+/);
     if (parts.length !== 5) {
         return {
@@ -170,13 +119,12 @@ export function validateCron(value: string, fieldName: string = 'Cron expression
         };
     }
 
-    // Validate each part
     const ranges = [
-        { min: 0, max: 59 },  // minute
-        { min: 0, max: 23 },  // hour
-        { min: 1, max: 31 },  // day of month
-        { min: 1, max: 12 },  // month
-        { min: 0, max: 7 },   // day of week (0 and 7 are both Sunday)
+        { min: 0, max: 59 },
+        { min: 0, max: 23 },
+        { min: 1, max: 31 },
+        { min: 1, max: 12 },
+        { min: 0, max: 7 },
     ];
 
     for (let i = 0; i < 5; i++) {
@@ -193,19 +141,14 @@ export function validateCron(value: string, fieldName: string = 'Cron expression
     return null;
 }
 
-/**
- * Validate a single cron part
- */
 function isValidCronPart(part: string, min: number, max: number): boolean {
     if (part === '*') return true;
 
-    // Handle step values like */5
     if (part.startsWith('*/')) {
         const step = parseInt(part.slice(2), 10);
         return !isNaN(step) && step > 0 && step <= max;
     }
 
-    // Handle ranges and lists
     const elements = part.split(',');
     for (const element of elements) {
         if (element.includes('-')) {
@@ -232,9 +175,6 @@ function isValidCronPart(part: string, min: number, max: number): boolean {
     return true;
 }
 
-/**
- * Validate a hostname
- */
 export function validateHostname(value: string, fieldName: string = 'Hostname'): FieldValidationError | null {
     if (isEmpty(value)) return null;
 
@@ -248,9 +188,6 @@ export function validateHostname(value: string, fieldName: string = 'Hostname'):
     return null;
 }
 
-/**
- * Validate a port number
- */
 export function validatePort(value: string | number, fieldName: string = 'Port'): FieldValidationError | null {
     if (isEmpty(value)) return null;
 
@@ -265,9 +202,6 @@ export function validatePort(value: string | number, fieldName: string = 'Port')
     return null;
 }
 
-/**
- * Validate a number field
- */
 export function validateNumber(
     value: unknown,
     fieldName: string = 'Value',
@@ -303,9 +237,6 @@ export function validateNumber(
     return null;
 }
 
-/**
- * Validate string length
- */
 export function validateLength(
     value: string,
     fieldName: string = 'Value',
@@ -332,9 +263,6 @@ export function validateLength(
     return null;
 }
 
-/**
- * Validate JSON string
- */
 export function validateJson(value: string, fieldName: string = 'JSON'): FieldValidationError | null {
     if (isEmpty(value)) return null;
 
@@ -350,15 +278,8 @@ export function validateJson(value: string, fieldName: string = 'JSON'): FieldVa
     }
 }
 
-// =============================================================================
-// COMPOSITE VALIDATORS
-// =============================================================================
-
 export type ValidatorFn = (value: unknown) => FieldValidationError | null;
 
-/**
- * Create a validator that runs multiple validators in sequence
- */
 export function composeValidators(...validators: ValidatorFn[]): ValidatorFn {
     return (value: unknown) => {
         for (const validator of validators) {
@@ -369,49 +290,31 @@ export function composeValidators(...validators: ValidatorFn[]): ValidatorFn {
     };
 }
 
-/**
- * Validate an entire form and return all errors
- */
 export function validateForm(
     data: Record<string, unknown>,
     validators: Record<string, ValidatorFn>
 ): FormValidationResult {
     const errors: FieldValidationError[] = [];
-    const errorsByField: Record<string, string> = {};
 
     for (const [field, validator] of Object.entries(validators)) {
         const error = validator(data[field]);
         if (error) {
             errors.push({ ...error, field });
-            errorsByField[field] = error.message;
         }
     }
 
-    return {
-        isValid: errors.length === 0,
-        errors,
-        errorsByField,
-    };
+    return createValidationResult(errors);
 }
 
-// =============================================================================
-// FORM-SPECIFIC VALIDATORS
-// =============================================================================
-
-/**
- * Validate pipeline form
- */
 export function validatePipelineForm(data: {
     code?: string;
     name?: string;
 }): FormValidationResult {
     const errors: FieldValidationError[] = [];
 
-    // Name is required
     const nameError = validateRequired(data.name, 'Name');
     if (nameError) errors.push(nameError);
 
-    // Code is required and must be valid format
     const codeRequiredError = validateRequired(data.code, 'Code');
     if (codeRequiredError) {
         errors.push(codeRequiredError);
@@ -420,21 +323,9 @@ export function validatePipelineForm(data: {
         if (codeFormatError) errors.push(codeFormatError);
     }
 
-    const errorsByField: Record<string, string> = {};
-    for (const error of errors) {
-        errorsByField[error.field] = error.message;
-    }
-
-    return {
-        isValid: errors.length === 0,
-        errors,
-        errorsByField,
-    };
+    return createValidationResult(errors);
 }
 
-/**
- * Validate connection form
- */
 export function validateConnectionForm(data: {
     code?: string;
     type?: string;
@@ -442,7 +333,6 @@ export function validateConnectionForm(data: {
 }): FormValidationResult {
     const errors: FieldValidationError[] = [];
 
-    // Code is required and must be valid format
     const codeRequiredError = validateRequired(data.code, 'Code');
     if (codeRequiredError) {
         errors.push(codeRequiredError);
@@ -451,8 +341,7 @@ export function validateConnectionForm(data: {
         if (codeFormatError) errors.push(codeFormatError);
     }
 
-    // Type-specific validation
-    if (data.type === 'http' && data.config) {
+    if (data.type === CONNECTION_TYPE.HTTP && data.config) {
         const baseUrl = data.config.baseUrl as string | undefined;
         if (baseUrl) {
             const urlError = validateUrl(baseUrl, 'Base URL');
@@ -463,7 +352,6 @@ export function validateConnectionForm(data: {
     if (['postgres', 'mysql', 'mongodb', 'redis', 'elasticsearch'].includes(data.type ?? '')) {
         const config = data.config ?? {};
 
-        // Validate host for connection types that need it
         if (['postgres', 'mysql', 'redis'].includes(data.type ?? '')) {
             const hostError = validateRequired(config.host, 'Host');
             if (hostError) errors.push(hostError);
@@ -476,21 +364,9 @@ export function validateConnectionForm(data: {
         }
     }
 
-    const errorsByField: Record<string, string> = {};
-    for (const error of errors) {
-        errorsByField[error.field] = error.message;
-    }
-
-    return {
-        isValid: errors.length === 0,
-        errors,
-        errorsByField,
-    };
+    return createValidationResult(errors);
 }
 
-/**
- * Validate secret form
- */
 export function validateSecretForm(data: {
     code?: string;
     provider?: string;
@@ -498,7 +374,6 @@ export function validateSecretForm(data: {
 }, isCreating: boolean): FormValidationResult {
     const errors: FieldValidationError[] = [];
 
-    // Code is required and must be valid format
     const codeRequiredError = validateRequired(data.code, 'Code');
     if (codeRequiredError) {
         errors.push(codeRequiredError);
@@ -507,33 +382,19 @@ export function validateSecretForm(data: {
         if (codeFormatError) errors.push(codeFormatError);
     }
 
-    // For env provider, value (env var name) is required
-    if (data.provider === 'env') {
+    if (data.provider === SECRET_PROVIDER.ENV) {
         const valueError = validateRequired(data.value, 'Environment Variable Name');
         if (valueError) errors.push(valueError);
     }
 
-    // For inline provider on create, value is required
-    if (isCreating && data.provider === 'inline') {
+    if (isCreating && data.provider === SECRET_PROVIDER.INLINE) {
         const valueError = validateRequired(data.value, 'Secret Value');
         if (valueError) errors.push(valueError);
     }
 
-    const errorsByField: Record<string, string> = {};
-    for (const error of errors) {
-        errorsByField[error.field] = error.message;
-    }
-
-    return {
-        isValid: errors.length === 0,
-        errors,
-        errorsByField,
-    };
+    return createValidationResult(errors);
 }
 
-/**
- * Validate settings form
- */
 export function validateSettingsForm(data: {
     retentionDaysRuns?: string;
     retentionDaysErrors?: string;
@@ -541,7 +402,6 @@ export function validateSettingsForm(data: {
 }): FormValidationResult {
     const errors: FieldValidationError[] = [];
 
-    // Validate retention days (must be positive integers if provided)
     const fields = [
         { key: 'retentionDaysRuns', label: 'Pipeline Run History' },
         { key: 'retentionDaysErrors', label: 'Error Records' },
@@ -551,35 +411,29 @@ export function validateSettingsForm(data: {
     for (const { key, label } of fields) {
         const value = data[key];
         if (value !== undefined && value !== '') {
-            const numError = validateNumber(value, label, { min: 1, max: 365 });
+            const numError = validateNumber(value, label, { min: RETENTION.MIN_DAYS, max: RETENTION.MAX_DAYS });
             if (numError) errors.push(numError);
         }
     }
 
-    const errorsByField: Record<string, string> = {};
-    for (const error of errors) {
-        errorsByField[error.field] = error.message;
-    }
-
-    return {
-        isValid: errors.length === 0,
-        errors,
-        errorsByField,
-    };
+    return createValidationResult(errors);
 }
 
-/**
- * Validate trigger configuration
- */
 export function validateTriggerConfig(trigger: {
     type: string;
     cron?: string;
     path?: string;
     eventType?: string;
+    message?: {
+        queueType?: string;
+        connectionCode?: string;
+        queueName?: string;
+        batchSize?: number;
+    };
 }): FormValidationResult {
     const errors: FieldValidationError[] = [];
 
-    if (trigger.type === 'schedule') {
+    if (trigger.type === TRIGGER_TYPES.SCHEDULE) {
         const cronError = validateRequired(trigger.cron, 'Schedule');
         if (cronError) {
             errors.push(cronError);
@@ -589,7 +443,7 @@ export function validateTriggerConfig(trigger: {
         }
     }
 
-    if (trigger.type === 'webhook') {
+    if (trigger.type === TRIGGER_TYPES.WEBHOOK) {
         const pathError = validateRequired(trigger.path, 'Webhook Path');
         if (pathError) {
             errors.push(pathError);
@@ -599,26 +453,38 @@ export function validateTriggerConfig(trigger: {
         }
     }
 
-    if (trigger.type === 'event') {
+    if (trigger.type === TRIGGER_TYPES.EVENT) {
         const eventError = validateRequired(trigger.eventType, 'Event Type');
         if (eventError) errors.push(eventError);
     }
 
-    const errorsByField: Record<string, string> = {};
-    for (const error of errors) {
-        errorsByField[error.field] = error.message;
+    if (trigger.type === TRIGGER_TYPES.MESSAGE) {
+        const msgConfig = trigger.message;
+
+        // Queue type is required
+        const queueTypeError = validateRequired(msgConfig?.queueType, 'Queue Type');
+        if (queueTypeError) errors.push(queueTypeError);
+
+        // Connection code is required (except for internal queue)
+        if (msgConfig?.queueType !== 'internal') {
+            const connectionError = validateRequired(msgConfig?.connectionCode, 'Connection');
+            if (connectionError) errors.push(connectionError);
+        }
+
+        // Queue name is required
+        const queueNameError = validateRequired(msgConfig?.queueName, 'Queue Name');
+        if (queueNameError) errors.push(queueNameError);
+
+        // Batch size must be in valid range
+        if (msgConfig?.batchSize !== undefined) {
+            const batchSizeError = validateNumber(msgConfig.batchSize, 'Batch Size', { min: 1, max: 100 });
+            if (batchSizeError) errors.push(batchSizeError);
+        }
     }
 
-    return {
-        isValid: errors.length === 0,
-        errors,
-        errorsByField,
-    };
+    return createValidationResult(errors);
 }
 
-/**
- * Validate import wizard configuration
- */
 export function validateImportWizardStep(
     step: string,
     config: {
@@ -634,14 +500,14 @@ export function validateImportWizardStep(
 
     switch (step) {
         case 'source':
-            if (config.source?.type === 'file' && !uploadedFile) {
+            if (config.source?.type === SOURCE_TYPE.FILE && !uploadedFile) {
                 errors.push({
                     field: 'file',
                     message: 'Please upload a file',
                     type: 'required',
                 });
             }
-            if (config.source?.type === 'api') {
+            if (config.source?.type === SOURCE_TYPE.API) {
                 const urlError = validateRequired(config.source.apiConfig?.url, 'API URL');
                 if (urlError) errors.push(urlError);
                 else {
@@ -665,7 +531,6 @@ export function validateImportWizardStep(
                     type: 'required',
                 });
             }
-            // Check required fields are mapped
             const requiredUnmapped = config.mappings?.filter(m => m.required && !m.sourceField) ?? [];
             if (requiredUnmapped.length > 0) {
                 errors.push({
@@ -692,21 +557,9 @@ export function validateImportWizardStep(
             break;
     }
 
-    const errorsByField: Record<string, string> = {};
-    for (const error of errors) {
-        errorsByField[error.field] = error.message;
-    }
-
-    return {
-        isValid: errors.length === 0,
-        errors,
-        errorsByField,
-    };
+    return createValidationResult(errors);
 }
 
-/**
- * Validate export wizard configuration
- */
 export function validateExportWizardStep(
     step: string,
     config: {
@@ -747,15 +600,15 @@ export function validateExportWizardStep(
             break;
 
         case 'destination':
-            if (config.destination?.type === 'file') {
+            if (config.destination?.type === DESTINATION_TYPE.FILE) {
                 const filenameError = validateRequired(config.destination.fileConfig?.filename, 'Filename');
                 if (filenameError) errors.push(filenameError);
             }
-            if (config.destination?.type === 'sftp') {
+            if (config.destination?.type === DESTINATION_TYPE.SFTP) {
                 const hostError = validateRequired(config.destination.sftpConfig?.host, 'SFTP Host');
                 if (hostError) errors.push(hostError);
             }
-            if (config.destination?.type === 'http') {
+            if (config.destination?.type === DESTINATION_TYPE.HTTP) {
                 const urlError = validateRequired(config.destination.httpConfig?.url, 'HTTP URL');
                 if (urlError) errors.push(urlError);
                 else {
@@ -771,14 +624,5 @@ export function validateExportWizardStep(
             break;
     }
 
-    const errorsByField: Record<string, string> = {};
-    for (const error of errors) {
-        errorsByField[error.field] = error.message;
-    }
-
-    return {
-        isValid: errors.length === 0,
-        errors,
-        errorsByField,
-    };
+    return createValidationResult(errors);
 }

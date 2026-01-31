@@ -1,11 +1,5 @@
-/**
- * Wizard Types
- * Shared type definitions for import/export wizard components
- */
-
-// =============================================================================
-// COMMON WIZARD TYPES
-// =============================================================================
+import type { TransformationType, FilterCondition } from '../../shared/types';
+import type { FileType } from './ui.types';
 
 export interface WizardStep {
     id: string;
@@ -21,10 +15,6 @@ export interface WizardProgress {
     canProceed: boolean;
 }
 
-// =============================================================================
-// IMPORT CONFIGURATION
-// =============================================================================
-
 export interface ImportConfig {
     name: string;
     description?: string;
@@ -33,7 +23,7 @@ export interface ImportConfig {
     mappings: ImportFieldMapping[];
     strategies: ImportStrategies;
     trigger: ImportTriggerConfig;
-    transformations?: TransformationStep[];
+    transformations?: WizardTransformationStep[];
 }
 
 export interface ImportSourceConfig {
@@ -45,7 +35,7 @@ export interface ImportSourceConfig {
 }
 
 export interface FileSourceConfig {
-    format: 'csv' | 'xlsx' | 'json' | 'xml';
+    format: NonNullable<FileType>;
     hasHeaders: boolean;
     delimiter?: string;
     encoding?: string;
@@ -102,10 +92,6 @@ export interface ImportTriggerConfig {
     fileWatchPath?: string;
 }
 
-// =============================================================================
-// EXPORT CONFIGURATION
-// =============================================================================
-
 export interface ExportConfig {
     name: string;
     description?: string;
@@ -126,12 +112,6 @@ export interface QueryConfig {
     orderBy?: string;
     orderDirection?: 'ASC' | 'DESC';
     customQuery?: string;
-}
-
-export interface FilterCondition {
-    field: string;
-    operator: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'in' | 'notIn' | 'isNull' | 'isNotNull';
-    value?: unknown;
 }
 
 export interface ExportField {
@@ -224,32 +204,12 @@ export interface ExportOptions {
     maxRetries?: number;
 }
 
-// =============================================================================
-// TRANSFORMATION STEPS
-// =============================================================================
-
-export type TransformationType =
-    | 'map'
-    | 'filter'
-    | 'aggregate'
-    | 'lookup'
-    | 'split'
-    | 'merge'
-    | 'formula'
-    | 'validate'
-    | 'deduplicate'
-    | 'sort';
-
-export interface TransformationStep {
+export interface WizardTransformationStep {
     id: string;
     type: TransformationType;
     config: Record<string, unknown>;
     enabled?: boolean;
 }
-
-// =============================================================================
-// PARSED DATA
-// =============================================================================
 
 export interface ParsedData {
     headers: string[];
@@ -257,10 +217,6 @@ export interface ParsedData {
     totalRows: number;
     sampleRows: number;
 }
-
-// =============================================================================
-// FEED TEMPLATES
-// =============================================================================
 
 export interface FeedTemplate {
     id: string;
