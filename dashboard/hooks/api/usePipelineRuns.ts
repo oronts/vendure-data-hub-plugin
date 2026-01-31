@@ -1,0 +1,162 @@
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api } from '@vendure/dashboard';
+import { graphql } from '../../gql';
+import { createMutationErrorHandler } from './mutation-helpers';
+import { POLLING_INTERVALS, RUN_STATUS } from '../../constants';
+import type { DataHubPipelineRunListOptions, JsonObject } from '../../types';
+
+export const runKeys = {
+    all: ['pipelineRuns'] as const,
+    lists: () => [...runKeys.all, 'list'] as const,
+    list: (pipelineId?: string, options?: DataHubPipelineRunListOptions) =>
+        [...runKeys.lists(), pipelineId, options] as const,
+    details: () => [...runKeys.all, 'detail'] as const,
+    detail: (id: string) => [...runKeys.details(), id] as const,
+    errors: (runId: string) => [...runKeys.all, 'errors', runId] as const,
+    errorAudits: (errorId: string) => [...runKeys.all, 'errorAudits', errorId] as const,
+};
+
+const runsListDocument = graphql(`
+    query DataHubPipelineRunsApi($pipelineId: ID, $options: DataHubPipelineRunListOptions) {
+        dataHubPipelineRuns(pipelineId: $pipelineId, options: $options) {
+            items {
+                id
+                status
+                startedAt
+                finishedAt
+                metrics
+            }
+            totalItems
+        }
+    }
+`);
+
+const runDetailDocument = graphql(`
+    query DataHubPipelineRunDetailApi($id: ID!) {
+        dataHubPipelineRun(id: $id) {
+            id
+            status
+            startedAt
+            finishedAt
+            metrics
+            error
+            startedByUserId
+            pipeline {
+                id
+                code
+                name
+            }
+        }
+    }
+`);
+
+const runErrorsDocument = graphql(`
+    query DataHubRunErrorsApi($runId: ID!) {
+        dataHubRunErrors(runId: $runId) {
+            id
+            stepKey
+            message
+            payload
+        }
+    }
+`);
+
+const cancelRunDocument = graphql(`
+    mutation CancelDataHubPipelineRunApi($id: ID!) {
+        cancelDataHubPipelineRun(id: $id) {
+            id
+            status
+        }
+    }
+`);
+
+const retryErrorDocument = graphql(`
+    mutation RetryDataHubRecordApi($errorId: ID!, $patch: JSON) {
+        retryDataHubRecord(errorId: $errorId, patch: $patch)
+    }
+`);
+
+const errorAuditsDocument = graphql(`
+    query DataHubRecordRetryAuditsApi($errorId: ID!) {
+        dataHubRecordRetryAudits(errorId: $errorId) {
+            id
+            createdAt
+            userId
+            previousPayload
+            patch
+            resultingPayload
+        }
+    }
+`);
+
+export function usePipelineRuns(pipelineId?: string, options?: DataHubPipelineRunListOptions) {
+    return useQuery({
+        queryKey: runKeys.list(pipelineId, options),
+        queryFn: () =>
+            api
+                .query(runsListDocument, { pipelineId, options })
+                .then((res) => res.dataHubPipelineRuns),
+        refetchInterval: POLLING_INTERVALS.PIPELINE_RUNS,
+    });
+}
+
+export function usePipelineRun(id: string | undefined) {
+    return useQuery({
+        queryKey: runKeys.detail(id ?? ''),
+        queryFn: () =>
+            api.query(runDetailDocument, { id: id! }).then((res) => res.dataHubPipelineRun),
+        enabled: !!id,
+        refetchInterval: (query) => {
+            const status = query.state.data?.status;
+            return status === RUN_STATUS.RUNNING || status === RUN_STATUS.PENDING ? POLLING_INTERVALS.ACTIVE_RUN : false;
+        },
+    });
+}
+
+export function useRunErrors(runId: string | undefined) {
+    return useQuery({
+        queryKey: runKeys.errors(runId ?? ''),
+        queryFn: () =>
+            api.query(runErrorsDocument, { runId: runId! }).then((res) => res.dataHubRunErrors),
+        enabled: !!runId,
+    });
+}
+
+export function useErrorAudits(errorId: string | undefined) {
+    return useQuery({
+        queryKey: runKeys.errorAudits(errorId ?? ''),
+        queryFn: () =>
+            api.query(errorAuditsDocument, { errorId: errorId! }).then((res) => res.dataHubRecordRetryAudits),
+        enabled: !!errorId,
+    });
+}
+
+export function useCancelRun() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: (id: string) =>
+            api.mutate(cancelRunDocument, { id }).then((res) => res.cancelDataHubPipelineRun),
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: runKeys.lists() });
+            if (data?.id) {
+                queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.id)) });
+            }
+        },
+        onError: createMutationErrorHandler('cancel pipeline run'),
+    });
+}
+
+export function useRetryError() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({ errorId, patch }: { errorId: string; patch?: JsonObject }) =>
+            api.mutate(retryErrorDocument, { errorId, patch }).then((res) => res.retryDataHubRecord),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: runKeys.all });
+            queryClient.invalidateQueries({ queryKey: ['queues'] });
+        },
+        onError: createMutationErrorHandler('retry record'),
+    });
+}
