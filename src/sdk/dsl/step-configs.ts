@@ -12,12 +12,11 @@
  */
 
 import { JsonObject, JsonValue, Throughput } from '../../types/index';
-import { LoadStrategy, ChannelStrategy, LanguageStrategy, ValidationMode, ConflictStrategy } from '../types/index';
-import { RouteConditionOp } from './route-builder';
+import { LoadStrategy, ChannelStrategy, LanguageStrategy, ValidationStrictness, ConflictStrategy, TriggerType } from '../types/index';
+import { RouteOperator } from '../constants';
+import { AuthType } from '../../constants/enums';
 
 // TRIGGER CONFIG
-
-export type TriggerType = 'manual' | 'webhook' | 'schedule' | 'event' | 'file' | 'message';
 
 /**
  * Trigger configuration interface
@@ -110,15 +109,42 @@ export interface OperatorConfig {
 // VALIDATE STEP CONFIG
 
 export interface ValidateStepConfig {
+    /** Error handling mode: fail-fast stops on first error, accumulate collects all errors */
+    errorHandlingMode?: 'fail-fast' | 'accumulate';
+    /** Validation mode: strict requires all rules to pass, lenient allows warnings */
+    validationMode?: 'strict' | 'lenient';
+    /** Legacy mode field (alias for errorHandlingMode) */
     mode?: 'fail-fast' | 'accumulate';
+    /** Validation rules to apply */
     rules?: ValidationRuleConfig[];
+    /** Reference to a schema for schema-based validation */
     schemaRef?: SchemaRefConfig;
+    /** Throughput configuration */
     throughput?: Throughput;
 }
 
 export interface ValidationRuleConfig {
+    /** Rule type: schema for JSON schema, business for field rules, ref for external reference */
     type: 'schema' | 'business' | 'ref';
-    spec: JsonObject;
+    /** Rule specification */
+    spec: ValidationRuleSpec;
+}
+
+export interface ValidationRuleSpec {
+    /** Field to validate (supports dot notation for nested fields) */
+    field: string;
+    /** Whether the field is required */
+    required?: boolean;
+    /** Minimum value for numbers */
+    min?: number;
+    /** Maximum value for numbers */
+    max?: number;
+    /** Regex pattern for string validation */
+    pattern?: string;
+    /** Custom error message */
+    error?: string;
+    /** Additional validation parameters */
+    [key: string]: unknown;
 }
 
 export interface SchemaRefConfig {
@@ -130,7 +156,23 @@ export interface SchemaRefConfig {
 // ENRICH STEP CONFIG
 
 export interface EnrichStepConfig {
-    adapterCode: string;
+    /** Custom enricher adapter code (optional if using built-in enrichment) */
+    adapterCode?: string;
+    /** Static default values to add to records (only if field is missing) */
+    defaults?: Record<string, JsonValue>;
+    /** Values to always set on records (overwrites existing) */
+    set?: Record<string, JsonValue>;
+    /** Computed field expressions using ${field} template syntax */
+    computed?: Record<string, string>;
+    /** Enrichment source type */
+    sourceType?: 'STATIC' | 'HTTP' | 'VENDURE';
+    /** HTTP endpoint URL for HTTP source type */
+    endpoint?: string;
+    /** Field to match for lookups */
+    matchField?: string;
+    /** Vendure entity type for VENDURE source type */
+    entity?: string;
+    /** Additional adapter config */
     config?: JsonObject;
 }
 
@@ -148,7 +190,7 @@ export interface RouteBranchConfig {
 
 export interface RouteConditionConfig {
     field: string;
-    cmp: RouteConditionOp;
+    cmp: RouteOperator;
     value: JsonValue;
 }
 
@@ -161,7 +203,7 @@ export interface LoadStepConfig {
     channelStrategy?: ChannelStrategy;
     channels?: string[];
     languageStrategy?: LanguageStrategy;
-    validationMode?: ValidationMode;
+    validationMode?: ValidationStrictness;
     conflictStrategy?: ConflictStrategy;
     nameField?: string;
     slugField?: string;
@@ -189,7 +231,7 @@ export interface LoadStepConfig {
     endpoint?: string;
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     headers?: Record<string, string>;
-    auth?: 'none' | 'bearer' | 'basic' | 'hmac';
+    auth?: AuthType;
     bearerTokenSecretCode?: string;
     basicSecretCode?: string;
     hmacSecretCode?: string;
@@ -272,8 +314,8 @@ export interface ExportStepConfig {
 
 // FEED STEP CONFIG
 
-export type FeedFormat = 'xml' | 'csv' | 'tsv' | 'json' | 'jsonl';
-export type FeedType = 'google-merchant' | 'meta-catalog' | 'amazon' | 'pinterest' | 'bing' | 'custom';
+export type FeedFormat = 'xml' | 'csv' | 'tsv' | 'json' | 'ndjson';
+export type FeedType = 'google-merchant' | 'meta-catalog' | 'amazon' | 'pinterest' | 'tiktok' | 'bing-shopping' | 'criteo' | 'custom';
 
 export interface FeedStepConfig {
     adapterCode: string;
@@ -329,7 +371,7 @@ export interface FeedStepConfig {
 
 // SINK STEP CONFIG
 
-export type SinkType = 'elasticsearch' | 'opensearch' | 'meilisearch' | 'algolia' | 'typesense' | 'custom';
+export type SinkType = 'elasticsearch' | 'opensearch' | 'meilisearch' | 'algolia' | 'typesense' | 'webhook' | 'custom';
 
 export interface SinkStepConfig {
     adapterCode: string;

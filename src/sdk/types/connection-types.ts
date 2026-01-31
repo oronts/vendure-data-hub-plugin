@@ -8,6 +8,10 @@
  */
 
 import { JsonObject } from '../../types/index';
+import {
+    SecretResolver as SharedSecretResolver,
+    AdapterLogger as SharedAdapterLogger,
+} from '../../../shared/types';
 
 // CONNECTION CONFIGURATION
 
@@ -59,24 +63,7 @@ export interface ConnectionConfig {
 
 // SECRET RESOLUTION
 
-/**
- * Interface for resolving secrets at runtime
- */
-export interface SecretResolver {
-    /**
-     * Get a secret value by code
-     * @param code The secret identifier
-     * @returns The secret value or undefined if not found
-     */
-    get(code: string): Promise<string | undefined>;
-
-    /**
-     * Get a required secret value by code
-     * @param code The secret identifier
-     * @throws Error if secret is not found
-     */
-    getRequired(code: string): Promise<string>;
-}
+export type SecretResolver = SharedSecretResolver;
 
 /**
  * Interface for resolving connections at runtime
@@ -99,26 +86,15 @@ export interface ConnectionResolver {
 
 // ADAPTER LOGGER
 
-/**
- * Logger interface for adapters
- */
-export interface AdapterLogger {
-    /** Log debug message */
-    debug(message: string, data?: JsonObject): void;
-    /** Log info message */
-    info(message: string, data?: JsonObject): void;
-    /** Log warning message */
-    warn(message: string, data?: JsonObject): void;
-    /** Log error message */
-    error(message: string, error?: Error | JsonObject): void;
-}
+export type AdapterLogger = SharedAdapterLogger;
 
 // MESSENGER TYPES
 
 /**
  * Messenger adapter types for queue-based processing
+ * Currently RabbitMQ is supported via HTTP Management API.
  */
-export type MessengerType = 'job-queue' | 'redis' | 'rabbitmq' | 'kafka' | 'sqs' | 'pubsub';
+export type MessengerType = 'job-queue' | 'rabbitmq';
 
 /**
  * Options for enqueueing messages

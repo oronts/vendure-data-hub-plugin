@@ -9,6 +9,7 @@
 
 import { RequestContext, ID } from '@vendure/core';
 import { JsonObject, PipelineDefinition, PipelineMetrics, PipelineCheckpoint, HookStage } from '../../types/index';
+import { RunStatus } from '../../constants/enums';
 import { SecretResolver, ConnectionResolver, AdapterLogger } from './connection-types';
 
 // PIPELINE EXECUTION CONTEXT
@@ -116,14 +117,9 @@ export interface PipelineRunInput {
 
 /**
  * Status of a pipeline run
+ * @see RunStatus enum in constants/enums.ts for canonical definition
  */
-export type PipelineRunStatus =
-    | 'PENDING'
-    | 'RUNNING'
-    | 'COMPLETED'
-    | 'FAILED'
-    | 'CANCELLED'
-    | 'CANCEL_REQUESTED';
+export type PipelineRunStatus = `${RunStatus}`;
 
 /**
  * Summary of a pipeline run

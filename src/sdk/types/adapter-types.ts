@@ -11,10 +11,9 @@
 import { RequestContext, ID } from '@vendure/core';
 import { JsonObject, JsonValue, PipelineCheckpoint, PipelineContext as PipelineCtx } from '../../types/index';
 import { StepConfigSchema } from './schema-types';
-import { SecretResolver, ConnectionResolver, AdapterLogger, ConnectionConfig } from './connection-types';
+import { SecretResolver, ConnectionResolver, AdapterLogger } from './connection-types';
 import {
     ExtractResult,
-    ExtractMetrics,
     LoadResult,
     ValidationResult,
     EnrichResult,
@@ -24,41 +23,24 @@ import {
     OperatorResult,
 } from './result-types';
 import { OperatorHelpers } from './transform-types';
-import { ExportFormatType } from '../../constants/enums';
-
-// ADAPTER CATEGORIES AND TYPES
+import {
+    ExportFormatType,
+    AdapterType as AdapterTypeEnum,
+    AdapterCategory as AdapterCategoryEnum,
+    TriggerType as TriggerTypeEnum,
+} from '../../constants/enums';
 
 /**
  * Primary adapter type classification
+ * @see AdapterType enum in constants/enums.ts for canonical definition
  */
-export type AdapterType =
-    | 'extractor'   // Pulls data from external sources
-    | 'operator'    // Transforms/filters records
-    | 'loader'      // Writes to Vendure entities
-    | 'validator'   // Validates record data
-    | 'enricher'    // Enriches records with additional data
-    | 'exporter'    // Exports data to external systems
-    | 'feed'        // Generates product feeds
-    | 'sink';       // Indexes to search engines
+export type AdapterType = `${AdapterTypeEnum}`;
 
 /**
  * Adapter category for UI organization
+ * @see AdapterCategory enum in constants/enums.ts for canonical definition
  */
-export type AdapterCategory =
-    | 'data-source'      // REST, GraphQL, CSV, Database
-    | 'transformation'   // map, template, rename
-    | 'filtering'        // when, deltaFilter
-    | 'enrichment'       // lookup, enrich, set/defaults
-    | 'aggregation'      // aggregate, group
-    | 'conversion'       // currency, unit, dateFormat
-    | 'catalog'          // product, variant, collection
-    | 'customers'        // customer, customerGroup
-    | 'orders'           // order, orderNote, orderTransition
-    | 'inventory'        // stock, stockLocation
-    | 'promotions'       // promotion, coupon
-    | 'assets'           // asset, assetAttach
-    | 'external'         // restPost, webhook
-    | 'utility';         // set, remove, rename
+export type AdapterCategory = `${AdapterCategoryEnum}`;
 
 // BASE ADAPTER INTERFACE
 
@@ -269,9 +251,9 @@ export type ChannelStrategy = 'explicit' | 'inherit' | 'multi';
 export type LanguageStrategy = 'specific' | 'fallback' | 'multi';
 
 /**
- * Validation strictness mode
+ * Validation strictness mode for loaders
  */
-export type ValidationMode = 'strict' | 'lenient';
+export type ValidationStrictness = 'strict' | 'lenient';
 
 /**
  * Conflict resolution strategy
@@ -279,8 +261,7 @@ export type ValidationMode = 'strict' | 'lenient';
 export type ConflictStrategy = 'source-wins' | 'vendure-wins' | 'merge' | 'manual-queue';
 
 export type LoadStrategy =
-    | 'create' | 'update' | 'upsert' | 'merge' | 'soft-delete' | 'hard-delete'
-    | 'source-wins' | 'vendure-wins';
+    | 'create' | 'update' | 'upsert' | 'merge' | 'soft-delete' | 'hard-delete';
 
 /**
  * Context provided to loader adapters
@@ -300,8 +281,8 @@ export interface LoadContext {
     readonly channels: readonly ID[];
     /** Language handling strategy */
     readonly languageStrategy: LanguageStrategy;
-    /** Validation mode */
-    readonly validationMode: ValidationMode;
+    /** Validation strictness mode */
+    readonly validationMode: ValidationStrictness;
     /** Conflict resolution strategy */
     readonly conflictStrategy: ConflictStrategy;
     /** Secret resolver */
@@ -412,7 +393,7 @@ export type ExportTargetType =
     | 'api'         // REST/GraphQL endpoints
     | 'search'      // Elasticsearch, MeiliSearch, OpenSearch
     | 'warehouse'   // BigQuery, Snowflake, Redshift
-    | 'messaging'   // Kafka, RabbitMQ, SQS
+    | 'messaging'   // RabbitMQ
     | 'storage';    // S3, GCS, Azure Blob
 
 export type ExportFormat = ExportFormatType;
@@ -619,8 +600,9 @@ export interface SinkAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> 
 
 /**
  * Trigger types that initiate pipelines
+ * @see TriggerType enum in constants/enums.ts for canonical definition
  */
-export type TriggerType = 'manual' | 'schedule' | 'webhook' | 'event' | 'file' | 'message';
+export type TriggerType = `${TriggerTypeEnum}`;
 
 /**
  * Context provided to trigger adapters

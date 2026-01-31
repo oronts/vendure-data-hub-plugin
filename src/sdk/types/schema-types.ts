@@ -25,7 +25,8 @@ export type SchemaFieldType =
     | 'textarea'    // Multi-line text input
     | 'code'        // Code editor with syntax highlighting
     | 'secret'      // Secret reference picker
-    | 'connection'; // Connection reference picker
+    | 'connection'  // Connection reference picker
+    | 'file';       // File upload input
 
 /**
  * Option for select/multiselect fields
@@ -65,7 +66,6 @@ export interface FieldDependency {
     readonly field: string;
     /** The value that triggers this dependency */
     readonly value: JsonValue;
-    /** Comparison operator for the dependency check */
     readonly operator?: 'eq' | 'ne' | 'in' | 'notIn';
 }
 

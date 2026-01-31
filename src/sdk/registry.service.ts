@@ -2,6 +2,38 @@ import { Injectable } from '@nestjs/common';
 import { DataHubAdapter, AdapterDefinition, AdapterType } from './types';
 
 /**
+ * Validate adapter code format
+ * @param code Adapter code to validate
+ * @throws Error if code is invalid
+ */
+function validateAdapterCode(code: string): void {
+    if (!code || typeof code !== 'string') {
+        throw new Error('Adapter code must be a non-empty string');
+    }
+    if (code.trim() !== code) {
+        throw new Error('Adapter code must not have leading or trailing whitespace');
+    }
+    if (code.length > 100) {
+        throw new Error('Adapter code must not exceed 100 characters');
+    }
+}
+
+/**
+ * Validate adapter type
+ * @param type Adapter type to validate
+ * @throws Error if type is invalid
+ */
+function validateAdapterType(type: string): void {
+    const validTypes = ['extractor', 'operator', 'loader', 'validator', 'enricher', 'exporter', 'feed', 'sink'];
+    if (!type || typeof type !== 'string') {
+        throw new Error('Adapter type must be a non-empty string');
+    }
+    if (!validTypes.includes(type)) {
+        throw new Error(`Invalid adapter type: ${type}. Must be one of: ${validTypes.join(', ')}`);
+    }
+}
+
+/**
  * Registry for adapter definitions and runtime adapters.
  * - AdapterDefinition: Static metadata/schema for UI rendering
  * - DataHubAdapter: Runtime adapters with actual execution methods
@@ -13,8 +45,16 @@ export class DataHubRegistryService {
 
     /**
      * Register an adapter definition (metadata only, for UI)
+     * @param adapter Adapter definition to register
+     * @throws Error if adapter is invalid or already registered
      */
     register(adapter: AdapterDefinition): void {
+        if (!adapter) {
+            throw new Error('Adapter definition is required');
+        }
+        validateAdapterType(adapter.type);
+        validateAdapterCode(adapter.code);
+
         const key = `${adapter.type}:${adapter.code}`;
         if (this.definitions.has(key)) {
             throw new Error(`Adapter already registered: ${key}`);
@@ -24,8 +64,16 @@ export class DataHubRegistryService {
 
     /**
      * Register a runtime adapter (with execution methods)
+     * @param adapter Runtime adapter to register
+     * @throws Error if adapter is invalid
      */
     registerRuntime(adapter: DataHubAdapter): void {
+        if (!adapter) {
+            throw new Error('Runtime adapter is required');
+        }
+        validateAdapterType(adapter.type);
+        validateAdapterCode(adapter.code);
+
         const key = `${adapter.type}:${adapter.code}`;
         this.runtimeAdapters.set(key, adapter);
         // Also register the definition if not already present

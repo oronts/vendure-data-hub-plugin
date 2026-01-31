@@ -8,7 +8,7 @@
  */
 
 import { ID } from '@vendure/core';
-import { JsonObject, JsonValue } from '../../types/index';
+import { JsonObject } from '../../types/index';
 
 // EXTRACT RESULTS
 

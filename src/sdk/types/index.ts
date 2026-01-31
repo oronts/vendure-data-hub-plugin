@@ -37,7 +37,7 @@ export {
     SingleRecordOperator,
     ChannelStrategy,
     LanguageStrategy,
-    ValidationMode,
+    ValidationStrictness,
     ConflictStrategy,
     LoadStrategy,
     LoadContext,
