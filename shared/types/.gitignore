@@ -1,0 +1,5 @@
+# Compiled output - these are generated during build
+*.d.ts
+*.d.ts.map
+*.js
+*.js.map
