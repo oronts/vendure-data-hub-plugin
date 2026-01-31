@@ -12,20 +12,15 @@ concurrency:
 
 jobs:
   build:
-    name: Build (Node ${{ matrix.node-version }})
+    name: Build
     runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 20.x
           cache: 'npm'
 
       - run: npm ci
