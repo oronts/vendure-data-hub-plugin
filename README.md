@@ -36,14 +36,18 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
 
 - **Visual Pipeline Builder** - Drag-and-drop workflow editor with live validation
 - **Code-First DSL** - TypeScript API for defining pipelines programmatically
-- **7 Data Extractors** - REST API, GraphQL, CSV, JSON, Vendure Query, In-Memory, Generator
-- **14 Entity Loaders** - Products, Variants, Customers, Orders, Collections, Promotions, Stock, Assets, Tax, Channels, Payment Methods, and more
-- **45+ Transform Operators** - String, numeric, date, JSON, array, validation, conditional, and custom script operations
-- **4 Feed Generators** - Google Merchant, Meta Catalog, Amazon, Custom (XML/CSV/JSON/TSV)
-- **4 Search Sinks** - Elasticsearch, MeiliSearch, Algolia, Typesense
+- **8 Data Extractors** - HTTP/REST API, GraphQL, Vendure Query, File (CSV/JSON/XML/XLSX/NDJSON/TSV), Database (SQL), S3, FTP/SFTP, Webhook
+- **16 Entity Loaders** - Products, Variants, Customers, Customer Groups, Collections, Facets, Facet Values, Promotions, Orders, Shipping Methods, Stock Locations, Inventory, Assets, Tax Rates, Payment Methods, Channels
+- **59 Transform Operators** - String (12), Date (6), Numeric (9), Logic (4), JSON (4), Data (8), Enrichment (6), Aggregation (7), Validation (2), Script (1) - **includes HTTP Lookup with caching, circuit breaker, and rate limiting**
+- **5 Feed Generators** - Google Shopping, Meta/Facebook Catalog (CSV/XML), Custom CSV, JSON Feed, XML Feed
+- **7 Search & Integration Sinks** - Elasticsearch, MeiliSearch, Algolia, Typesense, Queue Producer (RabbitMQ/SQS/Redis), Webhook
 - **18 Hook Stages** - Interceptors and scripts to modify data at any pipeline stage
-- **Scheduling** - Cron expressions, intervals, webhooks, and Vendure event triggers
+- **7 Connection Types** - HTTP/REST, S3, FTP, SFTP, Database (PostgreSQL/MySQL/SQLite/MSSQL/Oracle), Message Queue (RabbitMQ/SQS/Redis), Custom
+- **6 Trigger Types** - Manual, Scheduled (cron), Webhook, Vendure Events, File Watch, **Message Queue Consumer**
+- **Bi-directional Queue Support** - Consume from and produce to RabbitMQ (AMQP), Amazon SQS, Redis Streams
+- **Horizontal Scaling** - Distributed locks via Redis or PostgreSQL for multi-instance deployments
 - **Checkpoint Recovery** - Resume failed pipelines from last successful record
+- **File Upload** - Drag-and-drop CSV/JSON file upload with automatic processing
 - **Real-time Monitoring** - Logs, analytics, error tracking, and dead letter queue
 
 ## Screenshots
@@ -134,13 +138,15 @@ const productImport = createPipeline()
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'manual' })
     .extract('fetch-products', {
-        adapterCode: 'rest',
-        endpoint: 'https://api.supplier.com/products',
+        adapterCode: 'httpApi',
+        url: 'https://api.supplier.com/products',
         method: 'GET',
-        itemsField: 'data.products',
-        pageParam: 'page',
-        maxPages: 100,
-        bearerTokenSecretCode: 'supplier-api-key',
+        dataPath: 'data.products',
+        pagination: {
+            type: 'page',
+            limit: 100,
+            maxPages: 100,
+        },
     })
     .transform('prepare', {
         operators: [
@@ -153,10 +159,9 @@ const productImport = createPipeline()
     })
     .load('upsert', {
         adapterCode: 'productUpsert',
-        strategy: 'source-wins',
         channel: '__default_channel__',
-        skuField: 'sku',
-        nameField: 'name',
+        strategy: 'upsert',
+        conflictResolution: 'source-wins',
         slugField: 'slug',
     })
     .edge('start', 'fetch-products')
@@ -189,6 +194,11 @@ export const config: VendureConfig = {
 | `secrets` | `CodeFirstSecret[]` | `[]` | Define secrets in code |
 | `connections` | `CodeFirstConnection[]` | `[]` | Define connections in code |
 | `adapters` | `AdapterDefinition[]` | `[]` | Register custom adapters |
+| `feedGenerators` | `CustomFeedGenerator[]` | `[]` | Register custom feed generators |
+| `configPath` | `string` | - | Path to external configuration file |
+| `enableDashboard` | `boolean` | `true` | Enable the admin dashboard UI |
+| `runtime` | `RuntimeLimitsConfig` | - | Runtime limits (batch size, timeouts, etc.) |
+| `security` | `SecurityConfig` | - | Security settings (SSRF protection, script sandboxing) |
 | `debug` | `boolean` | `false` | Enable debug logging |
 
 ---
@@ -199,57 +209,40 @@ export const config: VendureConfig = {
 
 | Extractor | Code | Description |
 |-----------|------|-------------|
-| REST API | `rest` | Fetch from REST APIs with pagination, auth, and field mapping |
-| GraphQL | `graphql` | Query GraphQL endpoints with cursor/Relay pagination |
-| CSV | `csv` | Parse CSV files or inline CSV data with configurable delimiter |
-| JSON | `json` | Parse JSON files or inline JSON data with items path |
-| Vendure Query | `vendure-query` | Query Vendure entities (Product, ProductVariant, Customer, Order, Collection, Facet, FacetValue, Promotion, Asset) |
-| In-Memory | `inMemory` | Process data arrays passed directly (for webhooks/API calls) |
-| Generator | `generator` | Generate test data using templates with placeholders |
+| HTTP/REST API | `httpApi` | Fetch from REST APIs with pagination, auth (Bearer/Basic/HMAC), field mapping |
+| GraphQL | `graphql` | Query GraphQL endpoints with cursor/offset/relay pagination, variables, auth |
+| Vendure Query | `vendureQuery` | Query Vendure entities (Product, ProductVariant, Customer, Order, Collection, Facet, FacetValue, Promotion, Asset) |
+| CSV File | `csv` | Parse CSV files with custom delimiters and encoding |
+| JSON File | `json` | Parse JSON files with path extraction |
+| In-Memory | `inMemory` | Extract from in-memory data (webhooks, inline) |
+| Generator | `generator` | Generate test records with configurable fields |
 
-### REST API Extractor
+### HTTP API Extractor
 
 ```typescript
 .extract('fetch', {
-    adapterCode: 'rest',
-    endpoint: 'https://api.example.com/products',
+    adapterCode: 'httpApi',
+    url: 'https://api.example.com/products',
     method: 'GET',
     headers: { 'Accept': 'application/json' },
-    query: { limit: 100, active: true },
-    itemsField: 'data.items',           // Path to array in response
-    pageParam: 'page',                   // Pagination parameter
-    nextPageField: 'meta.nextPage',      // Path to next page indicator
-    maxPages: 100,                       // Safety limit
-    bearerTokenSecretCode: 'api-key',    // Auth from secrets
+    dataPath: 'data.items',              // JSON path to records array
+    connectionCode: 'my-api',            // Optional: use saved connection
+    pagination: {
+        type: 'page',
+        limit: 100,
+        maxPages: 10,
+    },
 })
 ```
 
 ### Vendure Query Extractor
 
-Query Vendure entities directly:
-
 ```typescript
 .extract('products', {
-    adapterCode: 'vendure-query',
-    entity: 'Product',                   // Product, Variant, Customer, Order, Collection, Facet, Asset
+    adapterCode: 'vendureQuery',
+    entity: 'PRODUCT',
     relations: 'variants,featuredAsset,facetValues',
     batchSize: 100,
-    flattenTranslations: true,           // Flatten translations to top-level
-})
-```
-
-### Generator Extractor (Testing)
-
-```typescript
-.extract('test-data', {
-    adapterCode: 'generator',
-    count: 100,
-    template: {
-        id: '{{index}}',
-        name: 'Product {{index}}',
-        sku: 'TEST-{{index}}',
-        price: '{{random 1000 9999}}',
-    },
 })
 ```
 
@@ -268,9 +261,9 @@ Transform operators organized by category. All operators take `args` with their 
 | `rename` | Rename field | `{ op: 'rename', args: { from: 'product_name', to: 'name' } }` |
 | `remove` | Delete field | `{ op: 'remove', args: { path: 'tempField' } }` |
 | `map` | Remap multiple fields | `{ op: 'map', args: { mapping: { name: 'title', desc: 'body' } } }` |
-| `lookup` | Map value from dictionary | `{ op: 'lookup', args: { source: 'code', map: { 'A': 'Active' }, target: 'status' } }` |
 | `template` | String templates | `{ op: 'template', args: { template: '${firstName} ${lastName}', target: 'fullName' } }` |
-| `enrich` | Add/default fields | `{ op: 'enrich', args: { defaults: { currency: 'USD' } } }` |
+| `hash` | Generate hash | `{ op: 'hash', args: { source: 'data', target: 'checksum', algorithm: 'sha256' } }` |
+| `uuid` | Generate UUID | `{ op: 'uuid', args: { target: 'id', version: 'v4' } }` |
 
 ### String Operators
 
@@ -315,17 +308,6 @@ Math operations: `add`, `subtract`, `multiply`, `divide`, `modulo`, `power`, `ro
 | `dateDiff` | Calculate difference | `{ op: 'dateDiff', args: { startDate: 'orderDate', endDate: 'deliveredAt', unit: 'days', target: 'duration' } }` |
 | `now` | Current timestamp | `{ op: 'now', args: { target: 'processedAt', format: 'ISO' } }` |
 
-### Array Operators
-
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `flatten` | Flatten nested arrays | `{ op: 'flatten', args: { source: 'nested', target: 'flat', depth: 1 } }` |
-| `unique` | Remove duplicates | `{ op: 'unique', args: { source: 'items', key: 'id', target: 'uniqueItems' } }` |
-| `first` | Get first element | `{ op: 'first', args: { source: 'items', target: 'firstItem' } }` |
-| `last` | Get last element | `{ op: 'last', args: { source: 'items', target: 'lastItem' } }` |
-| `count` | Count elements | `{ op: 'count', args: { source: 'items', target: 'itemCount' } }` |
-| `expand` | Explode to records | `{ op: 'expand', args: { source: 'variants' } }` |
-
 ### JSON Operators
 
 | Operator | Description | Example |
@@ -343,7 +325,7 @@ Math operations: `add`, `subtract`, `multiply`, `divide`, `modulo`, `power`, `ro
 | `ifThenElse` | Conditional value | `{ op: 'ifThenElse', args: { condition: { field: 'type', cmp: 'eq', value: 'digital' }, thenValue: true, elseValue: false, target: 'isDigital' } }` |
 | `switch` | Multi-case mapping | `{ op: 'switch', args: { source: 'code', cases: [{ value: 'A', result: 'Active' }], default: 'Unknown', target: 'status' } }` |
 
-Comparison operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `startsWith`, `endsWith`, `matches` (regex)
+Comparison operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `contains`, `notContains`, `startsWith`, `endsWith`, `regex`, `exists`, `isNull`
 
 ### Validation Operators
 
@@ -352,16 +334,33 @@ Comparison operators: `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `contains`, `starts
 | `validateRequired` | Check required fields | `{ op: 'validateRequired', args: { fields: ['sku', 'name', 'price'] } }` |
 | `validateFormat` | Regex validation | `{ op: 'validateFormat', args: { field: 'email', pattern: '^[^@]+@[^@]+\\.[^@]+$' } }` |
 
+### Enrichment Operators
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `lookup` | Map value from dictionary | `{ op: 'lookup', args: { source: 'code', map: { 'A': 'Active' }, target: 'status' } }` |
+| `enrich` | Add/default fields | `{ op: 'enrich', args: { defaults: { currency: 'USD' } } }` |
+| `coalesce` | First non-null | `{ op: 'coalesce', args: { paths: ['name', 'title', 'label'], target: 'displayName' } }` |
+| `default` | Default if null | `{ op: 'default', args: { path: 'stock', value: 0 } }` |
+| `httpLookup` | Enrich from HTTP API | `{ op: 'httpLookup', args: { url: 'https://api.example.com/{{sku}}', target: 'externalData' } }` |
+
+### Aggregation Operators
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `aggregate` | Aggregate values | `{ op: 'aggregate', args: { op: 'sum', source: 'amount', target: 'total' } }` |
+| `count` | Count elements | `{ op: 'count', args: { source: 'items', target: 'itemCount' } }` |
+| `unique` | Remove duplicates | `{ op: 'unique', args: { source: 'items', by: 'id', target: 'uniqueItems' } }` |
+| `flatten` | Flatten nested arrays | `{ op: 'flatten', args: { source: 'nested', target: 'flat', depth: 1 } }` |
+| `first` | Get first element | `{ op: 'first', args: { source: 'items', target: 'firstItem' } }` |
+| `last` | Get last element | `{ op: 'last', args: { source: 'items', target: 'lastItem' } }` |
+| `expand` | Explode to records | `{ op: 'expand', args: { path: 'variants' } }` |
+
 ### Advanced Operators
 
 | Operator | Description | Example |
 |----------|-------------|---------|
-| `coalesce` | First non-null | `{ op: 'coalesce', args: { fields: ['name', 'title', 'label'], target: 'displayName' } }` |
-| `default` | Default if null | `{ op: 'default', args: { path: 'stock', value: 0 } }` |
-| `hash` | Hash value | `{ op: 'hash', args: { source: 'data', target: 'checksum', algorithm: 'sha256' } }` |
-| `uuid` | Generate UUID | `{ op: 'uuid', args: { target: 'id', version: 'v4' } }` |
 | `deltaFilter` | Change detection | `{ op: 'deltaFilter', args: { idPath: 'sku', includePaths: ['price', 'stock'] } }` |
-| `aggregate` | Aggregate values | `{ op: 'aggregate', args: { operation: 'sum', source: 'amount', target: 'total' } }` |
 | `script` | Custom JavaScript | See Script Operator section below |
 
 ### Script Operator
@@ -413,50 +412,46 @@ Execute custom JavaScript for complex transformations:
 
 ### Available Loaders
 
-| Loader | Code | Description |
-|--------|------|-------------|
-| Product Upsert | `productUpsert` | Create/update products with variants, prices, tax, and stock |
-| Variant Upsert | `variantUpsert` | Update product variants by SKU with multi-currency prices |
-| Customer Upsert | `customerUpsert` | Create/update customers with addresses and group assignments |
-| Stock Adjust | `stockAdjust` | Adjust inventory levels by SKU and stock location |
-| Collection Upsert | `collectionUpsert` | Create/update collections with parent relationships |
-| Promotion Upsert | `promotionUpsert` | Create/update promotions with conditions and actions |
-| Order Note | `orderNote` | Add public or private notes to orders |
-| Order Transition | `orderTransition` | Transition order state (e.g., to Shipped) |
-| Apply Coupon | `applyCoupon` | Apply coupon codes to orders |
-| Asset Attach | `assetAttach` | Attach assets as featured image to products/collections |
-| Tax Rate Upsert | `taxRateUpsert` | Create/update tax rates with category and zone |
-| Payment Method Upsert | `paymentMethodUpsert` | Configure payment methods with handlers |
-| Channel Upsert | `channelUpsert` | Create/update channels with currencies and languages |
-| REST Post | `restPost` | Send data to external REST APIs (webhooks, integrations) |
+| Loader | Adapter Code | Description |
+|--------|--------------|-------------|
+| Product Loader | `productUpsert` | Create/update products with variants, prices, tax, and stock |
+| Variant Loader | `variantUpsert` | Update product variants by SKU with multi-currency prices |
+| Customer Loader | `customerUpsert` | Create/update customers with addresses and group memberships |
+| Collection Loader | `collectionUpsert` | Create/update collections with parent relationships |
+| Promotion Loader | `promotionUpsert` | Create/update promotions with conditions and actions |
+| Order Note Loader | `orderNote` | Attach notes to orders by code or id |
+| Order Transition Loader | `orderTransition` | Transition orders to new states |
+| Stock Adjust Loader | `stockAdjust` | Adjust inventory levels by SKU and stock location |
+| Asset Attach Loader | `assetAttach` | Attach existing assets to products/collections |
+| Apply Coupon Loader | `applyCoupon` | Apply coupon codes to orders |
+| Tax Rate Loader | `taxRateUpsert` | Create/update tax rates by name with category and zone |
+| Payment Method Loader | `paymentMethodUpsert` | Create/update payment methods with handler and checker |
+| Channel Loader | `channelUpsert` | Create/update channels with currencies, languages, and zones |
+| REST POST Loader | `restPost` | POST/PUT records to external REST endpoints |
 
 ### Product Loader
 
 ```typescript
 .load('import-products', {
     adapterCode: 'productUpsert',
-    strategy: 'source-wins',             // source-wins, vendure-wins, merge
     channel: '__default_channel__',
+    strategy: 'upsert',                  // create, update, upsert
+    conflictResolution: 'source-wins',   // source-wins, vendure-wins, merge
     nameField: 'name',
     slugField: 'slug',
-    descriptionField: 'description',
     skuField: 'sku',
-    priceField: 'priceInCents',
-    taxCategoryCode: 'standard',
-    stockField: 'stock',
-    trackInventory: true,
+    priceField: 'price',
 })
 ```
 
-### Stock Adjust Loader
+### Inventory Loader
 
 ```typescript
 .load('update-stock', {
     adapterCode: 'stockAdjust',
     skuField: 'sku',
-    stockField: 'quantity',
-    locationField: 'warehouseId',
-    mode: 'absolute',                    // absolute or delta
+    stockByLocationField: 'stockByLocation',  // Map of location code -> quantity
+    absolute: true,                           // Set absolute value (false = delta)
 })
 ```
 
@@ -468,27 +463,21 @@ Execute custom JavaScript for complex transformations:
     emailField: 'email',
     firstNameField: 'firstName',
     lastNameField: 'lastName',
-    phoneField: 'phone',
-    addressField: 'addresses',           // Array of address objects
-    groupMode: 'add',                    // add, replace, or remove
-    groupsField: 'customerGroups',
+    phoneNumberField: 'phone',
+    addressesField: 'addresses',
+    groupsField: 'groupCodes',
 })
 ```
 
-### REST Post Loader (Exports)
+### Asset Loader
 
 ```typescript
-.load('send-to-webhook', {
-    adapterCode: 'restPost',
-    endpoint: 'https://webhook.example.com/products',
-    method: 'POST',
-    batchMode: 'array',                  // array or single
-    maxBatchSize: 100,
-    headers: { 'X-API-Key': '${secret:api-key}' },
-    auth: 'bearer',
-    bearerTokenSecretCode: 'api-key',
-    retries: 3,
-    timeoutMs: 30000,
+.load('import-assets', {
+    adapterCode: 'assetAttach',
+    entity: 'PRODUCT',
+    slugField: 'productSlug',
+    assetIdField: 'assetId',
+    channel: '__default_channel__',
 })
 ```
 
@@ -503,26 +492,27 @@ Hooks let you run code at 18 different pipeline stages. Two types:
 ### Hook Stages
 
 **Data Processing:**
-- `beforeExtract`, `afterExtract`
-- `beforeTransform`, `afterTransform`
-- `beforeValidate`, `afterValidate`
-- `beforeEnrich`, `afterEnrich`
-- `beforeRoute`, `afterRoute`
-- `beforeLoad`, `afterLoad`
+- `BEFORE_EXTRACT`, `AFTER_EXTRACT`
+- `BEFORE_TRANSFORM`, `AFTER_TRANSFORM`
+- `BEFORE_VALIDATE`, `AFTER_VALIDATE`
+- `BEFORE_ENRICH`, `AFTER_ENRICH`
+- `BEFORE_ROUTE`, `AFTER_ROUTE`
+- `BEFORE_LOAD`, `AFTER_LOAD`
 
 **Pipeline Lifecycle:**
-- `pipelineStarted`, `pipelineCompleted`, `pipelineFailed`
-- `onError`, `onRetry`, `onDeadLetter`
+- `PIPELINE_STARTED`, `PIPELINE_COMPLETED`, `PIPELINE_FAILED`
+- `ON_ERROR`, `ON_RETRY`, `ON_DEAD_LETTER`
 
 ### Hook Types
 
 | Type | Purpose | Can Modify Records |
 |------|---------|-------------------|
-| `interceptor` | Inline JavaScript code | Yes |
-| `script` | Pre-registered functions | Yes |
-| `webhook` | HTTP POST notification | No |
-| `emit` | Vendure domain event | No |
-| `triggerPipeline` | Start another pipeline | No |
+| `INTERCEPTOR` | Inline JavaScript code | Yes |
+| `SCRIPT` | Pre-registered functions | Yes |
+| `WEBHOOK` | HTTP POST notification | No |
+| `EMIT` | Vendure domain event | No |
+| `TRIGGER_PIPELINE` | Start another pipeline | No |
+| `LOG` | Log message to pipeline logs | No |
 
 ### Interceptor Hooks
 
@@ -532,8 +522,8 @@ Inline JavaScript that can modify records:
 const pipeline = createPipeline()
     .name('With Interceptors')
     .hooks({
-        afterExtract: [{
-            type: 'interceptor',
+        AFTER_EXTRACT: [{
+            type: 'INTERCEPTOR',
             name: 'Add metadata',
             code: `
                 return records.map(r => ({
@@ -543,14 +533,14 @@ const pipeline = createPipeline()
                 }));
             `,
         }],
-        beforeTransform: [{
-            type: 'interceptor',
+        BEFORE_TRANSFORM: [{
+            type: 'INTERCEPTOR',
             name: 'Filter low stock',
             code: `return records.filter(r => r.stock > 0);`,
             failOnError: true,
         }],
-        beforeLoad: [{
-            type: 'interceptor',
+        BEFORE_LOAD: [{
+            type: 'INTERCEPTOR',
             name: 'Final validation',
             code: `
                 return records.filter(r => {
@@ -584,8 +574,8 @@ hookService.registerScript('addCustomerSegment', async (records, context, args) 
 // Use in pipeline
 const pipeline = createPipeline()
     .hooks({
-        afterTransform: [{
-            type: 'script',
+        AFTER_TRANSFORM: [{
+            type: 'SCRIPT',
             scriptName: 'addCustomerSegment',
             args: { spendThreshold: 5000 },
         }],
@@ -599,8 +589,8 @@ Notify external systems:
 
 ```typescript
 .hooks({
-    pipelineCompleted: [{
-        type: 'webhook',
+    PIPELINE_COMPLETED: [{
+        type: 'WEBHOOK',
         url: 'https://slack.webhook.example.com/notify',
         headers: { 'Content-Type': 'application/json' },
         secret: 'webhook-signing-key',
@@ -612,8 +602,8 @@ Notify external systems:
             backoffMultiplier: 2,
         },
     }],
-    pipelineFailed: [{
-        type: 'webhook',
+    PIPELINE_FAILED: [{
+        type: 'WEBHOOK',
         url: 'https://pagerduty.example.com/alert',
     }],
 })
@@ -625,8 +615,8 @@ Chain pipelines together:
 
 ```typescript
 .hooks({
-    afterLoad: [{
-        type: 'triggerPipeline',
+    AFTER_LOAD: [{
+        type: 'TRIGGER_PIPELINE',
         pipelineCode: 'reindex-search',  // Runs with loaded records as seed
     }],
 })
@@ -642,20 +632,15 @@ Generate feeds for advertising platforms.
 
 ```typescript
 .feed('google-feed', {
-    adapterCode: 'feed-generator',
-    feedType: 'google-merchant',
+    adapterCode: 'googleMerchant',
     format: 'xml',                       // xml or tsv
     targetCountry: 'US',
     contentLanguage: 'en',
     currency: 'USD',
-    includeVariants: true,
+    storeUrl: 'https://mystore.com',
+    storeName: 'My Store',
     includeOutOfStock: false,
-    titleField: 'name',
-    descriptionField: 'description',
-    priceField: 'price',
-    imageField: 'featuredAsset.preview',
-    brandField: 'customFields.brand',
-    gtinField: 'customFields.gtin',
+    outputPath: '/feeds/google-shopping.xml',
 })
 ```
 
@@ -663,22 +648,13 @@ Generate feeds for advertising platforms.
 
 ```typescript
 .feed('meta-catalog', {
-    adapterCode: 'feed-generator',
-    feedType: 'meta-catalog',
+    adapterCode: 'metaCatalog',
     format: 'csv',
-    catalogId: 'your-catalog-id',
-    businessId: 'your-business-id',
-})
-```
-
-### Amazon Feed
-
-```typescript
-.feed('amazon-feed', {
-    adapterCode: 'feed-generator',
-    feedType: 'amazon',
-    marketplace: 'US',                   // US, UK, DE, FR, CA
-    feedCategory: 'product',             // product, inventory, pricing
+    currency: 'USD',
+    brandField: 'customFields.brand',
+    categoryField: 'customFields.googleCategory',
+    includeVariants: true,
+    outputPath: '/feeds/facebook-catalog.csv',
 })
 ```
 
@@ -686,8 +662,7 @@ Generate feeds for advertising platforms.
 
 ```typescript
 .feed('custom-feed', {
-    adapterCode: 'feed-generator',
-    feedType: 'custom',
+    adapterCode: 'customFeed',
     format: 'json',                      // xml, csv, json, tsv
     rootElement: 'products',
     itemElement: 'product',
@@ -696,6 +671,7 @@ Generate feeds for advertising platforms.
         product_name: 'name',
         product_price: 'priceFormatted',
     },
+    outputPath: '/feeds/custom-products.json',
 })
 ```
 
@@ -709,14 +685,12 @@ Index products to search engines.
 
 ```typescript
 .sink('elasticsearch', {
-    adapterCode: 'search-sink',
-    sinkType: 'elasticsearch',
-    nodes: ['http://localhost:9200'],
+    adapterCode: 'elasticsearch',
+    node: 'http://localhost:9200',
     indexName: 'products',
     idField: 'id',
-    bulkSize: 500,
-    upsert: true,
-    refresh: 'wait_for',
+    batchSize: 500,
+    refresh: true,
 })
 ```
 
@@ -724,15 +698,14 @@ Index products to search engines.
 
 ```typescript
 .sink('meilisearch', {
-    adapterCode: 'search-sink',
-    sinkType: 'meilisearch',
+    adapterCode: 'meilisearch',
     host: 'http://localhost:7700',
-    apiKey: '${secret:meilisearch-key}',
+    apiKeySecretCode: 'meilisearch-key',
     indexName: 'products',
     primaryKey: 'id',
-    searchableAttributes: ['name', 'description', 'sku'],
-    filterableAttributes: ['category', 'brand', 'price'],
-    sortableAttributes: ['price', 'createdAt'],
+    searchableFields: ['name', 'description', 'sku'],
+    filterableFields: ['category', 'brand', 'price'],
+    sortableFields: ['price', 'createdAt'],
 })
 ```
 
@@ -740,9 +713,8 @@ Index products to search engines.
 
 ```typescript
 .sink('algolia', {
-    adapterCode: 'search-sink',
-    sinkType: 'algolia',
-    applicationId: 'your-app-id',
+    adapterCode: 'algolia',
+    appId: 'your-app-id',
     apiKeySecretCode: 'algolia-admin-key',
     indexName: 'products',
     idField: 'objectID',
@@ -753,13 +725,13 @@ Index products to search engines.
 
 ```typescript
 .sink('typesense', {
-    adapterCode: 'search-sink',
-    sinkType: 'typesense',
+    adapterCode: 'typesense',
     host: 'localhost',
     port: 8108,
     protocol: 'http',
     apiKeySecretCode: 'typesense-key',
     collectionName: 'products',
+    idField: 'id',
 })
 ```
 
@@ -795,7 +767,7 @@ Common patterns:
 ```typescript
 .trigger('webhook', {
     type: 'webhook',
-    authentication: 'API_KEY',      // 'NONE' | 'API_KEY' | 'HMAC' | 'BASIC' | 'JWT'
+    authentication: 'api-key',      // 'none' | 'api-key' | 'hmac' | 'basic' | 'jwt'
     apiKeySecretCode: 'my-api-key', // Secret code storing the API key
     apiKeyHeaderName: 'x-api-key',  // Header name for API key (default: x-api-key)
     rateLimit: 100,                 // Requests per minute per IP (0 = unlimited)
@@ -807,20 +779,20 @@ Common patterns:
 
 | Type | Description | Configuration |
 |------|-------------|---------------|
-| `NONE` | No authentication (not recommended) | - |
-| `API_KEY` | API key in header | `apiKeySecretCode`, `apiKeyHeaderName`, `apiKeyPrefix` |
-| `HMAC` | HMAC-SHA256 signature | `secretCode`, `hmacHeaderName`, `hmacAlgorithm` |
-| `BASIC` | HTTP Basic Auth | `basicSecretCode` (stores `username:password`) |
-| `JWT` | JWT Bearer token | `jwtSecretCode`, `jwtHeaderName` |
+| `none` | No authentication (not recommended) | - |
+| `api-key` | API key in header | `apiKeySecretCode`, `apiKeyHeaderName`, `apiKeyPrefix` |
+| `hmac` | HMAC-SHA256 signature | `secretCode`, `hmacHeaderName`, `hmacAlgorithm` |
+| `basic` | HTTP Basic Auth | `basicSecretCode` (stores `username:password`) |
+| `jwt` | JWT Bearer token | `jwtSecretCode`, `jwtHeaderName` |
 
 **Example - HMAC Authentication:**
 ```typescript
 .trigger('webhook', {
     type: 'webhook',
-    authentication: 'HMAC',
+    authentication: 'hmac',
     secretCode: 'hmac-secret',        // Secret code storing HMAC key
     hmacHeaderName: 'x-signature',    // Header name (default: x-datahub-signature)
-    hmacAlgorithm: 'sha256',          // sha256 or sha512
+    hmacAlgorithm: 'SHA256',          // SHA256 or SHA512
 })
 ```
 
@@ -893,9 +865,24 @@ DataHubPlugin.init({
 
 ### Code-First Connections
 
+Supported connection types: `http`, `postgres`, `mysql`, `s3`, `ftp`, `sftp`
+
 ```typescript
 DataHubPlugin.init({
     connections: [
+        {
+            code: 'supplier-api',
+            type: 'http',
+            name: 'Supplier REST API',
+            settings: {
+                baseUrl: 'https://api.supplier.com',
+                timeout: 30000,
+                auth: {
+                    type: 'bearer',
+                    secretCode: 'supplier-api-key',
+                },
+            },
+        },
         {
             code: 'supplier-db',
             type: 'postgres',
@@ -905,7 +892,19 @@ DataHubPlugin.init({
                 port: 5432,
                 database: 'supplier',
                 username: '${DB_USER}',
-                password: '${DB_PASSWORD}',
+                passwordSecretCode: 'db-password',
+                ssl: true,
+            },
+        },
+        {
+            code: 'product-bucket',
+            type: 's3',
+            name: 'Product Feed Bucket',
+            settings: {
+                bucket: 'product-feeds',
+                region: 'us-east-1',
+                accessKeyIdSecretCode: 'aws-access-key',
+                secretAccessKeySecretCode: 'aws-secret-key',
             },
         },
         {
@@ -930,26 +929,36 @@ DataHubPlugin.init({
 ### Custom Operator
 
 ```typescript
-import { OperatorDefinition } from '@oronts/vendure-data-hub-plugin';
+import { SingleRecordOperator, JsonObject, OperatorHelpers } from '@oronts/vendure-data-hub-plugin';
 
-const currencyConvert: OperatorDefinition = {
+interface CurrencyConvertConfig {
+    field: string;
+    from: string;
+    to: string;
+    targetField?: string;
+}
+
+const currencyConvert: SingleRecordOperator<CurrencyConvertConfig> = {
     code: 'currencyConvert',
     type: 'operator',
     name: 'Currency Convert',
     description: 'Convert between currencies',
+    category: 'conversion',
     pure: true,
     schema: {
         fields: [
-            { key: 'field', type: 'string', required: true },
-            { key: 'from', type: 'string', required: true },
-            { key: 'to', type: 'string', required: true },
-            { key: 'targetField', type: 'string', required: false },
+            { key: 'field', type: 'string', label: 'Price Field', required: true },
+            { key: 'from', type: 'string', label: 'From Currency', required: true },
+            { key: 'to', type: 'string', label: 'To Currency', required: true },
+            { key: 'targetField', type: 'string', label: 'Target Field', required: false },
         ],
     },
-    handler: async (record, args) => {
-        const rate = getExchangeRate(args.from, args.to);
-        const value = record[args.field] * rate;
-        return { ...record, [args.targetField || args.field]: value };
+    applyOne(record: JsonObject, config: CurrencyConvertConfig, helpers: OperatorHelpers): JsonObject | null {
+        const rate = getExchangeRate(config.from, config.to);
+        const value = helpers.get(record, config.field) as number;
+        const converted = value * rate;
+        helpers.set(record, config.targetField || config.field, converted);
+        return record;
     },
 };
 
@@ -961,21 +970,28 @@ DataHubPlugin.init({
 ### Custom Extractor
 
 ```typescript
-import { ExtractorDefinition } from '@oronts/vendure-data-hub-plugin';
+import { ExtractorAdapter, JsonObject } from '@oronts/vendure-data-hub-plugin';
 
-const myExtractor: ExtractorDefinition = {
-    code: 'my-extractor',
+interface MyExtractorConfig {
+    endpoint: string;
+}
+
+const myExtractor: ExtractorAdapter<MyExtractorConfig> = {
+    code: 'myExtractor',
     type: 'extractor',
     name: 'My Custom Source',
+    description: 'Fetch data from custom API',
     schema: {
         fields: [
-            { key: 'endpoint', type: 'string', required: true },
+            { key: 'endpoint', type: 'string', label: 'API Endpoint', required: true },
         ],
     },
-    handler: async (ctx, config, executorCtx) => {
+    async *extract(config: MyExtractorConfig): AsyncGenerator<JsonObject> {
         const response = await fetch(config.endpoint);
         const data = await response.json();
-        return data.items;
+        for (const item of data.items) {
+            yield item;
+        }
     },
 };
 ```
@@ -983,24 +999,31 @@ const myExtractor: ExtractorDefinition = {
 ### Custom Loader
 
 ```typescript
-import { LoaderDefinition } from '@oronts/vendure-data-hub-plugin';
+import { LoaderAdapter, JsonObject, LoadResult } from '@oronts/vendure-data-hub-plugin';
 
-const webhookNotify: LoaderDefinition = {
+interface WebhookNotifyConfig {
+    endpoint: string;
+    batchSize?: number;
+}
+
+const webhookNotify: LoaderAdapter<WebhookNotifyConfig> = {
     code: 'webhookNotify',
     type: 'loader',
     name: 'Webhook Notify',
+    description: 'Send records to webhook endpoint',
     schema: {
         fields: [
-            { key: 'endpoint', type: 'string', required: true },
-            { key: 'batchMode', type: 'string', required: false },
+            { key: 'endpoint', type: 'string', label: 'Webhook URL', required: true },
+            { key: 'batchSize', type: 'number', label: 'Batch Size', required: false },
         ],
     },
-    handler: async (ctx, config, records) => {
+    async load(records: JsonObject[], config: WebhookNotifyConfig): Promise<LoadResult> {
         await fetch(config.endpoint, {
             method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(records),
         });
-        return { succeeded: records.length, failed: 0 };
+        return { succeeded: records.length, failed: 0, errors: [] };
     },
 };
 ```

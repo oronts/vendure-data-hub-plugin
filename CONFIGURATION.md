@@ -14,6 +14,31 @@ The following environment variables can be used to configure external service UR
 | `DATAHUB_ELASTICSEARCH_URL` | Elasticsearch server URL | `http://localhost:9200` |
 | `DATAHUB_TYPESENSE_URL` | Typesense server URL | `http://localhost:8108` |
 
+### Horizontal Scaling / Distributed Locks
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATAHUB_REDIS_URL` | Redis URL for distributed locks | `redis://localhost:6379` |
+| `DATAHUB_LOCK_BACKEND` | Force lock backend (`redis`, `postgres`, `memory`) | Auto-detect |
+
+> **Horizontal Scaling Notes:**
+>
+> When running multiple instances of Vendure with DataHub, distributed locks ensure:
+> - Only one instance executes a scheduled pipeline trigger at a time
+> - Only one instance runs a message queue consumer for a given pipeline
+> - Pipeline runs don't duplicate across instances
+>
+> **Fallback Order:**
+> 1. **Redis** - Used if `DATAHUB_REDIS_URL` is set or Redis is detected at localhost:6379
+> 2. **PostgreSQL** - Automatic fallback using the Vendure database
+> 3. **Memory** - Single-instance only (used when no external store available)
+
+### File Upload / API
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATAHUB_API_UPLOAD` | File upload endpoint | `/data-hub/upload` |
+
 ## Plugin Options
 
 Configure the plugin when initializing it in your Vendure config:
@@ -196,6 +221,19 @@ All default values are defined in `src/constants/defaults.ts`. Key constant grou
 - `CONNECTION_POOL` - Connection pool settings
 - `FILE_STORAGE` - File storage limits
 - `CACHE` - Cache TTL settings
+- `DISTRIBUTED_LOCK` - Distributed lock settings
+
+### Distributed Locking
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `CLEANUP_INTERVAL_MS` | 30000 | Lock cleanup interval |
+| `DEFAULT_TTL_MS` | 30000 | Default lock TTL |
+| `DEFAULT_WAIT_TIMEOUT_MS` | 10000 | Wait timeout when acquiring locks |
+| `DEFAULT_RETRY_INTERVAL_MS` | 100 | Retry interval when waiting |
+| `PIPELINE_LOCK_TTL_MS` | 300000 | Pipeline execution lock TTL (5 minutes) |
+| `SCHEDULER_LOCK_TTL_MS` | 30000 | Scheduler trigger lock TTL |
+| `MESSAGE_CONSUMER_LOCK_TTL_MS` | 300000 | Message consumer lock TTL |
 
 ## Dashboard Configuration
 
