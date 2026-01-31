@@ -1,87 +1,144 @@
-/**
- * DataHub Dashboard Components
- * Export all reusable components for the ETL UI
- *
- * Component organization:
- * - pipelines: Pipeline building and visualization components
- * - analytics: Dashboard analytics and metrics components
- * - common: Shared UI components (file upload, transformation toolkit, etc.)
- * - wizards: Multi-step wizard components (import/export wizards)
- */
-
-// =============================================================================
-// PIPELINE COMPONENTS
-// =============================================================================
-
 export {
-    PipelineCanvas,
     PipelineEditor,
-    StepConfigPanel,
-    TriggerConfig,
-    VisualPipelineEditor,
     ReactFlowPipelineEditor,
     PipelineExportDialog,
     PipelineImportDialog,
+    NodePropertiesPanel,
+    PipelineSettingsPanel,
+    StepListItem,
+    getAdapterIcon,
+    VISUAL_NODE_CONFIGS,
+    getVisualNodeConfig,
+    createPipelineNode,
+    TriggerNode,
+    SourceNode,
+    TransformNode,
+    ValidateNode,
+    EnrichNode,
+    ConditionNode,
+    LoadNode,
+    FeedNode,
+    ExportNode,
+    SinkNode,
+    FilterNode,
+    pipelineNodeTypes,
 } from './pipelines';
 export type {
-    PipelineCanvasProps,
-    TriggerConfigProps,
-    Trigger,
-    TriggerType,
-    ScheduleTrigger,
-    WebhookTrigger,
-    EventTrigger,
-    ManualTrigger,
-    TriggerCondition,
-    VisualPipelineEditorProps,
     ReactFlowPipelineEditorProps,
+    NodePropertiesPanelProps,
+    PipelineSettingsPanelProps,
+    StepListItemProps,
+    VisualNodeConfig,
 } from './pipelines';
 
-// =============================================================================
-// ANALYTICS COMPONENTS
-// =============================================================================
+export {
+    FileUploadMapper,
+    JsonTextarea,
+    FieldError,
+    FieldSelector,
+    FileUploadDialog,
+    FieldMappingDialog,
+    ConfirmDialog,
+} from './common';
+export type {
+    FileUploadMapperProps,
+    MappingTargetField,
+    FieldErrorProps,
+    FieldSelectorProps,
+    FileUploadDialogProps,
+    FieldMappingDialogProps,
+    ConfirmDialogProps,
+    BaseDialogProps,
+} from './common';
+
+export {
+    ImportWizard,
+    ExportWizard,
+    WizardStepContainer,
+} from './wizards';
+export type {
+    ImportWizardProps,
+    ImportConfiguration,
+    ExportWizardProps,
+    ExportConfiguration,
+    WizardStepContainerProps,
+} from './wizards';
 
 export {
     AnalyticsDashboard,
     AnalyticsPanel,
 } from './analytics';
-export type {
-    AnalyticsDashboardProps,
-    RunMetrics,
-    TimeSeriesPoint,
-    PipelineStats,
-} from './analytics';
-
-// =============================================================================
-// COMMON COMPONENTS
-// =============================================================================
 
 export {
-    FileUploadMapper,
-    TransformationToolkit,
-    ImportWizard,
-    ExportWizard,
-    ConnectionConfigEditor,
-} from './common';
+    StepConfigPanel,
+    AdapterSelector,
+    AdapterRequiredWarning,
+    ThroughputSettingsComponent,
+    RouteConfigComponent,
+    ValidateConfigComponent,
+    AdvancedMapEditor,
+    AdvancedTemplateEditor,
+    AdvancedWhenEditor,
+    MultiOperatorEditor,
+    StepTester,
+    OperatorCheatSheetButton,
+    SchemaFormRenderer,
+    TriggerForm,
+    TriggersPanel,
+    LoadingState,
+    EmptyState,
+    ErrorState,
+    ValidationErrorDisplay,
+    StatCard,
+    SimpleBarChart,
+    SimpleDonutChart,
+    WizardProgressBar,
+    WizardFooter,
+    ConfigurationNameCard,
+    SummaryCard,
+    SummaryCardGrid,
+    TriggerSelector,
+    ScheduleConfig,
+    WebhookConfig,
+    SelectableCard,
+    SelectableCardGrid,
+    EntitySelector,
+    FileDropzone,
+    FilterConditionsEditor,
+} from './shared';
 export type {
-    FileUploadMapperProps,
-    ParsedFile,
-    ParsedColumn,
-    FieldMapping,
-    TransformationToolkitProps,
-    TransformStep,
-    TransformationType,
-    FilterCondition,
-    FormulaField,
-    AggregateConfig,
-    ImportConfiguration,
-    ImportWizardProps,
-    ExportConfiguration,
-    ExportWizardProps,
-} from './common';
-
-// =============================================================================
-// WIZARD COMPONENTS
-// =============================================================================
-
-export { ImportWizard as WizardImport, ExportWizard as WizardExport } from './wizards';
+    StepConfigPanelProps,
+    StepConfigData,
+    AdapterSelectorProps,
+    AdapterRequiredWarningProps,
+    ThroughputSettingsComponentProps,
+    RouteConfigComponentProps,
+    ValidateConfigComponentProps,
+    SchemaFormRendererProps,
+    TriggerFormProps,
+    TriggersPanelProps,
+    TriggersPanelExplicitProps,
+    TriggersPanelOnChangeProps,
+    LoadingStateProps,
+    EmptyStateProps,
+    ErrorStateProps,
+    ValidationErrorDisplayProps,
+    StatCardProps,
+    SimpleBarChartProps,
+    BarChartDataPoint,
+    SimpleDonutChartProps,
+    DonutChartDataPoint,
+    WizardProgressBarProps,
+    WizardFooterProps,
+    ConfigurationNameCardProps,
+    SummaryCardProps,
+    SummaryCardGridProps,
+    TriggerSelectorProps,
+    ScheduleConfigProps,
+    WebhookConfigProps,
+    SelectableCardProps,
+    SelectableCardGridProps,
+    EntitySelectorProps,
+    FileDropzoneProps,
+    FilterConditionsEditorProps,
+} from './shared';
