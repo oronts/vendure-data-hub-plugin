@@ -1,45 +1,33 @@
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Textarea } from '@vendure/dashboard';
 import * as React from 'react';
-import { graphql } from '@/gql';
-import { api } from '@vendure/dashboard';
+import { useValidatePipelineDefinition } from '../../hooks';
+import type { PipelineDefinition } from '../../types';
 
 interface Props {
-    onImport: (definition: any) => void;
+    onImport: (definition: PipelineDefinition) => void;
 }
-
-const validateDocument = graphql(`
-    mutation ValidatePipelineDefForImport($definition: JSON!) {
-        validateDataHubPipelineDefinition(definition: $definition) {
-            isValid
-            errors
-        }
-    }
-`);
 
 export function PipelineImportDialog({ onImport }: Readonly<Props>) {
     const [open, setOpen] = React.useState(false);
     const [text, setText] = React.useState('');
     const [errors, setErrors] = React.useState<string[]>([]);
-    const [validating, setValidating] = React.useState(false);
-    const [parsed, setParsed] = React.useState<any | null>(null);
+    const [parsed, setParsed] = React.useState<PipelineDefinition | null>(null);
+
+    const validateMutation = useValidatePipelineDefinition();
 
     async function handleValidate() {
         setErrors([]);
         setParsed(null);
         try {
             const def = JSON.parse(text);
-            setValidating(true);
-            const res = await api.mutate(validateDocument, { definition: def });
-            const result = res?.validateDataHubPipelineDefinition;
+            const result = await validateMutation.mutateAsync(def);
             if (result?.isValid) {
                 setParsed(def);
             } else {
-                setErrors(result?.errors ?? ["Invalid definition"]);
+                setErrors(result?.errors ?? ['Invalid definition']);
             }
         } catch (e) {
             setErrors([e instanceof Error ? e.message : 'Invalid JSON']);
-        } finally {
-            setValidating(false);
         }
     }
 
@@ -67,7 +55,7 @@ export function PipelineImportDialog({ onImport }: Readonly<Props>) {
                     <div className="space-y-3">
                         <Textarea
                             value={text}
-                            onChange={e => setText(e.target.value)}
+                            onChange={(e) => setText(e.target.value)}
                             placeholder='{"version":1,"steps":[]}'
                             className="font-mono min-h-[260px]"
                         />
@@ -75,15 +63,16 @@ export function PipelineImportDialog({ onImport }: Readonly<Props>) {
                             <div className="border border-destructive/40 rounded-md p-3">
                                 <div className="text-sm font-medium text-destructive mb-1">Validation errors</div>
                                 <ul className="list-disc pl-5 text-sm">
-                                    {errors.map((e, i) => (
-                                        <li key={i}>{e}</li>
+                                    {/* Index as key acceptable - error messages are static after validation */}
+                                    {errors.map((e, errorIndex) => (
+                                        <li key={`error-${errorIndex}`}>{e}</li>
                                     ))}
                                 </ul>
                             </div>
                         )}
                         <div className="flex gap-2">
-                            <Button variant="outline" onClick={handleValidate} disabled={validating}>
-                                {validating ? 'Validating…' : 'Validate'}
+                            <Button variant="outline" onClick={handleValidate} disabled={validateMutation.isPending}>
+                                {validateMutation.isPending ? 'Validating…' : 'Validate'}
                             </Button>
                             <Button onClick={handleImport} disabled={!parsed}>
                                 Import
@@ -95,4 +84,3 @@ export function PipelineImportDialog({ onImport }: Readonly<Props>) {
         </>
     );
 }
-

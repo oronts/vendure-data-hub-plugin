@@ -1,5 +1,6 @@
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Textarea } from '@vendure/dashboard';
 import * as React from 'react';
+import { DIALOG_DIMENSIONS, TEXTAREA_HEIGHTS } from '../../constants';
 
 interface Props {
     definition: unknown;
@@ -13,7 +14,7 @@ export function PipelineExportDialog({ definition }: Readonly<Props>) {
         try {
             await navigator.clipboard.writeText(code);
         } catch {
-            // ignore
+            // Clipboard API failed - silently ignore (user can still use download)
         }
     }
 
@@ -33,13 +34,13 @@ export function PipelineExportDialog({ definition }: Readonly<Props>) {
                 Export to code
             </Button>
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col">
+                <DialogContent className={`${DIALOG_DIMENSIONS.MAX_WIDTH_2XL} ${DIALOG_DIMENSIONS.MAX_HEIGHT_80VH} flex flex-col`}>
                     <DialogHeader className="flex-none">
                         <DialogTitle>Export pipeline</DialogTitle>
                         <DialogDescription>Copy or download TypeScript DSL</DialogDescription>
                     </DialogHeader>
                     <div className="flex flex-col gap-3 flex-1 min-h-0">
-                        <Textarea value={code} readOnly className="font-mono text-xs flex-1 min-h-[200px] max-h-[400px] resize-none" />
+                        <Textarea value={code} readOnly className={`font-mono text-xs flex-1 ${TEXTAREA_HEIGHTS.CODE_EXPORT_MIN} ${TEXTAREA_HEIGHTS.CODE_EXPORT_MAX} resize-none`} />
                         <div className="flex gap-2 flex-none">
                             <Button onClick={copyToClipboard}>Copy</Button>
                             <Button variant="secondary" onClick={downloadFile}>
@@ -60,4 +61,3 @@ function toPipelineTs(definition: unknown): string {
 export default definePipeline(${json} as const);
 `;
 }
-

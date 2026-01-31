@@ -25,6 +25,7 @@ import {
     Ticket,
     Send,
 } from 'lucide-react';
+import { ADAPTER_TYPES } from '../../../constants';
 
 type IconType = React.ComponentType<{ className?: string }>;
 
@@ -48,7 +49,7 @@ const EXTRACTOR_ICON_MAP: Record<string, IconType> = {
     rest: Globe,
     csv: FileText,
     graphql: Database,
-    'vendure-query': Database,
+    vendureQuery: Database,
 };
 
 const LOADER_ICON_MAP: Record<string, IconType> = {
@@ -61,21 +62,23 @@ const LOADER_ICON_MAP: Record<string, IconType> = {
     collectionUpsert: Layers,
     promotionUpsert: Ticket,
     assetAttach: Image,
+    assetImport: Image,
+    facetUpsert: Filter,
+    facetValueUpsert: Filter,
     orderTransition: RefreshCw,
     restPost: Send,
 };
 
 export function getAdapterIcon(adapterType: string, code?: string): IconType {
     const c = (code || '').trim();
-    if (adapterType === 'operator') {
+    if (adapterType === ADAPTER_TYPES.OPERATOR) {
         return OPERATOR_ICON_MAP[c] || RefreshCw;
     }
-    if (adapterType === 'extractor') {
+    if (adapterType === ADAPTER_TYPES.EXTRACTOR) {
         return EXTRACTOR_ICON_MAP[c] || Download;
     }
-    if (adapterType === 'loader') {
+    if (adapterType === ADAPTER_TYPES.LOADER) {
         return LOADER_ICON_MAP[c] || Upload;
     }
     return Box;
 }
-

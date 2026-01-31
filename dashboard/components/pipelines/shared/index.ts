@@ -1,30 +1,40 @@
-/**
- * Shared Pipeline Components
- * Barrel export for reusable pipeline editor components
- */
-
-// Node Properties Panel
 export { NodePropertiesPanel } from './NodePropertiesPanel';
-export type {
-    NodePropertiesPanelProps,
-    PipelineNodeData,
-    VisualNodeCategory,
-    VendureEntitySchema,
-} from './NodePropertiesPanel';
+export type { NodePropertiesPanelProps } from './NodePropertiesPanel';
 
-// Operator Cheat Sheet
-export { OperatorCheatSheetButton } from './operator-cheatsheet';
+export { PipelineSettingsPanel } from './PipelineSettingsPanel';
+export type { PipelineSettingsPanelProps } from './PipelineSettingsPanel';
 
-// Advanced Editors
+export { StepListItem } from './StepListItem';
+export type { StepListItemProps } from './StepListItem';
+
 export {
+    StepConfigPanel,
+    OperatorCheatSheetButton,
     AdvancedMapEditor,
     AdvancedTemplateEditor,
     AdvancedWhenEditor,
     MultiOperatorEditor,
-} from './advanced-editors';
+    StepTester,
+} from '../../shared/step-config';
+export type { StepConfigData, StepConfigPanelProps } from '../../shared/step-config';
 
-// Step Tester
-export { StepTester } from './step-tester';
+export { getAdapterIcon } from './adapter-icons';
 
-// Adapter Icons (if exists)
-export * from './adapter-icons';
+export { VISUAL_NODE_CONFIGS, getVisualNodeConfig } from './visual-node-config';
+export type { VisualNodeConfig } from './visual-node-config';
+
+export {
+    createPipelineNode,
+    TriggerNode,
+    SourceNode,
+    TransformNode,
+    ValidateNode,
+    EnrichNode,
+    ConditionNode,
+    LoadNode,
+    FeedNode,
+    ExportNode,
+    SinkNode,
+    FilterNode,
+    pipelineNodeTypes,
+} from './PipelineNode';
