@@ -5,7 +5,8 @@
  */
 
 import { RecordObject, BranchOutput, isBranchOutput } from '../executor-types';
-import { PipelineEdge, TopologyData } from './types';
+import { PipelineEdge } from '../../types/index';
+import { TopologyData } from './types';
 
 /**
  * Build topology data structures for graph traversal

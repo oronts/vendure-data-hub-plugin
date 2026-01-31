@@ -1,5 +1,4 @@
-import { RequestContext } from '@vendure/core';
-import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig, CheckpointingConfig } from '../types/index';
+import { JsonObject, JsonValue, ErrorHandlingConfig, CheckpointingConfig } from '../types/index';
 
 export type RecordObject = JsonObject;
 
@@ -11,8 +10,8 @@ export type BranchOutput = { __branchOutputs: true; branches: Record<string, Rec
 /**
  * Type guard for BranchOutput
  */
-export function isBranchOutput(val: any): val is BranchOutput {
-    return !!val && typeof val === 'object' && val.__branchOutputs === true && typeof val.branches === 'object';
+export function isBranchOutput(val: unknown): val is BranchOutput {
+    return !!val && typeof val === 'object' && (val as BranchOutput).__branchOutputs === true && typeof (val as BranchOutput).branches === 'object';
 }
 
 /**
@@ -21,10 +20,11 @@ export function isBranchOutput(val: any): val is BranchOutput {
 export type OnRecordErrorCallback = (stepKey: string, message: string, payload: RecordObject) => Promise<void>;
 
 /**
- * Common interface for checkpoint data management
+ * Common interface for checkpoint data management.
+ * Uses Record<string, JsonValue> to match JsonObject structure for serialization.
  */
 export interface CheckpointData {
-    [stepKey: string]: Record<string, any>;
+    [stepKey: string]: Record<string, JsonValue>;
 }
 
 /**

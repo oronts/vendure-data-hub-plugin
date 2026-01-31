@@ -2,17 +2,19 @@ import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import * as fs from 'fs';
 import * as pathLib from 'path';
-import { JsonValue, JsonObject, PipelineStepDefinition, PipelineContext, PipelineCheckpoint } from '../../types/index';
-// Direct imports to avoid circular dependencies
+import { JsonValue, JsonObject, PipelineStepDefinition, PipelineContext } from '../../types/index';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult, ExecutorContext } from '../executor-types';
 import { getPath, setPath, recordsToCsv, chunk, sleep, ensureDirectoryExists, deepClone } from '../utils';
-import { DEFAULTS, OUTPUT_PATHS, LOGGER_CONTEXTS, HTTP } from '../../constants/index';
+import { DEFAULTS, LOGGER_CONTEXTS, HTTP, FILE_STORAGE, TRUNCATION, HttpMethod, EXPORTER_CODE, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../constants/index';
+import { FileFormat } from '../../constants/enums';
 import { ExportConfig } from '../config-types';
 import { DataHubRegistryService } from '../../sdk/registry.service';
-import { ExporterAdapter, ExportContext } from '../../sdk/types';
+import { ExporterAdapter, ExportContext, ConnectionConfig, ConnectionType } from '../../sdk/types';
+import { formatDate } from '../../transforms/field/date-transforms';
+import { getAdapterCode } from '../../types/step-configs';
 
 /**
  * Resolve output file path from directory path and filename pattern
@@ -37,20 +39,6 @@ function resolveOutputPath(basePath: string, filenamePattern?: string, defaultFi
         .replace(/\$\{uuid\}/g, crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
     return pathLib.join(basePath, filename);
-}
-
-/**
- * Format date with pattern (simplified version)
- */
-function formatDate(date: Date, format: string): string {
-    const pad = (n: number, len = 2) => String(n).padStart(len, '0');
-    return format
-        .replace('YYYY', String(date.getFullYear()))
-        .replace('MM', pad(date.getMonth() + 1))
-        .replace('DD', pad(date.getDate()))
-        .replace('HH', pad(date.getHours()))
-        .replace('mm', pad(date.getMinutes()))
-        .replace('ss', pad(date.getSeconds()));
 }
 
 /**
@@ -136,7 +124,7 @@ export class ExportExecutor {
         executorCtx?: ExecutorContext,
     ): Promise<ExecutionResult> {
         const cfg = step.config as BaseExportCfg;
-        const adapterCode = cfg.adapterCode;
+        const adapterCode = getAdapterCode(step) || undefined;
         const startTime = Date.now();
         let ok = 0;
         let fail = 0;
@@ -179,10 +167,10 @@ export class ExportExecutor {
         };
 
         switch (adapterCode) {
-            case 'csvExport': {
+            case EXPORTER_CODE.CSV: {
                 try {
                     const csvCfg = step.config as Record<string, JsonValue>;
-                    const basePath = (csvCfg.path as string) ?? OUTPUT_PATHS.CSV_EXPORT;
+                    const basePath = (csvCfg.path as string) ?? FILE_STORAGE.TEMP_DIR;
                     const filenamePattern = csvCfg.filenamePattern as string | undefined;
                     const outputPath = resolveOutputPath(basePath, filenamePattern, 'export.csv');
                     const delimiter = (csvCfg.delimiter as string) ?? ',';
@@ -190,7 +178,7 @@ export class ExportExecutor {
                     const records = input.map(prepareRecord);
                     const csv = recordsToCsv(records, delimiter, includeHeader);
                     ensureDirectoryExists(outputPath);
-                    fs.writeFileSync(outputPath, csv, 'utf-8');
+                    await fs.promises.writeFile(outputPath, csv, 'utf-8');
                     this.logger.info(`CSV export complete`, { outputPath, recordCount: records.length });
                     ok = records.length;
                 } catch (e: unknown) {
@@ -200,23 +188,23 @@ export class ExportExecutor {
                 }
                 break;
             }
-            case 'jsonExport': {
+            case EXPORTER_CODE.JSON: {
                 try {
                     const jsonCfg = step.config as Record<string, JsonValue>;
-                    const basePath = (jsonCfg.path as string) ?? OUTPUT_PATHS.JSON_EXPORT;
+                    const basePath = (jsonCfg.path as string) ?? FILE_STORAGE.TEMP_DIR;
                     const filenamePattern = jsonCfg.filenamePattern as string | undefined;
                     const outputPath = resolveOutputPath(basePath, filenamePattern, 'export.json');
                     const format = (jsonCfg.format as string) ?? 'json';
                     const records = input.map(prepareRecord);
                     let content: string;
-                    if (format === 'ndjson' || format === 'jsonl') {
+                    if (format === FileFormat.NDJSON || format === 'jsonl') {
                         content = records.map(r => JSON.stringify(r)).join('\n');
                     } else {
                         const pretty = jsonCfg.pretty !== false;
                         content = JSON.stringify(records, null, pretty ? 2 : undefined);
                     }
                     ensureDirectoryExists(outputPath);
-                    fs.writeFileSync(outputPath, content, 'utf-8');
+                    await fs.promises.writeFile(outputPath, content, 'utf-8');
                     this.logger.info(`JSON export complete`, { outputPath, recordCount: records.length });
                     ok = records.length;
                 } catch (e: unknown) {
@@ -226,10 +214,10 @@ export class ExportExecutor {
                 }
                 break;
             }
-            case 'xmlExport': {
+            case EXPORTER_CODE.XML: {
                 try {
                     const xmlCfg = step.config as Record<string, JsonValue>;
-                    const basePath = (xmlCfg.path as string) ?? OUTPUT_PATHS.XML_EXPORT;
+                    const basePath = (xmlCfg.path as string) ?? FILE_STORAGE.TEMP_DIR;
                     const filenamePattern = xmlCfg.filenamePattern as string | undefined;
                     const outputPath = resolveOutputPath(basePath, filenamePattern, 'export.xml');
                     const rootElement = (xmlCfg.rootElement as string) ?? 'records';
@@ -248,7 +236,7 @@ export class ExportExecutor {
                     }
                     xml += `</${rootElement}>`;
                     ensureDirectoryExists(outputPath);
-                    fs.writeFileSync(outputPath, xml, 'utf-8');
+                    await fs.promises.writeFile(outputPath, xml, 'utf-8');
                     this.logger.info(`XML export complete`, { outputPath, recordCount: records.length });
                     ok = records.length;
                 } catch (e: unknown) {
@@ -258,11 +246,11 @@ export class ExportExecutor {
                 }
                 break;
             }
-            case 'restPost':
-            case 'webhookExport': {
+            case EXPORTER_CODE.REST_POST:
+            case EXPORTER_CODE.WEBHOOK: {
                 const webhookCfg = step.config as Record<string, JsonValue>;
                 const endpoint = webhookCfg.url as string | undefined;
-                const method = ((webhookCfg.method as string) ?? 'POST').toUpperCase();
+                const method = ((webhookCfg.method as string) ?? HttpMethod.POST).toUpperCase();
                 const headers = (webhookCfg.headers as Record<string, string>) ?? {};
                 const batchSize = Number(webhookCfg.batchSize ?? DEFAULTS.BULK_SIZE) || DEFAULTS.BULK_SIZE;
                 const records = input.map(prepareRecord);
@@ -280,12 +268,12 @@ export class ExportExecutor {
                 // Get auth headers from secrets
                 const bearerSecret = webhookCfg.bearerTokenSecretCode as string | undefined;
                 const basicSecret = webhookCfg.basicSecretCode as string | undefined;
-                const finalHeaders: Record<string, string> = { 'Content-Type': 'application/json', ...headers };
+                const finalHeaders: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...headers };
 
                 if (bearerSecret) {
                     try {
                         const token = await this.secretService.resolve(ctx, bearerSecret);
-                        if (token) finalHeaders['Authorization'] = `Bearer ${token}`;
+                        if (token) finalHeaders[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${token}`;
                     } catch (error) {
                         this.logger.warn('Failed to resolve bearer token secret for webhook export', {
                             stepKey: step.key,
@@ -297,7 +285,7 @@ export class ExportExecutor {
                 if (basicSecret) {
                     try {
                         const creds = await this.secretService.resolve(ctx, basicSecret);
-                        if (creds) finalHeaders['Authorization'] = `Basic ${Buffer.from(creds).toString('base64')}`;
+                        if (creds) finalHeaders[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${Buffer.from(creds).toString('base64')}`;
                     } catch (error) {
                         this.logger.warn('Failed to resolve basic auth secret for webhook export', {
                             stepKey: step.key,
@@ -325,9 +313,10 @@ export class ExportExecutor {
                                         body: payload,
                                         signal: controller?.signal,
                                     });
+                                    // Always consume response body to prevent memory leaks
+                                    const bodyText = await response.text().catch(() => '');
                                     if (!response.ok) {
-                                        const bodyText = await response.text().catch(() => '');
-                                        throw new Error(`HTTP ${response.status}: ${response.statusText}${bodyText ? ` - ${bodyText}` : ''}`);
+                                        throw new Error(`HTTP ${response.status}: ${response.statusText}${bodyText ? ` - ${bodyText.slice(0, TRUNCATION.ERROR_MESSAGE_MAX_LENGTH)}` : ''}`);
                                     }
                                 } finally {
                                     if (timer) clearTimeout(timer);
@@ -365,16 +354,14 @@ export class ExportExecutor {
             }
         }
 
-        const durationMs = Date.now() - startTime;
-        this.logger.debug(`Export step complete`, {
-            stepKey: step.key,
-            adapterCode,
-            ok,
-            fail,
-            durationMs,
-        });
+        this.logOperationResult(adapterCode ?? 'unknown', 'export', ok, fail, startTime, step.key);
 
         return { ok, fail };
+    }
+
+    private logOperationResult(adapterCode: string, operation: string, ok: number, fail: number, startTime: number, stepKey: string): void {
+        const durationMs = Date.now() - startTime;
+        this.logger.logExporterOperation(adapterCode, operation, ok, fail, durationMs, { stepKey });
     }
 
     /**
@@ -388,9 +375,8 @@ export class ExportExecutor {
         pipelineContext?: PipelineContext,
         executorCtx?: ExecutorContext,
     ): Promise<ExecutionResult> {
-        const cfg = step.config as JsonObject;
+        const cfg = step.config as JsonObject & { incremental?: boolean };
 
-        // Create export context for the custom exporter
         const exportContext: ExportContext = {
             ctx,
             pipelineId: '0',
@@ -410,22 +396,37 @@ export class ExportExecutor {
             connections: {
                 get: async (code: string) => {
                     const conn = await this.connectionService.getByCode(ctx, code);
-                    return conn?.config as any;
+                    if (!conn) return undefined;
+                    return {
+                        code: conn.code,
+                        type: conn.type as ConnectionType,
+                        ...conn.config,
+                    } as ConnectionConfig;
                 },
                 getRequired: async (code: string) => {
                     const conn = await this.connectionService.getByCode(ctx, code);
                     if (!conn) throw new Error(`Connection not found: ${code}`);
-                    return conn.config as any;
+                    return {
+                        code: conn.code,
+                        type: conn.type as ConnectionType,
+                        ...conn.config,
+                    } as ConnectionConfig;
                 },
             },
             logger: {
-                info: (msg: string, meta?: any) => this.logger.info(msg, meta),
-                warn: (msg: string, meta?: any) => this.logger.warn(msg, meta),
-                error: (msg: string, meta?: any) => this.logger.error(msg, undefined, meta),
-                debug: (msg: string, meta?: any) => this.logger.debug(msg, meta),
+                info: (msg: string, meta?: JsonObject) => this.logger.info(msg, meta),
+                warn: (msg: string, meta?: JsonObject) => this.logger.warn(msg, meta),
+                error: (msg: string, errorOrMeta?: Error | JsonObject, meta?: JsonObject) => {
+                    if (errorOrMeta instanceof Error) {
+                        this.logger.error(msg, errorOrMeta, meta);
+                    } else {
+                        this.logger.error(msg, undefined, errorOrMeta);
+                    }
+                },
+                debug: (msg: string, meta?: JsonObject) => this.logger.debug(msg, meta),
             },
             dryRun: false,
-            incremental: (cfg as any)?.incremental ?? false,
+            incremental: cfg?.incremental ?? false,
             checkpoint: executorCtx?.cpData?.[step.key] ?? {},
             setCheckpoint: (data: JsonObject) => {
                 if (executorCtx?.cpData) {

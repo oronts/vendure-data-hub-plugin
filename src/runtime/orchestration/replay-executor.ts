@@ -165,7 +165,7 @@ export async function replayFromStepGraph(params: {
     const stepByKey = new Map<string, typeof steps[number]>();
     for (const s of steps) stepByKey.set(s.key, s);
 
-    const edges = (definition as any).edges as PipelineEdge[];
+    const edges = definition.edges ?? [];
 
     // Build adjacency list for reachability
     const adj = new Map<string, Array<{ to: string; branch?: string }>>();
@@ -307,8 +307,6 @@ export async function replayFromStepGraph(params: {
             }
 
             default:
-                // Pass through records for unknown step types
-                // This allows forward compatibility when new step types are added
                 logger.warn(`replayFromStepGraph: Unhandled step type "${step.type}" for step "${key}" - passing through ${input.length} records`);
                 outputs.set(key, input);
                 break;

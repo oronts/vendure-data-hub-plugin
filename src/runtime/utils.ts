@@ -3,7 +3,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { JsonObject, JsonValue } from '../types/index';
 import { RecordObject } from './executor-types';
-import { UNIT_CONVERSIONS, TRANSFORM_LIMITS } from '../constants/index';
+import { UNIT_CONVERSIONS } from '../constants/index';
+import { slugify } from '../operators/helpers';
+import {
+    getNestedValue,
+    setNestedValue,
+    removeNestedValue,
+    deepClone as deepCloneUtil,
+} from '../utils/object-path.utils';
 
 /**
  * Ensures the directory for the given file path exists.
@@ -17,30 +24,28 @@ export function ensureDirectoryExists(filePath: string): void {
 }
 
 /**
- * Converts an input string to a URL-friendly slug
+ * Ensures the directory for the given file path exists (async version).
+ * Creates it recursively if needed.
  */
-export function slugify(input: string): string {
-    return input
-        .toLowerCase()
-        .trim()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .slice(0, TRANSFORM_LIMITS.SLUG_MAX_LENGTH);
+export async function ensureDirectoryExistsAsync(filePath: string): Promise<void> {
+    const dir = path.dirname(filePath);
+    await fs.promises.mkdir(dir, { recursive: true });
 }
+
+export { slugify };
 
 /**
  * Parses CSV text into an array of record objects
  */
 export function parseCsv(text: string, delimiter = ',', hasHeader = true): RecordObject[] {
     const lines = text.split(/\r?\n/).filter(l => l.length > 0);
-    if (lines.length === 0) return [] as any;
+    if (lines.length === 0) return [];
     const rows = lines.map(l => splitCsvLine(l, delimiter));
     if (!hasHeader) {
-        return rows.map(r => ({ row: r })) as any;
+        return rows.map(r => ({ row: r as JsonValue }));
     }
     const header = rows[0];
-    return rows.slice(1).map(r => arrayToObject(header, r)) as any;
+    return rows.slice(1).map(r => arrayToObject(header, r));
 }
 
 /**
@@ -73,8 +78,8 @@ export function splitCsvLine(line: string, delimiter: string): string[] {
 /**
  * Converts parallel arrays of keys and values into an object
  */
-export function arrayToObject(keys: string[], values: any[]): Record<string, any> {
-    const o: Record<string, any> = {};
+export function arrayToObject(keys: string[], values: JsonValue[]): JsonObject {
+    const o: JsonObject = {};
     for (let i = 0; i < keys.length; i++) {
         o[keys[i]] = values[i];
     }
@@ -84,7 +89,7 @@ export function arrayToObject(keys: string[], values: any[]): Record<string, any
 /**
  * Converts a value to string or returns undefined if empty
  */
-export function strOrUndefined(v: any): string | undefined {
+export function strOrUndefined(v: unknown): string | undefined {
     if (v == null) return undefined;
     const s = String(v);
     return s.length ? s : undefined;
@@ -110,28 +115,36 @@ export function unitFactor(from: string, to: string): number {
 /**
  * Safely parses a JSON value
  */
-export function safeJson(v: any): any {
+export function safeJson(v: unknown): JsonValue | undefined {
     if (v == null) return undefined;
     try {
-        if (typeof v === 'string') return JSON.parse(v);
-        return v;
+        if (typeof v === 'string') return JSON.parse(v) as JsonValue;
+        return v as JsonValue;
     } catch {
+        // JSON parse failed - return undefined as fallback
         return undefined;
     }
+}
+
+/** Condition specification for evalCondition */
+export interface EvalConditionSpec {
+    field: string;
+    cmp: string;
+    value: JsonValue;
 }
 
 /**
  * Evaluates a condition against a record
  */
-export function evalCondition(rec: any, cond: { field: string; cmp: string; value: any }): boolean {
-    const { field, cmp, value } = cond || ({} as any);
+export function evalCondition(rec: JsonObject, cond: EvalConditionSpec | null | undefined): boolean {
+    const { field, cmp, value } = cond || { field: '', cmp: '', value: null };
     const cur = getPath(rec, field);
     switch (cmp) {
         case 'eq': return cur === value;
         case 'ne': return cur !== value;
         case 'gt': return Number(cur) > Number(value);
         case 'lt': return Number(cur) < Number(value);
-        case 'in': return Array.isArray(value) ? value.includes(cur) : false;
+        case 'in': return Array.isArray(value) ? value.includes(cur as JsonValue) : false;
         case 'contains': return typeof cur === 'string' && String(cur).includes(String(value));
         default: return false;
     }
@@ -140,10 +153,10 @@ export function evalCondition(rec: any, cond: { field: string; cmp: string; valu
 /**
  * Picks specific paths from an object for hashing, or excludes specific paths
  */
-export function pickForHash(obj: any, includePaths: string[], excludePaths: string[]): any {
+export function pickForHash(obj: JsonObject, includePaths: string[], excludePaths: string[]): JsonObject {
     try {
         if (includePaths && includePaths.length) {
-            const out: any = {};
+            const out: JsonObject = {};
             for (const p of includePaths) {
                 setPath(out, p, getPath(obj, p));
             }
@@ -155,37 +168,32 @@ export function pickForHash(obj: any, includePaths: string[], excludePaths: stri
             return clone;
         }
         return obj;
-    } catch { return obj; }
-}
-
-/**
- * Sets a value at a dot-notation path in an object
- */
-export function setPath(obj: any, path: string, value: any): void {
-    const parts = String(path).split('.');
-    let cur = obj;
-    for (let i = 0; i < parts.length - 1; i++) {
-        const k = parts[i];
-        if (typeof cur[k] !== 'object' || cur[k] == null) cur[k] = {};
-        cur = cur[k];
+    } catch {
+        // Path manipulation failed - return original object
+        return obj;
     }
-    cur[parts[parts.length - 1]] = value;
 }
 
 /**
- * Removes a value at a dot-notation path from an object
+ * Sets a value at a dot-notation path in an object.
+ * Uses the canonical implementation from object-path.utils.
  */
-export function removePath(obj: any, path: string): void {
-    const parts = String(path).split('.');
-    let cur = obj;
-    for (let i = 0; i < parts.length - 1; i++) { if (cur == null) return; cur = cur[parts[i]]; }
-    if (cur) delete cur[parts[parts.length - 1]];
+export function setPath(obj: JsonObject, pathStr: string, value: JsonValue): void {
+    setNestedValue(obj, pathStr, value);
+}
+
+/**
+ * Removes a value at a dot-notation path from an object.
+ * Uses the canonical implementation from object-path.utils.
+ */
+export function removePath(obj: JsonObject, pathStr: string): void {
+    removeNestedValue(obj, pathStr);
 }
 
 /**
  * Creates a stable SHA1 hash of an object
  */
-export function hashStable(value: any): string {
+export function hashStable(value: JsonValue): string {
     const json = stableStringify(value);
     return crypto.createHash('sha1').update(json).digest('hex');
 }
@@ -193,34 +201,41 @@ export function hashStable(value: any): string {
 /**
  * Creates a stable JSON string representation of a value
  */
-export function stableStringify(value: any): string {
+export function stableStringify(value: JsonValue): string {
     if (value == null) return 'null';
     if (typeof value !== 'object') return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map(v => stableStringify(v)).join(',')}]`;
     const keys = Object.keys(value).sort();
-    const entries = keys.map(k => `"${k}":${stableStringify(value[k])}`);
+    const entries = keys.map(k => `"${k}":${stableStringify((value as JsonObject)[k])}`);
     return `{${entries.join(',')}}`;
 }
 
 /**
- * Gets a value at a dot-notation path from an object
+ * Gets a value at a dot-notation path from an object.
+ * Uses the canonical implementation from object-path.utils.
  */
-export function getPath(obj: any, path: string): any {
-    const parts = String(path ?? '').split('.');
-    let cur = obj;
-    for (const p of parts) {
-        if (cur == null) return undefined;
-        cur = cur[p];
-    }
-    return cur;
+export function getPath(obj: JsonObject, pathStr: string): JsonValue {
+    return getNestedValue(obj, pathStr ?? '') as JsonValue;
+}
+
+/** Field specification for validateAgainstSimpleSpec */
+export interface FieldSpec {
+    required?: boolean;
+    type?: string;
+    enum?: JsonValue[];
+    min?: number;
+    max?: number;
+    minLength?: number;
+    maxLength?: number;
+    pattern?: string;
 }
 
 /**
  * Validates a record against a simple field specification
  */
 export function validateAgainstSimpleSpec(
-    rec: any,
-    fields: Record<string, { required?: boolean; type?: string; enum?: any[]; min?: number; max?: number; minLength?: number; maxLength?: number; pattern?: string }>,
+    rec: JsonObject,
+    fields: Record<string, FieldSpec>,
 ): string[] {
     const errors: string[] = [];
     for (const [key, spec] of Object.entries(fields)) {
@@ -249,7 +264,9 @@ export function validateAgainstSimpleSpec(
                 try {
                     const re = new RegExp(spec.pattern);
                     if (!re.test(v)) errors.push(`${key} does not match pattern`);
-                } catch {}
+                } catch (error) {
+                    errors.push(`${key} has invalid regex pattern: ${error instanceof Error ? error.message : String(error)}`);
+                }
             }
         }
     }
@@ -275,30 +292,11 @@ export function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Creates a deep clone of an object using JSON serialization.
- * Handles most common data types but does NOT preserve:
- * - Functions
- * - Symbols
- * - undefined values (converted to null)
- * - Date objects (converted to ISO strings)
- * - Map/Set (converted to arrays/objects)
- * - Circular references (will throw)
- *
- * For simple data records (which is the primary use case in pipelines),
- * this is efficient and safe.
+ * Creates a deep clone of an object.
+ * Uses the canonical implementation from object-path.utils.
  */
-export function deepClone<T>(obj: T): T {
-    if (obj === null || obj === undefined) {
-        return obj;
-    }
-    if (typeof obj !== 'object') {
-        return obj;
-    }
-    try {
-        return JSON.parse(JSON.stringify(obj));
-    } catch {
-        return obj;
-    }
+export function deepClone<T extends JsonValue>(obj: T): T {
+    return deepCloneUtil(obj as JsonObject) as T;
 }
 
 /**
@@ -329,7 +327,7 @@ export function recordsToCsv(records: RecordObject[], delimiter: string, include
         lines.push(keys.map(k => csvEscape(k, delimiter)).join(delimiter));
     }
     for (const rec of records) {
-        const vals = keys.map(k => csvEscape(String((rec as any)[k] ?? ''), delimiter));
+        const vals = keys.map(k => csvEscape(String(rec[k] ?? ''), delimiter));
         lines.push(vals.join(delimiter));
     }
     return lines.join('\n');
@@ -338,7 +336,7 @@ export function recordsToCsv(records: RecordObject[], delimiter: string, include
 /**
  * Converts an array of records to XML format
  */
-export function recordsToXml(records: any[], rootElement: string, itemElement: string): string {
+export function recordsToXml(records: JsonObject[], rootElement: string, itemElement: string): string {
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
     xml += `<${rootElement}>\n`;
     for (const rec of records) {

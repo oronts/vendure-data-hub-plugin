@@ -8,6 +8,7 @@
 import { Logger } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import { PipelineDefinition, StepType, PipelineStepDefinition } from '../../types/index';
+import { StepType as StepTypeEnum } from '../../constants/enums';
 import {
     RecordObject,
     BranchOutput,
@@ -22,7 +23,6 @@ import {
     FeedExecutor,
     SinkExecutor,
 } from '../executors';
-// Direct import to avoid circular dependencies
 import { HookService } from '../../services/events/hook.service';
 
 /**
@@ -75,6 +75,7 @@ export interface ExecuteStepParams {
         definition: PipelineDefinition,
         onRecordError?: OnRecordErrorCallback,
     ) => Promise<{ ok: number; fail: number }>;
+    /** Applies idempotency filtering to records */
     applyIdempotency?: (records: RecordObject[], definition: PipelineDefinition) => RecordObject[];
     onRecordError?: OnRecordErrorCallback;
 }
@@ -97,7 +98,7 @@ function createEmptyResult(stepKey: string, type: string): StepResult {
  * Execute a trigger step (no-op)
  */
 function executeTrigger(stepKey: string): StepResult {
-    return createEmptyResult(stepKey, 'TRIGGER');
+    return createEmptyResult(stepKey, StepTypeEnum.TRIGGER);
 }
 
 /**
@@ -106,15 +107,15 @@ function executeTrigger(stepKey: string): StepResult {
 async function executeExtract(params: ExecuteStepParams): Promise<StepResult> {
     const { ctx, definition, step, executorCtx, deps, onRecordError } = params;
 
-    await deps.hookService.run(ctx, definition, 'beforeExtract');
+    await deps.hookService.run(ctx, definition, 'BEFORE_EXTRACT');
     const out = await deps.extractExecutor.execute(ctx, step, executorCtx, onRecordError);
-    await deps.hookService.run(ctx, definition, 'afterExtract', out as RecordObject[]);
+    await deps.hookService.run(ctx, definition, 'AFTER_EXTRACT', out as RecordObject[]);
 
     return {
         output: out,
         detail: {
             stepKey: step.key,
-            type: 'EXTRACT',
+            type: StepTypeEnum.EXTRACT,
             adapterCode: step.config?.adapterCode,
             out: out.length,
         },
@@ -122,7 +123,7 @@ async function executeExtract(params: ExecuteStepParams): Promise<StepResult> {
         succeeded: out.length,
         failed: 0,
         counters: { extracted: out.length },
-        event: { type: 'RecordExtracted', data: { stepKey: step.key, count: out.length } },
+        event: { type: 'RECORD_EXTRACTED', data: { stepKey: step.key, count: out.length } },
     };
 }
 
@@ -132,15 +133,15 @@ async function executeExtract(params: ExecuteStepParams): Promise<StepResult> {
 async function executeTransform(params: ExecuteStepParams): Promise<StepResult> {
     const { ctx, definition, step, input, executorCtx, deps } = params;
 
-    await deps.hookService.run(ctx, definition, 'beforeTransform', input as RecordObject[]);
+    await deps.hookService.run(ctx, definition, 'BEFORE_TRANSFORM', input as RecordObject[]);
     const out = await deps.transformExecutor.executeOperator(ctx, step, input, executorCtx);
-    await deps.hookService.run(ctx, definition, 'afterTransform', out as RecordObject[]);
+    await deps.hookService.run(ctx, definition, 'AFTER_TRANSFORM', out as RecordObject[]);
 
     return {
         output: out,
         detail: {
             stepKey: step.key,
-            type: 'TRANSFORM',
+            type: StepTypeEnum.TRANSFORM,
             adapterCode: step.config?.adapterCode,
             out: out.length,
         },
@@ -148,7 +149,7 @@ async function executeTransform(params: ExecuteStepParams): Promise<StepResult> 
         succeeded: 0,
         failed: 0,
         counters: { transformed: out.length },
-        event: { type: 'RecordTransformed', data: { stepKey: step.key, count: out.length } },
+        event: { type: 'RECORD_TRANSFORMED', data: { stepKey: step.key, count: out.length } },
     };
 }
 
@@ -158,15 +159,15 @@ async function executeTransform(params: ExecuteStepParams): Promise<StepResult> 
 async function executeValidate(params: ExecuteStepParams): Promise<StepResult> {
     const { ctx, definition, step, input, deps, onRecordError } = params;
 
-    await deps.hookService.run(ctx, definition, 'beforeValidate', input as RecordObject[]);
+    await deps.hookService.run(ctx, definition, 'BEFORE_VALIDATE', input as RecordObject[]);
     const out = await deps.transformExecutor.executeValidate(ctx, step, input, onRecordError);
-    await deps.hookService.run(ctx, definition, 'afterValidate', out as RecordObject[]);
+    await deps.hookService.run(ctx, definition, 'AFTER_VALIDATE', out as RecordObject[]);
 
     return {
         output: out,
         detail: {
             stepKey: step.key,
-            type: 'VALIDATE',
+            type: StepTypeEnum.VALIDATE,
             adapterCode: step.config?.adapterCode,
             out: out.length,
         },
@@ -174,7 +175,7 @@ async function executeValidate(params: ExecuteStepParams): Promise<StepResult> {
         succeeded: 0,
         failed: 0,
         counters: { validated: out.length },
-        event: { type: 'RecordValidated', data: { stepKey: step.key, count: out.length } },
+        event: { type: 'RECORD_VALIDATED', data: { stepKey: step.key, count: out.length } },
     };
 }
 
@@ -184,15 +185,15 @@ async function executeValidate(params: ExecuteStepParams): Promise<StepResult> {
 async function executeEnrich(params: ExecuteStepParams): Promise<StepResult> {
     const { ctx, definition, step, input, executorCtx, deps } = params;
 
-    await deps.hookService.run(ctx, definition, 'beforeEnrich', input as RecordObject[]);
+    await deps.hookService.run(ctx, definition, 'BEFORE_ENRICH', input as RecordObject[]);
     const out = await deps.transformExecutor.executeOperator(ctx, step, input, executorCtx);
-    await deps.hookService.run(ctx, definition, 'afterEnrich', out as RecordObject[]);
+    await deps.hookService.run(ctx, definition, 'AFTER_ENRICH', out as RecordObject[]);
 
     return {
         output: out,
         detail: {
             stepKey: step.key,
-            type: 'ENRICH',
+            type: StepTypeEnum.ENRICH,
             adapterCode: step.config?.adapterCode,
             out: out.length,
         },
@@ -200,7 +201,7 @@ async function executeEnrich(params: ExecuteStepParams): Promise<StepResult> {
         succeeded: 0,
         failed: 0,
         counters: { enriched: out.length },
-        event: { type: 'RecordTransformed', data: { stepKey: step.key, count: out.length, stage: 'ENRICH' } },
+        event: { type: 'RECORD_TRANSFORMED', data: { stepKey: step.key, count: out.length, stage: StepTypeEnum.ENRICH } },
     };
 }
 
@@ -210,17 +211,17 @@ async function executeEnrich(params: ExecuteStepParams): Promise<StepResult> {
 async function executeRoute(params: ExecuteStepParams): Promise<StepResult> {
     const { ctx, definition, step, input, deps } = params;
 
-    await deps.hookService.run(ctx, definition, 'beforeRoute', input as RecordObject[]);
+    await deps.hookService.run(ctx, definition, 'BEFORE_ROUTE', input as RecordObject[]);
     const out = await deps.transformExecutor.executeRouteBranches(ctx, step, input);
     const total = Object.values(out.branches).reduce((acc, arr) => acc + (arr?.length ?? 0), 0);
     const aggregated = ([] as RecordObject[]).concat(...Object.values(out.branches));
-    await deps.hookService.run(ctx, definition, 'afterRoute', aggregated as RecordObject[]);
+    await deps.hookService.run(ctx, definition, 'AFTER_ROUTE', aggregated as RecordObject[]);
 
     return {
         output: out,
         detail: {
             stepKey: step.key,
-            type: 'ROUTE',
+            type: StepTypeEnum.ROUTE,
             adapterCode: step.config?.adapterCode,
             out: total,
             branches: Object.keys(out.branches),
@@ -238,7 +239,7 @@ async function executeRoute(params: ExecuteStepParams): Promise<StepResult> {
 async function executeLoad(params: ExecuteStepParams): Promise<StepResult> {
     const { ctx, definition, step, input, deps, loadWithThroughput, applyIdempotency, onRecordError } = params;
 
-    await deps.hookService.run(ctx, definition, 'beforeLoad', input as RecordObject[]);
+    await deps.hookService.run(ctx, definition, 'BEFORE_LOAD', input as RecordObject[]);
     const batch = applyIdempotency ? applyIdempotency(input, definition) : input;
 
     let ok: number;
@@ -254,13 +255,13 @@ async function executeLoad(params: ExecuteStepParams): Promise<StepResult> {
         fail = result.fail;
     }
 
-    await deps.hookService.run(ctx, definition, 'afterLoad', input as RecordObject[]);
+    await deps.hookService.run(ctx, definition, 'AFTER_LOAD', input as RecordObject[]);
 
     return {
         output: [],
         detail: {
             stepKey: step.key,
-            type: 'LOAD',
+            type: StepTypeEnum.LOAD,
             adapterCode: step.config?.adapterCode,
             ok,
             fail,
@@ -269,7 +270,7 @@ async function executeLoad(params: ExecuteStepParams): Promise<StepResult> {
         succeeded: ok,
         failed: fail,
         counters: { loaded: ok, rejected: fail },
-        event: { type: 'RecordLoaded', data: { stepKey: step.key, ok, fail } },
+        event: { type: 'RECORD_LOADED', data: { stepKey: step.key, ok, fail } },
     };
 }
 
@@ -285,7 +286,7 @@ async function executeExport(params: ExecuteStepParams): Promise<StepResult> {
         output: [],
         detail: {
             stepKey: step.key,
-            type: 'EXPORT',
+            type: StepTypeEnum.EXPORT,
             adapterCode: step.config?.adapterCode,
             ok,
             fail,
@@ -294,7 +295,7 @@ async function executeExport(params: ExecuteStepParams): Promise<StepResult> {
         succeeded: ok,
         failed: fail,
         counters: {},
-        event: { type: 'RecordExported', data: { stepKey: step.key, ok, fail } },
+        event: { type: 'RECORD_EXPORTED', data: { stepKey: step.key, ok, fail } },
     };
 }
 
@@ -310,7 +311,7 @@ async function executeFeed(params: ExecuteStepParams): Promise<StepResult> {
         output: [],
         detail: {
             stepKey: step.key,
-            type: 'FEED',
+            type: StepTypeEnum.FEED,
             adapterCode: step.config?.adapterCode,
             ok,
             fail,
@@ -320,7 +321,7 @@ async function executeFeed(params: ExecuteStepParams): Promise<StepResult> {
         succeeded: ok,
         failed: fail,
         counters: {},
-        event: { type: 'FeedGenerated', data: { stepKey: step.key, ok, fail, outputPath } },
+        event: { type: 'FEED_GENERATED', data: { stepKey: step.key, ok, fail, outputPath } },
     };
 }
 
@@ -336,7 +337,7 @@ async function executeSink(params: ExecuteStepParams): Promise<StepResult> {
         output: [],
         detail: {
             stepKey: step.key,
-            type: 'SINK',
+            type: StepTypeEnum.SINK,
             adapterCode: step.config?.adapterCode,
             ok,
             fail,
@@ -345,7 +346,7 @@ async function executeSink(params: ExecuteStepParams): Promise<StepResult> {
         succeeded: ok,
         failed: fail,
         counters: {},
-        event: { type: 'RecordIndexed', data: { stepKey: step.key, ok, fail } },
+        event: { type: 'RECORD_INDEXED', data: { stepKey: step.key, ok, fail } },
     };
 }
 

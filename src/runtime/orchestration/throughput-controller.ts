@@ -6,11 +6,11 @@
  */
 
 import { RequestContext } from '@vendure/core';
-import { PipelineDefinition } from '../../types/index';
+import { PipelineDefinition, PipelineStepDefinition } from '../../types/index';
 import { RecordObject, OnRecordErrorCallback } from '../executor-types';
 import { LoadExecutor } from '../executors';
 import { chunk, sleep } from '../utils';
-import { RATE_LIMIT, TIME } from '../../constants/index';
+import { RATE_LIMIT, TIME, THROUGHPUT } from '../../constants/index';
 
 export type DrainStrategy = 'backoff' | 'shed' | 'queue';
 
@@ -30,14 +30,21 @@ export interface ThroughputConfig {
 }
 
 /**
- * Queue for deferred batches when using 'queue' drain strategy
+ * Queue for deferred batches when using 'queue' drain strategy.
+ * Implements bounded queue with configurable max size to prevent unbounded memory usage.
  */
 class DrainQueue {
     private queue: RecordObject[][] = [];
-    private maxSize: number = 1000;
+    private readonly maxSize: number;
+    private droppedCount: number = 0;
+
+    constructor(maxSize: number = THROUGHPUT.MAX_QUEUE_SIZE) {
+        this.maxSize = maxSize;
+    }
 
     enqueue(batch: RecordObject[]): boolean {
         if (this.queue.length >= this.maxSize) {
+            this.droppedCount++;
             return false;
         }
         this.queue.push(batch);
@@ -52,8 +59,13 @@ class DrainQueue {
         return this.queue.length;
     }
 
+    getDroppedCount(): number {
+        return this.droppedCount;
+    }
+
     clear(): void {
         this.queue = [];
+        this.droppedCount = 0;
     }
 
     getAll(): RecordObject[][] {
@@ -68,7 +80,7 @@ class DrainQueue {
  */
 export async function executeLoadWithThroughput(params: {
     ctx: RequestContext;
-    step: any;
+    step: PipelineStepDefinition & { throughput?: ThroughputConfig };
     batch: RecordObject[];
     definition: PipelineDefinition;
     loadExecutor: LoadExecutor;
@@ -95,7 +107,6 @@ export async function executeLoadWithThroughput(params: {
     // Split into batches
     const groups = chunk(batch, batchSize);
     const queueArr = [...groups];
-    const inFlight: Promise<void>[] = [];
     const deferredQueue = new DrainQueue();
 
     let succeeded = 0;
@@ -145,28 +156,28 @@ export async function executeLoadWithThroughput(params: {
         }
     };
 
-    // Process batches with controlled concurrency
-    while (queueArr.length || inFlight.length) {
+    // Process batches with controlled concurrency using a Set to track in-flight promises
+    const inFlightSet = new Set<Promise<void>>();
+    while (queueArr.length || inFlightSet.size) {
         // Start new batches up to concurrency limit
-        while (queueArr.length && inFlight.length < concurrency) {
+        while (queueArr.length && inFlightSet.size < concurrency) {
             const grp = queueArr.shift()!;
-            const p = runNext(grp).then(() => {
-                const idx = inFlight.indexOf(p as any);
-                if (idx >= 0) inFlight.splice(idx, 1);
+            const p = runNext(grp).finally(() => {
+                inFlightSet.delete(p);
             });
-            inFlight.push(p);
+            inFlightSet.add(p);
         }
 
         // Wait for at least one to complete
-        if (inFlight.length) {
-            await Promise.race(inFlight);
+        if (inFlightSet.size) {
+            await Promise.race(inFlightSet);
         }
     }
 
     // Process deferred queue if we were paused (for 'queue' strategy)
     if (drainStrategy === 'queue' && isPaused) {
         // Wait for error rate to potentially recover
-        await sleep(Number(pauseCfg?.intervalSec ?? 5) * TIME.SECOND);
+        await sleep(Number(pauseCfg?.intervalSec ?? THROUGHPUT.DEFERRED_RETRY_DELAY_SEC) * TIME.SECOND);
 
         const deferred = deferredQueue.getAll();
         for (const group of deferred) {

@@ -13,22 +13,271 @@ import {
     Product,
     ProductVariant,
     StockLocationService,
+    ID,
+    TaxCategory,
+    StockLocation,
+    LanguageCode,
 } from '@vendure/core';
-import { StockLevelInput } from '@vendure/common/lib/generated-types';
 import {
+    StockLevelInput,
     CreateProductInput,
     CreateProductVariantInput,
     CurrencyCode,
     GlobalFlag,
     UpdateProductInput,
     UpdateProductVariantInput,
+    ProductTranslationInput,
+    ProductVariantTranslationInput,
 } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { slugify } from '../../utils';
 import { LoaderHandler, CoercedProductFields } from './types';
 import { TRANSFORM_LIMITS, LOGGER_CONTEXTS } from '../../../constants/index';
+import { LoadStrategy, ConflictStrategy } from '../../../constants/enums';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { getErrorMessage } from '../../../services/logger/error-utils';
+
+/**
+ * Configuration for product handler step
+ */
+interface ProductHandlerConfig {
+    /** Field name for product name */
+    nameField?: string;
+    /** Field name for product slug */
+    slugField?: string;
+    /** Field name for product description */
+    descriptionField?: string;
+    /** Field name for variant SKU */
+    skuField?: string;
+    /** Field name for variant price */
+    priceField?: string;
+    /** Field name for stock on hand */
+    stockField?: string;
+    /** Field name for stock by location map */
+    stockByLocationField?: string;
+    /** Name of tax category to assign */
+    taxCategoryName?: string;
+    /** Target channel token */
+    channel?: string;
+    /** Strategy for handling conflicts */
+    strategy?: LoadStrategy;
+    /** Conflict resolution strategy */
+    conflictResolution?: ConflictStrategy;
+    /** Whether to track inventory */
+    trackInventory?: string | boolean;
+}
+
+/**
+ * Context for processing a single product record
+ */
+interface ProductProcessingContext {
+    ctx: RequestContext;
+    opCtx: RequestContext;
+    step: PipelineStepDefinition;
+    cfg: ProductHandlerConfig;
+    fields: CoercedProductFields;
+}
+
+/**
+ * Type guard to safely get a string value from a record
+ */
+function getStringValue(record: RecordObject, key: string): string | undefined {
+    const value = record[key];
+    if (typeof value === 'string') {
+        return value;
+    }
+    if (value !== null && value !== undefined) {
+        return String(value);
+    }
+    return undefined;
+}
+
+/**
+ * Type guard to safely get a number value from a record
+ */
+function getNumberValue(record: RecordObject, key: string): number | undefined {
+    const value = record[key];
+    if (typeof value === 'number') {
+        return value;
+    }
+    if (typeof value === 'string') {
+        const num = Number(value);
+        return Number.isNaN(num) ? undefined : num;
+    }
+    return undefined;
+}
+
+/**
+ * Type guard to safely get an object value from a record
+ */
+function getObjectValue(record: RecordObject, key: string): Record<string, unknown> | undefined {
+    const value = record[key];
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+    }
+    return undefined;
+}
+
+/**
+ * Safely cast step config to ProductHandlerConfig
+ */
+function getConfig(config: Record<string, unknown>): ProductHandlerConfig {
+    return config as unknown as ProductHandlerConfig;
+}
+
+/**
+ * Helper to convert price object to currency-price map
+ */
+function parsePriceByCurrency(priceObj: Record<string, unknown>): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [cc, val] of Object.entries(priceObj)) {
+        const n = typeof val === 'number' ? val : Number(val);
+        if (!Number.isNaN(n)) {
+            result[cc] = Math.round(n * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
+        }
+    }
+    return result;
+}
+
+/**
+ * Helper to parse stock by location map
+ */
+function parseStockByLocation(stockObj: Record<string, unknown>): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [locName, val] of Object.entries(stockObj)) {
+        const n = typeof val === 'number' ? val : Number(val);
+        if (!Number.isNaN(n)) {
+            result[locName] = Math.max(0, Math.floor(n));
+        }
+    }
+    return result;
+}
+
+/**
+ * Build prices array for variant input from price data
+ */
+function buildVariantPrices(
+    priceMinor: number | undefined,
+    priceByCurrency: Record<string, number> | undefined,
+): { prices?: Array<{ currencyCode: CurrencyCode; price: number }>; price?: number } {
+    if (priceByCurrency) {
+        return {
+            prices: Object.entries(priceByCurrency).map(([cc, minor]) => ({
+                currencyCode: cc as CurrencyCode,
+                price: minor,
+            })),
+        };
+    }
+    if (typeof priceMinor === 'number') {
+        return { price: priceMinor };
+    }
+    return {};
+}
+
+/**
+ * Build stock fields for variant input
+ */
+function buildVariantStockFields(
+    stockOnHand: number | undefined,
+    stockLevels: StockLevelInput[] | undefined,
+    trackInventory: boolean | undefined,
+): { stockOnHand?: number; stockLevels?: StockLevelInput[]; trackInventory?: GlobalFlag } {
+    const result: { stockOnHand?: number; stockLevels?: StockLevelInput[]; trackInventory?: GlobalFlag } = {};
+    if (typeof stockOnHand === 'number') {
+        result.stockOnHand = stockOnHand;
+    }
+    if (stockLevels && stockLevels.length) {
+        result.stockLevels = stockLevels;
+    }
+    if (typeof trackInventory === 'boolean') {
+        result.trackInventory = trackInventory ? GlobalFlag.TRUE : GlobalFlag.FALSE;
+    }
+    return result;
+}
+
+/**
+ * Extract price fields from record
+ */
+function extractPriceFields(
+    rec: RecordObject,
+    priceKey: string,
+): { priceMinor: number | undefined; priceByCurrency: Record<string, number> | undefined } {
+    const priceRaw = rec[priceKey];
+    let priceMinor: number | undefined;
+    let priceByCurrency: Record<string, number> | undefined;
+
+    if (typeof priceRaw === 'number') {
+        priceMinor = Math.round(priceRaw);
+    } else if (typeof priceRaw === 'string') {
+        const num = Number(priceRaw);
+        if (!Number.isNaN(num)) {
+            priceMinor = Math.round(num * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
+        }
+    } else if (priceRaw && typeof priceRaw === 'object' && !Array.isArray(priceRaw)) {
+        priceByCurrency = parsePriceByCurrency(priceRaw as Record<string, unknown>);
+    }
+
+    return { priceMinor, priceByCurrency };
+}
+
+/**
+ * Extract stock fields from record
+ */
+function extractStockFields(
+    rec: RecordObject,
+    cfg: ProductHandlerConfig | undefined,
+): { stockOnHand: number | undefined; stockByLocation: Record<string, number> | undefined } {
+    let stockOnHand: number | undefined;
+    const stockKey = cfg?.stockField ?? 'stockOnHand';
+    const stockRaw = getNumberValue(rec, stockKey);
+    if (typeof stockRaw === 'number') {
+        stockOnHand = Math.max(0, Math.floor(stockRaw));
+    }
+
+    let stockByLocation: Record<string, number> | undefined;
+    const stockLocKey = cfg?.stockByLocationField;
+    if (stockLocKey) {
+        const map = getObjectValue(rec, stockLocKey);
+        if (map) {
+            stockByLocation = parseStockByLocation(map);
+        }
+    }
+
+    return { stockOnHand, stockByLocation };
+}
+
+/**
+ * Parse track inventory config value
+ */
+function parseTrackInventory(cfg: ProductHandlerConfig | undefined): boolean | undefined {
+    const trackVal = String(cfg?.trackInventory ?? '').toLowerCase();
+    if (trackVal === 'true') return true;
+    if (trackVal === 'false') return false;
+    return undefined;
+}
+
+/**
+ * Extract and normalize slug from record, generating from name if needed
+ */
+function extractSlugField(rec: RecordObject, slugKey: string, name: string | undefined): string | undefined {
+    let slug = getStringValue(rec, slugKey) || undefined;
+    if (!slug && name) {
+        slug = slugify(name);
+    }
+    return slug;
+}
+
+/**
+ * Extract and normalize SKU from record, generating from slug if needed
+ */
+function extractSkuField(rec: RecordObject, skuKey: string, slug: string | undefined): string | undefined {
+    let sku = getStringValue(rec, skuKey) || getStringValue(rec, 'variantSku') || undefined;
+    if (!sku && slug) {
+        sku = slug.toUpperCase();
+    }
+    return sku;
+}
 
 @Injectable()
 export class ProductHandler implements LoaderHandler {
@@ -51,212 +300,36 @@ export class ProductHandler implements LoaderHandler {
         step: PipelineStepDefinition,
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
-        errorHandling?: ErrorHandlingConfig,
+        _errorHandling?: ErrorHandlingConfig,
     ): Promise<ExecutionResult> {
         let ok = 0;
         let fail = 0;
+        const cfg = getConfig(step.config);
 
         for (const rec of input) {
             try {
-                const { slug, name, description, sku, priceMinor, priceByCurrency, trackInventory, stockOnHand, stockByLocation } = this.coerceProductFields(rec, step.config as any);
-                if (!slug || !name) {
+                const fields = this.prepareProductData(rec, cfg);
+                if (!fields.slug || !fields.name) {
                     fail++;
                     continue;
                 }
 
-                let opCtx = ctx;
-                const targetChannel = (step.config as any)?.channel as string | undefined;
-                if (targetChannel) {
-                    try {
-                        opCtx = await this.requestContextService.create({ apiType: 'admin', channelOrToken: targetChannel });
-                    } catch (error) {
-                        this.logger.warn('Failed to create request context for target channel, using original context', {
-                            stepKey: step.key,
-                            targetChannel,
-                            error: (error as Error)?.message,
-                        });
-                        // fallback to original ctx
-                    }
+                const opCtx = await this.resolveRequestContext(ctx, step, cfg);
+                const procCtx: ProductProcessingContext = { ctx, opCtx, step, cfg, fields };
+
+                const productResult = await this.createOrUpdateProduct(procCtx);
+                if (!productResult.productId) {
+                    fail++;
+                    continue;
                 }
 
-                const existing = await this.productService.findOneBySlug(opCtx, slug);
-                let productId: any;
-                // strategy: 'create' | 'update' | 'upsert' - controls INSERT/UPDATE behavior
-                const strategy = String((step.config as any)?.strategy ?? 'upsert');
-                // conflictResolution: 'source-wins' | 'vendure-wins' | 'merge' - controls field conflicts on UPDATE
-                const conflictResolution = String((step.config as any)?.conflictResolution ?? 'source-wins');
+                await this.assignProductToChannel(procCtx, productResult.productId);
+                await this.handleProductVariants(procCtx, productResult.productId);
 
-                if (existing) {
-                    // Skip if strategy is 'create' only (don't update existing)
-                    if (strategy === 'create') {
-                        productId = existing.id as any;
-                        // Skip to variant handling, product already exists
-                    } else if (conflictResolution === 'vendure-wins') {
-                        // Keep existing Vendure data, don't update
-                        productId = existing.id as any;
-                    } else {
-                        // strategy is 'update' or 'upsert', and conflictResolution is 'source-wins' or 'merge'
-                        const updateInput: UpdateProductInput = {
-                            id: existing.id as any,
-                            translations: [
-                                {
-                                    languageCode: ctx.languageCode as any,
-                                    name,
-                                    slug,
-                                    description: description ?? undefined,
-                                },
-                            ],
-                        } as UpdateProductInput;
-                        const updated = await this.productService.update(opCtx, updateInput);
-                        productId = updated.id as any;
-                    }
-                } else {
-                    // Product doesn't exist - skip if strategy is 'update' only
-                    if (strategy === 'update') {
-                        fail++;
-                        continue;
-                    }
-                    // strategy is 'create' or 'upsert' - create the product
-                    const createInput: CreateProductInput = {
-                        translations: [
-                            {
-                                languageCode: ctx.languageCode as any,
-                                name,
-                                slug,
-                                description: description ?? undefined,
-                            },
-                        ],
-                    } as CreateProductInput;
-                    const created = await this.productService.create(opCtx, createInput);
-                    productId = created.id as any;
-                }
-
-                // Ensure product is assigned to the target channel
-                if (productId && targetChannel) {
-                    try {
-                        await this.channelService.assignToChannels(opCtx, Product as any, productId, [opCtx.channelId as any]);
-                    } catch (error) {
-                        this.logger.warn('Failed to assign product to target channel', {
-                            stepKey: step.key,
-                            productId,
-                            targetChannel,
-                            error: (error as Error)?.message,
-                        });
-                    }
-                }
-
-                // Ensure a default variant by SKU if provided
-                if (sku) {
-                    const existingVariant = await this.findVariantBySku(opCtx, sku);
-                    const taxCategoryId = await this.resolveTaxCategoryId(opCtx, (step.config as any)?.taxCategoryName);
-                    const stockLevels = await this.resolveStockLevels(opCtx, stockByLocation);
-
-                    // Update variant if: exists AND not 'create' strategy AND conflict resolution allows update
-                    const shouldUpdateVariant = existingVariant && strategy !== 'create' && conflictResolution !== 'vendure-wins';
-                    // Create variant if: not exists AND not 'update' strategy
-                    const shouldCreateVariant = !existingVariant && strategy !== 'update';
-
-                    if (shouldUpdateVariant) {
-                        const updateVariant: UpdateProductVariantInput = {
-                            id: existingVariant.id as any,
-                            translations: [
-                                {
-                                    languageCode: ctx.languageCode as any,
-                                    name,
-                                },
-                            ],
-                        } as UpdateProductVariantInput;
-
-                        if (priceByCurrency) {
-                            updateVariant.prices = Object.entries(priceByCurrency).map(([cc, minor]) => ({
-                                currencyCode: cc as CurrencyCode,
-                                price: Number(minor) as any,
-                            }));
-                        } else if (typeof priceMinor === 'number') {
-                            updateVariant.price = priceMinor as any;
-                        }
-                        if (typeof stockOnHand === 'number') {
-                            updateVariant.stockOnHand = stockOnHand as any;
-                        }
-                        if (stockLevels && stockLevels.length) {
-                            (updateVariant as any).stockLevels = stockLevels as any;
-                        }
-                        if (typeof trackInventory === 'boolean') {
-                            updateVariant.trackInventory = (trackInventory ? GlobalFlag.TRUE : GlobalFlag.FALSE) as any;
-                        }
-                        if (taxCategoryId) {
-                            (updateVariant as any).taxCategoryId = taxCategoryId as any;
-                        }
-
-                        const updatedVariants = await this.productVariantService.update(opCtx, [updateVariant] as any);
-                        if (targetChannel) {
-                            try {
-                                const alreadyIn = Array.isArray((existingVariant as any)?.channels) && (existingVariant as any).channels.some((c: any) => c?.id === opCtx.channelId);
-                                if (!alreadyIn) {
-                                    await this.channelService.assignToChannels(opCtx, ProductVariant as any, updatedVariants[0].id as any, [opCtx.channelId as any]);
-                                }
-                            } catch (error) {
-                                this.logger.warn('Failed to assign updated variant to target channel', {
-                                    stepKey: step.key,
-                                    variantId: updatedVariants[0]?.id,
-                                    targetChannel,
-                                    error: (error as Error)?.message,
-                                });
-                            }
-                        }
-                    } else if (productId && shouldCreateVariant) {
-                        const createVariant: CreateProductVariantInput = {
-                            productId,
-                            sku,
-                            translations: [
-                                {
-                                    languageCode: ctx.languageCode as any,
-                                    name,
-                                },
-                            ],
-                        } as CreateProductVariantInput;
-
-                        if (priceByCurrency) {
-                            createVariant.prices = Object.entries(priceByCurrency).map(([cc, minor]) => ({
-                                currencyCode: cc as CurrencyCode,
-                                price: Number(minor) as any,
-                            }));
-                        } else if (typeof priceMinor === 'number') {
-                            createVariant.price = priceMinor as any;
-                        }
-                        if (typeof stockOnHand === 'number') {
-                            createVariant.stockOnHand = stockOnHand as any;
-                        }
-                        const stockLevelsCreate = await this.resolveStockLevels(opCtx, stockByLocation);
-                        if (stockLevelsCreate && stockLevelsCreate.length) {
-                            (createVariant as any).stockLevels = stockLevelsCreate as any;
-                        }
-                        if (typeof trackInventory === 'boolean') {
-                            createVariant.trackInventory = (trackInventory ? GlobalFlag.TRUE : GlobalFlag.FALSE) as any;
-                        }
-                        if (taxCategoryId) {
-                            (createVariant as any).taxCategoryId = taxCategoryId as any;
-                        }
-
-                        const createdVariants = await this.productVariantService.create(opCtx, [createVariant] as any);
-                        if (targetChannel) {
-                            try {
-                                await this.channelService.assignToChannels(opCtx, ProductVariant as any, createdVariants[0].id as any, [opCtx.channelId as any]);
-                            } catch (error) {
-                                this.logger.warn('Failed to assign created variant to target channel', {
-                                    stepKey: step.key,
-                                    variantId: createdVariants[0]?.id,
-                                    targetChannel,
-                                    error: (error as Error)?.message,
-                                });
-                            }
-                        }
-                    }
-                }
                 ok++;
-            } catch (e: any) {
+            } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, e?.message ?? 'productUpsert failed', rec as any);
+                    await onRecordError(step.key, getErrorMessage(e) || 'productUpsert failed', rec);
                 }
                 fail++;
             }
@@ -264,14 +337,330 @@ export class ProductHandler implements LoaderHandler {
         return { ok, fail };
     }
 
+    /**
+     * Prepare and validate product data from a record
+     */
+    private prepareProductData(rec: RecordObject, cfg: ProductHandlerConfig): CoercedProductFields {
+        return this.coerceProductFields(rec, cfg);
+    }
+
+    /**
+     * Resolve the appropriate request context (handles channel switching)
+     */
+    private async resolveRequestContext(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        cfg: ProductHandlerConfig,
+    ): Promise<RequestContext> {
+        const targetChannel = cfg.channel;
+        if (!targetChannel) {
+            return ctx;
+        }
+
+        try {
+            return await this.requestContextService.create({ apiType: 'admin', channelOrToken: targetChannel });
+        } catch (error) {
+            this.logger.warn('Failed to create request context for target channel, using original context', {
+                stepKey: step.key,
+                targetChannel,
+                error: (error as Error)?.message,
+            });
+            return ctx;
+        }
+    }
+
+    /**
+     * Create or update a product based on strategy and conflict resolution
+     * Returns the product ID or undefined if the operation was skipped
+     */
+    private async createOrUpdateProduct(
+        procCtx: ProductProcessingContext,
+    ): Promise<{ productId: ID | undefined; existing: Product | undefined }> {
+        const { ctx, opCtx, cfg, fields } = procCtx;
+        const { slug, name, description } = fields;
+        const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
+        const conflictResolution = cfg.conflictResolution ?? ConflictStrategy.SOURCE_WINS;
+
+        const existing = await this.productService.findOneBySlug(opCtx, slug!);
+        const productTranslation: ProductTranslationInput = {
+            languageCode: ctx.languageCode as LanguageCode,
+            name: name!,
+            slug: slug!,
+            description: description ?? undefined,
+        };
+
+        if (existing) {
+            // Skip if strategy is 'create' only (don't update existing)
+            if (strategy === LoadStrategy.CREATE) {
+                return { productId: existing.id, existing };
+            }
+            // Keep existing Vendure data, don't update
+            if (conflictResolution === ConflictStrategy.VENDURE_WINS) {
+                return { productId: existing.id, existing };
+            }
+            // strategy is 'update' or 'upsert', and conflictResolution is 'source-wins' or 'merge'
+            const updateInput: UpdateProductInput = {
+                id: existing.id,
+                translations: [productTranslation],
+            };
+            const updated = await this.productService.update(opCtx, updateInput);
+            return { productId: updated.id, existing };
+        }
+
+        // Product doesn't exist - skip if strategy is 'update' only
+        if (strategy === LoadStrategy.UPDATE) {
+            return { productId: undefined, existing: undefined };
+        }
+
+        // strategy is 'create' or 'upsert' - create the product
+        const createInput: CreateProductInput = {
+            translations: [productTranslation],
+        };
+        const created = await this.productService.create(opCtx, createInput);
+        return { productId: created.id, existing: undefined };
+    }
+
+    /**
+     * Assign product to the target channel if specified
+     */
+    private async assignProductToChannel(procCtx: ProductProcessingContext, productId: ID): Promise<void> {
+        const { opCtx, step, cfg } = procCtx;
+        const targetChannel = cfg.channel;
+
+        if (!targetChannel) {
+            return;
+        }
+
+        try {
+            await this.channelService.assignToChannels(opCtx, Product, productId, [opCtx.channelId]);
+        } catch (error) {
+            this.logger.warn('Failed to assign product to target channel', {
+                stepKey: step.key,
+                productId,
+                targetChannel,
+                error: (error as Error)?.message,
+            });
+        }
+    }
+
+    /**
+     * Handle product variant creation or update
+     */
+    private async handleProductVariants(procCtx: ProductProcessingContext, productId: ID): Promise<void> {
+        const { ctx, opCtx, step, cfg, fields } = procCtx;
+        const { sku, name, priceMinor, priceByCurrency, trackInventory, stockOnHand, stockByLocation } = fields;
+
+        if (!sku) {
+            return;
+        }
+
+        const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
+        const conflictResolution = cfg.conflictResolution ?? ConflictStrategy.SOURCE_WINS;
+        const targetChannel = cfg.channel;
+
+        const existingVariant = await this.findVariantBySku(opCtx, sku);
+        const taxCategoryId = await this.resolveTaxCategoryId(opCtx, cfg.taxCategoryName);
+        const stockLevels = await this.resolveStockLevels(opCtx, stockByLocation);
+
+        const shouldUpdateVariant = existingVariant && strategy !== LoadStrategy.CREATE && conflictResolution !== ConflictStrategy.VENDURE_WINS;
+        const shouldCreateVariant = !existingVariant && strategy !== LoadStrategy.UPDATE;
+
+        const variantTranslation: ProductVariantTranslationInput = {
+            languageCode: ctx.languageCode as LanguageCode,
+            name: name!,
+        };
+
+        if (shouldUpdateVariant && existingVariant) {
+            await this.updateExistingVariant(
+                opCtx, step, existingVariant, variantTranslation, taxCategoryId, stockLevels,
+                priceMinor, priceByCurrency, stockOnHand, trackInventory, targetChannel,
+            );
+        } else if (shouldCreateVariant) {
+            await this.createNewVariant(
+                opCtx, step, productId, sku, variantTranslation, taxCategoryId,
+                priceMinor, priceByCurrency, stockOnHand, stockByLocation, trackInventory, targetChannel,
+            );
+        }
+    }
+
+    /**
+     * Build variant input for update
+     */
+    private buildUpdateVariantInput(
+        variantId: ID,
+        variantTranslation: ProductVariantTranslationInput,
+        taxCategoryId: ID | undefined,
+        priceMinor: number | undefined,
+        priceByCurrency: Record<string, number> | undefined,
+        stockOnHand: number | undefined,
+        stockLevels: StockLevelInput[] | undefined,
+        trackInventory: boolean | undefined,
+    ): UpdateProductVariantInput {
+        const priceFields = buildVariantPrices(priceMinor, priceByCurrency);
+        const stockFields = buildVariantStockFields(stockOnHand, stockLevels, trackInventory);
+
+        return {
+            id: variantId,
+            translations: [variantTranslation],
+            ...priceFields,
+            ...stockFields,
+            ...(taxCategoryId ? { taxCategoryId } : {}),
+        };
+    }
+
+    /**
+     * Update an existing product variant
+     */
+    private async updateExistingVariant(
+        opCtx: RequestContext,
+        step: PipelineStepDefinition,
+        existingVariant: ProductVariant,
+        variantTranslation: ProductVariantTranslationInput,
+        taxCategoryId: ID | undefined,
+        stockLevels: StockLevelInput[] | undefined,
+        priceMinor: number | undefined,
+        priceByCurrency: Record<string, number> | undefined,
+        stockOnHand: number | undefined,
+        trackInventory: boolean | undefined,
+        targetChannel: string | undefined,
+    ): Promise<void> {
+        const updateVariant = this.buildUpdateVariantInput(
+            existingVariant.id, variantTranslation, taxCategoryId,
+            priceMinor, priceByCurrency, stockOnHand, stockLevels, trackInventory,
+        );
+
+        const updatedVariants = await this.productVariantService.update(opCtx, [updateVariant]);
+
+        if (targetChannel && updatedVariants.length > 0) {
+            await this.assignVariantToChannelIfNeeded(opCtx, step, existingVariant, updatedVariants[0].id, targetChannel);
+        }
+    }
+
+    /**
+     * Build variant input for creation
+     */
+    private buildVariantInput(
+        productId: ID,
+        sku: string,
+        variantTranslation: ProductVariantTranslationInput,
+        taxCategoryId: ID | undefined,
+        priceMinor: number | undefined,
+        priceByCurrency: Record<string, number> | undefined,
+        stockOnHand: number | undefined,
+        stockLevels: StockLevelInput[] | undefined,
+        trackInventory: boolean | undefined,
+    ): CreateProductVariantInput {
+        const priceFields = buildVariantPrices(priceMinor, priceByCurrency);
+        const stockFields = buildVariantStockFields(stockOnHand, stockLevels, trackInventory);
+
+        return {
+            productId,
+            sku,
+            translations: [variantTranslation],
+            ...priceFields,
+            ...stockFields,
+            ...(taxCategoryId ? { taxCategoryId } : {}),
+        };
+    }
+
+    /**
+     * Create variant record via service
+     */
+    private async createVariantRecord(
+        opCtx: RequestContext,
+        input: CreateProductVariantInput,
+    ): Promise<ProductVariant | undefined> {
+        const createdVariants = await this.productVariantService.create(opCtx, [input]);
+        return createdVariants[0];
+    }
+
+    /**
+     * Assign newly created variant to target channel
+     */
+    private async assignCreatedVariantToChannel(
+        opCtx: RequestContext,
+        step: PipelineStepDefinition,
+        variantId: ID,
+        targetChannel: string,
+    ): Promise<void> {
+        try {
+            await this.channelService.assignToChannels(opCtx, ProductVariant, variantId, [opCtx.channelId]);
+        } catch (error) {
+            this.logger.warn('Failed to assign created variant to target channel', {
+                stepKey: step.key,
+                variantId,
+                targetChannel,
+                error: (error as Error)?.message,
+            });
+        }
+    }
+
+    /**
+     * Create a new product variant
+     */
+    private async createNewVariant(
+        opCtx: RequestContext,
+        step: PipelineStepDefinition,
+        productId: ID,
+        sku: string,
+        variantTranslation: ProductVariantTranslationInput,
+        taxCategoryId: ID | undefined,
+        priceMinor: number | undefined,
+        priceByCurrency: Record<string, number> | undefined,
+        stockOnHand: number | undefined,
+        stockByLocation: Record<string, number> | undefined,
+        trackInventory: boolean | undefined,
+        targetChannel: string | undefined,
+    ): Promise<void> {
+        const stockLevels = await this.resolveStockLevels(opCtx, stockByLocation);
+        const input = this.buildVariantInput(
+            productId, sku, variantTranslation, taxCategoryId,
+            priceMinor, priceByCurrency, stockOnHand, stockLevels, trackInventory,
+        );
+
+        const createdVariant = await this.createVariantRecord(opCtx, input);
+
+        if (targetChannel && createdVariant) {
+            await this.assignCreatedVariantToChannel(opCtx, step, createdVariant.id, targetChannel);
+        }
+    }
+
+    /**
+     * Assign an updated variant to channel if not already assigned
+     */
+    private async assignVariantToChannelIfNeeded(
+        opCtx: RequestContext,
+        step: PipelineStepDefinition,
+        existingVariant: ProductVariant,
+        updatedVariantId: ID,
+        targetChannel: string,
+    ): Promise<void> {
+        try {
+            const variantWithChannels = existingVariant as ProductVariant & { channels?: Array<{ id: ID }> };
+            const alreadyIn = Array.isArray(variantWithChannels.channels) &&
+                variantWithChannels.channels.some((c) => c?.id === opCtx.channelId);
+            if (!alreadyIn) {
+                await this.channelService.assignToChannels(opCtx, ProductVariant, updatedVariantId, [opCtx.channelId]);
+            }
+        } catch (error) {
+            this.logger.warn('Failed to assign updated variant to target channel', {
+                stepKey: step.key,
+                variantId: updatedVariantId,
+                targetChannel,
+                error: (error as Error)?.message,
+            });
+        }
+    }
+
     async simulate(
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, any>> {
+    ): Promise<Record<string, unknown>> {
         let wouldCreate = 0, wouldUpdate = 0;
+        const cfg = getConfig(step.config);
         for (const rec of input) {
-            const { slug } = this.coerceProductFields(rec, step.config as any);
+            const { slug } = this.coerceProductFields(rec, cfg);
             if (!slug) continue;
             const existing = await this.productService.findOneBySlug(ctx, slug);
             if (existing) {
@@ -283,85 +672,40 @@ export class ProductHandler implements LoaderHandler {
         return { wouldCreate, wouldUpdate };
     }
 
-    coerceProductFields(rec: RecordObject, cfg?: any): CoercedProductFields {
+    coerceProductFields(rec: RecordObject, cfg?: ProductHandlerConfig): CoercedProductFields {
         const nameKey = cfg?.nameField ?? 'name';
         const slugKey = cfg?.slugField ?? 'slug';
         const descKey = cfg?.descriptionField ?? 'description';
         const skuKey = cfg?.skuField ?? 'sku';
         const priceKey = cfg?.priceField ?? 'price';
 
-        const name = String((rec as any)?.[nameKey] ?? '') || undefined;
-        let slug = String((rec as any)?.[slugKey] ?? '') || undefined;
-        const description = (rec as any)?.[descKey] ? String((rec as any)?.[descKey]) : undefined;
-        let sku = String((rec as any)?.[skuKey] ?? (rec as any)?.variantSku ?? '') || undefined;
-        const priceRaw = (rec as any)?.[priceKey];
-        let priceMinor: number | undefined;
-        let priceByCurrency: Record<string, number> | undefined;
+        const name = getStringValue(rec, nameKey) || undefined;
+        const description = getStringValue(rec, descKey);
+        const slug = extractSlugField(rec, slugKey, name);
+        const sku = extractSkuField(rec, skuKey, slug);
 
-        if (typeof priceRaw === 'number') {
-            priceMinor = Math.round(priceRaw);
-        } else if (typeof priceRaw === 'string') {
-            const num = Number(priceRaw);
-            if (!Number.isNaN(num)) {
-                priceMinor = Math.round(num * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
-            }
-        } else if (priceRaw && typeof priceRaw === 'object') {
-            priceByCurrency = {};
-            for (const [cc, val] of Object.entries(priceRaw as Record<string, any>)) {
-                const n = typeof val === 'number' ? val : Number(val);
-                if (!Number.isNaN(n)) {
-                    priceByCurrency[cc] = Math.round(n * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
-                }
-            }
-        }
-
-        if (!slug && name) {
-            slug = slugify(name);
-        }
-        if (!sku && slug) {
-            sku = slug.toUpperCase();
-        }
-
-        let trackInventory: boolean | undefined;
-        const trackVal = (cfg?.trackInventory ?? '').toString().toLowerCase();
-        if (trackVal === 'true') trackInventory = true;
-        if (trackVal === 'false') trackInventory = false;
-
-        let stockOnHand: number | undefined;
-        const stockKey = cfg?.stockField ?? 'stockOnHand';
-        const stockRaw = (rec as any)?.[stockKey];
-        if (typeof stockRaw === 'number') stockOnHand = Math.max(0, Math.floor(stockRaw));
-        if (typeof stockRaw === 'string') {
-            const sn = Number(stockRaw);
-            if (!Number.isNaN(sn)) stockOnHand = Math.max(0, Math.floor(sn));
-        }
-
-        let stockByLocation: Record<string, number> | undefined;
-        const stockLocKey = cfg?.stockByLocationField;
-        if (stockLocKey) {
-            const map = (rec as any)?.[stockLocKey];
-            if (map && typeof map === 'object') {
-                stockByLocation = {};
-                for (const [locName, val] of Object.entries(map as Record<string, any>)) {
-                    const n = typeof val === 'number' ? val : Number(val);
-                    if (!Number.isNaN(n)) stockByLocation[locName] = Math.max(0, Math.floor(n));
-                }
-            }
-        }
+        const { priceMinor, priceByCurrency } = extractPriceFields(rec, priceKey);
+        const { stockOnHand, stockByLocation } = extractStockFields(rec, cfg);
+        const trackInventory = parseTrackInventory(cfg);
 
         return { slug, name, description, sku, priceMinor, priceByCurrency, trackInventory, stockOnHand, stockByLocation };
     }
 
-    async findVariantBySku(ctx: RequestContext, sku: string) {
-        const result = await this.productVariantService.findAll(ctx, { filter: { sku: { eq: sku } } } as unknown as ListQueryOptions<any>);
+    async findVariantBySku(ctx: RequestContext, sku: string): Promise<ProductVariant | undefined> {
+        const result = await this.productVariantService.findAll(ctx, {
+            filter: { sku: { eq: sku } },
+        } as ListQueryOptions<ProductVariant>);
         return result.items[0];
     }
 
-    async resolveTaxCategoryId(ctx: RequestContext, name?: string | null): Promise<string | undefined> {
+    async resolveTaxCategoryId(ctx: RequestContext, name?: string | null): Promise<ID | undefined> {
         if (!name) return undefined;
         try {
-            const list = await this.taxCategoryService.findAll(ctx, { filter: { name: { eq: name } }, take: 1 } as any);
-            return (list.items[0]?.id as any) ?? undefined;
+            const list = await this.taxCategoryService.findAll(ctx, {
+                filter: { name: { eq: name } },
+                take: 1,
+            } as ListQueryOptions<TaxCategory>);
+            return list.items[0]?.id;
         } catch (error) {
             this.logger.warn('Failed to resolve tax category by name', {
                 taxCategoryName: name,
@@ -376,10 +720,13 @@ export class ProductHandler implements LoaderHandler {
         const result: StockLevelInput[] = [];
         for (const [locName, qty] of Object.entries(stockByLocation)) {
             try {
-                const list = await this.stockLocationService.findAll(ctx, { filter: { name: { eq: locName } }, take: 1 } as any);
-                const id = (list.items[0]?.id as any) ?? undefined;
-                if (id) {
-                    result.push({ stockLocationId: id as any, stockOnHand: qty });
+                const list = await this.stockLocationService.findAll(ctx, {
+                    filter: { name: { eq: locName } },
+                    take: 1,
+                } as ListQueryOptions<StockLocation>);
+                const locationId = list.items[0]?.id;
+                if (locationId) {
+                    result.push({ stockLocationId: locationId, stockOnHand: qty });
                 }
             } catch (error) {
                 this.logger.warn('Failed to resolve stock location by name', {

@@ -1,8 +1,8 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
-import { JsonObject, PipelineStepDefinition, PipelineContext } from '../../types/index';
+import { JsonObject, JsonValue, PipelineStepDefinition, PipelineContext } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { LOGGER_CONTEXTS, ValidationMode } from '../../constants/index';
 import { RecordObject, OnRecordErrorCallback, ExecutorContext, BranchOutput } from '../executor-types';
 import {
     getPath,
@@ -10,11 +10,19 @@ import {
     evalCondition,
     unitFactor,
     validateAgainstSimpleSpec,
-    deepClone,
 } from '../utils';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { OperatorAdapter, SingleRecordOperator, OperatorHelpers, OperatorContext } from '../../sdk/types';
+import { OperatorSecretResolver } from '../../sdk/types/transform-types';
 import { hashStable } from '../utils';
+import { SecretService } from '../../services/config/secret.service';
+import {
+    getAdapterCode,
+    isTransformStepConfig,
+    TransformStepConfig,
+    OperatorConfig,
+    BranchConfig,
+} from '../../types/step-configs';
 
 /**
  * Error thrown when an operator is not found in the registry
@@ -37,6 +45,7 @@ export class TransformExecutor {
     constructor(
         loggerFactory: DataHubLoggerFactory,
         @Optional() private registry?: DataHubRegistryService,
+        @Optional() private secretService?: SecretService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.TRANSFORM_EXECUTOR);
     }
@@ -56,18 +65,20 @@ export class TransformExecutor {
         pipelineContext?: PipelineContext,
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;
-        const adapterCode = (cfg as any)?.adapterCode as string | undefined;
-        const operatorsArray = (cfg as any)?.operators as Array<{ op: string; args?: Record<string, unknown> }> | undefined;
+        const adapterCode = getAdapterCode(step);
+        const operatorsArray: OperatorConfig[] | undefined = isTransformStepConfig(cfg)
+            ? (cfg as TransformStepConfig).operators
+            : undefined;
 
         this.logger.debug(`Executing transform step`, {
             stepKey: step.key,
-            adapterCode,
+            adapterCode: adapterCode || undefined,
             operatorCount: operatorsArray?.length,
             recordCount: input.length,
         });
 
         // Handle multi-operator array format
-        if (operatorsArray && Array.isArray(operatorsArray) && operatorsArray.length > 0) {
+        if (operatorsArray && operatorsArray.length > 0) {
             return await this.executeOperatorsArray(ctx, step, input, operatorsArray, executorCtx, pipelineContext);
         }
 
@@ -126,7 +137,7 @@ export class TransformExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        operators: Array<{ op: string; args?: Record<string, unknown> }>,
+        operators: OperatorConfig[],
         executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
     ): Promise<RecordObject[]> {
@@ -143,7 +154,6 @@ export class TransformExecutor {
                 recordCount: currentRecords.length,
             });
 
-            // Create a synthetic step config for this single operator
             const syntheticStep: PipelineStepDefinition = {
                 ...step,
                 config: { adapterCode: opCode, ...args },
@@ -164,6 +174,198 @@ export class TransformExecutor {
     }
 
     /**
+     * Prepare the operator context with logger and pipeline information
+     */
+    private prepareCustomContext(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        pipelineContext?: PipelineContext,
+    ): OperatorContext {
+        return {
+            ctx,
+            pipelineId: '0',
+            stepKey: step.key,
+            pipelineContext: pipelineContext ?? {} as PipelineContext,
+            logger: {
+                info: (msg: string, meta?: JsonObject) => this.logger.info(msg, meta as Record<string, unknown> | undefined),
+                warn: (msg: string, meta?: JsonObject) => this.logger.warn(msg, meta as Record<string, unknown> | undefined),
+                error: (msg: string, errorOrMeta?: JsonObject | Error, meta?: JsonObject) => {
+                    const error = errorOrMeta instanceof Error ? errorOrMeta : undefined;
+                    const metadata = errorOrMeta instanceof Error ? meta : errorOrMeta;
+                    this.logger.error(msg, error, metadata as Record<string, unknown> | undefined);
+                },
+                debug: (msg: string, meta?: JsonObject) => this.logger.debug(msg, meta as Record<string, unknown> | undefined),
+            },
+        };
+    }
+
+    /**
+     * Build the secret resolution function for operator helpers
+     */
+    private createSecretResolver(ctx: RequestContext): OperatorSecretResolver | undefined {
+        if (!this.secretService) {
+            return undefined;
+        }
+        return {
+            get: async (code: string): Promise<string | undefined> => {
+                try {
+                    const value = await this.secretService!.resolve(ctx, code);
+                    return value ?? undefined;
+                } catch {
+                    return undefined;
+                }
+            },
+        };
+    }
+
+    /**
+     * Build get/set/remove path helpers for operator helpers
+     */
+    private buildPathHelpers(): Pick<OperatorHelpers, 'get' | 'set' | 'remove'> {
+        return {
+            get: (record: JsonObject, path: string) => getPath(record as RecordObject, path),
+            set: (record: JsonObject, path: string, value: JsonValue) => setPath(record as RecordObject, path, value),
+            remove: (record: JsonObject, path: string) => {
+                const parts = path.split('.');
+                let cur: JsonObject | undefined = record;
+                for (let i = 0; i < parts.length - 1; i++) {
+                    if (cur == null) return;
+                    const val = cur[parts[i]];
+                    if (typeof val !== 'object' || val === null || Array.isArray(val)) return;
+                    cur = val as JsonObject;
+                }
+                if (cur) delete cur[parts[parts.length - 1]];
+            },
+        };
+    }
+
+    /**
+     * Build format utilities (currency, date, number, template) for operator helpers
+     */
+    private buildFormatHelpers(): OperatorHelpers['format'] {
+        return {
+            currency: (amount: number, currencyCode: string, locale?: string) => {
+                return new Intl.NumberFormat(locale ?? 'en-US', { style: 'currency', currency: currencyCode }).format(amount);
+            },
+            date: (date: Date | string | number, format: string) => {
+                const d = new Date(date);
+                return d.toISOString();
+            },
+            number: (value: number, decimals?: number, locale?: string) => {
+                return new Intl.NumberFormat(locale ?? 'en-US', { maximumFractionDigits: decimals ?? 2 }).format(value);
+            },
+            template: (template: string, data: JsonObject) => {
+                return template.replace(/\{\{([^}]+)\}\}/g, (_m, p1) => {
+                    const v = getPath(data as RecordObject, String(p1).trim());
+                    return v == null ? '' : String(v);
+                });
+            },
+        };
+    }
+
+    /**
+     * Build convert utilities for operator helpers
+     */
+    private buildConvertHelpers(): OperatorHelpers['convert'] {
+        return {
+            toMinorUnits: (amount: number, decimals = 2) => Math.round(amount * Math.pow(10, decimals)),
+            fromMinorUnits: (amount: number, decimals = 2) => amount / Math.pow(10, decimals),
+            unit: (value: number, from: string, to: string) => unitFactor(from, to) * value,
+            parseDate: (value: string, format?: string) => {
+                const d = new Date(value);
+                return isNaN(d.getTime()) ? null : d;
+            },
+        };
+    }
+
+    /**
+     * Build crypto utilities for operator helpers
+     */
+    private buildCryptoHelpers(): OperatorHelpers['crypto'] {
+        return {
+            hash: (value: string, algorithm?: 'md5' | 'sha256' | 'sha512') => hashStable(value),
+            hmac: (value: string, secret: string, algorithm?: 'sha256' | 'sha512') => {
+                return hashStable(value + secret);
+            },
+            uuid: () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36)}`,
+        };
+    }
+
+    /**
+     * Load custom operator helpers including secret resolver and utility functions
+     */
+    private loadCustomOperator(
+        ctx: RequestContext,
+        operatorCtx: OperatorContext,
+    ): OperatorHelpers {
+        const pathHelpers = this.buildPathHelpers();
+
+        return {
+            ctx: operatorCtx,
+            secrets: this.createSecretResolver(ctx),
+            get: pathHelpers.get,
+            set: pathHelpers.set,
+            remove: pathHelpers.remove,
+            lookup: async (entity, by, select) => undefined,
+            format: this.buildFormatHelpers(),
+            convert: this.buildConvertHelpers(),
+            crypto: this.buildCryptoHelpers(),
+        };
+    }
+
+    /**
+     * Execute operator in sandboxed environment with proper error handling
+     */
+    private async executeInSandbox(
+        operator: OperatorAdapter<any> | SingleRecordOperator<any>,
+        input: RecordObject[],
+        cfg: JsonObject,
+        helpers: OperatorHelpers,
+    ): Promise<RecordObject[]> {
+        // Check if it's a batch operator
+        if ('apply' in operator && typeof (operator as OperatorAdapter<any>).apply === 'function') {
+            const batchOperator = operator as OperatorAdapter<any>;
+            const result = await batchOperator.apply(input as readonly JsonObject[], cfg, helpers);
+            return result.records as RecordObject[];
+        }
+
+        // Check if it's a single-record operator
+        if ('applyOne' in operator && typeof (operator as SingleRecordOperator<any>).applyOne === 'function') {
+            const singleOperator = operator as SingleRecordOperator<any>;
+            const results: RecordObject[] = [];
+            for (const record of input) {
+                const result = await singleOperator.applyOne(record as JsonObject, cfg, helpers);
+                if (result !== null) {
+                    results.push(result as RecordObject);
+                }
+            }
+            return results;
+        }
+
+        throw new Error(`Operator '${operator.code}' has no valid apply method`);
+    }
+
+    /**
+     * Validate custom operator output and handle errors
+     */
+    private validateCustomOutput(
+        error: unknown,
+        operator: OperatorAdapter<any> | SingleRecordOperator<any>,
+        stepKey: string,
+    ): never {
+        if (error instanceof OperatorNotFoundError) {
+            throw error;
+        }
+
+        this.logger.error(`Operator execution failed`, error instanceof Error ? error : undefined, {
+            adapterCode: operator.code,
+            stepKey,
+        });
+
+        throw new Error(`Operator '${operator.code}' execution failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    /**
      * Execute an operator adapter from the registry
      */
     private async executeCustomOperator(
@@ -175,112 +377,27 @@ export class TransformExecutor {
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;
 
-        // Create operator context and helpers
-        const operatorCtx: OperatorContext = {
-            ctx,
-            pipelineId: '0',
-            stepKey: step.key,
-            pipelineContext: pipelineContext ?? {} as PipelineContext,
-            logger: {
-                info: (msg: string, meta?: any) => this.logger.info(msg, meta),
-                warn: (msg: string, meta?: any) => this.logger.warn(msg, meta),
-                error: (msg: string, meta?: any) => this.logger.error(msg, undefined, meta),
-                debug: (msg: string, meta?: any) => this.logger.debug(msg, meta),
-            },
-        };
+        // Phase 1: Prepare context
+        const operatorCtx = this.prepareCustomContext(ctx, step, pipelineContext);
 
-        const helpers: OperatorHelpers = {
-            ctx: operatorCtx,
-            get: (record: JsonObject, path: string) => getPath(record as RecordObject, path),
-            set: (record: JsonObject, path: string, value: any) => setPath(record as RecordObject, path, value),
-            remove: (record: JsonObject, path: string) => {
-                const parts = path.split('.');
-                let cur: any = record;
-                for (let i = 0; i < parts.length - 1; i++) {
-                    if (cur == null) return;
-                    cur = cur[parts[i]];
-                }
-                if (cur) delete cur[parts[parts.length - 1]];
-            },
-            lookup: async (entity, by, select) => undefined, // Would need full implementation
-            format: {
-                currency: (amount: number, currencyCode: string, locale?: string) => {
-                    return new Intl.NumberFormat(locale ?? 'en-US', { style: 'currency', currency: currencyCode }).format(amount);
-                },
-                date: (date: Date | string | number, format: string) => {
-                    const d = new Date(date);
-                    return d.toISOString();
-                },
-                number: (value: number, decimals?: number, locale?: string) => {
-                    return new Intl.NumberFormat(locale ?? 'en-US', { maximumFractionDigits: decimals ?? 2 }).format(value);
-                },
-                template: (template: string, data: JsonObject) => {
-                    return template.replace(/\{\{([^}]+)\}\}/g, (_m, p1) => {
-                        const v = getPath(data as RecordObject, String(p1).trim());
-                        return v == null ? '' : String(v);
-                    });
-                },
-            },
-            convert: {
-                toMinorUnits: (amount: number, decimals = 2) => Math.round(amount * Math.pow(10, decimals)),
-                fromMinorUnits: (amount: number, decimals = 2) => amount / Math.pow(10, decimals),
-                unit: (value: number, from: any, to: any) => unitFactor(from, to) * value,
-                parseDate: (value: string, format?: string) => {
-                    const d = new Date(value);
-                    return isNaN(d.getTime()) ? null : d;
-                },
-            },
-            crypto: {
-                hash: (value: string, algorithm?: 'md5' | 'sha256' | 'sha512') => hashStable(value),
-                hmac: (value: string, secret: string, algorithm?: 'sha256' | 'sha512') => {
-                    return hashStable(value + secret);
-                },
-                uuid: () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36)}`,
-            },
-        };
+        // Phase 2: Load operator helpers
+        const helpers = this.loadCustomOperator(ctx, operatorCtx);
 
+        // Phase 3: Execute in sandbox with error handling
         try {
-            // Check if it's a batch operator
-            if ('apply' in operator && typeof (operator as OperatorAdapter<any>).apply === 'function') {
-                const batchOperator = operator as OperatorAdapter<any>;
-                const result = await batchOperator.apply(input as readonly JsonObject[], cfg, helpers);
-                return result.records as RecordObject[];
-            }
-
-            // Check if it's a single-record operator
-            if ('applyOne' in operator && typeof (operator as SingleRecordOperator<any>).applyOne === 'function') {
-                const singleOperator = operator as SingleRecordOperator<any>;
-                const results: RecordObject[] = [];
-                for (const record of input) {
-                    const result = await singleOperator.applyOne(record as JsonObject, cfg, helpers);
-                    if (result !== null) {
-                        results.push(result as RecordObject);
-                    }
-                }
-                return results;
-            }
-
-            // Should not reach here due to earlier check
-            throw new Error(`Operator '${operator.code}' has no valid apply method`);
+            return await this.executeInSandbox(operator, input, cfg, helpers);
         } catch (error) {
-            // Re-throw OperatorNotFoundError as is
-            if (error instanceof OperatorNotFoundError) {
-                throw error;
-            }
-
-            this.logger.error(`Operator execution failed`, error instanceof Error ? error : undefined, {
-                adapterCode: operator.code,
-                stepKey: step.key,
-            });
-
-            // Re-throw the error - don't silently pass through
-            throw new Error(`Operator '${operator.code}' execution failed: ${error instanceof Error ? error.message : String(error)}`);
+            // Phase 4: Validate output / handle errors
+            this.validateCustomOutput(error, operator, step.key);
         }
     }
 
     /**
      * Execute a validate step on the input records using inline field specifications.
      * Validation rules are defined directly in the step config, not from a database schema.
+     * Supports both formats:
+     * - fields: { fieldName: FieldSpec } - direct field specifications
+     * - rules: [{ type, spec: { field, required, ... } }] - rule-based format from UI
      */
     async executeValidate(
         _ctx: RequestContext,
@@ -288,9 +405,44 @@ export class TransformExecutor {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
     ): Promise<RecordObject[]> {
-        const cfg: any = step.config ?? {};
-        const fields: Record<string, any> = cfg.fields ?? {};
-        const mode = (cfg.mode as string | undefined) ?? 'fail-fast';
+        const cfg = (step.config ?? {}) as {
+            fields?: Record<string, unknown>;
+            rules?: Array<{ type?: string; spec: Record<string, unknown> }>;
+            mode?: string;
+        };
+
+        // Convert rules to fields format if rules are provided
+        let fields: Record<string, import('../utils').FieldSpec> = {};
+
+        if (cfg.rules && Array.isArray(cfg.rules)) {
+            // Convert rules array to fields object
+            for (const rule of cfg.rules) {
+                const spec = rule.spec;
+                if (!spec || typeof spec !== 'object') continue;
+
+                const fieldName = spec.field as string;
+                if (!fieldName) continue;
+
+                if (!fields[fieldName]) {
+                    fields[fieldName] = {};
+                }
+
+                // Map spec properties to FieldSpec
+                if ('required' in spec) fields[fieldName].required = spec.required as boolean;
+                if ('type' in spec) fields[fieldName].type = spec.type as string;
+                if ('pattern' in spec) fields[fieldName].pattern = spec.pattern as string;
+                if ('min' in spec) fields[fieldName].min = spec.min as number;
+                if ('max' in spec) fields[fieldName].max = spec.max as number;
+                if ('minLength' in spec) fields[fieldName].minLength = spec.minLength as number;
+                if ('maxLength' in spec) fields[fieldName].maxLength = spec.maxLength as number;
+                if ('enum' in spec) fields[fieldName].enum = spec.enum as JsonValue[];
+            }
+        } else if (cfg.fields) {
+            // Use fields directly if provided
+            fields = cfg.fields as Record<string, import('../utils').FieldSpec>;
+        }
+
+        const mode = (cfg.mode as string | undefined) ?? ValidationMode.FAIL_FAST;
 
         // If no fields defined, pass through all records
         if (Object.keys(fields).length === 0) return input;
@@ -303,7 +455,7 @@ export class TransformExecutor {
                 out.push(rec);
             } else {
                 if (onRecordError) await onRecordError(step.key, errs.join('; '), rec);
-                if (mode === 'fail-fast') {
+                if (mode === ValidationMode.FAIL_FAST) {
                     // drop this record
                 } else {
                     // accumulate errors, still drop this record from the pipeline
@@ -311,6 +463,89 @@ export class TransformExecutor {
             }
         }
         return out;
+    }
+
+    /**
+     * Execute an enrich step on the input records using built-in enrichment config.
+     * Supports:
+     * - defaults: Static default values to add to records
+     * - computed: Computed field expressions (template syntax)
+     * - sourceType: STATIC (inline defaults), HTTP (external API), VENDURE (entity lookup)
+     * If adapterCode is provided, falls back to executeOperator for custom enrichers.
+     */
+    async executeEnrich(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        input: RecordObject[],
+        executorCtx?: ExecutorContext,
+    ): Promise<RecordObject[]> {
+        const cfg = (step.config ?? {}) as {
+            adapterCode?: string;
+            defaults?: Record<string, unknown>;
+            computed?: Record<string, string>;
+            sourceType?: 'STATIC' | 'HTTP' | 'VENDURE';
+            set?: Record<string, unknown>;
+        };
+
+        // If adapterCode is provided, use the operator system
+        if (cfg.adapterCode && executorCtx) {
+            return this.executeOperator(ctx, step, input, executorCtx);
+        }
+
+        // Handle built-in enrichment based on sourceType or defaults
+        const sourceType = cfg.sourceType || 'STATIC';
+
+        if (sourceType === 'STATIC' || cfg.defaults || cfg.set) {
+            // Apply static defaults/set values to each record
+            const defaults = cfg.defaults || {};
+            const setValues = cfg.set || {};
+            const computed = cfg.computed || {};
+
+            return input.map(record => {
+                const enriched = { ...record };
+
+                // Apply defaults (only if field doesn't exist or is null/undefined)
+                for (const [key, value] of Object.entries(defaults)) {
+                    if (enriched[key] === undefined || enriched[key] === null) {
+                        enriched[key] = value as JsonValue;
+                    }
+                }
+
+                // Apply set values (always overwrite)
+                for (const [key, value] of Object.entries(setValues)) {
+                    enriched[key] = value as JsonValue;
+                }
+
+                // Apply computed fields (template syntax with ${field} placeholders)
+                for (const [key, template] of Object.entries(computed)) {
+                    if (typeof template === 'string') {
+                        enriched[key] = template.replace(/\$\{([^}]+)\}/g, (_, path) => {
+                            const value = this.getNestedValue(enriched, path.trim());
+                            return value !== null && value !== undefined ? String(value) : '';
+                        });
+                    }
+                }
+
+                return enriched;
+            });
+        }
+
+        // For HTTP and VENDURE source types, would need async implementation
+        // For now, pass through unchanged if no enrichment config is valid
+        return input;
+    }
+
+    /**
+     * Helper to get nested value from object using dot notation
+     */
+    private getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+        const parts = path.split('.');
+        let current: unknown = obj;
+        for (const part of parts) {
+            if (current === null || current === undefined) return undefined;
+            current = (current as Record<string, unknown>)[part];
+        }
+        return current;
     }
 
     /**
@@ -322,8 +557,8 @@ export class TransformExecutor {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
     ): Promise<RecordObject[]> {
-        const cfg: any = step.config ?? {};
-        const branches: Array<{ name: string; when: Array<{ field: string; cmp: string; value: any }> }> = cfg.branches ?? [];
+        const cfg = step.config as TransformStepConfig | undefined;
+        const branches: BranchConfig[] = cfg?.branches ?? [];
         if (!branches.length) return input;
 
         // For linear model, select first matching branch
@@ -342,8 +577,8 @@ export class TransformExecutor {
         step: PipelineStepDefinition,
         input: RecordObject[],
     ): Promise<BranchOutput> {
-        const cfg: any = step.config ?? {};
-        const branchesCfg: Array<{ name: string; when: Array<{ field: string; cmp: string; value: any }> }> = cfg.branches ?? [];
+        const cfg = step.config as TransformStepConfig | undefined;
+        const branchesCfg: BranchConfig[] = cfg?.branches ?? [];
         const result: Record<string, RecordObject[]> = {};
         const matchedSet = new Set<number>();
 

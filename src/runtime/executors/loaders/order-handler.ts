@@ -1,16 +1,106 @@
 /**
  * Order-related loader handlers (orderNote, applyCoupon, orderTransition)
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
     RequestContext,
     OrderService,
     TransactionalConnection,
     Order,
 } from '@vendure/core';
-import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
+import type { ID } from '@vendure/common/lib/shared-types';
+import type { AddNoteToOrderInput } from '@vendure/common/lib/generated-types';
+import type { OrderState } from '@vendure/core';
+import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
+import { getErrorMessage } from '../../../services/logger/error-utils';
+
+// ============================================================================
+// Config Interfaces
+// ============================================================================
+
+interface OrderNoteHandlerConfig {
+    orderIdField?: string;
+    orderCodeField?: string;
+    noteField?: string;
+    isPrivate?: boolean;
+}
+
+interface ApplyCouponHandlerConfig {
+    orderIdField?: string;
+    orderCodeField?: string;
+    couponField?: string;
+}
+
+interface OrderTransitionHandlerConfig {
+    orderIdField?: string;
+    orderCodeField?: string;
+    state?: string;
+}
+
+// ============================================================================
+// Type Guard Functions
+// ============================================================================
+
+/**
+ * Safely get a string value from a record
+ */
+function getStringValue(record: RecordObject, key: string): string | undefined {
+    const value = record[key];
+    if (typeof value === 'string') {
+        return value;
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+    return undefined;
+}
+
+/**
+ * Safely get an ID value from a record (string or number)
+ */
+function getIdValue(record: RecordObject, key: string): ID | undefined {
+    const value = record[key];
+    if (typeof value === 'string' || typeof value === 'number') {
+        return value;
+    }
+    return undefined;
+}
+
+/**
+ * Extract OrderNoteHandlerConfig from step config
+ */
+function getOrderNoteConfig(config: JsonObject): OrderNoteHandlerConfig {
+    return {
+        orderIdField: typeof config.orderIdField === 'string' ? config.orderIdField : undefined,
+        orderCodeField: typeof config.orderCodeField === 'string' ? config.orderCodeField : undefined,
+        noteField: typeof config.noteField === 'string' ? config.noteField : undefined,
+        isPrivate: typeof config.isPrivate === 'boolean' ? config.isPrivate : undefined,
+    };
+}
+
+/**
+ * Extract ApplyCouponHandlerConfig from step config
+ */
+function getApplyCouponConfig(config: JsonObject): ApplyCouponHandlerConfig {
+    return {
+        orderIdField: typeof config.orderIdField === 'string' ? config.orderIdField : undefined,
+        orderCodeField: typeof config.orderCodeField === 'string' ? config.orderCodeField : undefined,
+        couponField: typeof config.couponField === 'string' ? config.couponField : undefined,
+    };
+}
+
+/**
+ * Extract OrderTransitionHandlerConfig from step config
+ */
+function getOrderTransitionConfig(config: JsonObject): OrderTransitionHandlerConfig {
+    return {
+        orderIdField: typeof config.orderIdField === 'string' ? config.orderIdField : undefined,
+        orderCodeField: typeof config.orderCodeField === 'string' ? config.orderCodeField : undefined,
+        state: typeof config.state === 'string' ? config.state : undefined,
+    };
+}
 
 @Injectable()
 export class OrderNoteHandler implements LoaderHandler {
@@ -24,34 +114,42 @@ export class OrderNoteHandler implements LoaderHandler {
         step: PipelineStepDefinition,
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
-        errorHandling?: ErrorHandlingConfig,
+        _errorHandling?: ErrorHandlingConfig,
     ): Promise<ExecutionResult> {
         let ok = 0, fail = 0;
+        const handlerConfig = getOrderNoteConfig(step.config);
+        const orderIdField = handlerConfig.orderIdField ?? 'orderId';
+        const orderCodeField = handlerConfig.orderCodeField ?? 'orderCode';
+        const noteField = handlerConfig.noteField ?? 'note';
+        const isPrivate = handlerConfig.isPrivate ?? false;
 
         for (const rec of input) {
             try {
-                const orderIdField = (step.config as any)?.orderIdField ?? 'orderId';
-                const orderCodeField = (step.config as any)?.orderCodeField ?? 'orderCode';
-                const noteField = (step.config as any)?.noteField ?? 'note';
-                const isPrivate = Boolean((step.config as any)?.isPrivate ?? false);
-                const orderId = (rec as any)?.[orderIdField] as string | undefined;
-                const orderCode = (rec as any)?.[orderCodeField] as string | undefined;
-                const note = String((rec as any)?.[noteField] ?? '') || undefined;
+                const orderId = getIdValue(rec, orderIdField);
+                const orderCode = getStringValue(rec, orderCodeField);
+                const noteValue = getStringValue(rec, noteField);
+                const note = noteValue || undefined;
 
                 if (!note) { fail++; continue; }
 
-                let targetOrderId: any = orderId;
+                let targetOrderId: ID | undefined = orderId;
                 if (!targetOrderId && orderCode) {
-                    const found = await this.connection.getRepository(ctx, Order as any).findOne({ where: { code: orderCode } } as any);
-                    targetOrderId = (found as any)?.id;
+                    const found = await this.connection.getRepository(ctx, Order).findOne({ where: { code: orderCode } });
+                    targetOrderId = found?.id;
                 }
 
                 if (!targetOrderId) { fail++; continue; }
-                await this.orderService.addNoteToOrder(ctx, { orderId: targetOrderId, note, isPublic: !isPrivate } as any);
+
+                const addNoteInput: AddNoteToOrderInput = {
+                    id: targetOrderId,
+                    note,
+                    isPublic: !isPrivate,
+                };
+                await this.orderService.addNoteToOrder(ctx, addNoteInput);
                 ok++;
-            } catch (e: any) {
+            } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, e?.message ?? 'orderNote failed', rec as any);
+                    await onRecordError(step.key, getErrorMessage(e) || 'orderNote failed', rec);
                 }
                 fail++;
             }
@@ -62,6 +160,8 @@ export class OrderNoteHandler implements LoaderHandler {
 
 @Injectable()
 export class ApplyCouponHandler implements LoaderHandler {
+    private readonly logger = new Logger(ApplyCouponHandler.name);
+
     constructor(
         private orderService: OrderService,
         private connection: TransactionalConnection,
@@ -72,31 +172,33 @@ export class ApplyCouponHandler implements LoaderHandler {
         step: PipelineStepDefinition,
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
-        errorHandling?: ErrorHandlingConfig,
+        _errorHandling?: ErrorHandlingConfig,
     ): Promise<ExecutionResult> {
         let ok = 0, fail = 0;
+        const handlerConfig = getApplyCouponConfig(step.config);
+        const orderIdField = handlerConfig.orderIdField ?? 'orderId';
+        const orderCodeField = handlerConfig.orderCodeField ?? 'orderCode';
+        const couponField = handlerConfig.couponField ?? 'coupon';
 
         for (const rec of input) {
             try {
-                const orderIdField = (step.config as any)?.orderIdField ?? 'orderId';
-                const orderCodeField = (step.config as any)?.orderCodeField ?? 'orderCode';
-                const couponField = (step.config as any)?.couponField ?? 'coupon';
-                let orderId = (rec as any)?.[orderIdField] as string | undefined;
-                const code = (rec as any)?.[orderCodeField] as string | undefined;
-                const coupon = String((rec as any)?.[couponField] ?? '') || undefined;
+                let orderId = getIdValue(rec, orderIdField);
+                const code = getStringValue(rec, orderCodeField);
+                const couponValue = getStringValue(rec, couponField);
+                const coupon = couponValue || undefined;
 
                 if (!coupon) { fail++; continue; }
                 if (!orderId && code) {
-                    const found = await this.connection.getRepository(ctx, Order as any).findOne({ where: { code } } as any);
-                    orderId = (found as any)?.id;
+                    const found = await this.connection.getRepository(ctx, Order).findOne({ where: { code } });
+                    orderId = found?.id;
                 }
                 if (!orderId) { fail++; continue; }
 
-                await this.orderService.applyCouponCode(ctx, orderId as any, coupon);
+                await this.orderService.applyCouponCode(ctx, orderId, coupon);
                 ok++;
-            } catch (e: any) {
+            } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, e?.message ?? 'applyCoupon failed', rec as any);
+                    await onRecordError(step.key, getErrorMessage(e) || 'applyCoupon failed', rec);
                 }
                 fail++;
             }
@@ -108,17 +210,23 @@ export class ApplyCouponHandler implements LoaderHandler {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, any>> {
+    ): Promise<Record<string, unknown>> {
         let ordersFound = 0;
+        const handlerConfig = getApplyCouponConfig(step.config);
+        const orderIdField = handlerConfig.orderIdField ?? 'orderId';
+        const orderCodeField = handlerConfig.orderCodeField ?? 'orderCode';
+
         for (const rec of input) {
-            const orderId = (rec as any)?.[(step.config as any)?.orderIdField ?? 'orderId'] as any;
-            const orderCode = (rec as any)?.[(step.config as any)?.orderCodeField ?? 'orderCode'] as string | undefined;
+            const orderId = getIdValue(rec, orderIdField);
+            const orderCode = getStringValue(rec, orderCodeField);
             if (orderId) { ordersFound++; continue; }
             if (orderCode) {
                 try {
-                    const found = await this.connection.getRepository(ctx, Order as any).findOne({ where: { code: orderCode } } as any);
+                    const found = await this.connection.getRepository(ctx, Order).findOne({ where: { code: orderCode } });
                     if (found) ordersFound++;
-                } catch {}
+                } catch (error) {
+                    this.logger.warn(`Failed to lookup order by code '${orderCode}': ${error instanceof Error ? error.message : String(error)}`);
+                }
             }
         }
         return { ordersFound };
@@ -127,6 +235,8 @@ export class ApplyCouponHandler implements LoaderHandler {
 
 @Injectable()
 export class OrderTransitionHandler implements LoaderHandler {
+    private readonly logger = new Logger(OrderTransitionHandler.name);
+
     constructor(
         private orderService: OrderService,
         private connection: TransactionalConnection,
@@ -137,27 +247,29 @@ export class OrderTransitionHandler implements LoaderHandler {
         step: PipelineStepDefinition,
         input: RecordObject[],
         _onRecordError?: OnRecordErrorCallback,
-        errorHandling?: ErrorHandlingConfig,
+        _errorHandling?: ErrorHandlingConfig,
     ): Promise<ExecutionResult> {
         let ok = 0, fail = 0;
+        const handlerConfig = getOrderTransitionConfig(step.config);
+        const orderIdField = handlerConfig.orderIdField ?? 'orderId';
+        const orderCodeField = handlerConfig.orderCodeField ?? 'orderCode';
+        const state = handlerConfig.state ?? '';
 
         for (const rec of input) {
-            try {
-                const orderIdField = (step.config as any)?.orderIdField ?? 'orderId';
-                const orderCodeField = (step.config as any)?.orderCodeField ?? 'orderCode';
-                const state = String((step.config as any)?.state ?? '');
-                let orderId = (rec as any)?.[orderIdField] as any;
-                const code = (rec as any)?.[orderCodeField] as string | undefined;
+            let orderId = getIdValue(rec, orderIdField);
+            const code = getStringValue(rec, orderCodeField);
 
+            try {
                 if (!orderId && code) {
-                    const found = await this.connection.getRepository(ctx, Order as any).findOne({ where: { code } } as any);
-                    orderId = (found as any)?.id;
+                    const found = await this.connection.getRepository(ctx, Order).findOne({ where: { code } });
+                    orderId = found?.id;
                 }
                 if (!orderId || !state) { fail++; continue; }
 
-                await this.orderService.transitionToState(ctx, orderId as any, state as any);
+                await this.orderService.transitionToState(ctx, orderId, state as OrderState);
                 ok++;
-            } catch {
+            } catch (error) {
+                this.logger.warn(`Failed to transition order ${String(orderId)} to state '${state}': ${error instanceof Error ? error.message : String(error)}`);
                 fail++;
             }
         }

@@ -1,12 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { RequestContext, RequestContextService, ID } from '@vendure/core';
-import { PipelineDefinition, StepType, PipelineMetrics } from '../types/index';
-// Import directly from service files to avoid circular dependencies through barrel exports
+import { PipelineDefinition, StepType, PipelineMetrics, JsonObject } from '../types/index';
 import { CheckpointService } from '../services/data/checkpoint.service';
 import { HookService } from '../services/events/hook.service';
 import { DomainEventsService } from '../services/events/domain-events.service';
-import { DataHubLogger, DataHubLoggerFactory, LogContext, ExecutionLogger } from '../services/logger';
-import { LOGGER_CONTEXTS } from '../constants/index';
+import { DataHubLogger, DataHubLoggerFactory, ExecutionLogger } from '../services/logger';
+import { LOGGER_CONTEXTS, SANDBOX } from '../constants/index';
 import {
     RecordObject,
     OnRecordErrorCallback,
@@ -32,6 +31,7 @@ import {
     StepLogCallback,
     StepLogInfo,
 } from './orchestration';
+import { getAdapterCode } from '../utils/step-utils';
 
 @Injectable()
 export class AdapterRuntimeService {
@@ -54,13 +54,6 @@ export class AdapterRuntimeService {
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.ADAPTER_RUNTIME);
-    }
-
-    /**
-     * Create a logger with pipeline execution context
-     */
-    private createPipelineLogger(context: LogContext): DataHubLogger {
-        return this.logger.withContext(context);
     }
 
     /**
@@ -89,29 +82,16 @@ export class AdapterRuntimeService {
         pipelineId?: ID,
         runId?: ID,
         options?: { resume?: boolean },
-    ): Promise<{ processed: number; succeeded: number; failed: number; details?: Array<Record<string, any>> }> {
-        const resume = options?.resume ?? false;
-
+    ): Promise<{ processed: number; succeeded: number; failed: number; details?: JsonObject[] }> {
         // If graph edges are defined, use graph-aware execution
-        if (Array.isArray((definition as any).edges) && (definition as any).edges.length > 0) {
+        if (Array.isArray(definition.edges) && definition.edges.length > 0) {
             return this.executePipelineGraph(ctx, definition, onCancelRequested, onRecordError, pipelineId, runId, options);
         }
 
-        // Apply pipeline context channel if present
-        const pipelineCtx = await this.resolvePipelineContext(ctx, definition);
+        const { pipelineCtx, executorCtx, stepLog } = await this.prepareExecution(
+            ctx, definition, pipelineId, runId, options,
+        );
 
-        // Handle checkpoint: clear for fresh runs, load for resume
-        if (pipelineId && !resume) {
-            await this.clearCheckpoint(ctx, pipelineId);
-        }
-        await this.loadCheckpoint(ctx, pipelineId);
-
-        const executorCtx = this.createExecutorContext(definition);
-
-        // Create step logging callback for database persistence
-        const stepLog = this.createStepLogCallback(pipelineId, runId);
-
-        // Execute linear pipeline
         const result = await executeLinear({
             ctx: pipelineCtx,
             definition,
@@ -133,40 +113,7 @@ export class AdapterRuntimeService {
             stepLog,
         });
 
-        // Persist checkpoint if dirty
-        await this.saveCheckpoint(ctx, pipelineId);
-
-        // Finalize
-        result.details.push({ counters: result.counters });
-        await this.hookService.run(ctx, definition, result.failed > 0 ? 'pipelineFailed' : 'pipelineCompleted');
-        try {
-            if (result.failed > 0) {
-                this.domainEvents.publish('PipelineFailed', {
-                    pipelineId,
-                    processed: result.processed,
-                    succeeded: result.succeeded,
-                    failed: result.failed,
-                });
-            } else {
-                this.domainEvents.publish('PipelineCompleted', {
-                    pipelineId,
-                    processed: result.processed,
-                    succeeded: result.succeeded,
-                    failed: result.failed,
-                });
-            }
-        } catch (err) {
-            this.logger.debug('Failed to publish domain event', {
-                error: err instanceof Error ? err.message : String(err),
-            });
-        }
-
-        return {
-            processed: result.processed,
-            succeeded: result.succeeded,
-            failed: result.failed,
-            details: result.details,
-        };
+        return this.finalizeExecution(ctx, definition, result, pipelineId);
     }
 
     /**
@@ -180,19 +127,10 @@ export class AdapterRuntimeService {
         pipelineId?: ID,
         runId?: ID,
         options?: { resume?: boolean },
-    ): Promise<{ processed: number; succeeded: number; failed: number; details?: Array<Record<string, any>> }> {
-        const resume = options?.resume ?? false;
-        const pipelineCtx = await this.resolvePipelineContext(ctx, definition);
-
-        // Handle checkpoint: clear for fresh runs, load for resume
-        if (pipelineId && !resume) {
-            await this.clearCheckpoint(ctx, pipelineId);
-        }
-        await this.loadCheckpoint(ctx, pipelineId);
-        const executorCtx = this.createExecutorContext(definition);
-
-        // Create step logging callback for database persistence
-        const stepLog = this.createStepLogCallback(pipelineId, runId);
+    ): Promise<{ processed: number; succeeded: number; failed: number; details?: JsonObject[] }> {
+        const { pipelineCtx, executorCtx, stepLog } = await this.prepareExecution(
+            ctx, definition, pipelineId, runId, options,
+        );
 
         const result = await executeGraph({
             ctx: pipelineCtx,
@@ -215,38 +153,7 @@ export class AdapterRuntimeService {
             stepLog,
         });
 
-        await this.saveCheckpoint(ctx, pipelineId);
-
-        result.details.push({ counters: result.counters });
-        await this.hookService.run(ctx, definition, result.failed > 0 ? 'pipelineFailed' : 'pipelineCompleted');
-        try {
-            if (result.failed > 0) {
-                this.domainEvents.publish('PipelineFailed', {
-                    pipelineId,
-                    processed: result.processed,
-                    succeeded: result.succeeded,
-                    failed: result.failed,
-                });
-            } else {
-                this.domainEvents.publish('PipelineCompleted', {
-                    pipelineId,
-                    processed: result.processed,
-                    succeeded: result.succeeded,
-                    failed: result.failed,
-                });
-            }
-        } catch (err) {
-            this.logger.debug('Failed to publish domain event', {
-                error: err instanceof Error ? err.message : String(err),
-            });
-        }
-
-        return {
-            processed: result.processed,
-            succeeded: result.succeeded,
-            failed: result.failed,
-            details: result.details,
-        };
+        return this.finalizeExecution(ctx, definition, result, pipelineId);
     }
 
     /**
@@ -290,7 +197,7 @@ export class AdapterRuntimeService {
         const executorCtx = this.createExecutorContext(definition);
 
         // Use graph replay if edges are defined
-        if (Array.isArray((definition as any).edges) && (definition as any).edges.length > 0) {
+        if (Array.isArray(definition.edges) && definition.edges.length > 0) {
             return replayFromStepGraph({
                 ctx,
                 definition,
@@ -335,118 +242,423 @@ export class AdapterRuntimeService {
         sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }>;
         errors?: string[];
     }> {
-        let records: RecordObject[] = [];
-        const details: any[] = [];
-        const sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }> = [];
+        const dryRunCtx = this.prepareDryRunContext(definition);
+        const { executorCtx, errors } = dryRunCtx;
+
+        const simResult = await this.simulateSteps(ctx, definition, executorCtx, dryRunCtx);
+
+        return this.buildDryRunReport(simResult.processed, simResult.details, simResult.sampleRecords, errors);
+    }
+
+    // ============================================================
+    // Pipeline Execution Helpers
+    // ============================================================
+
+    /**
+     * Prepare execution context, checkpoint, and step logging for pipeline execution
+     */
+    private async prepareExecution(
+        ctx: RequestContext,
+        definition: PipelineDefinition,
+        pipelineId?: ID,
+        runId?: ID,
+        options?: { resume?: boolean },
+    ): Promise<{
+        pipelineCtx: RequestContext;
+        executorCtx: ExecutorContext;
+        stepLog: StepLogCallback;
+    }> {
+        const resume = options?.resume ?? false;
+        const pipelineCtx = await this.resolvePipelineContext(ctx, definition);
+
+        // Handle checkpoint: clear for fresh runs, load for resume
+        if (pipelineId && !resume) {
+            await this.clearCheckpoint(ctx, pipelineId);
+        }
+        await this.loadCheckpoint(ctx, pipelineId);
+
+        const executorCtx = this.createExecutorContext(definition);
+        const stepLog = this.createStepLogCallback(pipelineId, runId);
+
+        return { pipelineCtx, executorCtx, stepLog };
+    }
+
+    /**
+     * Finalize execution: save checkpoint, run hooks, publish domain events
+     */
+    private async finalizeExecution(
+        ctx: RequestContext,
+        definition: PipelineDefinition,
+        result: { processed: number; succeeded: number; failed: number; details: JsonObject[]; counters: JsonObject },
+        pipelineId?: ID,
+    ): Promise<{ processed: number; succeeded: number; failed: number; details?: JsonObject[] }> {
+        await this.saveCheckpoint(ctx, pipelineId);
+
+        result.details.push({ counters: result.counters });
+        await this.hookService.run(ctx, definition, result.failed > 0 ? 'PIPELINE_FAILED' : 'PIPELINE_COMPLETED');
+
+        this.publishPipelineDomainEvent(pipelineId, result);
+
+        return {
+            processed: result.processed,
+            succeeded: result.succeeded,
+            failed: result.failed,
+            details: result.details,
+        };
+    }
+
+    /**
+     * Publish pipeline completion or failure domain event
+     */
+    private publishPipelineDomainEvent(
+        pipelineId: ID | undefined,
+        result: { processed: number; succeeded: number; failed: number },
+    ): void {
+        try {
+            const eventType = result.failed > 0 ? 'PIPELINE_FAILED' : 'PIPELINE_COMPLETED';
+            this.domainEvents.publish(eventType, {
+                pipelineId,
+                processed: result.processed,
+                succeeded: result.succeeded,
+                failed: result.failed,
+            });
+        } catch (err) {
+            this.logger.debug('Failed to publish domain event', {
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
+    }
+
+    // ============================================================
+    // Dry Run Helpers
+    // ============================================================
+
+    /** Max samples to collect per step in dry run - uses SANDBOX.MAX_SAMPLES_PER_STEP constant */
+    private readonly DRY_RUN_SAMPLE_LIMIT = SANDBOX.MAX_SAMPLES_PER_STEP;
+
+    /**
+     * Prepare dry run context with empty checkpoint and error collection
+     */
+    private prepareDryRunContext(definition: PipelineDefinition): {
+        executorCtx: ExecutorContext;
+        errors: string[];
+        onRecordError: OnRecordErrorCallback;
+    } {
         const errors: string[] = [];
-        let processed = 0;
-        // Create a FRESH executor context without checkpoint data for dry runs
-        // This ensures extractions always start from offset 0 and don't use persisted state
         const executorCtx: ExecutorContext = {
-            cpData: {}, // Empty checkpoint - always start fresh
+            cpData: {},
             cpDirty: false,
-            markCheckpointDirty: () => {}, // No-op - don't persist anything
+            markCheckpointDirty: () => {},
             errorHandling: definition?.context?.errorHandling,
             checkpointing: definition?.context?.checkpointing,
         };
-        const SAMPLE_LIMIT = 5; // Max samples to collect per step
-
-        // Error callback to capture extraction errors
-        const onRecordError = async (stepKey: string, message: string, _payload?: any) => {
+        const onRecordError: OnRecordErrorCallback = async (stepKey: string, message: string) => {
             errors.push(`[${stepKey}] ${message}`);
         };
+        return { executorCtx, errors, onRecordError };
+    }
+
+    /**
+     * Simulate all pipeline steps for dry run
+     */
+    private async simulateSteps(
+        ctx: RequestContext,
+        definition: PipelineDefinition,
+        executorCtx: ExecutorContext,
+        dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
+    ): Promise<{
+        processed: number;
+        details: JsonObject[];
+        sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }>;
+    }> {
+        let records: RecordObject[] = [];
+        const details: JsonObject[] = [];
+        const sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }> = [];
+        let processed = 0;
 
         for (const step of definition.steps) {
-            switch (step.type) {
-                case StepType.TRIGGER:
-                    break;
-
-                case StepType.EXTRACT: {
-                    try {
-                        const out = await this.extractExecutor.execute(ctx, step, executorCtx, onRecordError);
-                        records = out;
-                        processed += out.length;
-                        // Capture extract samples (before is empty, after is the extracted record)
-                        for (let i = 0; i < Math.min(out.length, SAMPLE_LIMIT); i++) {
-                            sampleRecords.push({
-                                step: step.key || step.name || 'extract',
-                                before: {},
-                                after: out[i],
-                            });
-                        }
-                        if (out.length === 0) {
-                            this.logger.debug('Dry run extract returned 0 records', {
-                                stepKey: step.key,
-                                adapterCode: (step.config as any)?.adapterCode,
-                            });
-                        }
-                    } catch (err) {
-                        const msg = err instanceof Error ? err.message : String(err);
-                        errors.push(`[${step.key || 'extract'}] ${msg}`);
-                        this.logger.error('Dry run extract failed', err instanceof Error ? err : undefined, {
-                            stepKey: step.key,
-                        });
-                    }
-                    break;
-                }
-
-                case StepType.TRANSFORM: {
-                    // Capture before state for samples
-                    const beforeSamples = records.slice(0, SAMPLE_LIMIT).map(r => ({ ...r }));
-                    records = await this.transformExecutor.executeOperator(ctx, step, records, executorCtx);
-                    // Capture after state and create sample pairs
-                    for (let i = 0; i < Math.min(beforeSamples.length, records.length); i++) {
-                        sampleRecords.push({
-                            step: step.key || step.name || 'transform',
-                            before: beforeSamples[i],
-                            after: records[i],
-                        });
-                    }
-                    break;
-                }
-
-                case StepType.VALIDATE: {
-                    const beforeSamples = records.slice(0, SAMPLE_LIMIT).map(r => ({ ...r }));
-                    records = await this.transformExecutor.executeValidate(ctx, step, records);
-                    for (let i = 0; i < Math.min(beforeSamples.length, records.length); i++) {
-                        sampleRecords.push({
-                            step: step.key || step.name || 'validate',
-                            before: beforeSamples[i],
-                            after: records[i],
-                        });
-                    }
-                    break;
-                }
-
-                case StepType.LOAD: {
-                    const sim = await this.loadExecutor.simulate(ctx, step, records);
-                    details.push({
-                        stepKey: step.key,
-                        adapterCode: (step.config as any)?.adapterCode,
-                        ...sim,
-                    });
-                    break;
-                }
-
-                case StepType.ENRICH:
-                case StepType.ROUTE:
-                case StepType.EXPORT:
-                case StepType.FEED:
-                case StepType.SINK:
-                    // These step types are not yet simulated in dry run
-                    // Future: Add simulation support for these types
-                    break;
-
-                default:
-                    // Log unhandled step types for debugging extensibility issues
-                    this.logger.debug(`executeDryRun: Step type "${step.type}" not handled in dry run simulation`, {
-                        stepKey: step.key,
-                        stepType: step.type,
-                    });
-                    break;
-            }
+            const stepResult = await this.simulateSingleStep(
+                ctx, step, records, executorCtx, dryRunCtx, details,
+            );
+            records = stepResult.records;
+            processed += stepResult.processedDelta;
+            sampleRecords.push(...stepResult.samples);
         }
 
+        return { processed, details, sampleRecords };
+    }
+
+    /** Result type for single step simulation */
+    private readonly noopStepResult = (records: RecordObject[]) => ({
+        records,
+        processedDelta: 0,
+        samples: [] as Array<{ step: string; before: RecordObject; after: RecordObject }>,
+    });
+
+    /**
+     * Simulate a single step in dry run - routes to type-specific handlers
+     */
+    private async simulateSingleStep(
+        ctx: RequestContext,
+        step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+        executorCtx: ExecutorContext,
+        dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
+        details: JsonObject[],
+    ): Promise<{
+        records: RecordObject[];
+        processedDelta: number;
+        samples: Array<{ step: string; before: RecordObject; after: RecordObject }>;
+    }> {
+        const handler = this.getStepSimulationHandler(step.type);
+        if (handler) {
+            return handler(ctx, step, records, executorCtx, dryRunCtx, details);
+        }
+        return this.handleUnknownStepType(step, records);
+    }
+
+    /** Handler function type for step simulation */
+    private readonly stepSimulationHandlers: Record<string, (
+        ctx: RequestContext,
+        step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+        executorCtx: ExecutorContext,
+        dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
+        details: JsonObject[],
+    ) => Promise<{
+        records: RecordObject[];
+        processedDelta: number;
+        samples: Array<{ step: string; before: RecordObject; after: RecordObject }>;
+    }>> = {
+        TRIGGER: this.handleTriggerSimulation.bind(this),
+        EXTRACT: this.handleExtractSimulation.bind(this),
+        TRANSFORM: this.handleTransformSimulation.bind(this),
+        VALIDATE: this.handleValidateSimulation.bind(this),
+        LOAD: this.handleLoadSimulation.bind(this),
+        ENRICH: this.handleNoopSimulation.bind(this),
+        ROUTE: this.handleNoopSimulation.bind(this),
+        EXPORT: this.handleNoopSimulation.bind(this),
+        FEED: this.handleNoopSimulation.bind(this),
+        SINK: this.handleNoopSimulation.bind(this),
+    };
+
+    /**
+     * Get the simulation handler for a given step type
+     */
+    private getStepSimulationHandler(stepType: string) {
+        return this.stepSimulationHandlers[stepType] ?? null;
+    }
+
+    /** Handle trigger step simulation (no-op) */
+    private async handleTriggerSimulation(
+        _ctx: RequestContext,
+        _step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+        _executorCtx: ExecutorContext,
+        _dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
+        _details: JsonObject[],
+    ) {
+        return this.noopStepResult(records);
+    }
+
+    /** Handle extract step simulation */
+    private async handleExtractSimulation(
+        ctx: RequestContext,
+        step: PipelineDefinition['steps'][number],
+        _records: RecordObject[],
+        executorCtx: ExecutorContext,
+        dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
+        _details: JsonObject[],
+    ) {
+        const result = await this.simulateExtractStep(ctx, step, executorCtx, dryRunCtx);
+        return { records: result.records, processedDelta: result.processed, samples: result.samples };
+    }
+
+    /** Handle transform step simulation */
+    private async handleTransformSimulation(
+        ctx: RequestContext,
+        step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+        executorCtx: ExecutorContext,
+        _dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
+        _details: JsonObject[],
+    ) {
+        const result = await this.simulateTransformStep(ctx, step, records, executorCtx, 'transform');
+        return { records: result.records, processedDelta: 0, samples: result.samples };
+    }
+
+    /** Handle validate step simulation */
+    private async handleValidateSimulation(
+        ctx: RequestContext,
+        step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+        _executorCtx: ExecutorContext,
+        _dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
+        _details: JsonObject[],
+    ) {
+        const result = await this.simulateValidateStep(ctx, step, records);
+        return { records: result.records, processedDelta: 0, samples: result.samples };
+    }
+
+    /** Handle load step simulation */
+    private async handleLoadSimulation(
+        ctx: RequestContext,
+        step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+        _executorCtx: ExecutorContext,
+        _dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
+        details: JsonObject[],
+    ) {
+        await this.simulateLoadStep(ctx, step, records, details);
+        return this.noopStepResult(records);
+    }
+
+    /** Handle steps that don't need simulation (enrich, route, export, feed, sink) */
+    private async handleNoopSimulation(
+        _ctx: RequestContext,
+        _step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+        _executorCtx: ExecutorContext,
+        _dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
+        _details: JsonObject[],
+    ) {
+        return this.noopStepResult(records);
+    }
+
+    /** Handle unknown step types with logging */
+    private handleUnknownStepType(
+        step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+    ) {
+        this.logger.debug(`executeDryRun: Step type "${step.type}" not handled in dry run simulation`, {
+            stepKey: step.key,
+            stepType: step.type,
+        });
+        return this.noopStepResult(records);
+    }
+
+    /**
+     * Simulate extract step in dry run
+     */
+    private async simulateExtractStep(
+        ctx: RequestContext,
+        step: PipelineDefinition['steps'][number],
+        executorCtx: ExecutorContext,
+        dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
+    ): Promise<{
+        records: RecordObject[];
+        processed: number;
+        samples: Array<{ step: string; before: RecordObject; after: RecordObject }>;
+    }> {
+        const samples: Array<{ step: string; before: RecordObject; after: RecordObject }> = [];
+
+        try {
+            const out = await this.extractExecutor.execute(ctx, step, executorCtx, dryRunCtx.onRecordError);
+            for (let i = 0; i < Math.min(out.length, this.DRY_RUN_SAMPLE_LIMIT); i++) {
+                samples.push({ step: step.key || step.name || 'extract', before: {}, after: out[i] });
+            }
+            if (out.length === 0) {
+                this.logger.debug('Dry run extract returned 0 records', {
+                    stepKey: step.key,
+                    adapterCode: getAdapterCode(step),
+                });
+            }
+            return { records: out, processed: out.length, samples };
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            dryRunCtx.errors.push(`[${step.key || 'extract'}] ${msg}`);
+            this.logger.error('Dry run extract failed', err instanceof Error ? err : undefined, { stepKey: step.key });
+            return { records: [], processed: 0, samples };
+        }
+    }
+
+    /**
+     * Simulate transform step in dry run
+     */
+    private async simulateTransformStep(
+        ctx: RequestContext,
+        step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+        executorCtx: ExecutorContext,
+        stepLabel: string,
+    ): Promise<{
+        records: RecordObject[];
+        samples: Array<{ step: string; before: RecordObject; after: RecordObject }>;
+    }> {
+        const beforeSamples = records.slice(0, this.DRY_RUN_SAMPLE_LIMIT).map(r => ({ ...r }));
+        const transformed = await this.transformExecutor.executeOperator(ctx, step, records, executorCtx);
+        const samples = this.collectSamplePairs(step, beforeSamples, transformed, stepLabel);
+        return { records: transformed, samples };
+    }
+
+    /**
+     * Simulate validate step in dry run
+     */
+    private async simulateValidateStep(
+        ctx: RequestContext,
+        step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+    ): Promise<{
+        records: RecordObject[];
+        samples: Array<{ step: string; before: RecordObject; after: RecordObject }>;
+    }> {
+        const beforeSamples = records.slice(0, this.DRY_RUN_SAMPLE_LIMIT).map(r => ({ ...r }));
+        const validated = await this.transformExecutor.executeValidate(ctx, step, records);
+        const samples = this.collectSamplePairs(step, beforeSamples, validated, 'validate');
+        return { records: validated, samples };
+    }
+
+    /**
+     * Simulate load step in dry run
+     */
+    private async simulateLoadStep(
+        ctx: RequestContext,
+        step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+        details: JsonObject[],
+    ): Promise<void> {
+        const sim = await this.loadExecutor.simulate(ctx, step, records);
+        const adapterCode = getAdapterCode(step);
+        details.push({
+            stepKey: step.key,
+            ...(adapterCode ? { adapterCode } : {}),
+            ...sim,
+        });
+    }
+
+    /**
+     * Collect before/after sample pairs for dry run reporting
+     */
+    private collectSamplePairs(
+        step: PipelineDefinition['steps'][number],
+        beforeSamples: RecordObject[],
+        afterRecords: RecordObject[],
+        stepLabel: string,
+    ): Array<{ step: string; before: RecordObject; after: RecordObject }> {
+        const samples: Array<{ step: string; before: RecordObject; after: RecordObject }> = [];
+        for (let i = 0; i < Math.min(beforeSamples.length, afterRecords.length); i++) {
+            samples.push({
+                step: step.key || step.name || stepLabel,
+                before: beforeSamples[i],
+                after: afterRecords[i],
+            });
+        }
+        return samples;
+    }
+
+    /**
+     * Build the final dry run report with metrics
+     */
+    private buildDryRunReport(
+        processed: number,
+        details: JsonObject[],
+        sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }>,
+        errors: string[],
+    ): {
+        metrics: PipelineMetrics;
+        sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }>;
+        errors?: string[];
+    } {
         return {
             metrics: {
                 totalRecords: processed,
@@ -458,25 +670,31 @@ export class AdapterRuntimeService {
                 recordsFailed: errors.length,
                 recordsSkipped: 0,
                 durationMs: 0,
-                details: details as any,
+                details,
             },
             sampleRecords,
             errors: errors.length > 0 ? errors : undefined,
         };
     }
 
+    // ============================================================
+    // Context and Checkpoint Helpers
+    // ============================================================
+
     private async resolvePipelineContext(
         ctx: RequestContext,
         definition: PipelineDefinition,
     ): Promise<RequestContext> {
         const channelFromContext = definition.context?.channel;
-        const langFromContext = definition.context?.contentLanguage as any;
+        const langFromContext = definition.context?.contentLanguage;
 
         if (channelFromContext || langFromContext) {
+            // Extract channel token from context if available
+            const channelToken = channelFromContext ?? ctx.channel?.token;
             const req = await this.requestContextService.create({
-                apiType: ctx.apiType as any,
-                channelOrToken: channelFromContext ?? (ctx as any)._channel?.token,
-                languageCode: langFromContext,
+                apiType: ctx.apiType,
+                channelOrToken: channelToken,
+                languageCode: langFromContext as import('@vendure/core').LanguageCode | undefined,
             });
             if (req) return req;
         }
@@ -494,7 +712,7 @@ export class AdapterRuntimeService {
         if (pipelineId) {
             try {
                 const cp = await this.checkpointService.getByPipeline(ctx, pipelineId);
-                this.cpData = (cp?.data ?? {}) as any;
+                this.cpData = (cp?.data ?? {}) as CheckpointData;
             } catch (err) {
                 this.logger.debug('Failed to load checkpoint', {
                     pipelineId: String(pipelineId),
@@ -563,7 +781,7 @@ export class AdapterRuntimeService {
     private createLoadWithThroughput() {
         return (
             ctx: RequestContext,
-            step: any,
+            step: PipelineDefinition['steps'][number],
             batch: RecordObject[],
             definition: PipelineDefinition,
             onRecordError?: OnRecordErrorCallback,

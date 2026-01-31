@@ -8,10 +8,30 @@ import {
     CollectionService,
     AssetService,
     RequestContextService,
+    ID,
+    EntityWithAssets,
 } from '@vendure/core';
-import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
+import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
+import { getErrorMessage } from '../../../services/logger/error-utils';
+
+/**
+ * Configuration for asset attachment step
+ */
+interface AssetAttachConfig {
+    entity?: string;
+    slugField?: string;
+    assetIdField?: string;
+    channel?: string;
+}
+
+/**
+ * Record with dynamic field access
+ */
+interface AssetAttachRecord {
+    [key: string]: unknown;
+}
 
 @Injectable()
 export class AssetAttachHandler implements LoaderHandler {
@@ -27,41 +47,45 @@ export class AssetAttachHandler implements LoaderHandler {
         step: PipelineStepDefinition,
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
-        errorHandling?: ErrorHandlingConfig,
+        _errorHandling?: ErrorHandlingConfig,
     ): Promise<ExecutionResult> {
         let ok = 0, fail = 0;
+        const cfg = (step.config ?? {}) as AssetAttachConfig;
 
         for (const rec of input) {
             try {
-                const entity = (step.config as any)?.entity as string;
-                const slug = (rec as any)?.[(step.config as any)?.slugField ?? 'slug'] as string | undefined;
-                const assetId = (rec as any)?.[(step.config as any)?.assetIdField ?? 'assetId'] as any;
+                const record = rec as AssetAttachRecord;
+                const entity = cfg.entity;
+                const slugField = cfg.slugField ?? 'slug';
+                const assetIdField = cfg.assetIdField ?? 'assetId';
+                const slug = record[slugField] as string | undefined;
+                const assetId = record[assetIdField] as ID | undefined;
 
                 if (!entity || !slug || !assetId) { fail++; continue; }
 
                 let opCtx = ctx;
-                const channel = (step.config as any)?.channel as string | undefined;
+                const channel = cfg.channel;
                 if (channel) {
-                    const req = await this.requestContextService.create({ apiType: ctx.apiType as any, channelOrToken: channel });
+                    const req = await this.requestContextService.create({ apiType: ctx.apiType, channelOrToken: channel });
                     if (req) opCtx = req;
                 }
 
                 if (entity === 'product') {
-                    const list = await this.productService.findAll(opCtx, { filter: { slug: { eq: slug } }, take: 1 } as any);
-                    const product = list.items[0] as any;
+                    const list = await this.productService.findAll(opCtx, { filter: { slug: { eq: slug } }, take: 1 });
+                    const product = list.items[0];
                     if (!product) { fail++; continue; }
-                    await this.assetService.updateFeaturedAsset(opCtx, product as any, { featuredAssetId: assetId } as any);
+                    await this.assetService.updateFeaturedAsset(opCtx, product as unknown as EntityWithAssets, { featuredAssetId: assetId });
                 } else if (entity === 'collection') {
                     const existing = await this.collectionService.findOneBySlug(opCtx, slug);
                     if (!existing) { fail++; continue; }
-                    await this.assetService.updateFeaturedAsset(opCtx, existing as any, { featuredAssetId: assetId } as any);
+                    await this.assetService.updateFeaturedAsset(opCtx, existing as unknown as EntityWithAssets, { featuredAssetId: assetId });
                 } else {
                     fail++;
                     continue;
                 }
                 ok++;
-            } catch (e: any) {
-                if (onRecordError) await onRecordError(step.key, e?.message ?? 'assetAttach failed', rec as any);
+            } catch (e: unknown) {
+                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'assetAttach failed', rec as JsonObject);
                 fail++;
             }
         }

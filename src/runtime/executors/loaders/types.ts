@@ -27,7 +27,7 @@ export interface LoaderHandler {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, any>>;
+    ): Promise<Record<string, unknown>>;
 }
 
 /**

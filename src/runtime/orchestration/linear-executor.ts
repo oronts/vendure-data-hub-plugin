@@ -3,11 +3,14 @@
  *
  * Handles linear pipeline execution where steps are executed sequentially
  * in the order they are defined (no graph edges).
+ *
+ * Uses the Strategy pattern to delegate step execution to specialized strategies.
  */
 
 import { Logger } from '@nestjs/common';
 import { RequestContext, ID } from '@vendure/core';
-import { PipelineDefinition, StepType } from '../../types/index';
+import { PipelineDefinition, PipelineStepDefinition, StepType } from '../../types/index';
+import { StepType as StepTypeEnum } from '../../constants/enums';
 import {
     RecordObject,
     OnRecordErrorCallback,
@@ -21,10 +24,26 @@ import {
     FeedExecutor,
     SinkExecutor,
 } from '../executors';
-// Direct imports to avoid circular dependencies
 import { HookService } from '../../services/events/hook.service';
 import { DomainEventsService } from '../../services/events/domain-events.service';
-import { StepLogCallback, StepLogInfo } from './types';
+import { StepLogCallback } from './types';
+import {
+    StepStrategy,
+    StepExecutionContext,
+    StepStrategyResult,
+    safePublish,
+} from './step-strategies';
+import { ExtractStepStrategy } from './step-strategies/extract-step.strategy';
+import {
+    TransformStepStrategy,
+    ValidateStepStrategy,
+    EnrichStepStrategy,
+    RouteStepStrategy,
+} from './step-strategies/transform-step.strategy';
+import { LoadStepStrategy, LoadWithThroughputFn, ApplyIdempotencyFn } from './step-strategies/load-step.strategy';
+import { ExportStepStrategy } from './step-strategies/export-step.strategy';
+import { FeedStepStrategy } from './step-strategies/feed-step.strategy';
+import { SinkStepStrategy } from './step-strategies/sink-step.strategy';
 
 const logger = new Logger('DataHub:LinearExecutor');
 
@@ -35,14 +54,14 @@ export interface LinearExecutionResult {
     processed: number;
     succeeded: number;
     failed: number;
-    details: Array<Record<string, any>>;
+    details: Array<import('../../types/index').JsonObject>;
     counters: Record<string, number>;
 }
 
 /**
- * Executes a linear pipeline (sequential steps)
+ * Parameters for linear executor
  */
-export async function executeLinear(params: {
+export interface LinearExecutorParams {
     ctx: RequestContext;
     definition: PipelineDefinition;
     executorCtx: ExecutorContext;
@@ -54,529 +73,318 @@ export async function executeLinear(params: {
     exportExecutor: ExportExecutor;
     feedExecutor: FeedExecutor;
     sinkExecutor: SinkExecutor;
-    loadWithThroughput: (
-        ctx: RequestContext,
-        step: any,
-        batch: RecordObject[],
-        definition: PipelineDefinition,
-        onRecordError?: OnRecordErrorCallback,
-    ) => Promise<{ ok: number; fail: number }>;
-    applyIdempotency: (records: RecordObject[], definition: PipelineDefinition) => RecordObject[];
+    loadWithThroughput: LoadWithThroughputFn;
+    applyIdempotency: ApplyIdempotencyFn;
     onCancelRequested?: () => Promise<boolean>;
     onRecordError?: OnRecordErrorCallback;
     pipelineId?: ID;
     runId?: ID;
-    /** Optional step logging callback for database persistence */
     stepLog?: StepLogCallback;
-}): Promise<LinearExecutionResult> {
-    const {
-        ctx,
-        definition,
-        executorCtx,
-        hookService,
-        domainEvents,
-        extractExecutor,
-        transformExecutor,
-        loadExecutor,
-        exportExecutor,
-        feedExecutor,
-        sinkExecutor,
-        loadWithThroughput,
-        applyIdempotency,
-        onCancelRequested,
-        onRecordError,
-        pipelineId,
-        runId,
-        stepLog,
-    } = params;
-
-    let records: RecordObject[] = [];
-    let processed = 0;
-    let succeeded = 0;
-    let failed = 0;
-    const details: any[] = [];
-    const counters: Record<string, number> = {
-        extracted: 0,
-        transformed: 0,
-        validated: 0,
-        enriched: 0,
-        routed: 0,
-        loaded: 0,
-        rejected: 0,
-    };
-
-    await hookService.run(ctx, definition, 'pipelineStarted');
-    try {
-        domainEvents.publish('PipelineStarted', { pipelineId });
-    } catch (error) {
-        logger.warn(`Failed to publish PipelineStarted event: ${(error as Error)?.message}`, { pipelineId });
-    }
-
-    let cancelled = false;
-
-    for (const step of definition.steps) {
-        if (onCancelRequested && (await onCancelRequested())) {
-            cancelled = true;
-            details.push({
-                stepKey: step.key,
-                type: step.type,
-                status: 'cancelled',
-                durationMs: 0,
-            });
-            try {
-                domainEvents.publish('PipelineCancelled', {
-                    pipelineId,
-                    stepKey: step.key,
-                    cancelledAt: new Date().toISOString(),
-                });
-                domainEvents.publish('PipelineStepSkipped', {
-                    pipelineId,
-                    stepKey: step.key,
-                    reason: 'cancelled',
-                });
-            } catch (error) {
-                logger.warn(`Failed to publish cancellation events: ${(error as Error)?.message}`, { pipelineId, stepKey: step.key });
-            }
-            break;
-        }
-
-        const t0 = Date.now();
-
-        switch (step.type) {
-            case StepType.TRIGGER:
-                // Triggers are handled at pipeline start, skip here
-                details.push({
-                    stepKey: step.key,
-                    type: 'TRIGGER',
-                    skipped: true,
-                    durationMs: 0,
-                });
-                try {
-                    domainEvents.publish('PipelineStepSkipped', {
-                        pipelineId,
-                        stepKey: step.key,
-                        reason: 'trigger-step',
-                    });
-                } catch (error) {
-                    logger.warn(`Failed to publish PipelineStepSkipped event: ${(error as Error)?.message}`, { pipelineId, stepKey: step.key });
-                }
-                continue;
-
-            case StepType.EXTRACT: {
-                const adapterCode = (step.config as any)?.adapterCode ?? '';
-                // Log step start
-                if (stepLog?.onStepStart) {
-                    await stepLog.onStepStart(ctx, step.key, 'EXTRACT', 0);
-                }
-                const beforeExtractResult = await hookService.runInterceptors(ctx, definition, 'beforeExtract', records, runId, pipelineId);
-                records = beforeExtractResult.records;
-
-                const out = await extractExecutor.execute(ctx, step, executorCtx, onRecordError);
-                records = out;
-                processed += out.length;
-                succeeded += out.length;
-                counters.extracted += out.length;
-                const durationMs = Date.now() - t0;
-                details.push({
-                    stepKey: step.key,
-                    type: 'EXTRACT',
-                    adapterCode,
-                    out: out.length,
-                    durationMs,
-                });
-                const afterExtractResult = await hookService.runInterceptors(ctx, definition, 'afterExtract', records, runId, pipelineId);
-                records = afterExtractResult.records;
-                // Log extracted data (DEBUG level)
-                if (stepLog?.onExtractData) {
-                    await stepLog.onExtractData(ctx, step.key, adapterCode, out);
-                }
-                // Log step complete
-                if (stepLog?.onStepComplete) {
-                    await stepLog.onStepComplete(ctx, {
-                        stepKey: step.key,
-                        stepType: 'EXTRACT',
-                        adapterCode,
-                        recordsIn: 0,
-                        recordsOut: out.length,
-                        succeeded: out.length,
-                        failed: 0,
-                        durationMs,
-                        sampleOutput: out[0] as RecordObject | undefined,
-                    });
-                }
-                try {
-                    domainEvents.publish('RecordExtracted', { stepKey: step.key, count: out.length });
-                } catch (error) {
-                    logger.warn(`Failed to publish RecordExtracted event: ${(error as Error)?.message}`, { stepKey: step.key });
-                }
-                break;
-            }
-
-            case StepType.TRANSFORM: {
-                const adapterCode = (step.config as any)?.adapterCode ?? '';
-                const recordsIn = records.length;
-                const sampleInput = records[0] as RecordObject | undefined;
-                // Log step start
-                if (stepLog?.onStepStart) {
-                    await stepLog.onStepStart(ctx, step.key, 'TRANSFORM', recordsIn);
-                }
-                const beforeTransformResult = await hookService.runInterceptors(ctx, definition, 'beforeTransform', records, runId, pipelineId);
-                records = beforeTransformResult.records;
-
-                const out = await transformExecutor.executeOperator(ctx, step, records, executorCtx);
-                records = out;
-                counters.transformed += out.length;
-                const durationMs = Date.now() - t0;
-                details.push({
-                    stepKey: step.key,
-                    type: 'TRANSFORM',
-                    adapterCode,
-                    out: out.length,
-                    durationMs,
-                });
-                const afterTransformResult = await hookService.runInterceptors(ctx, definition, 'afterTransform', records, runId, pipelineId);
-                records = afterTransformResult.records;
-                // Log field mappings (DEBUG level) - compare first input/output record
-                if (stepLog?.onTransformMapping && sampleInput && out[0]) {
-                    await stepLog.onTransformMapping(ctx, step.key, adapterCode, sampleInput, out[0]);
-                }
-                // Log step complete
-                if (stepLog?.onStepComplete) {
-                    await stepLog.onStepComplete(ctx, {
-                        stepKey: step.key,
-                        stepType: 'TRANSFORM',
-                        adapterCode,
-                        recordsIn,
-                        recordsOut: out.length,
-                        succeeded: out.length,
-                        failed: 0,
-                        durationMs,
-                        sampleInput,
-                        sampleOutput: out[0] as RecordObject | undefined,
-                    });
-                }
-                try {
-                    domainEvents.publish('RecordTransformed', { stepKey: step.key, count: out.length });
-                } catch (error) {
-                    logger.warn(`Failed to publish RecordTransformed event: ${(error as Error)?.message}`, { stepKey: step.key });
-                }
-                break;
-            }
-
-            case StepType.VALIDATE: {
-                const adapterCode = (step.config as any)?.adapterCode ?? '';
-                const recordsIn = records.length;
-                // Log step start
-                if (stepLog?.onStepStart) {
-                    await stepLog.onStepStart(ctx, step.key, 'VALIDATE', recordsIn);
-                }
-                const beforeValidateResult = await hookService.runInterceptors(ctx, definition, 'beforeValidate', records, runId, pipelineId);
-                records = beforeValidateResult.records;
-
-                const out = await transformExecutor.executeValidate(ctx, step, records, onRecordError);
-                records = out;
-                counters.validated += out.length;
-                const durationMs = Date.now() - t0;
-                const failedCount = recordsIn - out.length;
-                details.push({
-                    stepKey: step.key,
-                    type: 'VALIDATE',
-                    adapterCode,
-                    out: out.length,
-                    durationMs,
-                });
-                const afterValidateResult = await hookService.runInterceptors(ctx, definition, 'afterValidate', records, runId, pipelineId);
-                records = afterValidateResult.records;
-                // Log step complete
-                if (stepLog?.onStepComplete) {
-                    await stepLog.onStepComplete(ctx, {
-                        stepKey: step.key,
-                        stepType: 'VALIDATE',
-                        adapterCode,
-                        recordsIn,
-                        recordsOut: out.length,
-                        succeeded: out.length,
-                        failed: failedCount,
-                        durationMs,
-                    });
-                }
-                try {
-                    domainEvents.publish('RecordValidated', { stepKey: step.key, count: out.length });
-                } catch (error) {
-                    logger.warn(`Failed to publish RecordValidated event: ${(error as Error)?.message}`, { stepKey: step.key });
-                }
-                break;
-            }
-
-            case StepType.ENRICH:
-            case StepType.ROUTE: {
-                const adapterCode = (step.config as any)?.adapterCode ?? '';
-                const recordsIn = records.length;
-                const stepTypeName = step.type === StepType.ENRICH ? 'ENRICH' : 'ROUTE';
-                const hookPrefix = step.type === StepType.ENRICH ? 'Enrich' : 'Route';
-                // Log step start
-                if (stepLog?.onStepStart) {
-                    await stepLog.onStepStart(ctx, step.key, stepTypeName, recordsIn);
-                }
-                const beforeResult = await hookService.runInterceptors(ctx, definition, `before${hookPrefix}` as any, records, runId, pipelineId);
-                records = beforeResult.records;
-
-                const out = await transformExecutor.executeRoute(ctx, step, records, onRecordError);
-                records = out;
-                const durationMs = Date.now() - t0;
-                if (step.type === StepType.ENRICH) {
-                    counters.enriched += out.length;
-                    try {
-                        domainEvents.publish('RecordEnriched', { stepKey: step.key, count: out.length });
-                    } catch (error) {
-                        logger.warn(`Failed to publish RecordEnriched event: ${(error as Error)?.message}`, { stepKey: step.key });
-                    }
-                } else {
-                    counters.routed += out.length;
-                    try {
-                        domainEvents.publish('RecordRouted', { stepKey: step.key, count: out.length });
-                    } catch (error) {
-                        logger.warn(`Failed to publish RecordRouted event: ${(error as Error)?.message}`, { stepKey: step.key });
-                    }
-                }
-                details.push({
-                    stepKey: step.key,
-                    type: step.type,
-                    adapterCode,
-                    out: out.length,
-                    durationMs,
-                });
-                const afterResult = await hookService.runInterceptors(ctx, definition, `after${hookPrefix}` as any, records, runId, pipelineId);
-                records = afterResult.records;
-                // Log step complete
-                if (stepLog?.onStepComplete) {
-                    await stepLog.onStepComplete(ctx, {
-                        stepKey: step.key,
-                        stepType: stepTypeName,
-                        adapterCode,
-                        recordsIn,
-                        recordsOut: out.length,
-                        succeeded: out.length,
-                        failed: 0,
-                        durationMs,
-                    });
-                }
-                break;
-            }
-
-            case StepType.LOAD: {
-                const adapterCode = (step.config as any)?.adapterCode ?? '';
-                const recordsIn = records.length;
-                // Log step start
-                if (stepLog?.onStepStart) {
-                    await stepLog.onStepStart(ctx, step.key, 'LOAD', recordsIn);
-                }
-                const beforeLoadResult = await hookService.runInterceptors(ctx, definition, 'beforeLoad', records, runId, pipelineId);
-                records = beforeLoadResult.records;
-
-                const batch = applyIdempotency(records, definition);
-                // Log target data before load (DEBUG level)
-                if (stepLog?.onLoadData) {
-                    await stepLog.onLoadData(ctx, step.key, adapterCode, batch);
-                }
-                const { ok, fail } = await loadWithThroughput(ctx, step, batch, definition, onRecordError);
-                succeeded += ok;
-                failed += fail;
-                counters.loaded += ok;
-                counters.rejected += fail;
-                const durationMs = Date.now() - t0;
-                details.push({
-                    stepKey: step.key,
-                    type: 'LOAD',
-                    adapterCode,
-                    ok,
-                    fail,
-                    durationMs,
-                });
-                const afterLoadResult = await hookService.runInterceptors(ctx, definition, 'afterLoad', records, runId, pipelineId);
-                records = afterLoadResult.records;
-                // Log step complete
-                if (stepLog?.onStepComplete) {
-                    await stepLog.onStepComplete(ctx, {
-                        stepKey: step.key,
-                        stepType: 'LOAD',
-                        adapterCode,
-                        recordsIn: batch.length,
-                        recordsOut: ok,
-                        succeeded: ok,
-                        failed: fail,
-                        durationMs,
-                        sampleInput: batch[0] as RecordObject | undefined,
-                    });
-                }
-                try {
-                    domainEvents.publish('RecordLoaded', { stepKey: step.key });
-                } catch (error) {
-                    logger.warn(`Failed to publish RecordLoaded event: ${(error as Error)?.message}`, { stepKey: step.key });
-                }
-                break;
-            }
-
-            case StepType.EXPORT: {
-                const adapterCode = (step.config as any)?.adapterCode ?? '';
-                const recordsIn = records.length;
-                // Log step start
-                if (stepLog?.onStepStart) {
-                    await stepLog.onStepStart(ctx, step.key, 'EXPORT', recordsIn);
-                }
-                const { ok, fail } = await exportExecutor.execute(ctx, step, records, onRecordError);
-                succeeded += ok;
-                failed += fail;
-                const durationMs = Date.now() - t0;
-                details.push({
-                    stepKey: step.key,
-                    type: 'EXPORT',
-                    adapterCode,
-                    ok,
-                    fail,
-                    durationMs,
-                });
-                // Log step complete
-                if (stepLog?.onStepComplete) {
-                    await stepLog.onStepComplete(ctx, {
-                        stepKey: step.key,
-                        stepType: 'EXPORT',
-                        adapterCode,
-                        recordsIn,
-                        recordsOut: ok,
-                        succeeded: ok,
-                        failed: fail,
-                        durationMs,
-                    });
-                }
-                try {
-                    domainEvents.publish('RecordExported', { stepKey: step.key, ok, fail });
-                } catch (error) {
-                    logger.warn(`Failed to publish RecordExported event: ${(error as Error)?.message}`, { stepKey: step.key });
-                }
-                break;
-            }
-
-            case StepType.FEED: {
-                const adapterCode = (step.config as any)?.adapterCode ?? '';
-                const recordsIn = records.length;
-                // Log step start
-                if (stepLog?.onStepStart) {
-                    await stepLog.onStepStart(ctx, step.key, 'FEED', recordsIn);
-                }
-                const { ok, fail, outputPath } = await feedExecutor.execute(ctx, step, records, onRecordError);
-                succeeded += ok;
-                failed += fail;
-                const durationMs = Date.now() - t0;
-                details.push({
-                    stepKey: step.key,
-                    type: 'FEED',
-                    adapterCode,
-                    ok,
-                    fail,
-                    outputPath,
-                    durationMs,
-                });
-                // Log step complete
-                if (stepLog?.onStepComplete) {
-                    await stepLog.onStepComplete(ctx, {
-                        stepKey: step.key,
-                        stepType: 'FEED',
-                        adapterCode,
-                        recordsIn,
-                        recordsOut: ok,
-                        succeeded: ok,
-                        failed: fail,
-                        durationMs,
-                    });
-                }
-                try {
-                    domainEvents.publish('FeedGenerated', { stepKey: step.key, ok, fail, outputPath });
-                } catch (error) {
-                    logger.warn(`Failed to publish FeedGenerated event: ${(error as Error)?.message}`, { stepKey: step.key });
-                }
-                break;
-            }
-
-            case StepType.SINK: {
-                const adapterCode = (step.config as any)?.adapterCode ?? '';
-                const recordsIn = records.length;
-                // Log step start
-                if (stepLog?.onStepStart) {
-                    await stepLog.onStepStart(ctx, step.key, 'SINK', recordsIn);
-                }
-                const { ok, fail } = await sinkExecutor.execute(ctx, step, records, onRecordError);
-                succeeded += ok;
-                failed += fail;
-                const durationMs = Date.now() - t0;
-                details.push({
-                    stepKey: step.key,
-                    type: 'SINK',
-                    adapterCode,
-                    ok,
-                    fail,
-                    durationMs,
-                });
-                // Log step complete
-                if (stepLog?.onStepComplete) {
-                    await stepLog.onStepComplete(ctx, {
-                        stepKey: step.key,
-                        stepType: 'SINK',
-                        adapterCode,
-                        recordsIn,
-                        recordsOut: ok,
-                        succeeded: ok,
-                        failed: fail,
-                        durationMs,
-                    });
-                }
-                try {
-                    domainEvents.publish('RecordIndexed', { stepKey: step.key, ok, fail });
-                } catch (error) {
-                    logger.warn(`Failed to publish RecordIndexed event: ${(error as Error)?.message}`, { stepKey: step.key });
-                }
-                break;
-            }
-
-            default: {
-                details.push({
-                    stepKey: step.key,
-                    type: step.type,
-                    skipped: true,
-                    durationMs: 0,
-                });
-                try {
-                    domainEvents.publish('PipelineStepSkipped', {
-                        pipelineId,
-                        stepKey: step.key,
-                        reason: 'unsupported-step',
-                    });
-                } catch (error) {
-                    logger.warn(`Failed to publish PipelineStepSkipped event: ${(error as Error)?.message}`, { pipelineId, stepKey: step.key });
-                }
-                break;
-            }
-        }
-    }
-
-    if (cancelled) {
-        try {
-            domainEvents.publish('PipelineRunCancelled', {
-                pipelineId,
-                cancelledAt: new Date().toISOString(),
-            });
-        } catch (error) {
-            logger.warn(`Failed to publish PipelineRunCancelled event: ${(error as Error)?.message}`, { pipelineId });
-        }
-    }
-
-    return { processed, succeeded, failed, details, counters };
 }
 
 /**
- * Execute pipeline with seed records (skip extract steps)
+ * Strategy registry for step types
  */
-export async function executeWithSeed(params: {
+class StepStrategyRegistry {
+    private strategies: Map<string, StepStrategy> = new Map();
+
+    register(stepType: string, strategy: StepStrategy): void {
+        this.strategies.set(stepType, strategy);
+    }
+
+    get(stepType: string): StepStrategy | undefined {
+        return this.strategies.get(stepType);
+    }
+
+    has(stepType: string): boolean {
+        return this.strategies.has(stepType);
+    }
+}
+
+/**
+ * Build strategy registry from executors
+ */
+function buildStrategyRegistry(params: LinearExecutorParams): StepStrategyRegistry {
+    const registry = new StepStrategyRegistry();
+
+    registry.register(StepType.EXTRACT, new ExtractStepStrategy(params.extractExecutor));
+    registry.register(StepType.TRANSFORM, new TransformStepStrategy(params.transformExecutor));
+    registry.register(StepType.VALIDATE, new ValidateStepStrategy(params.transformExecutor));
+    registry.register(StepType.ENRICH, new EnrichStepStrategy(params.transformExecutor));
+    registry.register(StepType.ROUTE, new RouteStepStrategy(params.transformExecutor));
+    registry.register(StepType.LOAD, new LoadStepStrategy(params.loadWithThroughput, params.applyIdempotency));
+    registry.register(StepType.EXPORT, new ExportStepStrategy(params.exportExecutor));
+    registry.register(StepType.FEED, new FeedStepStrategy(params.feedExecutor));
+    registry.register(StepType.SINK, new SinkStepStrategy(params.sinkExecutor));
+
+    return registry;
+}
+
+/**
+ * Execution state for pipeline run
+ */
+interface ExecutionState {
+    records: RecordObject[];
+    processed: number;
+    succeeded: number;
+    failed: number;
+    details: Array<import('../../types/index').JsonObject>;
+    counters: Record<string, number>;
+    cancelled: boolean;
+}
+
+/**
+ * Create initial execution state
+ */
+function createInitialState(): ExecutionState {
+    return {
+        records: [],
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        details: [],
+        counters: {
+            extracted: 0,
+            transformed: 0,
+            validated: 0,
+            enriched: 0,
+            routed: 0,
+            loaded: 0,
+            rejected: 0,
+        },
+        cancelled: false,
+    };
+}
+
+/**
+ * Build step execution context
+ */
+function buildStepContext(
+    params: LinearExecutorParams,
+    step: PipelineStepDefinition,
+    records: RecordObject[],
+): StepExecutionContext {
+    return {
+        ctx: params.ctx,
+        definition: params.definition,
+        step,
+        records,
+        executorCtx: params.executorCtx,
+        hookService: params.hookService,
+        domainEvents: params.domainEvents,
+        pipelineId: params.pipelineId,
+        runId: params.runId,
+        stepLog: params.stepLog,
+        onRecordError: params.onRecordError,
+    };
+}
+
+/**
+ * Check if cancellation was requested
+ */
+async function checkCancellation(
+    params: LinearExecutorParams,
+    state: ExecutionState,
+    step: PipelineStepDefinition,
+): Promise<boolean> {
+    if (!params.onCancelRequested) return false;
+    if (!(await params.onCancelRequested())) return false;
+
+    state.cancelled = true;
+    state.details.push({
+        stepKey: step.key,
+        type: step.type,
+        status: 'CANCELLED',
+        durationMs: 0,
+    });
+
+    publishCancellationEvents(params.domainEvents, params.pipelineId, step.key);
+    return true;
+}
+
+/**
+ * Publish cancellation events
+ */
+function publishCancellationEvents(
+    domainEvents: DomainEventsService,
+    pipelineId: ID | undefined,
+    stepKey: string,
+): void {
+    safePublish(domainEvents, 'PipelineCancelled', {
+        pipelineId,
+        stepKey,
+        cancelledAt: new Date().toISOString(),
+    }, logger);
+
+    safePublish(domainEvents, 'PipelineStepSkipped', {
+        pipelineId,
+        stepKey,
+        reason: 'cancelled',
+    }, logger);
+}
+
+/**
+ * Handle TRIGGER step (skip)
+ */
+function handleTriggerStep(
+    domainEvents: DomainEventsService,
+    pipelineId: ID | undefined,
+    step: PipelineStepDefinition,
+    state: ExecutionState,
+): void {
+    state.details.push({
+        stepKey: step.key,
+        type: StepTypeEnum.TRIGGER,
+        skipped: true,
+        durationMs: 0,
+    });
+
+    safePublish(domainEvents, 'PipelineStepSkipped', {
+        pipelineId,
+        stepKey: step.key,
+        reason: 'trigger-step',
+    }, logger);
+}
+
+/**
+ * Handle unsupported step type
+ */
+function handleUnsupportedStep(
+    domainEvents: DomainEventsService,
+    pipelineId: ID | undefined,
+    step: PipelineStepDefinition,
+    state: ExecutionState,
+): void {
+    state.details.push({
+        stepKey: step.key,
+        type: step.type,
+        skipped: true,
+        durationMs: 0,
+    });
+
+    safePublish(domainEvents, 'PipelineStepSkipped', {
+        pipelineId,
+        stepKey: step.key,
+        reason: 'unsupported-step',
+    }, logger);
+}
+
+/**
+ * Apply strategy result to execution state
+ */
+function applyResultToState(state: ExecutionState, result: StepStrategyResult): void {
+    state.records = result.records;
+    state.processed += result.processed;
+    state.succeeded += result.succeeded;
+    state.failed += result.failed;
+    state.details.push(result.detail);
+
+    for (const [key, value] of Object.entries(result.counters)) {
+        state.counters[key] = (state.counters[key] ?? 0) + value;
+    }
+}
+
+/**
+ * Execute a single step using strategy pattern
+ */
+async function executeStep(
+    params: LinearExecutorParams,
+    registry: StepStrategyRegistry,
+    step: PipelineStepDefinition,
+    state: ExecutionState,
+): Promise<void> {
+    // Handle TRIGGER steps specially
+    if (step.type === StepType.TRIGGER) {
+        handleTriggerStep(params.domainEvents, params.pipelineId, step, state);
+        return;
+    }
+
+    // Get strategy for step type
+    const strategy = registry.get(step.type);
+    if (!strategy) {
+        handleUnsupportedStep(params.domainEvents, params.pipelineId, step, state);
+        return;
+    }
+
+    // Build context and execute strategy
+    const context = buildStepContext(params, step, state.records);
+    const result = await strategy.execute(context);
+
+    // Apply result to state
+    applyResultToState(state, result);
+}
+
+/**
+ * Main orchestration loop
+ */
+async function executeSteps(
+    params: LinearExecutorParams,
+    registry: StepStrategyRegistry,
+    state: ExecutionState,
+): Promise<void> {
+    for (const step of params.definition.steps) {
+        // Check for cancellation
+        if (await checkCancellation(params, state, step)) {
+            break;
+        }
+
+        // Execute the step
+        await executeStep(params, registry, step, state);
+    }
+}
+
+/**
+ * Publish pipeline started event
+ */
+async function publishPipelineStarted(params: LinearExecutorParams): Promise<void> {
+    await params.hookService.run(params.ctx, params.definition, 'PIPELINE_STARTED');
+    safePublish(params.domainEvents, 'PIPELINE_STARTED', { pipelineId: params.pipelineId }, logger);
+}
+
+/**
+ * Publish pipeline cancelled event
+ */
+function publishPipelineCancelled(params: LinearExecutorParams): void {
+    safePublish(params.domainEvents, 'PipelineRunCancelled', {
+        pipelineId: params.pipelineId,
+        cancelledAt: new Date().toISOString(),
+    }, logger);
+}
+
+/**
+ * Executes a linear pipeline (sequential steps)
+ */
+export async function executeLinear(params: LinearExecutorParams): Promise<LinearExecutionResult> {
+    // Initialize state
+    const state = createInitialState();
+
+    // Build strategy registry
+    const registry = buildStrategyRegistry(params);
+
+    // Publish pipeline started
+    await publishPipelineStarted(params);
+
+    // Execute all steps
+    await executeSteps(params, registry, state);
+
+    // Handle cancellation
+    if (state.cancelled) {
+        publishPipelineCancelled(params);
+    }
+
+    return {
+        processed: state.processed,
+        succeeded: state.succeeded,
+        failed: state.failed,
+        details: state.details,
+        counters: state.counters,
+    };
+}
+
+/**
+ * Parameters for seeded execution
+ */
+export interface SeededExecutionParams {
     ctx: RequestContext;
     definition: PipelineDefinition;
     seed: RecordObject[];
@@ -588,90 +396,159 @@ export async function executeWithSeed(params: {
     sinkExecutor: SinkExecutor;
     onCancelRequested?: () => Promise<boolean>;
     onRecordError?: OnRecordErrorCallback;
-}): Promise<{ processed: number; succeeded: number; failed: number }> {
-    const {
-        ctx,
-        definition,
-        seed,
-        executorCtx,
-        transformExecutor,
-        loadExecutor,
-        exportExecutor,
-        feedExecutor,
-        sinkExecutor,
-        onCancelRequested,
-        onRecordError,
-    } = params;
+}
 
-    let records: RecordObject[] = seed;
-    let processed = 0;
-    let succeeded = 0;
-    let failed = 0;
+/**
+ * Seeded execution state
+ */
+interface SeededExecutionState {
+    records: RecordObject[];
+    processed: number;
+    succeeded: number;
+    failed: number;
+}
 
-    for (const step of definition.steps) {
-        if (onCancelRequested && (await onCancelRequested())) break;
+/**
+ * Step execution result for metrics collection
+ */
+interface StepExecutionMetrics {
+    ok: number;
+    fail: number;
+    recordCount: number;
+}
 
-        switch (step.type) {
-            case StepType.TRIGGER:
-            case StepType.EXTRACT:
-                // Skip - using seed records
-                break;
+/**
+ * Prepare initial state for seeded execution
+ */
+function prepareSeededExecution(seed: RecordObject[]): SeededExecutionState {
+    return {
+        records: [...seed],
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+    };
+}
 
-            case StepType.TRANSFORM:
-            case StepType.ENRICH: {
-                records = await transformExecutor.executeOperator(ctx, step, records, executorCtx);
-                break;
-            }
+/**
+ * Collect and apply step metrics to execution state
+ */
+function collectStepMetrics(
+    state: SeededExecutionState,
+    metrics: StepExecutionMetrics,
+): void {
+    state.succeeded += metrics.ok;
+    state.failed += metrics.fail;
+    state.processed += metrics.recordCount;
+}
 
-            case StepType.VALIDATE: {
-                records = await transformExecutor.executeValidate(ctx, step, records, onRecordError);
-                break;
-            }
+/**
+ * Execute a transform-type step (TRANSFORM, ENRICH, VALIDATE, ROUTE)
+ */
+async function executeTransformStep(
+    params: SeededExecutionParams,
+    step: PipelineStepDefinition,
+    state: SeededExecutionState,
+): Promise<void> {
+    const { ctx, executorCtx, transformExecutor, onRecordError } = params;
 
-            case StepType.ROUTE: {
-                records = await transformExecutor.executeRoute(ctx, step, records, onRecordError);
-                break;
-            }
+    switch (step.type) {
+        case StepType.TRANSFORM:
+        case StepType.ENRICH:
+            state.records = await transformExecutor.executeOperator(ctx, step, state.records, executorCtx);
+            break;
+        case StepType.VALIDATE:
+            state.records = await transformExecutor.executeValidate(ctx, step, state.records, onRecordError);
+            break;
+        case StepType.ROUTE:
+            state.records = await transformExecutor.executeRoute(ctx, step, state.records, onRecordError);
+            break;
+    }
+}
 
-            case StepType.LOAD: {
-                const { ok, fail } = await loadExecutor.execute(ctx, step, records, onRecordError);
-                succeeded += ok;
-                failed += fail;
-                processed += records.length;
-                break;
-            }
+/**
+ * Execute a load-type step (LOAD, EXPORT, FEED, SINK)
+ */
+async function executeLoadStep(
+    params: SeededExecutionParams,
+    step: PipelineStepDefinition,
+    state: SeededExecutionState,
+): Promise<void> {
+    const { ctx, loadExecutor, exportExecutor, feedExecutor, sinkExecutor, onRecordError } = params;
+    let result: { ok: number; fail: number };
 
-            case StepType.EXPORT: {
-                const { ok, fail } = await exportExecutor.execute(ctx, step, records, onRecordError);
-                succeeded += ok;
-                failed += fail;
-                processed += records.length;
-                break;
-            }
-
-            case StepType.FEED: {
-                const { ok, fail } = await feedExecutor.execute(ctx, step, records, onRecordError);
-                succeeded += ok;
-                failed += fail;
-                processed += records.length;
-                break;
-            }
-
-            case StepType.SINK: {
-                const { ok, fail } = await sinkExecutor.execute(ctx, step, records, onRecordError);
-                succeeded += ok;
-                failed += fail;
-                processed += records.length;
-                break;
-            }
-
-            default:
-                // Pass through records for unknown step types
-                // This allows forward compatibility when new step types are added
-                logger.warn(`executeWithSeed: Unhandled step type "${step.type}" for step "${step.key}" - passing through ${records.length} records`);
-                break;
-        }
+    switch (step.type) {
+        case StepType.LOAD:
+            result = await loadExecutor.execute(ctx, step, state.records, onRecordError);
+            break;
+        case StepType.EXPORT:
+            result = await exportExecutor.execute(ctx, step, state.records, onRecordError);
+            break;
+        case StepType.FEED:
+            result = await feedExecutor.execute(ctx, step, state.records, onRecordError);
+            break;
+        case StepType.SINK:
+            result = await sinkExecutor.execute(ctx, step, state.records, onRecordError);
+            break;
+        default:
+            return;
     }
 
-    return { processed, succeeded, failed };
+    collectStepMetrics(state, { ok: result.ok, fail: result.fail, recordCount: state.records.length });
+}
+
+/**
+ * Execute a single step with error recovery in seeded execution
+ */
+async function executeStepWithRecovery(
+    params: SeededExecutionParams,
+    step: PipelineStepDefinition,
+    state: SeededExecutionState,
+): Promise<void> {
+    // Skip trigger and extract steps - using seed records
+    if (step.type === StepType.TRIGGER || step.type === StepType.EXTRACT) {
+        return;
+    }
+
+    // Handle transform-type steps
+    if ([StepType.TRANSFORM, StepType.ENRICH, StepType.VALIDATE, StepType.ROUTE].includes(step.type as StepType)) {
+        await executeTransformStep(params, step, state);
+        return;
+    }
+
+    // Handle load-type steps
+    if ([StepType.LOAD, StepType.EXPORT, StepType.FEED, StepType.SINK].includes(step.type as StepType)) {
+        await executeLoadStep(params, step, state);
+        return;
+    }
+
+    // Unhandled step type
+    logger.warn(`executeWithSeed: Unhandled step type "${step.type}" for step "${step.key}" - passing through ${state.records.length} records`);
+}
+
+/**
+ * Execute pipeline with seed records (skip extract steps)
+ */
+export async function executeWithSeed(
+    params: SeededExecutionParams,
+): Promise<{ processed: number; succeeded: number; failed: number }> {
+    const { definition, onCancelRequested } = params;
+
+    // Prepare initial execution state with seed data
+    const state = prepareSeededExecution(params.seed);
+
+    // Execute each step sequentially
+    for (const step of definition.steps) {
+        // Check for cancellation before each step
+        if (onCancelRequested && (await onCancelRequested())) {
+            break;
+        }
+
+        await executeStepWithRecovery(params, step, state);
+    }
+
+    return {
+        processed: state.processed,
+        succeeded: state.succeeded,
+        failed: state.failed,
+    };
 }

@@ -4,11 +4,12 @@ import * as fs from 'fs';
 import { JsonValue, JsonObject, PipelineStepDefinition, PipelineContext } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, FeedExecutionResult } from '../executor-types';
-import { getPath, recordsToCsv, recordsToXml, xmlEscape, ensureDirectoryExists } from '../utils';
-import { FEED_NAMESPACES, EXAMPLE_URLS, OUTPUT_PATHS, LOGGER_CONTEXTS } from '../../constants/index';
+import { getPath, recordsToCsv, recordsToXml, xmlEscape, ensureDirectoryExistsAsync } from '../utils';
+import { FEED_NAMESPACES, EXAMPLE_URLS, getOutputPath, LOGGER_CONTEXTS } from '../../constants/index';
+import { FileFormat } from '../../constants/enums';
 import { BaseFeedConfig } from '../config-types';
 import { DataHubRegistryService } from '../../sdk/registry.service';
-import { FeedAdapter, FeedContext } from '../../sdk/types';
+import { FeedAdapter, FeedContext, ConnectionConfig, ConnectionType } from '../../sdk/types';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 
@@ -79,7 +80,7 @@ export class FeedExecutor {
         switch (adapterCode) {
             case 'googleMerchant': {
                 try {
-                    const filePath = cfg.outputPath ?? OUTPUT_PATHS.GOOGLE_MERCHANT_FEED;
+                    const filePath = cfg.outputPath ?? getOutputPath('google-merchant', 'xml');
                     outputPath = filePath;
                     const items = input.map(mapToFeedItem);
                     const shopUrl = (cfg as Record<string, JsonValue>).storeUrl ?? EXAMPLE_URLS.BASE;
@@ -105,8 +106,8 @@ export class FeedExecutor {
                     }
                     xml += '  </channel>\n';
                     xml += '</rss>';
-                    ensureDirectoryExists(filePath);
-                    fs.writeFileSync(filePath, xml, 'utf-8');
+                    await ensureDirectoryExistsAsync(filePath);
+                    await fs.promises.writeFile(filePath, xml, 'utf-8');
                     ok = items.length;
                 } catch (e: unknown) {
                     fail = input.length;
@@ -117,7 +118,7 @@ export class FeedExecutor {
             }
             case 'metaCatalog': {
                 try {
-                    const filePath = cfg.outputPath ?? OUTPUT_PATHS.META_CATALOG_FEED;
+                    const filePath = cfg.outputPath ?? getOutputPath('meta-catalog', 'csv');
                     outputPath = filePath;
                     const items = input.map(rec => ({
                         id: getRecordId(rec),
@@ -131,8 +132,8 @@ export class FeedExecutor {
                         brand: String(getPath(rec, brandField) ?? ''),
                     }));
                     const csv = recordsToCsv(items, ',', true);
-                    ensureDirectoryExists(filePath);
-                    fs.writeFileSync(filePath, csv, 'utf-8');
+                    await ensureDirectoryExistsAsync(filePath);
+                    await fs.promises.writeFile(filePath, csv, 'utf-8');
                     ok = items.length;
                 } catch (e: unknown) {
                     fail = input.length;
@@ -143,7 +144,7 @@ export class FeedExecutor {
             }
             case 'amazonFeed': {
                 try {
-                    const filePath = cfg.outputPath ?? OUTPUT_PATHS.AMAZON_FEED;
+                    const filePath = cfg.outputPath ?? getOutputPath('amazon', 'txt');
                     outputPath = filePath;
                     const items = input.map(rec => {
                         const sku = getPath(rec, 'sku') ?? getPath(rec, 'id') ?? '';
@@ -161,8 +162,8 @@ export class FeedExecutor {
                         };
                     });
                     const tsv = recordsToCsv(items, '\t', true);
-                    ensureDirectoryExists(filePath);
-                    fs.writeFileSync(filePath, tsv, 'utf-8');
+                    await ensureDirectoryExistsAsync(filePath);
+                    await fs.promises.writeFile(filePath, tsv, 'utf-8');
                     ok = items.length;
                 } catch (e: unknown) {
                     fail = input.length;
@@ -173,7 +174,7 @@ export class FeedExecutor {
             }
             case 'customFeed': {
                 try {
-                    const filePath = cfg.outputPath ?? OUTPUT_PATHS.CUSTOM_FEED;
+                    const filePath = cfg.outputPath ?? getOutputPath('custom-feed', 'json');
                     outputPath = filePath;
                     const customCfg = cfg as Record<string, JsonValue>;
                     const format = (customCfg.format as string) ?? 'json';
@@ -190,17 +191,17 @@ export class FeedExecutor {
                         return rec;
                     });
                     let content: string;
-                    if (format === 'csv') {
+                    if (format === FileFormat.CSV) {
                         content = recordsToCsv(items as RecordObject[], ',', true);
-                    } else if (format === 'tsv') {
+                    } else if (format === FileFormat.TSV) {
                         content = recordsToCsv(items as RecordObject[], '\t', true);
-                    } else if (format === 'xml') {
+                    } else if (format === FileFormat.XML) {
                         content = recordsToXml(items as RecordObject[], 'feed', 'item');
                     } else {
                         content = JSON.stringify(items, null, 2);
                     }
-                    ensureDirectoryExists(filePath);
-                    fs.writeFileSync(filePath, content, 'utf-8');
+                    await ensureDirectoryExistsAsync(filePath);
+                    await fs.promises.writeFile(filePath, content, 'utf-8');
                     ok = items.length;
                 } catch (e: unknown) {
                     fail = input.length;
@@ -250,7 +251,7 @@ export class FeedExecutor {
         feed: FeedAdapter<any>,
         pipelineContext?: PipelineContext,
     ): Promise<FeedExecutionResult> {
-        const cfg = step.config as JsonObject;
+        const cfg = step.config as BaseFeedConfig;
 
         // Create feed context for the custom feed generator
         const feedContext: FeedContext = {
@@ -272,24 +273,39 @@ export class FeedExecutor {
             connections: {
                 get: async (code: string) => {
                     const conn = await this.connectionService.getByCode(ctx, code);
-                    return conn?.config as any;
+                    if (!conn) return undefined;
+                    return {
+                        code: conn.code,
+                        type: conn.type as ConnectionType,
+                        ...conn.config,
+                    } as ConnectionConfig;
                 },
                 getRequired: async (code: string) => {
                     const conn = await this.connectionService.getByCode(ctx, code);
                     if (!conn) throw new Error(`Connection not found: ${code}`);
-                    return conn.config as any;
+                    return {
+                        code: conn.code,
+                        type: conn.type as ConnectionType,
+                        ...conn.config,
+                    } as ConnectionConfig;
                 },
             },
             logger: {
-                info: (msg: string, meta?: any) => this.logger.info(msg, meta),
-                warn: (msg: string, meta?: any) => this.logger.warn(msg, meta),
-                error: (msg: string, meta?: any) => this.logger.error(msg, undefined, meta),
-                debug: (msg: string, meta?: any) => this.logger.debug(msg, meta),
+                info: (msg: string, meta?: JsonObject) => this.logger.info(msg, meta),
+                warn: (msg: string, meta?: JsonObject) => this.logger.warn(msg, meta),
+                error: (msg: string, errorOrMeta?: Error | JsonObject, meta?: JsonObject) => {
+                    if (errorOrMeta instanceof Error) {
+                        this.logger.error(msg, errorOrMeta, meta);
+                    } else {
+                        this.logger.error(msg, undefined, errorOrMeta);
+                    }
+                },
+                debug: (msg: string, meta?: JsonObject) => this.logger.debug(msg, meta),
             },
             dryRun: false,
-            channelId: (cfg as any)?.channelId,
-            languageCode: (cfg as any)?.languageCode,
-            currencyCode: (cfg as any)?.currency ?? (cfg as any)?.currencyCode,
+            channelId: cfg?.channelId,
+            languageCode: cfg?.languageCode,
+            currencyCode: cfg?.currency ?? cfg?.currencyCode,
         };
 
         try {

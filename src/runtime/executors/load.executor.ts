@@ -18,7 +18,7 @@ import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig, PipelineContext } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { LOGGER_CONTEXTS, LOADER_CODE } from '../../constants/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../executor-types';
 import {
     ProductHandler,
@@ -31,12 +31,30 @@ import {
     CollectionHandler,
     PromotionHandler,
     AssetAttachHandler,
+    AssetImportHandler,
+    FacetHandler,
+    FacetValueHandler,
     RestPostHandler,
 } from './loaders';
 import { DataHubRegistryService } from '../../sdk/registry.service';
-import { LoaderAdapter, LoadContext, ChannelStrategy, LanguageStrategy, ValidationMode, ConflictStrategy } from '../../sdk/types';
+import { LoaderAdapter, LoadContext, ChannelStrategy, LanguageStrategy, ValidationStrictness, ConflictStrategy } from '../../sdk/types';
+import { ChannelStrategy as ChannelStrategyEnum, LanguageStrategy as LanguageStrategyEnum, ConflictStrategy as ConflictStrategyEnum, ValidationStrictness as ValidationStrictnessEnum } from '../../constants/enums';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
+import { getAdapterCode } from '../../types/step-configs';
+import { ConnectionType } from '../../sdk/types/connection-types';
+
+/**
+ * Common load step configuration
+ */
+interface LoadStepCfg {
+    adapterCode?: string;
+    channelStrategy?: ChannelStrategy;
+    languageStrategy?: LanguageStrategy;
+    validationMode?: ValidationStrictness;
+    conflictStrategy?: ConflictStrategy;
+    [key: string]: unknown;
+}
 
 @Injectable()
 export class LoadExecutor {
@@ -54,6 +72,9 @@ export class LoadExecutor {
         private collectionHandler: CollectionHandler,
         private promotionHandler: PromotionHandler,
         private assetAttachHandler: AssetAttachHandler,
+        private assetImportHandler: AssetImportHandler,
+        private facetHandler: FacetHandler,
+        private facetValueHandler: FacetValueHandler,
         private restPostHandler: RestPostHandler,
         private secretService: SecretService,
         private connectionService: ConnectionService,
@@ -62,17 +83,20 @@ export class LoadExecutor {
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.LOAD_EXECUTOR);
         this.impls = {
-            productUpsert: (ctx, step, input, onErr, err) => this.productHandler.execute(ctx, step, input, onErr, err),
-            variantUpsert: (ctx, step, input, onErr, err) => this.variantHandler.execute(ctx, step, input, onErr, err),
-            customerUpsert: (ctx, step, input, onErr, err) => this.customerHandler.execute(ctx, step, input, onErr, err),
-            orderNote: (ctx, step, input, onErr, err) => this.orderNoteHandler.execute(ctx, step, input, onErr, err),
-            stockAdjust: (ctx, step, input, onErr, err) => this.stockAdjustHandler.execute(ctx, step, input, onErr, err),
-            applyCoupon: (ctx, step, input, onErr, err) => this.applyCouponHandler.execute(ctx, step, input, onErr, err),
-            collectionUpsert: (ctx, step, input, onErr, err) => this.collectionHandler.execute(ctx, step, input, onErr, err),
-            promotionUpsert: (ctx, step, input, onErr, err) => this.promotionHandler.execute(ctx, step, input, onErr, err),
-            assetAttach: (ctx, step, input, onErr, err) => this.assetAttachHandler.execute(ctx, step, input, onErr, err),
-            orderTransition: (ctx, step, input, onErr, err) => this.orderTransitionHandler.execute(ctx, step, input, onErr, err),
-            restPost: (ctx, step, input, onErr, err) => this.restPostHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.PRODUCT_UPSERT]: (ctx, step, input, onErr, err) => this.productHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.VARIANT_UPSERT]: (ctx, step, input, onErr, err) => this.variantHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.CUSTOMER_UPSERT]: (ctx, step, input, onErr, err) => this.customerHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.ORDER_NOTE]: (ctx, step, input, onErr, err) => this.orderNoteHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.STOCK_ADJUST]: (ctx, step, input, onErr, err) => this.stockAdjustHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.APPLY_COUPON]: (ctx, step, input, onErr, err) => this.applyCouponHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.COLLECTION_UPSERT]: (ctx, step, input, onErr, err) => this.collectionHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.PROMOTION_UPSERT]: (ctx, step, input, onErr, err) => this.promotionHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.ASSET_ATTACH]: (ctx, step, input, onErr, err) => this.assetAttachHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.ASSET_IMPORT]: (ctx, step, input, onErr, err) => this.assetImportHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.FACET_UPSERT]: (ctx, step, input, onErr, err) => this.facetHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.FACET_VALUE_UPSERT]: (ctx, step, input, onErr, err) => this.facetValueHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.ORDER_TRANSITION]: (ctx, step, input, onErr, err) => this.orderTransitionHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.REST_POST]: (ctx, step, input, onErr, err) => this.restPostHandler.execute(ctx, step, input, onErr, err),
         };
     }
 
@@ -84,8 +108,8 @@ export class LoadExecutor {
         errorHandling?: ErrorHandlingConfig,
         pipelineContext?: PipelineContext,
     ): Promise<ExecutionResult> {
-        const cfg = step.config as JsonObject;
-        const adapterCode = (cfg as any)?.adapterCode as string | undefined;
+        const cfg = step.config as LoadStepCfg;
+        const adapterCode = getAdapterCode(step) || undefined;
         const startTime = Date.now();
 
         this.logger.debug(`Executing load step`, {
@@ -130,7 +154,7 @@ export class LoadExecutor {
         loader: LoaderAdapter<any>,
         pipelineContext?: PipelineContext,
     ): Promise<ExecutionResult> {
-        const cfg = step.config as JsonObject;
+        const cfg = step.config as LoadStepCfg;
 
         // Create load context for the custom loader
         const loadContext: LoadContext = {
@@ -138,11 +162,11 @@ export class LoadExecutor {
             pipelineId: '0',
             stepKey: step.key,
             pipelineContext: pipelineContext ?? {} as PipelineContext,
-            channelStrategy: ((cfg as any)?.channelStrategy as ChannelStrategy) ?? 'inherit',
+            channelStrategy: cfg.channelStrategy ?? ChannelStrategyEnum.INHERIT,
             channels: [],
-            languageStrategy: ((cfg as any)?.languageStrategy as LanguageStrategy) ?? 'fallback',
-            validationMode: ((cfg as any)?.validationMode as ValidationMode) ?? 'lenient',
-            conflictStrategy: ((cfg as any)?.conflictStrategy as ConflictStrategy) ?? 'source-wins',
+            languageStrategy: cfg.languageStrategy ?? LanguageStrategyEnum.FALLBACK,
+            validationMode: cfg.validationMode ?? ValidationStrictnessEnum.LENIENT,
+            conflictStrategy: cfg.conflictStrategy ?? ConflictStrategyEnum.SOURCE_WINS,
             secrets: {
                 get: async (code: string) => {
                     const secret = await this.secretService.getByCode(ctx, code);
@@ -154,23 +178,8 @@ export class LoadExecutor {
                     return secret.value;
                 },
             },
-            connections: {
-                get: async (code: string) => {
-                    const conn = await this.connectionService.getByCode(ctx, code);
-                    return conn?.config as any;
-                },
-                getRequired: async (code: string) => {
-                    const conn = await this.connectionService.getByCode(ctx, code);
-                    if (!conn) throw new Error(`Connection not found: ${code}`);
-                    return conn.config as any;
-                },
-            },
-            logger: {
-                info: (msg: string, meta?: any) => this.logger.info(msg, meta),
-                warn: (msg: string, meta?: any) => this.logger.warn(msg, meta),
-                error: (msg: string, meta?: any) => this.logger.error(msg, undefined, meta),
-                debug: (msg: string, meta?: any) => this.logger.debug(msg, meta),
-            },
+            connections: this.createConnectionAdapter(ctx),
+            logger: this.createLoggerAdapter(),
             dryRun: false,
         };
 
@@ -189,6 +198,38 @@ export class LoadExecutor {
         }
     }
 
+    private createConnectionAdapter(ctx: RequestContext): LoadContext['connections'] {
+        return {
+            get: async (code: string) => {
+                const conn = await this.connectionService.getByCode(ctx, code);
+                if (!conn) return undefined;
+                return {
+                    code: conn.code,
+                    type: conn.type as ConnectionType,
+                    config: conn.config as JsonObject,
+                };
+            },
+            getRequired: async (code: string) => {
+                const conn = await this.connectionService.getByCode(ctx, code);
+                if (!conn) throw new Error(`Connection not found: ${code}`);
+                return {
+                    code: conn.code,
+                    type: conn.type as ConnectionType,
+                    config: conn.config as JsonObject,
+                };
+            },
+        };
+    }
+
+    private createLoggerAdapter(): LoadContext['logger'] {
+        return {
+            info: (msg: string, meta?: JsonObject) => this.logger.info(msg, meta),
+            warn: (msg: string, meta?: JsonObject) => this.logger.warn(msg, meta),
+            error: (msg: string, meta?: JsonObject) => this.logger.error(msg, undefined, meta),
+            debug: (msg: string, meta?: JsonObject) => this.logger.debug(msg, meta),
+        };
+    }
+
     /**
      * Simulate a loader step for dry-run mode
      */
@@ -196,17 +237,17 @@ export class LoadExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, any>> {
-        const code = (step.config as any)?.adapterCode as string | undefined;
+    ): Promise<Record<string, unknown>> {
+        const code = getAdapterCode(step);
 
-        const sim: Record<string, any> = {
-            productUpsert: this.productHandler.simulate?.(ctx, step, input),
-            variantUpsert: this.variantHandler.simulate?.(ctx, step, input),
-            customerUpsert: this.customerHandler.simulate?.(ctx, step, input),
-            collectionUpsert: this.collectionHandler.simulate?.(ctx, step, input),
-            promotionUpsert: this.promotionHandler.simulate?.(ctx, step, input),
-            applyCoupon: this.applyCouponHandler.simulate?.(ctx, step, input),
+        const sim: Record<string, unknown> = {
+            productUpsert: await this.productHandler.simulate?.(ctx, step, input),
+            variantUpsert: await this.variantHandler.simulate?.(ctx, step, input),
+            customerUpsert: await this.customerHandler.simulate?.(ctx, step, input),
+            collectionUpsert: await this.collectionHandler.simulate?.(ctx, step, input),
+            promotionUpsert: await this.promotionHandler.simulate?.(ctx, step, input),
+            applyCoupon: await this.applyCouponHandler.simulate?.(ctx, step, input),
         };
-        return sim[code ?? ''] ?? {};
+        return (sim[code] ?? {}) as Record<string, unknown>;
     }
 }

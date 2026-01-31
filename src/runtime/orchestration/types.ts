@@ -49,14 +49,7 @@ export interface ExecutionLogContext {
     runId?: ID;
 }
 
-/**
- * Pipeline edge connecting two steps
- */
-export interface PipelineEdge {
-    from: string;
-    to: string;
-    branch?: string;
-}
+// PipelineEdge is imported from shared types via ../../types/index
 
 /**
  * Graph execution result
@@ -65,7 +58,7 @@ export interface GraphExecutionResult {
     processed: number;
     succeeded: number;
     failed: number;
-    details: Array<Record<string, any>>;
+    details: Array<import('../../types/index').JsonObject>;
     counters: Record<string, number>;
 }
 
@@ -74,12 +67,12 @@ export interface GraphExecutionResult {
  */
 export interface StepExecutionResult {
     output: RecordObject[] | BranchOutput;
-    detail: Record<string, any>;
+    detail: import('../../types/index').JsonObject;
     processed: number;
     succeeded: number;
     failed: number;
     counters: Record<string, number>;
-    event?: { type: string; data: any };
+    event?: { type: string; data: Record<string, unknown> };
 }
 
 /**

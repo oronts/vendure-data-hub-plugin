@@ -1,4 +1,5 @@
 import { JsonObject, JsonValue } from '../types/index';
+import { AuthType, LoadStrategy } from '../constants/index';
 
 export interface BaseStepConfig {
     /** Adapter code identifying the operation */
@@ -17,58 +18,6 @@ export interface CsvExtractorConfig extends BaseStepConfig {
     delimiter?: string;
     /** Whether first row is header */
     hasHeader?: boolean;
-}
-
-export interface RestExtractorConfig extends BaseStepConfig {
-    adapterCode: 'rest';
-    /** API endpoint URL */
-    endpoint: string;
-    /** HTTP method */
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-    /** Request headers */
-    headers?: Record<string, string>;
-    /** Connection code reference */
-    connectionCode?: string;
-    /** Query string parameters */
-    query?: Record<string, string>;
-    /** Request body for POST/PUT */
-    body?: JsonObject;
-    /** Pagination parameter name */
-    pageParam?: string;
-    /** JSON path to items array */
-    itemsField?: string;
-    /** JSON path to next page indicator */
-    nextPageField?: string;
-    /** Maximum pages to fetch */
-    maxPages?: number;
-    /** Auth type */
-    auth?: 'none' | 'bearer' | 'basic' | 'hmac';
-    /** Bearer token value */
-    bearerToken?: string;
-    /** Bearer token secret code */
-    bearerTokenSecretCode?: string;
-    /** Basic auth username */
-    basicUser?: string;
-    /** Basic auth password */
-    basicPass?: string;
-    /** Basic auth secret code */
-    basicSecretCode?: string;
-    /** HMAC secret */
-    hmacSecret?: string;
-    /** HMAC secret code */
-    hmacSecretCode?: string;
-    /** HMAC header name */
-    hmacHeader?: string;
-    /** HMAC payload template */
-    hmacPayloadTemplate?: string;
-    /** Field mapping */
-    mapFields?: Record<string, string>;
-    /** Retry attempts */
-    retries?: number;
-    /** Retry delay in milliseconds */
-    retryDelayMs?: number;
-    /** Request timeout in milliseconds */
-    timeoutMs?: number;
 }
 
 export interface GraphqlExtractorConfig extends BaseStepConfig {
@@ -98,7 +47,7 @@ export interface GraphqlExtractorConfig extends BaseStepConfig {
     /** JSON path to endCursor */
     endCursorField?: string;
     /** Auth type */
-    auth?: 'none' | 'bearer' | 'basic';
+    auth?: AuthType;
     /** Bearer token secret code */
     bearerTokenSecretCode?: string;
     /** Basic auth secret code */
@@ -221,7 +170,7 @@ export interface AggregateTransformConfig extends BaseStepConfig {
 
 export interface BaseLoaderConfig extends BaseStepConfig {
     /** Load strategy */
-    strategy?: 'create' | 'update' | 'upsert' | 'merge';
+    strategy?: LoadStrategy;
 }
 
 export interface ProductLoaderConfig extends BaseLoaderConfig {
@@ -383,6 +332,12 @@ export interface BaseFeedConfig extends BaseStepConfig {
     availabilityField?: string;
     /** Currency code */
     currency?: string;
+    /** Alias for currency (for compatibility) */
+    currencyCode?: string;
+    /** Channel ID for feed context */
+    channelId?: string;
+    /** Language code for translations */
+    languageCode?: string;
 }
 
 export interface GoogleMerchantFeedConfig extends BaseFeedConfig {
@@ -478,7 +433,7 @@ export interface RouteConfig extends BaseStepConfig {
     }>;
 }
 
-export type ExtractorConfig = CsvExtractorConfig | RestExtractorConfig | GraphqlExtractorConfig;
+export type ExtractorConfig = CsvExtractorConfig | GraphqlExtractorConfig;
 
 export type TransformConfig =
     | MapTransformConfig

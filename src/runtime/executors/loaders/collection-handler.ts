@@ -1,19 +1,94 @@
 /**
  * Collection upsert loader handler
  */
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
     RequestContext,
     CollectionService,
     RequestContextService,
+    ID,
 } from '@vendure/core';
-import { LanguageCode } from '@vendure/common/lib/generated-types';
+import {
+    LanguageCode,
+    CreateCollectionInput,
+    UpdateCollectionInput,
+} from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
+import { getErrorMessage } from '../../../services/logger/error-utils';
+
+/**
+ * Configuration for collection handler step
+ */
+interface CollectionHandlerConfig {
+    /** Field name for collection name */
+    nameField?: string;
+    /** Field name for collection slug */
+    slugField?: string;
+    /** Field name for collection description */
+    descriptionField?: string;
+    /** Field name for parent collection slug */
+    parentSlugField?: string;
+    /** Target channel token */
+    channel?: string;
+    /** Whether to trigger filter application after upsert */
+    applyFilters?: boolean;
+}
+
+/**
+ * Coerced collection field values from a record
+ */
+interface CoercedCollectionFields {
+    slug: string | undefined;
+    name: string | undefined;
+    description: string | undefined;
+    parentSlug: string | undefined;
+}
+
+/**
+ * Type guard to safely get a string value from a record
+ */
+function getStringValue(record: RecordObject, key: string): string | undefined {
+    const value = record[key];
+    if (typeof value === 'string') {
+        return value || undefined;
+    }
+    if (value !== null && value !== undefined) {
+        const str = String(value);
+        return str || undefined;
+    }
+    return undefined;
+}
+
+/**
+ * Safely cast step config to CollectionHandlerConfig
+ */
+function getConfig(config: Record<string, unknown>): CollectionHandlerConfig {
+    return config as unknown as CollectionHandlerConfig;
+}
+
+/**
+ * Extract collection fields from a record using config-specified field names
+ */
+function coerceCollectionFields(rec: RecordObject, cfg: CollectionHandlerConfig): CoercedCollectionFields {
+    const nameKey = cfg.nameField ?? 'name';
+    const slugKey = cfg.slugField ?? 'slug';
+    const descKey = cfg.descriptionField ?? 'description';
+    const parentSlugKey = cfg.parentSlugField ?? 'parentSlug';
+
+    return {
+        slug: getStringValue(rec, slugKey),
+        name: getStringValue(rec, nameKey),
+        description: getStringValue(rec, descKey),
+        parentSlug: getStringValue(rec, parentSlugKey),
+    };
+}
 
 @Injectable()
 export class CollectionHandler implements LoaderHandler {
+    private readonly logger = new Logger(CollectionHandler.name);
+
     constructor(
         private collectionService: CollectionService,
         private requestContextService: RequestContextService,
@@ -24,74 +99,157 @@ export class CollectionHandler implements LoaderHandler {
         step: PipelineStepDefinition,
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
-        errorHandling?: ErrorHandlingConfig,
+        _errorHandling?: ErrorHandlingConfig,
     ): Promise<ExecutionResult> {
-        let ok = 0, fail = 0;
+        let ok = 0;
+        let fail = 0;
+        const cfg = getConfig(step.config);
 
         for (const rec of input) {
             try {
-                const slug = String((rec as any)?.[(step.config as any)?.slugField ?? 'slug'] ?? '') || undefined;
-                const name = String((rec as any)?.[(step.config as any)?.nameField ?? 'name'] ?? '') || undefined;
-                const description = (rec as any)?.[(step.config as any)?.descriptionField ?? 'description'];
-                const parentSlug = (rec as any)?.[(step.config as any)?.parentSlugField ?? 'parentSlug'] as string | undefined;
+                const fields = coerceCollectionFields(rec, cfg);
+                const { slug, name, description, parentSlug } = fields;
 
-                if (!slug || !name) { fail++; continue; }
-
-                let opCtx = ctx;
-                const channel = (step.config as any)?.channel as string | undefined;
-                if (channel) {
-                    const req = await this.requestContextService.create({ apiType: ctx.apiType as any, channelOrToken: channel });
-                    if (req) opCtx = req;
+                if (!slug || !name) {
+                    fail++;
+                    continue;
                 }
 
-                const existing = await this.collectionService.findOneBySlug(opCtx, slug);
-                let collectionId: any;
+                const opCtx = await this.resolveRequestContext(ctx, cfg);
+                const collectionId = await this.upsertCollection(opCtx, slug, name, description, parentSlug);
 
-                if (existing) {
-                    const updated = await this.collectionService.update(opCtx, {
-                        id: (existing as any).id,
-                        translations: [{ languageCode: LanguageCode.en, name, slug, description }],
-                    } as any);
-                    collectionId = (updated as any)?.id;
+                if (collectionId) {
+                    await this.maybeApplyFilters(opCtx, cfg, collectionId);
+                    ok++;
                 } else {
-                    let parentId: any | undefined;
-                    if (parentSlug) {
-                        const parent = await this.collectionService.findOneBySlug(opCtx, parentSlug);
-                        parentId = (parent as any)?.id;
-                    }
-                    const created = await this.collectionService.create(opCtx, {
-                        parentId,
-                        translations: [{ languageCode: LanguageCode.en, name, slug, description }],
-                    } as any);
-                    collectionId = (created as any)?.id;
+                    fail++;
                 }
-
-                const applyFilters = Boolean((step.config as any)?.applyFilters ?? false);
-                if (applyFilters && collectionId) {
-                    try {
-                        await this.collectionService.triggerApplyFiltersJob(opCtx, { collectionIds: [collectionId] });
-                    } catch {}
+            } catch (e: unknown) {
+                if (onRecordError) {
+                    await onRecordError(step.key, getErrorMessage(e) || 'collectionUpsert failed', rec);
                 }
-                ok++;
-            } catch (e: any) {
-                if (onRecordError) await onRecordError(step.key, e?.message ?? 'collectionUpsert failed', rec as any);
                 fail++;
             }
         }
         return { ok, fail };
     }
 
+    /**
+     * Resolve the appropriate request context (handles channel switching)
+     */
+    private async resolveRequestContext(
+        ctx: RequestContext,
+        cfg: CollectionHandlerConfig,
+    ): Promise<RequestContext> {
+        const channel = cfg.channel;
+        if (!channel) {
+            return ctx;
+        }
+
+        try {
+            return await this.requestContextService.create({
+                apiType: 'admin',
+                channelOrToken: channel,
+            });
+        } catch (err) {
+            // Channel resolution failed - fall back to original context
+            // This is expected when the channel token is invalid
+            Logger.debug(`Failed to resolve channel context: ${err instanceof Error ? err.message : String(err)}`, 'CollectionHandler');
+            return ctx;
+        }
+    }
+
+    /**
+     * Create or update a collection based on slug lookup
+     */
+    private async upsertCollection(
+        opCtx: RequestContext,
+        slug: string,
+        name: string,
+        description: string | undefined,
+        parentSlug: string | undefined,
+    ): Promise<ID | undefined> {
+        const existing = await this.collectionService.findOneBySlug(opCtx, slug);
+
+        if (existing) {
+            const updateInput: UpdateCollectionInput = {
+                id: existing.id,
+                translations: [{
+                    languageCode: LanguageCode.en,
+                    name,
+                    slug,
+                    description,
+                }],
+            };
+            const updated = await this.collectionService.update(opCtx, updateInput);
+            return updated.id;
+        }
+
+        // Creating new collection
+        let parentId: ID | undefined;
+        if (parentSlug) {
+            const parent = await this.collectionService.findOneBySlug(opCtx, parentSlug);
+            if (parent) {
+                parentId = parent.id;
+            }
+        }
+
+        const createInput: CreateCollectionInput = {
+            parentId,
+            filters: [], // Required field - empty array for manual collections
+            translations: [{
+                languageCode: LanguageCode.en,
+                name,
+                slug,
+                description: description ?? '',
+            }],
+        };
+        const created = await this.collectionService.create(opCtx, createInput);
+        return created.id;
+    }
+
+    /**
+     * Optionally trigger filter application if configured
+     */
+    private async maybeApplyFilters(
+        opCtx: RequestContext,
+        cfg: CollectionHandlerConfig,
+        collectionId: ID,
+    ): Promise<void> {
+        const applyFilters = cfg.applyFilters ?? false;
+        if (!applyFilters) {
+            return;
+        }
+
+        try {
+            await this.collectionService.triggerApplyFiltersJob(opCtx, { collectionIds: [collectionId] });
+        } catch (error) {
+            this.logger.warn(
+                `Failed to apply collection filters for collection ${String(collectionId)}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+    }
+
     async simulate(
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, any>> {
-        let exists = 0, missing = 0;
+    ): Promise<Record<string, unknown>> {
+        let exists = 0;
+        let missing = 0;
+        const cfg = getConfig(step.config);
+
         for (const rec of input) {
-            const slug = String((rec as any)?.[(step.config as any)?.slugField ?? 'slug'] ?? '') || undefined;
+            const fields = coerceCollectionFields(rec, cfg);
+            const { slug } = fields;
             if (!slug) continue;
+
             const c = await this.collectionService.findOneBySlug(ctx, slug);
-            if (c) exists++; else missing++;
+            if (c) {
+                exists++;
+            } else {
+                missing++;
+            }
         }
         return { exists, missing };
     }

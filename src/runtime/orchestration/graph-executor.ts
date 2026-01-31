@@ -3,11 +3,13 @@
  *
  * Handles graph-based pipeline execution where steps can have
  * complex dependencies via edges (DAG topology).
+ *
+ * Step execution is delegated to reusable strategies from ./step-strategies/.
  */
 
 import { Logger } from '@nestjs/common';
 import { RequestContext, ID } from '@vendure/core';
-import { PipelineDefinition, StepType } from '../../types/index';
+import { PipelineDefinition, PipelineStepDefinition, PipelineEdge, ParallelExecutionConfig } from '../../types/index';
 import {
     RecordObject,
     BranchOutput,
@@ -22,26 +24,30 @@ import {
     FeedExecutor,
     SinkExecutor,
 } from '../executors';
-// Direct imports to avoid circular dependencies
 import { HookService } from '../../services/events/hook.service';
 import { DomainEventsService } from '../../services/events/domain-events.service';
 import {
-    PipelineEdge,
     GraphExecutionResult,
-    StepExecutionResult,
     StepLogCallback,
-    StepLogInfo,
+    StepExecutionResult,
+    TopologyData,
 } from './types';
 import { buildTopology, gatherInput } from './helpers';
+import { createStepDispatcher, StepDispatcher, StepExecutionParams } from './step-strategies';
 
 const logger = new Logger('DataHub:GraphExecutor');
 
-export type { PipelineEdge, GraphExecutionResult };
+export type { GraphExecutionResult };
+export type { PipelineEdge } from '../../types/index';
+
+// ============================================================================
+// Types
+// ============================================================================
 
 /**
- * Executes a graph-based pipeline using topological sort
+ * Parameters for executeGraph function
  */
-export async function executeGraph(params: {
+export interface ExecuteGraphParams {
     ctx: RequestContext;
     definition: PipelineDefinition;
     executorCtx: ExecutorContext;
@@ -55,7 +61,7 @@ export async function executeGraph(params: {
     sinkExecutor: SinkExecutor;
     loadWithThroughput: (
         ctx: RequestContext,
-        step: any,
+        step: PipelineStepDefinition,
         batch: RecordObject[],
         definition: PipelineDefinition,
         onRecordError?: OnRecordErrorCallback,
@@ -67,56 +73,254 @@ export async function executeGraph(params: {
     runId?: ID;
     /** Optional step logging callback for database persistence */
     stepLog?: StepLogCallback;
-}): Promise<GraphExecutionResult> {
-    const {
-        ctx,
-        definition,
-        executorCtx,
-        hookService,
-        domainEvents,
-        extractExecutor,
-        transformExecutor,
-        loadExecutor,
-        exportExecutor,
-        feedExecutor,
-        sinkExecutor,
-        loadWithThroughput,
-        applyIdempotency,
-        onCancelRequested,
-        onRecordError,
-        pipelineId,
-        runId,
-        stepLog,
-    } = params;
+}
 
-    let processed = 0;
-    let succeeded = 0;
-    let failed = 0;
-    const details: any[] = [];
-    const counters: Record<string, number> = {
-        extracted: 0,
-        transformed: 0,
-        validated: 0,
-        enriched: 0,
-        routed: 0,
-        loaded: 0,
-        rejected: 0,
-    };
+/**
+ * Execution order context returned by buildExecutionOrder
+ */
+interface ExecutionOrderContext {
+    stepByKey: Map<string, PipelineStepDefinition>;
+    edges: PipelineEdge[];
+    topology: TopologyData;
+}
 
+/**
+ * Aggregated metrics during execution
+ */
+interface ExecutionMetrics {
+    processed: number;
+    succeeded: number;
+    failed: number;
+    details: Array<import('../../types/index').JsonObject>;
+    counters: Record<string, number>;
+}
+
+/**
+ * Node execution result with timing
+ */
+interface NodeExecutionResult {
+    stepResult: StepExecutionResult;
+    durationMs: number;
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Builds the execution order using topological sort
+ * Returns the step lookup map, edges, and topology data
+ */
+function buildExecutionOrder(definition: PipelineDefinition): ExecutionOrderContext {
     const steps = definition.steps;
-    const stepByKey = new Map<string, typeof steps[number]>();
-    for (const s of steps) stepByKey.set(s.key, s);
-
-    const edges = (definition as any).edges as PipelineEdge[];
-    const { preds, indeg, queue } = buildTopology(steps, edges);
-
-    try {
-        domainEvents.publish('PipelineStarted', { pipelineId });
-    } catch (error) {
-        logger.warn(`Failed to publish PipelineStarted event: ${(error as Error)?.message}`, { pipelineId });
+    const stepByKey = new Map<string, PipelineStepDefinition>();
+    for (const s of steps) {
+        stepByKey.set(s.key, s);
     }
 
+    const edges = definition.edges ?? [];
+    const topology = buildTopology(steps, edges);
+
+    return { stepByKey, edges, topology };
+}
+
+/**
+ * Collects outputs from predecessor nodes for the given node
+ */
+function collectNodeOutputs(
+    nodeKey: string,
+    preds: TopologyData['preds'],
+    outputs: Map<string, RecordObject[] | BranchOutput>,
+): RecordObject[] {
+    return gatherInput(nodeKey, preds, outputs);
+}
+
+/**
+ * Executes a single node and returns the result with timing
+ */
+async function executeNode(
+    stepDispatcher: StepDispatcher,
+    params: StepExecutionParams,
+): Promise<NodeExecutionResult> {
+    const t0 = Date.now();
+    const stepResult = await stepDispatcher.executeStep(params);
+    return {
+        stepResult,
+        durationMs: Date.now() - t0,
+    };
+}
+
+/**
+ * Handles error when publishing domain events
+ */
+function handleNodeError(
+    error: Error,
+    eventType: string,
+    context: { stepKey?: string; pipelineId?: ID },
+): void {
+    const message = `Failed to publish ${eventType} event: ${error?.message}`;
+    if (context.stepKey) {
+        logger.warn(message, { stepKey: context.stepKey, eventType });
+    } else {
+        logger.warn(message, { pipelineId: context.pipelineId });
+    }
+}
+
+/**
+ * Updates metrics with step execution result
+ */
+function updateMetrics(
+    metrics: ExecutionMetrics,
+    stepResult: StepExecutionResult,
+    durationMs: number,
+): void {
+    metrics.details.push({ ...stepResult.detail, durationMs });
+    metrics.processed += stepResult.processed;
+    metrics.succeeded += stepResult.succeeded;
+    metrics.failed += stepResult.failed;
+
+    for (const [k, v] of Object.entries(stepResult.counters)) {
+        metrics.counters[k] = (metrics.counters[k] ?? 0) + v;
+    }
+}
+
+/**
+ * Processes neighbor indegrees after a node completes
+ */
+function processNeighborIndegrees(
+    completedKey: string,
+    edges: PipelineEdge[],
+    indeg: TopologyData['indeg'],
+    queue: string[],
+): void {
+    for (const e of (edges ?? [])) {
+        if (e.from === completedKey) {
+            indeg.set(e.to, (indeg.get(e.to) ?? 1) - 1);
+            if ((indeg.get(e.to) ?? 0) === 0) {
+                queue.push(e.to);
+            }
+        }
+    }
+}
+
+/**
+ * Creates initial execution metrics
+ */
+function createInitialMetrics(): ExecutionMetrics {
+    return {
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        details: [],
+        counters: {
+            extracted: 0,
+            transformed: 0,
+            validated: 0,
+            enriched: 0,
+            routed: 0,
+            loaded: 0,
+            rejected: 0,
+        },
+    };
+}
+
+/**
+ * Creates step dispatcher from execution params
+ */
+function createDispatcher(params: ExecuteGraphParams): StepDispatcher {
+    return createStepDispatcher({
+        extractExecutor: params.extractExecutor,
+        transformExecutor: params.transformExecutor,
+        loadExecutor: params.loadExecutor,
+        exportExecutor: params.exportExecutor,
+        feedExecutor: params.feedExecutor,
+        sinkExecutor: params.sinkExecutor,
+        loadWithThroughput: params.loadWithThroughput,
+        applyIdempotency: params.applyIdempotency,
+    });
+}
+
+// ============================================================================
+// Main Executor
+// ============================================================================
+
+/**
+ * Default parallel execution configuration
+ */
+const DEFAULT_PARALLEL_CONFIG: Required<ParallelExecutionConfig> = {
+    enabled: false,
+    maxConcurrentSteps: 4,
+    errorPolicy: 'fail-fast',
+};
+
+/**
+ * Get parallel execution config from definition
+ */
+function getParallelConfig(definition: PipelineDefinition): Required<ParallelExecutionConfig> {
+    const config = definition.context?.parallelExecution;
+    return {
+        enabled: config?.enabled ?? DEFAULT_PARALLEL_CONFIG.enabled,
+        maxConcurrentSteps: config?.maxConcurrentSteps ?? DEFAULT_PARALLEL_CONFIG.maxConcurrentSteps,
+        errorPolicy: config?.errorPolicy ?? DEFAULT_PARALLEL_CONFIG.errorPolicy,
+    };
+}
+
+/**
+ * Executes a graph-based pipeline using topological sort
+ * Supports both sequential and parallel execution modes
+ */
+export async function executeGraph(params: ExecuteGraphParams): Promise<GraphExecutionResult> {
+    const { ctx, definition, executorCtx, hookService, domainEvents, onCancelRequested, onRecordError, pipelineId, runId, stepLog } = params;
+
+    const stepDispatcher = createDispatcher(params);
+    const { stepByKey, edges, topology } = buildExecutionOrder(definition);
+    const { preds, indeg, queue } = topology;
+
+    // Get parallel execution configuration
+    const parallelConfig = getParallelConfig(definition);
+
+    // Publish pipeline started event
+    try {
+        domainEvents.publish('PIPELINE_STARTED', { pipelineId });
+    } catch (error) {
+        handleNodeError(error as Error, 'PIPELINE_STARTED', { pipelineId });
+    }
+
+    const metrics = createInitialMetrics();
     const outputs = new Map<string, RecordObject[] | BranchOutput>();
+
+    // Choose execution strategy based on configuration
+    if (parallelConfig.enabled) {
+        await executeParallel(
+            queue, stepByKey, edges, preds, indeg, outputs, metrics,
+            stepDispatcher, params, parallelConfig, onCancelRequested,
+        );
+    } else {
+        await executeSequential(
+            queue, stepByKey, edges, preds, indeg, outputs, metrics,
+            stepDispatcher, params, onCancelRequested,
+        );
+    }
+
+    return metrics;
+}
+
+/**
+ * Sequential execution - processes one step at a time
+ */
+async function executeSequential(
+    queue: string[],
+    stepByKey: Map<string, PipelineStepDefinition>,
+    edges: PipelineEdge[],
+    preds: TopologyData['preds'],
+    indeg: TopologyData['indeg'],
+    outputs: Map<string, RecordObject[] | BranchOutput>,
+    metrics: ExecutionMetrics,
+    stepDispatcher: StepDispatcher,
+    params: ExecuteGraphParams,
+    onCancelRequested?: () => Promise<boolean>,
+): Promise<void> {
+    const { ctx, definition, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog } = params;
 
     while (queue.length) {
         const key = queue.shift()!;
@@ -124,392 +328,147 @@ export async function executeGraph(params: {
         if (!step) continue;
         if (onCancelRequested && (await onCancelRequested())) break;
 
-        // Build input from predecessors
-        const input = gatherInput(key, preds, outputs);
-
-        const t0 = Date.now();
-        const stepResult = await executeStep({
-            ctx,
-            definition,
-            step,
-            key,
-            input,
-            executorCtx,
-            hookService,
-            extractExecutor,
-            transformExecutor,
-            loadExecutor,
-            exportExecutor,
-            feedExecutor,
-            sinkExecutor,
-            loadWithThroughput,
-            applyIdempotency,
-            onRecordError,
-            pipelineId,
-            runId,
-            stepLog,
+        const input = collectNodeOutputs(key, preds, outputs);
+        const { stepResult, durationMs } = await executeNode(stepDispatcher, {
+            ctx, definition, step, key, input, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog,
         });
 
-        // Update metrics
         outputs.set(key, stepResult.output);
-        details.push({ ...stepResult.detail, durationMs: Date.now() - t0 });
-        processed += stepResult.processed;
-        succeeded += stepResult.succeeded;
-        failed += stepResult.failed;
+        updateMetrics(metrics, stepResult, durationMs);
 
-        // Update counters
-        for (const [k, v] of Object.entries(stepResult.counters)) {
-            counters[k] = (counters[k] ?? 0) + v;
-        }
-
-        // Emit events
         if (stepResult.event) {
             try {
                 domainEvents.publish(stepResult.event.type, stepResult.event.data);
             } catch (error) {
-                logger.warn(`Failed to publish ${stepResult.event.type} event: ${(error as Error)?.message}`, {
-                    stepKey: key,
-                    eventType: stepResult.event.type,
-                });
+                handleNodeError(error as Error, stepResult.event.type, { stepKey: key });
             }
         }
 
-        // Reduce indegree of neighbors
-        for (const e of (edges ?? [])) {
-            if (e.from === key) {
-                indeg.set(e.to, (indeg.get(e.to) ?? 1) - 1);
-                if ((indeg.get(e.to) ?? 0) === 0) queue.push(e.to);
+        processNeighborIndegrees(key, edges, indeg, queue);
+    }
+}
+
+/**
+ * Parallel execution - processes independent steps concurrently
+ */
+async function executeParallel(
+    queue: string[],
+    stepByKey: Map<string, PipelineStepDefinition>,
+    edges: PipelineEdge[],
+    preds: TopologyData['preds'],
+    indeg: TopologyData['indeg'],
+    outputs: Map<string, RecordObject[] | BranchOutput>,
+    metrics: ExecutionMetrics,
+    stepDispatcher: StepDispatcher,
+    params: ExecuteGraphParams,
+    parallelConfig: Required<ParallelExecutionConfig>,
+    onCancelRequested?: () => Promise<boolean>,
+): Promise<void> {
+    const { ctx, definition, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog } = params;
+
+    // Track in-flight step executions
+    const inFlight = new Map<string, Promise<{ key: string; stepResult: StepExecutionResult; durationMs: number }>>();
+    const errors: Array<{ key: string; error: Error }> = [];
+    let cancelled = false;
+
+    while (queue.length > 0 || inFlight.size > 0) {
+        // Check for cancellation
+        if (onCancelRequested && (await onCancelRequested())) {
+            cancelled = true;
+            break;
+        }
+
+        // Check for fail-fast error
+        if (parallelConfig.errorPolicy === 'fail-fast' && errors.length > 0) {
+            break;
+        }
+
+        // Start new steps up to max concurrency
+        while (queue.length > 0 && inFlight.size < parallelConfig.maxConcurrentSteps) {
+            const key = queue.shift()!;
+            const step = stepByKey.get(key);
+            if (!step) continue;
+
+            const input = collectNodeOutputs(key, preds, outputs);
+
+            logger.debug(`[Parallel] Starting step: ${key}`, {
+                step: key,
+                inFlightCount: inFlight.size,
+                queueLength: queue.length,
+            });
+
+            const promise = executeNode(stepDispatcher, {
+                ctx, definition, step, key, input, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog,
+            })
+                .then(({ stepResult, durationMs }) => ({ key, stepResult, durationMs }))
+                .catch((error: Error) => {
+                    errors.push({ key, error });
+                    // Return empty result on error
+                    return {
+                        key,
+                        stepResult: {
+                            output: [] as RecordObject[],
+                            processed: 0,
+                            succeeded: 0,
+                            failed: 0,
+                            detail: { error: error.message },
+                            counters: {},
+                        } as StepExecutionResult,
+                        durationMs: 0,
+                    };
+                });
+
+            inFlight.set(key, promise);
+        }
+
+        // Wait for at least one step to complete
+        if (inFlight.size > 0) {
+            const completedResult = await Promise.race(inFlight.values());
+            const { key, stepResult, durationMs } = completedResult;
+
+            // Remove from in-flight
+            inFlight.delete(key);
+
+            logger.debug(`[Parallel] Completed step: ${key}`, {
+                step: key,
+                inFlightCount: inFlight.size,
+                processed: stepResult.processed,
+                durationMs,
+            });
+
+            // Store output and update metrics
+            outputs.set(key, stepResult.output);
+            updateMetrics(metrics, stepResult, durationMs);
+
+            // Publish domain event if any
+            if (stepResult.event) {
+                try {
+                    domainEvents.publish(stepResult.event.type, stepResult.event.data);
+                } catch (error) {
+                    handleNodeError(error as Error, stepResult.event.type, { stepKey: key });
+                }
             }
+
+            // Update indegrees and add newly ready steps to queue
+            processNeighborIndegrees(key, edges, indeg, queue);
         }
     }
 
-    return { processed, succeeded, failed, details, counters };
-}
-
-// Helper functions and types are now imported from ./helpers and ./types
-
-/**
- * Execute a single step in the graph
- */
-async function executeStep(params: {
-    ctx: RequestContext;
-    definition: PipelineDefinition;
-    step: any;
-    key: string;
-    input: RecordObject[];
-    executorCtx: ExecutorContext;
-    hookService: HookService;
-    extractExecutor: ExtractExecutor;
-    transformExecutor: TransformExecutor;
-    loadExecutor: LoadExecutor;
-    exportExecutor: ExportExecutor;
-    feedExecutor: FeedExecutor;
-    sinkExecutor: SinkExecutor;
-    loadWithThroughput: (
-        ctx: RequestContext,
-        step: any,
-        batch: RecordObject[],
-        definition: PipelineDefinition,
-        onRecordError?: OnRecordErrorCallback,
-    ) => Promise<{ ok: number; fail: number }>;
-    applyIdempotency: (records: RecordObject[], definition: PipelineDefinition) => RecordObject[];
-    onRecordError?: OnRecordErrorCallback;
-    pipelineId?: ID;
-    runId?: ID;
-    stepLog?: StepLogCallback;
-}): Promise<StepExecutionResult> {
-    const {
-        ctx,
-        definition,
-        step,
-        key,
-        input,
-        executorCtx,
-        hookService,
-        extractExecutor,
-        transformExecutor,
-        loadExecutor,
-        exportExecutor,
-        feedExecutor,
-        sinkExecutor,
-        loadWithThroughput,
-        applyIdempotency,
-        onRecordError,
-        pipelineId,
-        runId,
-        stepLog,
-    } = params;
-
-    const counters: Record<string, number> = {};
-    let processed = 0;
-    let succeeded = 0;
-    let failed = 0;
-
-    switch (step.type) {
-        case StepType.TRIGGER: {
-            return {
-                output: [],
-                detail: { stepKey: key, type: 'TRIGGER' },
-                processed: 0,
-                succeeded: 0,
-                failed: 0,
-                counters: {},
-            };
-        }
-
-        case StepType.EXTRACT: {
-            const adapterCode = step.config?.adapterCode ?? '';
-            const t0 = Date.now();
-            // Log step start
-            if (stepLog?.onStepStart) {
-                await stepLog.onStepStart(ctx, key, 'EXTRACT', 0);
+    // Handle collected errors based on policy
+    if (errors.length > 0) {
+        if (parallelConfig.errorPolicy === 'best-effort') {
+            // Log errors but don't throw
+            for (const { key, error } of errors) {
+                logger.warn(`[Parallel] Step ${key} failed (best-effort mode): ${error.message}`);
             }
-            let records = [...input];
-            const beforeResult = await hookService.runInterceptors(ctx, definition, 'beforeExtract', records, runId, pipelineId);
-            records = beforeResult.records;
-
-            const out = await extractExecutor.execute(ctx, step, executorCtx, onRecordError);
-            counters.extracted = out.length;
-            processed = out.length;
-            succeeded = out.length;
-
-            const afterResult = await hookService.runInterceptors(ctx, definition, 'afterExtract', out, runId, pipelineId);
-            const finalOutput = afterResult.records;
-            const durationMs = Date.now() - t0;
-            // Log extracted data (DEBUG level)
-            if (stepLog?.onExtractData) {
-                await stepLog.onExtractData(ctx, key, adapterCode, finalOutput);
-            }
-            // Log step complete
-            if (stepLog?.onStepComplete) {
-                await stepLog.onStepComplete(ctx, {
-                    stepKey: key,
-                    stepType: 'EXTRACT',
-                    adapterCode,
-                    recordsIn: 0,
-                    recordsOut: finalOutput.length,
-                    succeeded: finalOutput.length,
-                    failed: 0,
-                    durationMs,
-                    sampleOutput: finalOutput[0] as RecordObject | undefined,
-                });
-            }
-            return {
-                output: finalOutput,
-                detail: { stepKey: key, type: 'EXTRACT', adapterCode, out: finalOutput.length },
-                processed,
-                succeeded,
-                failed: 0,
-                counters,
-                event: { type: 'RecordExtracted', data: { stepKey: key, count: finalOutput.length } },
-            };
+        } else {
+            // Throw the first error
+            const firstError = errors[0];
+            throw new Error(`Parallel execution failed at step "${firstError.key}": ${firstError.error.message}`);
         }
+    }
 
-        case StepType.TRANSFORM: {
-            const adapterCode = step.config?.adapterCode ?? '';
-            const recordsIn = input.length;
-            const sampleInput = input[0] as RecordObject | undefined;
-            const t0 = Date.now();
-            // Log step start
-            if (stepLog?.onStepStart) {
-                await stepLog.onStepStart(ctx, key, 'TRANSFORM', recordsIn);
-            }
-            const beforeResult = await hookService.runInterceptors(ctx, definition, 'beforeTransform', input, runId, pipelineId);
-            let records = beforeResult.records;
-
-            const out = await transformExecutor.executeOperator(ctx, step, records, executorCtx);
-            counters.transformed = out.length;
-
-            const afterResult = await hookService.runInterceptors(ctx, definition, 'afterTransform', out, runId, pipelineId);
-            const finalOutput = afterResult.records;
-            const durationMs = Date.now() - t0;
-            // Log field mappings (DEBUG level) - compare first input/output record
-            if (stepLog?.onTransformMapping && sampleInput && finalOutput[0]) {
-                await stepLog.onTransformMapping(ctx, key, adapterCode, sampleInput, finalOutput[0]);
-            }
-            // Log step complete
-            if (stepLog?.onStepComplete) {
-                await stepLog.onStepComplete(ctx, {
-                    stepKey: key,
-                    stepType: 'TRANSFORM',
-                    adapterCode,
-                    recordsIn,
-                    recordsOut: finalOutput.length,
-                    succeeded: finalOutput.length,
-                    failed: 0,
-                    durationMs,
-                    sampleInput,
-                    sampleOutput: finalOutput[0] as RecordObject | undefined,
-                });
-            }
-            return {
-                output: finalOutput,
-                detail: { stepKey: key, type: 'TRANSFORM', adapterCode, out: finalOutput.length },
-                processed: 0,
-                succeeded: 0,
-                failed: 0,
-                counters,
-                event: { type: 'RecordTransformed', data: { stepKey: key, count: finalOutput.length } },
-            };
-        }
-
-        case StepType.VALIDATE: {
-            const beforeResult = await hookService.runInterceptors(ctx, definition, 'beforeValidate', input, runId, pipelineId);
-            let records = beforeResult.records;
-
-            const out = await transformExecutor.executeValidate(ctx, step, records, onRecordError);
-            counters.validated = out.length;
-
-            const afterResult = await hookService.runInterceptors(ctx, definition, 'afterValidate', out, runId, pipelineId);
-            const finalOutput = afterResult.records;
-            return {
-                output: finalOutput,
-                detail: { stepKey: key, type: 'VALIDATE', adapterCode: step.config?.adapterCode, out: finalOutput.length },
-                processed: 0,
-                succeeded: 0,
-                failed: 0,
-                counters,
-                event: { type: 'RecordValidated', data: { stepKey: key, count: finalOutput.length } },
-            };
-        }
-
-        case StepType.ENRICH: {
-            const beforeResult = await hookService.runInterceptors(ctx, definition, 'beforeEnrich', input, runId, pipelineId);
-            let records = beforeResult.records;
-
-            const out = await transformExecutor.executeOperator(ctx, step, records, executorCtx);
-            counters.enriched = out.length;
-
-            const afterResult = await hookService.runInterceptors(ctx, definition, 'afterEnrich', out, runId, pipelineId);
-            const finalOutput = afterResult.records;
-            return {
-                output: finalOutput,
-                detail: { stepKey: key, type: 'ENRICH', adapterCode: step.config?.adapterCode, out: finalOutput.length },
-                processed: 0,
-                succeeded: 0,
-                failed: 0,
-                counters,
-                event: { type: 'RecordTransformed', data: { stepKey: key, count: finalOutput.length, stage: 'ENRICH' } },
-            };
-        }
-
-        case StepType.ROUTE: {
-            const beforeResult = await hookService.runInterceptors(ctx, definition, 'beforeRoute', input, runId, pipelineId);
-            let records = beforeResult.records;
-
-            const out = await transformExecutor.executeRouteBranches(ctx, step, records);
-            const total = Object.values(out.branches).reduce((acc, arr) => acc + (arr?.length ?? 0), 0);
-            counters.routed = total;
-            const aggregated = ([] as RecordObject[]).concat(...Object.values(out.branches));
-
-            const afterResult = await hookService.runInterceptors(ctx, definition, 'afterRoute', aggregated, runId, pipelineId);
-            return {
-                output: out,
-                detail: { stepKey: key, type: 'ROUTE', adapterCode: step.config?.adapterCode, out: total, branches: Object.keys(out.branches) },
-                processed: 0,
-                succeeded: 0,
-                failed: 0,
-                counters,
-            };
-        }
-
-        case StepType.LOAD: {
-            const adapterCode = step.config?.adapterCode ?? '';
-            const recordsIn = input.length;
-            const t0 = Date.now();
-            // Log step start
-            if (stepLog?.onStepStart) {
-                await stepLog.onStepStart(ctx, key, 'LOAD', recordsIn);
-            }
-            const beforeResult = await hookService.runInterceptors(ctx, definition, 'beforeLoad', input, runId, pipelineId);
-            let records = beforeResult.records;
-
-            const batch = applyIdempotency(records, definition);
-            // Log target data before load (DEBUG level)
-            if (stepLog?.onLoadData) {
-                await stepLog.onLoadData(ctx, key, adapterCode, batch);
-            }
-            const { ok, fail } = await loadWithThroughput(ctx, step, batch, definition, onRecordError);
-            counters.loaded = ok;
-            counters.rejected = fail;
-
-            const afterResult = await hookService.runInterceptors(ctx, definition, 'afterLoad', records, runId, pipelineId);
-            const durationMs = Date.now() - t0;
-            // Log step complete
-            if (stepLog?.onStepComplete) {
-                await stepLog.onStepComplete(ctx, {
-                    stepKey: key,
-                    stepType: 'LOAD',
-                    adapterCode,
-                    recordsIn: batch.length,
-                    recordsOut: ok,
-                    succeeded: ok,
-                    failed: fail,
-                    durationMs,
-                    sampleInput: batch[0] as RecordObject | undefined,
-                });
-            }
-            return {
-                output: [],
-                detail: { stepKey: key, type: 'LOAD', adapterCode, ok, fail },
-                processed: 0,
-                succeeded: ok,
-                failed: fail,
-                counters,
-                event: { type: 'RecordLoaded', data: { stepKey: key, ok, fail } },
-            };
-        }
-
-        case StepType.EXPORT: {
-            const { ok, fail } = await exportExecutor.execute(ctx, step, input, onRecordError);
-            return {
-                output: [],
-                detail: { stepKey: key, type: 'EXPORT', adapterCode: step.config?.adapterCode, ok, fail },
-                processed: 0,
-                succeeded: ok,
-                failed: fail,
-                counters: {},
-                event: { type: 'RecordExported', data: { stepKey: key, ok, fail } },
-            };
-        }
-
-        case StepType.FEED: {
-            const { ok, fail, outputPath } = await feedExecutor.execute(ctx, step, input, onRecordError);
-            return {
-                output: [],
-                detail: { stepKey: key, type: 'FEED', adapterCode: step.config?.adapterCode, ok, fail, outputPath },
-                processed: 0,
-                succeeded: ok,
-                failed: fail,
-                counters: {},
-                event: { type: 'FeedGenerated', data: { stepKey: key, ok, fail, outputPath } },
-            };
-        }
-
-        case StepType.SINK: {
-            const { ok, fail } = await sinkExecutor.execute(ctx, step, input, onRecordError);
-            return {
-                output: [],
-                detail: { stepKey: key, type: 'SINK', adapterCode: step.config?.adapterCode, ok, fail },
-                processed: 0,
-                succeeded: ok,
-                failed: fail,
-                counters: {},
-                event: { type: 'RecordIndexed', data: { stepKey: key, ok, fail } },
-            };
-        }
-
-        default:
-            // Pass through records for unknown step types
-            // This allows forward compatibility when new step types are added
-            logger.warn(`executeStep (graph): Unhandled step type "${step.type}" for step "${key}" - passing through ${input.length} records`);
-            return {
-                output: input,
-                detail: { stepKey: key, type: step.type, unhandled: true },
-                processed: 0,
-                succeeded: 0,
-                failed: 0,
-                counters: {},
-            };
+    if (cancelled) {
+        logger.log('[Parallel] Execution cancelled');
     }
 }
