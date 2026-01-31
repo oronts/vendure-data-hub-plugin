@@ -1,19 +1,13 @@
-/**
- * Import Wizard - Preview Step Component
- * Shows a preview of the parsed data
- */
-
-import * as React from 'react';
 import {
     Card,
     Badge,
     ScrollArea,
 } from '@vendure/dashboard';
-import {
-    AlertCircle,
-    Loader2,
-} from 'lucide-react';
-import type { ParsedData } from './types';
+import { FileText } from 'lucide-react';
+import { LoadingState, EmptyState } from '../../shared/feedback';
+import type { ParsedData } from '../../../types/wizard';
+import { UI_LIMITS, COMPONENT_HEIGHTS } from '../../../constants';
+import { STEP_CONTENT } from './constants';
 
 interface PreviewStepProps {
     parsedData: ParsedData | null;
@@ -22,29 +16,26 @@ interface PreviewStepProps {
 
 export function PreviewStep({ parsedData, isParsing }: PreviewStepProps) {
     if (isParsing) {
-        return (
-            <div className="flex items-center justify-center h-64">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
-        );
+        return <LoadingState type="spinner" message="Parsing file..." />;
     }
 
     if (!parsedData) {
         return (
-            <div className="text-center py-12">
-                <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                <p>No data to preview. Please upload a file first.</p>
-            </div>
+            <EmptyState
+                icon={<FileText className="h-12 w-12" />}
+                title={STEP_CONTENT.preview.emptyTitle}
+                description={STEP_CONTENT.preview.emptyDescription}
+            />
         );
     }
 
     return (
-        <div className="space-y-4">
+        <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-semibold">Data Preview</h2>
+                    <h2 className="text-2xl font-semibold mb-2">{STEP_CONTENT.preview.title}</h2>
                     <p className="text-muted-foreground">
-                        Showing first {Math.min(parsedData.rows.length, 100)} of {parsedData.rows.length} records
+                        Showing first {Math.min(parsedData.rows.length, UI_LIMITS.MAX_PREVIEW_ROWS)} of {parsedData.rows.length} records
                     </p>
                 </div>
                 <Badge variant="secondary">
@@ -53,7 +44,7 @@ export function PreviewStep({ parsedData, isParsing }: PreviewStepProps) {
             </div>
 
             <Card>
-                <ScrollArea className="h-[500px]">
+                <ScrollArea className={COMPONENT_HEIGHTS.WIZARD_PANE_MD}>
                     <div className="min-w-max">
                         <table className="w-full text-sm">
                             <thead className="sticky top-0 bg-muted">
@@ -67,9 +58,10 @@ export function PreviewStep({ parsedData, isParsing }: PreviewStepProps) {
                                 </tr>
                             </thead>
                             <tbody>
-                                {parsedData.rows.slice(0, 50).map((row, i) => (
-                                    <tr key={i} className="border-t hover:bg-muted/50">
-                                        <td className="px-4 py-2 text-muted-foreground">{i + 1}</td>
+                                {/* Index as key acceptable - static preview data, not reordered */}
+                                {parsedData.rows.slice(0, UI_LIMITS.MAX_PREVIEW_ROWS).map((row, rowIndex) => (
+                                    <tr key={`row-${rowIndex}`} className="border-t hover:bg-muted/50">
+                                        <td className="px-4 py-2 text-muted-foreground">{rowIndex + 1}</td>
                                         {parsedData.headers.map(header => (
                                             <td key={header} className="px-4 py-2 font-mono text-xs">
                                                 {String(row[header] ?? '')}
@@ -85,5 +77,3 @@ export function PreviewStep({ parsedData, isParsing }: PreviewStepProps) {
         </div>
     );
 }
-
-export default PreviewStep;

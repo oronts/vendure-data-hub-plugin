@@ -1,9 +1,3 @@
-/**
- * Import Wizard - Strategy Step Component
- * Handles import strategy configuration
- */
-
-import * as React from 'react';
 import {
     Button,
     Card,
@@ -21,19 +15,26 @@ import {
     Switch,
     Badge,
 } from '@vendure/dashboard';
+import { WizardStepContainer } from '../shared';
 import type { ImportConfiguration, ImportStrategies } from './types';
+import {
+    EXISTING_RECORDS_STRATEGIES,
+    NEW_RECORDS_STRATEGIES,
+    CLEANUP_STRATEGIES,
+    UI_DEFAULTS,
+} from '../../../constants';
+import type { ExistingRecordsStrategy, NewRecordsStrategy, CleanupStrategy } from '../../../constants';
+import { STEP_CONTENT } from './constants';
 
-/** Strategy types extracted from ImportStrategies */
-type ExistingRecordsStrategy = ImportStrategies['existingRecords'];
-type NewRecordsStrategy = ImportStrategies['newRecords'];
 type CleanupStrategy = ImportStrategies['cleanupStrategy'];
 
 interface StrategyStepProps {
     config: Partial<ImportConfiguration>;
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
+    errors?: Record<string, string>;
 }
 
-export function StrategyStep({ config, updateConfig }: StrategyStepProps) {
+export function StrategyStep({ config, updateConfig, errors = {} }: StrategyStepProps) {
     const strategies = config.strategies!;
     const primaryKeyFields = config.targetSchema?.primaryKey
         ? (Array.isArray(config.targetSchema.primaryKey)
@@ -42,31 +43,20 @@ export function StrategyStep({ config, updateConfig }: StrategyStepProps) {
         : [];
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6">
-            <div>
-                <h2 className="text-2xl font-semibold mb-2">Import Strategy</h2>
-                <p className="text-muted-foreground">
-                    Configure how to handle existing and new records
-                </p>
-            </div>
-
-            {/* Lookup Fields */}
+        <WizardStepContainer
+            title={STEP_CONTENT.strategy.title}
+            description={STEP_CONTENT.strategy.description}
+        >
             <LookupFieldsCard
                 config={config}
                 updateConfig={updateConfig}
                 strategies={strategies}
                 primaryKeyFields={primaryKeyFields}
             />
-
-            {/* Existing Records Strategy */}
             <ExistingRecordsCard strategies={strategies} updateConfig={updateConfig} />
-
-            {/* New Records Strategy */}
             <NewRecordsCard strategies={strategies} updateConfig={updateConfig} />
-
-            {/* Advanced Options */}
             <AdvancedOptionsCard strategies={strategies} updateConfig={updateConfig} />
-        </div>
+        </WizardStepContainer>
     );
 }
 
@@ -129,13 +119,6 @@ interface ExistingRecordsCardProps {
 }
 
 function ExistingRecordsCard({ strategies, updateConfig }: ExistingRecordsCardProps) {
-    const options = [
-        { id: 'update', label: 'Update', desc: 'Update existing fields' },
-        { id: 'replace', label: 'Replace', desc: 'Replace entire record' },
-        { id: 'skip', label: 'Skip', desc: 'Skip and continue' },
-        { id: 'error', label: 'Error', desc: 'Stop import with error' },
-    ];
-
     return (
         <Card>
             <CardHeader>
@@ -144,20 +127,19 @@ function ExistingRecordsCard({ strategies, updateConfig }: ExistingRecordsCardPr
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {options.map(option => (
+                    {EXISTING_RECORDS_STRATEGIES.map(option => (
                         <button
-                            key={option.id}
+                            key={option.value}
                             className={`p-3 border rounded-lg text-left transition-all ${
-                                strategies.existingRecords === option.id
+                                strategies.existingRecords === option.value
                                     ? 'border-primary bg-primary/5'
                                     : 'hover:border-primary/50'
                             }`}
                             onClick={() => updateConfig({
-                                strategies: { ...strategies, existingRecords: option.id as ExistingRecordsStrategy },
+                                strategies: { ...strategies, existingRecords: option.value as ExistingRecordsStrategy },
                             })}
                         >
                             <div className="font-medium">{option.label}</div>
-                            <div className="text-xs text-muted-foreground">{option.desc}</div>
                         </button>
                     ))}
                 </div>
@@ -172,12 +154,6 @@ interface NewRecordsCardProps {
 }
 
 function NewRecordsCard({ strategies, updateConfig }: NewRecordsCardProps) {
-    const options = [
-        { id: 'create', label: 'Create', desc: 'Create new records' },
-        { id: 'skip', label: 'Skip', desc: 'Skip new records' },
-        { id: 'error', label: 'Error', desc: 'Stop import' },
-    ];
-
     return (
         <Card>
             <CardHeader>
@@ -186,20 +162,19 @@ function NewRecordsCard({ strategies, updateConfig }: NewRecordsCardProps) {
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-3 gap-3">
-                    {options.map(option => (
+                    {NEW_RECORDS_STRATEGIES.map(option => (
                         <button
-                            key={option.id}
+                            key={option.value}
                             className={`p-3 border rounded-lg text-left transition-all ${
-                                strategies.newRecords === option.id
+                                strategies.newRecords === option.value
                                     ? 'border-primary bg-primary/5'
                                     : 'hover:border-primary/50'
                             }`}
                             onClick={() => updateConfig({
-                                strategies: { ...strategies, newRecords: option.id as NewRecordsStrategy },
+                                strategies: { ...strategies, newRecords: option.value as NewRecordsStrategy },
                             })}
                         >
                             <div className="font-medium">{option.label}</div>
-                            <div className="text-xs text-muted-foreground">{option.desc}</div>
                         </button>
                     ))}
                 </div>
@@ -227,7 +202,7 @@ function AdvancedOptionsCard({ strategies, updateConfig }: AdvancedOptionsCardPr
                             type="number"
                             value={strategies.batchSize}
                             onChange={e => updateConfig({
-                                strategies: { ...strategies, batchSize: parseInt(e.target.value) || 100 },
+                                strategies: { ...strategies, batchSize: parseInt(e.target.value) || UI_DEFAULTS.IMPORT_BATCH_SIZE },
                             })}
                         />
                     </div>
@@ -237,7 +212,7 @@ function AdvancedOptionsCard({ strategies, updateConfig }: AdvancedOptionsCardPr
                             type="number"
                             value={strategies.errorThreshold}
                             onChange={e => updateConfig({
-                                strategies: { ...strategies, errorThreshold: parseInt(e.target.value) || 10 },
+                                strategies: { ...strategies, errorThreshold: parseInt(e.target.value) || UI_DEFAULTS.DEFAULT_ERROR_THRESHOLD_PERCENT },
                             })}
                         />
                     </div>
@@ -277,9 +252,11 @@ function AdvancedOptionsCard({ strategies, updateConfig }: AdvancedOptionsCardPr
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="none">No cleanup</SelectItem>
-                            <SelectItem value="unpublish-missing">Unpublish missing records</SelectItem>
-                            <SelectItem value="delete-missing">Delete missing records</SelectItem>
+                            {CLEANUP_STRATEGIES.map(option => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
@@ -287,5 +264,3 @@ function AdvancedOptionsCard({ strategies, updateConfig }: AdvancedOptionsCardPr
         </Card>
     );
 }
-
-export default StrategyStep;

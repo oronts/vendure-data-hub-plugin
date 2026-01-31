@@ -1,9 +1,4 @@
-/**
- * Export Wizard - Fields Step Component
- * Handles field selection and output naming
- */
-
-import * as React from 'react';
+import { useCallback } from 'react';
 import {
     Button,
     Card,
@@ -18,56 +13,59 @@ import {
     SelectValue,
     ScrollArea,
 } from '@vendure/dashboard';
+import { WizardStepContainer } from '../shared';
+import { STEP_CONTENT } from './constants';
+import { COMPONENT_HEIGHTS, SENTINEL_VALUES } from '../../../constants';
 import type { ExportConfiguration, ExportField } from './types';
 
 interface FieldsStepProps {
     config: Partial<ExportConfiguration>;
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
+    errors?: Record<string, string>;
 }
 
-export function FieldsStep({ config, updateConfig }: FieldsStepProps) {
+export function FieldsStep({ config, updateConfig, errors = {} }: FieldsStepProps) {
     const fields = config.fields ?? [];
 
-    const toggleField = (index: number) => {
-        const newFields = [...fields];
+    const toggleField = useCallback((index: number) => {
+        const currentFields = config.fields ?? [];
+        const newFields = [...currentFields];
         newFields[index] = { ...newFields[index], include: !newFields[index].include };
         updateConfig({ fields: newFields });
-    };
+    }, [config.fields, updateConfig]);
 
-    const updateField = (index: number, updates: Partial<ExportField>) => {
-        const newFields = [...fields];
+    const updateField = useCallback((index: number, updates: Partial<ExportField>) => {
+        const currentFields = config.fields ?? [];
+        const newFields = [...currentFields];
         newFields[index] = { ...newFields[index], ...updates };
         updateConfig({ fields: newFields });
-    };
+    }, [config.fields, updateConfig]);
 
-    const selectAll = () => {
+    const selectAll = useCallback(() => {
+        const currentFields = config.fields ?? [];
         updateConfig({
-            fields: fields.map(f => ({ ...f, include: true })),
+            fields: currentFields.map(f => ({ ...f, include: true })),
         });
-    };
+    }, [config.fields, updateConfig]);
 
-    const deselectAll = () => {
+    const deselectAll = useCallback(() => {
+        const currentFields = config.fields ?? [];
         updateConfig({
-            fields: fields.map(f => ({ ...f, include: false })),
+            fields: currentFields.map(f => ({ ...f, include: false })),
         });
-    };
+    }, [config.fields, updateConfig]);
 
     const selectedCount = fields.filter(f => f.include).length;
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-2xl font-semibold mb-2">Select Fields</h2>
-                    <p className="text-muted-foreground">
-                        Choose which fields to include in the export
-                    </p>
-                </div>
-                <div className="flex items-center gap-2">
-                    <Badge variant="secondary">{selectedCount} of {fields.length} selected</Badge>
-                    <Button variant="outline" size="sm" onClick={selectAll}>Select All</Button>
-                    <Button variant="outline" size="sm" onClick={deselectAll}>Deselect All</Button>
-                </div>
+        <WizardStepContainer
+            title={STEP_CONTENT.fields.title}
+            description={STEP_CONTENT.fields.description}
+        >
+            <div className="flex items-center justify-end gap-2">
+                <Badge variant="secondary">{selectedCount} of {fields.length} selected</Badge>
+                <Button variant="outline" size="sm" onClick={selectAll}>Select All</Button>
+                <Button variant="outline" size="sm" onClick={deselectAll}>Deselect All</Button>
             </div>
 
             <Card>
@@ -79,7 +77,7 @@ export function FieldsStep({ config, updateConfig }: FieldsStepProps) {
                         <div className="col-span-3">Transform</div>
                     </div>
 
-                    <ScrollArea className="h-[500px]">
+                    <ScrollArea className={COMPONENT_HEIGHTS.WIZARD_PANE_MD}>
                         <div className="divide-y">
                             {fields.map((field, index) => (
                                 <FieldRow
@@ -94,7 +92,7 @@ export function FieldsStep({ config, updateConfig }: FieldsStepProps) {
                     </ScrollArea>
                 </CardContent>
             </Card>
-        </div>
+        </WizardStepContainer>
     );
 }
 
@@ -134,9 +132,9 @@ function FieldRow({ field, index, onToggle, onUpdate }: FieldRowProps) {
 
             <div className="col-span-3">
                 <Select
-                    value={field.transformation ?? '__none__'}
+                    value={field.transformation ?? SENTINEL_VALUES.NONE}
                     onValueChange={transformation => onUpdate({
-                        transformation: transformation === '__none__' ? undefined : transformation,
+                        transformation: transformation === SENTINEL_VALUES.NONE ? undefined : transformation,
                     })}
                     disabled={!field.include}
                 >
@@ -144,7 +142,7 @@ function FieldRow({ field, index, onToggle, onUpdate }: FieldRowProps) {
                         <SelectValue placeholder="None" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="__none__">None</SelectItem>
+                        <SelectItem value={SENTINEL_VALUES.NONE}>None</SelectItem>
                         <SelectItem value="uppercase">Uppercase</SelectItem>
                         <SelectItem value="lowercase">Lowercase</SelectItem>
                         <SelectItem value="trim">Trim</SelectItem>
@@ -159,5 +157,3 @@ function FieldRow({ field, index, onToggle, onUpdate }: FieldRowProps) {
         </div>
     );
 }
-
-export default FieldsStep;

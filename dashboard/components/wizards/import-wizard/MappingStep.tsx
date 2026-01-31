@@ -1,9 +1,4 @@
-/**
- * Import Wizard - Mapping Step Component
- * Handles field mapping configuration
- */
-
-import * as React from 'react';
+import { useMemo, useCallback } from 'react';
 import {
     Button,
     Card,
@@ -23,7 +18,10 @@ import {
     Unlink,
     AlertCircle,
 } from 'lucide-react';
-import type { EnhancedFieldDefinition } from '../../../../types/index';
+import { WizardStepContainer } from '../shared';
+import { UI_LIMITS, SENTINEL_VALUES } from '../../../constants';
+import type { EnhancedFieldDefinition } from '../../../types';
+import { STEP_CONTENT } from './constants';
 import type { ImportConfiguration, FieldMapping } from './types';
 
 interface MappingStepProps {
@@ -31,6 +29,7 @@ interface MappingStepProps {
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
     sourceFields: string[];
     sampleData: Record<string, unknown>[];
+    errors?: Record<string, string>;
 }
 
 export function MappingStep({
@@ -38,40 +37,45 @@ export function MappingStep({
     updateConfig,
     sourceFields,
     sampleData,
+    errors = {},
 }: MappingStepProps) {
-    const updateMapping = (index: number, updates: Partial<FieldMapping>) => {
+    const updateMapping = useCallback((index: number, updates: Partial<FieldMapping>) => {
         const newMappings = [...(config.mappings ?? [])];
         newMappings[index] = { ...newMappings[index], ...updates };
         updateConfig({ mappings: newMappings });
-    };
+    }, [config.mappings, updateConfig]);
 
-    const removeMapping = (index: number) => {
+    const removeMapping = useCallback((index: number) => {
         updateConfig({
             mappings: (config.mappings ?? []).filter((_, i) => i !== index),
         });
-    };
+    }, [config.mappings, updateConfig]);
 
-    const addMapping = () => {
+    const addMapping = useCallback(() => {
         updateConfig({
             mappings: [
                 ...(config.mappings ?? []),
                 { sourceField: '', targetField: '', required: false, preview: [] },
             ],
         });
-    };
+    }, [config.mappings, updateConfig]);
 
-    const targetFields = config.targetSchema ? Object.keys(config.targetSchema.fields) : [];
-    const usedTargetFields = new Set((config.mappings ?? []).map(m => m.targetField));
+    const targetFields = useMemo(
+        () => (config.targetSchema ? Object.keys(config.targetSchema.fields) : []),
+        [config.targetSchema]
+    );
+
+    const usedTargetFields = useMemo(
+        () => new Set((config.mappings ?? []).map(m => m.targetField)),
+        [config.mappings]
+    );
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-2xl font-semibold mb-2">Field Mapping</h2>
-                    <p className="text-muted-foreground">
-                        Map source fields to target entity fields
-                    </p>
-                </div>
+        <WizardStepContainer
+            title={STEP_CONTENT.mapping.title}
+            description={STEP_CONTENT.mapping.description}
+        >
+            <div className="flex justify-end">
                 <Button variant="outline" onClick={addMapping}>
                     <Plus className="w-4 h-4 mr-2" />
                     Add Mapping
@@ -93,7 +97,7 @@ export function MappingStep({
                     <div className="divide-y">
                         {(config.mappings ?? []).map((mapping, index) => (
                             <MappingRow
-                                key={index}
+                                key={mapping.targetField || `mapping-${index}`}
                                 mapping={mapping}
                                 index={index}
                                 sourceFields={sourceFields}
@@ -109,11 +113,10 @@ export function MappingStep({
                 </CardContent>
             </Card>
 
-            {/* Unmapped Required Fields Warning */}
             {config.targetSchema && (
                 <UnmappedFieldsWarning config={config} />
             )}
-        </div>
+        </WizardStepContainer>
     );
 }
 
@@ -146,11 +149,11 @@ function MappingRow({
         <div className="grid grid-cols-12 gap-4 p-4 items-center">
             <div className="col-span-4">
                 <Select
-                    value={mapping.sourceField || '__empty__'}
+                    value={mapping.sourceField || SENTINEL_VALUES.EMPTY}
                     onValueChange={sourceField => {
                         updateMapping(index, {
-                            sourceField: sourceField === '__empty__' ? '' : sourceField,
-                            preview: sampleData.slice(0, 3).map(r => r[sourceField]),
+                            sourceField: sourceField === SENTINEL_VALUES.EMPTY ? '' : sourceField,
+                            preview: sampleData.slice(0, UI_LIMITS.SAMPLE_VALUES_LIMIT).map(r => r[sourceField]),
                         });
                     }}
                 >
@@ -158,7 +161,7 @@ function MappingRow({
                         <SelectValue placeholder="Select source field" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="__empty__">-- Not mapped --</SelectItem>
+                        <SelectItem value={SENTINEL_VALUES.EMPTY}>-- Not mapped --</SelectItem>
                         {sourceFields.map(field => (
                             <SelectItem key={field} value={field}>
                                 {field}
@@ -179,9 +182,9 @@ function MappingRow({
             <div className="col-span-4">
                 <div className="flex items-center gap-2">
                     <Select
-                        value={mapping.targetField || '__empty__'}
+                        value={mapping.targetField || SENTINEL_VALUES.EMPTY}
                         onValueChange={targetField => updateMapping(index, {
-                            targetField: targetField === '__empty__' ? '' : targetField,
+                            targetField: targetField === SENTINEL_VALUES.EMPTY ? '' : targetField,
                             required: (config.targetSchema?.fields[targetField] as EnhancedFieldDefinition)?.required ?? false,
                         })}
                     >
@@ -189,7 +192,7 @@ function MappingRow({
                             <SelectValue placeholder="Select target field" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="__empty__">-- Select --</SelectItem>
+                            <SelectItem value={SENTINEL_VALUES.EMPTY}>-- Select --</SelectItem>
                             {targetFields
                                 .filter(f => !usedTargetFields.has(f) || f === mapping.targetField)
                                 .map(field => {
@@ -215,8 +218,9 @@ function MappingRow({
 
             <div className="col-span-2">
                 <div className="text-xs font-mono text-muted-foreground">
-                    {(mapping.preview ?? []).slice(0, 2).map((v, i) => (
-                        <div key={i} className="truncate">
+                    {/* Index as key acceptable - static preview values, not reordered */}
+                    {(mapping.preview ?? []).slice(0, 2).map((v, previewIndex) => (
+                        <div key={`preview-${previewIndex}`} className="truncate">
                             {String(v ?? '(empty)')}
                         </div>
                     ))}
@@ -228,6 +232,7 @@ function MappingRow({
                     variant="ghost"
                     size="icon"
                     onClick={() => removeMapping(index)}
+                    aria-label="Remove mapping"
                 >
                     <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
@@ -268,5 +273,3 @@ function UnmappedFieldsWarning({ config }: UnmappedFieldsWarningProps) {
         </Card>
     );
 }
-
-export default MappingStep;

@@ -1,8 +1,3 @@
-/**
- * Import Wizard - Source Step Component
- * Handles data source selection and configuration
- */
-
 import * as React from 'react';
 import {
     Button,
@@ -18,31 +13,28 @@ import {
     SelectTrigger,
     SelectValue,
     Switch,
-    Textarea,
 } from '@vendure/dashboard';
-import { AlertCircle } from 'lucide-react';
+import { Play, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { JsonTextarea } from '../../common/json-textarea';
 import {
-    Upload,
-    FileSpreadsheet,
-    Database,
-    Globe,
-    Webhook,
-    Play,
-    CheckCircle2,
-    Loader2,
-    FileJson,
-    FileText,
-} from 'lucide-react';
-import type { ImportConfiguration, SourceConfig, TriggerConfig } from './types';
-
-/** Source type for import configuration */
-type SourceType = SourceConfig['type'];
-
-/** File format type */
-type FileFormat = NonNullable<SourceConfig['fileConfig']>['format'];
-
-/** API method type */
-type ApiMethod = NonNullable<SourceConfig['apiConfig']>['method'];
+    WizardStepContainer,
+    SOURCE_TYPE_ICONS,
+    FILE_FORMAT_ICONS,
+    SOURCE_TYPE,
+    FILE_FORMAT,
+} from '../shared';
+import { SelectableCard, SelectableCardGrid } from '../../shared/selectable-card';
+import { FileDropzone } from '../../shared/file-dropzone';
+import { SOURCE_TYPES, FILE_FORMATS, STEP_CONTENT, PLACEHOLDERS } from './constants';
+import { CSV_DELIMITERS, TOAST_WIZARD, TOAST_CONNECTION } from '../../../constants';
+import { TEST_STATUS } from '../../../constants/ui-states';
+import type {
+    ImportConfiguration,
+    SourceType,
+    FileFormat,
+    ApiMethod,
+} from './types';
 
 interface SourceStepProps {
     config: Partial<ImportConfiguration>;
@@ -50,21 +42,8 @@ interface SourceStepProps {
     uploadedFile: File | null;
     setUploadedFile: (file: File | null) => void;
     isParsing: boolean;
+    errors?: Record<string, string>;
 }
-
-const SOURCE_TYPES = [
-    { id: 'file', label: 'File Upload', icon: Upload, description: 'CSV, Excel, JSON, XML' },
-    { id: 'api', label: 'REST API', icon: Globe, description: 'Fetch from HTTP endpoint' },
-    { id: 'database', label: 'Database', icon: Database, description: 'Query external database' },
-    { id: 'webhook', label: 'Webhook', icon: Webhook, description: 'Receive push data' },
-];
-
-const FILE_FORMATS = [
-    { id: 'csv', label: 'CSV', icon: FileSpreadsheet },
-    { id: 'xlsx', label: 'Excel', icon: FileSpreadsheet },
-    { id: 'json', label: 'JSON', icon: FileJson },
-    { id: 'xml', label: 'XML', icon: FileText },
-];
 
 export function SourceStep({
     config,
@@ -72,61 +51,42 @@ export function SourceStep({
     uploadedFile,
     setUploadedFile,
     isParsing,
+    errors = {},
 }: SourceStepProps) {
-    const fileInputRef = React.useRef<HTMLInputElement>(null);
-
     return (
-        <div className="max-w-4xl mx-auto space-y-6">
-            <div>
-                <h2 className="text-2xl font-semibold mb-2">Select Data Source</h2>
-                <p className="text-muted-foreground">
-                    Choose where your data will come from
-                </p>
-            </div>
+        <WizardStepContainer
+            title={STEP_CONTENT.source.title}
+            description={STEP_CONTENT.source.description}
+        >
+            <SelectableCardGrid columns={4}>
+                {SOURCE_TYPES.map(type => (
+                    <SelectableCard
+                        key={type.id}
+                        icon={SOURCE_TYPE_ICONS[type.id]}
+                        title={type.label}
+                        description={type.description}
+                        selected={config.source?.type === type.id}
+                        onClick={() => updateConfig({
+                            source: { type: type.id as SourceType },
+                        })}
+                    />
+                ))}
+            </SelectableCardGrid>
 
-            {/* Source Type Selection */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {SOURCE_TYPES.map(type => {
-                    const Icon = type.icon;
-                    const isSelected = config.source?.type === type.id;
-
-                    return (
-                        <button
-                            key={type.id}
-                            className={`p-4 border rounded-lg text-left transition-all ${
-                                isSelected
-                                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                                    : 'hover:border-primary/50'
-                            }`}
-                            onClick={() => updateConfig({
-                                source: { type: type.id as SourceType },
-                            })}
-                        >
-                            <Icon className={`w-8 h-8 mb-2 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
-                            <div className="font-medium">{type.label}</div>
-                            <div className="text-sm text-muted-foreground">{type.description}</div>
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* File Upload Configuration */}
-            {config.source?.type === 'file' && (
+            {config.source?.type === SOURCE_TYPE.FILE && (
                 <FileUploadConfig
                     config={config}
                     updateConfig={updateConfig}
                     uploadedFile={uploadedFile}
                     setUploadedFile={setUploadedFile}
                     isParsing={isParsing}
-                    fileInputRef={fileInputRef}
                 />
             )}
 
-            {/* API Configuration */}
-            {config.source?.type === 'api' && (
+            {config.source?.type === SOURCE_TYPE.API && (
                 <ApiConfig config={config} updateConfig={updateConfig} />
             )}
-        </div>
+        </WizardStepContainer>
     );
 }
 
@@ -136,7 +96,6 @@ interface FileUploadConfigProps {
     uploadedFile: File | null;
     setUploadedFile: (file: File | null) => void;
     isParsing: boolean;
-    fileInputRef: React.RefObject<HTMLInputElement>;
 }
 
 function FileUploadConfig({
@@ -145,7 +104,6 @@ function FileUploadConfig({
     uploadedFile,
     setUploadedFile,
     isParsing,
-    fileInputRef,
 }: FileUploadConfigProps) {
     return (
         <Card>
@@ -153,12 +111,11 @@ function FileUploadConfig({
                 <CardTitle>File Configuration</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-                {/* Format Selection */}
                 <div>
                     <Label className="mb-2 block">File Format</Label>
                     <div className="flex gap-2">
                         {FILE_FORMATS.map(format => {
-                            const Icon = format.icon;
+                            const Icon = FILE_FORMAT_ICONS[format.id];
                             const isSelected = config.source?.fileConfig?.format === format.id;
 
                             return (
@@ -184,8 +141,7 @@ function FileUploadConfig({
                     </div>
                 </div>
 
-                {/* CSV Options */}
-                {config.source?.fileConfig?.format === 'csv' && (
+                {config.source?.fileConfig?.format === FILE_FORMAT.CSV && (
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label>Delimiter</Label>
@@ -202,10 +158,9 @@ function FileUploadConfig({
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value=",">Comma (,)</SelectItem>
-                                    <SelectItem value=";">Semicolon (;)</SelectItem>
-                                    <SelectItem value="\t">Tab</SelectItem>
-                                    <SelectItem value="|">Pipe (|)</SelectItem>
+                                    {CSV_DELIMITERS.map(d => (
+                                        <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -224,64 +179,15 @@ function FileUploadConfig({
                     </div>
                 )}
 
-                {/* File Upload */}
-                <div
-                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                        uploadedFile ? 'border-green-500 bg-green-50' : 'border-muted hover:border-primary'
-                    }`}
-                    onDragOver={e => e.preventDefault()}
-                    onDrop={e => {
-                        e.preventDefault();
-                        const file = e.dataTransfer.files[0];
-                        if (file) setUploadedFile(file);
-                    }}
-                    onClick={() => fileInputRef.current?.click()}
-                >
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        className="hidden"
-                        accept=".csv,.xlsx,.xls,.json,.xml"
-                        onChange={e => {
-                            const file = e.target.files?.[0];
-                            if (file) setUploadedFile(file);
-                        }}
-                    />
-
-                    {isParsing ? (
-                        <>
-                            <Loader2 className="w-12 h-12 mx-auto mb-4 text-primary animate-spin" />
-                            <p className="font-medium">Parsing file...</p>
-                        </>
-                    ) : uploadedFile ? (
-                        <>
-                            <CheckCircle2 className="w-12 h-12 mx-auto mb-4 text-green-500" />
-                            <p className="font-medium">{uploadedFile.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                                {(uploadedFile.size / 1024).toFixed(1)} KB
-                            </p>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="mt-4"
-                                onClick={e => {
-                                    e.stopPropagation();
-                                    setUploadedFile(null);
-                                }}
-                            >
-                                Remove
-                            </Button>
-                        </>
-                    ) : (
-                        <>
-                            <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                            <p className="font-medium">Drop your file here or click to browse</p>
-                            <p className="text-sm text-muted-foreground mt-1">
-                                Supports CSV, Excel, JSON, and XML files
-                            </p>
-                        </>
-                    )}
-                </div>
+                <FileDropzone
+                    onFileSelect={setUploadedFile}
+                    allowedTypes={['csv', 'xlsx', 'json', 'xml']}
+                    loading={isParsing}
+                    selectedFile={uploadedFile}
+                    onClear={() => setUploadedFile(null)}
+                    showFileIcons={false}
+                    compact
+                />
             </CardContent>
         </Card>
     );
@@ -293,6 +199,46 @@ interface ApiConfigProps {
 }
 
 function ApiConfig({ config, updateConfig }: ApiConfigProps) {
+    const [testStatus, setTestStatus] = React.useState<typeof TEST_STATUS[keyof typeof TEST_STATUS]>(TEST_STATUS.IDLE);
+
+    const handleTestConnection = async () => {
+        const url = config.source?.apiConfig?.url;
+        if (!url) {
+            toast.error(TOAST_WIZARD.URL_REQUIRED);
+            return;
+        }
+
+        setTestStatus(TEST_STATUS.TESTING);
+        try {
+            const method = config.source?.apiConfig?.method ?? 'GET';
+            const headers = config.source?.apiConfig?.headers ?? {};
+
+            const response = await fetch(url, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...headers,
+                },
+                mode: 'cors',
+            });
+
+            if (response.ok) {
+                setTestStatus(TEST_STATUS.SUCCESS);
+                toast.success(TOAST_CONNECTION.TEST_SUCCESS);
+            } else {
+                setTestStatus(TEST_STATUS.ERROR);
+                toast.error(TOAST_CONNECTION.TEST_FAILED, {
+                    description: `${response.status} ${response.statusText}`,
+                });
+            }
+        } catch (err) {
+            setTestStatus(TEST_STATUS.ERROR);
+            toast.error(TOAST_CONNECTION.TEST_FAILED, {
+                description: err instanceof Error ? err.message : 'Unknown error',
+            });
+        }
+    };
+
     return (
         <Card>
             <CardHeader>
@@ -330,129 +276,44 @@ function ApiConfig({ config, updateConfig }: ApiConfigProps) {
                                     apiConfig: { ...config.source?.apiConfig, url: e.target.value, method: config.source?.apiConfig?.method ?? 'GET' },
                                 },
                             })}
-                            placeholder="https://api.example.com/data"
+                            placeholder={PLACEHOLDERS.apiUrl}
                         />
                     </div>
                 </div>
 
-                <JsonHeadersField
+                <JsonTextarea
+                    label="Headers (JSON)"
                     value={config.source?.apiConfig?.headers ?? {}}
                     onChange={(headers) => updateConfig({
                         source: {
                             ...config.source!,
-                            apiConfig: { ...config.source?.apiConfig!, headers },
+                            apiConfig: { ...config.source?.apiConfig!, headers: headers as Record<string, string> },
                         },
                     })}
+                    placeholder='{"Authorization": "Bearer token"}'
+                    rows={3}
+                    expectedType="object"
+                    allowEmpty={true}
+                    showStatus={false}
                 />
 
-                <Button variant="outline">
-                    <Play className="w-4 h-4 mr-2" />
-                    Test Connection
+                <Button
+                    variant="outline"
+                    onClick={handleTestConnection}
+                    disabled={testStatus === TEST_STATUS.TESTING || !config.source?.apiConfig?.url}
+                >
+                    {testStatus === TEST_STATUS.TESTING ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : testStatus === TEST_STATUS.SUCCESS ? (
+                        <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />
+                    ) : testStatus === TEST_STATUS.ERROR ? (
+                        <XCircle className="w-4 h-4 mr-2 text-red-600" />
+                    ) : (
+                        <Play className="w-4 h-4 mr-2" />
+                    )}
+                    {testStatus === TEST_STATUS.TESTING ? 'Testing...' : 'Test Connection'}
                 </Button>
             </CardContent>
         </Card>
     );
 }
-
-/**
- * JSON Headers Field with debounced validation
- */
-interface JsonHeadersFieldProps {
-    value: Record<string, string>;
-    onChange: (headers: Record<string, string>) => void;
-}
-
-function JsonHeadersField({ value, onChange }: JsonHeadersFieldProps) {
-    const [text, setText] = React.useState(() => JSON.stringify(value ?? {}, null, 2));
-    const [error, setError] = React.useState<string | null>(null);
-    const [isPending, setIsPending] = React.useState(false);
-    const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-    const mountedRef = React.useRef(true);
-
-    React.useEffect(() => {
-        return () => {
-            mountedRef.current = false;
-            if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        };
-    }, []);
-
-    // Sync with external value changes
-    React.useEffect(() => {
-        try {
-            const currentParsed = text.trim() ? JSON.parse(text) : {};
-            if (JSON.stringify(currentParsed) !== JSON.stringify(value)) {
-                setText(JSON.stringify(value ?? {}, null, 2));
-                setError(null);
-            }
-        } catch {
-            // Keep current text if comparison fails
-        }
-    }, [value]);
-
-    const handleChange = (newText: string) => {
-        setText(newText);
-        setIsPending(true);
-
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-
-        timeoutRef.current = setTimeout(() => {
-            if (!mountedRef.current) return;
-            setIsPending(false);
-
-            if (!newText.trim()) {
-                setError(null);
-                onChange({});
-                return;
-            }
-
-            try {
-                const parsed = JSON.parse(newText);
-                if (typeof parsed !== 'object' || Array.isArray(parsed) || parsed === null) {
-                    setError('Headers must be a JSON object');
-                    return;
-                }
-                setError(null);
-                onChange(parsed);
-            } catch (e) {
-                const err = e as SyntaxError;
-                let message = err.message.replace(/^JSON\.parse: /, '').replace(/^SyntaxError: /, '');
-                const posMatch = message.match(/at position (\d+)/i);
-                if (posMatch) {
-                    const pos = parseInt(posMatch[1], 10);
-                    const lines = newText.substring(0, pos).split('\n');
-                    message = message.replace(/ at position \d+/, '').replace(/ in JSON at position \d+/, '');
-                    setError(`Invalid JSON: ${message} (line ${lines.length}, col ${lines[lines.length - 1].length + 1})`);
-                } else {
-                    setError(`Invalid JSON: ${message}`);
-                }
-            }
-        }, 300);
-    };
-
-    const getBorderClass = () => {
-        if (error) return 'border-red-500 focus:border-red-500';
-        if (isPending) return 'border-amber-400';
-        return '';
-    };
-
-    return (
-        <div className="space-y-1.5">
-            <Label>Headers (JSON)</Label>
-            <Textarea
-                value={text}
-                onChange={(e) => handleChange(e.target.value)}
-                placeholder='{"Authorization": "Bearer token"}'
-                rows={3}
-                className={`font-mono text-sm ${getBorderClass()}`}
-            />
-            {error && (
-                <div className="flex items-start gap-1.5 text-red-600">
-                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs">{error}</p>
-                </div>
-            )}
-        </div>
-    );
-}
-
-export default SourceStep;

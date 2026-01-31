@@ -1,9 +1,3 @@
-/**
- * Export Wizard - Format Step Component
- * Handles output format selection and configuration
- */
-
-import * as React from 'react';
 import {
     Card,
     CardContent,
@@ -18,32 +12,29 @@ import {
     SelectValue,
     Switch,
 } from '@vendure/dashboard';
-import { FEED_TEMPLATES } from './constants';
+import { CSV_DELIMITERS, FILE_ENCODINGS, EXPORT_FORMAT, XML_DEFAULTS, DEFAULT_ENCODING } from '../../../constants';
+import { WizardStepContainer } from '../shared';
+import { SelectableCard, SelectableCardGrid } from '../../shared/selectable-card';
+import { FEED_TEMPLATES, STEP_CONTENT, PLACEHOLDERS } from './constants';
 import type { ExportConfiguration, FormatType } from './types';
 
 interface FormatStepProps {
     config: Partial<ExportConfiguration>;
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
+    errors?: Record<string, string>;
 }
 
-export function FormatStep({ config, updateConfig }: FormatStepProps) {
-    const format = config.format ?? { type: 'csv', options: {} };
+export function FormatStep({ config, updateConfig, errors = {} }: FormatStepProps) {
+    const format = config.format ?? { type: EXPORT_FORMAT.CSV, options: {} };
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6">
-            <div>
-                <h2 className="text-2xl font-semibold mb-2">Output Format</h2>
-                <p className="text-muted-foreground">
-                    Choose the output format and configure options
-                </p>
-            </div>
-
-            {/* Format Templates */}
+        <WizardStepContainer
+            title={STEP_CONTENT.format.title}
+            description={STEP_CONTENT.format.description}
+        >
             <FormatTemplateSelection format={format} updateConfig={updateConfig} />
-
-            {/* Format Options */}
             <FormatOptionsCard format={format} updateConfig={updateConfig} />
-        </div>
+        </WizardStepContainer>
     );
 }
 
@@ -54,20 +45,18 @@ interface FormatTemplateSelectionProps {
 
 function FormatTemplateSelection({ format, updateConfig }: FormatTemplateSelectionProps) {
     return (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <SelectableCardGrid columns={3}>
             {FEED_TEMPLATES.map(template => {
-                const Icon = template.icon;
                 const isSelected = format.type === template.id ||
                     (template.id.startsWith('custom-') && format.type === template.format);
 
                 return (
-                    <button
+                    <SelectableCard
                         key={template.id}
-                        className={`p-4 border rounded-lg text-left transition-all ${
-                            isSelected
-                                ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                                : 'hover:border-primary/50'
-                        }`}
+                        icon={template.icon}
+                        title={template.name}
+                        description={template.description}
+                        selected={isSelected}
                         onClick={() => updateConfig({
                             format: {
                                 type: template.id as FormatType,
@@ -77,14 +66,10 @@ function FormatTemplateSelection({ format, updateConfig }: FormatTemplateSelecti
                                 },
                             },
                         })}
-                    >
-                        <Icon className={`w-8 h-8 mb-2 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
-                        <div className="font-medium">{template.name}</div>
-                        <div className="text-xs text-muted-foreground">{template.description}</div>
-                    </button>
+                    />
                 );
             })}
-        </div>
+        </SelectableCardGrid>
     );
 }
 
@@ -100,15 +85,15 @@ function FormatOptionsCard({ format, updateConfig }: FormatOptionsCardProps) {
                 <CardTitle>Format Options</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-                {(format.type === 'csv' || format.type === 'meta-catalog') && (
+                {(format.type === EXPORT_FORMAT.CSV || format.type === EXPORT_FORMAT.META_CATALOG) && (
                     <CsvOptions format={format} updateConfig={updateConfig} />
                 )}
 
-                {format.type === 'json' && (
+                {format.type === EXPORT_FORMAT.JSON && (
                     <JsonOptions format={format} updateConfig={updateConfig} />
                 )}
 
-                {(format.type === 'xml' || format.type === 'google-merchant' || format.type === 'amazon-feed') && (
+                {(format.type === EXPORT_FORMAT.XML || format.type === EXPORT_FORMAT.GOOGLE_MERCHANT || format.type === EXPORT_FORMAT.AMAZON_FEED) && (
                     <XmlOptions format={format} updateConfig={updateConfig} />
                 )}
             </CardContent>
@@ -136,10 +121,11 @@ function CsvOptions({ format, updateConfig }: OptionsProps) {
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value=",">Comma (,)</SelectItem>
-                        <SelectItem value=";">Semicolon (;)</SelectItem>
-                        <SelectItem value="\t">Tab</SelectItem>
-                        <SelectItem value="|">Pipe (|)</SelectItem>
+                        {CSV_DELIMITERS.map(delimiter => (
+                            <SelectItem key={delimiter.value} value={delimiter.value}>
+                                {delimiter.label}
+                            </SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>
@@ -147,7 +133,7 @@ function CsvOptions({ format, updateConfig }: OptionsProps) {
             <div>
                 <Label>Encoding</Label>
                 <Select
-                    value={format.options.encoding ?? 'utf-8'}
+                    value={format.options.encoding ?? DEFAULT_ENCODING}
                     onValueChange={encoding => updateConfig({
                         format: { ...format, options: { ...format.options, encoding } },
                     })}
@@ -156,10 +142,11 @@ function CsvOptions({ format, updateConfig }: OptionsProps) {
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="utf-8">UTF-8</SelectItem>
-                        <SelectItem value="utf-16">UTF-16</SelectItem>
-                        <SelectItem value="iso-8859-1">ISO-8859-1</SelectItem>
-                        <SelectItem value="windows-1252">Windows-1252</SelectItem>
+                        {FILE_ENCODINGS.map(encoding => (
+                            <SelectItem key={encoding.value} value={encoding.value}>
+                                {encoding.label}
+                            </SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>
@@ -207,7 +194,7 @@ function JsonOptions({ format, updateConfig }: OptionsProps) {
                     onChange={e => updateConfig({
                         format: { ...format, options: { ...format.options, rootElement: e.target.value } },
                     })}
-                    placeholder="data"
+                    placeholder={PLACEHOLDERS.jsonRoot}
                 />
             </div>
         </div>
@@ -220,7 +207,7 @@ function XmlOptions({ format, updateConfig }: OptionsProps) {
             <div>
                 <Label>Root Element</Label>
                 <Input
-                    value={format.options.xmlRoot ?? 'feed'}
+                    value={format.options.xmlRoot ?? XML_DEFAULTS.ROOT_ELEMENT}
                     onChange={e => updateConfig({
                         format: { ...format, options: { ...format.options, xmlRoot: e.target.value } },
                     })}
@@ -230,7 +217,7 @@ function XmlOptions({ format, updateConfig }: OptionsProps) {
             <div>
                 <Label>Item Element</Label>
                 <Input
-                    value={format.options.xmlItem ?? 'item'}
+                    value={format.options.xmlItem ?? XML_DEFAULTS.ITEM_ELEMENT}
                     onChange={e => updateConfig({
                         format: { ...format, options: { ...format.options, xmlItem: e.target.value } },
                     })}
@@ -239,5 +226,3 @@ function XmlOptions({ format, updateConfig }: OptionsProps) {
         </div>
     );
 }
-
-export default FormatStep;

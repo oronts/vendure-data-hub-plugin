@@ -1,21 +1,9 @@
-/**
- * Export Wizard - Main Component
- * Multi-step wizard for configuring data exports
- */
-
 import * as React from 'react';
-import { Button } from '@vendure/dashboard';
-import {
-    Download,
-    ChevronRight,
-    ChevronLeft,
-    X,
-    Check,
-    AlertCircle,
-} from 'lucide-react';
+import { Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { VENDURE_ENTITY_SCHEMAS } from '../../../../vendure-schemas/vendure-entity-schemas';
-import { WIZARD_STEPS } from './constants';
+import { WIZARD_STEPS, EXPORT_STEP_ID } from './constants';
+import { QUERY_LIMITS, BATCH_SIZES, UI_DEFAULTS, EXPORT_DEFAULTS, TRIGGER_TYPES, EXPORT_FORMAT, COMPRESSION_TYPE, TOAST_WIZARD } from '../../../constants';
 import type { ExportWizardProps, ExportConfiguration, ExportField } from './types';
 import { SourceStep } from './SourceStep';
 import { FieldsStep } from './FieldsStep';
@@ -24,65 +12,75 @@ import { DestinationStep } from './DestinationStep';
 import { TriggerStep } from './TriggerStep';
 import { ReviewStep } from './ReviewStep';
 import { validateExportWizardStep } from '../../../utils/form-validation';
+import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../shared';
 
 export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWizardProps) {
     const [currentStep, setCurrentStep] = React.useState(0);
     const [config, setConfig] = React.useState<Partial<ExportConfiguration>>(initialConfig ?? {
         name: '',
         sourceEntity: '',
-        sourceQuery: { type: 'all', limit: 10000, orderBy: 'id', orderDirection: 'ASC' },
+        sourceQuery: { type: 'all', limit: QUERY_LIMITS.EXPORT_DEFAULT, orderBy: 'id', orderDirection: 'ASC' },
         filters: [],
         fields: [],
-        format: { type: 'csv', options: { delimiter: ',', includeHeaders: true } },
-        destination: { type: 'file', fileConfig: { directory: '/exports', filename: 'export.csv' } },
-        trigger: { type: 'manual' },
+        format: { type: EXPORT_FORMAT.CSV, options: { delimiter: ',', includeHeaders: true } },
+        destination: { type: 'file', fileConfig: { directory: EXPORT_DEFAULTS.DIRECTORY, filename: EXPORT_DEFAULTS.FILENAME } },
+        trigger: { type: TRIGGER_TYPES.MANUAL },
         options: {
-            batchSize: 1000,
+            batchSize: BATCH_SIZES.EXPORT_DEFAULT,
             includeMetadata: false,
-            compression: 'none',
+            compression: COMPRESSION_TYPE.NONE,
             notifyOnComplete: true,
             retryOnFailure: true,
-            maxRetries: 3,
+            maxRetries: UI_DEFAULTS.DEFAULT_MAX_RETRIES,
         },
     });
 
-    // Validation state
     const [stepErrors, setStepErrors] = React.useState<Record<string, string>>({});
     const [attemptedNext, setAttemptedNext] = React.useState(false);
 
-    const updateConfig = (updates: Partial<ExportConfiguration>) => {
+    const updateConfig = React.useCallback((updates: Partial<ExportConfiguration>) => {
         setConfig(prev => ({ ...prev, ...updates }));
-        // Clear errors when config changes
         setStepErrors({});
         setAttemptedNext(false);
-    };
+    }, []);
 
-    // Validation for current step
+    // Memoize validation based on specific config properties to prevent unnecessary recalculations
+    const configSignature = React.useMemo(
+        () => JSON.stringify([config.sourceEntity, config.fields?.length, config.format?.type, config.destination?.type, config.name]),
+        [config.sourceEntity, config.fields?.length, config.format?.type, config.destination?.type, config.name],
+    );
+
     const validateCurrentStep = React.useCallback(() => {
         const stepId = WIZARD_STEPS[currentStep].id;
         const validation = validateExportWizardStep(stepId, config);
         return validation;
-    }, [currentStep, config]);
+    }, [currentStep, configSignature]);
 
-    const { canProceed, validationErrors } = React.useMemo(() => {
+    const { canProceed } = React.useMemo(() => {
         const validation = validateCurrentStep();
         return {
             canProceed: validation.isValid,
-            validationErrors: validation.errorsByField,
         };
     }, [validateCurrentStep]);
 
-    // Auto-populate fields when source entity changes
+    // Track previous sourceEntity to detect changes and avoid re-running on same value
+    const prevSourceEntityRef = React.useRef<string | undefined>(undefined);
+
     React.useEffect(() => {
-        if (config.sourceEntity) {
+        // Only run when sourceEntity actually changes, not on every render
+        if (config.sourceEntity && config.sourceEntity !== prevSourceEntityRef.current) {
+            prevSourceEntityRef.current = config.sourceEntity;
             const schema = VENDURE_ENTITY_SCHEMAS[config.sourceEntity];
             if (schema) {
-                const fields: ExportField[] = Object.entries(schema.fields).map(([name, field]) => ({
+                const fields: ExportField[] = Object.entries(schema.fields).map(([name]) => ({
                     sourceField: name,
                     outputName: name,
                     include: true,
                 }));
-                updateConfig({ fields });
+                // Use setConfig directly to avoid infinite loop from updateConfig in deps
+                setConfig(prev => ({ ...prev, fields }));
+                setStepErrors({});
+                setAttemptedNext(false);
             }
         }
     }, [config.sourceEntity]);
@@ -93,7 +91,6 @@ export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWiza
 
         if (!validation.isValid) {
             setStepErrors(validation.errorsByField);
-            // Show first error as toast
             const firstError = validation.errors[0];
             if (firstError) {
                 toast.error(firstError.message);
@@ -118,7 +115,7 @@ export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWiza
 
     const handleComplete = () => {
         if (!config.name) {
-            toast.error('Please provide a name for the export configuration');
+            toast.error(TOAST_WIZARD.EXPORT_NAME_REQUIRED);
             return;
         }
         onComplete(config as ExportConfiguration);
@@ -126,58 +123,40 @@ export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWiza
 
     return (
         <div className="flex flex-col h-full">
-            {/* Progress Bar */}
             <WizardProgressBar
                 steps={WIZARD_STEPS}
                 currentStep={currentStep}
                 onStepClick={setCurrentStep}
             />
 
-            {/* Step Content */}
             <div className="flex-1 overflow-auto p-6">
-                {/* Validation Error Summary */}
-                {attemptedNext && Object.keys(stepErrors).length > 0 && (
-                    <div className="mb-4 p-3 rounded-lg border border-destructive/50 bg-destructive/10">
-                        <div className="flex items-start gap-2">
-                            <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
-                            <div>
-                                <div className="text-sm font-medium text-destructive mb-1">Please fix the following errors:</div>
-                                <ul className="text-sm text-destructive/90 list-disc pl-4">
-                                    {Object.entries(stepErrors).map(([field, error]) => (
-                                        <li key={field}>{error}</li>
-                                    ))}
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <ValidationErrorDisplay errors={stepErrors} show={attemptedNext} />
 
-                {WIZARD_STEPS[currentStep].id === 'source' && (
+                {WIZARD_STEPS[currentStep].id === EXPORT_STEP_ID.SOURCE && (
                     <SourceStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === 'fields' && (
+                {WIZARD_STEPS[currentStep].id === EXPORT_STEP_ID.FIELDS && (
                     <FieldsStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === 'format' && (
+                {WIZARD_STEPS[currentStep].id === EXPORT_STEP_ID.FORMAT && (
                     <FormatStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === 'destination' && (
+                {WIZARD_STEPS[currentStep].id === EXPORT_STEP_ID.DESTINATION && (
                     <DestinationStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === 'trigger' && (
+                {WIZARD_STEPS[currentStep].id === EXPORT_STEP_ID.TRIGGER && (
                     <TriggerStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === 'review' && (
+                {WIZARD_STEPS[currentStep].id === EXPORT_STEP_ID.REVIEW && (
                     <ReviewStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
                 )}
             </div>
 
-            {/* Footer */}
             <WizardFooter
                 currentStep={currentStep}
                 totalSteps={WIZARD_STEPS.length}
@@ -186,103 +165,9 @@ export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWiza
                 onNext={handleNext}
                 onComplete={handleComplete}
                 onCancel={onCancel}
+                completeLabel="Create Export"
+                completeIcon={Download}
             />
         </div>
     );
 }
-
-interface WizardProgressBarProps {
-    steps: typeof WIZARD_STEPS;
-    currentStep: number;
-    onStepClick: (step: number) => void;
-}
-
-function WizardProgressBar({ steps, currentStep, onStepClick }: WizardProgressBarProps) {
-    return (
-        <div className="flex items-center gap-2 p-4 border-b bg-muted/30">
-            {steps.map((step, index) => {
-                const Icon = step.icon;
-                const isActive = index === currentStep;
-                const isCompleted = index < currentStep;
-
-                return (
-                    <React.Fragment key={step.id}>
-                        <button
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                                isActive
-                                    ? 'bg-primary text-primary-foreground'
-                                    : isCompleted
-                                        ? 'bg-green-100 text-green-700'
-                                        : 'text-muted-foreground hover:bg-muted'
-                            }`}
-                            onClick={() => index < currentStep && onStepClick(index)}
-                            disabled={index > currentStep}
-                        >
-                            {isCompleted ? (
-                                <Check className="w-4 h-4" />
-                            ) : (
-                                <Icon className="w-4 h-4" />
-                            )}
-                            <span className="text-sm font-medium hidden lg:inline">{step.label}</span>
-                        </button>
-                        {index < steps.length - 1 && (
-                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                        )}
-                    </React.Fragment>
-                );
-            })}
-        </div>
-    );
-}
-
-interface WizardFooterProps {
-    currentStep: number;
-    totalSteps: number;
-    canProceed: boolean;
-    onBack: () => void;
-    onNext: () => void;
-    onComplete: () => void;
-    onCancel: () => void;
-}
-
-function WizardFooter({
-    currentStep,
-    totalSteps,
-    canProceed,
-    onBack,
-    onNext,
-    onComplete,
-    onCancel,
-}: WizardFooterProps) {
-    return (
-        <div className="flex items-center justify-between p-4 border-t bg-muted/30">
-            <Button variant="outline" onClick={onCancel}>
-                <X className="w-4 h-4 mr-2" />
-                Cancel
-            </Button>
-
-            <div className="flex items-center gap-2">
-                {currentStep > 0 && (
-                    <Button variant="outline" onClick={onBack}>
-                        <ChevronLeft className="w-4 h-4 mr-2" />
-                        Back
-                    </Button>
-                )}
-
-                {currentStep < totalSteps - 1 ? (
-                    <Button onClick={onNext} disabled={!canProceed}>
-                        Next
-                        <ChevronRight className="w-4 h-4 ml-2" />
-                    </Button>
-                ) : (
-                    <Button onClick={onComplete} disabled={!canProceed}>
-                        <Download className="w-4 h-4 mr-2" />
-                        Create Export
-                    </Button>
-                )}
-            </div>
-        </div>
-    );
-}
-
-export default ExportWizard;

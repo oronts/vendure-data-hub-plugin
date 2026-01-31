@@ -1,17 +1,4 @@
-/**
- * Import Wizard - Review Step Component
- * Shows a summary and allows final review before creating import
- */
-
-import * as React from 'react';
 import {
-    Card,
-    CardContent,
-    CardHeader,
-    CardTitle,
-    Input,
-    Label,
-    Textarea,
     Badge,
     Accordion,
     AccordionContent,
@@ -26,8 +13,10 @@ import {
     ArrowRight,
 } from 'lucide-react';
 import { VENDURE_ENTITY_LIST } from '../../../../vendure-schemas/vendure-entity-schemas';
+import { WizardStepContainer } from '../shared';
+import { ConfigurationNameCard, SummaryCard, SummaryCardGrid } from '../../shared/wizard';
+import { STEP_CONTENT, PLACEHOLDERS } from './constants';
 import type { ImportConfiguration } from './types';
-import { FieldError } from '../../../components/common/validation-feedback';
 
 interface ReviewStepProps {
     config: Partial<ImportConfiguration>;
@@ -40,60 +29,30 @@ export function ReviewStep({ config, updateConfig, errors = {} }: ReviewStepProp
     const requiredFieldsCount = config.mappings?.filter(m => m.required).length ?? 0;
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6">
-            <div>
-                <h2 className="text-2xl font-semibold mb-2">Review & Create</h2>
-                <p className="text-muted-foreground">
-                    Review your import configuration before creating
-                </p>
-            </div>
-
-            {/* Name & Description */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Import Configuration</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div>
-                        <Label>Name *</Label>
-                        <Input
-                            value={config.name ?? ''}
-                            onChange={e => updateConfig({ name: e.target.value })}
-                            placeholder="My Product Import"
-                            className={errors.name ? 'border-destructive focus-visible:ring-destructive' : ''}
-                        />
-                        <FieldError error={errors.name} showImmediately />
-                        {!errors.name && (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                                A descriptive name to identify this import configuration
-                            </p>
-                        )}
-                    </div>
-                    <div>
-                        <Label>Description</Label>
-                        <Textarea
-                            value={config.description ?? ''}
-                            onChange={e => updateConfig({ description: e.target.value })}
-                            placeholder="Optional description..."
-                            rows={2}
-                        />
-                    </div>
-                </CardContent>
-            </Card>
-
-            {/* Summary */}
+        <WizardStepContainer
+            title={STEP_CONTENT.review.title}
+            description={STEP_CONTENT.review.description}
+        >
+            <ConfigurationNameCard
+                title={STEP_CONTENT.review.cardTitle}
+                name={config.name ?? ''}
+                description={config.description ?? ''}
+                onNameChange={name => updateConfig({ name })}
+                onDescriptionChange={description => updateConfig({ description })}
+                namePlaceholder={PLACEHOLDERS.configName}
+                nameError={errors.name}
+                nameHelperText="A descriptive name to identify this import configuration"
+            />
             <SummaryCards
                 config={config}
                 mappedFieldsCount={mappedFieldsCount}
                 requiredFieldsCount={requiredFieldsCount}
             />
-
-            {/* Detailed Configuration */}
             <DetailedConfigAccordion
                 config={config}
                 mappedFieldsCount={mappedFieldsCount}
             />
-        </div>
+        </WizardStepContainer>
     );
 }
 
@@ -105,47 +64,28 @@ interface SummaryCardsProps {
 
 function SummaryCards({ config, mappedFieldsCount, requiredFieldsCount }: SummaryCardsProps) {
     return (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Card>
-                <CardContent className="p-4 text-center">
-                    <Database className="w-8 h-8 mx-auto mb-2 text-primary" />
-                    <div className="font-medium">Source</div>
-                    <div className="text-sm text-muted-foreground capitalize">
-                        {config.source?.type}
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardContent className="p-4 text-center">
-                    <Table className="w-8 h-8 mx-auto mb-2 text-primary" />
-                    <div className="font-medium">Target</div>
-                    <div className="text-sm text-muted-foreground">
-                        {VENDURE_ENTITY_LIST.find(e => e.code === config.targetEntity)?.name}
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardContent className="p-4 text-center">
-                    <Columns className="w-8 h-8 mx-auto mb-2 text-primary" />
-                    <div className="font-medium">Mappings</div>
-                    <div className="text-sm text-muted-foreground">
-                        {mappedFieldsCount} fields ({requiredFieldsCount} required)
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardContent className="p-4 text-center">
-                    <Clock className="w-8 h-8 mx-auto mb-2 text-primary" />
-                    <div className="font-medium">Trigger</div>
-                    <div className="text-sm text-muted-foreground capitalize">
-                        {config.trigger?.type}
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
+        <SummaryCardGrid columns={4}>
+            <SummaryCard
+                icon={Database}
+                label="Source"
+                value={<span className="capitalize">{config.source?.type}</span>}
+            />
+            <SummaryCard
+                icon={Table}
+                label="Target"
+                value={VENDURE_ENTITY_LIST.find(e => e.code === config.targetEntity)?.name}
+            />
+            <SummaryCard
+                icon={Columns}
+                label="Mappings"
+                value={`${mappedFieldsCount} fields (${requiredFieldsCount} required)`}
+            />
+            <SummaryCard
+                icon={Clock}
+                label="Trigger"
+                value={<span className="capitalize">{config.trigger?.type}</span>}
+            />
+        </SummaryCardGrid>
     );
 }
 
@@ -170,8 +110,8 @@ function DetailedConfigAccordion({ config, mappedFieldsCount }: DetailedConfigAc
                 <AccordionTrigger>Field Mappings ({mappedFieldsCount})</AccordionTrigger>
                 <AccordionContent>
                     <div className="space-y-2">
-                        {config.mappings?.filter(m => m.sourceField && m.targetField).map((m, i) => (
-                            <div key={i} className="flex items-center gap-3 p-2 bg-muted rounded">
+                        {config.mappings?.filter(m => m.sourceField && m.targetField).map(m => (
+                            <div key={m.targetField} className="flex items-center gap-3 p-2 bg-muted rounded">
                                 <code className="text-xs">{m.sourceField}</code>
                                 <ArrowRight className="w-4 h-4" />
                                 <code className="text-xs">{m.targetField}</code>
@@ -226,5 +166,3 @@ function DetailedConfigAccordion({ config, mappedFieldsCount }: DetailedConfigAc
         </Accordion>
     );
 }
-
-export default ReviewStep;

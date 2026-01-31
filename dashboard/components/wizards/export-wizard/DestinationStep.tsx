@@ -1,9 +1,3 @@
-/**
- * Export Wizard - Destination Step Component
- * Handles destination configuration
- */
-
-import * as React from 'react';
 import {
     Button,
     Card,
@@ -17,7 +11,6 @@ import {
     SelectItem,
     SelectTrigger,
     SelectValue,
-    Textarea,
 } from '@vendure/dashboard';
 import {
     FolderOpen,
@@ -26,51 +19,61 @@ import {
     Cloud,
     HardDrive,
     Play,
-    AlertCircle,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { WizardStepContainer } from '../shared';
+import { SelectableCard, SelectableCardGrid } from '../../shared/selectable-card';
+import { JsonTextarea } from '../../common/json-textarea';
+import { STEP_CONTENT, PLACEHOLDERS } from './constants';
 import type { ExportConfiguration, DestinationType, HttpMethod, HttpAuthType } from './types';
+import {
+    EXPORT_DESTINATION_TYPES,
+    HTTP_METHODS,
+    HTTP_AUTH_TYPES,
+    EXPORT_DEFAULTS,
+    UI_DEFAULTS,
+    SENTINEL_VALUES,
+    DESTINATION_TYPE,
+} from '../../../constants';
 
 interface DestinationStepProps {
     config: Partial<ExportConfiguration>;
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
+    errors?: Record<string, string>;
 }
 
-const DESTINATION_TYPES = [
-    { id: 'file', label: 'Local File', icon: FolderOpen, desc: 'Save to local filesystem' },
-    { id: 'sftp', label: 'SFTP Upload', icon: Server, desc: 'Upload via SFTP' },
-    { id: 'http', label: 'HTTP POST', icon: Send, desc: 'Send to HTTP endpoint' },
-    { id: 's3', label: 'Amazon S3', icon: Cloud, desc: 'Upload to S3 bucket' },
-    { id: 'asset', label: 'Vendure Asset', icon: HardDrive, desc: 'Store as Vendure asset' },
-];
+const DESTINATION_TYPE_ICONS: Record<string, LucideIcon> = {
+    download: FolderOpen,
+    file: FolderOpen,
+    sftp: Server,
+    http: Send,
+    s3: Cloud,
+    gcs: Cloud,
+    asset: HardDrive,
+};
 
-export function DestinationStep({ config, updateConfig }: DestinationStepProps) {
+export function DestinationStep({ config, updateConfig, errors = {} }: DestinationStepProps) {
     const destination = config.destination ?? { type: 'file' };
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6">
-            <div>
-                <h2 className="text-2xl font-semibold mb-2">Destination</h2>
-                <p className="text-muted-foreground">
-                    Choose where to deliver the exported data
-                </p>
-            </div>
-
-            {/* Destination Type Selection */}
+        <WizardStepContainer
+            title={STEP_CONTENT.destination.title}
+            description={STEP_CONTENT.destination.description}
+        >
             <DestinationTypeSelection destination={destination} updateConfig={updateConfig} />
 
-            {/* Destination Configuration */}
-            {destination.type === 'file' && (
+            {destination.type === DESTINATION_TYPE.FILE && (
                 <FileDestinationConfig destination={destination} updateConfig={updateConfig} />
             )}
 
-            {destination.type === 'sftp' && (
+            {destination.type === DESTINATION_TYPE.SFTP && (
                 <SftpDestinationConfig destination={destination} updateConfig={updateConfig} />
             )}
 
-            {destination.type === 'http' && (
+            {destination.type === DESTINATION_TYPE.HTTP && (
                 <HttpDestinationConfig destination={destination} updateConfig={updateConfig} />
             )}
-        </div>
+        </WizardStepContainer>
     );
 }
 
@@ -81,27 +84,17 @@ interface DestinationTypeSelectionProps {
 
 function DestinationTypeSelection({ destination, updateConfig }: DestinationTypeSelectionProps) {
     return (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {DESTINATION_TYPES.map(type => {
-                const Icon = type.icon;
-                const isSelected = destination.type === type.id;
-
-                return (
-                    <button
-                        key={type.id}
-                        className={`p-4 border rounded-lg text-center transition-all ${
-                            isSelected
-                                ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                                : 'hover:border-primary/50'
-                        }`}
-                        onClick={() => updateConfig({ destination: { type: type.id as DestinationType } })}
-                    >
-                        <Icon className={`w-8 h-8 mx-auto mb-2 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
-                        <div className="font-medium text-sm">{type.label}</div>
-                    </button>
-                );
-            })}
-        </div>
+        <SelectableCardGrid columns={3}>
+            {EXPORT_DESTINATION_TYPES.map(type => (
+                <SelectableCard
+                    key={type.value}
+                    icon={DESTINATION_TYPE_ICONS[type.value] ?? FolderOpen}
+                    title={type.label}
+                    selected={destination.type === type.value}
+                    onClick={() => updateConfig({ destination: { type: type.value as DestinationType } })}
+                />
+            ))}
+        </SelectableCardGrid>
     );
 }
 
@@ -120,14 +113,14 @@ function FileDestinationConfig({ destination, updateConfig }: DestinationConfigP
                 <div>
                     <Label>Directory</Label>
                     <Input
-                        value={destination.fileConfig?.directory ?? '/exports'}
+                        value={destination.fileConfig?.directory ?? EXPORT_DEFAULTS.DIRECTORY}
                         onChange={e => updateConfig({
                             destination: {
                                 ...destination,
-                                fileConfig: { ...destination.fileConfig, directory: e.target.value, filename: destination.fileConfig?.filename ?? 'export.csv' },
+                                fileConfig: { ...destination.fileConfig, directory: e.target.value, filename: destination.fileConfig?.filename ?? EXPORT_DEFAULTS.FILENAME },
                             },
                         })}
-                        placeholder="/exports"
+                        placeholder={EXPORT_DEFAULTS.DIRECTORY}
                     />
                 </div>
 
@@ -141,7 +134,7 @@ function FileDestinationConfig({ destination, updateConfig }: DestinationConfigP
                                 fileConfig: { ...destination.fileConfig!, filename: e.target.value },
                             },
                         })}
-                        placeholder="export-{date}.csv"
+                        placeholder={PLACEHOLDERS.filename}
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                         Available placeholders: {'{date}'}, {'{datetime}'}, {'{entity}'}, {'{timestamp}'}
@@ -167,21 +160,21 @@ function SftpDestinationConfig({ destination, updateConfig }: DestinationConfigP
                             onChange={e => updateConfig({
                                 destination: {
                                     ...destination,
-                                    sftpConfig: { ...destination.sftpConfig, host: e.target.value, port: destination.sftpConfig?.port ?? 22, username: destination.sftpConfig?.username ?? '', remotePath: destination.sftpConfig?.remotePath ?? '/' },
+                                    sftpConfig: { ...destination.sftpConfig, host: e.target.value, port: destination.sftpConfig?.port ?? UI_DEFAULTS.DEFAULT_SFTP_PORT, username: destination.sftpConfig?.username ?? '', remotePath: destination.sftpConfig?.remotePath ?? EXPORT_DEFAULTS.SFTP_REMOTE_PATH },
                                 },
                             })}
-                            placeholder="sftp.example.com"
+                            placeholder={PLACEHOLDERS.sftpHost}
                         />
                     </div>
                     <div>
                         <Label>Port</Label>
                         <Input
                             type="number"
-                            value={destination.sftpConfig?.port ?? 22}
+                            value={destination.sftpConfig?.port ?? UI_DEFAULTS.DEFAULT_SFTP_PORT}
                             onChange={e => updateConfig({
                                 destination: {
                                     ...destination,
-                                    sftpConfig: { ...destination.sftpConfig!, port: parseInt(e.target.value) || 22 },
+                                    sftpConfig: { ...destination.sftpConfig!, port: parseInt(e.target.value) || UI_DEFAULTS.DEFAULT_SFTP_PORT },
                                 },
                             })}
                         />
@@ -204,11 +197,11 @@ function SftpDestinationConfig({ destination, updateConfig }: DestinationConfigP
                     <div>
                         <Label>Password (Secret)</Label>
                         <Select
-                            value={destination.sftpConfig?.passwordSecretId ?? '__none__'}
+                            value={destination.sftpConfig?.passwordSecretId ?? SENTINEL_VALUES.NONE}
                             onValueChange={passwordSecretId => updateConfig({
                                 destination: {
                                     ...destination,
-                                    sftpConfig: { ...destination.sftpConfig!, passwordSecretId: passwordSecretId === '__none__' ? undefined : passwordSecretId },
+                                    sftpConfig: { ...destination.sftpConfig!, passwordSecretId: passwordSecretId === SENTINEL_VALUES.NONE ? undefined : passwordSecretId },
                                 },
                             })}
                         >
@@ -216,7 +209,7 @@ function SftpDestinationConfig({ destination, updateConfig }: DestinationConfigP
                                 <SelectValue placeholder="Select secret" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="__none__">-- Select secret --</SelectItem>
+                                <SelectItem value={SENTINEL_VALUES.NONE}>-- Select secret --</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -225,14 +218,14 @@ function SftpDestinationConfig({ destination, updateConfig }: DestinationConfigP
                 <div>
                     <Label>Remote Path</Label>
                     <Input
-                        value={destination.sftpConfig?.remotePath ?? '/'}
+                        value={destination.sftpConfig?.remotePath ?? EXPORT_DEFAULTS.SFTP_REMOTE_PATH}
                         onChange={e => updateConfig({
                             destination: {
                                 ...destination,
                                 sftpConfig: { ...destination.sftpConfig!, remotePath: e.target.value },
                             },
                         })}
-                        placeholder="/uploads/feeds"
+                        placeholder={PLACEHOLDERS.remotePath}
                     />
                 </div>
 
@@ -256,7 +249,7 @@ function HttpDestinationConfig({ destination, updateConfig }: DestinationConfigP
                     <div>
                         <Label>Method</Label>
                         <Select
-                            value={destination.httpConfig?.method ?? 'POST'}
+                            value={destination.httpConfig?.method ?? EXPORT_DEFAULTS.HTTP_METHOD}
                             onValueChange={method => updateConfig({
                                 destination: {
                                     ...destination,
@@ -268,8 +261,9 @@ function HttpDestinationConfig({ destination, updateConfig }: DestinationConfigP
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="POST">POST</SelectItem>
-                                <SelectItem value="PUT">PUT</SelectItem>
+                                {HTTP_METHODS.map(method => (
+                                    <SelectItem key={method.value} value={method.value}>{method.label}</SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -283,7 +277,7 @@ function HttpDestinationConfig({ destination, updateConfig }: DestinationConfigP
                                     httpConfig: { ...destination.httpConfig!, url: e.target.value },
                                 },
                             })}
-                            placeholder="https://api.example.com/import"
+                            placeholder={PLACEHOLDERS.httpUrl}
                         />
                     </div>
                 </div>
@@ -291,7 +285,7 @@ function HttpDestinationConfig({ destination, updateConfig }: DestinationConfigP
                 <div>
                     <Label>Authentication</Label>
                     <Select
-                        value={destination.httpConfig?.authType ?? 'none'}
+                        value={destination.httpConfig?.authType ?? EXPORT_DEFAULTS.AUTH_TYPE}
                         onValueChange={authType => updateConfig({
                             destination: {
                                 ...destination,
@@ -303,127 +297,29 @@ function HttpDestinationConfig({ destination, updateConfig }: DestinationConfigP
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="none">No Authentication</SelectItem>
-                            <SelectItem value="basic">Basic Auth</SelectItem>
-                            <SelectItem value="bearer">Bearer Token</SelectItem>
-                            <SelectItem value="api-key">API Key</SelectItem>
+                            {HTTP_AUTH_TYPES.map(authType => (
+                                <SelectItem key={authType.value} value={authType.value}>{authType.label}</SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
 
-                <JsonHeadersField
+                <JsonTextarea
+                    label="Headers (JSON)"
                     value={destination.httpConfig?.headers ?? {}}
                     onChange={(headers) => updateConfig({
                         destination: {
                             ...destination,
-                            httpConfig: { ...destination.httpConfig!, headers },
+                            httpConfig: { ...destination.httpConfig!, headers: headers as Record<string, string> },
                         },
                     })}
+                    placeholder='{"Content-Type": "application/json"}'
+                    rows={3}
+                    expectedType="object"
+                    allowEmpty={true}
+                    showStatus={false}
                 />
             </CardContent>
         </Card>
     );
 }
-
-/**
- * JSON Headers Field with debounced validation
- */
-interface JsonHeadersFieldProps {
-    value: Record<string, string>;
-    onChange: (headers: Record<string, string>) => void;
-}
-
-function JsonHeadersField({ value, onChange }: JsonHeadersFieldProps) {
-    const [text, setText] = React.useState(() => JSON.stringify(value ?? {}, null, 2));
-    const [error, setError] = React.useState<string | null>(null);
-    const [isPending, setIsPending] = React.useState(false);
-    const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-    const mountedRef = React.useRef(true);
-
-    React.useEffect(() => {
-        return () => {
-            mountedRef.current = false;
-            if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        };
-    }, []);
-
-    // Sync with external value changes
-    React.useEffect(() => {
-        try {
-            const currentParsed = text.trim() ? JSON.parse(text) : {};
-            if (JSON.stringify(currentParsed) !== JSON.stringify(value)) {
-                setText(JSON.stringify(value ?? {}, null, 2));
-                setError(null);
-            }
-        } catch {
-            // Keep current text if comparison fails
-        }
-    }, [value]);
-
-    const handleChange = (newText: string) => {
-        setText(newText);
-        setIsPending(true);
-
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-
-        timeoutRef.current = setTimeout(() => {
-            if (!mountedRef.current) return;
-            setIsPending(false);
-
-            if (!newText.trim()) {
-                setError(null);
-                onChange({});
-                return;
-            }
-
-            try {
-                const parsed = JSON.parse(newText);
-                if (typeof parsed !== 'object' || Array.isArray(parsed) || parsed === null) {
-                    setError('Headers must be a JSON object');
-                    return;
-                }
-                setError(null);
-                onChange(parsed);
-            } catch (e) {
-                const err = e as SyntaxError;
-                let message = err.message.replace(/^JSON\.parse: /, '').replace(/^SyntaxError: /, '');
-                const posMatch = message.match(/at position (\d+)/i);
-                if (posMatch) {
-                    const pos = parseInt(posMatch[1], 10);
-                    const lines = newText.substring(0, pos).split('\n');
-                    message = message.replace(/ at position \d+/, '').replace(/ in JSON at position \d+/, '');
-                    setError(`Invalid JSON: ${message} (line ${lines.length}, col ${lines[lines.length - 1].length + 1})`);
-                } else {
-                    setError(`Invalid JSON: ${message}`);
-                }
-            }
-        }, 300);
-    };
-
-    const getBorderClass = () => {
-        if (error) return 'border-red-500 focus:border-red-500';
-        if (isPending) return 'border-amber-400';
-        return '';
-    };
-
-    return (
-        <div className="space-y-1.5">
-            <Label>Headers (JSON)</Label>
-            <Textarea
-                value={text}
-                onChange={(e) => handleChange(e.target.value)}
-                placeholder='{"Content-Type": "application/json"}'
-                rows={3}
-                className={`font-mono text-sm ${getBorderClass()}`}
-            />
-            {error && (
-                <div className="flex items-start gap-1.5 text-red-600">
-                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                    <p className="text-xs">{error}</p>
-                </div>
-            )}
-        </div>
-    );
-}
-
-export default DestinationStep;

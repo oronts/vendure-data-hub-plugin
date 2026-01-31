@@ -1,11 +1,4 @@
-/**
- * Export Wizard - Trigger Step Component
- * Handles trigger, schedule, and options configuration
- */
-
-import * as React from 'react';
 import {
-    Button,
     Card,
     CardContent,
     CardHeader,
@@ -20,117 +13,80 @@ import {
     SelectValue,
     Switch,
 } from '@vendure/dashboard';
-import {
-    Play,
-    Clock,
-    Zap,
-    Webhook,
-} from 'lucide-react';
-import { SCHEDULE_PRESETS } from './constants';
+import { EXPORT_WIZARD_TRIGGERS, TRIGGER_TYPES } from '../../../constants/triggers';
+import { UI_DEFAULTS } from '../../../constants/editor';
+import { COMPRESSION_OPTIONS, COMPRESSION_TYPE } from '../../../constants/wizard-options';
+import { WizardStepContainer } from '../shared';
+import { TriggerSelector, ScheduleConfig } from '../../shared/wizard-trigger';
+import { STEP_CONTENT } from './constants';
 import type { ExportConfiguration, ExportTriggerType, CompressionType } from './types';
 
 interface TriggerStepProps {
     config: Partial<ExportConfiguration>;
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
+    errors?: Record<string, string>;
 }
 
-const TRIGGER_TYPES = [
-    { id: 'manual', label: 'Manual', icon: Play },
-    { id: 'schedule', label: 'Scheduled', icon: Clock },
-    { id: 'event', label: 'On Event', icon: Zap },
-    { id: 'webhook', label: 'Webhook', icon: Webhook },
-];
-
-export function TriggerStep({ config, updateConfig }: TriggerStepProps) {
-    const trigger = config.trigger ?? { type: 'manual' };
+export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepProps) {
+    const trigger = config.trigger ?? { type: TRIGGER_TYPES.MANUAL };
     const options = config.options ?? {
-        batchSize: 1000,
+        batchSize: UI_DEFAULTS.EXPORT_BATCH_SIZE,
         includeMetadata: false,
-        compression: 'none',
+        compression: COMPRESSION_TYPE.NONE,
         notifyOnComplete: true,
         retryOnFailure: true,
-        maxRetries: 3,
+        maxRetries: UI_DEFAULTS.DEFAULT_MAX_RETRIES,
+    };
+
+    const handleTriggerTypeChange = (type: string) => {
+        updateConfig({ trigger: { ...trigger, type: type as ExportTriggerType } });
+    };
+
+    const handleCronChange = (cron: string) => {
+        updateConfig({ trigger: { ...trigger, cron } });
     };
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6">
-            <div>
-                <h2 className="text-2xl font-semibold mb-2">Schedule & Options</h2>
-                <p className="text-muted-foreground">
-                    Configure when to run the export and additional options
-                </p>
-            </div>
-
-            {/* Trigger Type */}
-            <TriggerTypeCard trigger={trigger} updateConfig={updateConfig} />
-
-            {/* Export Options */}
+        <WizardStepContainer
+            title={STEP_CONTENT.trigger.title}
+            description={STEP_CONTENT.trigger.description}
+        >
+            <TriggerCard
+                trigger={trigger}
+                onTriggerTypeChange={handleTriggerTypeChange}
+                onCronChange={handleCronChange}
+            />
             <ExportOptionsCard options={options} updateConfig={updateConfig} />
-
-            {/* Caching */}
             <CachingCard config={config} updateConfig={updateConfig} />
-        </div>
+        </WizardStepContainer>
     );
 }
 
-interface TriggerTypeCardProps {
+interface TriggerCardProps {
     trigger: ExportConfiguration['trigger'];
-    updateConfig: (updates: Partial<ExportConfiguration>) => void;
+    onTriggerTypeChange: (type: string) => void;
+    onCronChange: (cron: string) => void;
 }
 
-function TriggerTypeCard({ trigger, updateConfig }: TriggerTypeCardProps) {
+function TriggerCard({ trigger, onTriggerTypeChange, onCronChange }: TriggerCardProps) {
     return (
         <Card>
             <CardHeader>
                 <CardTitle>Trigger</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-                <div className="grid grid-cols-4 gap-4">
-                    {TRIGGER_TYPES.map(type => {
-                        const Icon = type.icon;
-                        const isSelected = trigger.type === type.id;
+                <TriggerSelector
+                    options={EXPORT_WIZARD_TRIGGERS}
+                    value={trigger.type}
+                    onChange={onTriggerTypeChange}
+                />
 
-                        return (
-                            <button
-                                key={type.id}
-                                className={`p-4 border rounded-lg text-center transition-all ${
-                                    isSelected
-                                        ? 'border-primary bg-primary/5'
-                                        : 'hover:border-primary/50'
-                                }`}
-                                onClick={() => updateConfig({ trigger: { ...trigger, type: type.id as ExportTriggerType } })}
-                            >
-                                <Icon className={`w-6 h-6 mx-auto mb-2 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
-                                <div className="font-medium text-sm">{type.label}</div>
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {trigger.type === 'schedule' && (
+                {trigger.type === TRIGGER_TYPES.SCHEDULE && (
                     <div className="pt-4 border-t">
-                        <Label className="mb-2 block">Schedule (Cron)</Label>
-                        <div className="flex flex-wrap gap-2 mb-4">
-                            {SCHEDULE_PRESETS.map(preset => (
-                                <Button
-                                    key={preset.cron}
-                                    variant={trigger.cron === preset.cron ? 'default' : 'outline'}
-                                    size="sm"
-                                    onClick={() => updateConfig({
-                                        trigger: { ...trigger, cron: preset.cron },
-                                    })}
-                                >
-                                    {preset.label}
-                                </Button>
-                            ))}
-                        </div>
-                        <Input
-                            value={trigger.cron ?? ''}
-                            onChange={e => updateConfig({
-                                trigger: { ...trigger, cron: e.target.value },
-                            })}
-                            placeholder="0 0 * * *"
-                            className="font-mono"
+                        <ScheduleConfig
+                            cron={trigger.cron ?? ''}
+                            onChange={onCronChange}
+                            showCard={false}
                         />
                     </div>
                 )}
@@ -158,7 +114,7 @@ function ExportOptionsCard({ options, updateConfig }: ExportOptionsCardProps) {
                             type="number"
                             value={options.batchSize}
                             onChange={e => updateConfig({
-                                options: { ...options, batchSize: parseInt(e.target.value) || 1000 },
+                                options: { ...options, batchSize: parseInt(e.target.value) || UI_DEFAULTS.EXPORT_BATCH_SIZE },
                             })}
                         />
                     </div>
@@ -166,7 +122,7 @@ function ExportOptionsCard({ options, updateConfig }: ExportOptionsCardProps) {
                     <div>
                         <Label>Compression</Label>
                         <Select
-                            value={options.compression ?? 'none'}
+                            value={options.compression ?? COMPRESSION_TYPE.NONE}
                             onValueChange={compression => updateConfig({
                                 options: { ...options, compression: compression as CompressionType },
                             })}
@@ -175,9 +131,11 @@ function ExportOptionsCard({ options, updateConfig }: ExportOptionsCardProps) {
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="none">None</SelectItem>
-                                <SelectItem value="gzip">GZIP</SelectItem>
-                                <SelectItem value="zip">ZIP</SelectItem>
+                                {COMPRESSION_OPTIONS.map(option => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -188,7 +146,7 @@ function ExportOptionsCard({ options, updateConfig }: ExportOptionsCardProps) {
                             type="number"
                             value={options.maxRetries}
                             onChange={e => updateConfig({
-                                options: { ...options, maxRetries: parseInt(e.target.value) || 3 },
+                                options: { ...options, maxRetries: parseInt(e.target.value) || UI_DEFAULTS.DEFAULT_MAX_RETRIES },
                             })}
                         />
                     </div>
@@ -247,7 +205,7 @@ function CachingCard({ config, updateConfig }: CachingCardProps) {
                     <Switch
                         checked={config.caching?.enabled ?? false}
                         onCheckedChange={enabled => updateConfig({
-                            caching: { ...config.caching, enabled, ttl: config.caching?.ttl ?? 3600 },
+                            caching: { ...config.caching, enabled, ttl: config.caching?.ttl ?? UI_DEFAULTS.DEFAULT_CACHE_TTL_SECONDS },
                         })}
                     />
                     <Label>Enable caching</Label>
@@ -260,7 +218,7 @@ function CachingCard({ config, updateConfig }: CachingCardProps) {
                             type="number"
                             value={config.caching.ttl}
                             onChange={e => updateConfig({
-                                caching: { ...config.caching!, ttl: parseInt(e.target.value) || 3600 },
+                                caching: { ...config.caching!, ttl: parseInt(e.target.value) || UI_DEFAULTS.DEFAULT_CACHE_TTL_SECONDS },
                             })}
                         />
                     </div>
@@ -269,5 +227,3 @@ function CachingCard({ config, updateConfig }: CachingCardProps) {
         </Card>
     );
 }
-
-export default TriggerStep;
