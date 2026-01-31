@@ -1,26 +1,20 @@
-/**
- * useFieldMapping Hook
- * Custom hook for auto-mapping and managing field mappings between source and target schemas
- */
-
 import * as React from 'react';
 import { toast } from 'sonner';
+import type { JsonValue } from '../../shared/types';
+import { computeAutoMappings as computeAutoMappingsUtil } from '../utils';
+import { formatAutoMapped } from '../constants';
 
-// =============================================================================
-// TYPES
-// =============================================================================
-
-export interface FieldMapping {
+export interface UIFieldMapping {
     sourceField: string;
     targetField: string;
     transform?: string;
-    defaultValue?: any;
+    defaultValue?: JsonValue;
 }
 
 export interface SourceField {
     name: string;
     type?: string;
-    sampleValues?: any[];
+    sampleValues?: JsonValue[];
 }
 
 export interface TargetField {
@@ -33,13 +27,13 @@ export interface TargetField {
 export interface UseFieldMappingOptions {
     sourceFields: SourceField[] | string[];
     targetFields: TargetField[] | string[];
-    initialMappings?: FieldMapping[];
+    initialMappings?: UIFieldMapping[];
     autoMapOnInit?: boolean;
 }
 
 export interface UseFieldMappingResult {
-    mappings: FieldMapping[];
-    setMappings: React.Dispatch<React.SetStateAction<FieldMapping[]>>;
+    mappings: UIFieldMapping[];
+    setMappings: React.Dispatch<React.SetStateAction<UIFieldMapping[]>>;
     autoMap: () => void;
     updateMapping: (targetField: string, sourceField: string) => void;
     removeMapping: (targetField: string) => void;
@@ -52,10 +46,6 @@ export interface UseFieldMappingResult {
     isComplete: boolean;
 }
 
-// =============================================================================
-// NORMALIZATION HELPERS
-// =============================================================================
-
 function normalizeSourceFields(fields: SourceField[] | string[]): SourceField[] {
     return fields.map(f => typeof f === 'string' ? { name: f } : f);
 }
@@ -64,98 +54,20 @@ function normalizeTargetFields(fields: TargetField[] | string[]): TargetField[] 
     return fields.map(f => typeof f === 'string' ? { name: f } : f);
 }
 
-// =============================================================================
-// AUTO-MAPPING ALGORITHM
-// =============================================================================
-
 function computeAutoMappings(
     sourceFields: SourceField[],
     targetFields: TargetField[]
-): FieldMapping[] {
-    const mappings: FieldMapping[] = [];
-    const usedSources = new Set<string>();
+): UIFieldMapping[] {
+    const sourceNames = sourceFields.map(s => s.name);
+    const targetNames = targetFields.map(t => t.name);
 
-    for (const target of targetFields) {
-        // Try exact match first (case-insensitive)
-        const exactMatch = sourceFields.find(
-            s => s.name.toLowerCase() === target.name.toLowerCase() && !usedSources.has(s.name)
-        );
+    const results = computeAutoMappingsUtil(sourceNames, targetNames, { includeDots: true });
 
-        if (exactMatch) {
-            mappings.push({ sourceField: exactMatch.name, targetField: target.name });
-            usedSources.add(exactMatch.name);
-            continue;
-        }
-
-        // Try fuzzy match (removing separators and comparing)
-        const normalize = (str: string) => str.toLowerCase().replace(/[_\-\s.]/g, '');
-        const targetNormalized = normalize(target.name);
-
-        const fuzzyMatch = sourceFields.find(s => {
-            if (usedSources.has(s.name)) return false;
-            const sourceNormalized = normalize(s.name);
-            return sourceNormalized.includes(targetNormalized) || targetNormalized.includes(sourceNormalized);
-        });
-
-        if (fuzzyMatch) {
-            mappings.push({ sourceField: fuzzyMatch.name, targetField: target.name });
-            usedSources.add(fuzzyMatch.name);
-            continue;
-        }
-
-        // Try common field name variations
-        const variations: Record<string, string[]> = {
-            'id': ['identifier', 'uid', 'uuid', 'key'],
-            'name': ['title', 'label', 'displayname'],
-            'description': ['desc', 'summary', 'details', 'content'],
-            'price': ['cost', 'amount', 'value'],
-            'sku': ['productcode', 'itemcode', 'code', 'articleno', 'articlenumber'],
-            'quantity': ['qty', 'stock', 'count', 'inventory'],
-            'email': ['mail', 'emailaddress'],
-            'phone': ['tel', 'telephone', 'phonenumber', 'mobile'],
-            'address': ['street', 'streetaddress'],
-            'city': ['town'],
-            'country': ['countrycode', 'nation'],
-            'image': ['photo', 'picture', 'img', 'imageurl', 'pictureurl'],
-            'category': ['categoryname', 'productcategory', 'type'],
-            'brand': ['manufacturer', 'vendor', 'supplier'],
-            'weight': ['mass'],
-            'enabled': ['active', 'status', 'available', 'isenabled', 'isactive'],
-            'createdat': ['created', 'creationdate', 'datecreated'],
-            'updatedat': ['updated', 'modifiedat', 'modified', 'lastmodified'],
-        };
-
-        const targetLower = target.name.toLowerCase();
-        const variationMatch = sourceFields.find(s => {
-            if (usedSources.has(s.name)) return false;
-            const sourceLower = normalize(s.name);
-
-            // Check if source matches any variation of target
-            const targetVariations = variations[targetLower] || [];
-            if (targetVariations.some(v => normalize(v) === sourceLower)) return true;
-
-            // Check if target matches any variation of source
-            for (const [base, vars] of Object.entries(variations)) {
-                if (normalize(base) === sourceLower && vars.some(v => normalize(v) === targetNormalized)) {
-                    return true;
-                }
-            }
-
-            return false;
-        });
-
-        if (variationMatch) {
-            mappings.push({ sourceField: variationMatch.name, targetField: target.name });
-            usedSources.add(variationMatch.name);
-        }
-    }
-
-    return mappings;
+    return results.map(r => ({
+        sourceField: r.sourceField,
+        targetField: r.targetField,
+    }));
 }
-
-// =============================================================================
-// HOOK
-// =============================================================================
 
 export function useFieldMapping(options: UseFieldMappingOptions): UseFieldMappingResult {
     const {
@@ -175,11 +87,12 @@ export function useFieldMapping(options: UseFieldMappingOptions): UseFieldMappin
         [targetFieldsInput]
     );
 
-    const [mappings, setMappings] = React.useState<FieldMapping[]>(initialMappings);
+    const [mappings, setMappings] = React.useState<UIFieldMapping[]>(initialMappings);
+    const hasAutoMappedRef = React.useRef(false);
 
-    // Auto-map on init if requested
     React.useEffect(() => {
-        if (autoMapOnInit && mappings.length === 0 && sourceFields.length > 0 && targetFields.length > 0) {
+        if (autoMapOnInit && !hasAutoMappedRef.current && sourceFields.length > 0 && targetFields.length > 0) {
+            hasAutoMappedRef.current = true;
             const autoMappings = computeAutoMappings(sourceFields, targetFields);
             setMappings(autoMappings);
         }
@@ -189,7 +102,7 @@ export function useFieldMapping(options: UseFieldMappingOptions): UseFieldMappin
         const autoMappings = computeAutoMappings(sourceFields, targetFields);
         setMappings(autoMappings);
         const mappedCount = autoMappings.filter(m => m.sourceField).length;
-        toast.success(`Auto-mapped ${mappedCount} fields`);
+        toast.success(formatAutoMapped(mappedCount));
     }, [sourceFields, targetFields]);
 
     const updateMapping = React.useCallback((targetField: string, sourceField: string) => {
@@ -259,5 +172,3 @@ export function useFieldMapping(options: UseFieldMappingOptions): UseFieldMappin
         isComplete,
     };
 }
-
-export default useFieldMapping;

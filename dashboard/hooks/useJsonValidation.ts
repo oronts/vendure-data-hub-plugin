@@ -1,12 +1,6 @@
-/**
- * useJsonValidation Hook
- *
- * Provides debounced JSON validation with detailed error messages.
- * Used by JSON input fields to show validation errors only after the user
- * stops typing, avoiding disruptive error flashing while typing.
- */
-
 import * as React from 'react';
+import { DEBOUNCE_DELAYS } from '../constants';
+import { ERROR_MESSAGES } from '../constants/validation-patterns';
 
 export interface JsonValidationError {
     message: string;
@@ -16,34 +10,21 @@ export interface JsonValidationError {
 }
 
 export interface UseJsonValidationOptions {
-    /** Debounce delay in milliseconds. Default: 300ms */
     debounceMs?: number;
-    /** Whether empty values are allowed. Default: true */
     allowEmpty?: boolean;
-    /** Expected type: 'object', 'array', or 'any'. Default: 'any' */
     expectedType?: 'object' | 'array' | 'any';
 }
 
 export interface UseJsonValidationResult {
-    /** The current text value */
     text: string;
-    /** Set the text value */
     setText: (value: string) => void;
-    /** The parsed JSON value (undefined if invalid or empty) */
     parsedValue: unknown;
-    /** Current validation error (null if valid) */
     error: JsonValidationError | null;
-    /** Whether the input is currently valid JSON */
     isValid: boolean;
-    /** Whether validation is pending (user is typing) */
     isPending: boolean;
-    /** Force immediate validation */
     validateNow: () => JsonValidationError | null;
 }
 
-/**
- * Parses a JSON string and returns detailed error information if invalid.
- */
 export function parseJsonWithDetails(text: string): { value: unknown; error: JsonValidationError | null } {
     if (!text.trim()) {
         return { value: undefined, error: null };
@@ -59,15 +40,7 @@ export function parseJsonWithDetails(text: string): { value: unknown; error: Jso
     }
 }
 
-/**
- * Extracts detailed position information from JSON parse errors.
- */
 function extractJsonErrorDetails(message: string, text: string): JsonValidationError {
-    // Try to extract position from error message
-    // Common formats:
-    // - "Unexpected token X at position Y"
-    // - "Unexpected token X in JSON at position Y"
-    // - "Expected property name or '}' in JSON at position Y"
     const positionMatch = message.match(/at position (\d+)/i);
     const position = positionMatch ? parseInt(positionMatch[1], 10) : undefined;
 
@@ -75,20 +48,17 @@ function extractJsonErrorDetails(message: string, text: string): JsonValidationE
     let column: number | undefined;
 
     if (position !== undefined) {
-        // Calculate line and column from position
         const lines = text.substring(0, position).split('\n');
         line = lines.length;
         column = lines[lines.length - 1].length + 1;
     }
 
-    // Clean up the error message for user display
     let cleanMessage = message
         .replace(/^JSON\.parse: /, '')
         .replace(/^SyntaxError: /, '')
         .replace(/ in JSON at position \d+/, '')
         .replace(/ at position \d+/, '');
 
-    // Make common errors more readable
     if (cleanMessage.includes('Unexpected token')) {
         const tokenMatch = cleanMessage.match(/Unexpected token (.)/);
         if (tokenMatch) {
@@ -113,7 +83,6 @@ function extractJsonErrorDetails(message: string, text: string): JsonValidationE
         cleanMessage = 'Missing comma between array items';
     }
 
-    // Build final message with position info
     let finalMessage = `Invalid JSON: ${cleanMessage}`;
     if (line !== undefined && column !== undefined) {
         finalMessage += ` (line ${line}, column ${column})`;
@@ -129,21 +98,17 @@ function extractJsonErrorDetails(message: string, text: string): JsonValidationE
     };
 }
 
-/**
- * Hook for JSON input validation with debouncing.
- */
 export function useJsonValidation(
     initialValue: unknown,
     onChange?: (value: unknown) => void,
     options: UseJsonValidationOptions = {}
 ): UseJsonValidationResult {
     const {
-        debounceMs = 300,
+        debounceMs = DEBOUNCE_DELAYS.DEFAULT,
         allowEmpty = true,
         expectedType = 'any',
     } = options;
 
-    // Initialize text from value
     const [text, setTextInternal] = React.useState(() => {
         if (initialValue === undefined || initialValue === null) {
             return '';
@@ -159,11 +124,14 @@ export function useJsonValidation(
     const [error, setError] = React.useState<JsonValidationError | null>(null);
     const [isPending, setIsPending] = React.useState(false);
 
-    // Track the timeout for cleanup
     const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    // Track if component is mounted
     const mountedRef = React.useRef(true);
+    const onChangeRef = React.useRef(onChange);
+    const textRef = React.useRef(text);
+
+    onChangeRef.current = onChange;
+    textRef.current = text;
+
     React.useEffect(() => {
         return () => {
             mountedRef.current = false;
@@ -173,11 +141,19 @@ export function useJsonValidation(
         };
     }, []);
 
-    // Sync with external value changes
-    const prevInitialValueRef = React.useRef(initialValue);
+    const prevInitialValueJsonRef = React.useRef<string | null>(null);
     React.useEffect(() => {
-        if (prevInitialValueRef.current !== initialValue) {
-            prevInitialValueRef.current = initialValue;
+        let initialValueJson: string | null = null;
+        try {
+            initialValueJson = initialValue === undefined || initialValue === null
+                ? null
+                : JSON.stringify(initialValue);
+        } catch {
+            initialValueJson = null;
+        }
+
+        if (prevInitialValueJsonRef.current !== initialValueJson) {
+            prevInitialValueJsonRef.current = initialValueJson;
             if (initialValue === undefined || initialValue === null) {
                 setTextInternal('');
                 setParsedValue(undefined);
@@ -189,31 +165,28 @@ export function useJsonValidation(
                     setParsedValue(initialValue);
                     setError(null);
                 } catch {
-                    // Keep current text if serialization fails
+                    // Keep current state if stringify fails
                 }
             }
         }
     }, [initialValue]);
 
-    // Validate function
     const validate = React.useCallback((value: string): JsonValidationError | null => {
         const trimmed = value.trim();
 
-        // Handle empty
         if (!trimmed) {
             if (allowEmpty) {
                 setParsedValue(undefined);
                 setError(null);
-                onChange?.(undefined);
+                onChangeRef.current?.(undefined);
                 return null;
             } else {
-                const err: JsonValidationError = { message: 'JSON value is required' };
+                const err: JsonValidationError = { message: ERROR_MESSAGES.JSON_REQUIRED };
                 setError(err);
                 return err;
             }
         }
 
-        // Parse and validate
         const { value: parsed, error: parseError } = parseJsonWithDetails(trimmed);
 
         if (parseError) {
@@ -221,53 +194,50 @@ export function useJsonValidation(
             return parseError;
         }
 
-        // Type validation
         if (expectedType === 'object' && (typeof parsed !== 'object' || Array.isArray(parsed) || parsed === null)) {
-            const err: JsonValidationError = { message: 'Value must be a JSON object' };
+            const err: JsonValidationError = { message: ERROR_MESSAGES.JSON_OBJECT_EXPECTED };
             setError(err);
             return err;
         }
 
         if (expectedType === 'array' && !Array.isArray(parsed)) {
-            const err: JsonValidationError = { message: 'Value must be a JSON array' };
+            const err: JsonValidationError = { message: ERROR_MESSAGES.JSON_ARRAY_EXPECTED };
             setError(err);
             return err;
         }
 
-        // Valid!
         setParsedValue(parsed);
         setError(null);
-        onChange?.(parsed);
+        onChangeRef.current?.(parsed);
         return null;
-    }, [allowEmpty, expectedType, onChange]);
+    }, [allowEmpty, expectedType]);
 
-    // Set text with debounced validation
+    const validateRef = React.useRef(validate);
+    validateRef.current = validate;
+
     const setText = React.useCallback((value: string) => {
         setTextInternal(value);
         setIsPending(true);
 
-        // Clear existing timeout
         if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
         }
 
-        // Set new timeout
         timeoutRef.current = setTimeout(() => {
             if (mountedRef.current) {
-                validate(value);
+                validateRef.current(value);
                 setIsPending(false);
             }
         }, debounceMs);
-    }, [debounceMs, validate]);
+    }, [debounceMs]);
 
-    // Force immediate validation
     const validateNow = React.useCallback(() => {
         if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
         }
         setIsPending(false);
-        return validate(text);
-    }, [text, validate]);
+        return validateRef.current(textRef.current);
+    }, []);
 
     return {
         text,
@@ -279,5 +249,3 @@ export function useJsonValidation(
         validateNow,
     };
 }
-
-export default useJsonValidation;
