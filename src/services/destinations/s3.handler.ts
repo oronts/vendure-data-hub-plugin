@@ -5,7 +5,7 @@
  */
 
 import * as crypto from 'crypto';
-import { S3DestinationConfig, DeliveryResult, DeliveryOptions } from './destination.types';
+import { S3DestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 
 /**
  * Deliver content to S3 or S3-compatible storage
@@ -63,32 +63,51 @@ export async function deliverToS3(
         ? `${config.endpoint}/${config.bucket}/${key}`
         : `https://${host}/${key}`;
 
-    const response = await fetch(url, {
-        method: 'PUT',
-        headers: {
-            'Content-Type': mimeType,
-            'Host': host,
-            'x-amz-content-sha256': contentHash,
-            'x-amz-date': timestamp,
-            'Authorization': authorization,
-            ...(config.acl ? { 'x-amz-acl': config.acl } : {}),
-        },
-        body: content,
-    });
+    try {
+        const response = await fetch(url, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': mimeType,
+                'Host': host,
+                'x-amz-content-sha256': contentHash,
+                'x-amz-date': timestamp,
+                'Authorization': authorization,
+                ...(config.acl ? { 'x-amz-acl': config.acl } : {}),
+            },
+            body: content,
+        });
 
-    if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        throw new Error(`S3 upload failed: ${response.status} ${errorText}`);
+        if (!response.ok) {
+            const errorText = await response.text().catch(() => '');
+            return {
+                success: false,
+                destinationId: config.id,
+                destinationType: DESTINATION_TYPE.S3,
+                filename,
+                size: content.length,
+                error: `S3 upload failed: ${response.status} ${errorText}`,
+            };
+        }
+
+        return {
+            success: true,
+            destinationId: config.id,
+            destinationType: DESTINATION_TYPE.S3,
+            filename,
+            size: content.length,
+            deliveredAt: new Date(),
+            location: url,
+            metadata: { bucket: config.bucket, key },
+        };
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'S3 upload failed';
+        return {
+            success: false,
+            destinationId: config.id,
+            destinationType: DESTINATION_TYPE.S3,
+            filename,
+            size: content.length,
+            error: errorMessage,
+        };
     }
-
-    return {
-        success: true,
-        destinationId: config.id,
-        destinationType: 's3',
-        filename,
-        size: content.length,
-        deliveredAt: new Date(),
-        location: url,
-        metadata: { bucket: config.bucket, key },
-    };
 }

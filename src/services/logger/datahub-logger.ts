@@ -6,11 +6,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ID } from '@vendure/core';
 
+import { MetricStatus, SpanStatus } from '../../constants/enums';
+import { CACHE, calculateThroughput } from '../../constants/index';
 import { LogContext, LogMetadata, SpanData } from './logger.types';
 import { MetricsRegistry } from './metrics';
 import { SpanTracker, SpanContext } from './span-tracker';
 import { extractErrorDetails } from './error-utils';
-import { sanitizeForLog, SanitizeOptions } from './sanitizer';
+import { sanitizeForLog } from './sanitizer';
 
 export class DataHubLogger {
     private readonly nestLogger: Logger;
@@ -194,7 +196,7 @@ export class DataHubLogger {
             ...attributes,
         }, this.currentSpanId);
 
-        this.debug(`Span started: ${name}`, { spanId: span.spanId as any });
+        this.debug(`Span started: ${name}`, { spanId: span.spanId });
 
         return new SpanContext(span, this.spanTracker, this.metricsRegistry);
     }
@@ -235,7 +237,7 @@ export class DataHubLogger {
         if (this.metricsRegistry) {
             this.metricsRegistry.getCounter('datahub_pipeline_runs_total').increment(1, {
                 pipeline: pipelineCode,
-                status: 'started',
+                status: MetricStatus.STARTED,
             });
         }
 
@@ -254,9 +256,7 @@ export class DataHubLogger {
             durationMs: number;
         },
     ): void {
-        const throughput = metrics.durationMs > 0
-            ? Math.round((metrics.totalRecords / metrics.durationMs) * 1000)
-            : 0;
+        const throughput = calculateThroughput(metrics.totalRecords, metrics.durationMs);
 
         this.info(`Pipeline execution completed`, {
             stepType: 'pipeline',
@@ -274,7 +274,7 @@ export class DataHubLogger {
 
             this.metricsRegistry.getCounter('datahub_pipeline_runs_total').increment(1, {
                 ...labels,
-                status: metrics.failed > 0 ? 'completed_with_errors' : 'completed',
+                status: metrics.failed > 0 ? MetricStatus.COMPLETED_WITH_ERRORS : MetricStatus.COMPLETED,
             });
 
             this.metricsRegistry.getCounter('datahub_records_processed_total').increment(
@@ -312,7 +312,7 @@ export class DataHubLogger {
         if (this.metricsRegistry) {
             this.metricsRegistry.getCounter('datahub_pipeline_runs_total').increment(1, {
                 pipeline: pipelineCode,
-                status: 'failed',
+                status: MetricStatus.FAILED,
             });
         }
     }
@@ -347,7 +347,7 @@ export class DataHubLogger {
         recordsOut: number,
         durationMs: number,
     ): void {
-        const throughput = durationMs > 0 ? Math.round((recordsIn / durationMs) * 1000) : 0;
+        const throughput = calculateThroughput(recordsIn, durationMs);
 
         this.info(`Completed step "${stepKey}"`, {
             stepType,
@@ -408,7 +408,7 @@ export class DataHubLogger {
             adapterCode: extractorCode,
             recordCount,
             durationMs,
-            throughput: durationMs > 0 ? Math.round((recordCount / durationMs) * 1000) : 0,
+            throughput: calculateThroughput(recordCount, durationMs),
             ...metadata,
         });
 
@@ -458,6 +458,82 @@ export class DataHubLogger {
         }
     }
 
+    /**
+     * Log sink operation
+     */
+    logSinkOperation(
+        sinkCode: string,
+        operation: string,
+        indexed: number,
+        failed: number,
+        durationMs: number,
+        metadata?: Record<string, unknown>,
+    ): void {
+        this.info(`Sink "${sinkCode}" ${operation} completed`, {
+            adapterCode: sinkCode,
+            operation,
+            recordsIndexed: indexed,
+            recordsFailed: failed,
+            durationMs,
+            ...metadata,
+        });
+
+        if (this.metricsRegistry) {
+            this.metricsRegistry.getHistogram('datahub_sink_duration_ms').record(durationMs, {
+                sink: sinkCode,
+                operation,
+            });
+
+            this.metricsRegistry.getCounter('datahub_sink_indexed_total').increment(indexed, {
+                sink: sinkCode,
+                operation,
+            });
+
+            this.metricsRegistry.getCounter('datahub_sink_failed_total').increment(failed, {
+                sink: sinkCode,
+                operation,
+            });
+        }
+    }
+
+    /**
+     * Log exporter operation
+     */
+    logExporterOperation(
+        exporterCode: string,
+        operation: string,
+        succeeded: number,
+        failed: number,
+        durationMs: number,
+        metadata?: Record<string, unknown>,
+    ): void {
+        this.info(`Exporter "${exporterCode}" ${operation} completed`, {
+            adapterCode: exporterCode,
+            operation,
+            recordsSucceeded: succeeded,
+            recordsFailed: failed,
+            durationMs,
+            ...metadata,
+        });
+
+        if (this.metricsRegistry) {
+            this.metricsRegistry.getHistogram('datahub_exporter_duration_ms').record(durationMs, {
+                exporter: exporterCode,
+                operation,
+            });
+
+            this.metricsRegistry.getCounter('datahub_exporter_succeeded_total').increment(succeeded, {
+                exporter: exporterCode,
+                operation,
+            });
+
+            this.metricsRegistry.getCounter('datahub_exporter_failed_total').increment(failed, {
+                exporter: exporterCode,
+                operation,
+            });
+        }
+    }
+
     // VALIDATION AND DATA QUALITY LOGGING
 
     /**
@@ -469,7 +545,7 @@ export class DataHubLogger {
             recordsFailed: 1,
             errorCategory: 'validation',
             errors: errors.join('; '),
-        } as any);
+        });
 
         if (this.metricsRegistry) {
             this.metricsRegistry.getCounter('datahub_validation_errors_total').increment(errors.length);
@@ -497,7 +573,7 @@ export class DataHubLogger {
         entityType: string,
         entityId?: ID,
     ): void {
-        this.debug(`${operation.toUpperCase()} ${entityType}`, { entityId } as any);
+        this.debug(`${operation.toUpperCase()} ${entityType}`, { entityId });
     }
 
     // PERFORMANCE TRACKING
@@ -538,7 +614,7 @@ export class DataHubLogger {
             const durationMs = Date.now() - start;
 
             this.debug(`${label} completed`, { durationMs });
-            span.end('ok');
+            span.end(SpanStatus.OK);
 
             if (options?.histogramName && this.metricsRegistry) {
                 this.metricsRegistry.getHistogram(options.histogramName).record(durationMs, {
@@ -550,7 +626,7 @@ export class DataHubLogger {
         } catch (error) {
             const durationMs = Date.now() - start;
             this.error(`${label} failed`, error as Error, { durationMs });
-            span.end('error');
+            span.end(SpanStatus.ERROR);
             throw error;
         }
     }
@@ -584,7 +660,7 @@ export class DataHubLogger {
  */
 @Injectable()
 export class DataHubLoggerFactory {
-    private readonly loggers = new Map<string, DataHubLogger>();
+    private readonly loggers = new Map<string, { logger: DataHubLogger; lastAccess: number }>();
     private readonly metricsRegistry: MetricsRegistry;
 
     constructor() {
@@ -602,12 +678,31 @@ export class DataHubLoggerFactory {
      * Get or create a cached logger instance (for static contexts)
      */
     getLogger(componentName: string): DataHubLogger {
-        let logger = this.loggers.get(componentName);
-        if (!logger) {
-            logger = new DataHubLogger(componentName, {}, this.metricsRegistry);
-            this.loggers.set(componentName, logger);
+        const existing = this.loggers.get(componentName);
+        if (existing) {
+            existing.lastAccess = Date.now();
+            return existing.logger;
         }
+
+        if (this.loggers.size >= CACHE.MAX_CACHED_LOGGERS) {
+            this.evictLeastRecentlyUsed();
+        }
+
+        const logger = new DataHubLogger(componentName, {}, this.metricsRegistry);
+        this.loggers.set(componentName, { logger, lastAccess: Date.now() });
         return logger;
+    }
+
+    private evictLeastRecentlyUsed(): void {
+        let oldest: { key: string; time: number } | null = null;
+        for (const [key, entry] of this.loggers) {
+            if (!oldest || entry.lastAccess < oldest.time) {
+                oldest = { key, time: entry.lastAccess };
+            }
+        }
+        if (oldest) {
+            this.loggers.delete(oldest.key);
+        }
     }
 
     /**

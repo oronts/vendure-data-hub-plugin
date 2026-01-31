@@ -6,7 +6,18 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { LocalDestinationConfig, DeliveryResult, DeliveryOptions } from './destination.types';
+import { LocalDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
+import { securePath } from '../../utils/input-validation.utils';
+
+/**
+ * Securely resolve a filename within the destination directory.
+ * Prevents path traversal attacks by validating the filename
+ * doesn't escape the configured directory.
+ */
+function getSecureTargetPath(directory: string, filename: string): string {
+    const resolvedDir = path.resolve(directory);
+    return securePath(resolvedDir, filename);
+}
 
 /**
  * Deliver content to local filesystem
@@ -17,19 +28,22 @@ export async function deliverToLocal(
     filename: string,
     options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
-    const targetPath = path.join(config.directory, filename);
+    // Validate and resolve the target path securely
+    const targetPath = getSecureTargetPath(config.directory, filename);
     const dir = path.dirname(targetPath);
 
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+    try {
+        await fs.promises.access(dir);
+    } catch {
+        await fs.promises.mkdir(dir, { recursive: true });
     }
 
-    fs.writeFileSync(targetPath, content);
+    await fs.promises.writeFile(targetPath, content);
 
     return {
         success: true,
         destinationId: config.id,
-        destinationType: 'local',
+        destinationType: DESTINATION_TYPE.LOCAL,
         filename,
         size: content.length,
         deliveredAt: new Date(),
@@ -40,18 +54,20 @@ export async function deliverToLocal(
 /**
  * Test local destination connectivity
  */
-export function testLocalDestination(config: LocalDestinationConfig): { success: boolean; message: string } {
-    if (fs.existsSync(config.directory)) {
-        return { success: true, message: 'Directory exists' };
-    }
-    // Try to create
+export async function testLocalDestination(config: LocalDestinationConfig): Promise<{ success: boolean; message: string }> {
     try {
-        fs.mkdirSync(config.directory, { recursive: true });
-        return { success: true, message: 'Directory created' };
-    } catch (error) {
-        return {
-            success: false,
-            message: error instanceof Error ? error.message : 'Failed to create directory',
-        };
+        await fs.promises.access(config.directory);
+        return { success: true, message: 'Directory exists' };
+    } catch {
+        // Directory doesn't exist, try to create it
+        try {
+            await fs.promises.mkdir(config.directory, { recursive: true });
+            return { success: true, message: 'Directory created' };
+        } catch (error) {
+            return {
+                success: false,
+                message: error instanceof Error ? error.message : 'Failed to create directory',
+            };
+        }
     }
 }

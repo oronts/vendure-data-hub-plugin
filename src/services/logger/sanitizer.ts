@@ -3,6 +3,8 @@
  * Prevents PII and credentials from being logged.
  */
 
+import { EMAIL_REGEX } from '../../utils/input-validation.utils';
+
 /**
  * Fields that should be completely redacted (case-insensitive matching)
  */
@@ -47,11 +49,6 @@ const SENSITIVE_FIELDS = [
  * Redaction placeholder for sensitive fields
  */
 const REDACTED = '[REDACTED]';
-
-/**
- * Email regex pattern
- */
-const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 /**
  * Phone number regex patterns (various formats)

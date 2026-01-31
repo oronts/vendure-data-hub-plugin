@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import { DataHubRecordRetryAudit, DataHubRecordError } from '../../entities/data';
+import { SortOrder } from '../../constants/enums';
+import type { JsonObject } from '../../types/index';
+import type { FindOptionsOrder, FindOptionsWhere } from 'typeorm';
 
 @Injectable()
 export class RecordRetryAuditService {
@@ -9,25 +12,24 @@ export class RecordRetryAuditService {
     async record(
         ctx: RequestContext,
         error: DataHubRecordError,
-        previousPayload: any,
-        patch: any,
-        resultingPayload: any,
+        previousPayload: JsonObject,
+        patch: JsonObject,
+        resultingPayload: JsonObject,
     ): Promise<DataHubRecordRetryAudit> {
         const repo = this.connection.getRepository(ctx, DataHubRecordRetryAudit);
-        const audit = await repo.save(
-            new DataHubRecordRetryAudit({
-                error,
-                userId: ctx.activeUserId != null ? String(ctx.activeUserId) : null,
-                previousPayload,
-                patch,
-                resultingPayload,
-            }),
-        );
-        return audit;
+        const audit = new DataHubRecordRetryAudit();
+        audit.error = error;
+        audit.userId = ctx.activeUserId != null ? String(ctx.activeUserId) : null;
+        audit.previousPayload = previousPayload;
+        audit.patch = patch;
+        audit.resultingPayload = resultingPayload;
+        return repo.save(audit);
     }
 
     listByError(ctx: RequestContext, errorId: ID): Promise<DataHubRecordRetryAudit[]> {
         const repo = this.connection.getRepository(ctx, DataHubRecordRetryAudit);
-        return repo.find({ where: { error: { id: errorId } as any }, order: { createdAt: 'ASC' } as any } as any);
+        const where: FindOptionsWhere<DataHubRecordRetryAudit> = { error: { id: errorId } };
+        const order: FindOptionsOrder<DataHubRecordRetryAudit> = { createdAt: SortOrder.ASC };
+        return repo.find({ where, order });
     }
 }

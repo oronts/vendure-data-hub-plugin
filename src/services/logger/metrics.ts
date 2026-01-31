@@ -6,6 +6,7 @@
  */
 
 import { Counter, Histogram } from './logger.types';
+import { METRICS } from '../../constants/index';
 
 /**
  * In-memory counter implementation
@@ -49,7 +50,7 @@ export class InMemoryHistogram implements Histogram {
     constructor(
         public readonly name: string,
         public readonly description?: string,
-        private readonly maxSamples = 1000,
+        private readonly maxSamples = METRICS.MAX_SAMPLES,
     ) {}
 
     private getKey(labels?: Record<string, string>): string {

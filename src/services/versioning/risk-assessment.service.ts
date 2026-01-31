@@ -1,15 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
-import { Pipeline, PipelineRun } from '../../entities/pipeline';
 import {
     ImpactAnalysis,
     RiskAssessment,
     RiskContext,
     RiskRule,
     RiskWarning,
-} from '../../types/impact-analysis.types';
+} from '../../types/index';
+import {
+    LOGGER_CONTEXTS,
+    RunOutcome,
+    RunStatus,
+    SortOrder,
+    RiskLevel,
+    RiskSeverity,
+    EstimateConfidence,
+    RISK_THRESHOLDS,
+} from '../../constants/index';
+import { Pipeline, PipelineRun } from '../../entities/pipeline';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { LOGGER_CONTEXTS, RunStatus } from '../../constants/index';
 
 /**
  * Default risk rules for assessing pipeline impact
@@ -18,15 +27,15 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
     // High record count warnings
     {
         id: 'high-record-count',
-        check: (impact) => impact.summary.totalRecordsToProcess > 10000,
-        severity: 'warning',
+        check: (impact) => impact.summary.totalRecordsToProcess > RISK_THRESHOLDS.HIGH_RECORD_COUNT,
+        severity: RiskSeverity.WARNING,
         message: 'Large dataset: {count} records will be processed',
         recommendation: 'Consider running in batches or during off-peak hours',
     },
     {
         id: 'very-high-record-count',
-        check: (impact) => impact.summary.totalRecordsToProcess > 100000,
-        severity: 'danger',
+        check: (impact) => impact.summary.totalRecordsToProcess > RISK_THRESHOLDS.VERY_HIGH_RECORD_COUNT,
+        severity: RiskSeverity.DANGER,
         message: 'Very large dataset: {count} records will be processed',
         recommendation: 'Strongly recommend running in batches and monitoring system resources',
     },
@@ -35,7 +44,7 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
     {
         id: 'has-deletions',
         check: (impact) => impact.entityBreakdown.some(e => e.operations.delete > 0),
-        severity: 'warning',
+        severity: RiskSeverity.WARNING,
         message: '{count} records will be deleted',
         recommendation: 'Ensure you have backups before proceeding',
     },
@@ -43,9 +52,9 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
         id: 'high-deletion-count',
         check: (impact) => {
             const totalDeletes = impact.entityBreakdown.reduce((sum, e) => sum + e.operations.delete, 0);
-            return totalDeletes > 100;
+            return totalDeletes > RISK_THRESHOLDS.HIGH_DELETION_COUNT;
         },
-        severity: 'danger',
+        severity: RiskSeverity.DANGER,
         message: 'High deletion count: {count} records will be deleted',
         recommendation: 'Review the deletion criteria carefully and consider a test run first',
     },
@@ -56,9 +65,9 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
         check: (impact) => {
             if (impact.summary.totalRecordsToProcess === 0) return false;
             const failureRate = impact.summary.estimatedFailureCount / impact.summary.totalRecordsToProcess;
-            return failureRate > 0.1; // 10%+ failure rate
+            return failureRate > RISK_THRESHOLDS.HIGH_FAILURE_RATE_PERCENT;
         },
-        severity: 'warning',
+        severity: RiskSeverity.WARNING,
         message: 'High estimated failure rate: {rate}% of records may fail',
         recommendation: 'Review data quality and transformation rules',
     },
@@ -67,7 +76,7 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
     {
         id: 'first-run',
         check: (_, context) => context.previousRunCount === 0,
-        severity: 'info',
+        severity: RiskSeverity.INFO,
         message: 'This is the first run of this pipeline',
         recommendation: 'Monitor closely and review results after completion',
     },
@@ -75,8 +84,8 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
     // Previous failure warning
     {
         id: 'previous-failure',
-        check: (_, context) => context.lastRunStatus === 'failed',
-        severity: 'warning',
+        check: (_, context) => context.lastRunStatus === RunOutcome.FAILED,
+        severity: RiskSeverity.WARNING,
         message: 'The last run of this pipeline failed',
         recommendation: 'Review and fix issues from the previous run before proceeding',
     },
@@ -84,15 +93,15 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
     // Resource warnings
     {
         id: 'high-memory-usage',
-        check: (impact) => impact.resourceUsage.memoryMb > 500,
-        severity: 'warning',
+        check: (impact) => impact.resourceUsage.memoryMb > RISK_THRESHOLDS.HIGH_MEMORY_USAGE_MB,
+        severity: RiskSeverity.WARNING,
         message: 'High memory usage estimated: {memory}MB',
         recommendation: 'Ensure sufficient system resources are available',
     },
     {
         id: 'high-database-load',
-        check: (impact) => impact.resourceUsage.databaseQueries > 1000,
-        severity: 'warning',
+        check: (impact) => impact.resourceUsage.databaseQueries > RISK_THRESHOLDS.HIGH_DATABASE_QUERIES,
+        severity: RiskSeverity.WARNING,
         message: 'High database load expected: {queries} queries',
         recommendation: 'Consider running during off-peak hours to avoid impacting other operations',
     },
@@ -100,15 +109,15 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
     // Duration warnings
     {
         id: 'long-duration',
-        check: (impact) => impact.estimatedDuration.estimatedMs > 30 * 60 * 1000, // 30 minutes
-        severity: 'info',
+        check: (impact) => impact.estimatedDuration.estimatedMs > RISK_THRESHOLDS.LONG_DURATION_MS,
+        severity: RiskSeverity.INFO,
         message: 'Long running pipeline: estimated {duration} minutes',
         recommendation: 'Plan for potential timeout scenarios',
     },
     {
         id: 'very-long-duration',
-        check: (impact) => impact.estimatedDuration.estimatedMs > 2 * 60 * 60 * 1000, // 2 hours
-        severity: 'warning',
+        check: (impact) => impact.estimatedDuration.estimatedMs > RISK_THRESHOLDS.VERY_LONG_DURATION_MS,
+        severity: RiskSeverity.WARNING,
         message: 'Very long running pipeline: estimated {duration} hours',
         recommendation: 'Consider breaking into smaller batches or scheduling for maintenance windows',
     },
@@ -116,8 +125,8 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
     // Multiple entity types
     {
         id: 'multiple-entity-types',
-        check: (impact) => impact.entityBreakdown.length > 3,
-        severity: 'info',
+        check: (impact) => impact.entityBreakdown.length > RISK_THRESHOLDS.MULTIPLE_ENTITY_TYPES,
+        severity: RiskSeverity.INFO,
         message: 'Pipeline affects {count} different entity types',
         recommendation: 'Be aware of potential cross-entity dependencies',
     },
@@ -125,8 +134,8 @@ const DEFAULT_RISK_RULES: RiskRule[] = [
     // Low confidence estimate
     {
         id: 'low-confidence-estimate',
-        check: (impact) => impact.estimatedDuration.confidence === 'low',
-        severity: 'info',
+        check: (impact) => impact.estimatedDuration.confidence === EstimateConfidence.LOW,
+        severity: RiskSeverity.INFO,
         message: 'Duration estimate has low confidence (no historical data)',
         recommendation: 'Actual duration may vary significantly from estimate',
     },
@@ -247,13 +256,13 @@ export class RiskAssessmentService {
         // Get last run status
         const lastRun = await runRepo.findOne({
             where: { pipeline: { id: pipelineId } },
-            order: { finishedAt: 'DESC' },
+            order: { finishedAt: SortOrder.DESC },
         });
 
-        let lastRunStatus: 'success' | 'failed' | 'partial' | undefined;
+        let lastRunStatus: RunOutcome | undefined;
         if (lastRun) {
-            if (lastRun.status === RunStatus.COMPLETED) lastRunStatus = 'success';
-            else if (lastRun.status === RunStatus.FAILED) lastRunStatus = 'failed';
+            if (lastRun.status === RunStatus.COMPLETED) lastRunStatus = RunOutcome.SUCCESS;
+            else if (lastRun.status === RunStatus.FAILED) lastRunStatus = RunOutcome.FAILED;
         }
 
         // Get pipeline config
@@ -382,28 +391,28 @@ export class RiskAssessmentService {
         }
     }
 
-    private calculateRiskScore(warnings: RiskWarning[]): { score: number; level: 'low' | 'medium' | 'high' | 'critical' } {
+    private calculateRiskScore(warnings: RiskWarning[]): { score: number; level: RiskLevel } {
         // Weight by severity
-        const weights = {
-            info: 5,
-            warning: 20,
-            danger: 40,
+        const weights: Record<RiskSeverity, number> = {
+            [RiskSeverity.INFO]: RISK_THRESHOLDS.SEVERITY_WEIGHT_INFO,
+            [RiskSeverity.WARNING]: RISK_THRESHOLDS.SEVERITY_WEIGHT_WARNING,
+            [RiskSeverity.DANGER]: RISK_THRESHOLDS.SEVERITY_WEIGHT_DANGER,
         };
 
         let score = 0;
         for (const warning of warnings) {
-            score += weights[warning.severity];
+            score += weights[warning.severity as RiskSeverity] ?? 0;
         }
 
         // Cap at 100
         score = Math.min(100, score);
 
         // Determine level
-        let level: 'low' | 'medium' | 'high' | 'critical';
-        if (score < 20) level = 'low';
-        else if (score < 50) level = 'medium';
-        else if (score < 80) level = 'high';
-        else level = 'critical';
+        let level: RiskLevel;
+        if (score < RISK_THRESHOLDS.RISK_SCORE_LOW) level = RiskLevel.LOW;
+        else if (score < RISK_THRESHOLDS.RISK_SCORE_MEDIUM) level = RiskLevel.MEDIUM;
+        else if (score < RISK_THRESHOLDS.RISK_SCORE_HIGH) level = RiskLevel.HIGH;
+        else level = RiskLevel.CRITICAL;
 
         return { score, level };
     }

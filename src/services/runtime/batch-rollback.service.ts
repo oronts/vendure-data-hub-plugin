@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { BatchTransactionStatus, LOGGER_CONTEXTS, RollbackOperationType, BATCH_ROLLBACK } from '../../constants/index';
 import { JsonObject } from '../../types/index';
+import type { DeepPartial, ObjectLiteral } from 'typeorm';
 
 export interface RollbackableOperation {
-    type: 'create' | 'update' | 'delete';
+    type: RollbackOperationType;
     entityType: string;
     entityId: string | number;
     previousState?: JsonObject;
@@ -15,21 +16,61 @@ export interface RollbackableOperation {
 export interface BatchTransaction {
     id: string;
     operations: RollbackableOperation[];
-    status: 'pending' | 'committed' | 'rolled_back' | 'partial_rollback';
+    status: BatchTransactionStatus;
     startedAt: Date;
     completedAt?: Date;
 }
 
 @Injectable()
-export class BatchRollbackService {
+export class BatchRollbackService implements OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private transactions: Map<string, BatchTransaction> = new Map();
+    private cleanupInterval: NodeJS.Timeout | null = null;
 
     constructor(
         private readonly connection: TransactionalConnection,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PIPELINE_RUNNER);
+
+        // Start periodic cleanup of stale transactions to prevent memory leaks
+        this.cleanupInterval = setInterval(
+            () => this.cleanupStaleTransactions(),
+            BATCH_ROLLBACK.CLEANUP_INTERVAL_MS,
+        );
+    }
+
+    onModuleDestroy(): void {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+        this.transactions.clear();
+    }
+
+    /**
+     * Clean up stale transactions that have been completed or are too old
+     */
+    private cleanupStaleTransactions(): void {
+        const now = Date.now();
+        const maxAgeMs = BATCH_ROLLBACK.MAX_TRANSACTION_AGE_MS;
+        let cleaned = 0;
+
+        for (const [id, tx] of this.transactions.entries()) {
+            const age = now - tx.startedAt.getTime();
+            const isCompleted = tx.status === BatchTransactionStatus.COMMITTED ||
+                               tx.status === BatchTransactionStatus.ROLLED_BACK;
+            const isStale = age > maxAgeMs;
+
+            if (isCompleted || isStale) {
+                this.transactions.delete(id);
+                cleaned++;
+            }
+        }
+
+        if (cleaned > 0) {
+            this.logger.debug('Cleaned up stale batch transactions', { cleaned, remaining: this.transactions.size });
+        }
     }
 
     startTransaction(): string {
@@ -37,7 +78,7 @@ export class BatchRollbackService {
         this.transactions.set(id, {
             id,
             operations: [],
-            status: 'pending',
+            status: BatchTransactionStatus.PENDING,
             startedAt: new Date(),
         });
         return id;
@@ -54,7 +95,7 @@ export class BatchRollbackService {
 
     recordCreate(transactionId: string, entityType: string, entityId: string | number, newState?: JsonObject): void {
         this.recordOperation(transactionId, {
-            type: 'create',
+            type: RollbackOperationType.CREATE,
             entityType,
             entityId,
             newState,
@@ -63,7 +104,7 @@ export class BatchRollbackService {
 
     recordUpdate(transactionId: string, entityType: string, entityId: string | number, previousState: JsonObject, newState: JsonObject): void {
         this.recordOperation(transactionId, {
-            type: 'update',
+            type: RollbackOperationType.UPDATE,
             entityType,
             entityId,
             previousState,
@@ -73,7 +114,7 @@ export class BatchRollbackService {
 
     recordDelete(transactionId: string, entityType: string, entityId: string | number, previousState: JsonObject): void {
         this.recordOperation(transactionId, {
-            type: 'delete',
+            type: RollbackOperationType.DELETE,
             entityType,
             entityId,
             previousState,
@@ -86,7 +127,7 @@ export class BatchRollbackService {
             this.logger.warn('Transaction not found for commit', { transactionId });
             return;
         }
-        tx.status = 'committed';
+        tx.status = BatchTransactionStatus.COMMITTED;
         tx.completedAt = new Date();
         this.logger.debug('Batch transaction committed', {
             transactionId,
@@ -119,7 +160,7 @@ export class BatchRollbackService {
             }
         }
 
-        tx.status = failed > 0 ? 'partial_rollback' : 'rolled_back';
+        tx.status = failed > 0 ? BatchTransactionStatus.PARTIAL_ROLLBACK : BatchTransactionStatus.ROLLED_BACK;
         tx.completedAt = new Date();
 
         this.logger.info('Batch rollback completed', {
@@ -145,22 +186,26 @@ export class BatchRollbackService {
         const repo = this.connection.rawConnection.getRepository(entityMeta.target);
 
         switch (op.type) {
-            case 'create':
+            case RollbackOperationType.CREATE:
                 // For create operations, delete the entity
                 await repo.delete(op.entityId);
                 break;
 
-            case 'update':
+            case RollbackOperationType.UPDATE:
                 // For update operations, restore previous state
+                // Note: Cast required because TypeORM expects specific entity types,
+                // but we're working with dynamic entity types resolved at runtime
                 if (op.previousState) {
-                    await repo.update(op.entityId, op.previousState as any);
+                    await repo.update(op.entityId, op.previousState as DeepPartial<ObjectLiteral>);
                 }
                 break;
 
-            case 'delete':
+            case RollbackOperationType.DELETE:
                 // For delete operations, recreate the entity
+                // Note: Cast required because TypeORM expects specific entity types,
+                // but we're working with dynamic entity types resolved at runtime
                 if (op.previousState) {
-                    await repo.save({ ...op.previousState, id: op.entityId } as any);
+                    await repo.save({ ...op.previousState, id: op.entityId } as DeepPartial<ObjectLiteral>);
                 }
                 break;
         }
@@ -193,7 +238,7 @@ export class BatchRollbackService {
 
         // Remove rolled back operations
         tx.operations = tx.operations.slice(0, fromIndex);
-        tx.status = failed > 0 ? 'partial_rollback' : 'pending';
+        tx.status = failed > 0 ? BatchTransactionStatus.PARTIAL_ROLLBACK : BatchTransactionStatus.PENDING;
 
         this.logger.info('Partial rollback completed', {
             transactionId,

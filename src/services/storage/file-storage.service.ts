@@ -4,15 +4,13 @@ import {
     RequestContext,
     ConfigService,
 } from '@vendure/core';
-import * as fs from 'fs';
-import * as path from 'path';
 import * as crypto from 'crypto';
+import * as path from 'path';
 import { DEFAULTS, LOGGER_CONTEXTS } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { StorageBackend } from './storage-backend.interface';
+import { createStorageBackendFromEnv } from './storage-backend.factory';
 
-/**
- * Stored file metadata
- */
 export interface StoredFile {
     id: string;
     originalName: string;
@@ -25,20 +23,14 @@ export interface StoredFile {
     metadata?: Record<string, unknown>;
 }
 
-/**
- * Upload result
- */
 export interface UploadResult {
     success: boolean;
     file?: StoredFile;
     error?: string;
 }
 
-/**
- * Storage options
- */
 export interface StorageOptions {
-    maxFileSize?: number; // in bytes
+    maxFileSize?: number;
     allowedMimeTypes?: string[];
     expiresInMinutes?: number;
     metadata?: Record<string, unknown>;
@@ -58,7 +50,7 @@ const DEFAULT_ALLOWED_TYPES = [
 @Injectable()
 export class FileStorageService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
-    private storagePath: string;
+    private backend: StorageBackend;
     private fileIndex: Map<string, StoredFile> = new Map();
     private cleanupHandle: ReturnType<typeof setInterval> | null = null;
 
@@ -68,6 +60,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FILE_STORAGE_SERVICE);
+        this.backend = createStorageBackendFromEnv();
     }
 
     async onModuleDestroy(): Promise<void> {
@@ -79,26 +72,15 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
     }
 
     async onModuleInit() {
-        // Initialize storage directory
-        this.storagePath = path.join(process.cwd(), 'data-hub-uploads');
-
-        if (!fs.existsSync(this.storagePath)) {
-            fs.mkdirSync(this.storagePath, { recursive: true });
-            this.logger.info('Created upload storage directory', { storagePath: this.storagePath });
-        }
-
-        // Start cleanup job for expired files
+        await this.backend.init();
         this.startCleanupJob();
 
         this.logger.info('FileStorageService initialized', {
-            storagePath: this.storagePath,
+            backendType: this.backend.type,
             cleanupIntervalMs: DEFAULTS.FILE_CLEANUP_INTERVAL_MS,
         });
     }
 
-    /**
-     * Store a file from buffer
-     */
     async storeFile(
         ctx: RequestContext,
         buffer: Buffer,
@@ -107,7 +89,6 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         options: StorageOptions = {},
     ): Promise<UploadResult> {
         try {
-            // Validate file size
             const maxSize = options.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
             if (buffer.length > maxSize) {
                 return {
@@ -116,7 +97,6 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
                 };
             }
 
-            // Validate mime type
             const allowedTypes = options.allowedMimeTypes ?? DEFAULT_ALLOWED_TYPES;
             if (!this.isAllowedMimeType(mimeType, allowedTypes)) {
                 return {
@@ -125,30 +105,18 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
                 };
             }
 
-            // Generate file ID and hash
             const fileId = this.generateFileId();
             const hash = crypto.createHash('sha256').update(buffer).digest('hex');
 
-            // Create storage path with date-based organization
             const datePath = this.getDatePath();
             const storagePath = path.join(datePath, `${fileId}${path.extname(originalName)}`);
-            const fullPath = path.join(this.storagePath, storagePath);
 
-            // Ensure directory exists
-            const dir = path.dirname(fullPath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
+            await this.backend.write(storagePath, buffer);
 
-            // Write file
-            fs.writeFileSync(fullPath, buffer);
-
-            // Calculate expiration
             const expiresAt = options.expiresInMinutes
                 ? new Date(Date.now() + options.expiresInMinutes * 60 * 1000)
                 : undefined;
 
-            // Create file record
             const storedFile: StoredFile = {
                 id: fileId,
                 originalName,
@@ -161,7 +129,6 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
                 metadata: options.metadata,
             };
 
-            // Store in index
             this.fileIndex.set(fileId, storedFile);
 
             this.logger.info('Stored file successfully', {
@@ -169,13 +136,11 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
                 originalName,
                 size: buffer.length,
                 mimeType,
+                backendType: this.backend.type,
                 expiresAt: expiresAt?.toISOString(),
             });
 
-            return {
-                success: true,
-                file: storedFile,
-            };
+            return { success: true, file: storedFile };
         } catch (error) {
             this.logger.error('Failed to store file', error instanceof Error ? error : new Error(String(error)), {
                 originalName,
@@ -189,9 +154,6 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /**
-     * Store file from base64 string
-     */
     async storeBase64(
         ctx: RequestContext,
         base64Data: string,
@@ -199,53 +161,33 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         mimeType: string,
         options: StorageOptions = {},
     ): Promise<UploadResult> {
-        // Remove data URL prefix if present
         const cleanBase64 = base64Data.replace(/^data:[^;]+;base64,/, '');
         const buffer = Buffer.from(cleanBase64, 'base64');
         return this.storeFile(ctx, buffer, originalName, mimeType, options);
     }
 
-    /**
-     * Get a stored file
-     */
     async getFile(fileId: string): Promise<StoredFile | null> {
         return this.fileIndex.get(fileId) ?? null;
     }
 
-    /**
-     * Read file content
-     */
     async readFile(fileId: string): Promise<Buffer | null> {
         const file = this.fileIndex.get(fileId);
         if (!file) return null;
-
-        const fullPath = path.join(this.storagePath, file.storagePath);
-        if (!fs.existsSync(fullPath)) return null;
-
-        return fs.readFileSync(fullPath);
+        return this.backend.read(file.storagePath);
     }
 
-    /**
-     * Read file as string
-     */
     async readFileAsString(fileId: string, encoding: BufferEncoding = 'utf-8'): Promise<string | null> {
         const buffer = await this.readFile(fileId);
         if (!buffer) return null;
         return buffer.toString(encoding);
     }
 
-    /**
-     * Delete a stored file
-     */
     async deleteFile(fileId: string): Promise<boolean> {
         const file = this.fileIndex.get(fileId);
         if (!file) return false;
 
         try {
-            const fullPath = path.join(this.storagePath, file.storagePath);
-            if (fs.existsSync(fullPath)) {
-                fs.unlinkSync(fullPath);
-            }
+            await this.backend.delete(file.storagePath);
             this.fileIndex.delete(fileId);
             this.logger.debug('Deleted file', { fileId, originalName: file.originalName });
             return true;
@@ -255,9 +197,17 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /**
-     * List stored files
-     */
+    async getFileUrl(fileId: string, expiresInSeconds?: number): Promise<string | null> {
+        const file = this.fileIndex.get(fileId);
+        if (!file) return null;
+
+        if (this.backend.getUrl) {
+            return this.backend.getUrl(file.storagePath, expiresInSeconds);
+        }
+
+        return null;
+    }
+
     async listFiles(options?: {
         limit?: number;
         offset?: number;
@@ -269,7 +219,6 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
     }): Promise<{ files: StoredFile[]; totalItems: number }> {
         let files = Array.from(this.fileIndex.values());
 
-        // Apply filters
         if (options?.filter) {
             const { mimeType, uploadedAfter, uploadedBefore } = options.filter;
             if (mimeType) {
@@ -283,12 +232,10 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
             }
         }
 
-        // Sort by upload date descending
         files.sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime());
 
         const totalItems = files.length;
 
-        // Apply pagination
         if (options?.offset) {
             files = files.slice(options.offset);
         }
@@ -299,12 +246,10 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         return { files, totalItems };
     }
 
-    /**
-     * Get storage stats
-     */
     async getStorageStats(): Promise<{
         totalFiles: number;
         totalSize: number;
+        backendType: string;
         byMimeType: Record<string, { count: number; size: number }>;
     }> {
         const files = Array.from(this.fileIndex.values());
@@ -323,22 +268,17 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         return {
             totalFiles: files.length,
             totalSize,
+            backendType: this.backend.type,
             byMimeType,
         };
     }
 
-    /**
-     * Start background cleanup job for expired files
-     */
     private startCleanupJob() {
         this.cleanupHandle = setInterval(() => {
             this.cleanupExpiredFiles();
         }, DEFAULTS.FILE_CLEANUP_INTERVAL_MS);
     }
 
-    /**
-     * Clean up expired files
-     */
     private async cleanupExpiredFiles() {
         const now = new Date();
         const expiredFiles: string[] = [];
@@ -358,29 +298,18 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /**
-     * Generate unique file ID
-     */
     private generateFileId(): string {
         return `file_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
     }
 
-    /**
-     * Get date-based storage path
-     */
     private getDatePath(): string {
         const now = new Date();
         return `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
     }
 
-    /**
-     * Check if mime type is allowed
-     */
     private isAllowedMimeType(mimeType: string, allowedTypes: string[]): boolean {
-        // Normalize mime type
         const normalizedType = mimeType.toLowerCase().split(';')[0].trim();
 
-        // Check for exact match or wildcard match
         return allowedTypes.some(allowed => {
             if (allowed === '*/*') return true;
             if (allowed.endsWith('/*')) {

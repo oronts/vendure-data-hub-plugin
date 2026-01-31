@@ -7,8 +7,7 @@
 import { Injectable } from '@nestjs/common';
 import { RequestContext, ID } from '@vendure/core';
 import { LogPersistenceLevel } from '../../constants/enums';
-import { LOGGER_CONTEXTS, CACHE } from '../../constants/index';
-import { LogLevel } from '../../entities/pipeline';
+import { LOGGER_CONTEXTS, CACHE, TRUNCATION, calculateThroughput } from '../../constants/index';
 import { PipelineLogService } from '../pipeline/pipeline-log.service';
 import { DataHubSettingsService } from '../config/settings.service';
 import { DataHubLogger, DataHubLoggerFactory } from './datahub-logger';
@@ -28,6 +27,8 @@ export type LogEventType =
     | 'load.target'
     | 'debug';
 
+// LogEventOptions uses 'any' for context/metadata to allow flexible logging data
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 /** Options for logging an event */
 export interface LogEventOptions {
     pipelineId?: ID;
@@ -93,8 +94,7 @@ const LEVEL_HIERARCHY: Record<LogPersistenceLevel, number> = {
 };
 
 /** Maximum sample record size for logging */
-const MAX_SAMPLE_SIZE = 5;
-const MAX_FIELD_VALUE_LENGTH = 200;
+const MAX_SAMPLE_SIZE = TRUNCATION.SAMPLE_VALUES_LIMIT;
 
 @Injectable()
 export class ExecutionLogger {
@@ -335,7 +335,7 @@ export class ExecutionLogger {
             stepKey,
             error: errorMessage,
             ...options.context,
-        } as any);
+        });
 
         // Always persist record errors (with sanitized payload)
         const level = await this.getPersistenceLevel();
@@ -382,9 +382,7 @@ export class ExecutionLogger {
         info: StepExecutionInfo,
         options: LogEventOptions,
     ): Promise<void> {
-        const throughput = info.durationMs > 0
-            ? Math.round((info.recordsIn / info.durationMs) * 1000)
-            : 0;
+        const throughput = calculateThroughput(info.recordsIn, info.durationMs);
 
         const message = `Step "${info.stepKey}" (${info.stepType}) completed: ${info.recordsIn} in → ${info.recordsOut} out, ${info.succeeded} ok, ${info.failed} failed [${info.durationMs}ms, ${throughput} rec/s]`;
 
@@ -646,18 +644,19 @@ export class ExecutionLogger {
     private truncateValue(value: unknown): unknown {
         if (value === null || value === undefined) return value;
         if (typeof value === 'string') {
-            return value.length > MAX_FIELD_VALUE_LENGTH
-                ? value.substring(0, MAX_FIELD_VALUE_LENGTH) + '...'
+            return value.length > TRUNCATION.MAX_FIELD_VALUE_LENGTH
+                ? value.substring(0, TRUNCATION.MAX_FIELD_VALUE_LENGTH) + '...'
                 : value;
         }
         if (typeof value === 'object') {
             try {
                 const str = JSON.stringify(value);
-                if (str.length > MAX_FIELD_VALUE_LENGTH) {
-                    return str.substring(0, MAX_FIELD_VALUE_LENGTH) + '...';
+                if (str.length > TRUNCATION.MAX_FIELD_VALUE_LENGTH) {
+                    return str.substring(0, TRUNCATION.MAX_FIELD_VALUE_LENGTH) + '...';
                 }
                 return value;
             } catch {
+                // JSON stringify failed (circular reference etc.) - return placeholder
                 return '[Object]';
             }
         }

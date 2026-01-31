@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { RequestContextService, TransactionalConnection, ID } from '@vendure/core';
 import { DataHubSettings, StoredAutoMapperConfig } from '../../entities/config';
-import { LogPersistenceLevel } from '../../constants/enums';
+import { LogPersistenceLevel, SortOrder } from '../../constants/enums';
 import {
     AutoMapperConfig,
     AutoMapperConfigInput,
@@ -40,7 +40,7 @@ export class DataHubSettingsService {
     private async getSettingsRow(): Promise<DataHubSettings> {
         const ctx = await this.getCtx();
         const repo = this.connection.getRepository(ctx, DataHubSettings);
-        let row = await repo.createQueryBuilder('s').orderBy('s.id', 'ASC').getOne();
+        let row = await repo.createQueryBuilder('s').orderBy('s.id', SortOrder.ASC).getOne();
         if (!row) {
             row = new DataHubSettings();
             row.retentionDaysRuns = null;
@@ -68,13 +68,13 @@ export class DataHubSettingsService {
         const repo = this.connection.getRepository(ctx, DataHubSettings);
         const row = await this.getSettingsRow();
         if (input.retentionDaysRuns !== undefined) {
-            row.retentionDaysRuns = input.retentionDaysRuns as any;
+            row.retentionDaysRuns = input.retentionDaysRuns;
         }
         if (input.retentionDaysErrors !== undefined) {
-            row.retentionDaysErrors = input.retentionDaysErrors as any;
+            row.retentionDaysErrors = input.retentionDaysErrors;
         }
         if (input.retentionDaysLogs !== undefined) {
-            row.retentionDaysLogs = input.retentionDaysLogs as any;
+            row.retentionDaysLogs = input.retentionDaysLogs;
         }
         if (input.logPersistenceLevel !== undefined) {
             row.logPersistenceLevel = input.logPersistenceLevel;

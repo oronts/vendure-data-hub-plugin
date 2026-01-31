@@ -7,6 +7,7 @@
 
 import { SpanData, SpanStatus } from './logger.types';
 import { MetricsRegistry } from './metrics';
+import { SPAN_TRACKER } from '../../constants/index';
 
 /**
  * Generate a unique span ID (simplified UUID-like)
@@ -21,13 +22,15 @@ export function generateSpanId(): string {
 export class SpanTracker {
     private spans = new Map<string, SpanData>();
     private completedSpans: SpanData[] = [];
-    private readonly maxCompletedSpans = 100;
+    private readonly maxCompletedSpans = SPAN_TRACKER.MAX_COMPLETED_SPANS;
 
     startSpan(
         name: string,
         attributes: Record<string, unknown> = {},
         parentSpanId?: string,
     ): SpanData {
+        this.cleanupAbandonedSpans();
+
         const span: SpanData = {
             spanId: generateSpanId(),
             parentSpanId,
@@ -38,6 +41,37 @@ export class SpanTracker {
         };
         this.spans.set(span.spanId, span);
         return span;
+    }
+
+    private cleanupAbandonedSpans(): void {
+        const now = Date.now();
+        const cutoff = now - SPAN_TRACKER.SPAN_TIMEOUT_MS;
+
+        for (const [spanId, span] of this.spans.entries()) {
+            if (span.startTime < cutoff) {
+                span.endTime = now;
+                span.status = 'error';
+                span.attributes['abandoned'] = true;
+                this.spans.delete(spanId);
+                this.completedSpans.push(span);
+            }
+        }
+
+        while (this.completedSpans.length > this.maxCompletedSpans) {
+            this.completedSpans.shift();
+        }
+
+        if (this.spans.size > SPAN_TRACKER.MAX_ACTIVE_SPANS) {
+            const entries = Array.from(this.spans.entries())
+                .sort((a, b) => a[1].startTime - b[1].startTime);
+            const toRemove = entries.slice(0, this.spans.size - SPAN_TRACKER.MAX_ACTIVE_SPANS);
+            for (const [spanId, span] of toRemove) {
+                span.endTime = now;
+                span.status = 'error';
+                span.attributes['evicted'] = true;
+                this.spans.delete(spanId);
+            }
+        }
     }
 
     addEvent(spanId: string, name: string, attributes?: Record<string, unknown>): void {

@@ -56,3 +56,19 @@ export function categorizeError(error: Error | unknown): LogMetadata['errorCateg
     const details = extractErrorDetails(error);
     return details.category ?? 'unknown';
 }
+
+/**
+ * Extract a human-readable error message from an unknown error
+ *
+ * Use this in catch blocks to safely extract error messages:
+ * ```typescript
+ * } catch (e: unknown) {
+ *     Logger.error(`Failed: ${getErrorMessage(e)}`);
+ * }
+ * ```
+ */
+export function getErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'string') return error;
+    return String(error);
+}

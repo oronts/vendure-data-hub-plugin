@@ -10,16 +10,16 @@ import {
     InterceptorResult,
     ScriptFunction,
     HookContext,
+    LogHookAction,
 } from '../../types/index';
 import { DomainEventsService } from './domain-events.service';
 import { ModuleRef } from '@nestjs/core';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { WebhookRetryService, WebhookConfig } from '../webhooks/webhook-retry.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { DEFAULTS, LOGGER_CONTEXTS } from '../../constants/index';
-import { validateUserCode, createCodeSandbox } from '../../utils/code-security.utils';
-
-const DEFAULT_INTERCEPTOR_TIMEOUT = 5000;
+import { DEFAULTS, LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES } from '../../constants/index';
+import { HookActionType } from '../../constants/enums';
+import { validateUserCode } from '../../utils/code-security.utils';
 
 @Injectable()
 export class HookService implements OnModuleInit {
@@ -74,17 +74,17 @@ export class HookService implements OnModuleInit {
         record?: JsonObject,
         runId?: ID,
     ): Promise<void> {
-        const actions: HookAction[] = (def.hooks?.[stage] ?? []) as any;
+        const actions = (def.hooks?.[stage] ?? []) as HookAction[];
         for (const action of actions) {
             try {
                 switch (action.type) {
-                    case 'webhook':
-                        await this.callWebhook(action, { stage, payload, record, runId });
+                    case HookActionType.WEBHOOK:
+                        await this.callWebhook(action, { stage, payload: payload ?? null, record: record ?? null, runId: runId?.toString() ?? null });
                         break;
-                    case 'emit':
+                    case HookActionType.EMIT:
                         this.domainEvents.publish(action.event, { stage, payload, record, runId });
                         break;
-                    case 'triggerPipeline': {
+                    case HookActionType.TRIGGER_PIPELINE: {
                         try {
                             const pipelineService = this.moduleRef.get(PipelineService, { strict: false });
                             if (pipelineService) {
@@ -100,6 +100,28 @@ export class HookService implements OnModuleInit {
                         }
                         break;
                     }
+                    case HookActionType.LOG: {
+                        const logAction = action as LogHookAction;
+                        const level = logAction.level ?? 'INFO';
+                        const message = logAction.message ?? `Hook triggered: ${stage}`;
+                        const logData = { stage, runId, payload: payload ?? record };
+                        switch (level) {
+                            case 'DEBUG':
+                                this.logger.debug(message, logData);
+                                break;
+                            case 'INFO':
+                                this.logger.info(message, logData);
+                                break;
+                            case 'WARN':
+                                this.logger.warn(message, logData);
+                                break;
+                            case 'ERROR':
+                                this.logger.error(message, undefined, logData);
+                                break;
+                        }
+                        break;
+                    }
+                    // INTERCEPTOR and SCRIPT are handled by runInterceptors(), not here
                 }
             } catch (error) {
                 // Hooks are best-effort; log but don't block the pipeline
@@ -128,12 +150,12 @@ export class HookService implements OnModuleInit {
         runId?: ID,
         pipelineId?: ID,
     ): Promise<InterceptorResult> {
-        const actions: HookAction[] = (def.hooks?.[stage] ?? []) as any;
+        const actions = (def.hooks?.[stage] ?? []) as HookAction[];
 
         // Filter to only interceptor and script actions
         const interceptorActions = actions.filter(
             (a): a is InterceptorHookAction | ScriptHookAction =>
-                a.type === 'interceptor' || a.type === 'script',
+                a.type === HookActionType.INTERCEPTOR || a.type === HookActionType.SCRIPT,
         );
 
         if (interceptorActions.length === 0) {
@@ -156,9 +178,9 @@ export class HookService implements OnModuleInit {
             try {
                 let result: JsonObject[] | undefined;
 
-                if (action.type === 'interceptor') {
+                if (action.type === HookActionType.INTERCEPTOR) {
                     result = await this.executeInterceptor(action, currentRecords, hookContext);
-                } else if (action.type === 'script') {
+                } else if (action.type === HookActionType.SCRIPT) {
                     result = await this.executeScript(action, currentRecords, hookContext);
                 }
 
@@ -182,8 +204,8 @@ export class HookService implements OnModuleInit {
 
                 // Check if we should fail the pipeline
                 const failOnError =
-                    (action.type === 'interceptor' && action.failOnError) ||
-                    (action.type === 'script' && action.failOnError);
+                    (action.type === HookActionType.INTERCEPTOR && action.failOnError) ||
+                    (action.type === HookActionType.SCRIPT && action.failOnError);
 
                 if (failOnError) {
                     throw new Error(`Interceptor "${actionName}" failed: ${errorMsg}`);
@@ -192,7 +214,7 @@ export class HookService implements OnModuleInit {
         }
 
         // Also run observation-only hooks
-        await this.run(ctx, def, stage, currentRecords as any, undefined, runId);
+        await this.run(ctx, def, stage, currentRecords, undefined, runId);
 
         return { records: currentRecords, modified, errors: errors.length > 0 ? errors : undefined };
     }
@@ -205,7 +227,7 @@ export class HookService implements OnModuleInit {
         records: JsonObject[],
         context: HookContext,
     ): Promise<JsonObject[] | undefined> {
-        const timeout = action.timeout ?? DEFAULT_INTERCEPTOR_TIMEOUT;
+        const timeout = action.timeout ?? HOOK.INTERCEPTOR_TIMEOUT_MS;
 
         // Create a sandboxed function with limited globals
         const sandboxGlobals = {
@@ -231,9 +253,9 @@ export class HookService implements OnModuleInit {
             decodeURIComponent,
             // Console override (redirects to logger)
             console: {
-                log: (...args: any[]) => this.logger.debug('Interceptor console.log', { consoleArgs: args }),
-                warn: (...args: any[]) => this.logger.warn('Interceptor console.warn', { consoleArgs: args }),
-                error: (...args: any[]) => this.logger.warn('Interceptor console.error', { consoleArgs: args }),
+                log: (...args: unknown[]) => this.logger.debug('Interceptor console.log', { consoleArgs: args }),
+                warn: (...args: unknown[]) => this.logger.warn('Interceptor console.warn', { consoleArgs: args }),
+                error: (...args: unknown[]) => this.logger.warn('Interceptor console.error', { consoleArgs: args }),
             },
             // Provide records and context in scope for interceptor code
             records,
@@ -282,7 +304,7 @@ export class HookService implements OnModuleInit {
             throw new Error(`Script "${action.scriptName}" is not registered`);
         }
 
-        const timeout = action.timeout ?? DEFAULT_INTERCEPTOR_TIMEOUT;
+        const timeout = action.timeout ?? HOOK.INTERCEPTOR_TIMEOUT_MS;
 
         // Execute with timeout
         const result = await Promise.race([
@@ -298,9 +320,9 @@ export class HookService implements OnModuleInit {
     /**
      * Call webhook with retry support if WebhookRetryService is available
      */
-    private async callWebhook(action: HookAction, body: any): Promise<void> {
+    private async callWebhook(action: HookAction, body: JsonObject): Promise<void> {
         // Type guard to ensure this is a webhook action
-        if (action.type !== 'webhook') return;
+        if (action.type !== HookActionType.WEBHOOK) return;
 
         const webhookAction = action as import('../../types').WebhookHookAction;
         const url = webhookAction.url;
@@ -356,13 +378,13 @@ export class HookService implements OnModuleInit {
     /**
      * Simple fetch fallback when WebhookRetryService is not available
      */
-    private async simpleFetch(url: string, headers: Record<string, string> | undefined, body: any): Promise<void> {
+    private async simpleFetch(url: string, headers: Record<string, string> | undefined, body: JsonObject): Promise<void> {
         try {
-            const fetchImpl: any = (global as any).fetch;
+            const fetchImpl = (globalThis as { fetch?: typeof fetch }).fetch;
             if (!fetchImpl) return;
             await fetchImpl(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...(headers ?? {}) },
+                headers: { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...(headers ?? {}) },
                 body: JSON.stringify(body ?? {}),
             });
         } catch (error) {

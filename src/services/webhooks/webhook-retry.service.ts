@@ -1,17 +1,12 @@
-/**
- * Webhook Retry Service
- *
- * Manages webhook delivery with automatic retry and dead letter queue.
- */
-
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import {
     TransactionalConnection,
     JobQueue,
     JobQueueService,
 } from '@vendure/core';
-import { DEFAULTS, LOGGER_CONTEXTS } from '../../constants/index';
+import { DEFAULTS, LOGGER_CONTEXTS, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK_QUEUE } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 
 import {
     WebhookDeliveryStatus,
@@ -37,13 +32,18 @@ import {
 
 export { WebhookDeliveryStatus, WebhookDelivery, WebhookConfig, RetryConfig, WebhookPayload };
 
+interface WebhookConfigWithMeta extends WebhookConfig {
+    lastUsedAt: number;
+}
+
 @Injectable()
 export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private deliveryQueue: Map<string, WebhookDelivery> = new Map();
-    private webhookConfigs: Map<string, WebhookConfig> = new Map();
+    private webhookConfigs: Map<string, WebhookConfigWithMeta> = new Map();
     private jobQueue: JobQueue<{ deliveryId: string }> | undefined;
     private retryProcessorHandle: ReturnType<typeof setInterval> | null = null;
+    private ssrfConfig?: UrlSecurityConfig;
 
     constructor(
         private connection: TransactionalConnection,
@@ -51,6 +51,13 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.WEBHOOK_RETRY);
+    }
+
+    /**
+     * Configure SSRF protection settings for webhook delivery
+     */
+    configureSsrfProtection(config: UrlSecurityConfig): void {
+        this.ssrfConfig = config;
     }
 
     async onModuleDestroy(): Promise<void> {
@@ -62,7 +69,6 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
     }
 
     async onModuleInit() {
-        // Create job queue for retry processing
         this.jobQueue = await this.jobQueueService.createQueue({
             name: 'datahub-webhook-retry',
             process: async (job) => {
@@ -70,7 +76,6 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             },
         });
 
-        // Start background processor for pending retries
         this.startRetryProcessor();
 
         this.logger.info('WebhookRetryService initialized', {
@@ -80,12 +85,22 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
 
     /**
      * Register a webhook configuration
+     * Validates the webhook URL against SSRF attacks during registration
+     *
+     * @throws Error if webhook URL fails SSRF validation
      */
-    registerWebhook(config: WebhookConfig): void {
+    async registerWebhook(config: WebhookConfig): Promise<void> {
+        await assertUrlSafe(config.url, this.ssrfConfig);
+
+        if (this.webhookConfigs.size >= WEBHOOK_QUEUE.MAX_WEBHOOK_CONFIGS && !this.webhookConfigs.has(config.id)) {
+            this.evictOldestWebhookConfigs();
+        }
+
         this.webhookConfigs.set(config.id, {
             ...config,
             method: config.method || 'POST',
             enabled: config.enabled !== false,
+            lastUsedAt: Date.now(),
         });
         this.logger.info('Registered webhook', {
             webhookId: config.id,
@@ -94,9 +109,16 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         });
     }
 
-    /**
-     * Send a webhook with automatic retry
-     */
+    private evictOldestWebhookConfigs(): void {
+        const entries = Array.from(this.webhookConfigs.entries())
+            .sort((a, b) => a[1].lastUsedAt - b[1].lastUsedAt);
+        const toRemove = entries.slice(0, Math.ceil(WEBHOOK_QUEUE.MAX_WEBHOOK_CONFIGS * 0.1));
+        for (const [id] of toRemove) {
+            this.webhookConfigs.delete(id);
+            this.logger.debug('Evicted old webhook config', { webhookId: id });
+        }
+    }
+
     async sendWebhook(
         webhookId: string,
         payload: WebhookPayload,
@@ -114,17 +136,20 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             throw new Error(`Webhook is disabled: ${webhookId}`);
         }
 
-        // Build headers
+        config.lastUsedAt = Date.now();
+
+        if (this.deliveryQueue.size >= WEBHOOK_QUEUE.MAX_DELIVERY_QUEUE_SIZE) {
+            this.evictOldDeliveries();
+        }
+
         const headers = buildHeaders(config, options?.headers);
 
-        // Sign payload if secret is configured
         if (config.secret) {
             const signature = signPayload(payload, config.secret);
             const headerName = config.signatureHeader || 'X-DataHub-Signature';
             headers[headerName] = signature;
         }
 
-        // Create delivery record
         const delivery = createDeliveryRecord(
             webhookId,
             config,
@@ -134,18 +159,41 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             config.retryConfig?.maxAttempts ?? DEFAULT_RETRY_CONFIG.maxAttempts,
         );
 
-        // Store delivery
         this.deliveryQueue.set(delivery.id, delivery);
-
-        // Attempt delivery
         await this.attemptDelivery(delivery);
 
         return delivery;
     }
 
-    /**
-     * Attempt to deliver a webhook
-     */
+    private evictOldDeliveries(): void {
+        const now = Date.now();
+        const delivered: string[] = [];
+        const deadLetter: string[] = [];
+
+        for (const [id, delivery] of this.deliveryQueue.entries()) {
+            if (delivery.status === WebhookDeliveryStatus.DELIVERED) {
+                delivered.push(id);
+            } else if (delivery.status === WebhookDeliveryStatus.DEAD_LETTER) {
+                deadLetter.push(id);
+            }
+        }
+
+        for (const id of delivered) {
+            this.deliveryQueue.delete(id);
+        }
+
+        if (this.deliveryQueue.size >= WEBHOOK_QUEUE.MAX_DELIVERY_QUEUE_SIZE) {
+            for (const id of deadLetter.slice(0, Math.ceil(deadLetter.length / 2))) {
+                this.deliveryQueue.delete(id);
+            }
+        }
+
+        this.logger.debug('Evicted old deliveries', {
+            deliveredRemoved: delivered.length,
+            deadLetterRemoved: Math.min(deadLetter.length, Math.ceil(deadLetter.length / 2)),
+        });
+    }
+
     private async attemptDelivery(delivery: WebhookDelivery): Promise<void> {
         const config = this.webhookConfigs.get(delivery.webhookId);
         if (!config) return;
@@ -154,10 +202,13 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         delivery.lastAttemptAt = new Date();
 
         try {
+            // Re-validate URL before each delivery attempt (in case DNS changed)
+            await assertUrlSafe(delivery.url, this.ssrfConfig);
+
             const response = await fetch(delivery.url, {
                 method: delivery.method,
                 headers: {
-                    'Content-Type': 'application/json',
+                    [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
                     ...delivery.headers,
                 },
                 body: JSON.stringify(delivery.payload),
@@ -167,7 +218,6 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             delivery.responseBody = await response.text().catch(() => '');
 
             if (response.ok) {
-                // Success
                 delivery.status = WebhookDeliveryStatus.DELIVERED;
                 delivery.deliveredAt = new Date();
                 this.logger.info('Webhook delivered successfully', {
@@ -179,27 +229,21 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                     durationMs: Date.now() - (delivery.lastAttemptAt?.getTime() ?? Date.now()),
                 });
             } else {
-                // Server error - retry
                 this.handleFailure(delivery, config, `HTTP ${response.status}`);
             }
         } catch (error) {
-            // Network error - retry
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             delivery.error = errorMessage;
             this.handleFailure(delivery, config, errorMessage);
         }
     }
 
-    /**
-     * Handle delivery failure
-     */
     private handleFailure(
         delivery: WebhookDelivery,
         config: WebhookConfig,
         reason: string,
     ): void {
         if (!shouldRetry(delivery)) {
-            // Move to dead letter queue
             markAsDeadLetter(delivery);
             this.logger.warn('Webhook moved to dead letter queue', {
                 deliveryId: delivery.id,
@@ -210,7 +254,6 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                 reason,
             });
         } else {
-            // Schedule retry
             prepareForRetry(delivery, config);
             const delay = calculateBackoff(delivery.attempts, config.retryConfig ?? DEFAULT_RETRY_CONFIG);
 
@@ -223,16 +266,12 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                 reason,
             });
 
-            // Schedule retry using setTimeout
             setTimeout(() => {
                 this.jobQueue?.add({ deliveryId: delivery.id });
             }, delay);
         }
     }
 
-    /**
-     * Process a retry
-     */
     private async processRetry(deliveryId: string): Promise<void> {
         const delivery = this.deliveryQueue.get(deliveryId);
         if (!delivery) return;
@@ -242,12 +281,11 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         await this.attemptDelivery(delivery);
     }
 
-    /**
-     * Start background processor for missed retries
-     */
     private startRetryProcessor() {
         this.retryProcessorHandle = setInterval(() => {
             const now = new Date();
+            const nowMs = now.getTime();
+
             for (const [id, delivery] of this.deliveryQueue.entries()) {
                 if (
                     delivery.status === WebhookDeliveryStatus.RETRYING &&
@@ -256,15 +294,27 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                 ) {
                     this.attemptDelivery(delivery);
                 }
+
+                if (
+                    delivery.status === WebhookDeliveryStatus.DEAD_LETTER &&
+                    delivery.lastAttemptAt &&
+                    nowMs - delivery.lastAttemptAt.getTime() > WEBHOOK_QUEUE.DEAD_LETTER_RETENTION_MS
+                ) {
+                    this.deliveryQueue.delete(id);
+                    this.logger.debug('Removed old dead letter entry', { deliveryId: id });
+                }
+
+                if (
+                    delivery.status === WebhookDeliveryStatus.DELIVERED &&
+                    delivery.deliveredAt &&
+                    nowMs - delivery.deliveredAt.getTime() > WEBHOOK_QUEUE.DELIVERED_RETENTION_MS
+                ) {
+                    this.deliveryQueue.delete(id);
+                }
             }
         }, DEFAULTS.WEBHOOK_RETRY_CHECK_INTERVAL_MS);
     }
 
-    // QUERY METHODS
-
-    /**
-     * Get all deliveries
-     */
     getDeliveries(options?: {
         status?: WebhookDeliveryStatus;
         webhookId?: string;
@@ -273,30 +323,20 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         return filterDeliveries(Array.from(this.deliveryQueue.values()), options);
     }
 
-    /**
-     * Get delivery by ID
-     */
     getDelivery(deliveryId: string): WebhookDelivery | undefined {
         return this.deliveryQueue.get(deliveryId);
     }
 
-    /**
-     * Get dead letter queue items
-     */
     getDeadLetterQueue(): WebhookDelivery[] {
         return this.getDeliveries({ status: WebhookDeliveryStatus.DEAD_LETTER });
     }
 
-    /**
-     * Retry a dead letter item
-     */
     async retryDeadLetter(deliveryId: string): Promise<WebhookDelivery | null> {
         const delivery = this.deliveryQueue.get(deliveryId);
         if (!delivery || delivery.status !== WebhookDeliveryStatus.DEAD_LETTER) {
             return null;
         }
 
-        // Reset for retry
         resetForRetry(delivery);
 
         await this.attemptDelivery(delivery);
@@ -304,9 +344,6 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         return delivery;
     }
 
-    /**
-     * Remove a dead letter item
-     */
     removeDeadLetter(deliveryId: string): boolean {
         const delivery = this.deliveryQueue.get(deliveryId);
         if (!delivery || delivery.status !== WebhookDeliveryStatus.DEAD_LETTER) {
@@ -315,9 +352,6 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         return this.deliveryQueue.delete(deliveryId);
     }
 
-    /**
-     * Get webhook statistics
-     */
     getStats(): WebhookStats {
         return calculateWebhookStats(Array.from(this.deliveryQueue.values()));
     }

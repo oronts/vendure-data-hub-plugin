@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
-import { Pipeline, PipelineRun } from '../../entities/pipeline';
-import { PipelineDefinition, PipelineMetrics, StepType } from '../../types/index';
 import {
+    PipelineDefinition,
+    PipelineMetrics,
+    StepType,
     DEFAULT_IMPACT_ANALYSIS_OPTIONS,
     DurationEstimate,
     EntityImpact,
@@ -16,10 +17,21 @@ import {
     RiskAssessment,
     SampleRecordFlow,
     StepTransformation,
-} from '../../types/impact-analysis.types';
+} from '../../types/index';
+import { LOGGER_CONTEXTS, SortOrder, RunStatus, IMPACT_ANALYSIS } from '../../constants/index';
+import { Pipeline, PipelineRun } from '../../entities/pipeline';
 import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import {
+    VendureEntityType,
+    RiskLevel,
+    EstimateConfidence,
+    EstimateBasis,
+    FlowOutcome,
+    ImpactFieldChangeType,
+    SandboxLoadResultType,
+} from '../../constants/enums';
+import { getAdapterCode } from '../../utils/step-utils';
 
 interface EntityBreakdownCollector {
     [entityType: string]: {
@@ -52,6 +64,21 @@ export class ImpactAnalysisService {
         pipelineId: ID,
         options: ImpactAnalysisOptions = {},
     ): Promise<ImpactAnalysis> {
+        const { opts, startTime, pipeline } = await this.initializeAnalysis(ctx, pipelineId, options);
+
+        const impactData = await this.collectImpactData(ctx, pipelineId, pipeline, opts);
+
+        return this.buildAnalysisResult(pipelineId, opts, startTime, impactData);
+    }
+
+    /**
+     * Initialize analysis by loading pipeline and merging options
+     */
+    private async initializeAnalysis(
+        ctx: RequestContext,
+        pipelineId: ID,
+        options: ImpactAnalysisOptions,
+    ): Promise<{ opts: ImpactAnalysisOptions; startTime: number; pipeline: Pipeline }> {
         const opts = { ...DEFAULT_IMPACT_ANALYSIS_OPTIONS, ...options };
         const startTime = Date.now();
 
@@ -62,37 +89,73 @@ export class ImpactAnalysisService {
             throw new Error(`Pipeline ${pipelineId} not found`);
         }
 
-        // Execute dry run to get sample data
+        return { opts, startTime, pipeline };
+    }
+
+    /**
+     * Collect all impact data from dry run execution
+     */
+    private async collectImpactData(
+        ctx: RequestContext,
+        pipelineId: ID,
+        pipeline: Pipeline,
+        opts: ImpactAnalysisOptions,
+    ): Promise<{
+        entityBreakdown: EntityImpact[];
+        sampleRecords: SampleRecordFlow[];
+        summary: ImpactSummary;
+        estimatedDuration: DurationEstimate;
+        resourceUsage: ResourceEstimate;
+        metrics: PipelineMetrics;
+    }> {
         const dryRunResult = await this.adapterRuntime.executeDryRun(ctx, pipeline.definition);
 
-        // Collect entity breakdown from sample records
         const entityBreakdown = this.collectEntityBreakdown(
             dryRunResult.sampleRecords,
             pipeline.definition,
-            opts.sampleSize,
+            opts.sampleSize ?? DEFAULT_IMPACT_ANALYSIS_OPTIONS.sampleSize,
         );
 
-        // Generate sample record flows
         const sampleRecords = this.generateSampleFlows(
             dryRunResult.sampleRecords,
             pipeline.definition,
         );
 
-        // Calculate summary
         const summary = this.calculateSummary(entityBreakdown, dryRunResult.metrics);
-
-        // Estimate duration based on historical data
         const estimatedDuration = await this.estimateDuration(ctx, pipelineId, dryRunResult.metrics);
-
-        // Estimate resource usage
         const resourceUsage = this.estimateResources(
             pipeline.definition,
             dryRunResult.metrics.totalRecords ?? 0,
         );
 
-        // Risk assessment will be added by RiskAssessmentService
+        return {
+            entityBreakdown,
+            sampleRecords,
+            summary,
+            estimatedDuration,
+            resourceUsage,
+            metrics: dryRunResult.metrics,
+        };
+    }
+
+    /**
+     * Build the final analysis result object
+     */
+    private buildAnalysisResult(
+        pipelineId: ID,
+        opts: ImpactAnalysisOptions,
+        startTime: number,
+        impactData: {
+            entityBreakdown: EntityImpact[];
+            sampleRecords: SampleRecordFlow[];
+            summary: ImpactSummary;
+            estimatedDuration: DurationEstimate;
+            resourceUsage: ResourceEstimate;
+            metrics: PipelineMetrics;
+        },
+    ): ImpactAnalysis {
         const riskAssessment: RiskAssessment = {
-            level: 'low',
+            level: RiskLevel.LOW,
             score: 0,
             warnings: [],
         };
@@ -105,15 +168,15 @@ export class ImpactAnalysisService {
         });
 
         return {
-            summary,
-            entityBreakdown,
+            summary: impactData.summary,
+            entityBreakdown: impactData.entityBreakdown,
             riskAssessment,
-            sampleRecords,
-            estimatedDuration,
-            resourceUsage,
+            sampleRecords: impactData.sampleRecords,
+            estimatedDuration: impactData.estimatedDuration,
+            resourceUsage: impactData.resourceUsage,
             analyzedAt: new Date(),
-            sampleSize: dryRunResult.metrics.totalRecords ?? 0,
-            fullDatasetSize: null, // Would require extract to get full count
+            sampleSize: impactData.metrics.totalRecords ?? 0,
+            fullDatasetSize: null,
         };
     }
 
@@ -125,12 +188,8 @@ export class ImpactAnalysisService {
         pipelineId: ID,
         recordIds: string[],
     ): Promise<RecordDetail[]> {
-        // This would integrate with the actual data source to show
-        // current vs proposed state for specific records
         const details: RecordDetail[] = [];
 
-        // For now, return empty - would need actual record lookup
-        // from the data sources configured in the pipeline
         this.logger.debug('Record details requested', {
             pipelineId,
             recordCount: recordIds.length,
@@ -146,7 +205,7 @@ export class ImpactAnalysisService {
         ctx: RequestContext,
         pipelineId: ID,
         stepKey: string,
-        options: ImpactAnalysisOptions = {},
+        _options: ImpactAnalysisOptions = {},
     ): Promise<{
         stepKey: string;
         recordsIn: number;
@@ -176,7 +235,7 @@ export class ImpactAnalysisService {
             stepKey,
             recordsIn: stepSamples.length,
             recordsOut: stepSamples.length,
-            transformations: stepSamples.map((sample, index) => ({
+            transformations: stepSamples.map((sample) => ({
                 stepKey,
                 stepType: step.type,
                 stepName: step.name || stepKey,
@@ -196,21 +255,39 @@ export class ImpactAnalysisService {
     private collectEntityBreakdown(
         sampleRecords: Array<{ step: string; before: Record<string, unknown>; after: Record<string, unknown> }>,
         definition: PipelineDefinition,
-        sampleSize: number,
+        _sampleSize: number,
     ): EntityImpact[] {
         const collector: EntityBreakdownCollector = {};
+        const entityTypes = this.initializeEntityCollectors(definition, collector);
 
-        // Determine entity type from load steps
+        for (const sample of sampleRecords) {
+            this.processEntityRecord(sample, entityTypes, collector);
+        }
+
+        return Object.entries(collector).map(([entityType, data]) => ({
+            entityType,
+            operations: data.operations,
+            fieldChanges: Array.from(data.fieldChanges.values()),
+            sampleRecordIds: data.sampleRecordIds,
+        }));
+    }
+
+    /**
+     * Initialize entity collectors based on load steps in the pipeline definition
+     */
+    private initializeEntityCollectors(
+        definition: PipelineDefinition,
+        collector: EntityBreakdownCollector,
+    ): Set<string> {
         const loadSteps = this.getLoadSteps(definition);
         const entityTypes = new Set<string>();
 
         for (const step of loadSteps) {
-            const adapterCode = (step.config as any)?.adapterCode || 'unknown';
+            const adapterCode = getAdapterCode(step) ?? 'unknown';
             const entityType = this.inferEntityType(adapterCode);
             entityTypes.add(entityType);
         }
 
-        // Initialize collectors for each entity type
         for (const entityType of entityTypes) {
             collector[entityType] = {
                 operations: { create: 0, update: 0, delete: 0, skip: 0, error: 0 },
@@ -219,37 +296,36 @@ export class ImpactAnalysisService {
             };
         }
 
-        // Process sample records to infer operations
-        for (const sample of sampleRecords) {
-            const entityType = this.inferEntityTypeFromSample(sample, entityTypes);
-            if (!collector[entityType]) {
-                collector[entityType] = {
-                    operations: { create: 0, update: 0, delete: 0, skip: 0, error: 0 },
-                    fieldChanges: new Map(),
-                    sampleRecordIds: [],
-                };
-            }
+        return entityTypes;
+    }
 
-            const operation = this.inferOperation(sample);
-            collector[entityType].operations[operation]++;
+    /**
+     * Process a single entity record and update the collector
+     */
+    private processEntityRecord(
+        sample: { step: string; before: Record<string, unknown>; after: Record<string, unknown> },
+        entityTypes: Set<string>,
+        collector: EntityBreakdownCollector,
+    ): void {
+        const entityType = this.inferEntityTypeFromSample(sample, entityTypes);
 
-            // Track sample record IDs
-            const recordId = this.extractRecordId(sample.after);
-            if (recordId && collector[entityType].sampleRecordIds.length < 10) {
-                collector[entityType].sampleRecordIds.push(recordId);
-            }
-
-            // Track field changes
-            this.trackFieldChanges(sample, collector[entityType].fieldChanges);
+        if (!collector[entityType]) {
+            collector[entityType] = {
+                operations: { create: 0, update: 0, delete: 0, skip: 0, error: 0 },
+                fieldChanges: new Map(),
+                sampleRecordIds: [],
+            };
         }
 
-        // Convert to EntityImpact array
-        return Object.entries(collector).map(([entityType, data]) => ({
-            entityType,
-            operations: data.operations,
-            fieldChanges: Array.from(data.fieldChanges.values()),
-            sampleRecordIds: data.sampleRecordIds,
-        }));
+        const operation = this.inferOperation(sample);
+        collector[entityType].operations[operation]++;
+
+        const recordId = this.extractRecordId(sample.after);
+        if (recordId && collector[entityType].sampleRecordIds.length < IMPACT_ANALYSIS.MAX_SAMPLE_RECORD_IDS) {
+            collector[entityType].sampleRecordIds.push(recordId);
+        }
+
+        this.trackFieldChanges(sample, collector[entityType].fieldChanges);
     }
 
     private generateSampleFlows(
@@ -268,7 +344,7 @@ export class ImpactAnalysisService {
                     sourceData: sample.before,
                     steps: [],
                     finalData: null,
-                    outcome: 'success',
+                    outcome: FlowOutcome.SUCCESS,
                 });
             }
 
@@ -290,7 +366,7 @@ export class ImpactAnalysisService {
             flow.finalData = sample.after;
         }
 
-        return Array.from(flows.values()).slice(0, 10); // Limit to 10 flows
+        return Array.from(flows.values()).slice(0, IMPACT_ANALYSIS.MAX_SAMPLE_FLOWS);
     }
 
     private calculateSummary(entityBreakdown: EntityImpact[], metrics: PipelineMetrics): ImpactSummary {
@@ -322,89 +398,120 @@ export class ImpactAnalysisService {
         pipelineId: ID,
         metrics: PipelineMetrics,
     ): Promise<DurationEstimate> {
-        const runRepo = this.connection.getRepository(ctx, PipelineRun);
+        const historicalData = await this.fetchHistoricalData(ctx, pipelineId);
 
-        // Get recent successful runs for this pipeline
-        const recentRuns = await runRepo.find({
-            where: {
-                pipeline: { id: pipelineId },
-                status: 'SUCCESS' as any,
-            },
-            order: { finishedAt: 'DESC' },
-            take: 5,
-        });
-
-        if (recentRuns.length > 0) {
-            // Calculate average duration per record from historical runs
-            const durations = recentRuns
-                .filter(r => r.metrics?.durationMs != null && r.metrics?.processed != null)
-                .map(r => {
-                    const durationMs = r.metrics!.durationMs ?? 0;
-                    const processed = r.metrics!.processed ?? 1;
-                    return {
-                        durationMs,
-                        processed,
-                        perRecord: durationMs / Math.max(processed, 1),
-                    };
-                });
-
-            if (durations.length > 0) {
-                const avgPerRecord = durations.reduce((sum, d) => sum + d.perRecord, 0) / durations.length;
-                const totalRecords = metrics.totalRecords ?? 0;
-                const estimatedMs = avgPerRecord * totalRecords;
-
-                return {
-                    estimatedMs: Math.round(estimatedMs),
-                    confidence: durations.length >= 3 ? 'high' : 'medium',
-                    extractMs: Math.round(estimatedMs * 0.3), // 30% for extract
-                    transformMs: Math.round(estimatedMs * 0.2), // 20% for transform
-                    loadMs: Math.round(estimatedMs * 0.5), // 50% for load
-                    basedOn: 'historical',
-                };
+        if (historicalData.length > 0) {
+            const estimate = this.calculateEstimates(historicalData, metrics);
+            if (estimate) {
+                return estimate;
             }
         }
 
-        // Fallback to sampling-based estimate
-        const baseDuration = metrics.durationMs ?? 1000;
+        return this.createSamplingBasedEstimate(metrics);
+    }
+
+    /**
+     * Fetch historical run data for duration estimation
+     */
+    private async fetchHistoricalData(
+        ctx: RequestContext,
+        pipelineId: ID,
+    ): Promise<PipelineRun[]> {
+        const runRepo = this.connection.getRepository(ctx, PipelineRun);
+
+        return runRepo.find({
+            where: {
+                pipelineId: Number(pipelineId),
+                status: RunStatus.COMPLETED,
+            },
+            order: { finishedAt: SortOrder.DESC },
+            take: IMPACT_ANALYSIS.RECENT_RUNS_COUNT,
+        });
+    }
+
+    /**
+     * Calculate duration estimates based on historical run data
+     */
+    private calculateEstimates(
+        recentRuns: PipelineRun[],
+        metrics: PipelineMetrics,
+    ): DurationEstimate | null {
+        const durations = recentRuns
+            .filter(r => r.metrics?.durationMs != null && r.metrics?.processed != null)
+            .map(r => {
+                const durationMs = r.metrics!.durationMs ?? 0;
+                const processed = r.metrics!.processed ?? 1;
+                return {
+                    durationMs,
+                    processed,
+                    perRecord: durationMs / Math.max(processed, 1),
+                };
+            });
+
+        if (durations.length === 0) {
+            return null;
+        }
+
+        const avgPerRecord = durations.reduce((sum, d) => sum + d.perRecord, 0) / durations.length;
+        const totalRecords = metrics.totalRecords ?? 0;
+        const estimatedMs = avgPerRecord * totalRecords;
+
         return {
-            estimatedMs: baseDuration * 10, // Rough extrapolation
-            confidence: 'low',
-            extractMs: Math.round(baseDuration * 3),
-            transformMs: Math.round(baseDuration * 2),
-            loadMs: Math.round(baseDuration * 5),
-            basedOn: 'sampling',
+            estimatedMs: Math.round(estimatedMs),
+            confidence: durations.length >= IMPACT_ANALYSIS.HIGH_CONFIDENCE_MIN_RUNS
+                ? EstimateConfidence.HIGH
+                : EstimateConfidence.MEDIUM,
+            extractMs: Math.round(estimatedMs * IMPACT_ANALYSIS.EXTRACT_DURATION_RATIO),
+            transformMs: Math.round(estimatedMs * IMPACT_ANALYSIS.TRANSFORM_DURATION_RATIO),
+            loadMs: Math.round(estimatedMs * IMPACT_ANALYSIS.LOAD_DURATION_RATIO),
+            basedOn: EstimateBasis.HISTORICAL,
+        };
+    }
+
+    /**
+     * Create a fallback sampling-based duration estimate
+     */
+    private createSamplingBasedEstimate(metrics: PipelineMetrics): DurationEstimate {
+        const baseDuration = metrics.durationMs ?? IMPACT_ANALYSIS.DEFAULT_BASE_DURATION_MS;
+        const estimatedMs = baseDuration * IMPACT_ANALYSIS.SAMPLING_DURATION_MULTIPLIER;
+        return {
+            estimatedMs,
+            confidence: EstimateConfidence.LOW,
+            extractMs: Math.round(estimatedMs * IMPACT_ANALYSIS.SAMPLING_EXTRACT_RATIO),
+            transformMs: Math.round(estimatedMs * IMPACT_ANALYSIS.SAMPLING_TRANSFORM_RATIO),
+            loadMs: Math.round(estimatedMs * IMPACT_ANALYSIS.SAMPLING_LOAD_RATIO),
+            basedOn: EstimateBasis.SAMPLING,
         };
     }
 
     private estimateResources(definition: PipelineDefinition, recordCount: number): ResourceEstimate {
-        // Basic resource estimation based on step types and record count
         const steps = definition.steps || [];
         const extractCount = steps.filter(s => s.type === StepType.EXTRACT).length;
         const transformCount = steps.filter(s => s.type === StepType.TRANSFORM).length;
         const loadCount = steps.filter(s => s.type === StepType.LOAD).length;
 
         // Memory: Base + per-record + per-transform
-        const baseMemory = 50; // MB
-        const perRecordMemory = 0.01; // MB per record
-        const perTransformMemory = 10; // MB per transform step
-
         const memoryMb = Math.round(
-            baseMemory +
-            (recordCount * perRecordMemory) +
-            (transformCount * perTransformMemory)
+            IMPACT_ANALYSIS.BASE_MEMORY_MB +
+            (recordCount * IMPACT_ANALYSIS.PER_RECORD_MEMORY_MB) +
+            (transformCount * IMPACT_ANALYSIS.PER_TRANSFORM_MEMORY_MB)
         );
 
         // CPU: Estimate based on complexity
         const cpuPercent = Math.min(
-            100,
-            Math.round(20 + (recordCount / 1000) * 5 + transformCount * 10)
+            IMPACT_ANALYSIS.MAX_CPU_PERCENT,
+            Math.round(
+                IMPACT_ANALYSIS.BASE_CPU_PERCENT +
+                (recordCount / 1000) * IMPACT_ANALYSIS.CPU_PER_1000_RECORDS +
+                transformCount * IMPACT_ANALYSIS.CPU_PER_TRANSFORM
+            )
         );
 
         // Network calls: Extract + Load operations
         const networkCalls = extractCount + loadCount;
 
-        // Database queries: Load operations typically do multiple queries
-        const databaseQueries = loadCount * Math.ceil(recordCount / 100); // Batched
+        // Database queries: Load operations typically do multiple queries (batched)
+        const databaseQueries = loadCount * Math.ceil(recordCount / IMPACT_ANALYSIS.DB_QUERY_BATCH_SIZE);
 
         return {
             memoryMb,
@@ -426,14 +533,14 @@ export class ImpactAnalysisService {
             // Added fields
             for (const field of afterFields) {
                 if (!beforeFields.has(field)) {
-                    this.updateFieldChange(fieldMap, field, 'set', sample.before[field], sample.after[field]);
+                    this.updateFieldChange(fieldMap, field, ImpactFieldChangeType.SET, sample.before[field], sample.after[field]);
                 }
             }
 
             // Removed fields
             for (const field of beforeFields) {
                 if (!afterFields.has(field)) {
-                    this.updateFieldChange(fieldMap, field, 'remove', sample.before[field], sample.after[field]);
+                    this.updateFieldChange(fieldMap, field, ImpactFieldChangeType.REMOVE, sample.before[field], sample.after[field]);
                 }
             }
 
@@ -441,8 +548,8 @@ export class ImpactAnalysisService {
             for (const field of afterFields) {
                 if (beforeFields.has(field) && sample.before[field] !== sample.after[field]) {
                     const changeType = this.isTransform(sample.before[field], sample.after[field])
-                        ? 'transform'
-                        : 'update';
+                        ? ImpactFieldChangeType.TRANSFORM
+                        : ImpactFieldChangeType.UPDATE;
                     this.updateFieldChange(fieldMap, field, changeType, sample.before[field], sample.after[field]);
                 }
             }
@@ -454,7 +561,7 @@ export class ImpactAnalysisService {
     private updateFieldChange(
         map: Map<string, FieldChangePreview>,
         field: string,
-        changeType: 'set' | 'update' | 'remove' | 'transform',
+        changeType: ImpactFieldChangeType,
         before: unknown,
         after: unknown,
     ): void {
@@ -470,7 +577,7 @@ export class ImpactAnalysisService {
 
         const change = map.get(field)!;
         change.affectedCount++;
-        if (change.sampleBefore.length < 3) {
+        if (change.sampleBefore.length < IMPACT_ANALYSIS.MAX_SAMPLE_FIELD_VALUES) {
             change.sampleBefore.push(before);
             change.sampleAfter.push(after);
         }
@@ -498,21 +605,21 @@ export class ImpactAnalysisService {
                 (after as string).length !== (before as string).length);
     }
 
-    private getLoadSteps(definition: PipelineDefinition): any[] {
+    private getLoadSteps(definition: PipelineDefinition): PipelineDefinition['steps'] {
         return (definition.steps || []).filter(s => s.type === StepType.LOAD);
     }
 
     private inferEntityType(adapterCode: string): string {
         // Map adapter codes to entity types
         const mapping: Record<string, string> = {
-            'vendure-products': 'Product',
-            'vendure-variants': 'ProductVariant',
-            'vendure-customers': 'Customer',
-            'vendure-orders': 'Order',
-            'vendure-collections': 'Collection',
-            'vendure-facets': 'Facet',
-            'vendure-assets': 'Asset',
-            'vendure-product-sync': 'Product',
+            'vendure-products': VendureEntityType.PRODUCT,
+            'vendure-variants': VendureEntityType.PRODUCT_VARIANT,
+            'vendure-customers': VendureEntityType.CUSTOMER,
+            'vendure-orders': VendureEntityType.ORDER,
+            'vendure-collections': VendureEntityType.COLLECTION,
+            'vendure-facets': VendureEntityType.FACET,
+            'vendure-assets': VendureEntityType.ASSET,
+            'vendure-product-sync': VendureEntityType.PRODUCT,
         };
 
         return mapping[adapterCode] || 'Entity';
@@ -533,20 +640,20 @@ export class ImpactAnalysisService {
 
     private inferOperation(
         sample: { before: Record<string, unknown>; after: Record<string, unknown> },
-    ): 'create' | 'update' | 'delete' | 'skip' | 'error' {
+    ): SandboxLoadResultType {
         const isEmpty = (obj: Record<string, unknown>) =>
             !obj || Object.keys(obj).length === 0;
 
         if (isEmpty(sample.before) && !isEmpty(sample.after)) {
-            return 'create';
+            return SandboxLoadResultType.CREATE;
         }
         if (!isEmpty(sample.before) && isEmpty(sample.after)) {
-            return 'delete';
+            return SandboxLoadResultType.DELETE;
         }
         if (isEmpty(sample.before) && isEmpty(sample.after)) {
-            return 'skip';
+            return SandboxLoadResultType.SKIP;
         }
-        return 'update';
+        return SandboxLoadResultType.UPDATE;
     }
 
     private extractRecordId(record: Record<string, unknown>): string | null {
@@ -560,11 +667,11 @@ export class ImpactAnalysisService {
         return null;
     }
 
-    private findStep(definition: PipelineDefinition, stepKey: string): any | null {
+    private findStep(definition: PipelineDefinition, stepKey: string): PipelineDefinition['steps'][number] | null {
         return (definition.steps || []).find(s => s.key === stepKey) || null;
     }
 
-    private findStepByKey(definition: PipelineDefinition, stepKey: string): any | null {
+    private findStepByKey(definition: PipelineDefinition, stepKey: string): PipelineDefinition['steps'][number] | null {
         return this.findStep(definition, stepKey);
     }
 }

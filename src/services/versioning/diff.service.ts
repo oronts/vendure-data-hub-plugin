@@ -1,49 +1,33 @@
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { PipelineDefinition } from '../../types/pipeline/definition';
-import { DiffEntry, RevisionDiff } from '../../types/versioning.types';
+import { PipelineDefinition, PipelineStepDefinition, DiffEntry, RevisionDiff } from '../../types/index';
+import { DiffEntryType, StepType } from '../../constants/enums';
 import { RevisionChangesSummary } from '../../entities/pipeline/pipeline-revision.entity';
 
-/**
- * Service for computing differences between pipeline definitions
- */
 @Injectable()
 export class DiffService {
-    /**
-     * Compute a complete diff between two pipeline definitions
-     */
     computeDiff(from: PipelineDefinition, to: PipelineDefinition): RevisionDiff {
         const added: DiffEntry[] = [];
         const removed: DiffEntry[] = [];
         const modified: DiffEntry[] = [];
         let unchangedCount = 0;
 
-        // Compare steps
         const fromSteps = this.getStepsMap(from);
         const toSteps = this.getStepsMap(to);
 
         this.compareSteps(fromSteps, toSteps, added, removed, modified, unchangedCount);
-
-        // Compare triggers
         this.compareTriggers(from, to, added, removed, modified);
-
-        // Compare hooks
         this.compareHooks(from, to, added, removed, modified);
-
-        // Compare edges
         this.compareEdges(from, to, added, removed, modified);
-
-        // Compare metadata
         this.compareMetadata(from, to, modified);
 
-        // Count unchanged
         unchangedCount = this.countUnchanged(fromSteps, toSteps);
 
         const summary = this.generateSummary(added, removed, modified);
 
         return {
-            fromVersion: 0, // Will be set by caller
-            toVersion: 0,   // Will be set by caller
+            fromVersion: 0,
+            toVersion: 0,
             added,
             removed,
             modified,
@@ -52,9 +36,6 @@ export class DiffService {
         };
     }
 
-    /**
-     * Generate a changes summary for storage in the revision
-     */
     generateChangesSummary(from: PipelineDefinition | null, to: PipelineDefinition): RevisionChangesSummary {
         if (!from) {
             const steps = this.getStepsMap(to);
@@ -71,19 +52,19 @@ export class DiffService {
 
         const diff = this.computeDiff(from, to);
 
-        const stepsAdded = diff.added.filter(e => e.type === 'step').map(e => this.extractStepKey(e.path));
-        const stepsRemoved = diff.removed.filter(e => e.type === 'step').map(e => this.extractStepKey(e.path));
-        const stepsModified = diff.modified.filter(e => e.type === 'step').map(e => this.extractStepKey(e.path));
+        const stepsAdded = diff.added.filter(e => e.type === DiffEntryType.STEP).map(e => this.extractStepKey(e.path));
+        const stepsRemoved = diff.removed.filter(e => e.type === DiffEntryType.STEP).map(e => this.extractStepKey(e.path));
+        const stepsModified = diff.modified.filter(e => e.type === DiffEntryType.STEP).map(e => this.extractStepKey(e.path));
 
-        const triggersChanged = diff.added.some(e => e.type === 'trigger') ||
-                               diff.removed.some(e => e.type === 'trigger') ||
-                               diff.modified.some(e => e.type === 'trigger');
+        const triggersChanged = diff.added.some(e => e.type === DiffEntryType.TRIGGER) ||
+                               diff.removed.some(e => e.type === DiffEntryType.TRIGGER) ||
+                               diff.modified.some(e => e.type === DiffEntryType.TRIGGER);
 
-        const hooksChanged = diff.added.some(e => e.type === 'hook') ||
-                            diff.removed.some(e => e.type === 'hook') ||
-                            diff.modified.some(e => e.type === 'hook');
+        const hooksChanged = diff.added.some(e => e.type === DiffEntryType.HOOK) ||
+                            diff.removed.some(e => e.type === DiffEntryType.HOOK) ||
+                            diff.modified.some(e => e.type === DiffEntryType.HOOK);
 
-        const configChanges = diff.modified.filter(e => e.type === 'config').length;
+        const configChanges = diff.modified.filter(e => e.type === DiffEntryType.CONFIG).length;
 
         return {
             stepsAdded: [...new Set(stepsAdded)],
@@ -96,9 +77,6 @@ export class DiffService {
         };
     }
 
-    /**
-     * Generate a human-readable label for a diff entry path
-     */
     getHumanReadableLabel(path: string, definition: PipelineDefinition): string {
         const parts = path.split('.');
 
@@ -113,7 +91,8 @@ export class DiffService {
 
             if (parts[2] === 'operators' && parts[3]) {
                 const opIndex = parseInt(parts[3].replace(/\[|\]/g, ''), 10);
-                const operators = (step as any)?.config?.operators;
+                const stepConfig = step?.config as { operators?: Array<{ op?: string }> } | undefined;
+                const operators = stepConfig?.operators;
                 const opName = operators?.[opIndex]?.op || `operator ${opIndex}`;
                 return `Step '${stepName}' → operator '${opName}'`;
             }
@@ -143,22 +122,14 @@ export class DiffService {
         return path;
     }
 
-    /**
-     * Compute a hash of the definition for quick change detection
-     */
     computeDefinitionHash(definition: PipelineDefinition): string {
         const normalized = JSON.stringify(definition, Object.keys(definition).sort());
         return createHash('sha256').update(normalized).digest('hex').substring(0, 64);
     }
 
-    /**
-     * Calculate definition size in bytes
-     */
     calculateDefinitionSize(definition: PipelineDefinition): number {
         return Buffer.byteLength(JSON.stringify(definition), 'utf8');
     }
-
-    // Private helper methods
 
     private getStepsMap(definition: PipelineDefinition): Map<string, unknown> {
         const steps = new Map<string, unknown>();
@@ -180,48 +151,52 @@ export class DiffService {
         added: DiffEntry[],
         removed: DiffEntry[],
         modified: DiffEntry[],
-        unchangedCount: number
+        _unchangedCount: number
     ): void {
-        // Find added steps
         for (const [key, step] of toSteps) {
             if (!fromSteps.has(key)) {
                 added.push({
                     path: `steps.${key}`,
                     label: `Step '${key}'`,
-                    type: 'step',
+                    type: DiffEntryType.STEP,
                     before: null,
                     after: step,
                 });
             }
         }
 
-        // Find removed steps
         for (const [key, step] of fromSteps) {
             if (!toSteps.has(key)) {
                 removed.push({
                     path: `steps.${key}`,
                     label: `Step '${key}'`,
-                    type: 'step',
+                    type: DiffEntryType.STEP,
                     before: step,
                     after: null,
                 });
             }
         }
 
-        // Find modified steps
         for (const [key, toStep] of toSteps) {
             const fromStep = fromSteps.get(key);
             if (fromStep && !this.deepEqual(fromStep, toStep)) {
-                // Find specific changes within the step
                 const stepDiffs = this.compareObjects(fromStep, toStep, `steps.${key}`);
                 for (const diff of stepDiffs) {
                     modified.push({
                         ...diff,
-                        type: 'step',
+                        type: DiffEntryType.STEP,
                     });
                 }
             }
         }
+    }
+
+    /**
+     * Get trigger steps from definition
+     * Triggers are stored as steps with type 'TRIGGER'
+     */
+    private getTriggerSteps(definition: PipelineDefinition): PipelineStepDefinition[] {
+        return (definition.steps || []).filter(s => s.type === StepType.TRIGGER);
     }
 
     private compareTriggers(
@@ -231,27 +206,28 @@ export class DiffService {
         removed: DiffEntry[],
         modified: DiffEntry[]
     ): void {
-        const fromTriggers = from.triggers || [];
-        const toTriggers = to.triggers || [];
+        // Extract trigger steps from definitions
+        const fromTriggers = this.getTriggerSteps(from);
+        const toTriggers = this.getTriggerSteps(to);
 
-        // Create maps by trigger type for comparison
-        const fromMap = new Map(fromTriggers.map((t, i) => [(t as any).type || `trigger-${i}`, t]));
-        const toMap = new Map(toTriggers.map((t, i) => [(t as any).type || `trigger-${i}`, t]));
+        // Key triggers by their step key
+        const fromMap = new Map(fromTriggers.map(t => [t.key, t]));
+        const toMap = new Map(toTriggers.map(t => [t.key, t]));
 
         for (const [key, trigger] of toMap) {
             if (!fromMap.has(key)) {
                 added.push({
-                    path: `triggers.${key}`,
+                    path: `steps.${key}`,
                     label: `Trigger '${key}'`,
-                    type: 'trigger',
+                    type: DiffEntryType.TRIGGER,
                     before: null,
                     after: trigger,
                 });
             } else if (!this.deepEqual(fromMap.get(key), trigger)) {
                 modified.push({
-                    path: `triggers.${key}`,
+                    path: `steps.${key}`,
                     label: `Trigger '${key}'`,
-                    type: 'trigger',
+                    type: DiffEntryType.TRIGGER,
                     before: fromMap.get(key),
                     after: trigger,
                 });
@@ -261,9 +237,9 @@ export class DiffService {
         for (const [key, trigger] of fromMap) {
             if (!toMap.has(key)) {
                 removed.push({
-                    path: `triggers.${key}`,
+                    path: `steps.${key}`,
                     label: `Trigger '${key}'`,
-                    type: 'trigger',
+                    type: DiffEntryType.TRIGGER,
                     before: trigger,
                     after: null,
                 });
@@ -281,7 +257,6 @@ export class DiffService {
         const fromHooks = from.hooks || {};
         const toHooks = to.hooks || {};
 
-        // Get all hook stage keys
         const allStages = new Set([
             ...Object.keys(fromHooks),
             ...Object.keys(toHooks),
@@ -295,7 +270,7 @@ export class DiffService {
                 added.push({
                     path: `hooks.${stage}`,
                     label: `Hook '${stage}'`,
-                    type: 'hook',
+                    type: DiffEntryType.HOOK,
                     before: null,
                     after: toHook,
                 });
@@ -303,7 +278,7 @@ export class DiffService {
                 removed.push({
                     path: `hooks.${stage}`,
                     label: `Hook '${stage}'`,
-                    type: 'hook',
+                    type: DiffEntryType.HOOK,
                     before: fromHook,
                     after: null,
                 });
@@ -311,7 +286,7 @@ export class DiffService {
                 modified.push({
                     path: `hooks.${stage}`,
                     label: `Hook '${stage}'`,
-                    type: 'hook',
+                    type: DiffEntryType.HOOK,
                     before: fromHook,
                     after: toHook,
                 });
@@ -324,7 +299,7 @@ export class DiffService {
         to: PipelineDefinition,
         added: DiffEntry[],
         removed: DiffEntry[],
-        modified: DiffEntry[]
+        _modified: DiffEntry[]
     ): void {
         const fromEdges = new Set((from.edges || []).map(e => `${e.from}->${e.to}`));
         const toEdges = new Set((to.edges || []).map(e => `${e.from}->${e.to}`));
@@ -334,7 +309,7 @@ export class DiffService {
                 added.push({
                     path: `edges.${edge}`,
                     label: `Edge ${edge}`,
-                    type: 'edge',
+                    type: DiffEntryType.EDGE,
                     before: null,
                     after: edge,
                 });
@@ -346,7 +321,7 @@ export class DiffService {
                 removed.push({
                     path: `edges.${edge}`,
                     label: `Edge ${edge}`,
-                    type: 'edge',
+                    type: DiffEntryType.EDGE,
                     before: edge,
                     after: null,
                 });
@@ -362,13 +337,15 @@ export class DiffService {
         const metaFields = ['name', 'description', 'capabilities'] as const;
 
         for (const field of metaFields) {
-            if (!this.deepEqual((from as any)[field], (to as any)[field])) {
+            const fromValue = (from as unknown as Record<string, unknown>)[field];
+            const toValue = (to as unknown as Record<string, unknown>)[field];
+            if (!this.deepEqual(fromValue, toValue)) {
                 modified.push({
                     path: field,
                     label: `Pipeline ${field}`,
-                    type: 'meta',
-                    before: (from as any)[field],
-                    after: (to as any)[field],
+                    type: DiffEntryType.META,
+                    before: fromValue,
+                    after: toValue,
                 });
             }
         }
@@ -422,7 +399,7 @@ export class DiffService {
                 diffs.push({
                     path: basePath,
                     label: basePath,
-                    type: 'config',
+                    type: DiffEntryType.CONFIG,
                     before: from,
                     after: to,
                 });
@@ -440,7 +417,7 @@ export class DiffService {
                 diffs.push({
                     path: newPath,
                     label: newPath,
-                    type: 'config',
+                    type: DiffEntryType.CONFIG,
                     before: null,
                     after: toObj[key],
                 });
@@ -448,16 +425,15 @@ export class DiffService {
                 diffs.push({
                     path: newPath,
                     label: newPath,
-                    type: 'config',
+                    type: DiffEntryType.CONFIG,
                     before: fromObj[key],
                     after: null,
                 });
             } else if (!this.deepEqual(fromObj[key], toObj[key])) {
-                // For nested objects, just show the top-level change
                 diffs.push({
                     path: newPath,
                     label: newPath,
-                    type: 'config',
+                    type: DiffEntryType.CONFIG,
                     before: fromObj[key],
                     after: toObj[key],
                 });

@@ -5,7 +5,8 @@ import { PipelineRun } from '../../entities/pipeline';
 import { HookService } from '../events/hook.service';
 import { DomainEventsService } from '../events/domain-events.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { LOGGER_CONTEXTS, SortOrder, HookStage } from '../../constants/index';
+import type { JsonObject } from '../../types/index';
 
 @Injectable()
 export class RecordErrorService {
@@ -25,34 +26,43 @@ export class RecordErrorService {
         runId: ID,
         stepKey: string,
         message: string,
-        payload: any,
+        payload: JsonObject,
     ): Promise<DataHubRecordError> {
         const repo = this.connection.getRepository(ctx, DataHubRecordError);
         const run = await this.connection.getEntityOrThrow(ctx, PipelineRun, runId);
-        const entity = await repo.save(
-            new DataHubRecordError({ run, stepKey, message, payload, deadLetter: false }),
-        );
+        const errorEntity = new DataHubRecordError();
+        errorEntity.run = run;
+        errorEntity.runId = Number(runId);
+        errorEntity.stepKey = stepKey;
+        errorEntity.message = message;
+        errorEntity.payload = payload;
+        errorEntity.deadLetter = false;
+        const entity = await repo.save(errorEntity);
         try {
-            const def = (run as any)?.pipeline?.definition ?? (await this.connection.getRepository(ctx, PipelineRun).findOne({ where: { id: runId }, relations: { pipeline: true } } as any))?.pipeline?.definition;
+            const runWithPipeline = await this.connection.getRepository(ctx, PipelineRun).findOne({
+                where: { id: runId },
+                relations: { pipeline: true },
+            });
+            const def = runWithPipeline?.pipeline?.definition;
             if (def) {
-                await this.hooks.run(ctx, def as any, 'onError', undefined as any, payload as any, runId);
+                await this.hooks.run(ctx, def, HookStage.ON_ERROR, undefined, payload, runId);
             }
         } catch (error) {
             this.logger.warn('Failed to run onError hook', { runId, stepKey, error: (error as Error)?.message });
         }
         try {
-            this.events.publish('RecordRejected', { runId, stepKey, message });
+            this.events.publish('RECORD_REJECTED', { runId, stepKey, message });
         } catch (error) {
-            this.logger.warn('Failed to publish RecordRejected event', { runId, stepKey, error: (error as Error)?.message });
+            this.logger.warn('Failed to publish RECORD_REJECTED event', { runId, stepKey, error: (error as Error)?.message });
         }
         return entity;
     }
 
     listByRun(ctx: RequestContext, runId: ID): Promise<DataHubRecordError[]> {
         return this.connection.getRepository(ctx, DataHubRecordError).find({
-            where: { run: { id: runId } as any },
-            order: { createdAt: 'ASC' as any },
-        } as any);
+            where: { runId: Number(runId) },
+            order: { createdAt: SortOrder.ASC },
+        });
     }
 
     async getById(ctx: RequestContext, id: ID): Promise<DataHubRecordError | null> {
@@ -60,7 +70,10 @@ export class RecordErrorService {
     }
 
     async listDeadLetters(ctx: RequestContext): Promise<DataHubRecordError[]> {
-        return this.connection.getRepository(ctx, DataHubRecordError).find({ where: { deadLetter: true } as any, order: { createdAt: 'ASC' as any } as any } as any);
+        return this.connection.getRepository(ctx, DataHubRecordError).find({
+            where: { deadLetter: true },
+            order: { createdAt: SortOrder.ASC },
+        });
     }
 
     async markDeadLetter(ctx: RequestContext, id: ID, value: boolean): Promise<boolean> {
@@ -69,13 +82,18 @@ export class RecordErrorService {
         ent.deadLetter = value;
         await repo.save(ent, { reload: false });
         try {
-            const run = await this.connection.getRepository(ctx, PipelineRun).findOne({ where: { id: (ent as any).run?.id }, relations: { pipeline: true } } as any);
-            const def = (run as any)?.pipeline?.definition;
+            const run = ent.runId
+                ? await this.connection.getRepository(ctx, PipelineRun).findOne({
+                      where: { id: ent.runId },
+                      relations: { pipeline: true },
+                  })
+                : null;
+            const def = run?.pipeline?.definition;
             if (def) {
-                await this.hooks.run(ctx, def as any, value ? 'onDeadLetter' : 'onRetry', undefined as any, ent.payload as any, run?.id);
+                await this.hooks.run(ctx, def, value ? HookStage.ON_DEAD_LETTER : HookStage.ON_RETRY, undefined, ent.payload, run.id);
             }
         } catch (error) {
-            this.logger.warn(`Failed to run ${value ? 'onDeadLetter' : 'onRetry'} hook`, {
+            this.logger.warn(`Failed to run ${value ? HookStage.ON_DEAD_LETTER : HookStage.ON_RETRY} hook`, {
                 recordErrorId: id,
                 stepKey: ent.stepKey,
                 error: (error as Error)?.message,
@@ -83,9 +101,9 @@ export class RecordErrorService {
         }
         if (value) {
             try {
-                this.events.publish('RecordDeadLettered', { id: ent.id, stepKey: ent.stepKey });
+                this.events.publish('RECORD_DEAD_LETTERED', { id: ent.id, stepKey: ent.stepKey });
             } catch (error) {
-                this.logger.warn('Failed to publish RecordDeadLettered event', {
+                this.logger.warn('Failed to publish RECORD_DEAD_LETTERED event', {
                     recordErrorId: ent.id,
                     stepKey: ent.stepKey,
                     error: (error as Error)?.message,

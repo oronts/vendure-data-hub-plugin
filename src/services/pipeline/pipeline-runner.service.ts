@@ -1,12 +1,61 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ID, RequestContext, RequestContextService, TransactionalConnection } from '@vendure/core';
-import { PipelineRun, Pipeline, LogLevel } from '../../entities/pipeline';
-import { PipelineDefinition, PipelineMetrics, RunStatus } from '../../types/index';
+import { Repository } from 'typeorm';
+import { PipelineRun, Pipeline } from '../../entities/pipeline';
+import { RunStatus } from '../../constants/enums';
+import { JsonObject, PipelineDefinition, PipelineMetrics } from '../../types/index';
 import { DefinitionValidationService } from '../validation/definition-validation.service';
 import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
 import { RecordErrorService } from '../data/record-error.service';
-import { DataHubLogger, DataHubLoggerFactory, SpanContext, ExecutionLogger } from '../logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory, ExecutionLogger, SpanContext } from '../logger';
+import { LOGGER_CONTEXTS, DISTRIBUTED_LOCK, calculateThroughput } from '../../constants/index';
+import { DistributedLockService } from '../runtime/distributed-lock.service';
+
+/** Context for pipeline execution passed between helper methods */
+interface ExecutionContext {
+    ctx: RequestContext;
+    run: PipelineRun;
+    runId: ID;
+    runRepo: Repository<PipelineRun>;
+    pipelineRepo: Repository<Pipeline>;
+    runLogger: DataHubLogger;
+    pipelineSpan: SpanContext;
+    startTime: number;
+    lockKey: string;
+    lockToken?: string;
+}
+
+/** Result from prepareExecution indicating whether execution should proceed */
+type PrepareResult =
+    | { proceed: false }
+    | { proceed: true; executionContext: ExecutionContext };
+
+/** Result from loading and validating a run */
+type LoadRunResult =
+    | { valid: false }
+    | { valid: true; run: PipelineRun; runLogger: DataHubLogger };
+
+/** Result from acquiring execution lock */
+type LockResult =
+    | { acquired: false }
+    | { acquired: true; lockToken?: string };
+
+/** Context for processing execution */
+interface ProcessingContext {
+    ctx: RequestContext;
+    runId: ID;
+    pipelineId: ID | undefined;
+    runLogger: DataHubLogger;
+    runRepo: Repository<PipelineRun>;
+    start: number;
+    seed?: unknown[];
+}
+
+/** Callbacks for pipeline execution */
+interface ProcessingCallbacks {
+    onCancelRequested: () => Promise<boolean>;
+    onRecordError: (stepKey: string, message: string, payload: Record<string, unknown>) => Promise<void>;
+}
 
 @Injectable()
 export class PipelineRunnerService {
@@ -20,35 +69,123 @@ export class PipelineRunnerService {
         private recordErrorService: RecordErrorService,
         private loggerFactory: DataHubLoggerFactory,
         private executionLogger: ExecutionLogger,
+        @Optional() private distributedLock?: DistributedLockService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PIPELINE_RUNNER);
     }
 
+    /**
+     * Main execution orchestrator - coordinates pipeline execution phases.
+     * Delegates to helper methods for setup, step execution, and completion/failure handling.
+     */
     async execute(runId: ID): Promise<void> {
+        const prepareResult = await this.prepareExecution(runId);
+        if (!prepareResult.proceed) {
+            return;
+        }
+
+        const execCtx = prepareResult.executionContext;
+
+        try {
+            const metrics = await this.executeSteps(execCtx);
+            await this.handleCompletion(execCtx, metrics);
+        } catch (e) {
+            await this.handleFailure(execCtx, e);
+        } finally {
+            await this.releaseLock(execCtx);
+        }
+    }
+
+    /**
+     * Prepares execution context: loads run, validates status, acquires lock, and initializes logging.
+     * Returns { proceed: false } if execution should be skipped.
+     */
+    private async prepareExecution(runId: ID): Promise<PrepareResult> {
         const ctx = await this.createCtx();
         const runRepo = this.connection.getRepository(ctx, PipelineRun);
         const pipelineRepo = this.connection.getRepository(ctx, Pipeline);
 
-        const run = await runRepo.findOne({ where: { id: runId }, relations: { pipeline: true } });
-        if (!run) {
-            this.logger.warn('Run not found', { runId: runId as any });
-            return;
+        const loadResult = await this.loadAndValidateRun(runId, runRepo);
+        if (!loadResult.valid) {
+            return { proceed: false };
+        }
+        const { run, runLogger } = loadResult;
+
+        const lockKey = `pipeline-run:${runId}`;
+        const lockResult = await this.acquireExecutionLock(lockKey, runLogger);
+        if (!lockResult.acquired) {
+            return { proceed: false };
         }
 
-        // Create a run-specific logger with full trace context
+        const execCtx = await this.initializeExecutionContext(
+            ctx, run, runId, runRepo, pipelineRepo, runLogger, lockKey, lockResult.lockToken,
+        );
+
+        return { proceed: true, executionContext: execCtx };
+    }
+
+    /**
+     * Loads a run by ID and validates it exists and is in PENDING status.
+     */
+    private async loadAndValidateRun(runId: ID, runRepo: Repository<PipelineRun>): Promise<LoadRunResult> {
+        const run = await runRepo.findOne({ where: { id: runId }, relations: { pipeline: true } });
+        if (!run) {
+            this.logger.warn('Run not found', { runId: String(runId) });
+            return { valid: false };
+        }
+
         const runLogger = this.logger.withContext({
             runId,
             pipelineId: run.pipeline.id,
             pipelineCode: run.pipeline.code,
-            userId: (run as any).startedByUserId,
+            userId: run.startedByUserId ?? undefined,
         });
 
         if (run.status !== RunStatus.PENDING) {
             runLogger.debug('Skipping run - not in PENDING status', { currentStatus: run.status });
-            return;
+            return { valid: false };
         }
 
-        // Start pipeline execution span
+        return { valid: true, run, runLogger };
+    }
+
+    /**
+     * Acquires a distributed lock to prevent duplicate execution in horizontal scaling.
+     */
+    private async acquireExecutionLock(lockKey: string, runLogger: DataHubLogger): Promise<LockResult> {
+        if (!this.distributedLock) {
+            return { acquired: true, lockToken: undefined };
+        }
+
+        const lockResult = await this.distributedLock.acquire(lockKey, {
+            ttlMs: DISTRIBUTED_LOCK.PIPELINE_LOCK_TTL_MS,
+            waitForLock: false, // Don't wait - another worker is handling it
+        });
+
+        if (!lockResult.acquired) {
+            runLogger.debug('Run already being processed by another worker', {
+                currentOwner: lockResult.currentOwner,
+            });
+            return { acquired: false };
+        }
+
+        runLogger.debug('Acquired distributed lock for run', { lockKey });
+        return { acquired: true, lockToken: lockResult.token };
+    }
+
+    /**
+     * Initializes execution context: starts span, updates run status, and persists start log.
+     */
+    private async initializeExecutionContext(
+        ctx: RequestContext,
+        run: PipelineRun,
+        runId: ID,
+        runRepo: Repository<PipelineRun>,
+        pipelineRepo: Repository<Pipeline>,
+        runLogger: DataHubLogger,
+        lockKey: string,
+        lockToken: string | undefined,
+    ): Promise<ExecutionContext> {
         const pipelineSpan = runLogger.logPipelineStart(run.pipeline.code, run.pipeline.id);
         const startTime = Date.now();
 
@@ -56,91 +193,116 @@ export class PipelineRunnerService {
         run.startedAt = new Date();
         await runRepo.save(run, { reload: false });
 
-        // Persist log: pipeline started (respects log persistence level setting)
         await this.executionLogger.logPipelineStart(ctx, run.pipeline.code, {
             pipelineId: run.pipeline.id,
             runId,
         });
 
-        try {
-            const pipeline = await pipelineRepo.findOne({ where: { id: run.pipeline.id } });
-            if (!pipeline) {
-                throw new Error('Pipeline not found for run');
+        return { ctx, run, runId, runRepo, pipelineRepo, runLogger, pipelineSpan, startTime, lockKey, lockToken };
+    }
+
+    /**
+     * Executes pipeline steps: validates definition and runs the pipeline processing.
+     * Returns metrics from the pipeline execution.
+     */
+    private async executeSteps(execCtx: ExecutionContext): Promise<PipelineMetrics> {
+        const { ctx, run, runId, pipelineRepo, runLogger, pipelineSpan } = execCtx;
+
+        const pipeline = await pipelineRepo.findOne({ where: { id: run.pipeline.id } });
+        if (!pipeline) {
+            throw new Error('Pipeline not found for run');
+        }
+
+        pipelineSpan.addEvent('definition.validate.start');
+        this.definitionValidator.validate(pipeline.definition);
+        pipelineSpan.addEvent('definition.validate.complete');
+
+        pipelineSpan.addEvent('processing.start', {
+            stepCount: pipeline.definition.steps?.length ?? 0,
+        });
+
+        return this.executeProcessing(ctx, runId, pipeline.definition, pipeline.id, runLogger);
+    }
+
+    /**
+     * Handles successful pipeline completion: updates run status, persists logs, and ends span.
+     */
+    private async handleCompletion(execCtx: ExecutionContext, metrics: PipelineMetrics): Promise<void> {
+        const { ctx, run, runId, runRepo, runLogger, pipelineSpan } = execCtx;
+
+        run.status = RunStatus.COMPLETED;
+        run.finishedAt = new Date();
+        run.metrics = metrics;
+        await runRepo.save(run, { reload: false });
+
+        await this.executionLogger.logPipelineComplete(ctx, run.pipeline.code, {
+            pipelineId: run.pipeline.id,
+            runId,
+            durationMs: metrics.durationMs,
+            recordsProcessed: metrics.totalRecords,
+            recordsFailed: metrics.failed,
+            metadata: metrics,
+        });
+
+        runLogger.logPipelineComplete(run.pipeline.code, {
+            totalRecords: metrics.totalRecords ?? 0,
+            succeeded: metrics.succeeded ?? 0,
+            failed: metrics.failed ?? 0,
+            durationMs: metrics.durationMs ?? 0,
+        });
+
+        pipelineSpan.setAttribute('records.total', metrics.totalRecords ?? 0);
+        pipelineSpan.setAttribute('records.succeeded', metrics.succeeded ?? 0);
+        pipelineSpan.setAttribute('records.failed', metrics.failed ?? 0);
+        pipelineSpan.end((metrics.failed ?? 0) > 0 ? 'error' : 'ok');
+    }
+
+    /**
+     * Handles pipeline failure: updates run status with error, persists error logs, and ends span.
+     */
+    private async handleFailure(execCtx: ExecutionContext, e: unknown): Promise<void> {
+        const { ctx, run, runId, runRepo, runLogger, pipelineSpan, startTime } = execCtx;
+
+        const durationMs = Date.now() - startTime;
+        const error = e instanceof Error ? e : new Error(String(e));
+
+        run.status = RunStatus.FAILED;
+        run.finishedAt = new Date();
+        run.error = error.message;
+        await runRepo.save(run, { reload: false });
+
+        await this.executionLogger.logPipelineFailed(ctx, run.pipeline.code, error, {
+            pipelineId: run.pipeline.id,
+            runId,
+            durationMs,
+        });
+
+        runLogger.logPipelineFailed(run.pipeline.code, error, durationMs);
+
+        // End span with error status
+        pipelineSpan.addEvent('error', {
+            message: error.message,
+            stack: error.stack,
+        });
+        pipelineSpan.end('error');
+    }
+
+    /**
+     * Releases the distributed lock if one was acquired.
+     */
+    private async releaseLock(execCtx: ExecutionContext): Promise<void> {
+        const { runLogger, lockKey, lockToken } = execCtx;
+
+        if (this.distributedLock && lockToken) {
+            try {
+                await this.distributedLock.release(lockKey, lockToken);
+                runLogger.debug('Released distributed lock for run', { lockKey });
+            } catch (lockError) {
+                runLogger.warn('Failed to release distributed lock', {
+                    lockKey,
+                    error: lockError instanceof Error ? lockError.message : String(lockError),
+                });
             }
-
-            // Validate pipeline definition
-            pipelineSpan.addEvent('definition.validate.start');
-            this.definitionValidator.validate(pipeline.definition);
-            pipelineSpan.addEvent('definition.validate.complete');
-
-            // Execute the pipeline processing
-            pipelineSpan.addEvent('processing.start', {
-                stepCount: pipeline.definition.steps?.length ?? 0,
-            });
-
-            const metrics = await this.executeProcessing(
-                ctx,
-                runId,
-                pipeline.definition,
-                pipeline.id,
-                runLogger,
-            );
-
-            // Update run status to completed
-            run.status = RunStatus.COMPLETED;
-            run.finishedAt = new Date();
-            run.metrics = metrics;
-            await runRepo.save(run, { reload: false });
-
-            // Persist log: pipeline completed (respects log persistence level setting)
-            await this.executionLogger.logPipelineComplete(ctx, run.pipeline.code, {
-                pipelineId: run.pipeline.id,
-                runId,
-                durationMs: metrics.durationMs,
-                recordsProcessed: metrics.totalRecords,
-                recordsFailed: metrics.failed,
-                metadata: metrics,
-            });
-
-            // Log pipeline completion with metrics (console)
-            runLogger.logPipelineComplete(run.pipeline.code, {
-                totalRecords: metrics.totalRecords ?? 0,
-                succeeded: metrics.succeeded ?? 0,
-                failed: metrics.failed ?? 0,
-                durationMs: metrics.durationMs ?? 0,
-            });
-
-            // End span with success
-            pipelineSpan.setAttribute('records.total', metrics.totalRecords ?? 0);
-            pipelineSpan.setAttribute('records.succeeded', metrics.succeeded ?? 0);
-            pipelineSpan.setAttribute('records.failed', metrics.failed ?? 0);
-            pipelineSpan.end((metrics.failed ?? 0) > 0 ? 'error' : 'ok');
-        } catch (e) {
-            const durationMs = Date.now() - startTime;
-            const error = e instanceof Error ? e : new Error(String(e));
-
-            // Update run status to failed
-            run.status = RunStatus.FAILED;
-            run.finishedAt = new Date();
-            run.error = error.message;
-            await runRepo.save(run, { reload: false });
-
-            // Persist log: pipeline failed (always persists - errors are always logged)
-            await this.executionLogger.logPipelineFailed(ctx, run.pipeline.code, error, {
-                pipelineId: run.pipeline.id,
-                runId,
-                durationMs,
-            });
-
-            // Log pipeline failure with error details (console)
-            runLogger.logPipelineFailed(run.pipeline.code, error, durationMs);
-
-            // End span with error status
-            pipelineSpan.addEvent('error', {
-                message: error.message,
-                stack: error.stack,
-            });
-            pipelineSpan.end('error');
         }
     }
 
@@ -155,18 +317,38 @@ export class PipelineRunnerService {
         pipelineId: ID | undefined,
         runLogger: DataHubLogger,
     ): Promise<PipelineMetrics> {
+        const procCtx = await this.loadPipelineDefinition(ctx, runId, pipelineId, runLogger);
+        const callbacks = this.createProcessingCallbacks(procCtx);
+        return this.runStepsWithMetrics(definition, procCtx, callbacks);
+    }
+
+    /**
+     * Loads pipeline definition context including run checkpoint and seed data.
+     */
+    private async loadPipelineDefinition(
+        ctx: RequestContext,
+        runId: ID,
+        pipelineId: ID | undefined,
+        runLogger: DataHubLogger,
+    ): Promise<ProcessingContext> {
         const runRepo = this.connection.getRepository(ctx, PipelineRun);
         const run = await runRepo.findOne({ where: { id: runId } });
-        const start = Date.now();
-        const seed = (run?.checkpoint as any)?.__seed as any[] | undefined;
+        const checkpoint = run?.checkpoint as { __seed?: unknown[] } | null;
+        const seed = checkpoint?.__seed;
 
-        // Create cancellation checker with logging
+        return { ctx, runId, pipelineId, runLogger, runRepo, start: Date.now(), seed };
+    }
+
+    /**
+     * Creates callbacks for cancel requests and record errors during processing.
+     */
+    private createProcessingCallbacks(procCtx: ProcessingContext): ProcessingCallbacks {
+        const { ctx, runId, pipelineId, runLogger, runRepo, start } = procCtx;
+
         const onCancelRequested = async (): Promise<boolean> => {
             const current = await runRepo.findOne({ where: { id: runId } });
             if (current?.status === RunStatus.CANCEL_REQUESTED) {
-                runLogger.info('Pipeline cancellation requested', {
-                    durationMs: Date.now() - start,
-                });
+                runLogger.info('Pipeline cancellation requested', { durationMs: Date.now() - start });
                 current.status = RunStatus.CANCELLED;
                 current.finishedAt = new Date();
                 await runRepo.save(current, { reload: false });
@@ -175,58 +357,55 @@ export class PipelineRunnerService {
             return false;
         };
 
-        // Create error handler with logging
         const onRecordError = async (
             stepKey: string,
             message: string,
             payload: Record<string, unknown>,
         ): Promise<void> => {
-            // Always record to error table
-            await this.recordErrorService.record(ctx, runId, stepKey, message, payload);
-
-            // Persist to log table (respects log persistence level - errors always logged)
-            await this.executionLogger.logRecordError(ctx, stepKey, message, payload, {
-                pipelineId,
-                runId,
-            });
+            await this.recordErrorService.record(ctx, runId, stepKey, message, payload as JsonObject);
+            await this.executionLogger.logRecordError(ctx, stepKey, message, payload, { pipelineId, runId });
         };
 
-        // Execute pipeline (with or without seed records)
+        return { onCancelRequested, onRecordError };
+    }
+
+    /**
+     * Runs pipeline steps and builds metrics from the execution result.
+     */
+    private async runStepsWithMetrics(
+        definition: PipelineDefinition,
+        procCtx: ProcessingContext,
+        callbacks: ProcessingCallbacks,
+    ): Promise<PipelineMetrics> {
+        const { ctx, runId, pipelineId, runLogger, start, seed } = procCtx;
+        const { onCancelRequested, onRecordError } = callbacks;
+
         const result = seed
             ? await this.adapterRuntime.executePipelineWithSeedRecords(
-                  ctx,
-                  definition,
-                  seed,
-                  onCancelRequested,
-                  onRecordError,
+                  ctx, definition, seed as JsonObject[], onCancelRequested, onRecordError,
               )
             : await this.adapterRuntime.executePipeline(
-                  ctx,
-                  definition,
-                  onCancelRequested,
-                  onRecordError,
-                  pipelineId,
-                  runId,
+                  ctx, definition, onCancelRequested, onRecordError, pipelineId, runId,
               );
 
         const durationMs = Date.now() - start;
 
-        // Log processing summary
         runLogger.debug('Pipeline processing completed', {
             recordCount: result.processed,
             recordsSucceeded: result.succeeded,
             recordsFailed: result.failed,
             durationMs,
-            throughput: durationMs > 0 ? Math.round((result.processed / durationMs) * 1000) : 0,
+            throughput: calculateThroughput(result.processed, durationMs),
         });
 
+        const resultWithDetails = result as { processed: number; succeeded: number; failed: number; details?: JsonObject[] };
         return {
             totalRecords: result.processed,
             processed: result.processed,
             succeeded: result.succeeded,
             failed: result.failed,
             durationMs,
-            details: (result as any).details ?? [],
+            details: resultWithDetails.details,
         };
     }
 }

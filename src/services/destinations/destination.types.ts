@@ -4,8 +4,13 @@
  * Type definitions for export destination configurations and results.
  */
 
+import { AuthType, DESTINATION_TYPE } from '../../constants/index';
+
+export { DESTINATION_TYPE };
+
 /**
- * Export destination types
+ * Export destination types - derived from DESTINATION_TYPE constant
+ * Includes: s3, sftp, ftp, http, local, email
  */
 export type DestinationType = 's3' | 'sftp' | 'ftp' | 'http' | 'local' | 'email';
 
@@ -69,7 +74,7 @@ export interface HTTPDestinationConfig extends BaseDestinationConfig {
     url: string;
     method?: 'POST' | 'PUT' | 'PATCH';
     headers?: Record<string, string>;
-    authType?: 'none' | 'basic' | 'bearer' | 'api-key';
+    authType?: AuthType;
     authConfig?: {
         username?: string;
         password?: string;
@@ -132,7 +137,7 @@ export interface DeliveryResult {
     deliveredAt?: Date;
     location?: string; // URL or path where file was delivered
     error?: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }
 
 /**
@@ -140,7 +145,7 @@ export interface DeliveryResult {
  */
 export interface DeliveryOptions {
     mimeType?: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }
 
 /**

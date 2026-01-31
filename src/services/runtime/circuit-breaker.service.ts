@@ -1,37 +1,71 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { CircuitBreakerConfig } from '../../types/plugin-options';
 import { RuntimeConfigService } from './runtime-config.service';
-
-export type CircuitState = 'closed' | 'open' | 'half-open';
+import { CircuitState } from '../../constants/enums';
+import { CIRCUIT_BREAKER } from '../../constants/index';
 
 interface CircuitStats {
     state: CircuitState;
     failures: number;
     successes: number;
     lastFailureTime: number;
+    lastAccessTime: number;
     failureTimestamps: number[];
 }
 
 @Injectable()
-export class CircuitBreakerService {
+export class CircuitBreakerService implements OnModuleDestroy {
     private circuits: Map<string, CircuitStats> = new Map();
     private config: Required<CircuitBreakerConfig>;
+    private cleanupInterval: NodeJS.Timeout | null = null;
 
     constructor(private readonly runtimeConfig: RuntimeConfigService) {
         this.config = this.runtimeConfig.getCircuitBreakerConfig();
+        this.cleanupInterval = setInterval(() => this.cleanupIdleCircuits(), CIRCUIT_BREAKER.CLEANUP_INTERVAL_MS);
+    }
+
+    onModuleDestroy(): void {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+    }
+
+    private cleanupIdleCircuits(): void {
+        const now = Date.now();
+        const cutoff = now - CIRCUIT_BREAKER.IDLE_TIMEOUT_MS;
+
+        for (const [key, circuit] of this.circuits.entries()) {
+            if (circuit.lastAccessTime < cutoff && circuit.state === CircuitState.CLOSED && circuit.failures === 0) {
+                this.circuits.delete(key);
+            }
+        }
+
+        if (this.circuits.size > CIRCUIT_BREAKER.MAX_CIRCUITS) {
+            const entries = Array.from(this.circuits.entries())
+                .sort((a, b) => a[1].lastAccessTime - b[1].lastAccessTime);
+            const toRemove = entries.slice(0, this.circuits.size - CIRCUIT_BREAKER.MAX_CIRCUITS);
+            for (const [key] of toRemove) {
+                this.circuits.delete(key);
+            }
+        }
     }
 
     private getCircuit(key: string): CircuitStats {
+        const now = Date.now();
         if (!this.circuits.has(key)) {
             this.circuits.set(key, {
-                state: 'closed',
+                state: CircuitState.CLOSED,
                 failures: 0,
                 successes: 0,
                 lastFailureTime: 0,
+                lastAccessTime: now,
                 failureTimestamps: [],
             });
         }
-        return this.circuits.get(key)!;
+        const circuit = this.circuits.get(key)!;
+        circuit.lastAccessTime = now;
+        return circuit;
     }
 
     private cleanOldFailures(circuit: CircuitStats): void {
@@ -47,10 +81,10 @@ export class CircuitBreakerService {
         const circuit = this.getCircuit(key);
         this.cleanOldFailures(circuit);
 
-        if (circuit.state === 'open') {
+        if (circuit.state === CircuitState.OPEN) {
             const timeSinceLastFailure = Date.now() - circuit.lastFailureTime;
             if (timeSinceLastFailure >= this.config.resetTimeoutMs) {
-                circuit.state = 'half-open';
+                circuit.state = CircuitState.HALF_OPEN;
                 circuit.successes = 0;
                 return false;
             }
@@ -69,15 +103,15 @@ export class CircuitBreakerService {
 
         const circuit = this.getCircuit(key);
 
-        if (circuit.state === 'half-open') {
+        if (circuit.state === CircuitState.HALF_OPEN) {
             circuit.successes++;
             if (circuit.successes >= this.config.successThreshold) {
-                circuit.state = 'closed';
+                circuit.state = CircuitState.CLOSED;
                 circuit.failures = 0;
                 circuit.successes = 0;
                 circuit.failureTimestamps = [];
             }
-        } else if (circuit.state === 'closed') {
+        } else if (circuit.state === CircuitState.CLOSED) {
             circuit.successes++;
         }
     }
@@ -92,11 +126,11 @@ export class CircuitBreakerService {
         circuit.lastFailureTime = now;
         this.cleanOldFailures(circuit);
 
-        if (circuit.state === 'half-open') {
-            circuit.state = 'open';
+        if (circuit.state === CircuitState.HALF_OPEN) {
+            circuit.state = CircuitState.OPEN;
             circuit.successes = 0;
-        } else if (circuit.state === 'closed' && circuit.failures >= this.config.failureThreshold) {
-            circuit.state = 'open';
+        } else if (circuit.state === CircuitState.CLOSED && circuit.failures >= this.config.failureThreshold) {
+            circuit.state = CircuitState.OPEN;
         }
     }
 
@@ -104,10 +138,10 @@ export class CircuitBreakerService {
         const circuit = this.getCircuit(key);
         this.cleanOldFailures(circuit);
 
-        if (circuit.state === 'open') {
+        if (circuit.state === CircuitState.OPEN) {
             const timeSinceLastFailure = Date.now() - circuit.lastFailureTime;
             if (timeSinceLastFailure >= this.config.resetTimeoutMs) {
-                return 'half-open';
+                return CircuitState.HALF_OPEN;
             }
         }
 

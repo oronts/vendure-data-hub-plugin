@@ -6,7 +6,7 @@
 
 import * as crypto from 'crypto';
 import { RetryConfig, WebhookConfig, WebhookDelivery, WebhookDeliveryStatus, WebhookStats, WebhookPayload } from './webhook.types';
-import { WEBHOOK, HTTP } from '../../constants/index';
+import { WEBHOOK, HTTP_HEADERS } from '../../constants/index';
 
 /**
  * Generate unique delivery ID
@@ -31,7 +31,7 @@ export function buildHeaders(
     additionalHeaders?: Record<string, string>,
 ): Record<string, string> {
     return {
-        'User-Agent': 'DataHub-Webhook/1.0',
+        [HTTP_HEADERS.USER_AGENT]: 'DataHub-Webhook/1.0',
         'X-DataHub-Webhook-ID': config.id,
         'X-DataHub-Timestamp': new Date().toISOString(),
         ...config.headers,

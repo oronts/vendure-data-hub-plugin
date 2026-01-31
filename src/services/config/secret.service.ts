@@ -4,18 +4,37 @@ import { DataHubSecret } from '../../entities/config';
 import { DATAHUB_PLUGIN_OPTIONS, LOGGER_CONTEXTS } from '../../constants/index';
 import { DataHubPluginOptions, CodeFirstSecret } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { SecretProvider } from '../../constants/enums';
+import {
+    encryptSecret,
+    decryptSecret,
+    isEncrypted,
+    isEncryptionConfigured,
+    getMasterKey,
+} from '../../utils/encryption.utils';
 
 /**
  * SecretService handles secure storage and resolution of secrets for DataHub pipelines.
  *
  * Supports multiple providers:
- * - `inline`: Value stored directly in database (encrypted at rest recommended)
+ * - `inline`: Value stored directly in database (encrypted at rest when DATAHUB_MASTER_KEY is set)
  * - `env`: Value read from environment variable at runtime
  * - `config`: Value provided via plugin configuration (code-first)
+ *
+ * Security:
+ * - INLINE secrets are encrypted at rest using AES-256-GCM when DATAHUB_MASTER_KEY is configured
+ * - Secrets are only decrypted in memory when resolved
+ * - Environment variable secrets are never stored, only referenced
  *
  * Usage in pipelines:
  * ```typescript
  * const apiKey = await secretService.resolve(ctx, 'my-api-key');
+ * ```
+ *
+ * @example Configuring encryption
+ * ```bash
+ * # Generate a master key
+ * export DATAHUB_MASTER_KEY=$(openssl rand -hex 32)
  * ```
  */
 
@@ -23,6 +42,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 export class SecretService implements OnModuleInit {
     private readonly logger: DataHubLogger;
     private configSecrets: Map<string, CodeFirstSecret> = new Map();
+    private readonly encryptionEnabled: boolean;
 
     constructor(
         private connection: TransactionalConnection,
@@ -30,6 +50,7 @@ export class SecretService implements OnModuleInit {
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.SECRET_SERVICE);
+        this.encryptionEnabled = isEncryptionConfigured();
     }
 
     onModuleInit() {
@@ -41,20 +62,37 @@ export class SecretService implements OnModuleInit {
             }
             this.logger.info(`Secret registry initialized`, { recordCount: this.configSecrets.size });
         }
+
+        // Log encryption status
+        if (this.encryptionEnabled) {
+            this.logger.info('Secret encryption is enabled (DATAHUB_MASTER_KEY configured)');
+        } else {
+            this.logger.warn(
+                'Secret encryption is NOT enabled. Set DATAHUB_MASTER_KEY environment variable ' +
+                'to enable encryption at rest for INLINE secrets.',
+            );
+        }
+    }
+
+    /**
+     * Check if encryption is enabled for this service
+     */
+    isEncryptionEnabled(): boolean {
+        return this.encryptionEnabled;
     }
 
     /**
      * Get a secret entity by code (does not resolve the value)
      */
     async getByCode(ctx: RequestContext, code: string): Promise<DataHubSecret | null> {
-        return this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { code } } as any);
+        return this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { code } });
     }
 
     /**
      * Get a secret entity by ID
      */
     async getById(ctx: RequestContext, id: string): Promise<DataHubSecret | null> {
-        return this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { id } } as any);
+        return this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { id } });
     }
 
     /**
@@ -175,10 +213,10 @@ export class SecretService implements OnModuleInit {
 
     private resolveConfigSecret(def: CodeFirstSecret): string | null {
         switch (def.provider) {
-            case 'inline':
+            case SecretProvider.INLINE:
                 return def.value ?? null;
 
-            case 'env':
+            case SecretProvider.ENV:
                 return this.resolveEnvValue(def.value);
 
             default:
@@ -189,15 +227,68 @@ export class SecretService implements OnModuleInit {
 
     private resolveDbSecret(secret: DataHubSecret): string | null {
         switch (secret.provider) {
-            case 'inline':
-                return secret.value;
+            case SecretProvider.INLINE:
+                return this.decryptValue(secret.value);
 
-            case 'env':
+            case SecretProvider.ENV:
                 return this.resolveEnvValue(secret.value);
 
             default:
                 this.logger.warn(`Unknown provider for db secret ${secret.code}: ${secret.provider}`);
                 return null;
+        }
+    }
+
+    /**
+     * Encrypt a secret value for storage.
+     * Only encrypts if encryption is configured, otherwise returns as-is.
+     */
+    encryptValue(plaintext: string): string {
+        if (!this.encryptionEnabled) {
+            return plaintext;
+        }
+
+        const masterKey = getMasterKey();
+        if (!masterKey) {
+            return plaintext;
+        }
+
+        try {
+            return encryptSecret(plaintext, masterKey);
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            this.logger.error('Failed to encrypt secret value', error);
+            throw new Error('Failed to encrypt secret value');
+        }
+    }
+
+    /**
+     * Decrypt a secret value.
+     * Handles both encrypted and unencrypted values for backward compatibility.
+     */
+    private decryptValue(value: string | null): string | null {
+        if (value === null) {
+            return null;
+        }
+
+        // If not encrypted, return as-is (backward compatibility)
+        if (!isEncrypted(value)) {
+            return value;
+        }
+
+        // Decrypt encrypted value
+        const masterKey = getMasterKey();
+        if (!masterKey) {
+            this.logger.error('Cannot decrypt secret: DATAHUB_MASTER_KEY not configured');
+            throw new Error('Cannot decrypt secret: encryption key not configured');
+        }
+
+        try {
+            return decryptSecret(value, masterKey);
+        } catch (err) {
+            const error = err instanceof Error ? err : new Error(String(err));
+            this.logger.error('Failed to decrypt secret value', error);
+            throw new Error('Failed to decrypt secret value');
         }
     }
 

@@ -63,10 +63,7 @@ export interface VisualPipelineDefinition {
     trigger?: unknown;
 }
 
-/**
- * Visual node categories (mapped to ReactFlow node types)
- * Must match all StepType enum values for consistent round-trip conversion
- */
+/** Visual node categories (mapped to ReactFlow node types) */
 export type VisualNodeCategory = 'trigger' | 'source' | 'transform' | 'validate' | 'condition' | 'load' | 'filter' | 'feed' | 'export' | 'sink' | 'enrich';
 
 // FORMAT SERVICE
@@ -116,7 +113,6 @@ export class PipelineFormatService {
         export: StepType.EXPORT,
         feed: StepType.FEED,
         sink: StepType.SINK,
-        // Legacy/alias mappings for backward compatibility
         filter: StepType.TRANSFORM,
     };
 
@@ -167,7 +163,6 @@ export class PipelineFormatService {
             variables: (definition.context ?? {}) as Record<string, unknown>,
             capabilities: definition.capabilities,
             dependsOn: definition.dependsOn,
-            trigger: definition.trigger as unknown,
         };
     }
 
@@ -246,7 +241,7 @@ export class PipelineFormatService {
     private convertEdges(edges: PipelineEdge[] | undefined, nodes: VisualNode[]): VisualEdge[] {
         if (Array.isArray(edges) && edges.length > 0) {
             return edges.map((e, idx) => ({
-                id: String((e as any).id ?? `edge-${idx}`),
+                id: String(e.id ?? `edge-${idx}`),
                 source: String(e.from),
                 target: String(e.to),
                 sourceHandle: e.branch,
@@ -268,7 +263,7 @@ export class PipelineFormatService {
         const steps = nodes.map((node, idx) => this.nodeToStep(node, idx));
 
         const edges: PipelineEdge[] = (visual.edges ?? []).map((e, i) => ({
-            id: (e as any).id ?? `edge-${i}`,
+            id: e.id ?? `edge-${i}`,
             from: e.source,
             to: e.target,
             branch: e.sourceHandle,
@@ -286,9 +281,6 @@ export class PipelineFormatService {
         }
         if (visual.dependsOn) {
             result.dependsOn = visual.dependsOn;
-        }
-        if (visual.trigger) {
-            result.trigger = visual.trigger as any;
         }
 
         return result;

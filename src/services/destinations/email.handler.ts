@@ -4,14 +4,28 @@
  * Handles delivery via email attachment using nodemailer.
  */
 
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
 import * as path from 'path';
-import { Logger } from '@vendure/core';
 import * as nodemailer from 'nodemailer';
-import { LOGGER_CTX } from '../../constants/index';
-import { EmailDestinationConfig, DeliveryResult, DeliveryOptions } from './destination.types';
+import { LOGGER_CONTEXTS } from '../../constants/index';
+import { EmailDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
+import { DataHubLogger } from '../logger';
 
-const loggerCtx = `${LOGGER_CTX}:EmailHandler`;
+const logger = new DataHubLogger(LOGGER_CONTEXTS.EMAIL_HANDLER);
+
+/**
+ * Escape HTML special characters to prevent XSS attacks
+ */
+function escapeHtml(text: string): string {
+    const htmlEscapes: Record<string, string> = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#x27;',
+    };
+    return text.replace(/[&<>"']/g, char => htmlEscapes[char]);
+}
 
 /**
  * Default SMTP configuration for common providers
@@ -32,8 +46,8 @@ export async function deliverToEmail(
     options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
     if (!config.smtp) {
-        Logger.warn('Email: SMTP not configured, saving attachment locally', loggerCtx);
-        return saveEmailLocally(config, content, filename);
+        logger.warn('Email: SMTP not configured, saving attachment locally');
+        return await saveEmailLocally(config, content, filename);
     }
 
     try {
@@ -56,7 +70,7 @@ export async function deliverToEmail(
             bcc: config.bcc?.join(', '),
             subject: config.subject,
             text: config.body || `Please find attached: ${filename}`,
-            html: config.body ? `<p>${config.body}</p>` : `<p>Please find attached: <strong>${filename}</strong></p>`,
+            html: config.body ? `<p>${escapeHtml(config.body)}</p>` : `<p>Please find attached: <strong>${escapeHtml(filename)}</strong></p>`,
             attachments: [
                 {
                     filename,
@@ -68,12 +82,12 @@ export async function deliverToEmail(
 
         const info = await transporter.sendMail(mailOptions);
 
-        Logger.info(`Email: Sent ${filename} to ${config.to.join(', ')}`, loggerCtx);
+        logger.info(`Email: Sent ${filename}`, { recipients: config.to.join(', ') });
 
         return {
             success: true,
             destinationId: config.id,
-            destinationType: 'email',
+            destinationType: DESTINATION_TYPE.EMAIL,
             filename,
             size: content.length,
             deliveredAt: new Date(),
@@ -86,12 +100,12 @@ export async function deliverToEmail(
         };
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Email delivery failed';
-        Logger.error(`Email: Failed to send ${filename}: ${errorMessage}`, loggerCtx);
+        logger.error(`Email: Failed to send ${filename}`, error instanceof Error ? error : undefined);
 
         return {
             success: false,
             destinationId: config.id,
-            destinationType: 'email',
+            destinationType: DESTINATION_TYPE.EMAIL,
             filename,
             size: content.length,
             error: errorMessage,
@@ -168,23 +182,22 @@ function getMimeType(filename: string): string {
 /**
  * Save email attachment locally when SMTP not configured
  */
-function saveEmailLocally(
+async function saveEmailLocally(
     config: EmailDestinationConfig,
     content: Buffer,
     filename: string,
-): DeliveryResult {
+): Promise<DeliveryResult> {
     const localDir = path.join(process.cwd(), 'exports', 'email-staging', config.id);
     const localPath = path.join(localDir, filename);
 
-    if (!fs.existsSync(localDir)) {
-        fs.mkdirSync(localDir, { recursive: true });
-    }
+    // Create directory if it doesn't exist (recursive: true handles both cases)
+    await fs.mkdir(localDir, { recursive: true });
 
-    fs.writeFileSync(localPath, content);
+    await fs.writeFile(localPath, content);
 
     // Save email metadata
     const metadataPath = path.join(localDir, `${filename}.meta.json`);
-    fs.writeFileSync(metadataPath, JSON.stringify({
+    await fs.writeFile(metadataPath, JSON.stringify({
         to: config.to,
         cc: config.cc,
         bcc: config.bcc,
@@ -197,7 +210,7 @@ function saveEmailLocally(
     return {
         success: true,
         destinationId: config.id,
-        destinationType: 'email',
+        destinationType: DESTINATION_TYPE.EMAIL,
         filename,
         size: content.length,
         deliveredAt: new Date(),

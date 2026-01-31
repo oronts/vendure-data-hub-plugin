@@ -3,6 +3,8 @@ import { RequestContext, TransactionalConnection, ID } from '@vendure/core';
 import { DataHubConnection } from '../../entities/config';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { ConnectionType } from '../../constants/enums';
+import type { JsonObject } from '../../types/index';
 
 @Injectable()
 export class ConnectionService {
@@ -16,16 +18,16 @@ export class ConnectionService {
     }
 
     async getByCode(ctx: RequestContext, code: string): Promise<DataHubConnection | null> {
-        this.logger.debug(`Looking up connection by code`, { adapterCode: code } as any);
-        const result = await this.connection.getRepository(ctx, DataHubConnection).findOne({ where: { code } } as any);
+        this.logger.debug('Looking up connection by code', { adapterCode: code });
+        const result = await this.connection.getRepository(ctx, DataHubConnection).findOne({ where: { code } });
         if (!result) {
-            this.logger.debug(`Connection not found`, { adapterCode: code } as any);
+            this.logger.debug('Connection not found', { adapterCode: code });
         }
         return result;
     }
 
     async getById(ctx: RequestContext, id: ID): Promise<DataHubConnection | null> {
-        return this.connection.getRepository(ctx, DataHubConnection).findOne({ where: { id } } as any);
+        return this.connection.getRepository(ctx, DataHubConnection).findOne({ where: { id } });
     }
 
     async findAll(ctx: RequestContext): Promise<DataHubConnection[]> {
@@ -37,46 +39,46 @@ export class ConnectionService {
     async create(ctx: RequestContext, input: {
         code: string;
         type: string;
-        config: Record<string, any>;
+        config: JsonObject;
     }): Promise<DataHubConnection> {
         this.logger.debug(`Creating connection`, { adapterCode: input.code });
         const entity = new DataHubConnection();
         entity.code = input.code;
-        entity.type = input.type;
+        entity.type = input.type as ConnectionType;
         entity.config = input.config;
         const saved = await this.connection.getRepository(ctx, DataHubConnection).save(entity);
-        this.logger.info(`Connection created`, { adapterCode: input.code, connectionId: saved.id } as any);
+        this.logger.info('Connection created', { adapterCode: input.code, connectionId: saved.id });
         return saved;
     }
 
     async update(ctx: RequestContext, id: ID, input: {
         code?: string;
         type?: string;
-        config?: Record<string, any>;
+        config?: JsonObject;
     }): Promise<DataHubConnection | null> {
         const repo = this.connection.getRepository(ctx, DataHubConnection);
-        const entity = await repo.findOne({ where: { id } } as any);
+        const entity = await repo.findOne({ where: { id } });
         if (!entity) {
-            this.logger.warn(`Connection not found for update`, { connectionId: id } as any);
+            this.logger.warn('Connection not found for update', { connectionId: id });
             return null;
         }
         if (input.code !== undefined) entity.code = input.code;
-        if (input.type !== undefined) entity.type = input.type;
+        if (input.type !== undefined) entity.type = input.type as ConnectionType;
         if (input.config !== undefined) entity.config = input.config;
         const saved = await repo.save(entity);
-        this.logger.info(`Connection updated`, { adapterCode: entity.code, connectionId: id } as any);
+        this.logger.info('Connection updated', { adapterCode: entity.code, connectionId: id });
         return saved;
     }
 
     async delete(ctx: RequestContext, id: ID): Promise<boolean> {
         const repo = this.connection.getRepository(ctx, DataHubConnection);
-        const entity = await repo.findOne({ where: { id } } as any);
+        const entity = await repo.findOne({ where: { id } });
         if (!entity) {
-            this.logger.warn(`Connection not found for deletion`, { connectionId: id } as any);
+            this.logger.warn('Connection not found for deletion', { connectionId: id });
             return false;
         }
         await repo.remove(entity);
-        this.logger.info(`Connection deleted`, { adapterCode: entity.code, connectionId: id } as any);
+        this.logger.info('Connection deleted', { adapterCode: entity.code, connectionId: id });
         return true;
     }
 }

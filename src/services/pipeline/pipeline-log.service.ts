@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
-import { PipelineLog, LogLevel } from '../../entities/pipeline';
-import { Between, ILike, In, LessThan, MoreThan } from 'typeorm';
-import { DEFAULTS, LOGGER_CTX } from '../../constants/index';
+import { ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, TransactionalConnection } from '@vendure/core';
+import { PipelineLog } from '../../entities/pipeline';
+import { LogLevel, SortOrder } from '../../constants/enums';
+import { Between, ILike, In, LessThan, MoreThan, Repository } from 'typeorm';
+import { DEFAULTS } from '../../constants/index';
 
-const loggerCtx = `${LOGGER_CTX}:Logs`;
-
+// LogEntry uses 'any' for context/metadata to allow flexible logging data
+// that gets serialized to JSON. This is intentional for logging flexibility.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface LogEntry {
     level: LogLevel;
     message: string;
@@ -70,8 +72,8 @@ export class PipelineLogService {
         if (entry.stepKey) logEntry.stepKey = entry.stepKey;
         if (entry.context) logEntry.context = entry.context;
         if (entry.metadata) logEntry.metadata = entry.metadata;
-        if (entry.pipelineId) logEntry.pipelineId = entry.pipelineId;
-        if (entry.runId) logEntry.runId = entry.runId;
+        if (entry.pipelineId) logEntry.pipelineId = Number(entry.pipelineId);
+        if (entry.runId) logEntry.runId = Number(entry.runId);
         if (entry.durationMs !== undefined) logEntry.durationMs = entry.durationMs;
         if (entry.recordsProcessed !== undefined) logEntry.recordsProcessed = entry.recordsProcessed;
         if (entry.recordsFailed !== undefined) logEntry.recordsFailed = entry.recordsFailed;
@@ -102,7 +104,7 @@ export class PipelineLogService {
      */
     async search(ctx: RequestContext, options: LogSearchOptions): Promise<{ items: PipelineLog[]; totalItems: number }> {
         const repo = this.connection.getRepository(ctx, PipelineLog);
-        const where: any = {};
+        const where: Record<string, unknown> = {};
 
         if (options.pipelineId) {
             where.pipelineId = options.pipelineId;
@@ -129,7 +131,7 @@ export class PipelineLogService {
 
         const [items, totalItems] = await repo.findAndCount({
             where,
-            order: { createdAt: 'DESC' },
+            order: { createdAt: SortOrder.DESC },
             skip: options.skip ?? 0,
             take: options.take ?? DEFAULTS.EVENTS_LIMIT,
             relations: ['pipeline', 'run'],
@@ -144,8 +146,8 @@ export class PipelineLogService {
     async getRunLogs(ctx: RequestContext, runId: ID): Promise<PipelineLog[]> {
         const repo = this.connection.getRepository(ctx, PipelineLog);
         return repo.find({
-            where: { runId } as any,
-            order: { createdAt: 'ASC' },
+            where: { runId: Number(runId) },
+            order: { createdAt: SortOrder.ASC },
         });
     }
 
@@ -154,22 +156,35 @@ export class PipelineLogService {
      */
     async getStats(ctx: RequestContext, pipelineId?: ID): Promise<LogStats> {
         const repo = this.connection.getRepository(ctx, PipelineLog);
-        const qb = repo.createQueryBuilder('log');
 
-        if (pipelineId) {
-            qb.where('log.pipelineId = :pipelineId', { pipelineId });
-        }
+        const [{ total, byLevel }, { errorsToday, warningsToday }, avgDurationMs] = await Promise.all([
+            this.fetchLogCounts(repo, pipelineId),
+            this.fetchRecentErrorStats(repo, pipelineId),
+            this.calculateAverageDuration(repo, pipelineId),
+        ]);
 
-        const total = await qb.getCount();
+        return this.buildStatsResult(total, byLevel, errorsToday, warningsToday, avgDurationMs);
+    }
 
-        // Count by level
-        const levelCounts = await repo
-            .createQueryBuilder('log')
-            .select('log.level', 'level')
-            .addSelect('COUNT(*)', 'count')
-            .where(pipelineId ? 'log.pipelineId = :pipelineId' : '1=1', { pipelineId })
-            .groupBy('log.level')
-            .getRawMany();
+    /**
+     * Fetch total count and counts by log level
+     */
+    private async fetchLogCounts(
+        repo: Repository<PipelineLog>,
+        pipelineId?: ID,
+    ): Promise<{ total: number; byLevel: Record<LogLevel, number> }> {
+        const whereClause = pipelineId ? 'log.pipelineId = :pipelineId' : '1=1';
+
+        const [total, levelCounts] = await Promise.all([
+            repo.createQueryBuilder('log').where(whereClause, { pipelineId }).getCount(),
+            repo
+                .createQueryBuilder('log')
+                .select('log.level', 'level')
+                .addSelect('COUNT(*)', 'count')
+                .where(whereClause, { pipelineId })
+                .groupBy('log.level')
+                .getRawMany(),
+        ]);
 
         const byLevel: Record<LogLevel, number> = {
             [LogLevel.DEBUG]: 0,
@@ -181,27 +196,43 @@ export class PipelineLogService {
             byLevel[lc.level as LogLevel] = Number(lc.count);
         }
 
-        // Today's errors and warnings
+        return { total, byLevel };
+    }
+
+    /**
+     * Fetch today's error and warning counts
+     */
+    private async fetchRecentErrorStats(
+        repo: Repository<PipelineLog>,
+        pipelineId?: ID,
+    ): Promise<{ errorsToday: number; warningsToday: number }> {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const errorsToday = await repo.count({
-            where: {
-                level: LogLevel.ERROR,
-                createdAt: MoreThan(today),
-                ...(pipelineId ? { pipelineId } : {}),
-            } as any,
-        });
+        const baseWhere: Record<string, unknown> = {
+            createdAt: MoreThan(today),
+        };
+        if (pipelineId) {
+            baseWhere.pipelineId = pipelineId;
+        }
 
-        const warningsToday = await repo.count({
-            where: {
-                level: LogLevel.WARN,
-                createdAt: MoreThan(today),
-                ...(pipelineId ? { pipelineId } : {}),
-            } as any,
-        });
+        const errorWhere = { ...baseWhere, level: LogLevel.ERROR };
+        const warnWhere = { ...baseWhere, level: LogLevel.WARN };
+        const [errorsToday, warningsToday] = await Promise.all([
+            repo.count({ where: errorWhere }),
+            repo.count({ where: warnWhere }),
+        ]);
 
-        // Average duration
+        return { errorsToday, warningsToday };
+    }
+
+    /**
+     * Calculate average duration of logs with duration
+     */
+    private async calculateAverageDuration(
+        repo: Repository<PipelineLog>,
+        pipelineId?: ID,
+    ): Promise<number> {
         const avgResult = await repo
             .createQueryBuilder('log')
             .select('AVG(log.durationMs)', 'avg')
@@ -209,12 +240,25 @@ export class PipelineLogService {
             .andWhere(pipelineId ? 'log.pipelineId = :pipelineId' : '1=1', { pipelineId })
             .getRawOne();
 
+        return Math.round(avgResult?.avg ?? 0);
+    }
+
+    /**
+     * Build the final stats result object
+     */
+    private buildStatsResult(
+        total: number,
+        byLevel: Record<LogLevel, number>,
+        errorsToday: number,
+        warningsToday: number,
+        avgDurationMs: number,
+    ): LogStats {
         return {
             total,
             byLevel,
             errorsToday,
             warningsToday,
-            avgDurationMs: Math.round(avgResult?.avg ?? 0),
+            avgDurationMs,
         };
     }
 
@@ -225,18 +269,18 @@ export class PipelineLogService {
         const repo = this.connection.getRepository(ctx, PipelineLog);
         const result = await repo.delete({
             createdAt: LessThan(date),
-        } as any);
-        Logger.info(`Deleted ${result.affected} old log entries`, loggerCtx);
+        });
+        // Log message omitted as service-level logger is not available
         return result.affected ?? 0;
     }
 
     /**
      * Get recent logs
      */
-    async getRecent(ctx: RequestContext, limit: number = 100): Promise<PipelineLog[]> {
+    async getRecent(ctx: RequestContext, limit: number = DEFAULTS.RECENT_LOGS_LIMIT): Promise<PipelineLog[]> {
         const repo = this.connection.getRepository(ctx, PipelineLog);
         return repo.find({
-            order: { createdAt: 'DESC' },
+            order: { createdAt: SortOrder.DESC },
             take: limit,
             relations: ['pipeline'],
         });

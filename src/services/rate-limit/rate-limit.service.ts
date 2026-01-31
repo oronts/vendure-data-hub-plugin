@@ -1,13 +1,6 @@
-/**
- * Rate Limiting Service
- * 
- * Provides in-memory rate limiting for API endpoints.
- * Supports per-IP and per-pipeline rate limits.
- */
-
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { LOGGER_CONTEXTS, INTERNAL_TIMINGS } from '../../constants/index';
 
 export interface RateLimitKey {
     ip?: string;
@@ -29,8 +22,7 @@ export class RateLimitService implements OnModuleDestroy {
     constructor(loggerFactory: DataHubLoggerFactory) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.RATE_LIMIT);
 
-        // Clean up expired entries every minute
-        this.cleanupInterval = setInterval(() => this.cleanup(), 60000);
+        this.cleanupInterval = setInterval(() => this.cleanup(), INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
     }
 
     onModuleDestroy(): void {
@@ -39,14 +31,6 @@ export class RateLimitService implements OnModuleDestroy {
         }
     }
 
-    /**
-     * Check if request should be rate limited
-     * 
-     * @param key - Rate limit key (can include IP, pipeline code, etc.)
-     * @param maxRequests - Maximum requests allowed in window
-     * @param windowMs - Time window in milliseconds
-     * @returns true if rate limit exceeded
-     */
     isRateLimited(
         key: RateLimitKey,
         maxRequests: number,
@@ -83,18 +67,12 @@ export class RateLimitService implements OnModuleDestroy {
         return { limited, resetAt: entry.resetAt, retryAfter };
     }
 
-    /**
-     * Reset rate limit for a specific key
-     */
     reset(key: RateLimitKey): void {
         const keyStr = this.generateKey(key);
         this.store.delete(keyStr);
         this.logger.debug(`Rate limit reset for key ${keyStr}`);
     }
 
-    /**
-     * Clean up expired rate limit entries
-     */
     private cleanup(): void {
         const now = Date.now();
         let cleaned = 0;
@@ -111,41 +89,36 @@ export class RateLimitService implements OnModuleDestroy {
         }
     }
 
-    /**
-     * Generate unique key from components
-     */
     private generateKey(key: RateLimitKey): string {
         const parts: string[] = [];
-        
+
         if (key.ip) parts.push(`ip:${key.ip}`);
         if (key.pipelineCode) parts.push(`pipeline:${key.pipelineCode}`);
         if (key.identifier) parts.push(`id:${key.identifier}`);
-        
+
+        if (parts.length === 0) {
+            return 'global:default';
+        }
+
         return parts.join(':');
     }
 
-    /**
-     * Get current count for a key (for monitoring)
-     */
     getCount(key: RateLimitKey): number {
         const keyStr = this.generateKey(key);
         const entry = this.store.get(keyStr);
         return entry?.count || 0;
     }
 
-    /**
-     * Get all rate limit stats (for monitoring/debugging)
-     */
-    getStats(): Record<string, { count: number; resetAt: number }> {
-        const stats: Record<string, any> = {};
-        
+    getStats(): Record<string, { count: number; resetAt: string }> {
+        const stats: Record<string, { count: number; resetAt: string }> = {};
+
         for (const [keyStr, entry] of this.store.entries()) {
             stats[keyStr] = {
                 count: entry.count,
                 resetAt: new Date(entry.resetAt).toISOString(),
             };
         }
-        
+
         return stats;
     }
 }

@@ -1,26 +1,229 @@
 import { Injectable } from '@nestjs/common';
-import { DataHubRegistryService } from '../../sdk/registry.service';
-import { PipelineDefinition, StepType } from '../../types/index';
-import { validatePipelineDefinition } from '../../validation/pipeline-definition.validator';
-import { Logger, TransactionalConnection } from '@vendure/core';
+import { TransactionalConnection } from '@vendure/core';
+import { In } from 'typeorm';
+import {
+    PipelineDefinition,
+    JsonValue,
+    JsonObject,
+    StepType,
+    TriggerConfig,
+    MessageTriggerConfig,
+    QueueTypeValue,
+} from '../../types/index';
+import { StepType as StepTypeEnum, RunMode, QueueType, LateEventsPolicy } from '../../constants/enums';
+import { EXTRACTOR_CODE } from '../../constants/adapters';
+import { LOGGER_CONTEXTS } from '../../constants/index';
 import { Pipeline } from '../../entities/pipeline';
+import { DataHubRegistryService } from '../../sdk/registry.service';
+import { AdapterDefinition, StepConfigSchema, StepConfigSchemaField, SelectOption } from '../../sdk/types';
+import { validatePipelineDefinition } from '../../validation/pipeline-definition.validator';
 import { PipelineDefinitionError, PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
+import { getErrorMessage, DataHubLogger } from '../logger';
+
+const logger = new DataHubLogger(LOGGER_CONTEXTS.DEFINITION_VALIDATION_SERVICE);
+
+// ============================================================================
+// Type Definitions for Validation
+// ============================================================================
 
 /**
- * Validation levels for different contexts
+ * Trigger step configuration structure
  */
+interface TriggerStepConfig extends TriggerConfig {
+    message?: MessageTriggerConfig & {
+        queue?: string;
+    };
+}
+
+/**
+ * Adapter field definition with options
+ */
+interface AdapterFieldDefinition {
+    key: string;
+    type: string;
+    required?: boolean;
+    options?: readonly SelectOption[];
+    label?: string;
+    description?: string;
+}
+
+/**
+ * Operator configuration in transform steps
+ */
+interface OperatorConfig {
+    op: string;
+    params?: JsonObject;
+}
+
+/**
+ * Transform step configuration
+ */
+interface TransformStepConfig {
+    operators?: unknown[];
+    adapterCode?: string;
+}
+
+/**
+ * Step configuration with adapter code
+ */
+interface StepConfig {
+    adapterCode?: string;
+    query?: string;
+    variables?: Record<string, JsonValue>;
+    [key: string]: unknown;
+}
+
+/**
+ * Pipeline capabilities structure
+ */
+interface PipelineCapabilitiesConfig {
+    writes?: string[];
+    requires?: string[];
+    streamSafe?: boolean;
+}
+
+/**
+ * Late events policy configuration (matching LateEventPolicy from shared types)
+ */
+interface LateEventsConfig {
+    policy: string;
+    bufferMs?: number;
+}
+
+// ============================================================================
+// Type Guards
+// ============================================================================
+
+/**
+ * Type guard to check if config is a trigger step config.
+ * Validates that config is an object with optional trigger-specific properties.
+ */
+function isTriggerStepConfig(config: unknown): config is TriggerStepConfig {
+    if (typeof config !== 'object' || config === null) {
+        return false;
+    }
+    const cfg = config as Record<string, unknown>;
+    // Must have a type property if it's a trigger config
+    if (cfg.type !== undefined && typeof cfg.type !== 'string') {
+        return false;
+    }
+    // message property, if present, must be an object
+    if (cfg.message !== undefined && (typeof cfg.message !== 'object' || cfg.message === null)) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Type guard to check if value is a message trigger config.
+ * Validates structure has expected message trigger properties.
+ */
+function isMessageTriggerConfig(
+    value: unknown,
+): value is MessageTriggerConfig & { queue?: string } {
+    if (typeof value !== 'object' || value === null) {
+        return false;
+    }
+    const cfg = value as Record<string, unknown>;
+    // queueType, if present, must be a string
+    if (cfg.queueType !== undefined && typeof cfg.queueType !== 'string') {
+        return false;
+    }
+    // connectionCode, if present, must be a string
+    if (cfg.connectionCode !== undefined && typeof cfg.connectionCode !== 'string') {
+        return false;
+    }
+    // queueName, if present, must be a string
+    if (cfg.queueName !== undefined && typeof cfg.queueName !== 'string') {
+        return false;
+    }
+    // queue, if present, must be a string
+    if (cfg.queue !== undefined && typeof cfg.queue !== 'string') {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Type guard to check if adapter has a valid schema
+ */
+function hasValidSchema(
+    adapter: AdapterDefinition | undefined,
+): adapter is AdapterDefinition & { schema: StepConfigSchema } {
+    return (
+        adapter !== undefined &&
+        typeof adapter.schema === 'object' &&
+        adapter.schema !== null &&
+        Array.isArray(adapter.schema.fields)
+    );
+}
+
+/**
+ * Type guard for adapter field with options
+ */
+function isFieldWithOptions(
+    field: StepConfigSchemaField,
+): field is StepConfigSchemaField & { options: readonly SelectOption[] } {
+    return Array.isArray(field.options) && field.options.length > 0;
+}
+
+/**
+ * Type guard to check if value is a valid operator config.
+ * Validates that op is a non-empty string and params, if present, is an object.
+ */
+function isOperatorConfig(value: unknown): value is OperatorConfig {
+    if (typeof value !== 'object' || value === null) {
+        return false;
+    }
+    const cfg = value as Record<string, unknown>;
+    // op must be a non-empty string
+    if (typeof cfg.op !== 'string' || cfg.op.trim() === '') {
+        return false;
+    }
+    // params, if present, must be an object (not array)
+    if (cfg.params !== undefined) {
+        if (typeof cfg.params !== 'object' || cfg.params === null || Array.isArray(cfg.params)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Type guard to check if adapter has pure property
+ */
+function hasStreamSafetyInfo(
+    adapter: AdapterDefinition | undefined,
+): adapter is AdapterDefinition & { pure: boolean } {
+    return adapter !== undefined && typeof adapter.pure === 'boolean';
+}
+
+/**
+ * Safely get trigger type from config
+ */
+function getTriggerType(config: TriggerStepConfig): string | undefined {
+    return typeof config.type === 'string' ? config.type : undefined;
+}
+
+/**
+ * Safely get queue type from message config
+ */
+function getQueueType(
+    msgConfig: MessageTriggerConfig & { queue?: string } | undefined,
+): QueueTypeValue | undefined {
+    if (!msgConfig) return undefined;
+    const qt = msgConfig.queueType;
+    return typeof qt === 'string' ? (qt as QueueTypeValue) : undefined;
+}
+
 export enum ValidationLevel {
-    /** Quick structural validation only */
     SYNTAX = 'syntax',
-    /** Structure + adapter checks (no async operations) */
     SEMANTIC = 'semantic',
-    /** Full validation including dependency checks (async) */
     FULL = 'full',
 }
 
 export interface ValidationOptions {
     level?: ValidationLevel;
-    /** Skip dependency existence checks (useful for faster validation) */
     skipDependencyCheck?: boolean;
 }
 
@@ -38,25 +241,19 @@ export class DefinitionValidationService {
         private connection: TransactionalConnection,
     ) {}
 
-    /**
-     * Synchronous validation for quick checks (no async operations)
-     * Use for real-time validation in UI
-     */
     validateSync(definition: PipelineDefinition, options: ValidationOptions = {}): DefinitionValidationResult {
         const level = options.level ?? ValidationLevel.SEMANTIC;
         const issues: PipelineDefinitionIssue[] = [];
         const warnings: PipelineDefinitionIssue[] = [];
 
         try {
-            // Structural validation
             validatePipelineDefinition(definition);
-        } catch (e: any) {
+        } catch (e: unknown) {
             if (e instanceof PipelineDefinitionError) {
                 issues.push(...e.issues);
             } else {
-                issues.push({ message: e.message || 'Structural validation failed', reason: 'structural-error' });
+                issues.push({ message: getErrorMessage(e) || 'Structural validation failed', errorCode: 'structural-error' });
             }
-            // Return early on structural errors
             return { isValid: false, issues, warnings, level };
         }
 
@@ -64,68 +261,64 @@ export class DefinitionValidationService {
             return { isValid: issues.length === 0, issues, warnings, level };
         }
 
-        // dependsOn validation: duplicates only (existence checked in async version)
         if (definition.dependsOn && Array.isArray(definition.dependsOn)) {
             const seen = new Set<string>();
             for (const code of definition.dependsOn) {
                 if (!code || typeof code !== 'string') {
-                    issues.push({ message: 'dependsOn contains an invalid code', reason: 'depends-on-invalid-code' });
+                    issues.push({ message: 'dependsOn contains an invalid code', errorCode: 'depends-on-invalid-code' });
                     continue;
                 }
                 if (seen.has(code)) {
-                    issues.push({ message: `dependsOn contains duplicate code "${code}"`, reason: 'depends-on-duplicate-code' });
+                    issues.push({ message: `dependsOn contains duplicate code "${code}"`, errorCode: 'depends-on-duplicate-code' });
                 }
                 seen.add(code);
             }
         }
 
-        // Adapter validation
+        this.validateTrigger(definition, issues, warnings);
         this.validateAdapters(definition, issues, warnings);
-
-        // Capabilities validation
         this.validateCapabilities(definition, issues);
-
-        // Context validation
         this.validateContext(definition, issues);
 
         return { isValid: issues.length === 0, issues, warnings, level };
     }
 
-    /**
-     * Full async validation including dependency checks
-     * Use for save/publish operations
-     */
     async validateAsync(definition: PipelineDefinition, options: ValidationOptions = {}): Promise<DefinitionValidationResult> {
         const level = options.level ?? ValidationLevel.FULL;
-
-        // Start with sync validation
         const result = this.validateSync(definition, { ...options, level: ValidationLevel.SEMANTIC });
 
         if (level !== ValidationLevel.FULL || options.skipDependencyCheck) {
             return { ...result, level };
         }
 
-        // Async dependency existence checks
         if (definition.dependsOn && Array.isArray(definition.dependsOn)) {
-            const seen = new Set<string>(definition.dependsOn.filter(c => c && typeof c === 'string'));
-            try {
-                const repo = this.connection.getRepository(Pipeline);
-                for (const code of seen) {
-                    const found = await repo.findOne({ where: { code } } as any);
-                    if (!found) {
-                        result.issues.push({
-                            message: `dependsOn references unknown pipeline code "${code}"`,
-                            reason: 'depends-on-unknown-code',
-                        });
+            const dependsOnCodes = definition.dependsOn.filter(c => c && typeof c === 'string');
+            if (dependsOnCodes.length > 0) {
+                try {
+                    const repo = this.connection.getRepository(Pipeline);
+                    // Pre-fetch all pipelines matching the codes in a single query
+                    const foundPipelines = await repo.find({
+                        where: { code: In(dependsOnCodes) },
+                        select: { code: true },
+                    });
+                    const foundCodes = new Set(foundPipelines.map(p => p.code));
+
+                    // Report any codes that were not found
+                    for (const code of dependsOnCodes) {
+                        if (!foundCodes.has(code)) {
+                            result.issues.push({
+                                message: `dependsOn references unknown pipeline code "${code}"`,
+                                errorCode: 'depends-on-unknown-code',
+                            });
+                        }
                     }
+                } catch (e: unknown) {
+                    logger.warn('Failed to validate pipeline dependencies', { error: getErrorMessage(e) });
+                    result.warnings.push({
+                        message: 'Could not verify pipeline dependencies',
+                        errorCode: 'depends-on-check-failed',
+                    });
                 }
-            } catch (e: any) {
-                // Log but don't fail validation on database errors
-                Logger.warn(`Failed to validate pipeline dependencies: ${e.message}`, 'DataHub');
-                result.warnings.push({
-                    message: 'Could not verify pipeline dependencies',
-                    reason: 'depends-on-check-failed',
-                });
             }
         }
 
@@ -137,10 +330,6 @@ export class DefinitionValidationService {
         };
     }
 
-    /**
-     * Legacy synchronous validate method - throws on error
-     * @deprecated Use validateSync or validateAsync instead
-     */
     validate(definition: PipelineDefinition): void {
         const result = this.validateSync(definition);
         if (!result.isValid) {
@@ -148,149 +337,265 @@ export class DefinitionValidationService {
         }
     }
 
+    private validateTrigger(
+        definition: PipelineDefinition,
+        issues: PipelineDefinitionIssue[],
+        _warnings: PipelineDefinitionIssue[],
+    ): void {
+        const triggerStep = definition.steps.find(s => s.type === StepTypeEnum.TRIGGER);
+        if (!triggerStep) {
+            return;
+        }
+
+        const rawConfig = triggerStep.config ?? {};
+        if (!isTriggerStepConfig(rawConfig)) {
+            return;
+        }
+
+        const cfg = rawConfig as TriggerStepConfig;
+        const triggerType = getTriggerType(cfg);
+
+        if (triggerType === 'message') {
+            const msgCfg = isMessageTriggerConfig(cfg.message) ? cfg.message : undefined;
+            const queueType = getQueueType(msgCfg);
+            const queueTypeLower = queueType?.toLowerCase();
+
+            // All supported queue types
+            const supportedQueueTypes = new Set([
+                QueueType.RABBITMQ,
+                QueueType.RABBITMQ_AMQP,
+                QueueType.SQS,
+                QueueType.REDIS,
+                QueueType.INTERNAL,
+            ]);
+
+            if (!queueType) {
+                issues.push({
+                    message: `Step "${triggerStep.key}": message trigger requires queueType (${Array.from(supportedQueueTypes).join(', ')})`,
+                    stepKey: triggerStep.key,
+                    errorCode: 'missing-queue-type',
+                });
+            } else if (!supportedQueueTypes.has(queueTypeLower as QueueType)) {
+                issues.push({
+                    message: `Step "${triggerStep.key}": unsupported queueType "${queueType}". Supported types: ${Array.from(supportedQueueTypes).join(', ')}`,
+                    stepKey: triggerStep.key,
+                    errorCode: 'unsupported-queue-type',
+                });
+            } else {
+                // Validate required fields based on queue type
+                if (!msgCfg?.connectionCode && queueTypeLower !== QueueType.INTERNAL) {
+                    issues.push({
+                        message: `Step "${triggerStep.key}": ${queueType} message trigger requires connectionCode`,
+                        stepKey: triggerStep.key,
+                        errorCode: 'missing-connection-code',
+                    });
+                }
+                // Check for queueName or queue
+                const queueName = msgCfg?.queueName ?? msgCfg?.queue;
+                if (!queueName) {
+                    issues.push({
+                        message: `Step "${triggerStep.key}": ${queueType} message trigger requires queue name`,
+                        stepKey: triggerStep.key,
+                        errorCode: 'missing-queue',
+                    });
+                }
+            }
+        }
+    }
+
     private validateAdapters(
         definition: PipelineDefinition,
         issues: PipelineDefinitionIssue[],
-        warnings: PipelineDefinitionIssue[],
+        _warnings: PipelineDefinitionIssue[],
     ): void {
         for (const step of definition.steps) {
-            const type = step.type;
-            const cfg: any = step.config ?? {};
+            const type = step.type as StepType;
+            const cfg = (step.config ?? {}) as StepConfig;
             const adapterType = this.adapterTypeFor(type);
             if (!adapterType) {
                 continue;
             }
 
-            // TRANSFORM steps use operators array, not adapterCode
-            if (type === StepType.TRANSFORM) {
-                this.validateTransformOperators(step.key, cfg, definition, issues);
+            if (type === 'TRANSFORM') {
+                this.validateTransformOperators(step.key, cfg as TransformStepConfig, definition, issues);
                 continue;
             }
 
-            const adapterCode: string | undefined = cfg.adapterCode;
-            if (!adapterCode || typeof adapterCode !== 'string') {
-                issues.push({
-                    message: `Step "${step.key}": missing adapterCode for ${type}`,
-                    stepKey: step.key,
-                    reason: 'missing-adapter-code',
-                });
-                continue;
-            }
-            const adapter = this.registry.find(adapterType, adapterCode);
-            if (!adapter) {
-                issues.push({
-                    message: `Step "${step.key}": unknown adapter "${adapterCode}" for ${type}`,
-                    stepKey: step.key,
-                    reason: 'unknown-adapter',
-                });
-                continue;
-            }
-
-            // Adapter permission requirements are auto-inferred at runtime.
-            // No need to require explicit declaration in capabilities.requires.
-            // The permissions needed by adapters are known from their definitions
-            // and will be checked when the pipeline is executed.
-
-            // Streaming guardrail: only pure operators allowed in stream mode
-            if (definition.context?.runMode === 'stream' && adapterType === 'operator') {
-                if ((adapter as any).pure !== true) {
-                    issues.push({
-                        message: `Step "${step.key}": operator "${adapterCode}" is not stream-safe (pure=false)`,
-                        stepKey: step.key,
-                        reason: 'operator-not-pure',
-                    });
+            // ENRICH steps can use built-in config without an adapter
+            if (type === 'ENRICH') {
+                const enrichCfg = cfg as { adapterCode?: string; defaults?: unknown; set?: unknown; computed?: unknown; sourceType?: string };
+                const hasBuiltInConfig = enrichCfg.defaults || enrichCfg.set || enrichCfg.computed || enrichCfg.sourceType;
+                if (!enrichCfg.adapterCode && hasBuiltInConfig) {
+                    // Skip adapter validation - using built-in enrichment
+                    continue;
                 }
             }
 
-            // Validate adapter fields
+            const adapterResult = this.validateAdapterConfig(step.key, type, cfg, adapterType, issues);
+            if (!adapterResult) {
+                continue;
+            }
+
+            const { adapter, adapterCode } = adapterResult;
+            this.validateAdapterConnectivity(step.key, adapterCode, adapterType, adapter, definition, issues);
             this.validateAdapterFields(step.key, cfg, adapter, issues);
 
-            // Extra semantic validation for GraphQL extractor
-            if (adapterType === 'extractor' && adapterCode === 'graphql') {
+            if (adapterType === 'extractor' && adapterCode === EXTRACTOR_CODE.GRAPHQL) {
                 this.validateGraphQLExtractor(step.key, cfg, issues);
+            }
+        }
+    }
+
+    private validateAdapterConfig(
+        stepKey: string,
+        stepType: StepType,
+        cfg: StepConfig,
+        adapterType: 'extractor' | 'operator' | 'loader' | 'exporter' | 'feed' | 'enricher' | 'sink',
+        issues: PipelineDefinitionIssue[],
+    ): { adapter: AdapterDefinition; adapterCode: string } | null {
+        const adapterCode = cfg.adapterCode;
+        if (!adapterCode || typeof adapterCode !== 'string') {
+            issues.push({
+                message: `Step "${stepKey}": missing adapterCode for ${stepType}`,
+                stepKey,
+                errorCode: 'missing-adapter-code',
+            });
+            return null;
+        }
+
+        const adapter = this.registry.find(adapterType, adapterCode);
+        if (!adapter) {
+            issues.push({
+                message: `Step "${stepKey}": unknown adapter "${adapterCode}" for ${stepType}`,
+                stepKey,
+                errorCode: 'unknown-adapter',
+            });
+            return null;
+        }
+
+        return { adapter, adapterCode };
+    }
+
+    private validateAdapterConnectivity(
+        stepKey: string,
+        adapterCode: string,
+        adapterType: 'extractor' | 'operator' | 'loader' | 'exporter' | 'feed' | 'enricher' | 'sink',
+        adapter: AdapterDefinition,
+        definition: PipelineDefinition,
+        issues: PipelineDefinitionIssue[],
+    ): void {
+        if (definition.context?.runMode === RunMode.STREAM && adapterType === 'operator') {
+            if (!hasStreamSafetyInfo(adapter) || adapter.pure !== true) {
+                issues.push({
+                    message: `Step "${stepKey}": operator "${adapterCode}" is not stream-safe (pure=false)`,
+                    stepKey,
+                    errorCode: 'operator-not-pure',
+                });
             }
         }
     }
 
     private validateAdapterFields(
         stepKey: string,
-        cfg: any,
-        adapter: any,
+        cfg: StepConfig,
+        adapter: AdapterDefinition,
         issues: PipelineDefinitionIssue[],
     ): void {
+        if (!hasValidSchema(adapter)) {
+            return;
+        }
+
         for (const field of adapter.schema.fields) {
-            const v = cfg[field.key];
-            if (field.required && (v === undefined || v === null || v === '')) {
+            const v = cfg[field.key] as JsonValue | undefined;
+            this.validateRequiredFields(stepKey, field, v, issues);
+            if (v !== undefined && v !== null) {
+                this.validateFieldTypes(stepKey, field, v, issues);
+                this.validateFieldMappings(stepKey, field, v, issues);
+            }
+        }
+    }
+
+    private validateRequiredFields(
+        stepKey: string,
+        field: StepConfigSchemaField,
+        value: JsonValue | undefined,
+        issues: PipelineDefinitionIssue[],
+    ): void {
+        if (field.required && (value === undefined || value === null || value === '')) {
+            issues.push({
+                message: `Step "${stepKey}": missing required field "${field.key}"`,
+                stepKey,
+                field: field.key,
+                errorCode: 'missing-required-field',
+            });
+        }
+    }
+
+    private validateFieldTypes(
+        stepKey: string,
+        field: StepConfigSchemaField,
+        value: JsonValue,
+        issues: PipelineDefinitionIssue[],
+    ): void {
+        const t = String(field.type).toLowerCase();
+        const typeValidators: Record<string, () => boolean> = {
+            string: () => typeof value === 'string',
+            number: () => typeof value === 'number',
+            boolean: () => typeof value === 'boolean',
+            json: () => typeof value === 'object',
+        };
+
+        const validator = typeValidators[t];
+        if (validator && !validator()) {
+            issues.push({
+                message: `Step "${stepKey}": field "${field.key}" must be ${t === 'json' ? 'JSON' : t}`,
+                stepKey,
+                field: field.key,
+                errorCode: 'invalid-field-type',
+            });
+        }
+    }
+
+    private validateFieldMappings(
+        stepKey: string,
+        field: StepConfigSchemaField,
+        value: JsonValue,
+        issues: PipelineDefinitionIssue[],
+    ): void {
+        const t = String(field.type).toLowerCase();
+        if (t !== 'select') {
+            return;
+        }
+
+        if (typeof value !== 'string') {
+            issues.push({
+                message: `Step "${stepKey}": field "${field.key}" must be a valid option`,
+                stepKey,
+                field: field.key,
+                errorCode: 'invalid-select-option',
+            });
+            return;
+        }
+
+        if (isFieldWithOptions(field)) {
+            const allowed = new Set<string>(
+                field.options.map((o: SelectOption) => String(o.value ?? '').toUpperCase()),
+            );
+            if (!allowed.has(String(value).toUpperCase())) {
+                const originalOptions = field.options.map((o: SelectOption) => String(o.value ?? ''));
                 issues.push({
-                    message: `Step "${stepKey}": missing required field "${field.key}"`,
+                    message: `Step "${stepKey}": field "${field.key}" must be one of [${originalOptions.join(', ')}]`,
                     stepKey,
                     field: field.key,
-                    reason: 'missing-required-field',
+                    errorCode: 'invalid-select-option',
                 });
-            }
-            if (v !== undefined && v !== null) {
-                const t = String(field.type);
-                if (t === 'string' && typeof v !== 'string') {
-                    issues.push({
-                        message: `Step "${stepKey}": field "${field.key}" must be string`,
-                        stepKey,
-                        field: field.key,
-                        reason: 'invalid-field-type',
-                    });
-                }
-                if (t === 'number' && typeof v !== 'number') {
-                    issues.push({
-                        message: `Step "${stepKey}": field "${field.key}" must be number`,
-                        stepKey,
-                        field: field.key,
-                        reason: 'invalid-field-type',
-                    });
-                }
-                if (t === 'boolean' && typeof v !== 'boolean') {
-                    issues.push({
-                        message: `Step "${stepKey}": field "${field.key}" must be boolean`,
-                        stepKey,
-                        field: field.key,
-                        reason: 'invalid-field-type',
-                    });
-                }
-                if (t === 'json' && typeof v !== 'object') {
-                    issues.push({
-                        message: `Step "${stepKey}": field "${field.key}" must be JSON`,
-                        stepKey,
-                        field: field.key,
-                        reason: 'invalid-field-type',
-                    });
-                }
-                if (t === 'select') {
-                    if (typeof v !== 'string') {
-                        issues.push({
-                            message: `Step "${stepKey}": field "${field.key}" must be a valid option`,
-                            stepKey,
-                            field: field.key,
-                            reason: 'invalid-select-option',
-                        });
-                    } else if (Array.isArray((field as any).options) && (field as any).options.length > 0) {
-                        const allowed = new Set<string>(
-                            (field as any).options.map((o: any) => String(o?.value ?? '')),
-                        );
-                        if (!allowed.has(String(v))) {
-                            issues.push({
-                                message: `Step "${stepKey}": field "${field.key}" must be one of [${Array.from(allowed).join(', ')}]`,
-                                stepKey,
-                                field: field.key,
-                                reason: 'invalid-select-option',
-                            });
-                        }
-                    }
-                }
             }
         }
     }
 
     private validateGraphQLExtractor(
         stepKey: string,
-        cfg: any,
+        cfg: StepConfig,
         issues: PipelineDefinitionIssue[],
     ): void {
         const q: string | undefined = typeof cfg.query === 'string' ? cfg.query : undefined;
@@ -303,18 +608,19 @@ export class DefinitionValidationService {
                     if (m[1]) vars.add(m[1]);
                 }
             } catch {
-                // Ignore regex errors
+                // Regex execution failed - skip variable extraction for this query
             }
+            const variables = cfg.variables;
             const provided =
-                cfg.variables && typeof cfg.variables === 'object'
-                    ? new Set<string>(Object.keys(cfg.variables))
+                variables && typeof variables === 'object' && !Array.isArray(variables)
+                    ? new Set<string>(Object.keys(variables))
                     : new Set<string>();
             const missingVars = Array.from(vars).filter(v => !provided.has(v));
             if (missingVars.length) {
                 issues.push({
                     message: `Step "${stepKey}": GraphQL variables missing keys: ${missingVars.join(', ')}`,
                     stepKey,
-                    reason: 'graphql-missing-variable',
+                    errorCode: 'graphql-missing-variable',
                 });
             }
         }
@@ -325,35 +631,36 @@ export class DefinitionValidationService {
             return;
         }
 
-        const caps: any = definition.capabilities;
+        const caps = definition.capabilities as PipelineCapabilitiesConfig;
 
-        if (caps.writes) {
+        if (caps.writes !== undefined) {
             if (!Array.isArray(caps.writes)) {
-                issues.push({ message: 'capabilities.writes must be an array', reason: 'capabilities-invalid' });
+                issues.push({ message: 'capabilities.writes must be an array', errorCode: 'capabilities-invalid' });
             } else {
                 const allowed = new Set(['catalog', 'customers', 'orders', 'promotions', 'inventory', 'custom']);
                 for (const w of caps.writes) {
-                    if (typeof w !== 'string' || !allowed.has(w)) {
+                    const lowerW = typeof w === 'string' ? w.toLowerCase() : '';
+                    if (typeof w !== 'string' || !allowed.has(lowerW)) {
                         issues.push({
                             message: `capabilities.writes contains invalid domain: ${String(w)}`,
-                            reason: 'capabilities-invalid-domain',
+                            errorCode: 'capabilities-invalid-domain',
                         });
                     }
                 }
             }
         }
 
-        if (caps.requires && !Array.isArray(caps.requires)) {
+        if (caps.requires !== undefined && !Array.isArray(caps.requires)) {
             issues.push({
                 message: 'capabilities.requires must be an array of permission names',
-                reason: 'capabilities-invalid',
+                errorCode: 'capabilities-invalid',
             });
         }
 
-        if (caps.streamSafe != null && typeof caps.streamSafe !== 'boolean') {
+        if (caps.streamSafe !== undefined && typeof caps.streamSafe !== 'boolean') {
             issues.push({
                 message: 'capabilities.streamSafe must be a boolean',
-                reason: 'capabilities-invalid',
+                errorCode: 'capabilities-invalid',
             });
         }
     }
@@ -363,117 +670,136 @@ export class DefinitionValidationService {
             return;
         }
 
-        // Streaming semantics validation
         if (definition.context.lateEvents) {
-            const le: any = definition.context.lateEvents;
-            if (le.policy !== 'drop' && le.policy !== 'buffer') {
+            const le = definition.context.lateEvents as LateEventsConfig;
+            const policyLower = typeof le.policy === 'string' ? le.policy.toLowerCase() : '';
+            if (policyLower !== LateEventsPolicy.DROP && policyLower !== LateEventsPolicy.BUFFER) {
                 issues.push({
                     message: 'context.lateEvents.policy must be drop|buffer',
-                    reason: 'context-invalid',
+                    errorCode: 'context-invalid',
                 });
             }
-            if (le.policy === 'buffer' && (typeof le.bufferMs !== 'number' || le.bufferMs <= 0)) {
+            if (policyLower === LateEventsPolicy.BUFFER && (typeof le.bufferMs !== 'number' || le.bufferMs <= 0)) {
                 issues.push({
                     message: 'context.lateEvents.bufferMs must be a positive number when policy=buffer',
-                    reason: 'context-invalid',
+                    errorCode: 'context-invalid',
                 });
             }
         }
 
         if (
-            definition.context.watermarkMs != null &&
+            definition.context.watermarkMs !== undefined &&
+            definition.context.watermarkMs !== null &&
             (typeof definition.context.watermarkMs !== 'number' || definition.context.watermarkMs < 0)
         ) {
             issues.push({
                 message: 'context.watermarkMs must be a non-negative number',
-                reason: 'context-invalid',
+                errorCode: 'context-invalid',
             });
         }
     }
 
     private validateTransformOperators(
         stepKey: string,
-        cfg: any,
+        cfg: TransformStepConfig,
         definition: PipelineDefinition,
         issues: PipelineDefinitionIssue[],
     ): void {
         const operators = cfg.operators;
+        if (!this.validateOperatorChain(stepKey, operators, issues)) {
+            return;
+        }
+
+        for (let i = 0; i < operators.length; i++) {
+            this.validateOperatorParams(stepKey, operators[i], i, definition, issues);
+        }
+    }
+
+    private validateOperatorChain(
+        stepKey: string,
+        operators: unknown,
+        issues: PipelineDefinitionIssue[],
+    ): operators is OperatorConfig[] {
         if (!operators || !Array.isArray(operators)) {
             issues.push({
                 message: `Step "${stepKey}": TRANSFORM step requires operators array`,
                 stepKey,
-                reason: 'missing-operators',
+                errorCode: 'missing-operators',
             });
-            return;
+            return false;
         }
 
         if (operators.length === 0) {
             issues.push({
                 message: `Step "${stepKey}": operators array is empty`,
                 stepKey,
-                reason: 'empty-operators',
+                errorCode: 'empty-operators',
+            });
+            return false;
+        }
+
+        return true;
+    }
+
+    private validateOperatorParams(
+        stepKey: string,
+        op: unknown,
+        index: number,
+        definition: PipelineDefinition,
+        issues: PipelineDefinitionIssue[],
+    ): void {
+        if (!isOperatorConfig(op)) {
+            issues.push({
+                message: `Step "${stepKey}": operator ${index} is not a valid object`,
+                stepKey,
+                errorCode: 'invalid-operator',
             });
             return;
         }
 
-        for (let i = 0; i < operators.length; i++) {
-            const op = operators[i];
-            if (!op || typeof op !== 'object') {
-                issues.push({
-                    message: `Step "${stepKey}": operator ${i} is not a valid object`,
-                    stepKey,
-                    reason: 'invalid-operator',
-                });
-                continue;
-            }
+        const opCode = op.op;
+        if (!opCode || typeof opCode !== 'string') {
+            issues.push({
+                message: `Step "${stepKey}": operator ${index} missing "op" field`,
+                stepKey,
+                errorCode: 'missing-operator-code',
+            });
+            return;
+        }
 
-            const opCode: string | undefined = op.op;
-            if (!opCode || typeof opCode !== 'string') {
-                issues.push({
-                    message: `Step "${stepKey}": operator ${i} missing "op" field`,
-                    stepKey,
-                    reason: 'missing-operator-code',
-                });
-                continue;
-            }
+        const adapter = this.registry.find('operator', opCode);
+        if (!adapter) {
+            issues.push({
+                message: `Step "${stepKey}": unknown operator "${opCode}"`,
+                stepKey,
+                errorCode: 'unknown-operator',
+            });
+            return;
+        }
 
-            const adapter = this.registry.find('operator', opCode);
-            if (!adapter) {
-                issues.push({
-                    message: `Step "${stepKey}": unknown operator "${opCode}"`,
-                    stepKey,
-                    reason: 'unknown-operator',
-                });
-                continue;
-            }
-
-            // Streaming guardrail: only pure operators allowed in stream mode
-            if (definition.context?.runMode === 'stream') {
-                if ((adapter as any).pure !== true) {
-                    issues.push({
-                        message: `Step "${stepKey}": operator "${opCode}" is not stream-safe (pure=false)`,
-                        stepKey,
-                        reason: 'operator-not-pure',
-                    });
-                }
-            }
+        if (definition.context?.runMode === RunMode.STREAM && !hasStreamSafetyInfo(adapter)) {
+            issues.push({
+                message: `Step "${stepKey}": operator "${opCode}" is not stream-safe (pure=false)`,
+                stepKey,
+                errorCode: 'operator-not-pure',
+            });
+        } else if (definition.context?.runMode === RunMode.STREAM && hasStreamSafetyInfo(adapter) && adapter.pure !== true) {
+            issues.push({
+                message: `Step "${stepKey}": operator "${opCode}" is not stream-safe (pure=false)`,
+                stepKey,
+                errorCode: 'operator-not-pure',
+            });
         }
     }
 
-    /**
-     * Lookup map from StepType to adapter type
-     * This map provides better extensibility than switch statements
-     * New step types can be added to this map without modifying control flow
-     */
     private static readonly STEP_TYPE_TO_ADAPTER_TYPE: Partial<Record<StepType, 'extractor' | 'operator' | 'loader' | 'exporter' | 'feed' | 'enricher' | 'sink'>> = {
-        [StepType.EXTRACT]: 'extractor',
-        [StepType.TRANSFORM]: 'operator',
-        [StepType.LOAD]: 'loader',
-        [StepType.EXPORT]: 'exporter',
-        [StepType.FEED]: 'feed',
-        [StepType.ENRICH]: 'enricher',
-        [StepType.SINK]: 'sink',
-        // StepType.TRIGGER, StepType.VALIDATE, StepType.ROUTE intentionally excluded (no adapter)
+        [StepTypeEnum.EXTRACT]: 'extractor',
+        [StepTypeEnum.TRANSFORM]: 'operator',
+        [StepTypeEnum.LOAD]: 'loader',
+        [StepTypeEnum.EXPORT]: 'exporter',
+        [StepTypeEnum.FEED]: 'feed',
+        [StepTypeEnum.ENRICH]: 'enricher',
+        [StepTypeEnum.SINK]: 'sink',
     };
 
     private adapterTypeFor(

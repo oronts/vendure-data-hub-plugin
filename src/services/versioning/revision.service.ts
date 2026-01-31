@@ -4,11 +4,9 @@ import {
     RequestContext,
     TransactionalConnection,
 } from '@vendure/core';
-import { In, LessThan, MoreThan } from 'typeorm';
-import { Pipeline, PipelineRevision, PipelineRun } from '../../entities/pipeline';
-import { RevisionType } from '../../entities/pipeline/pipeline-revision.entity';
-import { PipelineDefinition, RunStatus } from '../../types/index';
+import { In } from 'typeorm';
 import {
+    RunStatus,
     AutoSaveConfig,
     DEFAULT_AUTO_SAVE_CONFIG,
     PublishVersionOptions,
@@ -16,14 +14,13 @@ import {
     RevisionDiff,
     SaveDraftOptions,
     TimelineEntry,
-} from '../../types/versioning.types';
+} from '../../types/index';
+import { PipelineStatus, RevisionType, RunOutcome, SortOrder } from '../../constants/enums';
+import { LOGGER_CONTEXTS } from '../../constants/index';
+import { Pipeline, PipelineRevision, PipelineRun } from '../../entities/pipeline';
 import { DiffService } from './diff.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
 
-/**
- * Service for managing pipeline revisions with draft/publish workflow
- */
 @Injectable()
 export class RevisionService {
     private readonly logger: DataHubLogger;
@@ -38,21 +35,13 @@ export class RevisionService {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PIPELINE_SERVICE);
     }
 
-    /**
-     * Configure auto-save behavior
-     */
     setAutoSaveConfig(config: Partial<AutoSaveConfig>): void {
         this.autoSaveConfig = { ...this.autoSaveConfig, ...config };
     }
 
-    /**
-     * Save a draft revision (auto-save)
-     * Throttled to prevent excessive saves
-     */
     async saveDraft(ctx: RequestContext, options: SaveDraftOptions): Promise<PipelineRevision | null> {
         const { pipelineId, definition, authorUserId, authorName } = options;
 
-        // Check throttle
         const lastSave = this.lastSaveTimestamps.get(pipelineId);
         const now = Date.now();
         if (lastSave && now - lastSave < this.autoSaveConfig.throttleMs) {
@@ -68,7 +57,6 @@ export class RevisionService {
             throw new Error(`Pipeline ${pipelineId} not found`);
         }
 
-        // Check if definition actually changed
         const definitionHash = this.diffService.computeDefinitionHash(definition);
         const latestDraft = await this.getLatestDraft(ctx, pipelineId);
         if (latestDraft?.definitionHash === definitionHash) {
@@ -76,39 +64,32 @@ export class RevisionService {
             return latestDraft;
         }
 
-        // Compute changes summary
         const previousDefinition = latestDraft?.definition ||
             (await this.getLatestPublished(ctx, pipelineId))?.definition ||
             null;
         const changesSummary = this.diffService.generateChangesSummary(previousDefinition, definition);
 
-        // Create new draft revision
-        const revision = new PipelineRevision({
-            pipeline,
-            pipelineId,
-            version: 0, // Drafts use version 0
-            type: 'draft' as RevisionType,
-            definition,
-            commitMessage: null,
-            authorUserId: authorUserId || null,
-            authorName: authorName || null,
-            changesSummary,
-            previousRevisionId: latestDraft ? (latestDraft.id as number) : null,
-            definitionSize: this.diffService.calculateDefinitionSize(definition),
-            definitionHash,
-        });
+        const revision = new PipelineRevision();
+        revision.pipeline = pipeline;
+        revision.pipelineId = pipelineId;
+        revision.version = 0;
+        revision.type = RevisionType.DRAFT;
+        revision.definition = definition;
+        revision.commitMessage = null;
+        revision.authorUserId = authorUserId || null;
+        revision.authorName = authorName || null;
+        revision.changesSummary = changesSummary;
+        revision.previousRevisionId = latestDraft ? (latestDraft.id as number) : null;
+        revision.definitionSize = this.diffService.calculateDefinitionSize(definition);
+        revision.definitionHash = definitionHash;
 
         const saved = await revisionRepo.save(revision);
 
-        // Update pipeline's draft reference
         pipeline.draftRevisionId = saved.id as number;
         pipeline.definition = definition;
         await pipelineRepo.save(pipeline);
 
-        // Update throttle timestamp
         this.lastSaveTimestamps.set(pipelineId, now);
-
-        // Prune old drafts if needed
         await this.pruneDrafts(ctx, pipelineId);
 
         this.logger.debug('Draft saved', {
@@ -120,9 +101,6 @@ export class RevisionService {
         return saved;
     }
 
-    /**
-     * Publish a new version with commit message
-     */
     async publishVersion(ctx: RequestContext, options: PublishVersionOptions): Promise<PipelineRevision> {
         const { pipelineId, commitMessage, definition: inputDefinition, authorUserId, authorName } = options;
 
@@ -134,47 +112,40 @@ export class RevisionService {
             throw new Error(`Pipeline ${pipelineId} not found`);
         }
 
-        // Use input definition or current pipeline definition
         const definition = inputDefinition || pipeline.definition;
         const definitionHash = this.diffService.computeDefinitionHash(definition);
 
-        // Get previous published revision for diff
         const previousPublished = await this.getLatestPublished(ctx, pipelineId);
         const previousDefinition = previousPublished?.definition || null;
         const changesSummary = this.diffService.generateChangesSummary(previousDefinition, definition);
 
-        // Increment version
         const newVersion = (pipeline.publishedVersionCount || 0) + 1;
 
-        // Create published revision
-        const revision = new PipelineRevision({
-            pipeline,
-            pipelineId,
-            version: newVersion,
-            type: 'published' as RevisionType,
-            definition,
-            commitMessage,
-            authorUserId: authorUserId || (ctx.activeUserId as string) || null,
-            authorName: authorName || null,
-            changesSummary,
-            previousRevisionId: previousPublished ? (previousPublished.id as number) : null,
-            definitionSize: this.diffService.calculateDefinitionSize(definition),
-            definitionHash,
-        });
+        const revision = new PipelineRevision();
+        revision.pipeline = pipeline;
+        revision.pipelineId = pipelineId;
+        revision.version = newVersion;
+        revision.type = RevisionType.PUBLISHED;
+        revision.definition = definition;
+        revision.commitMessage = commitMessage;
+        revision.authorUserId = authorUserId || (ctx.activeUserId as string) || null;
+        revision.authorName = authorName || null;
+        revision.changesSummary = changesSummary;
+        revision.previousRevisionId = previousPublished ? (previousPublished.id as number) : null;
+        revision.definitionSize = this.diffService.calculateDefinitionSize(definition);
+        revision.definitionHash = definitionHash;
 
         const saved = await revisionRepo.save(revision);
 
-        // Update pipeline
         pipeline.version = newVersion;
         pipeline.publishedVersionCount = newVersion;
         pipeline.currentRevisionId = saved.id as number;
         pipeline.definition = definition;
-        pipeline.status = 'PUBLISHED';
+        pipeline.status = PipelineStatus.PUBLISHED;
         pipeline.publishedAt = new Date();
         pipeline.publishedByUserId = (authorUserId || ctx.activeUserId as string) || null;
         await pipelineRepo.save(pipeline);
 
-        // Optionally prune drafts on publish
         if (this.autoSaveConfig.pruneOnPublish) {
             await this.pruneDrafts(ctx, pipelineId, true);
         }
@@ -190,16 +161,12 @@ export class RevisionService {
         return saved;
     }
 
-    /**
-     * Revert to a specific revision
-     */
     async revertToRevision(ctx: RequestContext, options: RevertOptions): Promise<PipelineRevision> {
         const { revisionId, commitMessage, authorUserId, authorName } = options;
 
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
         const pipelineRepo = this.connection.getRepository(ctx, Pipeline);
 
-        // Find the target revision
         const targetRevision = await revisionRepo.findOne({
             where: { id: revisionId },
             relations: ['pipeline'],
@@ -208,12 +175,14 @@ export class RevisionService {
             throw new Error(`Revision ${revisionId} not found`);
         }
 
+        if (!targetRevision.pipelineId) {
+            throw new Error(`Revision ${revisionId} has no associated pipeline`);
+        }
         const pipeline = await pipelineRepo.findOne({ where: { id: targetRevision.pipelineId } });
         if (!pipeline) {
             throw new Error(`Pipeline for revision ${revisionId} not found`);
         }
 
-        // Create a new published revision with the reverted definition
         const revertMessage = commitMessage ||
             `Reverted to version ${targetRevision.version || 'draft'} (revision #${revisionId})`;
 
@@ -226,17 +195,13 @@ export class RevisionService {
         });
     }
 
-    /**
-     * Get the timeline of revisions for a pipeline
-     */
     async getTimeline(ctx: RequestContext, pipelineId: ID, limit = 50): Promise<TimelineEntry[]> {
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
         const runRepo = this.connection.getRepository(ctx, PipelineRun);
 
-        // Get revisions ordered by creation date
         const revisions = await revisionRepo.find({
             where: { pipelineId: pipelineId as number },
-            order: { createdAt: 'DESC' },
+            order: { createdAt: SortOrder.DESC },
             take: limit,
         });
 
@@ -244,25 +209,17 @@ export class RevisionService {
             where: { id: pipelineId },
         });
 
+        // Pre-fetch all runs for the pipeline in a single query
+        const allRuns = await runRepo.find({
+            where: { pipeline: { id: pipelineId } },
+            order: { createdAt: SortOrder.DESC },
+        });
+
         const timeline: TimelineEntry[] = [];
 
         for (const revision of revisions) {
-            // Get run statistics for this revision
-            const runs = await runRepo.find({
-                where: {
-                    pipeline: { id: pipelineId },
-                },
-                order: { createdAt: 'DESC' },
-            });
-
-            // Filter runs that used this revision's version
-            const revisionRuns = revision.type === 'published'
-                ? runs.filter(r => {
-                    // Match runs to published versions by comparing version numbers
-                    // This is approximate - ideally runs would store the revision ID
-                    return true; // For now, include all runs
-                })
-                : [];
+            // For published revisions, use all runs; for drafts, no runs
+            const revisionRuns = revision.type === RevisionType.PUBLISHED ? allRuns : [];
 
             const lastRun = revisionRuns[0];
 
@@ -280,8 +237,8 @@ export class RevisionService {
                 },
                 runCount: revisionRuns.length,
                 lastRunAt: lastRun?.finishedAt || lastRun?.startedAt || null,
-                lastRunStatus: lastRun?.status === RunStatus.COMPLETED ? 'success'
-                    : lastRun?.status === RunStatus.FAILED ? 'failed'
+                lastRunStatus: lastRun?.status === RunStatus.COMPLETED ? RunOutcome.SUCCESS
+                    : lastRun?.status === RunStatus.FAILED ? RunOutcome.FAILED
                     : null,
             });
         }
@@ -289,9 +246,6 @@ export class RevisionService {
         return timeline;
     }
 
-    /**
-     * Get diff between two revisions
-     */
     async getDiff(ctx: RequestContext, fromRevisionId: ID, toRevisionId: ID): Promise<RevisionDiff> {
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
 
@@ -311,37 +265,28 @@ export class RevisionService {
         };
     }
 
-    /**
-     * Get the latest draft revision for a pipeline
-     */
     async getLatestDraft(ctx: RequestContext, pipelineId: ID): Promise<PipelineRevision | null> {
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
         return revisionRepo.findOne({
             where: {
                 pipelineId: pipelineId as number,
-                type: 'draft' as RevisionType,
+                type: RevisionType.DRAFT,
             },
-            order: { createdAt: 'DESC' },
+            order: { createdAt: SortOrder.DESC },
         });
     }
 
-    /**
-     * Get the latest published revision for a pipeline
-     */
     async getLatestPublished(ctx: RequestContext, pipelineId: ID): Promise<PipelineRevision | null> {
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
         return revisionRepo.findOne({
             where: {
                 pipelineId: pipelineId as number,
-                type: 'published' as RevisionType,
+                type: RevisionType.PUBLISHED,
             },
-            order: { version: 'DESC' },
+            order: { version: SortOrder.DESC },
         });
     }
 
-    /**
-     * Get a specific revision by ID
-     */
     async getRevision(ctx: RequestContext, revisionId: ID): Promise<PipelineRevision | null> {
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
         return revisionRepo.findOne({
@@ -350,34 +295,27 @@ export class RevisionService {
         });
     }
 
-    /**
-     * Prune old draft revisions
-     */
     async pruneDrafts(ctx: RequestContext, pipelineId: ID, clearAll = false): Promise<number> {
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
 
         if (clearAll) {
-            // Delete all drafts for this pipeline
             const result = await revisionRepo.delete({
                 pipelineId: pipelineId as number,
-                type: 'draft' as RevisionType,
+                type: RevisionType.DRAFT,
             });
             return result.affected || 0;
         }
 
-        // Get all drafts ordered by creation date
         const drafts = await revisionRepo.find({
             where: {
                 pipelineId: pipelineId as number,
-                type: 'draft' as RevisionType,
+                type: RevisionType.DRAFT,
             },
-            order: { createdAt: 'DESC' },
+            order: { createdAt: SortOrder.DESC },
         });
 
-        // Keep only the configured number of drafts
         const toDelete = drafts.slice(this.autoSaveConfig.maxDraftsToKeep);
 
-        // Also delete drafts older than maxDraftAgeDays
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - this.autoSaveConfig.maxDraftAgeDays);
 
@@ -397,9 +335,6 @@ export class RevisionService {
         return allToDelete.length;
     }
 
-    /**
-     * Check if there are unpublished changes
-     */
     async hasUnpublishedChanges(ctx: RequestContext, pipelineId: ID): Promise<boolean> {
         const pipeline = await this.connection.getRepository(ctx, Pipeline).findOne({
             where: { id: pipelineId },
@@ -408,7 +343,6 @@ export class RevisionService {
 
         const latestPublished = await this.getLatestPublished(ctx, pipelineId);
         if (!latestPublished) {
-            // No published version, so any content is unpublished
             return true;
         }
 
@@ -416,29 +350,26 @@ export class RevisionService {
         return currentHash !== latestPublished.definitionHash;
     }
 
-    /**
-     * Get the number of published versions
-     */
     async getPublishedVersionCount(ctx: RequestContext, pipelineId: ID): Promise<number> {
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
         return revisionRepo.count({
             where: {
                 pipelineId: pipelineId as number,
-                type: 'published' as RevisionType,
+                type: RevisionType.PUBLISHED,
             },
         });
     }
 
-    /**
-     * Restore a draft to the working copy
-     */
     async restoreDraft(ctx: RequestContext, revisionId: ID): Promise<Pipeline> {
         const revision = await this.getRevision(ctx, revisionId);
         if (!revision) {
             throw new Error(`Revision ${revisionId} not found`);
         }
-        if (revision.type !== 'draft') {
+        if (revision.type !== RevisionType.DRAFT) {
             throw new Error(`Revision ${revisionId} is not a draft`);
+        }
+        if (!revision.pipelineId) {
+            throw new Error(`Revision ${revisionId} has no associated pipeline`);
         }
 
         const pipelineRepo = this.connection.getRepository(ctx, Pipeline);
@@ -447,7 +378,6 @@ export class RevisionService {
             throw new Error(`Pipeline for revision ${revisionId} not found`);
         }
 
-        // Update pipeline with draft content
         pipeline.definition = revision.definition;
         pipeline.draftRevisionId = revision.id as number;
         await pipelineRepo.save(pipeline);

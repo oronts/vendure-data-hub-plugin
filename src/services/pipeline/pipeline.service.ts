@@ -5,6 +5,7 @@ import {
 } from '@vendure/common/lib/generated-types';
 import {
     assertFound,
+    EventBus,
     ID,
     ListQueryBuilder,
     ListQueryOptions,
@@ -13,14 +14,13 @@ import {
     TransactionalConnection,
 } from '@vendure/core';
 import { Pipeline, PipelineRevision, PipelineRun } from '../../entities/pipeline';
-import { PipelineDefinition, PipelineMetrics, RunStatus } from '../../types/index';
-import { validatePipelineDefinition } from '../../validation/pipeline-definition.validator';
+import { JsonValue, PipelineDefinition, PipelineMetrics, RunStatus } from '../../types/index';
+import { PipelineStatus, RevisionType, SortOrder, StepType } from '../../constants/enums';
 import { DefinitionValidationService } from '../validation/definition-validation.service';
 import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { forwardRef, Inject } from '@nestjs/common';
-import { DataHubRunQueueHandler } from '../../jobs/handlers/pipeline-run.handler';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { PipelineQueueRequestEvent } from '../events/pipeline-events';
 
 export interface CreatePipelineInput {
     code: string;
@@ -46,8 +46,7 @@ export class PipelineService {
     constructor(
         private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
-        @Inject(forwardRef(() => DataHubRunQueueHandler))
-        private runQueue: DataHubRunQueueHandler,
+        private eventBus: EventBus,
         private definitionValidator: DefinitionValidationService,
         private adapterRuntime: AdapterRuntimeService,
         loggerFactory: DataHubLoggerFactory,
@@ -78,7 +77,10 @@ export class PipelineService {
     async findDependents(ctx: RequestContext, code: string): Promise<Pipeline[]> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         const all = await repo.find();
-        return all.filter(p => Array.isArray((p.definition as any)?.dependsOn) && (p.definition as any).dependsOn.includes(code));
+        return all.filter(p => {
+            const def = p.definition as PipelineDefinition & { dependsOn?: string[] };
+            return Array.isArray(def?.dependsOn) && def.dependsOn.includes(code);
+        });
     }
 
     async findByCode(ctx: RequestContext, code: string): Promise<Pipeline | null> {
@@ -94,7 +96,7 @@ export class PipelineService {
             definition.version = 1;
         }
         if (typeof definition.version === 'string') {
-            definition.version = parseInt(definition.version as any, 10) || 1;
+            definition.version = parseInt(String(definition.version), 10) || 1;
         }
         this.definitionValidator.validate(definition);
         const entity = new Pipeline();
@@ -107,7 +109,7 @@ export class PipelineService {
         this.logger.info('Pipeline created', {
             pipelineCode: input.code,
             pipelineId: saved.id,
-        } as any);
+        });
         return assertFound(this.findOne(ctx, saved.id));
     }
 
@@ -131,7 +133,7 @@ export class PipelineService {
                 definition.version = entity.version || 1;
             }
             if (typeof definition.version === 'string') {
-                definition.version = parseInt(definition.version as any, 10) || 1;
+                definition.version = parseInt(String(definition.version), 10) || 1;
             }
             this.definitionValidator.validate(definition);
             entity.definition = definition;
@@ -160,26 +162,25 @@ export class PipelineService {
         // Auto-increment version on publish
         const previousVersion = pipeline.version ?? 0;
         pipeline.version = previousVersion + 1;
-        pipeline.status = 'PUBLISHED' as any;
+        pipeline.status = PipelineStatus.PUBLISHED;
         pipeline.publishedAt = new Date();
-        pipeline.publishedByUserId = (ctx.activeUserId ?? null) as any;
+        pipeline.publishedByUserId = ctx.activeUserId?.toString() ?? null;
         await repo.save(pipeline, { reload: false });
 
         // Save revision for version history
         try {
-            const revRepo = this.connection.getRepository(ctx, PipelineRevision as any);
-            const revision = new (PipelineRevision as any)({
-                pipeline,
-                pipelineId: pipeline.id,
-                version: pipeline.version,
-                definition: pipeline.definition,
-                type: 'published',
-                authorUserId: (ctx.activeUserId ?? null) as any,
-                definitionSize: JSON.stringify(pipeline.definition).length,
-            });
+            const revRepo = this.connection.getRepository(ctx, PipelineRevision);
+            const revision = new PipelineRevision();
+            revision.pipeline = pipeline;
+            revision.pipelineId = Number(pipeline.id);
+            revision.version = pipeline.version;
+            revision.definition = pipeline.definition;
+            revision.type = RevisionType.PUBLISHED;
+            revision.authorUserId = ctx.activeUserId?.toString() ?? null;
+            revision.definitionSize = JSON.stringify(pipeline.definition).length;
             const savedRevision = await revRepo.save(revision);
             // Update pipeline to point to this revision
-            pipeline.currentRevisionId = savedRevision.id;
+            pipeline.currentRevisionId = Number(savedRevision.id);
             pipeline.publishedVersionCount = (pipeline.publishedVersionCount ?? 0) + 1;
             await repo.save(pipeline, { reload: false });
             this.logger.info('Pipeline published with revision', {
@@ -199,8 +200,8 @@ export class PipelineService {
     async submitForReview(ctx: RequestContext, id: ID): Promise<Pipeline> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
-        if ((pipeline as any).status === 'PUBLISHED') return pipeline;
-        (pipeline as any).status = 'REVIEW';
+        if (pipeline.status === PipelineStatus.PUBLISHED) return pipeline;
+        pipeline.status = PipelineStatus.REVIEW;
         await repo.save(pipeline, { reload: false });
         return assertFound(this.findOne(ctx, pipeline.id));
     }
@@ -208,27 +209,42 @@ export class PipelineService {
     async rejectReview(ctx: RequestContext, id: ID): Promise<Pipeline> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
-        if ((pipeline as any).status !== 'REVIEW') return pipeline;
-        (pipeline as any).status = 'DRAFT';
+        if (pipeline.status !== PipelineStatus.REVIEW) return pipeline;
+        pipeline.status = PipelineStatus.DRAFT;
         await repo.save(pipeline, { reload: false });
         return assertFound(this.findOne(ctx, pipeline.id));
     }
 
-    async listRevisions(ctx: RequestContext, pipelineId: ID) {
+    async archive(ctx: RequestContext, id: ID): Promise<Pipeline> {
+        const repo = this.connection.getRepository(ctx, Pipeline);
+        const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
+        pipeline.status = PipelineStatus.ARCHIVED;
+        pipeline.enabled = false;
+        await repo.save(pipeline, { reload: false });
+        return assertFound(this.findOne(ctx, pipeline.id));
+    }
+
+    async listRevisions(ctx: RequestContext, pipelineId: ID): Promise<PipelineRevision[]> {
         const repo = this.connection.getRepository(ctx, PipelineRevision);
-        return repo.find({ where: { pipeline: { id: pipelineId } } as any, order: { createdAt: 'DESC' as any } as any } as any);
+        return repo.find({
+            where: { pipelineId: Number(pipelineId) },
+            order: { createdAt: SortOrder.DESC },
+        });
     }
 
     async revertToRevision(ctx: RequestContext, revisionId: ID): Promise<Pipeline> {
         const revRepo = this.connection.getRepository(ctx, PipelineRevision);
         const revision = await this.connection.getEntityOrThrow(ctx, PipelineRevision, revisionId);
-        const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, (revision as any).pipeline.id);
+        if (!revision.pipelineId) {
+            throw new Error('Revision has no associated pipeline');
+        }
+        const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, revision.pipelineId);
         try {
             const rev = new PipelineRevision();
             rev.pipeline = pipeline;
             rev.version = pipeline.version;
             rev.definition = pipeline.definition;
-            rev.authorUserId = (ctx.activeUserId ?? null) as any;
+            rev.authorUserId = ctx.activeUserId?.toString() ?? null;
             await revRepo.save(rev);
         } catch (error) {
             this.logger.warn('Failed to save pre-revert revision snapshot', {
@@ -237,9 +253,9 @@ export class PipelineService {
                 error: (error as Error)?.message,
             });
         }
-        pipeline.definition = revision.definition as any;
+        pipeline.definition = revision.definition;
         pipeline.version = (pipeline.version ?? 1) + 1;
-        pipeline.status = 'DRAFT' as any;
+        pipeline.status = PipelineStatus.DRAFT;
         await this.connection.getRepository(ctx, Pipeline).save(pipeline, { reload: false });
         return assertFound(this.findOne(ctx, pipeline.id));
     }
@@ -267,7 +283,7 @@ export class PipelineService {
     async startRun(
         ctx: RequestContext,
         pipelineId: ID,
-        options?: { skipPermissionCheck?: boolean },
+        options?: { skipPermissionCheck?: boolean; triggeredBy?: string },
     ): Promise<PipelineRun> {
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, pipelineId);
         if (!pipeline.enabled) {
@@ -277,8 +293,6 @@ export class PipelineService {
             });
             throw new Error('Pipeline is disabled');
         }
-        // Enforce capabilities.requires: current admin must hold all required permissions
-        // Skip for scheduled runs (system-triggered) since pipeline was already configured by admin
         if (!options?.skipPermissionCheck) {
             await this.assertCapabilitiesAllowed(ctx, pipeline.definition);
         }
@@ -291,15 +305,20 @@ export class PipelineService {
         runEntity.metrics = null;
         runEntity.error = null;
         runEntity.checkpoint = null;
-        runEntity.startedByUserId = (ctx.activeUserId ?? null) as any;
+        runEntity.startedByUserId = ctx.activeUserId?.toString() ?? null;
+        runEntity.triggeredBy = options?.triggeredBy ?? (ctx.activeUserId ? `manual:${ctx.activeUserId}` : 'manual');
         const run = await repo.save(runEntity);
-        await this.runQueue.enqueueRun(run.id);
+        this.eventBus.publish(new PipelineQueueRequestEvent(
+            run.id,
+            pipelineId,
+            runEntity.triggeredBy,
+        ));
         this.logger.info('Pipeline run started', {
             pipelineId,
             pipelineCode: pipeline.code,
             runId: run.id,
             userId: ctx.activeUserId,
-        } as any);
+        });
         return assertFound(this.runById(ctx, run.id));
     }
 
@@ -323,13 +342,12 @@ export class PipelineService {
         ctx: RequestContext,
         pipelineId: ID,
         seed: unknown[],
-        options?: { skipPermissionCheck?: boolean },
+        options?: { skipPermissionCheck?: boolean; triggeredBy?: string },
     ): Promise<PipelineRun> {
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, pipelineId);
         if (!pipeline.enabled) {
             throw new Error('Pipeline is disabled');
         }
-        // Skip permission check for event-triggered runs (system-triggered)
         if (!options?.skipPermissionCheck) {
             await this.assertCapabilitiesAllowed(ctx, pipeline.definition);
         }
@@ -341,28 +359,38 @@ export class PipelineService {
         runEntity.finishedAt = null;
         runEntity.metrics = null;
         runEntity.error = null;
-        runEntity.checkpoint = { __seed: seed } as any;
-        runEntity.startedByUserId = (ctx.activeUserId ?? null) as any;
+        runEntity.checkpoint = { __seed: seed as JsonValue[] };
+        runEntity.startedByUserId = ctx.activeUserId?.toString() ?? null;
+        runEntity.triggeredBy = options?.triggeredBy ?? (ctx.activeUserId ? `manual:${ctx.activeUserId}` : 'manual');
         const run = await repo.save(runEntity);
-        await this.runQueue.enqueueRun(run.id);
+        this.eventBus.publish(new PipelineQueueRequestEvent(
+            run.id,
+            pipelineId,
+            runEntity.triggeredBy,
+            { __seed: seed as JsonValue[] },
+        ));
         return assertFound(this.runById(ctx, run.id));
     }
 
     async startRunByCode(
         ctx: RequestContext,
         code: string,
-        opts?: { seedRecords?: unknown[]; skipPermissionCheck?: boolean },
+        opts?: { seedRecords?: unknown[]; skipPermissionCheck?: boolean; triggeredBy?: string },
     ): Promise<PipelineRun> {
         const pipeline = await this.findByCode(ctx, code);
         if (!pipeline) {
             throw new Error(`Pipeline with code "${code}" not found`);
         }
         if (opts?.seedRecords && opts.seedRecords.length) {
-            return this.startRunWithSeed(ctx, pipeline.id as any, opts.seedRecords, {
-                skipPermissionCheck: opts.skipPermissionCheck,
+            return this.startRunWithSeed(ctx, pipeline.id, opts.seedRecords, {
+                skipPermissionCheck: opts?.skipPermissionCheck,
+                triggeredBy: opts?.triggeredBy,
             });
         }
-        return this.startRun(ctx, pipeline.id as any, { skipPermissionCheck: opts?.skipPermissionCheck });
+        return this.startRun(ctx, pipeline.id, {
+            skipPermissionCheck: opts?.skipPermissionCheck,
+            triggeredBy: opts?.triggeredBy,
+        });
     }
 
     private async assertCodeAvailable(ctx: RequestContext, code: string, excludeId?: ID): Promise<void> {
@@ -371,16 +399,6 @@ export class PipelineService {
         if (existing && (!excludeId || existing.id !== excludeId)) {
             throw new Error(`Pipeline code "${code}" already exists`);
         }
-    }
-
-    private buildInitialMetrics(): PipelineMetrics {
-        return {
-            totalRecords: 0,
-            processed: 0,
-            succeeded: 0,
-            failed: 0,
-            durationMs: 0,
-        };
     }
 
     async dryRun(ctx: RequestContext, pipelineId: ID): Promise<{
@@ -402,8 +420,8 @@ export class PipelineService {
 
         if (result.metrics.totalRecords === 0) {
             notes.push('No records were extracted. Check that your extract step has data available.');
-            if (pipeline.definition?.steps?.[0]?.type === 'EXTRACT') {
-                const extractConfig = pipeline.definition.steps[0].config as any;
+            if (pipeline.definition?.steps?.[0]?.type === StepType.EXTRACT) {
+                const extractConfig = pipeline.definition.steps[0].config as { adapterCode?: string };
                 notes.push(`Extract adapter: ${extractConfig?.adapterCode ?? 'unknown'}`);
             }
         } else {
@@ -432,8 +450,6 @@ export class PipelineService {
         const requires: string[] = Array.isArray(definition?.capabilities?.requires) ? (definition.capabilities!.requires as string[]) : [];
         if (!requires.length) return;
 
-        // Use Vendure's built-in permission checking via RequestContext
-        // The ctx.userHasPermission check relies on the session's permissions being populated
         const userPermissions = ctx.session?.user?.channelPermissions?.flatMap(cp => cp.permissions) ?? [];
         const permissionSet = new Set(userPermissions.map(p => String(p)));
 

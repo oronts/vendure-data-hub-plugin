@@ -1,9 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import {
-    TransactionalConnection,
-    Logger,
-} from '@vendure/core';
-import { LOGGER_CTX } from '../../constants/index';
+import { TransactionalConnection } from '@vendure/core';
+import { LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 
 import {
     DestinationType,
@@ -17,6 +15,7 @@ import {
     HTTPDestinationConfig,
     LocalDestinationConfig,
     EmailDestinationConfig,
+    DESTINATION_TYPE,
 } from './destination.types';
 import { deliverToS3 } from './s3.handler';
 import { deliverToHTTP } from './http.handler';
@@ -36,15 +35,18 @@ export type {
 
 @Injectable()
 export class ExportDestinationService implements OnModuleInit {
-    private readonly loggerCtx = `${LOGGER_CTX}:ExportDestination`;
+    private readonly logger: DataHubLogger;
     private destinations: Map<string, DestinationConfig> = new Map();
 
     constructor(
         private connection: TransactionalConnection,
-    ) {}
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.EXPORT_DESTINATION);
+    }
 
     async onModuleInit() {
-        Logger.info('ExportDestinationService initialized', this.loggerCtx);
+        this.logger.info('ExportDestinationService initialized');
     }
 
     registerDestination(config: DestinationConfig): void {
@@ -52,7 +54,7 @@ export class ExportDestinationService implements OnModuleInit {
             ...config,
             enabled: config.enabled !== false,
         });
-        Logger.info(`Registered export destination: ${config.id} (${config.type})`, this.loggerCtx);
+        this.logger.info(`Registered export destination: ${config.id} (${config.type})`);
     }
 
     getDestinations(): DestinationConfig[] {
@@ -74,7 +76,7 @@ export class ExportDestinationService implements OnModuleInit {
             return {
                 success: false,
                 destinationId,
-                destinationType: 'local',
+                destinationType: DESTINATION_TYPE.LOCAL,
                 filename,
                 size: 0,
                 error: `Destination not found: ${destinationId}`,
@@ -94,38 +96,38 @@ export class ExportDestinationService implements OnModuleInit {
 
         const buffer = typeof content === 'string' ? Buffer.from(content) : content;
 
-        Logger.info(`Delivering ${filename} (${buffer.length} bytes) to ${destination.type}:${destinationId}`, this.loggerCtx);
+        this.logger.info(`Delivering ${filename} (${buffer.length} bytes) to ${destination.type}:${destinationId}`);
 
         try {
             switch (destination.type) {
-                case 's3':
+                case DESTINATION_TYPE.S3:
                     return deliverToS3(destination as S3DestinationConfig, buffer, filename, options);
-                case 'sftp':
+                case DESTINATION_TYPE.SFTP:
                     return deliverToSFTP(destination as SFTPDestinationConfig, buffer, filename, options);
-                case 'ftp':
+                case DESTINATION_TYPE.FTP:
                     return deliverToFTP(destination as FTPDestinationConfig, buffer, filename, options);
-                case 'http':
+                case DESTINATION_TYPE.HTTP:
                     return deliverToHTTP(destination as HTTPDestinationConfig, buffer, filename, options);
-                case 'local':
+                case DESTINATION_TYPE.LOCAL:
                     return deliverToLocal(destination as LocalDestinationConfig, buffer, filename, options);
-                case 'email':
+                case DESTINATION_TYPE.EMAIL:
                     return deliverToEmail(destination as EmailDestinationConfig, buffer, filename, options);
                 default: {
-                    // Type assertion to handle exhaustive switch
-                    const unknownDest = destination as any;
+                    const unknownDest = destination as { type?: string };
+                    const destType = unknownDest.type ?? 'unknown';
                     return {
                         success: false,
                         destinationId,
-                        destinationType: unknownDest.type || 'local',
+                        destinationType: DESTINATION_TYPE.LOCAL,
                         filename,
                         size: buffer.length,
-                        error: `Unsupported destination type: ${unknownDest.type}`,
+                        error: `Unsupported destination type: ${destType}`,
                     };
                 }
             }
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-            Logger.error(`Delivery failed to ${destinationId}: ${errorMessage}`, this.loggerCtx);
+            this.logger.error(`Delivery failed to ${destinationId}: ${errorMessage}`);
             return {
                 success: false,
                 destinationId,
@@ -147,10 +149,10 @@ export class ExportDestinationService implements OnModuleInit {
 
         try {
             switch (destination.type) {
-                case 's3':
+                case DESTINATION_TYPE.S3:
                     return { success: true, message: 'S3 connection configured', latencyMs: Date.now() - start };
 
-                case 'http': {
+                case DESTINATION_TYPE.HTTP: {
                     const httpConfig = destination as HTTPDestinationConfig;
                     const response = await fetch(httpConfig.url, { method: 'HEAD' }).catch(() => null);
                     if (response) {
@@ -159,7 +161,7 @@ export class ExportDestinationService implements OnModuleInit {
                     return { success: false, message: 'HTTP endpoint unreachable' };
                 }
 
-                case 'local': {
+                case DESTINATION_TYPE.LOCAL: {
                     const result = testLocalDestination(destination as LocalDestinationConfig);
                     return { ...result, latencyMs: Date.now() - start };
                 }

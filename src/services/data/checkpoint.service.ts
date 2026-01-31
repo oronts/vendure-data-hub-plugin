@@ -1,39 +1,36 @@
 import { Injectable } from '@nestjs/common';
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
-import { PipelineCheckpointEntity } from '../../entities/data';
+import { DataHubCheckpoint } from '../../entities/data';
 import { Pipeline } from '../../entities/pipeline';
+import type { JsonObject } from '../../types/index';
 
 @Injectable()
 export class CheckpointService {
     constructor(private connection: TransactionalConnection) {}
 
-    async getByPipeline(ctx: RequestContext, pipelineId: ID): Promise<PipelineCheckpointEntity | null> {
-        const repo = this.connection.getRepository(ctx, PipelineCheckpointEntity);
-        return repo.findOne({ where: { pipeline: { id: pipelineId } as any } });
+    async getByPipeline(ctx: RequestContext, pipelineId: ID): Promise<DataHubCheckpoint | null> {
+        const repo = this.connection.getRepository(ctx, DataHubCheckpoint);
+        return repo.findOne({ where: { pipeline: { id: pipelineId } } });
     }
 
-    async setForPipeline(ctx: RequestContext, pipelineId: ID, data: Record<string, any>): Promise<PipelineCheckpointEntity> {
-        const repo = this.connection.getRepository(ctx, PipelineCheckpointEntity);
+    async setForPipeline(ctx: RequestContext, pipelineId: ID, data: JsonObject): Promise<DataHubCheckpoint> {
+        const repo = this.connection.getRepository(ctx, DataHubCheckpoint);
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, pipelineId);
+
         let cp = await this.getByPipeline(ctx, pipelineId);
-        if (!cp) {
-            const entity = new PipelineCheckpointEntity();
-            entity.pipeline = pipeline;
-            entity.data = data;
-            cp = await repo.save(entity);
-            return cp;
+        if (cp) {
+            cp.data = data;
+            return repo.save(cp);
         }
-        cp.data = data;
-        await repo.save(cp, { reload: false });
-        return (await this.getByPipeline(ctx, pipelineId))!;
+
+        const entity = new DataHubCheckpoint();
+        entity.pipeline = pipeline;
+        entity.data = data;
+        return repo.save(entity);
     }
 
-    /**
-     * Clear checkpoint data for a pipeline.
-     * Used when starting a fresh run (not resuming).
-     */
     async clearForPipeline(ctx: RequestContext, pipelineId: ID): Promise<void> {
-        const repo = this.connection.getRepository(ctx, PipelineCheckpointEntity);
+        const repo = this.connection.getRepository(ctx, DataHubCheckpoint);
         const cp = await this.getByPipeline(ctx, pipelineId);
         if (cp) {
             await repo.remove(cp);

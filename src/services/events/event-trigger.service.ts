@@ -1,13 +1,34 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
-import { EventBus, RequestContextService, TransactionalConnection, ID } from '@vendure/core';
+import { EventBus, RequestContextService, TransactionalConnection, ID, VendureEvent } from '@vendure/core';
+import { In } from 'typeorm';
+
+/**
+ * Extended event type for DataHub event handling
+ * Vendure events have varying shapes - this interface allows safe property access
+ * via optional chaining when casting the base VendureEvent
+ */
+interface DataHubEventPayload {
+    type?: string;
+    entity?: { id?: unknown } | unknown[];
+    entityId?: unknown;
+    product?: { id?: unknown };
+    asset?: { id?: unknown };
+    collection?: { id?: unknown };
+    customer?: { id?: unknown };
+    order?: { id?: unknown };
+    orderId?: unknown;
+    toState?: string;
+    fromState?: string;
+}
 import { Subscription } from 'rxjs';
 import { Pipeline, PipelineRun } from '../../entities/pipeline';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { RuntimeConfigService } from '../runtime/runtime-config.service';
-import { LOGGER_CONTEXTS } from '../../constants/index';
-import { RunStatus } from '../../types/index';
+import { LOGGER_CONTEXTS, PipelineStatus, RunStatus, EventKind, EVENT_TRIGGER } from '../../constants/index';
+import type { PipelineDefinition } from '../../types/index';
 import type { EventTriggerServiceConfig } from '../../types/plugin-options';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { findEnabledTriggersByType, parseTriggerConfig } from '../../utils';
 
 /**
  * Cached event trigger entry
@@ -18,6 +39,8 @@ interface CachedEventTrigger {
     pipelineId: ID;
     /** Pipeline code for triggering */
     pipelineCode: string;
+    /** Trigger key for identifying specific trigger (for multi-trigger pipelines) */
+    triggerKey: string;
     /** Event type pattern (e.g., 'product.*', 'order.stateTransition.placed') */
     eventTypePattern: string;
 }
@@ -52,9 +75,9 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
     /** Flag for module destruction */
     private isDestroying = false;
     /** Event processing queue for backpressure control */
-    private eventQueue: Array<{ kind: string; event: any; timestamp: number }> = [];
+    private eventQueue: Array<{ kind: string; event: VendureEvent; timestamp: number }> = [];
     /** Maximum queue size before dropping events */
-    private readonly maxQueueSize = 1000;
+    private readonly maxQueueSize = EVENT_TRIGGER.MAX_QUEUE_SIZE;
     /** Flag indicating if queue processor is running */
     private isProcessingQueue = false;
     /** Track in-flight triggers to prevent concurrent runs of same pipeline */
@@ -75,17 +98,14 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
     async onModuleInit(): Promise<void> {
         if (!this.eventBus) return;
 
-        // Initialize cache on startup (fresh start)
         try {
             await this.refreshCache();
         } catch (error) {
-            // Handle case where entity metadata is not yet available (e.g., during testing)
             this.logger.warn('Failed to initialize event trigger cache on startup, will retry on next refresh', {
                 error: error instanceof Error ? error.message : String(error),
             });
         }
 
-        // Set up periodic cache refresh timer using configurable interval
         const cacheRefreshIntervalMs = this.eventTriggerConfig.cacheRefreshIntervalMs;
         this.refreshTimerHandle = setInterval(
             () => this.refreshCache().catch(err => {
@@ -95,9 +115,8 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
         );
         this.logger.debug('Cache refresh timer started', { cacheRefreshIntervalMs });
 
-        // Wire common Vendure events. Use dynamic import names to avoid build-time coupling if types move.
         try {
-            const core: any = await import('@vendure/core');
+            const core = await import('@vendure/core');
             const ProductEvent = core.ProductEvent;
             const ProductVariantEvent = core.ProductVariantEvent;
             const AssetEvent = core.AssetEvent;
@@ -106,48 +125,47 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
             const OrderStateTransitionEvent = core.OrderStateTransitionEvent;
             if (ProductEvent) {
                 this.subscriptions.push(
-                    this.eventBus.ofType(ProductEvent).subscribe(ev => this.handleEvent('product', ev).catch(err => {
+                    this.eventBus.ofType(ProductEvent).subscribe(ev => this.handleEvent(EventKind.PRODUCT, ev).catch(err => {
                         this.logger.error('Failed to handle product event', err instanceof Error ? err : new Error(String(err)));
                     }))
                 );
             }
             if (ProductVariantEvent) {
                 this.subscriptions.push(
-                    this.eventBus.ofType(ProductVariantEvent).subscribe(ev => this.handleEvent('variant', ev).catch(err => {
+                    this.eventBus.ofType(ProductVariantEvent).subscribe(ev => this.handleEvent(EventKind.VARIANT, ev).catch(err => {
                         this.logger.error('Failed to handle variant event', err instanceof Error ? err : new Error(String(err)));
                     }))
                 );
             }
             if (AssetEvent) {
                 this.subscriptions.push(
-                    this.eventBus.ofType(AssetEvent).subscribe(ev => this.handleEvent('asset', ev).catch(err => {
+                    this.eventBus.ofType(AssetEvent).subscribe(ev => this.handleEvent(EventKind.ASSET, ev).catch(err => {
                         this.logger.error('Failed to handle asset event', err instanceof Error ? err : new Error(String(err)));
                     }))
                 );
             }
             if (CollectionModificationEvent) {
                 this.subscriptions.push(
-                    this.eventBus.ofType(CollectionModificationEvent).subscribe(ev => this.handleEvent('collection', ev).catch(err => {
+                    this.eventBus.ofType(CollectionModificationEvent).subscribe(ev => this.handleEvent(EventKind.COLLECTION, ev).catch(err => {
                         this.logger.error('Failed to handle collection event', err instanceof Error ? err : new Error(String(err)));
                     }))
                 );
             }
             if (CustomerEvent) {
                 this.subscriptions.push(
-                    this.eventBus.ofType(CustomerEvent).subscribe(ev => this.handleEvent('customer', ev).catch(err => {
+                    this.eventBus.ofType(CustomerEvent).subscribe(ev => this.handleEvent(EventKind.CUSTOMER, ev).catch(err => {
                         this.logger.error('Failed to handle customer event', err instanceof Error ? err : new Error(String(err)));
                     }))
                 );
             }
             if (OrderStateTransitionEvent) {
                 this.subscriptions.push(
-                    this.eventBus.ofType(OrderStateTransitionEvent).subscribe(ev => this.handleEvent('order.state', ev).catch(err => {
+                    this.eventBus.ofType(OrderStateTransitionEvent).subscribe(ev => this.handleEvent(EventKind.ORDER_STATE, ev).catch(err => {
                         this.logger.error('Failed to handle order state event', err instanceof Error ? err : new Error(String(err)));
                     }))
                 );
             }
         } catch (error) {
-            // Best-effort: if core events are not available, skip but log for debugging
             this.logger.debug('Could not register Vendure event listeners', {
                 error: error instanceof Error ? error.message : String(error),
             });
@@ -157,21 +175,18 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
     async onModuleDestroy(): Promise<void> {
         this.isDestroying = true;
 
-        // Clear the cache refresh timer
         if (this.refreshTimerHandle) {
             clearInterval(this.refreshTimerHandle);
             this.refreshTimerHandle = null;
             this.logger.debug('Cache refresh timer cleared');
         }
 
-        // Clean up subscriptions
         const subscriptionCount = this.subscriptions.length;
         for (const subscription of this.subscriptions) {
             subscription.unsubscribe();
         }
         this.subscriptions = [];
 
-        // Clear all caches and state
         this.eventTriggerCache.clear();
         this.shadowCache.clear();
         this.eventQueue = [];
@@ -186,7 +201,6 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
      * Uses atomic swap pattern to prevent race conditions during refresh
      */
     private async refreshCache(): Promise<void> {
-        // Skip if destroying or already refreshing
         if (this.isDestroying) {
             this.logger.debug('Skipping cache refresh - service is being destroyed');
             return;
@@ -205,49 +219,44 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
             const repo = this.connection.getRepository(ctx, Pipeline);
             const allPipelines = await repo.find();
 
-            // Build new cache in shadow cache (atomic swap pattern)
-            // This prevents race conditions where events arrive during cache rebuild
             this.shadowCache.clear();
 
             let cachedCount = 0;
             for (const pipeline of allPipelines) {
-                // Only cache PUBLISHED and enabled pipelines
-                if ((pipeline as any).status !== 'PUBLISHED') continue;
+                if (pipeline.status !== PipelineStatus.PUBLISHED) continue;
                 if (!pipeline.enabled) continue;
 
-                const steps: any[] = ((pipeline.definition as any)?.steps ?? []) as any[];
-                const trigger = steps[0];
-                if (!trigger || trigger.type !== 'TRIGGER') continue;
+                const definition = pipeline.definition as PipelineDefinition | undefined;
+                const eventTriggers = findEnabledTriggersByType(definition, 'event');
 
-                const cfg: any = trigger.config ?? {};
-                if (cfg.type !== 'event') continue;
+                for (const trigger of eventTriggers) {
+                    const cfg = parseTriggerConfig(trigger);
+                    if (!cfg) continue;
 
-                const eventTypePattern = String(cfg.eventType ?? '');
+                    const eventTypePattern = String((cfg as { eventType?: string }).eventType ?? '');
+                    const eventKinds = this.getEventKindsForPattern(eventTypePattern);
 
-                // Determine which event kind(s) this trigger applies to
-                const eventKinds = this.getEventKindsForPattern(eventTypePattern);
+                    const cachedTrigger: CachedEventTrigger = {
+                        pipelineId: pipeline.id,
+                        pipelineCode: pipeline.code,
+                        triggerKey: trigger.key,
+                        eventTypePattern,
+                    };
 
-                const cachedTrigger: CachedEventTrigger = {
-                    pipelineId: pipeline.id,
-                    pipelineCode: pipeline.code,
-                    eventTypePattern,
-                };
-
-                // Add to shadow cache for each relevant event kind
-                for (const kind of eventKinds) {
-                    const existing = this.shadowCache.get(kind) ?? [];
-                    existing.push(cachedTrigger);
-                    this.shadowCache.set(kind, existing);
+                    for (const kind of eventKinds) {
+                        const existing = this.shadowCache.get(kind) ?? [];
+                        existing.push(cachedTrigger);
+                        this.shadowCache.set(kind, existing);
+                    }
+                    cachedCount++;
                 }
-                cachedCount++;
             }
 
-            // Atomic swap: replace main cache with shadow cache
             const previousSize = this.getTotalCachedTriggers();
             const previousCache = this.eventTriggerCache;
             this.eventTriggerCache = this.shadowCache;
             this.shadowCache = previousCache;
-            this.shadowCache.clear(); // Clear old cache data
+            this.shadowCache.clear();
 
             this.cacheLastRefreshed = Date.now();
             this.cacheInitialized = true;
@@ -273,23 +282,20 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
     /**
      * Determine which event kinds a pattern applies to
      */
-    private getEventKindsForPattern(pattern: string): string[] {
-        const allKinds = ['product', 'variant', 'asset', 'collection', 'customer', 'order.state'];
+    private getEventKindsForPattern(pattern: string): EventKind[] {
+        const allKinds = Object.values(EventKind);
 
         if (!pattern || pattern === '*') {
-            // Empty or wildcard pattern matches all event kinds
             return allKinds;
         }
 
-        // Check for specific namespace matches
-        if (pattern.startsWith('product')) return ['product'];
-        if (pattern.startsWith('variant')) return ['variant'];
-        if (pattern.startsWith('asset')) return ['asset'];
-        if (pattern.startsWith('collection')) return ['collection'];
-        if (pattern.startsWith('customer')) return ['customer'];
-        if (pattern.startsWith('order')) return ['order.state'];
+        if (pattern.startsWith('product')) return [EventKind.PRODUCT];
+        if (pattern.startsWith('variant')) return [EventKind.VARIANT];
+        if (pattern.startsWith('asset')) return [EventKind.ASSET];
+        if (pattern.startsWith('collection')) return [EventKind.COLLECTION];
+        if (pattern.startsWith('customer')) return [EventKind.CUSTOMER];
+        if (pattern.startsWith('order')) return [EventKind.ORDER_STATE];
 
-        // Default: match all kinds (defensive)
         return allKinds;
     }
 
@@ -340,39 +346,27 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
 
         const activeRun = await runRepo.findOne({
             where: {
-                pipelineId: pipelineId as any,
-                status: RunStatus.RUNNING as any,
+                pipelineId: Number(pipelineId),
+                status: In([RunStatus.RUNNING, RunStatus.PENDING]),
             },
         });
 
-        if (activeRun) return true;
-
-        const pendingRun = await runRepo.findOne({
-            where: {
-                pipelineId: pipelineId as any,
-                status: RunStatus.PENDING as any,
-            },
-        });
-
-        return !!pendingRun;
+        return !!activeRun;
     }
 
     /**
      * Handle incoming event with backpressure control
      * Queues events if processing is slow, drops oldest events if queue is full
      */
-    private async handleEvent(kind: 'product' | 'variant' | 'asset' | 'collection' | 'customer' | 'order.state', ev: any): Promise<void> {
-        // Skip if module is being destroyed
+    private async handleEvent(kind: EventKind, ev: VendureEvent): Promise<void> {
         if (this.isDestroying) {
             this.logger.debug('Skipping event - service is being destroyed', { eventKind: kind });
             return;
         }
 
-        // Get cached triggers for this event kind
         const cachedTriggers = this.eventTriggerCache.get(kind);
 
         if (!cachedTriggers || cachedTriggers.length === 0) {
-            // Cache miss or no triggers for this event kind
             this.logger.debug('No cached event triggers for event kind', { eventKind: kind });
             return;
         }
@@ -383,6 +377,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
         });
 
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
+        const eventPayload = ev as unknown as DataHubEventPayload;
 
         for (const trigger of cachedTriggers) {
             try {
@@ -390,38 +385,39 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                 let shouldTrigger = false;
                 let seed: Record<string, unknown>[] = [];
 
-                if (kind === 'product' || kind === 'variant' || kind === 'asset' || kind === 'collection' || kind === 'customer') {
-                    // Match created/updated/deleted if specified
-                    const action = String(ev?.type ?? '').toLowerCase();
+                if (kind === EventKind.PRODUCT || kind === EventKind.VARIANT || kind === EventKind.ASSET || kind === EventKind.COLLECTION || kind === EventKind.CUSTOMER) {
+                    const action = String(eventPayload?.type ?? '').toLowerCase();
                     const ns = kind;
                     const matchesAction = !evType || evType === `${ns}.*` || evType === `${ns}.${action}`;
 
                     if (matchesAction) {
-                        // Multiple fallbacks for entity ID to support various Vendure event structures
-                        // (ProductEvent, AssetEvent, CollectionEvent, CustomerEvent all have different shapes)
-                        const idMaybe = String(ev?.entity?.id ?? ev?.entityId ?? ev?.product?.id ?? ev?.asset?.id ?? ev?.collection?.id ?? ev?.customer?.id ?? '');
+                        const entity = eventPayload?.entity;
+                        let entityId: unknown;
+                        if (Array.isArray(entity) && entity.length > 0) {
+                            entityId = (entity[0] as { id?: unknown })?.id;
+                        } else if (entity && typeof entity === 'object' && 'id' in entity) {
+                            entityId = (entity as { id?: unknown }).id;
+                        }
+                        const idMaybe = String(entityId ?? eventPayload?.entityId ?? eventPayload?.product?.id ?? eventPayload?.asset?.id ?? eventPayload?.collection?.id ?? eventPayload?.customer?.id ?? '');
                         seed = [{ id: idMaybe }];
                         shouldTrigger = true;
                     }
-                } else if (kind === 'order.state') {
-                    const toState = String(ev?.toState ?? '').toLowerCase();
-                    const fromState = String(ev?.fromState ?? '').toLowerCase();
+                } else if (kind === EventKind.ORDER_STATE) {
+                    const toState = String(eventPayload?.toState ?? '').toLowerCase();
+                    const fromState = String(eventPayload?.fromState ?? '').toLowerCase();
                     const target = evType || 'order.stateTransition.*';
                     const normalized = `order.stateTransition.${toState || '*'}`;
                     const matches = target === 'order.stateTransition.*' || target === normalized;
 
                     if (matches) {
-                        // Fallback for order ID supports both OrderStateTransitionEvent.order.id and direct orderId
-                        seed = [{ id: String(ev?.order?.id ?? ev?.orderId ?? ''), toState, fromState }];
+                        seed = [{ id: String(eventPayload?.order?.id ?? eventPayload?.orderId ?? ''), toState, fromState }];
                         shouldTrigger = true;
                     }
                 }
 
                 if (shouldTrigger) {
-                    // Create unique key for this trigger attempt
                     const triggerKey = `${trigger.pipelineCode}:${kind}`;
 
-                    // Check for in-flight duplicate (backpressure)
                     if (this.inFlightTriggers.has(triggerKey)) {
                         this.logger.debug('Skipping duplicate event trigger - already in flight', {
                             pipelineCode: trigger.pipelineCode,
@@ -430,7 +426,6 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                         continue;
                     }
 
-                    // Check if pipeline is already running (concurrency control)
                     const isRunning = await this.isPipelineRunning(trigger.pipelineId);
                     if (isRunning) {
                         this.logger.debug('Skipping event trigger - pipeline already has an active run', {
@@ -449,13 +444,12 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                             eventKind: kind,
                             seedRecordCount: seed.length,
                         });
-                        // Skip permission check for event-triggered runs - pipeline was already configured by admin
                         await this.pipelineService.startRunByCode(ctx, trigger.pipelineCode, {
                             seedRecords: seed,
                             skipPermissionCheck: true,
+                            triggeredBy: `event:${trigger.triggerKey}`,
                         });
                     } finally {
-                        // Remove from in-flight after trigger completes (success or failure)
                         this.inFlightTriggers.delete(triggerKey);
                     }
                 }

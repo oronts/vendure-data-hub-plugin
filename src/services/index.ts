@@ -11,4 +11,7 @@ export * from './logger';
 export * from './runtime';
 export * from './versioning';
 export * from './rate-limit';
-export { DataHubScheduleHandler } from '../jobs';
+export * from './testing';
+
+// NOTE: Job handlers (DataHubScheduleHandler, DataHubRunQueueHandler) are exported
+// from '../jobs' directly to avoid circular dependencies between services and jobs.
