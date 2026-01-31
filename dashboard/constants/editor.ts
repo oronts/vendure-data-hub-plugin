@@ -1,9 +1,6 @@
-/**
- * Editor Constants
- * Pipeline editor defaults and UI configuration values
- */
+import type { PipelineDefinition } from '../../shared/types';
+import { PORTS, HTTP, BATCH, UI_TIMEOUTS, TIME_UNITS } from './defaults';
 
-// Pipeline editor layout defaults
 export const EDITOR_DEFAULTS = {
     GRID_SIZE: 20,
     NODE_WIDTH: 280,
@@ -14,25 +11,49 @@ export const EDITOR_DEFAULTS = {
     NODE_SPACING_Y: 150,
 } as const;
 
-// UI defaults and limits
+export const NODE_LAYOUT = {
+    INITIAL_X: 120,
+    INITIAL_Y: 120,
+    SPACING_X: 280,
+    SPACING_Y: 140,
+} as const;
+
 export const UI_DEFAULTS = {
-    // Query limits
-    QUERY_ALL_LIMIT: 999,
     PAGE_SIZE: 100,
+    LOG_EXPLORER_PAGE_SIZE: 50,
+    PIPELINE_STATS_DISPLAY_COUNT: 6,
+    EVENT_DISPLAY_LIMIT: 20,
     RECENT_LOGS_LIMIT: 50,
     RECENT_ACTIVITY_LIMIT: 10,
     EVENTS_LIMIT: 50,
-
-    // Refresh intervals (milliseconds)
     AUTO_REFRESH_INTERVAL_MS: 10_000,
-    COPY_FEEDBACK_TIMEOUT_MS: 2_000,
-
-    // Preview limits
+    COPY_FEEDBACK_TIMEOUT_MS: UI_TIMEOUTS.COPY_FEEDBACK_MS,
     PREVIEW_ROWS: 10,
-    MAX_PREVIEW_ROWS: 50,
-
-    // Batch sizes
-    EXPORT_BATCH_SIZE: 1000,
-    EXPORT_QUERY_LIMIT: 10000,
-    DEFAULT_MAX_RETRIES: 3,
+    IMPORT_PREVIEW_ROWS: 100,
+    EXPORT_BATCH_SIZE: BATCH.EXPORT_BATCH_SIZE,
+    IMPORT_BATCH_SIZE: BATCH.SIZE,
+    DEFAULT_MAX_RETRIES: HTTP.MAX_RETRIES,
+    DEFAULT_ERROR_THRESHOLD_PERCENT: 10,
+    DEFAULT_SFTP_PORT: PORTS.SFTP,
+    DEFAULT_CACHE_TTL_SECONDS: 3600,
+    WEBHOOK_PATH_PREFIX: '/webhooks/data-hub/',
+    CRON_PLACEHOLDER: '0 0 * * *',
 } as const;
+
+export const PIPELINE_RETRY_DEFAULTS = {
+    DELAY_MS: TIME_UNITS.SECOND,
+    MAX_DELAY_MS: HTTP.RETRY_MAX_DELAY_MS,
+    MIN_DELAY_MS: TIME_UNITS.SECOND,
+} as const;
+
+export const PIPELINE_CHECKPOINT_DEFAULTS = {
+    INTERVAL_RECORDS: 1000,
+    INTERVAL_MS: TIME_UNITS.MINUTE,
+    MIN_INTERVAL_MS: TIME_UNITS.SECOND,
+} as const;
+
+export const DEFAULT_PIPELINE_DEFINITION: PipelineDefinition = {
+    version: 1,
+    steps: [],
+    triggers: [],
+};

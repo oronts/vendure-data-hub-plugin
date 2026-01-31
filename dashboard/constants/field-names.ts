@@ -1,9 +1,3 @@
-/**
- * Field Name Constants
- *
- * Re-exports from backend for UI consistency.
- */
-
 export {
     TRIGGER_FIELDS,
     TRIGGER_TYPES,
@@ -18,7 +12,7 @@ export {
     COMMON_FIELDS,
     STEP_RESULT_FIELDS,
     WEBHOOK_FIELDS,
-} from '../../src/types/shared';
+} from '../../shared/types';
 
 export type {
     TriggerTypeValue,
@@ -26,9 +20,8 @@ export type {
     ConflictResolutionValue,
     CanonicalTriggerConfig,
     CanonicalLoaderConfig,
-} from '../../src/types/shared';
+} from '../../shared/types';
 
-// Condition field names for UI
 export const CONDITION_FIELDS = {
     FIELD: 'field',
     CMP: 'cmp',

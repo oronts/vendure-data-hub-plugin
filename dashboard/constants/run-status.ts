@@ -1,20 +1,19 @@
-/**
- * Run Status Constants
- * Pipeline run status definitions and visual configurations
- */
+import type { RunStatus } from '../../shared/types';
 
-// Run status constants
 export const RUN_STATUS = {
     PENDING: 'PENDING',
+    QUEUED: 'QUEUED',
     RUNNING: 'RUNNING',
+    PAUSED: 'PAUSED',
     COMPLETED: 'COMPLETED',
     FAILED: 'FAILED',
+    TIMEOUT: 'TIMEOUT',
     CANCELLED: 'CANCELLED',
-} as const;
+    CANCEL_REQUESTED: 'CANCEL_REQUESTED',
+} as const satisfies Record<string, RunStatus>;
 
-export type RunStatus = typeof RUN_STATUS[keyof typeof RUN_STATUS];
+export type { RunStatus } from '../../shared/types';
 
-// Run status configuration interface
 export interface RunStatusConfig {
     readonly status: RunStatus;
     readonly label: string;
@@ -23,7 +22,6 @@ export interface RunStatusConfig {
     readonly icon: string;
 }
 
-// Run status configuration mapping
 export const RUN_STATUS_CONFIGS: Record<RunStatus, RunStatusConfig> = {
     PENDING: {
         status: 'PENDING',
@@ -32,12 +30,26 @@ export const RUN_STATUS_CONFIGS: Record<RunStatus, RunStatusConfig> = {
         bgColor: '#F3F4F6',
         icon: 'Clock',
     },
+    QUEUED: {
+        status: 'QUEUED',
+        label: 'Queued',
+        color: '#8B5CF6',
+        bgColor: '#F5F3FF',
+        icon: 'List',
+    },
     RUNNING: {
         status: 'RUNNING',
         label: 'Running',
         color: '#3B82F6',
         bgColor: '#EFF6FF',
         icon: 'Loader2',
+    },
+    PAUSED: {
+        status: 'PAUSED',
+        label: 'Paused',
+        color: '#F59E0B',
+        bgColor: '#FFFBEB',
+        icon: 'Pause',
     },
     COMPLETED: {
         status: 'COMPLETED',
@@ -53,11 +65,25 @@ export const RUN_STATUS_CONFIGS: Record<RunStatus, RunStatusConfig> = {
         bgColor: '#FEF2F2',
         icon: 'XCircle',
     },
+    TIMEOUT: {
+        status: 'TIMEOUT',
+        label: 'Timeout',
+        color: '#EF4444',
+        bgColor: '#FEF2F2',
+        icon: 'Timer',
+    },
     CANCELLED: {
         status: 'CANCELLED',
         label: 'Cancelled',
         color: '#F59E0B',
         bgColor: '#FFFBEB',
         icon: 'Ban',
+    },
+    CANCEL_REQUESTED: {
+        status: 'CANCEL_REQUESTED',
+        label: 'Cancelling',
+        color: '#F59E0B',
+        bgColor: '#FFFBEB',
+        icon: 'Clock',
     },
 };

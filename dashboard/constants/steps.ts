@@ -1,9 +1,5 @@
-/**
- * Step Types and Configuration
- * Pipeline step type definitions and their visual configurations
- */
+import type { StepType } from '../../shared/types';
 
-// Step type constants
 export const STEP_TYPES = {
     TRIGGER: 'TRIGGER',
     EXTRACT: 'EXTRACT',
@@ -15,11 +11,10 @@ export const STEP_TYPES = {
     EXPORT: 'EXPORT',
     FEED: 'FEED',
     SINK: 'SINK',
-} as const;
+} as const satisfies Record<string, StepType>;
 
-export type StepType = typeof STEP_TYPES[keyof typeof STEP_TYPES];
+export type { StepType } from '../../shared/types';
 
-// Step configuration interface
 export interface StepConfig {
     readonly type: StepType;
     readonly label: string;
@@ -32,7 +27,6 @@ export interface StepConfig {
     readonly outputs: number;
 }
 
-// Step configuration mapping
 export const STEP_CONFIGS: Record<StepType, StepConfig> = {
     TRIGGER: {
         type: 'TRIGGER',
@@ -145,3 +139,13 @@ export const STEP_CONFIGS: Record<StepType, StepConfig> = {
         outputs: 0,
     },
 };
+
+export const STEP_TYPE_OPTIONS: { value: StepType; label: string }[] = [
+    { value: 'EXTRACT', label: 'Extract' },
+    { value: 'TRANSFORM', label: 'Transform' },
+    { value: 'VALIDATE', label: 'Validate' },
+    { value: 'ENRICH', label: 'Enrich' },
+    { value: 'LOAD', label: 'Load' },
+    { value: 'EXPORT', label: 'Export' },
+    { value: 'FEED', label: 'Feed' },
+];
