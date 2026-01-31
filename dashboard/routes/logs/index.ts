@@ -1,4 +1,1 @@
-/**
- * Logs Routes
- */
-export { logsRoute } from './logs';
+export { logsPage } from './logs';
