@@ -1,14 +1,8 @@
-// TIME CONSTANTS - Time-related values in milliseconds
-
 /**
- * Base time unit values in milliseconds
+ * Time units - imported from shared constants
  */
-export const TIME_UNITS = {
-    SECOND: 1000,
-    MINUTE: 60 * 1000,
-    HOUR: 60 * 60 * 1000,
-    DAY: 24 * 60 * 60 * 1000,
-} as const;
+import { TIME_UNITS } from '../../shared/constants';
+export { TIME_UNITS };
 
 /**
  * Common time intervals in milliseconds

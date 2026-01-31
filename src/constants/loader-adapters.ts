@@ -2,6 +2,7 @@
  * Loader adapter definitions - Vendure entity loaders
  */
 import { AdapterDefinition } from '../sdk/types';
+import { AuthType, HttpMethod, VendureEntityType } from './enums';
 
 export const LOADER_ADAPTERS: AdapterDefinition[] = [
     {
@@ -170,11 +171,54 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         schema: {
             fields: [
                 { key: 'entity', label: 'Entity type', type: 'select', required: true, options: [
-                    { value: 'product', label: 'Product' },
-                    { value: 'collection', label: 'Collection' },
+                    { value: VendureEntityType.PRODUCT, label: 'Product' },
+                    { value: VendureEntityType.COLLECTION, label: 'Collection' },
                 ] },
                 { key: 'slugField', label: 'Slug field', type: 'string', required: true },
                 { key: 'assetIdField', label: 'Asset ID field', type: 'string', required: true },
+                { key: 'channel', label: 'Channel code', type: 'string' },
+            ],
+        },
+    },
+    {
+        type: 'loader',
+        code: 'assetImport',
+        description: 'Import Asset from URL. Downloads file and creates asset in Vendure.',
+        requires: ['UpdateCatalog'],
+        schema: {
+            fields: [
+                { key: 'sourceUrlField', label: 'Source URL field', type: 'string', required: true },
+                { key: 'filenameField', label: 'Filename field', type: 'string' },
+                { key: 'nameField', label: 'Name field', type: 'string' },
+                { key: 'tagsField', label: 'Tags field (array)', type: 'string' },
+                { key: 'channel', label: 'Channel code', type: 'string' },
+            ],
+        },
+    },
+    {
+        type: 'loader',
+        code: 'facetUpsert',
+        description: 'Upsert Facet by code; create or update facet.',
+        requires: ['UpdateCatalog'],
+        schema: {
+            fields: [
+                { key: 'codeField', label: 'Code field', type: 'string', required: true },
+                { key: 'nameField', label: 'Name field', type: 'string', required: true },
+                { key: 'privateField', label: 'Private field', type: 'string' },
+                { key: 'channel', label: 'Channel code', type: 'string' },
+            ],
+        },
+    },
+    {
+        type: 'loader',
+        code: 'facetValueUpsert',
+        description: 'Upsert FacetValue by code; requires facet to exist.',
+        requires: ['UpdateCatalog'],
+        schema: {
+            fields: [
+                { key: 'facetCodeField', label: 'Facet code field', type: 'string', required: true },
+                { key: 'codeField', label: 'Value code field', type: 'string', required: true },
+                { key: 'nameField', label: 'Value name field', type: 'string', required: true },
                 { key: 'channel', label: 'Channel code', type: 'string' },
             ],
         },
@@ -188,15 +232,15 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
             fields: [
                 { key: 'endpoint', label: 'Endpoint', type: 'string', required: true },
                 { key: 'method', label: 'Method', type: 'select', required: true, options: [
-                    { value: 'POST', label: 'POST' },
-                    { value: 'PUT', label: 'PUT' },
+                    { value: HttpMethod.POST, label: 'POST' },
+                    { value: HttpMethod.PUT, label: 'PUT' },
                 ] },
                 { key: 'headers', label: 'Headers (JSON)', type: 'json' },
                 { key: 'auth', label: 'Auth preset', type: 'select', options: [
-                    { value: 'none', label: 'none' },
-                    { value: 'bearer', label: 'bearer' },
-                    { value: 'basic', label: 'basic' },
-                    { value: 'hmac', label: 'hmac' },
+                    { value: AuthType.NONE, label: 'None' },
+                    { value: AuthType.BEARER, label: 'Bearer' },
+                    { value: AuthType.BASIC, label: 'Basic' },
+                    { value: AuthType.HMAC, label: 'HMAC' },
                 ] },
                 { key: 'bearerTokenSecretCode', label: 'Bearer token secret code', type: 'string' },
                 { key: 'basicSecretCode', label: 'Basic auth secret code', type: 'string' },

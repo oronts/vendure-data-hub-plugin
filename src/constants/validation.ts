@@ -1,65 +1,86 @@
-// VALIDATION CONSTANTS - Patterns and limits for data validation
-
 /**
- * Regular expression patterns for common validations
+ * Validation patterns and utilities.
  */
+import {
+    EMAIL_PATTERN,
+    URL_PATTERN,
+    ISO_DATE_PATTERN,
+    ISO_DATETIME_PATTERN,
+    UUID_PATTERN,
+    SKU_PATTERN,
+    SLUG_PATTERN,
+    PHONE_PATTERN,
+    POSTAL_CODE_PATTERN,
+    COUNTRY_CODE_PATTERN,
+    LANGUAGE_CODE_PATTERN,
+    CURRENCY_CODE_PATTERN,
+    BARCODE_PATTERN,
+    ALPHANUMERIC_PATTERN,
+    SAFE_FILENAME_PATTERN,
+    JSON_PATH_PATTERN,
+    SQL_IDENTIFIER_PATTERN,
+    SECRET_REF_PATTERN,
+    ENV_VAR_REF_PATTERN,
+    isValidEmail as isValidEmailFromPatterns,
+} from './patterns';
+
 export const VALIDATION_PATTERNS = {
-    /** Email address pattern (RFC 5322 simplified) */
-    EMAIL: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+    /** Email address pattern - from patterns.ts */
+    EMAIL: EMAIL_PATTERN,
 
     /** URL pattern (HTTP/HTTPS) */
-    URL: /^https?:\/\/[^\s/$.?#].[^\s]*$/i,
+    URL: URL_PATTERN,
 
     /** ISO 8601 date format (YYYY-MM-DD) */
-    ISO_DATE: /^\d{4}-\d{2}-\d{2}$/,
+    ISO_DATE: ISO_DATE_PATTERN,
 
     /** ISO 8601 datetime format */
-    ISO_DATETIME: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?(Z|[+-]\d{2}:\d{2})?$/,
+    ISO_DATETIME: ISO_DATETIME_PATTERN,
 
     /** UUID v4 pattern */
-    UUID: /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    UUID: UUID_PATTERN,
 
     /** SKU pattern (alphanumeric with dashes/underscores) */
-    SKU: /^[A-Za-z0-9][A-Za-z0-9_-]*$/,
+    SKU: SKU_PATTERN,
 
     /** Slug pattern (lowercase alphanumeric with dashes) */
-    SLUG: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+    SLUG: SLUG_PATTERN,
 
     /** Phone number (international format, loose) */
-    PHONE: /^\+?[0-9\s\-().]{7,}$/,
+    PHONE: PHONE_PATTERN,
 
     /** Postal/ZIP code (general pattern) */
-    POSTAL_CODE: /^[A-Za-z0-9\s-]{3,10}$/,
+    POSTAL_CODE: POSTAL_CODE_PATTERN,
 
     /** Country code (ISO 3166-1 alpha-2) */
-    COUNTRY_CODE: /^[A-Z]{2}$/,
+    COUNTRY_CODE: COUNTRY_CODE_PATTERN,
 
     /** Language code (ISO 639-1) */
-    LANGUAGE_CODE: /^[a-z]{2}(-[A-Z]{2})?$/,
+    LANGUAGE_CODE: LANGUAGE_CODE_PATTERN,
 
     /** Currency code (ISO 4217) */
-    CURRENCY_CODE: /^[A-Z]{3}$/,
+    CURRENCY_CODE: CURRENCY_CODE_PATTERN,
 
     /** Barcode (EAN-13, UPC-A, etc.) */
-    BARCODE: /^[0-9]{8,14}$/,
+    BARCODE: BARCODE_PATTERN,
 
     /** Alphanumeric code (general) */
-    ALPHANUMERIC: /^[A-Za-z0-9]+$/,
+    ALPHANUMERIC: ALPHANUMERIC_PATTERN,
 
     /** Safe filename (no special chars) */
-    SAFE_FILENAME: /^[A-Za-z0-9][A-Za-z0-9._-]*\.[A-Za-z]{2,4}$/,
+    SAFE_FILENAME: SAFE_FILENAME_PATTERN,
 
     /** JSON path expression */
-    JSON_PATH: /^[a-zA-Z_$][a-zA-Z0-9_$]*(\.[a-zA-Z_$][a-zA-Z0-9_$]*)*$/,
+    JSON_PATH: JSON_PATH_PATTERN,
 
     /** SQL identifier (table/column name) */
-    SQL_IDENTIFIER: /^[a-zA-Z_][a-zA-Z0-9_]*$/,
+    SQL_IDENTIFIER: SQL_IDENTIFIER_PATTERN,
 
     /** Secret reference pattern */
-    SECRET_REF: /^\$\{([A-Z_][A-Z0-9_]*)\}$/,
+    SECRET_REF: SECRET_REF_PATTERN,
 
     /** Environment variable reference */
-    ENV_VAR_REF: /^\$\{env:([A-Z_][A-Z0-9_]*)\}$/,
+    ENV_VAR_REF: ENV_VAR_REF_PATTERN,
 } as const;
 
 /**
@@ -110,54 +131,13 @@ export const FIELD_LIMITS = {
 } as const;
 
 /**
- * Common validation error messages
+ * Common validation error messages.
  */
-export const VALIDATION_MESSAGES = {
-    REQUIRED: 'This field is required',
-    INVALID_EMAIL: 'Please enter a valid email address',
-    INVALID_URL: 'Please enter a valid URL',
-    INVALID_DATE: 'Please enter a valid date (YYYY-MM-DD)',
-    INVALID_NUMBER: 'Please enter a valid number',
-    INVALID_INTEGER: 'Please enter a whole number',
-    INVALID_POSITIVE: 'Value must be positive',
-    INVALID_FORMAT: 'Invalid format',
-    TOO_SHORT: (min: number) => `Must be at least ${min} characters`,
-    TOO_LONG: (max: number) => `Must be no more than ${max} characters`,
-    TOO_SMALL: (min: number) => `Must be at least ${min}`,
-    TOO_LARGE: (max: number) => `Must be no more than ${max}`,
-    NOT_IN_ENUM: (values: string[]) => `Must be one of: ${values.join(', ')}`,
-    PATTERN_MISMATCH: (name: string) => `Does not match ${name} format`,
-    UNIQUE_VIOLATION: 'This value already exists',
-    FOREIGN_KEY: (entity: string) => `Referenced ${entity} not found`,
-} as const;
-
-/**
- * Vendure-specific field requirements
- */
-export const VENDURE_FIELD_REQUIREMENTS = {
-    PRODUCT: {
-        name: { required: true, minLength: 1, maxLength: 255 },
-        slug: { required: true, pattern: VALIDATION_PATTERNS.SLUG, maxLength: 255 },
-        description: { maxLength: 100000 },
-    },
-    VARIANT: {
-        sku: { required: true, minLength: 1, maxLength: 100 },
-        price: { required: true, min: 0 },
-    },
-    CUSTOMER: {
-        emailAddress: { required: true, pattern: VALIDATION_PATTERNS.EMAIL },
-        firstName: { maxLength: 255 },
-        lastName: { maxLength: 255 },
-    },
-    COLLECTION: {
-        name: { required: true, minLength: 1, maxLength: 255 },
-        slug: { required: true, pattern: VALIDATION_PATTERNS.SLUG, maxLength: 255 },
-    },
-    ASSET: {
-        name: { required: true, minLength: 1, maxLength: 255 },
-        source: { required: true },
-    },
-} as const;
+export {
+    ERROR_MESSAGES,
+    VALIDATION_ERROR_CODE,
+} from '../../shared/types/validation.types';
+export type { ValidationErrorCode } from '../../shared/types/validation.types';
 
 /**
  * Validate a value against a pattern
@@ -166,34 +146,7 @@ export function matchesPattern(value: string, pattern: RegExp): boolean {
     return pattern.test(value);
 }
 
-/**
- * Validate string length
- */
-export function isWithinLength(
-    value: string,
-    min: number = 0,
-    max: number = Infinity,
-): boolean {
-    return value.length >= min && value.length <= max;
-}
-
-/**
- * Validate numeric range
- */
-export function isWithinRange(
-    value: number,
-    min: number = -Infinity,
-    max: number = Infinity,
-): boolean {
-    return value >= min && value <= max;
-}
-
-/**
- * Check if a string is a valid email
- */
-export function isValidEmail(value: string): boolean {
-    return VALIDATION_PATTERNS.EMAIL.test(value);
-}
+export { isValidEmailFromPatterns as isValidEmail };
 
 /**
  * Check if a string is a valid URL
@@ -227,13 +180,6 @@ export function isValidSlug(value: string): boolean {
     return VALIDATION_PATTERNS.SLUG.test(value);
 }
 
-// =============================================================================
-// CONFIDENCE SCORING
-// =============================================================================
-
-/**
- * Confidence score thresholds for auto-mapping
- */
 export const CONFIDENCE_THRESHOLDS = {
     HIGH: 70,
     MEDIUM: 40,

@@ -2,6 +2,7 @@
  * Exporter adapter definitions - Data egress to external systems
  */
 import { AdapterDefinition } from '../sdk/types';
+import { FileEncoding, FileFormat, HttpMethod } from './enums';
 
 export const EXPORTER_ADAPTERS: AdapterDefinition[] = [
     {
@@ -22,9 +23,9 @@ export const EXPORTER_ADAPTERS: AdapterDefinition[] = [
                 { key: 'includeHeader', label: 'Include header row', type: 'boolean' },
                 { key: 'columns', label: 'Columns', type: 'json', description: 'Array of column definitions: [{ field: "name", header: "Name" }]' },
                 { key: 'encoding', label: 'Encoding', type: 'select', options: [
-                    { value: 'utf-8', label: 'UTF-8' },
-                    { value: 'utf-16', label: 'UTF-16' },
-                    { value: 'iso-8859-1', label: 'ISO-8859-1' },
+                    { value: FileEncoding.UTF8, label: 'UTF-8' },
+                    { value: FileEncoding.UTF16, label: 'UTF-16' },
+                    { value: FileEncoding.ISO_8859_1, label: 'ISO-8859-1' },
                 ] },
                 { key: 'connectionCode', label: 'Connection', type: 'string', description: 'SFTP/S3 connection for remote upload' },
             ],
@@ -40,8 +41,8 @@ export const EXPORTER_ADAPTERS: AdapterDefinition[] = [
                 { key: 'path', label: 'Output directory', type: 'string', required: true, description: 'Directory path for output' },
                 { key: 'filenamePattern', label: 'Filename pattern', type: 'string', description: 'Filename with placeholders: ${date:YYYY-MM-DD}, ${timestamp}, ${uuid}' },
                 { key: 'format', label: 'Format', type: 'select', options: [
-                    { value: 'json', label: 'JSON (array)' },
-                    { value: 'ndjson', label: 'NDJSON (line-delimited)' },
+                    { value: FileFormat.JSON, label: 'JSON (array)' },
+                    { value: FileFormat.NDJSON, label: 'NDJSON (line-delimited)' },
                 ] },
                 { key: 'pretty', label: 'Pretty print', type: 'boolean' },
                 { key: 'connectionCode', label: 'Connection', type: 'string' },
@@ -73,9 +74,9 @@ export const EXPORTER_ADAPTERS: AdapterDefinition[] = [
             fields: [
                 { key: 'endpoint', label: 'Endpoint URL', type: 'string', required: true },
                 { key: 'method', label: 'HTTP Method', type: 'select', options: [
-                    { value: 'POST', label: 'POST' },
-                    { value: 'PUT', label: 'PUT' },
-                    { value: 'PATCH', label: 'PATCH' },
+                    { value: HttpMethod.POST, label: 'POST' },
+                    { value: HttpMethod.PUT, label: 'PUT' },
+                    { value: HttpMethod.PATCH, label: 'PATCH' },
                 ] },
                 { key: 'batchMode', label: 'Batch mode', type: 'select', options: [
                     { value: 'single', label: 'One request per record' },

@@ -2,6 +2,7 @@
  * Feed adapter definitions - Product feeds for marketplaces and advertising
  */
 import { AdapterDefinition } from '../sdk/types';
+import { FileFormat } from './enums';
 
 export const FEED_ADAPTERS: AdapterDefinition[] = [
     {
@@ -13,8 +14,8 @@ export const FEED_ADAPTERS: AdapterDefinition[] = [
             fields: [
                 { key: 'outputPath', label: 'Output path', type: 'string', required: true, description: 'File path or URL' },
                 { key: 'format', label: 'Format', type: 'select', required: true, options: [
-                    { value: 'xml', label: 'XML (RSS 2.0)' },
-                    { value: 'tsv', label: 'TSV (tab-separated)' },
+                    { value: FileFormat.XML, label: 'XML (RSS 2.0)' },
+                    { value: FileFormat.TSV, label: 'TSV (tab-separated)' },
                 ] },
                 { key: 'targetCountry', label: 'Target country', type: 'string', required: true, description: 'ISO country code (e.g., US)' },
                 { key: 'contentLanguage', label: 'Content language', type: 'string', required: true, description: 'ISO language code (e.g., en)' },
@@ -36,8 +37,8 @@ export const FEED_ADAPTERS: AdapterDefinition[] = [
             fields: [
                 { key: 'outputPath', label: 'Output path', type: 'string', required: true },
                 { key: 'format', label: 'Format', type: 'select', required: true, options: [
-                    { value: 'csv', label: 'CSV' },
-                    { value: 'xml', label: 'XML' },
+                    { value: FileFormat.CSV, label: 'CSV' },
+                    { value: FileFormat.XML, label: 'XML' },
                 ] },
                 { key: 'currency', label: 'Currency', type: 'string', required: true },
                 { key: 'channelId', label: 'Channel', type: 'string' },
@@ -50,24 +51,19 @@ export const FEED_ADAPTERS: AdapterDefinition[] = [
     {
         type: 'feed',
         code: 'amazonFeed',
-        description: 'Generate Amazon product feed.',
+        description: 'Generate Amazon Seller Central inventory feed.',
         category: 'external',
         schema: {
             fields: [
-                { key: 'outputPath', label: 'Output path', type: 'string', required: true },
-                { key: 'marketplace', label: 'Marketplace', type: 'select', required: true, options: [
-                    { value: 'US', label: 'Amazon.com (US)' },
-                    { value: 'UK', label: 'Amazon.co.uk (UK)' },
-                    { value: 'DE', label: 'Amazon.de (Germany)' },
-                    { value: 'FR', label: 'Amazon.fr (France)' },
-                    { value: 'CA', label: 'Amazon.ca (Canada)' },
-                ] },
-                { key: 'feedType', label: 'Feed type', type: 'select', options: [
-                    { value: 'inventory', label: 'Inventory' },
-                    { value: 'pricing', label: 'Pricing' },
-                    { value: 'product', label: 'Product' },
-                ] },
-                { key: 'sellerId', label: 'Seller ID', type: 'string', required: true },
+                { key: 'outputPath', label: 'Output path', type: 'string', required: true, description: 'File path for the feed output' },
+                { key: 'currency', label: 'Currency', type: 'string', required: true, description: 'ISO currency code (e.g., USD)' },
+                { key: 'channelId', label: 'Channel', type: 'string', description: 'Vendure channel to use' },
+                { key: 'titleField', label: 'Title field', type: 'string', description: 'Field path for product title' },
+                { key: 'descriptionField', label: 'Description field', type: 'string', description: 'Field path for description' },
+                { key: 'priceField', label: 'Price field', type: 'string', description: 'Field path for price' },
+                { key: 'imageField', label: 'Image field', type: 'string', description: 'Field path for main image URL' },
+                { key: 'brandField', label: 'Brand field', type: 'string', description: 'Field path for brand' },
+                { key: 'gtinField', label: 'GTIN field', type: 'string', description: 'Field path for UPC/EAN/GTIN' },
             ],
         },
     },
@@ -80,10 +76,10 @@ export const FEED_ADAPTERS: AdapterDefinition[] = [
             fields: [
                 { key: 'outputPath', label: 'Output path', type: 'string', required: true },
                 { key: 'format', label: 'Format', type: 'select', required: true, options: [
-                    { value: 'xml', label: 'XML' },
-                    { value: 'csv', label: 'CSV' },
-                    { value: 'json', label: 'JSON' },
-                    { value: 'tsv', label: 'TSV' },
+                    { value: FileFormat.XML, label: 'XML' },
+                    { value: FileFormat.CSV, label: 'CSV' },
+                    { value: FileFormat.JSON, label: 'JSON' },
+                    { value: FileFormat.TSV, label: 'TSV' },
                 ] },
                 { key: 'template', label: 'Template', type: 'textarea', description: 'Template for item rendering (uses Handlebars)' },
                 { key: 'fieldMapping', label: 'Field mapping', type: 'json', required: true, description: 'Map source fields to feed fields' },

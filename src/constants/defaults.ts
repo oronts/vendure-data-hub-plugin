@@ -1,4 +1,15 @@
-// DEFAULT VALUES - Configuration defaults for DataHub
+import * as os from 'os';
+import * as path from 'path';
+import { isBrowser } from '../utils/environment';
+
+const getTempBase = (): string => {
+    if (isBrowser) {
+        return '/tmp';
+    }
+    return process.env.DATA_HUB_TEMP_DIR || os.tmpdir();
+};
+
+const TEMP_BASE = getTempBase();
 
 /**
  * Retention policy defaults (in days)
@@ -8,6 +19,28 @@ export const RETENTION = {
     RUNS_DAYS: 30,
     /** Days to retain error records */
     ERRORS_DAYS: 90,
+    /** Maximum retention days (1 year) */
+    MAX_DAYS: 365,
+    /** Minimum retention days */
+    MIN_DAYS: 1,
+} as const;
+
+/**
+ * Pagination parameter names for HTTP API extractors
+ */
+export const PAGINATION_PARAMS = {
+    /** Default offset parameter name */
+    OFFSET: 'offset',
+    /** Default limit parameter name */
+    LIMIT: 'limit',
+    /** Default cursor parameter name */
+    CURSOR: 'cursor',
+    /** Default page parameter name */
+    PAGE: 'page',
+    /** Default page size parameter name */
+    PAGE_SIZE: 'pageSize',
+    /** Alternative page size parameter name (common in APIs) */
+    PER_PAGE: 'per_page',
 } as const;
 
 /**
@@ -22,6 +55,8 @@ export const PAGINATION = {
     PAGE_SIZE: 100,
     /** Default page size for database queries (larger for SQL) */
     DATABASE_PAGE_SIZE: 1000,
+    /** Maximum page size for database queries (safety limit) */
+    DATABASE_MAX_PAGE_SIZE: 100000,
     /** Default page size for admin list views */
     LIST_PAGE_SIZE: 20,
     /** Limit for recent logs queries */
@@ -58,6 +93,22 @@ export const BATCH = {
     MAX_IN_FLIGHT: 5,
     /** Default rate limit (requests per second) */
     RATE_LIMIT_RPS: 10,
+} as const;
+
+/**
+ * Sink defaults for search engine and webhook integrations
+ */
+export const SINK = {
+    /** Default index name for search engines */
+    DEFAULT_INDEX_NAME: 'products',
+    /** Default ID field for document identification */
+    DEFAULT_ID_FIELD: 'id',
+    /** Default batch size for queue operations */
+    QUEUE_BATCH_SIZE: 100,
+    /** Default batch size for webhook operations */
+    WEBHOOK_BATCH_SIZE: 100,
+    /** Base delay in ms for exponential backoff */
+    BACKOFF_BASE_DELAY_MS: 100,
 } as const;
 
 /**
@@ -167,28 +218,32 @@ export const FILE_STORAGE = {
     FILE_MAX_FILES: 10,
     /** File expiry time in minutes */
     EXPIRY_MINUTES: 60 * 24, // 24 hours
-    /** Temp directory for exports */
-    TEMP_DIR: '/tmp',
+    /** Temp directory for exports (configurable via DATA_HUB_TEMP_DIR env var) */
+    TEMP_DIR: TEMP_BASE,
 } as const;
 
 /**
- * Default output file paths
+ * Generate output file path based on pipeline config
  */
-export const OUTPUT_PATHS = {
-    /** Default CSV export path */
-    CSV_EXPORT: '/tmp/export.csv',
-    /** Default JSON export path */
-    JSON_EXPORT: '/tmp/export.json',
-    /** Default XML export path */
-    XML_EXPORT: '/tmp/export.xml',
-    /** Default Google Merchant feed path */
-    GOOGLE_MERCHANT_FEED: '/tmp/google-merchant-feed.xml',
-    /** Default Meta catalog feed path */
-    META_CATALOG_FEED: '/tmp/meta-catalog-feed.csv',
-    /** Default Amazon feed path */
-    AMAZON_FEED: '/tmp/amazon-feed.txt',
-    /** Default custom feed path */
-    CUSTOM_FEED: '/tmp/custom-feed.json',
+export function getOutputPath(pipelineCode: string, format: string, extension?: string): string {
+    const ext = extension || format;
+    const timestamp = Date.now();
+    if (isBrowser) {
+        return `${TEMP_BASE}/${pipelineCode}-${timestamp}.${ext}`;
+    }
+    return path.join(TEMP_BASE, `${pipelineCode}-${timestamp}.${ext}`);
+}
+
+/**
+ * Default file extensions by format
+ */
+export const OUTPUT_EXTENSIONS = {
+    csv: 'csv',
+    json: 'json',
+    xml: 'xml',
+    'google-merchant': 'xml',
+    'meta-catalog': 'csv',
+    amazon: 'txt',
 } as const;
 
 /**
@@ -223,6 +278,8 @@ export const CACHE = {
     SETTINGS_TTL_MS: 60_000,
     /** Adapter catalog stale time in milliseconds (1 minute) */
     ADAPTER_CATALOG_STALE_TIME_MS: 60_000,
+    /** Maximum cached logger instances */
+    MAX_CACHED_LOGGERS: 100,
 } as const;
 
 /**
@@ -243,14 +300,20 @@ export const EXTRACTOR_LIMITS = {
 export const SPAN_TRACKER = {
     /** Maximum completed spans to keep in memory */
     MAX_COMPLETED_SPANS: 100,
+    /** Maximum active spans to track before eviction */
+    MAX_ACTIVE_SPANS: 500,
+    /** Maximum span duration before timeout (10 minutes) */
+    SPAN_TIMEOUT_MS: 10 * 60 * 1000,
 } as const;
 
 /**
  * Truncation limits for display/storage
  */
 export const TRUNCATION = {
-    /** Maximum length for error messages */
+    /** Maximum length for error messages and field values */
     ERROR_MESSAGE_MAX_LENGTH: 200,
+    /** Maximum length for field values in logging */
+    MAX_FIELD_VALUE_LENGTH: 200,
     /** Maximum length for response body logging */
     RESPONSE_BODY_MAX_LENGTH: 1000,
     /** Length of webhook ID hash */
@@ -278,19 +341,10 @@ export const NUMERIC = {
 } as const;
 
 /**
- * Network port defaults
+ * Network port defaults - imported from shared constants
  */
-export const PORTS = {
-    SFTP: 22,
-    FTP: 21,
-    POSTGRESQL: 5432,
-    MYSQL: 3306,
-    MSSQL: 1433,
-    ORACLE: 1521,
-    /** Port range validation */
-    MIN: 1,
-    MAX: 65535,
-} as const;
+import { PORTS } from '../../shared/constants';
+export { PORTS };
 
 /**
  * Domain events configuration
@@ -328,6 +382,12 @@ export const CIRCUIT_BREAKER = {
     RESET_TIMEOUT_MS: 30_000,
     /** Time window for counting failures in ms (default: 60 seconds) */
     FAILURE_WINDOW_MS: 60_000,
+    /** Idle timeout before removing circuit from cache (default: 30 minutes) */
+    IDLE_TIMEOUT_MS: 30 * 60 * 1000,
+    /** Interval for cleaning up idle circuits (default: 5 minutes) */
+    CLEANUP_INTERVAL_MS: 5 * 60 * 1000,
+    /** Maximum number of circuits to track */
+    MAX_CIRCUITS: 1000,
 } as const;
 
 /**
@@ -341,6 +401,208 @@ export const METRICS = {
 } as const;
 
 /**
+ * Distributed lock defaults
+ */
+export const DISTRIBUTED_LOCK = {
+    /** Default Redis URL for auto-detection */
+    DEFAULT_REDIS_URL: 'redis://localhost:6379',
+    /** Maximum retries per Redis request */
+    MAX_RETRIES_PER_REQUEST: 3,
+    /** Maximum retry delay for Redis connection */
+    MAX_RETRY_DELAY_MS: 3000,
+    /** Maximum iterations for scan operations */
+    MAX_SCAN_ITERATIONS: 1000,
+    /** Lock cleanup interval in milliseconds (default: 30 seconds) */
+    CLEANUP_INTERVAL_MS: 30_000,
+    /** Default lock TTL in milliseconds (default: 30 seconds) */
+    DEFAULT_TTL_MS: 30_000,
+    /** Default wait timeout in milliseconds (default: 10 seconds) */
+    DEFAULT_WAIT_TIMEOUT_MS: 10_000,
+    /** Default retry interval in milliseconds (default: 100ms) */
+    DEFAULT_RETRY_INTERVAL_MS: 100,
+    /** Pipeline execution lock TTL in milliseconds (5 minutes - long enough for most pipelines) */
+    PIPELINE_LOCK_TTL_MS: 300_000,
+    /** Scheduler trigger lock TTL in milliseconds (30 seconds - just for preventing duplicate triggers) */
+    SCHEDULER_LOCK_TTL_MS: 30_000,
+    /** Message consumer lock TTL in milliseconds (5 minutes - long enough for consumer heartbeat) */
+    MESSAGE_CONSUMER_LOCK_TTL_MS: 300_000,
+    /** Message consumer lock refresh interval (4 minutes - before TTL expires) */
+    MESSAGE_CONSUMER_LOCK_REFRESH_MS: 240_000,
+} as const;
+
+/**
+ * Webhook queue defaults
+ */
+export const WEBHOOK_QUEUE = {
+    /** Maximum number of deliveries in queue */
+    MAX_DELIVERY_QUEUE_SIZE: 10000,
+    /** Maximum number of webhook configurations to cache */
+    MAX_WEBHOOK_CONFIGS: 500,
+    /** Retention time for delivered webhooks (1 minute) */
+    DELIVERED_RETENTION_MS: 60_000,
+    /** Retention time for dead letter webhooks (24 hours) */
+    DEAD_LETTER_RETENTION_MS: 24 * 60 * 60 * 1000,
+} as const;
+
+/**
+ * Safe evaluator defaults
+ */
+export const SAFE_EVALUATOR = {
+    /** Maximum number of cached compiled functions */
+    MAX_CACHE_SIZE: 1000,
+    /** Default timeout in milliseconds */
+    DEFAULT_TIMEOUT_MS: 5000,
+    /** Cache eviction percentage (10% of cache evicted when full) */
+    CACHE_EVICTION_PERCENT: 0.1,
+} as const;
+
+/**
+ * Throughput controller defaults
+ */
+export const THROUGHPUT = {
+    /** Maximum size of drain queue */
+    MAX_QUEUE_SIZE: 1000,
+    /** Default deferred queue retry delay in seconds */
+    DEFERRED_RETRY_DELAY_SEC: 5,
+} as const;
+
+/**
+ * Risk assessment thresholds
+ */
+export const RISK_THRESHOLDS = {
+    /** Record count considered high */
+    HIGH_RECORD_COUNT: 10000,
+    /** Record count considered very high */
+    VERY_HIGH_RECORD_COUNT: 100000,
+    /** Deletion count considered high */
+    HIGH_DELETION_COUNT: 100,
+    /** Failure rate percentage considered high */
+    HIGH_FAILURE_RATE_PERCENT: 0.1,
+    /** Memory usage in MB considered high */
+    HIGH_MEMORY_USAGE_MB: 500,
+    /** Database queries count considered high */
+    HIGH_DATABASE_QUERIES: 1000,
+    /** Duration in ms considered long (30 minutes) */
+    LONG_DURATION_MS: 30 * 60 * 1000,
+    /** Duration in ms considered very long (2 hours) */
+    VERY_LONG_DURATION_MS: 2 * 60 * 60 * 1000,
+    /** Number of entity types considered multiple */
+    MULTIPLE_ENTITY_TYPES: 3,
+    /** Risk score thresholds */
+    RISK_SCORE_LOW: 20,
+    RISK_SCORE_MEDIUM: 50,
+    RISK_SCORE_HIGH: 80,
+    /** Risk severity weights */
+    SEVERITY_WEIGHT_INFO: 5,
+    SEVERITY_WEIGHT_WARNING: 20,
+    SEVERITY_WEIGHT_DANGER: 40,
+} as const;
+
+/**
+ * Sandbox execution defaults
+ */
+export const SANDBOX = {
+    /** Maximum records to process in sandbox mode */
+    MAX_RECORDS: 100,
+    /** Maximum samples per step */
+    MAX_SAMPLES_PER_STEP: 10,
+    /** Default timeout in milliseconds */
+    DEFAULT_TIMEOUT_MS: 60000,
+} as const;
+
+/**
+ * Impact analysis resource estimation defaults
+ */
+export const IMPACT_ANALYSIS = {
+    /** Base memory usage in MB for pipeline execution */
+    BASE_MEMORY_MB: 50,
+    /** Memory usage per record in MB */
+    PER_RECORD_MEMORY_MB: 0.01,
+    /** Memory usage per transform step in MB */
+    PER_TRANSFORM_MEMORY_MB: 10,
+    /** CPU usage base percentage */
+    BASE_CPU_PERCENT: 20,
+    /** CPU percentage per 1000 records */
+    CPU_PER_1000_RECORDS: 5,
+    /** CPU percentage per transform step */
+    CPU_PER_TRANSFORM: 10,
+    /** Maximum CPU percentage cap */
+    MAX_CPU_PERCENT: 100,
+    /** Records per database query batch */
+    DB_QUERY_BATCH_SIZE: 100,
+    /** Maximum sample record IDs to collect per entity */
+    MAX_SAMPLE_RECORD_IDS: 10,
+    /** Maximum sample flows to return */
+    MAX_SAMPLE_FLOWS: 10,
+    /** Maximum sample field values to collect */
+    MAX_SAMPLE_FIELD_VALUES: 3,
+    /** Minimum runs needed for HIGH confidence */
+    HIGH_CONFIDENCE_MIN_RUNS: 3,
+    /** Fallback duration multiplier for sampling-based estimates */
+    SAMPLING_DURATION_MULTIPLIER: 10,
+    /** Duration ratio for extract phase */
+    EXTRACT_DURATION_RATIO: 0.3,
+    /** Duration ratio for transform phase */
+    TRANSFORM_DURATION_RATIO: 0.2,
+    /** Duration ratio for load phase */
+    LOAD_DURATION_RATIO: 0.5,
+    /** Duration ratio for sampling-based extract phase */
+    SAMPLING_EXTRACT_RATIO: 0.3,
+    /** Duration ratio for sampling-based transform phase */
+    SAMPLING_TRANSFORM_RATIO: 0.2,
+    /** Duration ratio for sampling-based load phase */
+    SAMPLING_LOAD_RATIO: 0.5,
+    /** Default base duration for sampling estimate in ms */
+    DEFAULT_BASE_DURATION_MS: 1000,
+    /** Number of recent runs to fetch for estimation */
+    RECENT_RUNS_COUNT: 5,
+} as const;
+
+/**
+ * Event trigger defaults
+ */
+export const EVENT_TRIGGER = {
+    /** Maximum events in backpressure queue */
+    MAX_QUEUE_SIZE: 1000,
+} as const;
+
+/**
+ * Batch rollback defaults
+ */
+export const BATCH_ROLLBACK = {
+    /** Interval for cleaning up stale transactions (default: 5 minutes) */
+    CLEANUP_INTERVAL_MS: 5 * 60 * 1000,
+    /** Maximum age for transactions before auto-cleanup (default: 1 hour) */
+    MAX_TRANSACTION_AGE_MS: 60 * 60 * 1000,
+} as const;
+
+/**
+ * Streaming/chunked processing defaults
+ */
+export const STREAMING = {
+    /** Default chunk size for streaming operations */
+    DEFAULT_CHUNK_SIZE: 1000,
+    /** Maximum buffer size before forcing flush */
+    MAX_BUFFER_SIZE: 10_000,
+    /** Default concurrency for parallel processing */
+    DEFAULT_CONCURRENCY: 5,
+    /** Default average record size estimate in bytes */
+    DEFAULT_AVG_RECORD_SIZE: 100,
+} as const;
+
+/**
+ * XML parser defaults
+ */
+export const XML_PARSER = {
+    /** Default attribute prefix for XML parsing */
+    DEFAULT_ATTR_PREFIX: '@',
+    /** Default tag names to search for records */
+    DEFAULT_RECORD_TAGS: ['item', 'record', 'row', 'product', 'customer', 'order', 'entry'] as readonly string[],
+    /** Maximum tag name length to prevent ReDoS */
+    MAX_TAG_NAME_LENGTH: 100,
+} as const;
+
+/**
  * Validation timeout limits (in milliseconds)
  */
 export const VALIDATION_TIMEOUTS = {
@@ -348,6 +610,14 @@ export const VALIDATION_TIMEOUTS = {
     MIN_TIMEOUT_MS: 1_000,
     /** Maximum allowed timeout for HTTP requests */
     MAX_TIMEOUT_MS: 300_000,
+} as const;
+
+/**
+ * Hook execution defaults
+ */
+export const HOOK = {
+    /** Default timeout for interceptor/script hooks */
+    INTERCEPTOR_TIMEOUT_MS: 5_000,
 } as const;
 
 /**
@@ -362,6 +632,58 @@ export const TRANSFORM_LIMITS = {
     CURRENCY_DECIMAL_PLACES: 2,
     /** Default description truncation for feeds */
     DESCRIPTION_TRUNCATE_LENGTH: 500,
+} as const;
+
+/**
+ * Code security limits
+ */
+export const CODE_SECURITY = {
+    /** Maximum length for user-provided code expressions */
+    MAX_CODE_LENGTH: 10_000,
+    /** Maximum length for condition expressions */
+    MAX_CONDITION_LENGTH: 1_000,
+    /** Maximum expression complexity (nesting depth, operations) */
+    MAX_EXPRESSION_COMPLEXITY: 50,
+    /** Maximum property access depth (a.b.c.d...) */
+    MAX_PROPERTY_ACCESS_DEPTH: 10,
+} as const;
+
+/**
+ * HTTP lookup operator defaults
+ */
+export const HTTP_LOOKUP = {
+    /** Default cache TTL in seconds */
+    DEFAULT_CACHE_TTL_SEC: 300,
+    /** Default API key header name */
+    DEFAULT_API_KEY_HEADER: 'X-API-Key',
+    /** Default max retries for failed requests */
+    DEFAULT_MAX_RETRIES: 2,
+    /** Default batch size for bulk lookups */
+    DEFAULT_BATCH_SIZE: 50,
+} as const;
+
+/**
+ * Internal timing constants
+ */
+export const INTERNAL_TIMINGS = {
+    /** Cleanup interval for cache/rate-limit stores (ms) */
+    CLEANUP_INTERVAL_MS: 60_000,
+    /** Short wait delay for connection pooling (ms) */
+    CONNECTION_WAIT_MS: 100,
+    /** Default rate limit window (ms) */
+    DEFAULT_RATE_LIMIT_WINDOW_MS: 60_000,
+    /** Default maximum requests per rate limit window */
+    DEFAULT_RATE_LIMIT_MAX_REQUESTS: 60,
+    /** Default webhook rate limit requests per minute */
+    DEFAULT_WEBHOOK_RATE_LIMIT: 100,
+    /** Maximum idle time for pooled connections before cleanup (ms) */
+    CONNECTION_MAX_IDLE_MS: 5 * 60 * 1000, // 5 minutes
+    /** Maximum retries when waiting for a connection (prevents infinite recursion) */
+    CONNECTION_RETRY_MAX: 10,
+    /** Cleanup interval for pending messages map (ms) */
+    PENDING_MESSAGES_CLEANUP_INTERVAL_MS: 60_000,
+    /** Maximum age for pending messages before cleanup (ms) */
+    PENDING_MESSAGES_MAX_AGE_MS: 10 * 60 * 1000, // 10 minutes
 } as const;
 
 /**
@@ -443,14 +765,9 @@ export const DEFAULTS = {
     FILE_EXPIRY_MINUTES: FILE_STORAGE.EXPIRY_MINUTES,
     TEMP_DIR: FILE_STORAGE.TEMP_DIR,
 
-    // Output paths
-    OUTPUT_PATH_CSV: OUTPUT_PATHS.CSV_EXPORT,
-    OUTPUT_PATH_JSON: OUTPUT_PATHS.JSON_EXPORT,
-    OUTPUT_PATH_XML: OUTPUT_PATHS.XML_EXPORT,
-    OUTPUT_PATH_GOOGLE_MERCHANT: OUTPUT_PATHS.GOOGLE_MERCHANT_FEED,
-    OUTPUT_PATH_META_CATALOG: OUTPUT_PATHS.META_CATALOG_FEED,
-    OUTPUT_PATH_AMAZON: OUTPUT_PATHS.AMAZON_FEED,
-    OUTPUT_PATH_CUSTOM_FEED: OUTPUT_PATHS.CUSTOM_FEED,
+    // Output path helper
+    getOutputPath,
+    OUTPUT_EXTENSIONS,
 
     // Truncation limits
     ERROR_MESSAGE_MAX_LENGTH: TRUNCATION.ERROR_MESSAGE_MAX_LENGTH,
@@ -475,4 +792,10 @@ export const DEFAULTS = {
 
     // Default hosts
     LOCALHOST: DEFAULT_HOSTS.LOCALHOST,
+
+    // Internal timings
+    CLEANUP_INTERVAL_MS: INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS,
+
+    // Hook timeouts
+    INTERCEPTOR_TIMEOUT_MS: HOOK.INTERCEPTOR_TIMEOUT_MS,
 } as const;

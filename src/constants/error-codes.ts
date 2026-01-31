@@ -1,8 +1,3 @@
-// ERROR CODES - Standardized error codes for DataHub operations
-
-/**
- * Error codes for pipeline execution errors
- */
 export enum PipelineErrorCode {
     // General errors
     UNKNOWN = 'PIPELINE_UNKNOWN_ERROR',
@@ -129,16 +124,18 @@ export const ERROR_CODES = {
 
 /**
  * Error severity levels
+ *
+ * Values use SCREAMING_SNAKE_CASE to match status/severity conventions
  */
 export enum ErrorSeverity {
     /** Informational - not an error */
-    INFO = 'info',
+    INFO = 'INFO',
     /** Warning - operation succeeded but with issues */
-    WARNING = 'warning',
+    WARNING = 'WARNING',
     /** Error - operation failed but may be retried */
-    ERROR = 'error',
+    ERROR = 'ERROR',
     /** Critical - operation failed and cannot be recovered */
-    CRITICAL = 'critical',
+    CRITICAL = 'CRITICAL',
 }
 
 /**

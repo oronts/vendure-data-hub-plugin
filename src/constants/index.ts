@@ -16,15 +16,18 @@ export * from './enums';
 
 export {
     RETENTION,
+    PAGINATION_PARAMS,
     PAGINATION,
     BATCH,
+    SINK,
     SCHEDULER,
     WEBHOOK,
     HTTP,
     HTTP_STATUS,
     RATE_LIMIT,
     FILE_STORAGE,
-    OUTPUT_PATHS,
+    getOutputPath,
+    OUTPUT_EXTENSIONS,
     XML_EXPORT,
     UI,
     CACHE,
@@ -38,10 +41,25 @@ export {
     CIRCUIT_BREAKER,
     METRICS,
     VALIDATION_TIMEOUTS,
+    HOOK,
     TRANSFORM_LIMITS,
     VALIDATION_FIELDS,
     DEFAULT_HOSTS,
     DEFAULTS,
+    CODE_SECURITY,
+    HTTP_LOOKUP,
+    INTERNAL_TIMINGS,
+    DISTRIBUTED_LOCK,
+    WEBHOOK_QUEUE,
+    SAFE_EVALUATOR,
+    THROUGHPUT,
+    RISK_THRESHOLDS,
+    SANDBOX,
+    IMPACT_ANALYSIS,
+    EVENT_TRIGGER,
+    BATCH_ROLLBACK,
+    STREAMING,
+    XML_PARSER,
 } from './defaults';
 
 export {
@@ -93,6 +111,7 @@ export {
     RSS_VERSIONS,
     CONTENT_TYPES,
     HTTP_HEADERS,
+    AUTH_SCHEMES,
     OAUTH2_GRANT_TYPES,
     SERVICE_URL_TEMPLATES,
     XML_NAMESPACES,
@@ -104,12 +123,10 @@ export type { FeedFormatInfo } from './services';
 export {
     VALIDATION_PATTERNS,
     FIELD_LIMITS,
-    VALIDATION_MESSAGES,
-    VENDURE_FIELD_REQUIREMENTS,
+    ERROR_MESSAGES,
+    VALIDATION_ERROR_CODE,
     CONFIDENCE_THRESHOLDS,
     matchesPattern,
-    isWithinLength,
-    isWithinRange,
     isValidEmail,
     isValidUrl,
     isValidIsoDate,
@@ -118,7 +135,41 @@ export {
     scoreToConfidence,
     confidenceToMinScore,
 } from './validation';
-export type { MatchConfidence } from './validation';
+export type { MatchConfidence, ValidationErrorCode } from './validation';
+
+export { EXTRACTOR_CODE, LOADER_CODE, EXPORTER_CODE } from './adapters';
+export type { ExtractorCode, LoaderCode, ExporterCode } from './adapters';
+
+// Export patterns as the canonical source for all regex patterns
+export {
+    PATTERNS,
+    EMAIL_PATTERN,
+    PIPELINE_CODE_PATTERN,
+    SECRET_CODE_PATTERN,
+    IDENTIFIER_PATTERN,
+    SLUG_PATTERN,
+    ALPHANUMERIC_PATTERN,
+    URL_PATTERN,
+    ISO_DATE_PATTERN,
+    ISO_DATETIME_PATTERN,
+    CRON_BASIC_PATTERN,
+    UUID_PATTERN,
+    SKU_PATTERN,
+    BARCODE_PATTERN,
+    PHONE_PATTERN,
+    POSTAL_CODE_PATTERN,
+    COUNTRY_CODE_PATTERN,
+    LANGUAGE_CODE_PATTERN,
+    CURRENCY_CODE_PATTERN,
+    SAFE_FILENAME_PATTERN,
+    JSON_PATH_PATTERN,
+    SQL_IDENTIFIER_PATTERN,
+    SECRET_REF_PATTERN,
+    ENV_VAR_REF_PATTERN,
+    TEMPLATE_VAR_PATTERN,
+    isValidPipelineCode,
+    isValidSecretCode,
+} from './patterns';
 
 export {
     PipelineErrorCode,
@@ -136,31 +187,15 @@ export {
 
 import { AdapterDefinition } from '../sdk/types';
 import { EXTRACTOR_ADAPTERS } from './extractor-adapters';
-import { OPERATOR_ADAPTERS } from './operator-adapters';
-import { STRING_OPERATOR_ADAPTERS } from './string-operator-adapters';
-import { ARRAY_OPERATOR_ADAPTERS } from './array-operator-adapters';
-import { VALUE_OPERATOR_ADAPTERS } from './value-operator-adapters';
-import { DATE_OPERATOR_ADAPTERS } from './date-operator-adapters';
-import { JSON_OPERATOR_ADAPTERS } from './json-operator-adapters';
-import { NUMERIC_OPERATOR_ADAPTERS } from './numeric-operator-adapters';
-import { CONDITIONAL_OPERATOR_ADAPTERS } from './conditional-operator-adapters';
-import { VALIDATION_OPERATOR_ADAPTERS } from './validation-operator-adapters';
 import { LOADER_ADAPTERS } from './loader-adapters';
 import { EXPORTER_ADAPTERS } from './exporter-adapters';
 import { FEED_ADAPTERS } from './feed-adapters';
 import { SINK_ADAPTERS } from './sink-adapters';
+import { ALL_OPERATOR_DEFINITIONS } from '../operators';
 
 export const BUILTIN_ADAPTERS: AdapterDefinition[] = [
     ...EXTRACTOR_ADAPTERS,
-    ...OPERATOR_ADAPTERS,
-    ...STRING_OPERATOR_ADAPTERS,
-    ...ARRAY_OPERATOR_ADAPTERS,
-    ...VALUE_OPERATOR_ADAPTERS,
-    ...DATE_OPERATOR_ADAPTERS,
-    ...JSON_OPERATOR_ADAPTERS,
-    ...NUMERIC_OPERATOR_ADAPTERS,
-    ...CONDITIONAL_OPERATOR_ADAPTERS,
-    ...VALIDATION_OPERATOR_ADAPTERS,
+    ...ALL_OPERATOR_DEFINITIONS,
     ...LOADER_ADAPTERS,
     ...EXPORTER_ADAPTERS,
     ...FEED_ADAPTERS,
@@ -168,21 +203,37 @@ export const BUILTIN_ADAPTERS: AdapterDefinition[] = [
 ];
 
 export { EXTRACTOR_ADAPTERS } from './extractor-adapters';
-export { OPERATOR_ADAPTERS } from './operator-adapters';
-export { STRING_OPERATOR_ADAPTERS } from './string-operator-adapters';
-export { ARRAY_OPERATOR_ADAPTERS } from './array-operator-adapters';
-export { VALUE_OPERATOR_ADAPTERS } from './value-operator-adapters';
-export { DATE_OPERATOR_ADAPTERS } from './date-operator-adapters';
-export { JSON_OPERATOR_ADAPTERS } from './json-operator-adapters';
-export { NUMERIC_OPERATOR_ADAPTERS } from './numeric-operator-adapters';
-export { CONDITIONAL_OPERATOR_ADAPTERS } from './conditional-operator-adapters';
-export { VALIDATION_OPERATOR_ADAPTERS } from './validation-operator-adapters';
 export { LOADER_ADAPTERS } from './loader-adapters';
 export { EXPORTER_ADAPTERS } from './exporter-adapters';
 export { FEED_ADAPTERS } from './feed-adapters';
-export { SINK_ADAPTERS } from './sink-adapters';
+export { SINK_ADAPTERS, SINK_ADAPTER_CODES } from './sink-adapters';
+export type { SinkAdapterCode } from './sink-adapters';
+export {
+    ALL_OPERATOR_DEFINITIONS,
+    DATA_OPERATOR_DEFINITIONS,
+    STRING_OPERATOR_DEFINITIONS,
+    LOGIC_OPERATOR_DEFINITIONS,
+    ENRICHMENT_OPERATOR_DEFINITIONS,
+    AGGREGATION_OPERATOR_DEFINITIONS,
+    NUMERIC_OPERATOR_DEFINITIONS,
+    DATE_OPERATOR_DEFINITIONS,
+    JSON_OPERATOR_DEFINITIONS,
+    VALIDATION_OPERATOR_DEFINITIONS,
+    SCRIPT_OPERATOR_DEFINITIONS,
+} from '../operators';
 export {
     WEBHOOK_TRIGGER_SCHEMA_FIELDS,
     DEFAULT_WEBHOOK_CONFIG,
+    MESSAGE_TRIGGER_SCHEMA_FIELDS,
+    DEFAULT_MESSAGE_CONFIG,
 } from './trigger-adapters';
-export type { WebhookAuthType, WebhookTriggerConfig } from './trigger-adapters';
+export type { WebhookAuthType, WebhookTriggerConfig, MessageTriggerConfig } from './trigger-adapters';
+
+export { RUN_EVENT_TYPES, WEBHOOK_EVENT_TYPES, STEP_EVENT_TYPES, LOG_EVENT_TYPES } from './events';
+export type { RunEventType, WebhookEventType, StepEventType, LogEventType } from './events';
+
+export { RESOLVER_ERROR_MESSAGES } from './resolver-errors';
+
+export { TABLE_NAMES, TABLE_PREFIX } from './table-names';
+export type { TableName } from './table-names';
+

@@ -1,9 +1,3 @@
-// SERVICE CONSTANTS - External service URLs and configuration
-
-/**
- * Default ports for search services
- * These are the standard default ports - URLs are constructed at runtime
- */
 export const SEARCH_SERVICE_PORTS = {
     MEILISEARCH: 7700,
     ELASTICSEARCH: 9200,
@@ -36,10 +30,8 @@ export function getSearchServiceUrl(service: keyof typeof SEARCH_SERVICE_PORTS):
 }
 
 /**
- * Default URLs for search services
- * NOTE: These are evaluated at module load time. For runtime configuration,
- * use getSearchServiceUrl() which respects environment variables.
- * @deprecated Use getSearchServiceUrl() for environment-aware URL resolution
+ * Default URLs for search services.
+ * Evaluated at module load time using environment variables or defaults.
  */
 export const SEARCH_SERVICE_URLS = {
     MEILISEARCH: getSearchServiceUrl('MEILISEARCH'),
@@ -97,6 +89,7 @@ export const RSS_VERSIONS = {
  */
 export const CONTENT_TYPES = {
     JSON: 'application/json',
+    NDJSON: 'application/x-ndjson',
     XML: 'application/xml',
     RSS: 'application/rss+xml',
     ATOM: 'application/atom+xml',
@@ -105,6 +98,7 @@ export const CONTENT_TYPES = {
     PLAIN: 'text/plain',
     FORM_URLENCODED: 'application/x-www-form-urlencoded',
     MULTIPART: 'multipart/form-data',
+    OCTET_STREAM: 'application/octet-stream',
 } as const;
 
 /**
@@ -118,6 +112,16 @@ export const HTTP_HEADERS = {
     X_API_KEY: 'X-API-Key',
     X_REQUEST_ID: 'X-Request-ID',
     X_DATAHUB_SIGNATURE: 'X-DataHub-Signature',
+    X_TYPESENSE_API_KEY: 'X-TYPESENSE-API-KEY',
+} as const;
+
+/**
+ * Authentication scheme prefixes for Authorization header
+ */
+export const AUTH_SCHEMES = {
+    BEARER: 'Bearer',
+    BASIC: 'Basic',
+    API_KEY: 'ApiKey',
 } as const;
 
 /**

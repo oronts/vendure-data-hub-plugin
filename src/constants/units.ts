@@ -1,8 +1,3 @@
-// UNIT CONSTANTS - Measurement units and conversions
-
-/**
- * Weight unit identifiers
- */
 export const WEIGHT_UNITS = {
     GRAM: 'g',
     KILOGRAM: 'kg',

@@ -1,8 +1,3 @@
-// UI CONSTANTS - Icons, colors, and display configuration
-
-/**
- * Step type icons (Lucide icon names)
- */
 export const STEP_ICONS = {
     TRIGGER: 'Play',
     EXTRACT: 'Download',
