@@ -19,51 +19,69 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { FileUploadZone } from './FileUploadZone';
+import { FileDropzone } from '../../shared/file-dropzone';
 import { DataPreview } from './DataPreview';
 import { FieldMappingEditor } from './FieldMappingEditor';
 import { ColumnStats } from './ColumnStats';
 import { StepIndicator } from './StepIndicator';
-import { parseCSV, analyzeColumns, autoMap, getFileType } from './helpers';
-import type { FileUploadMapperProps, ParsedFile, FieldMapping } from './types';
+import { parseCSV, analyzeColumns, getFileType, computeAutoMappings } from '../../../utils';
+import { UI_LIMITS } from '../../../constants/ui-config';
+import { FILE_FORMAT } from '../../../constants/wizard-options';
+import { MAPPER_STEP } from '../../../constants/ui-types';
+import { TOAST_FILE, formatParsedRowsColumns, formatMissingRequired } from '../../../constants/toast-messages';
+import type { FileUploadMapperProps, ParsedFile, UIFieldMapping } from './types';
 
 export function FileUploadMapper({
     targetSchema = [],
     onMappingComplete,
     onCancel,
-    allowedTypes = ['csv', 'excel', 'json'],
+    allowedTypes = [FILE_FORMAT.CSV, FILE_FORMAT.XLSX, FILE_FORMAT.JSON],
 }: FileUploadMapperProps) {
-    const [step, setStep] = React.useState<'upload' | 'preview' | 'mapping'>('upload');
+    const [step, setStep] = React.useState<typeof MAPPER_STEP[keyof typeof MAPPER_STEP]>(MAPPER_STEP.UPLOAD);
     const [loading, setLoading] = React.useState(false);
     const [parsedFile, setParsedFile] = React.useState<ParsedFile | null>(null);
-    const [mappings, setMappings] = React.useState<FieldMapping[]>([]);
+    const [mappings, setMappings] = React.useState<UIFieldMapping[]>([]);
     const [csvDelimiter, setCsvDelimiter] = React.useState(',');
 
-    const handleFileSelect = async (file: File) => {
+    // Memoize auto-mapping computation based on parsed columns and target schema
+    const computeInitialMappings = React.useCallback((columns: { name: string }[]) => {
+        if (targetSchema.length === 0) return [];
+        const sourceNames = columns.map(c => c.name);
+        const targetNames = targetSchema.map(t => t.name);
+        const requiredFields = targetSchema.filter(t => t.required).map(t => t.name);
+        const results = computeAutoMappings(sourceNames, targetNames, {
+            includeDots: false,
+            includeUnmatchedRequired: true,
+            requiredFields,
+        });
+        return results.map(r => ({ sourceField: r.sourceField, targetField: r.targetField }));
+    }, [targetSchema]);
+
+    const handleFileSelect = React.useCallback(async (file: File) => {
         setLoading(true);
         try {
             const fileType = getFileType(file.name);
             if (!fileType || !allowedTypes.includes(fileType)) {
-                toast.error('Unsupported file type');
+                toast.error(TOAST_FILE.UNSUPPORTED_TYPE);
                 return;
             }
 
-            let data: Record<string, any>[] = [];
+            let data: Record<string, unknown>[] = [];
 
-            if (fileType === 'csv') {
+            if (fileType === FILE_FORMAT.CSV) {
                 const content = await file.text();
-                data = parseCSV(content, csvDelimiter);
-            } else if (fileType === 'json') {
+                data = parseCSV(content, { delimiter: csvDelimiter });
+            } else if (fileType === FILE_FORMAT.JSON) {
                 const content = await file.text();
                 const parsed = JSON.parse(content);
                 data = Array.isArray(parsed) ? parsed : [parsed];
-            } else if (fileType === 'excel') {
-                toast.error('Excel parsing requires xlsx library. Please use CSV or JSON.');
+            } else if (fileType === FILE_FORMAT.XLSX) {
+                toast.error(TOAST_FILE.EXCEL_REQUIRES_XLSX);
                 return;
             }
 
             if (data.length === 0) {
-                toast.error('No data found in file');
+                toast.error(TOAST_FILE.NO_DATA_FOUND);
                 return;
             }
 
@@ -74,26 +92,39 @@ export function FileUploadMapper({
                 fileType,
                 rowCount: data.length,
                 columns,
-                preview: data.slice(0, 10),
+                preview: data.slice(0, UI_LIMITS.PREVIEW_ROW_LIMIT),
                 rawData: data,
             });
 
-            if (targetSchema.length > 0) {
-                const autoMappings = autoMap(columns, targetSchema);
-                setMappings(autoMappings);
+            const initialMappings = computeInitialMappings(columns);
+            if (initialMappings.length > 0) {
+                setMappings(initialMappings);
             }
 
-            setStep('preview');
-            toast.success(`Parsed ${data.length.toLocaleString()} rows with ${columns.length} columns`);
+            setStep(MAPPER_STEP.PREVIEW);
+            toast.success(formatParsedRowsColumns(data.length, columns.length));
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown error occurred';
-            toast.error(`Failed to parse file: ${message}`);
+            toast.error(TOAST_FILE.PARSE_ERROR, { description: message });
         } finally {
             setLoading(false);
         }
-    };
+    }, [allowedTypes, csvDelimiter, computeInitialMappings]);
 
-    const handleComplete = () => {
+    const handleReset = React.useCallback(() => {
+        setStep(MAPPER_STEP.UPLOAD);
+        setParsedFile(null);
+    }, []);
+
+    const handleContinueToMapping = React.useCallback(() => {
+        setStep(MAPPER_STEP.MAPPING);
+    }, []);
+
+    const handleBackToPreview = React.useCallback(() => {
+        setStep(MAPPER_STEP.PREVIEW);
+    }, []);
+
+    const handleComplete = React.useCallback(() => {
         if (!parsedFile) return;
 
         const missingRequired = targetSchema.filter(
@@ -101,12 +132,12 @@ export function FileUploadMapper({
         );
 
         if (missingRequired.length > 0) {
-            toast.error(`Missing required fields: ${missingRequired.map(f => f.name).join(', ')}`);
+            toast.error(formatMissingRequired(missingRequired.map(f => f.name)));
             return;
         }
 
         const transformedData = parsedFile.rawData.map(row => {
-            const newRow: Record<string, any> = {};
+            const newRow: Record<string, unknown> = {};
             for (const mapping of mappings) {
                 if (mapping.sourceField) {
                     newRow[mapping.targetField] = row[mapping.sourceField] ?? mapping.defaultValue;
@@ -118,23 +149,21 @@ export function FileUploadMapper({
         });
 
         onMappingComplete(mappings, transformedData);
-    };
+    }, [parsedFile, targetSchema, mappings, onMappingComplete]);
 
     return (
         <div className="space-y-6">
-            {/* Step indicator */}
             <div className="flex items-center gap-4">
-                <StepIndicator number={1} label="Upload" active={step === 'upload'} completed={step !== 'upload'} />
+                <StepIndicator number={1} label="Upload" active={step === MAPPER_STEP.UPLOAD} completed={step !== MAPPER_STEP.UPLOAD} />
                 <div className="flex-1 h-px bg-border" />
-                <StepIndicator number={2} label="Preview" active={step === 'preview'} completed={step === 'mapping'} />
+                <StepIndicator number={2} label="Preview" active={step === MAPPER_STEP.PREVIEW} completed={step === MAPPER_STEP.MAPPING} />
                 <div className="flex-1 h-px bg-border" />
-                <StepIndicator number={3} label="Map Fields" active={step === 'mapping'} completed={false} />
+                <StepIndicator number={3} label="Map Fields" active={step === MAPPER_STEP.MAPPING} completed={false} />
             </div>
 
-            {/* Step content */}
-            {step === 'upload' && (
+            {step === MAPPER_STEP.UPLOAD && (
                 <div className="space-y-4">
-                    {allowedTypes.includes('csv') && (
+                    {allowedTypes.includes(FILE_FORMAT.CSV) && (
                         <div className="flex items-center gap-4">
                             <Label>CSV Delimiter:</Label>
                             <Select value={csvDelimiter} onValueChange={setCsvDelimiter}>
@@ -150,7 +179,7 @@ export function FileUploadMapper({
                             </Select>
                         </div>
                     )}
-                    <FileUploadZone
+                    <FileDropzone
                         onFileSelect={handleFileSelect}
                         allowedTypes={allowedTypes}
                         loading={loading}
@@ -158,9 +187,8 @@ export function FileUploadMapper({
                 </div>
             )}
 
-            {step === 'preview' && parsedFile && (
+            {step === MAPPER_STEP.PREVIEW && parsedFile && (
                 <div className="space-y-6">
-                    {/* File info */}
                     <Card>
                         <CardContent className="p-4">
                             <div className="flex items-center justify-between">
@@ -173,7 +201,7 @@ export function FileUploadMapper({
                                         </p>
                                     </div>
                                 </div>
-                                <Button variant="outline" onClick={() => { setStep('upload'); setParsedFile(null); }}>
+                                <Button variant="outline" onClick={handleReset}>
                                     <RefreshCw className="w-4 h-4 mr-2" />
                                     Upload Different File
                                 </Button>
@@ -181,24 +209,21 @@ export function FileUploadMapper({
                         </CardContent>
                     </Card>
 
-                    {/* Column stats */}
                     <div>
                         <h3 className="text-lg font-medium mb-4">Column Analysis</h3>
                         <ColumnStats columns={parsedFile.columns} rowCount={parsedFile.rowCount} />
                     </div>
 
-                    {/* Data preview */}
                     <div>
                         <h3 className="text-lg font-medium mb-4">Data Preview</h3>
                         <DataPreview data={parsedFile.preview} columns={parsedFile.columns} />
                     </div>
 
-                    {/* Actions */}
                     <div className="flex justify-between">
-                        <Button variant="outline" onClick={() => { setStep('upload'); setParsedFile(null); }}>
+                        <Button variant="outline" onClick={handleReset}>
                             Back
                         </Button>
-                        <Button onClick={() => setStep('mapping')}>
+                        <Button onClick={handleContinueToMapping}>
                             Continue to Mapping
                             <ArrowRight className="w-4 h-4 ml-2" />
                         </Button>
@@ -206,7 +231,7 @@ export function FileUploadMapper({
                 </div>
             )}
 
-            {step === 'mapping' && parsedFile && (
+            {step === MAPPER_STEP.MAPPING && parsedFile && (
                 <div className="space-y-6">
                     {targetSchema.length > 0 ? (
                         <FieldMappingEditor
@@ -227,9 +252,8 @@ export function FileUploadMapper({
                         </Card>
                     )}
 
-                    {/* Actions */}
                     <div className="flex justify-between">
-                        <Button variant="outline" onClick={() => setStep('preview')}>
+                        <Button variant="outline" onClick={handleBackToPreview}>
                             Back
                         </Button>
                         <div className="flex gap-2">
@@ -249,5 +273,3 @@ export function FileUploadMapper({
         </div>
     );
 }
-
-export default FileUploadMapper;

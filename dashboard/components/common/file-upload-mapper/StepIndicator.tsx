@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { memo } from 'react';
 import { Check } from 'lucide-react';
 
 interface StepIndicatorProps {
@@ -8,7 +9,7 @@ interface StepIndicatorProps {
     completed: boolean;
 }
 
-export function StepIndicator({ number, label, active, completed }: StepIndicatorProps) {
+function StepIndicatorComponent({ number, label, active, completed }: StepIndicatorProps) {
     return (
         <div className="flex items-center gap-2">
             <div
@@ -27,4 +28,4 @@ export function StepIndicator({ number, label, active, completed }: StepIndicato
     );
 }
 
-export default StepIndicator;
+export const StepIndicator = memo(StepIndicatorComponent);

@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { memo } from 'react';
 import {
     Badge,
     ScrollArea,
@@ -9,21 +10,22 @@ import {
     TableHeader,
     TableRow,
 } from '@vendure/dashboard';
-import { formatCellValue } from './helpers';
+import { formatCellValue } from '../../../utils/formatters';
+import { COMPONENT_HEIGHTS, COMPONENT_WIDTHS } from '../../../constants';
 import type { DataPreviewProps } from './types';
 
-export function DataPreview({ data, columns, maxRows = 10 }: DataPreviewProps) {
+function DataPreviewComponent({ data, columns, maxRows = 10 }: DataPreviewProps) {
     const previewData = data.slice(0, maxRows);
 
     return (
         <div className="border rounded-lg overflow-hidden">
-            <ScrollArea className="max-h-[400px]">
+            <ScrollArea className={COMPONENT_HEIGHTS.SCROLL_AREA_MD}>
                 <Table>
                     <TableHeader>
                         <TableRow>
                             <TableHead className="w-12 text-center">#</TableHead>
                             {columns.map(col => (
-                                <TableHead key={col.name} className="min-w-[120px]">
+                                <TableHead key={col.name} className={COMPONENT_WIDTHS.TABLE_HEADER_MIN}>
                                     <div className="flex items-center gap-2">
                                         <span>{col.name}</span>
                                         <Badge variant="outline" className="text-xs">
@@ -35,10 +37,11 @@ export function DataPreview({ data, columns, maxRows = 10 }: DataPreviewProps) {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {previewData.map((row, idx) => (
-                            <TableRow key={idx}>
+                        {/* Index as key is acceptable here - preview data is static, read-only, and not reordered */}
+                        {previewData.map((row, rowIndex) => (
+                            <TableRow key={`preview-row-${rowIndex}`}>
                                 <TableCell className="text-center text-muted-foreground">
-                                    {idx + 1}
+                                    {rowIndex + 1}
                                 </TableCell>
                                 {columns.map(col => (
                                     <TableCell key={col.name} className="font-mono text-sm">
@@ -59,4 +62,4 @@ export function DataPreview({ data, columns, maxRows = 10 }: DataPreviewProps) {
     );
 }
 
-export default DataPreview;
+export const DataPreview = memo(DataPreviewComponent);

@@ -1,9 +1,5 @@
-/**
- * FieldMappingDialog Component
- * Shared dialog for mapping source fields to target schema fields
- */
-
 import * as React from 'react';
+import { useCallback } from 'react';
 import {
     Button,
     Badge,
@@ -22,46 +18,32 @@ import {
 } from '@vendure/dashboard';
 import { Wand2, Link2, Unlink } from 'lucide-react';
 import { toast } from 'sonner';
-import type { VendureEntitySchema } from '../../../types';
-
-export interface FieldMappingDialogProps {
-    open: boolean;
-    onClose: () => void;
-    sourceFields: string[];
-    targetSchema?: VendureEntitySchema;
-    mappings: Record<string, string>;
-    onSave: (mappings: Record<string, string>) => void;
-}
+import type { FieldMappingDialogProps } from '../../../types';
+import { computeAutoMappings, mappingsToRecord } from '../../../utils';
+import { COMPONENT_HEIGHTS, SENTINEL_VALUES, formatAutoMapped } from '../../../constants';
 
 export function FieldMappingDialog({ open, onClose, sourceFields, targetSchema, mappings: initialMappings, onSave }: FieldMappingDialogProps) {
+    // Use a key based on `open` state to reset mappings when dialog opens.
+    // This avoids the sync-state-from-props anti-pattern while ensuring fresh state on open.
     const [mappings, setMappings] = React.useState<Record<string, string>>(initialMappings);
+    const prevOpenRef = React.useRef(open);
 
-    React.useEffect(() => {
+    // Reset mappings when dialog transitions from closed to open
+    if (open && !prevOpenRef.current) {
         setMappings(initialMappings);
-    }, [initialMappings]);
+    }
+    prevOpenRef.current = open;
 
-    const autoMap = () => {
-        if (!targetSchema) return;
+    const autoMap = useCallback(() => {
+        if (!targetSchema?.fields) return;
 
-        const newMappings: Record<string, string> = {};
-        for (const field of targetSchema.fields) {
-            const exactMatch = sourceFields.find(s => s.toLowerCase() === field.key.toLowerCase());
-            if (exactMatch) {
-                newMappings[field.key] = exactMatch;
-                continue;
-            }
-            const fuzzyMatch = sourceFields.find(s => {
-                const src = s.toLowerCase().replace(/[_\-\s]/g, '');
-                const tgt = field.key.toLowerCase().replace(/[_\-\s]/g, '');
-                return src.includes(tgt) || tgt.includes(src);
-            });
-            if (fuzzyMatch) {
-                newMappings[field.key] = fuzzyMatch;
-            }
-        }
+        const targetFieldNames = targetSchema.fields.map(f => f.key);
+        const results = computeAutoMappings(sourceFields, targetFieldNames, { includeDots: false });
+        const newMappings = mappingsToRecord(results);
+
         setMappings(newMappings);
-        toast.success(`Auto-mapped ${Object.keys(newMappings).length} fields`);
-    };
+        toast.success(formatAutoMapped(Object.keys(newMappings).length));
+    }, [sourceFields, targetSchema]);
 
     return (
         <Dialog open={open} onOpenChange={() => onClose()}>
@@ -83,7 +65,7 @@ export function FieldMappingDialog({ open, onClose, sourceFields, targetSchema, 
                     </Button>
                 </div>
 
-                <ScrollArea className="max-h-[400px]">
+                <ScrollArea className={COMPONENT_HEIGHTS.SCROLL_AREA_MD}>
                     <div className="space-y-2">
                         {targetSchema?.fields.map(field => (
                             <div key={field.key} className="flex items-center gap-4 p-2 rounded border">
@@ -105,14 +87,14 @@ export function FieldMappingDialog({ open, onClose, sourceFields, targetSchema, 
                                 </div>
                                 <div className="flex-1">
                                     <Select
-                                        value={mappings[field.key] || '__none__'}
-                                        onValueChange={v => setMappings(m => ({ ...m, [field.key]: v === '__none__' ? '' : v }))}
+                                        value={mappings[field.key] || SENTINEL_VALUES.NONE}
+                                        onValueChange={v => setMappings(m => ({ ...m, [field.key]: v === SENTINEL_VALUES.NONE ? '' : v }))}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select source field" />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="__none__">
+                                            <SelectItem value={SENTINEL_VALUES.NONE}>
                                                 <span className="text-muted-foreground">-- None --</span>
                                             </SelectItem>
                                             {sourceFields.map(f => (
@@ -136,5 +118,3 @@ export function FieldMappingDialog({ open, onClose, sourceFields, targetSchema, 
         </Dialog>
     );
 }
-
-export default FieldMappingDialog;

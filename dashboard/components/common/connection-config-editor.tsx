@@ -8,34 +8,11 @@ import {
     HTTP_CONNECTION_DEFAULTS,
     DATABASE_PLACEHOLDERS,
     CLOUD_PLACEHOLDERS,
-    SEARCH_PLACEHOLDERS,
 } from '../../constants';
 import { validateUrl, validatePort, validateHostname } from '../../utils/form-validation';
 import { FieldError } from './validation-feedback';
-
-export type ConnectionType =
-    | 'http'
-    | 'postgres'
-    | 'mysql'
-    | 'mongodb'
-    | 's3'
-    | 'ftp'
-    | 'sftp'
-    | 'redis'
-    | 'elasticsearch';
-
-export interface HttpConnectionConfig {
-    baseUrl: string;
-    timeout?: number;
-    headers?: Record<string, string>;
-    auth?: {
-        type: ConnectionAuthType;
-        headerName?: string;
-        secretCode?: string;
-        username?: string;
-        usernameSecretCode?: string;
-    };
-}
+import type { UIConnectionType, HttpConnectionConfig, DataHubSecret } from '../../types';
+import { CONNECTION_TYPE } from '../../constants/connection-types';
 
 const DEFAULT_HTTP_CONFIG: HttpConnectionConfig = {
     baseUrl: '',
@@ -44,13 +21,10 @@ const DEFAULT_HTTP_CONFIG: HttpConnectionConfig = {
     auth: { type: ConnectionAuthType.NONE },
 };
 
-interface SecretOption {
-    code: string;
-    provider?: string | null;
-}
+type SecretOption = Pick<DataHubSecret, 'code' | 'provider'>;
 
 interface ConnectionConfigEditorProps {
-    type: ConnectionType;
+    type: UIConnectionType;
     config: Record<string, unknown>;
     onChange: (config: Record<string, unknown>) => void;
     disabled?: boolean;
@@ -66,7 +40,7 @@ interface ConfigFieldDef {
     description?: string;
 }
 
-const CONNECTION_SCHEMAS: Record<Exclude<ConnectionType, 'http'>, ConfigFieldDef[]> = {
+const CONNECTION_SCHEMAS: Record<Exclude<UIConnectionType, 'http'>, ConfigFieldDef[]> = {
     postgres: [
         { key: 'host', label: 'Host', type: 'string', placeholder: CONNECTION_HOSTS.LOCALHOST, required: true },
         { key: 'port', label: 'Port', type: 'number', placeholder: String(CONNECTION_PORTS.POSTGRESQL), required: true },
@@ -81,11 +55,6 @@ const CONNECTION_SCHEMAS: Record<Exclude<ConnectionType, 'http'>, ConfigFieldDef
         { key: 'database', label: 'Database', type: 'string', placeholder: DATABASE_PLACEHOLDERS.DATABASE, required: true },
         { key: 'username', label: 'Username', type: 'string', placeholder: DATABASE_PLACEHOLDERS.MYSQL_USER, required: true },
         { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
-    ],
-    mongodb: [
-        { key: 'connectionString', label: 'Connection String', type: 'string', placeholder: DATABASE_PLACEHOLDERS.MONGODB_CONNECTION_STRING, required: true },
-        { key: 'database', label: 'Database', type: 'string', placeholder: DATABASE_PLACEHOLDERS.DATABASE, required: true },
-        { key: 'authSource', label: 'Auth Source', type: 'string', placeholder: DATABASE_PLACEHOLDERS.MONGODB_AUTH_SOURCE },
     ],
     s3: [
         { key: 'bucket', label: 'Bucket', type: 'string', placeholder: CLOUD_PLACEHOLDERS.S3_BUCKET, required: true },
@@ -109,26 +78,12 @@ const CONNECTION_SCHEMAS: Record<Exclude<ConnectionType, 'http'>, ConfigFieldDef
         { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Or use privateKeySecretCode' },
         { key: 'privateKeySecretCode', label: 'Private Key Secret Code', type: 'secret', description: 'SSH private key' },
     ],
-    redis: [
-        { key: 'host', label: 'Host', type: 'string', placeholder: CONNECTION_HOSTS.LOCALHOST, required: true },
-        { key: 'port', label: 'Port', type: 'number', placeholder: String(CONNECTION_PORTS.REDIS), required: true },
-        { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret' },
-        { key: 'db', label: 'Database Index', type: 'number', placeholder: '0' },
-        { key: 'tls', label: 'Use TLS', type: 'boolean' },
-    ],
-    elasticsearch: [
-        { key: 'node', label: 'Node URL', type: 'string', placeholder: SEARCH_PLACEHOLDERS.ELASTICSEARCH_NODE, required: true },
-        { key: 'username', label: 'Username', type: 'string' },
-        { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret' },
-        { key: 'apiKeySecretCode', label: 'API Key Secret Code', type: 'secret' },
-        { key: 'cloudId', label: 'Cloud ID', type: 'string', description: 'For Elastic Cloud' },
-    ],
 };
 
 export function ConnectionConfigEditor({ type, config, onChange, disabled, secretOptions = [] }: ConnectionConfigEditorProps) {
-    const resolvedType = (typeof type === 'string' && type.length > 0 ? type : 'http') as ConnectionType;
+    const resolvedType = (typeof type === 'string' && type.length > 0 ? type : 'http') as UIConnectionType;
 
-    if (resolvedType === 'http') {
+    if (resolvedType === CONNECTION_TYPE.HTTP) {
         return (
             <HttpConnectionFields
                 config={config as Record<string, unknown>}
@@ -139,7 +94,7 @@ export function ConnectionConfigEditor({ type, config, onChange, disabled, secre
         );
     }
 
-    const schema = CONNECTION_SCHEMAS[resolvedType as Exclude<ConnectionType, 'http'>];
+    const schema = CONNECTION_SCHEMAS[resolvedType as Exclude<UIConnectionType, 'http'>];
     if (!schema || schema.length === 0) {
         return <div className="text-center py-4 text-muted-foreground">No configuration options available for this type.</div>;
     }
@@ -192,10 +147,9 @@ function HttpConnectionFields({
     const normalized = React.useMemo(() => normalizeHttpConfig(config), [config]);
     const [urlTouched, setUrlTouched] = React.useState(false);
 
-    // Validate URL
     const urlError = React.useMemo(() => {
         if (!normalized.baseUrl || normalized.baseUrl.trim() === '') {
-            return null; // Not required but if provided should be valid
+            return null;
         }
         const error = validateUrl(normalized.baseUrl, 'Base URL');
         return error?.message ?? null;
@@ -205,13 +159,28 @@ function HttpConnectionFields({
         onChange({ ...normalized, ...patch });
     };
 
-    const [headerRows, setHeaderRows] = React.useState<HeaderRow[]>(() => toHeaderRows(normalized.headers));
-    React.useEffect(() => {
-        setHeaderRows(toHeaderRows(normalized.headers));
+    // Derive headerRows from props. Use a stable key map to preserve row IDs across renders
+    // while still allowing the UI to reflect prop changes.
+    const headerRowsKeyRef = React.useRef<Map<string, string>>(new Map());
+    const headerRows = React.useMemo(() => {
+        const headers = normalized.headers;
+        if (!headers) {
+            headerRowsKeyRef.current.clear();
+            return [];
+        }
+        const newKeyMap = new Map<string, string>();
+        const rows = Object.entries(headers).map(([name, value]) => {
+            // Reuse existing ID if we had this header name before, otherwise create new
+            const existingId = headerRowsKeyRef.current.get(name);
+            const id = existingId ?? createRowId();
+            newKeyMap.set(name, id);
+            return { id, name, value };
+        });
+        headerRowsKeyRef.current = newKeyMap;
+        return rows;
     }, [normalized.headers]);
 
     const commitHeaders = (rows: HeaderRow[]) => {
-        setHeaderRows(rows);
         const cleaned = rows.filter(row => row.name.trim() && row.value.trim());
         const next = cleaned.length ? Object.fromEntries(cleaned.map(row => [row.name.trim(), row.value])) : undefined;
         updateConfig({ headers: next });
@@ -227,14 +196,14 @@ function HttpConnectionFields({
         updateConfig({ auth: { type: next } });
     };
 
-    const updateAuthField = (key: keyof HttpConnectionConfig['auth'], value?: string) => {
-        const nextAuth = { ...(auth ?? { type: ConnectionAuthType.NONE }) };
+    const updateAuthField = (key: string, value?: string) => {
+        const nextAuth: Record<string, unknown> = { ...(auth ?? { type: ConnectionAuthType.NONE }) };
         if (value === undefined || value === '') {
-            delete (nextAuth as any)[key];
+            delete nextAuth[key];
         } else {
-            (nextAuth as any)[key] = value;
+            nextAuth[key] = value;
         }
-        updateConfig({ auth: nextAuth });
+        updateConfig({ auth: nextAuth as HttpConnectionConfig['auth'] });
     };
 
     return (
@@ -310,6 +279,7 @@ function HttpConnectionFields({
                             size="icon"
                             onClick={() => commitHeaders(headerRows.filter(r => r.id !== row.id))}
                             disabled={disabled}
+                            aria-label="Remove header"
                         >
                             <Trash2 className="w-4 h-4" />
                         </Button>
@@ -417,14 +387,7 @@ function createHeaderRow(): HeaderRow {
 }
 
 function createRowId(): string {
-    return Math.random().toString(36).slice(2, 9);
-}
-
-function toHeaderRows(headers?: Record<string, string>): HeaderRow[] {
-    if (!headers) {
-        return [];
-    }
-    return Object.entries(headers).map(([name, value]) => ({ id: createRowId(), name, value }));
+    return crypto.randomUUID().slice(0, 8);
 }
 
 function normalizeHttpConfig(config: Record<string, unknown>): HttpConnectionConfig {
@@ -467,7 +430,6 @@ interface ConfigFieldProps {
 function ConfigField({ field, value, onChange, disabled, secretOptions }: ConfigFieldProps) {
     const [touched, setTouched] = React.useState(false);
 
-    // Validate port numbers
     const portError = React.useMemo(() => {
         if (field.key === 'port' && value !== undefined && value !== null && value !== '') {
             const error = validatePort(value as string | number, field.label);
@@ -577,29 +539,25 @@ export const CONNECTION_TYPE_OPTIONS = [
     { value: 'http', label: 'HTTP / REST API' },
     { value: 'postgres', label: 'PostgreSQL' },
     { value: 'mysql', label: 'MySQL / MariaDB' },
-    { value: 'mongodb', label: 'MongoDB' },
     { value: 's3', label: 'Amazon S3 / Compatible' },
     { value: 'ftp', label: 'FTP' },
     { value: 'sftp', label: 'SFTP' },
-    { value: 'redis', label: 'Redis' },
-    { value: 'elasticsearch', label: 'Elasticsearch' },
 ] as const;
 
-export function createDefaultConnectionConfig(type: ConnectionType): Record<string, unknown> {
-    if (type === 'http') {
+export function createDefaultConnectionConfig(type: UIConnectionType): Record<string, unknown> {
+    if (type === CONNECTION_TYPE.HTTP) {
         return { ...DEFAULT_HTTP_CONFIG };
     }
     return {};
 }
 
 export function normalizeConnectionConfig(
-    type: ConnectionType,
+    type: UIConnectionType,
     config: Record<string, unknown> | string | null | undefined,
 ): Record<string, unknown> {
     if (config == null) {
         return createDefaultConnectionConfig(type);
     }
-    // Coerce stringified JSON to object
     let obj: Record<string, unknown> | null = null;
     if (typeof config === 'string') {
         try {
@@ -616,8 +574,8 @@ export function normalizeConnectionConfig(
     if (!obj) {
         return createDefaultConnectionConfig(type);
     }
-    if (type === 'http') {
-        return normalizeHttpConfig(obj);
+    if (type === CONNECTION_TYPE.HTTP) {
+        return normalizeHttpConfig(obj) as unknown as Record<string, unknown>;
     }
     return obj;
 }

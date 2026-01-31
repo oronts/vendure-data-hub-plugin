@@ -1,8 +1,3 @@
-/**
- * FileUploadDialog Component
- * Shared dialog for uploading and previewing data files
- */
-
 import * as React from 'react';
 import {
     Button,
@@ -21,73 +16,51 @@ import {
     TableBody,
     TableCell,
 } from '@vendure/dashboard';
-import {
-    Upload,
-    RefreshCw,
-    FileText,
-    FileSpreadsheet,
-    File,
-} from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { FileDropzone } from '../../shared/file-dropzone';
 import { parseCSV } from '../../../utils/parsers';
-
-export interface FileUploadDialogProps {
-    open: boolean;
-    onClose: () => void;
-    onFileSelected: (file: File, preview: any[]) => void;
-    acceptedFormats: string[];
-}
+import { UI_LIMITS, COMPONENT_HEIGHTS, COMPONENT_WIDTHS, TOAST_FILE } from '../../../constants';
+import type { FileUploadDialogProps, JsonObject, FileType } from '../../../types';
 
 export function FileUploadDialog({ open, onClose, onFileSelected, acceptedFormats }: FileUploadDialogProps) {
-    const [dragOver, setDragOver] = React.useState(false);
     const [loading, setLoading] = React.useState(false);
-    const [preview, setPreview] = React.useState<any[] | null>(null);
+    const [preview, setPreview] = React.useState<JsonObject[] | null>(null);
     const [columns, setColumns] = React.useState<string[]>([]);
     const [currentFile, setCurrentFile] = React.useState<File | null>(null);
-    const inputRef = React.useRef<HTMLInputElement>(null);
 
     const handleFile = async (file: File) => {
         setLoading(true);
         setCurrentFile(file);
         try {
             const content = await file.text();
-            let data: any[] = [];
+            let data: JsonObject[] = [];
 
             if (file.name.endsWith('.csv')) {
-                data = parseCSV(content).slice(0, 10);
+                data = parseCSV(content).slice(0, UI_LIMITS.PREVIEW_ROW_LIMIT);
                 if (data.length > 0) {
                     setColumns(Object.keys(data[0]));
                 }
             } else if (file.name.endsWith('.json')) {
                 const parsed = JSON.parse(content);
-                data = Array.isArray(parsed) ? parsed.slice(0, 10) : [parsed];
+                data = Array.isArray(parsed) ? parsed.slice(0, UI_LIMITS.PREVIEW_ROW_LIMIT) : [parsed];
                 if (data.length > 0) {
                     setColumns(Object.keys(data[0]));
                 }
             }
 
             setPreview(data);
-        } catch (error) {
-            toast.error('Failed to parse file');
+        } catch {
+            toast.error(TOAST_FILE.PARSE_ERROR);
         } finally {
             setLoading(false);
         }
-    };
-
-    const handleDrop = (e: React.DragEvent) => {
-        e.preventDefault();
-        setDragOver(false);
-        const file = e.dataTransfer.files[0];
-        if (file) handleFile(file);
     };
 
     const handleReset = () => {
         setPreview(null);
         setColumns([]);
         setCurrentFile(null);
-        if (inputRef.current) {
-            inputRef.current.value = '';
-        }
     };
 
     const handleClose = () => {
@@ -106,41 +79,11 @@ export function FileUploadDialog({ open, onClose, onFileSelected, acceptedFormat
                 </DialogHeader>
 
                 {!preview ? (
-                    <div
-                        className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
-                            dragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'
-                        }`}
-                        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                        onDragLeave={() => setDragOver(false)}
-                        onDrop={handleDrop}
-                    >
-                        {loading ? (
-                            <RefreshCw className="w-12 h-12 mx-auto mb-4 animate-spin text-primary" />
-                        ) : (
-                            <>
-                                <div className="flex justify-center gap-4 mb-4">
-                                    <FileText className="w-10 h-10 text-blue-500" />
-                                    <FileSpreadsheet className="w-10 h-10 text-green-500" />
-                                    <File className="w-10 h-10 text-yellow-500" />
-                                </div>
-                                <p className="text-lg font-medium mb-2">Drop your file here</p>
-                                <p className="text-sm text-muted-foreground mb-4">
-                                    Supports: {acceptedFormats.join(', ').toUpperCase()}
-                                </p>
-                                <Button onClick={() => inputRef.current?.click()}>
-                                    <Upload className="w-4 h-4 mr-2" />
-                                    Browse Files
-                                </Button>
-                                <input
-                                    ref={inputRef}
-                                    type="file"
-                                    accept={acceptedFormats.map(f => `.${f}`).join(',')}
-                                    onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
-                                    className="hidden"
-                                />
-                            </>
-                        )}
-                    </div>
+                    <FileDropzone
+                        onFileSelect={handleFile}
+                        allowedTypes={acceptedFormats as FileType[]}
+                        loading={loading}
+                    />
                 ) : (
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
@@ -151,18 +94,19 @@ export function FileUploadDialog({ open, onClose, onFileSelected, acceptedFormat
                             </Button>
                         </div>
                         <div className="border rounded-lg overflow-hidden">
-                            <ScrollArea className="max-h-[300px]">
+                            <ScrollArea className={COMPONENT_HEIGHTS.SCROLL_AREA_SM}>
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
                                             {columns.map(col => (
-                                                <TableHead key={col} className="min-w-[120px]">{col}</TableHead>
+                                                <TableHead key={col} className={COMPONENT_WIDTHS.TABLE_HEADER_MIN}>{col}</TableHead>
                                             ))}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {preview.map((row, i) => (
-                                            <TableRow key={i}>
+                                        {/* Index as key acceptable - static preview data, not reordered */}
+                                        {preview.map((row, rowIndex) => (
+                                            <TableRow key={`preview-${rowIndex}`}>
                                                 {columns.map(col => (
                                                     <TableCell key={col} className="font-mono text-xs">
                                                         {String(row[col] ?? '').slice(0, 50)}
@@ -192,5 +136,3 @@ export function FileUploadDialog({ open, onClose, onFileSelected, acceptedFormat
         </Dialog>
     );
 }
-
-export default FileUploadDialog;

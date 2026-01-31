@@ -1,17 +1,8 @@
-/**
- * JsonTextarea Component
- *
- * A reusable JSON input component with:
- * - Debounced validation (doesn't show errors while typing)
- * - Clear, user-friendly error messages with position info
- * - Error styling on the input field
- * - Support for both object and array values
- */
-
 import * as React from 'react';
 import { Textarea, Label } from '@vendure/dashboard';
 import { AlertCircle } from 'lucide-react';
-import { useJsonValidation, type UseJsonValidationOptions, type JsonValidationError } from '../../hooks/useJsonValidation';
+import { useJsonValidation, type UseJsonValidationOptions, type JsonValidationError } from '../../hooks';
+import { DEBOUNCE_DELAYS } from '../../constants';
 
 export interface JsonTextareaProps {
     /** Current JSON value */
@@ -54,7 +45,7 @@ export function JsonTextarea({
     description,
     disabled = false,
     className = '',
-    debounceMs = 300,
+    debounceMs = DEBOUNCE_DELAYS.DEFAULT,
     allowEmpty = true,
     expectedType = 'any',
     showStatus = true,
@@ -79,12 +70,10 @@ export function JsonTextarea({
         isPending,
     } = useJsonValidation(value, onChange, options);
 
-    // Notify parent of error state changes
     React.useEffect(() => {
         onError?.(error);
     }, [error, onError]);
 
-    // Determine border color based on state
     const getBorderClass = () => {
         if (disabled) return '';
         if (error) return 'border-red-500 focus:border-red-500 focus:ring-red-500/20';
@@ -126,7 +115,6 @@ export function JsonTextarea({
                 className={`font-mono text-xs ${getBorderClass()} ${className}`}
             />
 
-            {/* Error message */}
             {error && (
                 <div className="flex items-start gap-1.5 text-red-600">
                     <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
@@ -134,7 +122,6 @@ export function JsonTextarea({
                 </div>
             )}
 
-            {/* Description (only show if no error) */}
             {description && !error && (
                 <p className="text-xs text-muted-foreground">{description}</p>
             )}
@@ -142,10 +129,6 @@ export function JsonTextarea({
     );
 }
 
-/**
- * Lightweight inline JSON textarea without label/description
- * Useful for embedding in other forms where labels are handled externally
- */
 export interface InlineJsonTextareaProps {
     value: unknown;
     onChange: (value: unknown) => void;
@@ -165,7 +148,7 @@ export function InlineJsonTextarea({
     rows = 4,
     disabled = false,
     className = '',
-    debounceMs = 300,
+    debounceMs = DEBOUNCE_DELAYS.DEFAULT,
     allowEmpty = true,
     expectedType = 'any',
 }: InlineJsonTextareaProps) {
@@ -202,5 +185,3 @@ export function InlineJsonTextarea({
         </div>
     );
 }
-
-export default JsonTextarea;

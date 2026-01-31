@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useCallback } from 'react';
 import {
     Button,
     Card,
@@ -24,34 +25,43 @@ import {
 } from '@vendure/dashboard';
 import { Wand2, AlertCircle, X, Link2, Unlink } from 'lucide-react';
 import { toast } from 'sonner';
-import { autoMap } from './helpers';
+import { computeAutoMappings } from '../../../utils';
+import { UI_LIMITS, SENTINEL_VALUES, formatAutoMapped } from '../../../constants';
 import type { FieldMappingEditorProps } from './types';
 
 export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onChange }: FieldMappingEditorProps) {
     const [showUnmapped, setShowUnmapped] = React.useState(true);
 
-    const handleAutoMap = () => {
-        const autoMappings = autoMap(sourceColumns, targetSchema);
+    const handleAutoMap = useCallback(() => {
+        const sourceNames = sourceColumns.map(c => c.name);
+        const targetNames = targetSchema.map(t => t.name);
+        const requiredFields = targetSchema.filter(t => t.required).map(t => t.name);
+        const results = computeAutoMappings(sourceNames, targetNames, {
+            includeDots: false,
+            includeUnmatchedRequired: true,
+            requiredFields,
+        });
+        const autoMappings = results.map(r => ({ sourceField: r.sourceField, targetField: r.targetField }));
         onChange(autoMappings);
-        toast.success(`Auto-mapped ${autoMappings.filter(m => m.sourceField).length} fields`);
-    };
+        toast.success(formatAutoMapped(autoMappings.filter(m => m.sourceField).length));
+    }, [sourceColumns, targetSchema, onChange]);
 
-    const updateMapping = (targetField: string, sourceField: string) => {
+    const updateMapping = useCallback((targetField: string, sourceField: string) => {
         const existing = mappings.find(m => m.targetField === targetField);
         if (existing) {
             onChange(mappings.map(m => m.targetField === targetField ? { ...m, sourceField } : m));
         } else {
             onChange([...mappings, { sourceField, targetField }]);
         }
-    };
+    }, [mappings, onChange]);
 
-    const removeMapping = (targetField: string) => {
+    const removeMapping = useCallback((targetField: string) => {
         onChange(mappings.filter(m => m.targetField !== targetField));
-    };
+    }, [mappings, onChange]);
 
-    const getMappedSource = (targetField: string) => {
+    const getMappedSource = useCallback((targetField: string) => {
         return mappings.find(m => m.targetField === targetField)?.sourceField || '';
-    };
+    }, [mappings]);
 
     const unmappedSourceFields = sourceColumns.filter(
         col => !mappings.some(m => m.sourceField === col.name)
@@ -63,7 +73,6 @@ export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onCh
 
     return (
         <div className="space-y-4">
-            {/* Toolbar */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Badge variant="outline">
@@ -91,7 +100,6 @@ export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onCh
                 </div>
             </div>
 
-            {/* Mapping Table */}
             <div className="border rounded-lg overflow-hidden">
                 <Table>
                     <TableHeader>
@@ -131,14 +139,14 @@ export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onCh
                                     </TableCell>
                                     <TableCell>
                                         <Select
-                                            value={mappedSource || '__none__'}
-                                            onValueChange={v => updateMapping(target.name, v === '__none__' ? '' : v)}
+                                            value={mappedSource || SENTINEL_VALUES.NONE}
+                                            onValueChange={v => updateMapping(target.name, v === SENTINEL_VALUES.NONE ? '' : v)}
                                         >
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Select source field" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="__none__">
+                                                <SelectItem value={SENTINEL_VALUES.NONE}>
                                                     <span className="text-muted-foreground">- None -</span>
                                                 </SelectItem>
                                                 {sourceColumns.map(col => (
@@ -153,7 +161,7 @@ export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onCh
                                         </Select>
                                     </TableCell>
                                     <TableCell className="font-mono text-xs text-muted-foreground">
-                                        {sourceCol?.sampleValues.slice(0, 2).join(', ') || '-'}
+                                        {sourceCol?.sampleValues.slice(0, UI_LIMITS.SAMPLE_VALUES_LIMIT).join(', ') || '-'}
                                     </TableCell>
                                     <TableCell>
                                         {mappedSource && (
@@ -162,6 +170,7 @@ export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onCh
                                                 size="icon"
                                                 className="h-8 w-8"
                                                 onClick={() => removeMapping(target.name)}
+                                                aria-label={`Remove mapping for ${target.name}`}
                                             >
                                                 <X className="w-4 h-4" />
                                             </Button>
@@ -174,7 +183,6 @@ export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onCh
                 </Table>
             </div>
 
-            {/* Unmapped Source Fields */}
             {showUnmapped && unmappedSourceFields.length > 0 && (
                 <Card>
                     <CardHeader className="py-3">
@@ -195,7 +203,7 @@ export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onCh
                                             </Badge>
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                            <p>Sample: {col.sampleValues.slice(0, 3).join(', ')}</p>
+                                            <p>Sample: {col.sampleValues.slice(0, UI_LIMITS.SAMPLE_VALUES_LIMIT).join(', ')}</p>
                                             <p className="text-xs opacity-60">{col.uniqueCount} unique values</p>
                                         </TooltipContent>
                                     </Tooltip>
@@ -208,5 +216,3 @@ export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onCh
         </div>
     );
 }
-
-export default FieldMappingEditor;

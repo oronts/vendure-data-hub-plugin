@@ -1,8 +1,9 @@
 import * as React from 'react';
+import { memo } from 'react';
 import { Card, CardContent, Badge } from '@vendure/dashboard';
 import type { ColumnStatsProps } from './types';
 
-export function ColumnStats({ columns, rowCount }: ColumnStatsProps) {
+function ColumnStatsComponent({ columns, rowCount }: ColumnStatsProps) {
     return (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {columns.map(col => (
@@ -29,4 +30,4 @@ export function ColumnStats({ columns, rowCount }: ColumnStatsProps) {
     );
 }
 
-export default ColumnStats;
+export const ColumnStats = memo(ColumnStatsComponent);
