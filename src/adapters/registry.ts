@@ -1,35 +1,9 @@
-/**
- * Adapter Registry
- *
- * Central registry for adapter registration and lookup.
- * Provides type-safe adapter management with categorization.
- *
- * Supports registration of:
- * - Extractors: Pull data from external sources
- * - Operators: Transform/filter records
- * - Loaders: Write to Vendure entities
- * - Validators: Validate record data
- * - Enrichers: Enrich records with additional data
- * - Exporters: Export data to external systems
- * - Feeds: Generate product feeds
- * - Sinks: Index to search engines
- */
-
 import { AdapterDefinition, AdapterType } from '../sdk/types';
 import { DataHubLogger } from '../services/logger/datahub-logger';
 
-// REGISTRY STATE
-
-/** Map of adapter code to definition */
 const adapterRegistry = new Map<string, AdapterDefinition>();
-
-/** Map of adapter type to list of adapter codes */
 const adaptersByType = new Map<AdapterType, Set<string>>();
-
-/** Logger for registration operations */
 const logger = new DataHubLogger('AdapterRegistry');
-
-// TYPE-SPECIFIC REGISTRATION FUNCTIONS
 
 /**
  * Register a custom extractor adapter
@@ -280,8 +254,6 @@ export function registerEnricher(adapter: AdapterDefinition): void {
     });
 }
 
-// GENERIC REGISTRATION FUNCTIONS
-
 /**
  * Register a single adapter (any type)
  * Throws if adapter with same code already exists
@@ -393,8 +365,6 @@ export function clearRegistry(): void {
     logger.info(`Registry cleared`, { previousCount: count });
 }
 
-// LOOKUP FUNCTIONS
-
 /**
  * Get adapter by code
  * Returns undefined if not found
@@ -447,8 +417,6 @@ export function getAdapterCodesByType(type: AdapterType): string[] {
     return codes ? Array.from(codes) : [];
 }
 
-// QUERY FUNCTIONS
-
 /**
  * Find adapters matching a predicate
  */
@@ -470,8 +438,6 @@ export function searchAdapters(query: string): AdapterDefinition[] {
         (adapter.description?.toLowerCase().includes(lowerQuery) ?? false),
     );
 }
-
-// REGISTRY INFO
 
 /**
  * Get count of registered adapters
@@ -498,11 +464,8 @@ export function getAdapterCodes(): string[] {
     return Array.from(adapterRegistry.keys());
 }
 
-// TYPE-SPECIFIC GETTER FUNCTIONS
-
 /**
  * Get all registered adapters (alias for getAllAdapters)
- * Useful for plugin initialization and inspection
  */
 export function getRegisteredAdapters(): AdapterDefinition[] {
     return getAllAdapters();
@@ -564,11 +527,8 @@ export function getEnrichers(): AdapterDefinition[] {
     return getAdaptersByType('enricher');
 }
 
-// REGISTRY SUMMARY
-
 /**
  * Get a summary of the registry state
- * Useful for debugging and monitoring
  */
 export function getRegistrySummary(): {
     total: number;

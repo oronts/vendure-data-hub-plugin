@@ -1,9 +1,4 @@
-export * from './types';
-export * from './base';
-
-// Registry functions - uses AdapterDefinition from ../sdk/types
 export {
-    // Type-specific registration (with type validation)
     registerExtractor,
     registerLoader,
     registerOperator,
@@ -12,13 +7,11 @@ export {
     registerSink,
     registerValidator,
     registerEnricher,
-    // Generic registration
     registerAdapter,
     registerAdapterSafe,
     registerAdapters,
     unregisterAdapter,
     clearRegistry,
-    // Lookup functions
     getAdapter,
     getAdapterOrThrow,
     hasAdapter,
@@ -26,7 +19,6 @@ export {
     getRegisteredAdapters,
     getAdaptersByType,
     getAdapterCodesByType,
-    // Type-specific getters
     getExtractors,
     getLoaders,
     getOperators,
@@ -35,21 +27,10 @@ export {
     getSinks,
     getValidators,
     getEnrichers,
-    // Query functions
     findAdapters,
     searchAdapters,
-    // Registry info
     getAdapterCount,
     getAdapterCountByType,
     getAdapterCodes,
     getRegistrySummary,
 } from './registry';
-
-export * from './utils';
-export * from './extractors';
-export * from './loaders';
-export * from './transformers';
-export * from './data-validators';
-export * from './exporters';
-
-export { COMMON_ADAPTERS } from './common-adapters';
