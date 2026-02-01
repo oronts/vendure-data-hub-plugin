@@ -153,7 +153,7 @@ type DataHubTimelineEntry {
     revision: DataHubPipelineRevision!
     runCount: Int!                   # How many runs used this version
     lastRunAt: DateTime
-    lastRunStatus: String            # 'success' | 'failed' | 'partial'
+    lastRunStatus: String            # 'SUCCESS' | 'FAILED' | 'PARTIAL'
 }
 
 # Queries
@@ -284,7 +284,7 @@ interface SampleRecordFlow {
     sourceData: any;
     steps: StepTransformation[];
     finalData: any;
-    outcome: 'success' | 'filtered' | 'error';
+    outcome: 'SUCCESS' | 'FILTERED' | 'ERROR';
     errorMessage?: string;
 }
 
@@ -379,7 +379,7 @@ type DataHubSampleRecordFlow {
     sourceData: JSON!
     steps: [DataHubStepTransformation!]!
     finalData: JSON
-    outcome: String!                # 'success' | 'filtered' | 'error'
+    outcome: String!                # 'SUCCESS' | 'FILTERED' | 'ERROR'
     errorMessage: String
 }
 

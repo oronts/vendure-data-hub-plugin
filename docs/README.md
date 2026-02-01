@@ -40,6 +40,8 @@ Learn how to use the Data Hub Admin UI to create and manage pipelines.
 - [Scheduling Pipelines](./user-guide/scheduling.md)
 - [Monitoring & Logs](./user-guide/monitoring.md)
 - [Product Feeds](./user-guide/feeds.md)
+- [Queue & Messaging](./user-guide/queue-messaging.md)
+- [External Integrations](./user-guide/external-integrations.md)
 
 ### [Developer Guide](./developer-guide/README.md)
 For developers who want to use the code-first DSL or extend the plugin.
@@ -53,6 +55,9 @@ For developers who want to use the code-first DSL or extend the plugin.
   - [Custom Extractors](./developer-guide/extending/custom-extractors.md)
   - [Custom Loaders](./developer-guide/extending/custom-loaders.md)
   - [Custom Operators](./developer-guide/extending/custom-operators.md)
+  - [Custom Feeds](./developer-guide/extending/custom-feeds.md)
+  - [Custom Sinks](./developer-guide/extending/custom-sinks.md)
+  - [Custom Triggers](./developer-guide/extending/custom-triggers.md)
 - [GraphQL API](./developer-guide/graphql-api.md)
 
 ### [Deployment](./deployment/README.md)

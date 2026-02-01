@@ -254,6 +254,59 @@ Set up alerts for:
 
 ### Horizontal Scaling
 
+Data Hub supports running multiple instances with automatic coordination:
+
+**Distributed Locking:**
+
+```bash
+# Option 1: Redis (recommended for production)
+DATAHUB_REDIS_URL=redis://redis.production.internal:6379
+
+# Option 2: Force PostgreSQL (no additional infrastructure)
+DATAHUB_LOCK_BACKEND=postgres
+```
+
+**What's Protected:**
+- **Scheduled Triggers** - Only one instance executes each schedule
+- **Message Consumers** - Only one instance consumes from each queue/pipeline combination
+- **Pipeline Runs** - Prevents duplicate execution of the same run
+
+**Deployment Architecture:**
+
+```
+                    ┌─────────────────┐
+                    │  Load Balancer  │
+                    └────────┬────────┘
+                             │
+        ┌────────────────────┼────────────────────┐
+        ▼                    ▼                    ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│   Vendure 1   │    │   Vendure 2   │    │   Vendure 3   │
+│ + Data Hub    │    │ + Data Hub    │    │ + Data Hub    │
+└───────┬───────┘    └───────┬───────┘    └───────┬───────┘
+        │                    │                    │
+        └────────────────────┼────────────────────┘
+                             │
+        ┌────────────────────┼────────────────────┐
+        ▼                    ▼                    ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│   PostgreSQL  │    │     Redis     │    │  Message Queue│
+│   (required)  │    │   (optional)  │    │   (optional)  │
+└───────────────┘    └───────────────┘    └───────────────┘
+```
+
+**Without Redis:**
+- Distributed locks use PostgreSQL (works but slightly slower)
+- All features remain functional
+- Suitable for smaller deployments (2-5 instances)
+
+**With Redis:**
+- Faster lock acquisition/release
+- Better for high-throughput scenarios
+- Recommended for 5+ instances
+
+### Additional Scaling Tips
+
 - Run multiple API servers behind load balancer
 - Run multiple worker processes for job queue
 - Use read replicas for heavy read operations

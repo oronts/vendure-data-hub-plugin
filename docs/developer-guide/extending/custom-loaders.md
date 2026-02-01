@@ -5,19 +5,34 @@ Create loaders to write data to new entity types or external systems.
 ## Interface
 
 ```typescript
-interface EntityLoader {
+interface LoaderAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
+    readonly type: 'loader';
     readonly code: string;
     readonly name: string;
     readonly description?: string;
-    readonly entityType: string;
-    readonly configSchema: AdapterSchema;
+    readonly schema: AdapterSchema;
 
     load(
-        ctx: RequestContext,
-        records: JsonObject[],
-        config: LoadConfig,
         context: LoadContext,
+        config: TConfig,
+        records: readonly JsonObject[],
     ): Promise<LoadResult>;
+}
+
+interface LoadContext {
+    ctx: RequestContext;
+    pipelineId: ID;
+    stepKey: string;
+    pipelineContext: PipelineCtx;
+    secrets: SecretResolver;
+    connections: ConnectionResolver;
+    logger: AdapterLogger;
+    channelStrategy: ChannelStrategy;    // 'EXPLICIT' | 'INHERIT' | 'MULTI'
+    channels: readonly ID[];
+    languageStrategy: LanguageStrategy;
+    validationMode: ValidationMode;       // 'STRICT' | 'LENIENT'
+    conflictStrategy: ConflictStrategy;
+    dryRun: boolean;
 }
 ```
 
@@ -25,16 +40,22 @@ interface EntityLoader {
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { RequestContext, TransactionalConnection } from '@vendure/core';
-import { EntityLoader, LoadConfig, LoadContext, LoadResult } from '@oronts/vendure-data-hub-plugin';
+import { TransactionalConnection } from '@vendure/core';
+import { LoaderAdapter, LoadContext, LoadResult, JsonObject } from '@oronts/vendure-data-hub-plugin';
+
+interface CustomLoaderConfig {
+    codeField: string;
+    nameField: string;
+    strategy?: 'create' | 'update' | 'upsert';
+}
 
 @Injectable()
-export class CustomEntityLoader implements EntityLoader {
+export class CustomEntityLoader implements LoaderAdapter<CustomLoaderConfig> {
+    readonly type = 'loader' as const;
     readonly code = 'custom-entity';
     readonly name = 'Custom Entity Loader';
-    readonly entityType = 'CustomEntity';
 
-    readonly configSchema = {
+    readonly schema = {
         fields: [
             { key: 'codeField', type: 'string', required: true, label: 'Code Field' },
             { key: 'nameField', type: 'string', required: true, label: 'Name Field' },
@@ -44,11 +65,11 @@ export class CustomEntityLoader implements EntityLoader {
     constructor(private connection: TransactionalConnection) {}
 
     async load(
-        ctx: RequestContext,
-        records: JsonObject[],
-        config: LoadConfig,
         context: LoadContext,
+        config: CustomLoaderConfig,
+        records: readonly JsonObject[],
     ): Promise<LoadResult> {
+        const { ctx, dryRun, logger } = context;
         const results: LoadResult = {
             created: 0,
             updated: 0,
@@ -56,6 +77,11 @@ export class CustomEntityLoader implements EntityLoader {
             failed: 0,
             errors: [],
         };
+
+        if (dryRun) {
+            logger.info(`[DRY RUN] Would process ${records.length} records`);
+            return { ...results, skipped: records.length };
+        }
 
         for (const record of records) {
             try {
@@ -122,30 +148,20 @@ export class MyLoaderPlugin implements OnModuleInit {
 }
 ```
 
-## Load Config
+## Load Strategies
 
-The config includes standard options plus custom fields:
-
-```typescript
-interface LoadConfig {
-    strategy: 'create' | 'update' | 'upsert' | 'source-wins' | 'vendure-wins' | 'merge';
-    channel?: string;
-    channelStrategy?: 'assign' | 'replace' | 'skip';
-    languageStrategy?: LanguageStrategy;
-    validationMode?: ValidationMode;
-    [key: string]: any;  // Custom config fields
-}
-```
-
-## Load Context
+Available conflict resolution strategies:
 
 ```typescript
-interface LoadContext {
-    runId: string;
-    pipelineId: string;
-    logger: ExecutionLogger;
-    requestContext: RequestContext;
-}
+type LoadStrategy =
+    | 'create'        // Only create new, skip existing
+    | 'update'        // Only update existing, skip new
+    | 'upsert'        // Create or update
+    | 'merge'         // Merge fields intelligently
+    | 'source-wins'   // Source data wins conflicts
+    | 'vendure-wins'  // Existing Vendure data wins
+    | 'soft-delete'   // Mark as deleted
+    | 'hard-delete';  // Permanently delete
 ```
 
 ## Load Result

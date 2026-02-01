@@ -331,7 +331,7 @@ Filter records by conditions:
 }}
 ```
 
-Condition comparators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `contains`, `startsWith`, `endsWith`, `matches`
+Condition comparators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `contains`, `notContains`, `startsWith`, `endsWith`, `regex`, `exists`, `isNull`
 
 ### deltaFilter
 

@@ -19,8 +19,8 @@ Start with a Vendure Query extractor to get product data:
 
 ```typescript
 .extract('get-products', {
-    adapterCode: 'vendure-query',
-    entity: 'Product',
+    adapterCode: 'vendureQuery',
+    entity: 'PRODUCT',
     relations: 'variants,featuredAsset,collections,translations',
     languageCode: 'en',
     batchSize: 1000,
@@ -64,13 +64,13 @@ Use the feed step to output the final file:
 
 ```typescript
 .feed('generate-google-feed', {
-    adapterCode: 'feed-generator',
-    feedType: 'google-merchant',
+    adapterCode: 'googleMerchant',
     format: 'xml',
     outputPath: '/feeds/google-shopping.xml',
     targetCountry: 'US',
     contentLanguage: 'en',
     currency: 'USD',
+    storeUrl: 'https://mystore.com',
 })
 ```
 
@@ -107,8 +107,7 @@ Use the feed step to output the final file:
 
 ```typescript
 .feed('google-feed', {
-    adapterCode: 'feed-generator',
-    feedType: 'google-merchant',
+    adapterCode: 'googleMerchant',
     format: 'xml',
     outputPath: '/feeds/google.xml',
 
@@ -116,6 +115,7 @@ Use the feed step to output the final file:
     targetCountry: 'US',
     contentLanguage: 'en',
     currency: 'USD',
+    storeUrl: 'https://mystore.com',
 
     // Field mappings
     titleField: 'name',
@@ -126,9 +126,7 @@ Use the feed step to output the final file:
     gtinField: 'customFields.gtin',
 
     // Options
-    includeVariants: true,
     includeOutOfStock: false,
-    priceIncludesTax: true,
 })
 ```
 
@@ -151,20 +149,17 @@ Use the feed step to output the final file:
 
 ```typescript
 .feed('meta-catalog', {
-    adapterCode: 'feed-generator',
-    feedType: 'meta-catalog',
+    adapterCode: 'metaCatalog',
     format: 'csv',  // or 'xml'
     outputPath: '/feeds/meta-catalog.csv',
-
-    // Meta-specific
-    catalogId: 'your-catalog-id',
-    businessId: 'your-business-id',
+    currency: 'USD',
 
     // Field mappings
     titleField: 'name',
     descriptionField: 'description',
     priceField: 'variants.0.price',
     imageField: 'featuredAsset.preview',
+    brandField: 'customFields.brand',
 
     // Options
     includeVariants: true,
@@ -184,19 +179,17 @@ id,title,description,availability,condition,price,link,image_link,brand
 
 ```typescript
 .feed('amazon-feed', {
-    adapterCode: 'feed-generator',
-    feedType: 'amazon',
-    format: 'xml',
-    outputPath: '/feeds/amazon.xml',
-
-    // Amazon-specific
-    sellerId: 'your-seller-id',
-    marketplaceId: 'ATVPDKIKX0DER',  // US marketplace
+    adapterCode: 'amazonFeed',
+    outputPath: '/feeds/amazon.txt',
+    currency: 'USD',
 
     // Field mappings
     titleField: 'name',
     descriptionField: 'description',
     priceField: 'variants.0.price',
+    imageField: 'featuredAsset.preview',
+    brandField: 'customFields.brand',
+    gtinField: 'customFields.gtin',
 })
 ```
 
@@ -208,12 +201,11 @@ Create feeds in any format for any platform.
 
 ```typescript
 .feed('custom-csv', {
-    adapterCode: 'feed-generator',
-    feedType: 'custom',
+    adapterCode: 'customFeed',
     format: 'csv',
     outputPath: '/feeds/products.csv',
 
-    customFields: {
+    fieldMapping: {
         'Product ID': 'id',
         'Product Name': 'name',
         'Price': 'variants.0.price',
@@ -226,8 +218,7 @@ Create feeds in any format for any platform.
 
 ```typescript
 .feed('custom-json', {
-    adapterCode: 'feed-generator',
-    feedType: 'custom',
+    adapterCode: 'customFeed',
     format: 'json',
     outputPath: '/feeds/products.json',
 })
@@ -237,14 +228,11 @@ Create feeds in any format for any platform.
 
 ```typescript
 .feed('custom-xml', {
-    adapterCode: 'feed-generator',
-    feedType: 'custom',
+    adapterCode: 'customFeed',
     format: 'xml',
     outputPath: '/feeds/products.xml',
-    config: {
-        rootElement: 'products',
-        itemElement: 'product',
-    },
+    rootElement: 'products',
+    itemElement: 'product',
 })
 ```
 

@@ -1,548 +1,301 @@
 # Loaders Reference
 
-Complete reference for all entity loaders.
+Complete reference for all entity loaders (16 total).
 
 ## Common Configuration
 
-All loaders require:
+All loaders are configured using the `.load()` step in the pipeline DSL:
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `adapterCode` | string | Yes | Loader adapter identifier |
+```typescript
+.load('step-name', {
+    entityType: 'PRODUCT',          // Entity type (see list below)
+    operation: 'UPSERT',            // CREATE, UPDATE, UPSERT, MERGE, DELETE
+    lookupFields: ['slug'],         // Fields to match existing records
+    options: { /* loader-specific */ },
+})
+```
 
-Some loaders (like `productUpsert`) support additional options:
+### Entity Types
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `strategy` | string | Load strategy (see below) - only for `productUpsert` |
-| `channel` | string | Target channel code (e.g., `__default_channel__`) |
+| Entity Type | Description |
+|-------------|-------------|
+| `PRODUCT` | Products with name, slug, description, facets, assets |
+| `PRODUCT_VARIANT` | Product variants with SKU, prices, stock |
+| `CUSTOMER` | Customers with email, addresses, groups |
+| `CUSTOMER_GROUP` | Customer groups with member assignments |
+| `ORDER` | Orders with line items and addresses |
+| `COLLECTION` | Collections with parent relationships |
+| `FACET` | Facets for product categorization |
+| `FACET_VALUE` | Facet values within facets |
+| `ASSET` | Assets and attachments to entities |
+| `PROMOTION` | Promotions with conditions and actions |
+| `SHIPPING_METHOD` | Shipping methods with calculators |
+| `STOCK_LOCATION` | Stock locations for inventory |
+| `INVENTORY` | Inventory levels by SKU and location |
+| `TAX_RATE` | Tax rates by name with category and zone |
+| `PAYMENT_METHOD` | Payment methods with handlers |
+| `CHANNEL` | Channels with currencies and languages |
 
-### Load Strategies (productUpsert only)
+### Operations
 
-| Strategy | Description |
+| Operation | Description |
 |----------|-------------|
-| `source-wins` | Upsert where source data overwrites Vendure data for conflicts |
-| `vendure-wins` | Upsert where Vendure data is preserved for conflicts |
+| `CREATE` | Create only (skip if exists) |
+| `UPDATE` | Update only (skip if not found) |
+| `UPSERT` | Create or Update |
+| `MERGE` | Merge source with existing data |
+| `DELETE` | Delete matching records |
+
+### Conflict Resolution
+
+| Resolution | Description |
+|------------|-------------|
+| `source-wins` | Source data overwrites Vendure data for conflicts |
+| `vendure-wins` | Vendure data is preserved for conflicts |
 | `merge` | Deep merge source and Vendure data |
 
 ---
 
 ## Product Loader
 
-Code: `productUpsert`
+Entity Type: `PRODUCT`
 
-Upsert Products and default Variants by slug/SKU.
+Create or update products with slug-based lookup, facets, and assets.
 
-### Configuration
+### Input Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `channel` | string | Yes | Channel code (e.g., `__default_channel__`) |
-| `strategy` | string | Yes | Conflict strategy: `source-wins`, `vendure-wins`, `merge` |
-| `nameField` | string | No | Source field for product name |
-| `slugField` | string | No | Source field for slug |
-| `descriptionField` | string | No | Source field for description |
-| `skuField` | string | No | Source field for default variant SKU |
-| `priceField` | string | No | Source field for default variant price |
-| `taxCategoryName` | string | No | Tax category name to assign |
-| `trackInventory` | string | No | `true` or `false` |
-| `stockField` | string | No | Source field for stock on hand |
-| `stockByLocationField` | string | No | Source field for stock by location (object) |
+| `name` | string | Yes | Display name for the product |
+| `slug` | string | No | URL-friendly identifier (auto-generated if not provided) |
+| `description` | string | No | Product description (HTML supported) |
+| `enabled` | boolean | No | Whether the product is published |
+| `facetValueCodes` | string[] | No | Array of facet value codes to assign |
+| `assetUrls` | string[] | No | URLs of images to attach |
+| `featuredAssetUrl` | string | No | URL of the featured/main image |
+| `customFields` | object | No | Custom field values |
 
 ### Example
 
 ```typescript
 .load('import-products', {
-    adapterCode: 'productUpsert',
-    strategy: 'source-wins',
-    channel: '__default_channel__',
-    nameField: 'name',
-    slugField: 'slug',
-    descriptionField: 'description',
-    skuField: 'sku',
-    priceField: 'price',
+    entityType: 'PRODUCT',
+    operation: 'UPSERT',
+    lookupFields: ['slug'],
+    options: {
+        skipDuplicates: false,
+        conflictResolution: 'source-wins',
+    },
 })
 ```
 
-### Identifier
+### Lookup Fields
 
-Products are matched by `slug`.
+Products are matched by: `slug`, `id`, or `customFields.externalId`
 
 ---
 
 ## Product Variant Loader
 
-Code: `variantUpsert`
+Entity Type: `PRODUCT_VARIANT`
 
-Upsert ProductVariant by SKU.
+Update product variants by SKU with multi-currency prices.
 
-### Configuration
+### Input Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `channel` | string | No | Channel code |
-| `skuField` | string | Yes | Source field for SKU |
-| `nameField` | string | No | Source field for variant name |
-| `priceField` | string | No | Source field for price (in minor units) |
-| `priceByCurrencyField` | string | No | Source field for multi-currency prices (object) |
-| `taxCategoryName` | string | No | Tax category name to assign |
-| `stockField` | string | No | Source field for stock on hand |
-| `stockByLocationField` | string | No | Source field for stock by location (object) |
+| `sku` | string | Yes | Product variant SKU |
+| `name` | string | No | Variant name |
+| `price` | number | No | Price in minor units (cents) |
+| `prices` | object | No | Multi-currency prices `{ USD: 1999, EUR: 1799 }` |
+| `taxCategoryName` | string | No | Tax category to assign |
+| `stockOnHand` | number | No | Stock level |
+| `enabled` | boolean | No | Whether variant is enabled |
 
 ### Example
 
 ```typescript
 .load('import-variants', {
-    adapterCode: 'variantUpsert',
-    channel: '__default_channel__',
-    skuField: 'sku',
-    priceField: 'price',
-    stockField: 'stock',
+    entityType: 'PRODUCT_VARIANT',
+    operation: 'UPDATE',
+    lookupFields: ['sku'],
 })
 ```
 
-### Identifier
+### Lookup Fields
 
-Variants are matched by `sku`.
+Variants are matched by: `sku`
 
 ---
 
 ## Customer Loader
 
-Code: `customerUpsert`
+Entity Type: `CUSTOMER`
 
-Upsert Customer by email or externalId; merge addresses; assign groups.
+Create or update customers with addresses and group memberships.
 
-### Configuration
+### Input Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `emailField` | string | Yes | Source field for email |
-| `firstNameField` | string | No | Source field for first name |
-| `lastNameField` | string | No | Source field for last name |
-| `phoneNumberField` | string | No | Source field for phone |
-| `addressesField` | string | No | Source field for addresses array |
-| `groupsField` | string | No | Source field for group codes array |
-| `groupsMode` | string | No | `add` (append) or `set` (replace) |
+| `emailAddress` | string | Yes | Customer email address |
+| `firstName` | string | No | First name |
+| `lastName` | string | No | Last name |
+| `phoneNumber` | string | No | Phone number |
+| `addresses` | array | No | Array of address objects |
+| `groupCodes` | string[] | No | Array of customer group codes |
 
 ### Example
 
 ```typescript
 .load('import-customers', {
-    adapterCode: 'customerUpsert',
-    emailField: 'email',
-    firstNameField: 'firstName',
-    lastNameField: 'lastName',
-    phoneNumberField: 'phone',
-    groupsField: 'groups',
-    groupsMode: 'add',
+    entityType: 'CUSTOMER',
+    operation: 'UPSERT',
+    lookupFields: ['emailAddress'],
 })
 ```
 
-### Identifier
+### Lookup Fields
 
-Customers are matched by `email`.
+Customers are matched by: `emailAddress`
 
 ---
 
 ## Collection Loader
 
-Code: `collectionUpsert`
+Entity Type: `COLLECTION`
 
-Create or update collections.
+Create or update collections with parent relationships.
 
-### Configuration
+### Input Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `channel` | string | No | Channel code |
-| `slugField` | string | Yes | Source field for slug |
-| `nameField` | string | Yes | Source field for name |
-| `parentSlugField` | string | No | Source field for parent collection slug |
-| `descriptionField` | string | No | Source field for description |
-| `applyFilters` | boolean | No | Whether to trigger filter job after upsert |
+| `name` | string | Yes | Collection name |
+| `slug` | string | No | URL-friendly identifier |
+| `description` | string | No | Collection description |
+| `parentSlug` | string | No | Parent collection slug |
+| `enabled` | boolean | No | Whether collection is visible |
 
 ### Example
 
 ```typescript
 .load('import-collections', {
-    adapterCode: 'collectionUpsert',
-    channel: '__default_channel__',
-    nameField: 'name',
-    slugField: 'slug',
-    descriptionField: 'description',
-    parentSlugField: 'parentSlug',
+    entityType: 'COLLECTION',
+    operation: 'UPSERT',
+    lookupFields: ['slug'],
 })
 ```
 
 ---
 
-## Promotion Loader
+## Inventory Loader
 
-Code: `promotionUpsert`
+Entity Type: `INVENTORY`
 
-Upsert Promotion by couponCode; create/update enabled dates/actions/conditions.
+Update stock levels for product variants by SKU.
 
-### Configuration
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `codeField` | string | Yes | Source field for coupon code |
-| `nameField` | string | No | Source field for promotion name |
-| `enabledField` | string | No | Source field for enabled status |
-| `startsAtField` | string | No | Source field for start date |
-| `endsAtField` | string | No | Source field for end date |
-| `conditionsField` | string | No | Source field for conditions (JSON) |
-| `actionsField` | string | No | Source field for actions (JSON) |
-| `channel` | string | No | Channel code |
-
-### Example
-
-```typescript
-.load('import-promotions', {
-    adapterCode: 'promotionUpsert',
-    channel: '__default_channel__',
-    codeField: 'couponCode',
-    nameField: 'name',
-    startsAtField: 'validFrom',
-    endsAtField: 'validTo',
-    enabledField: 'enabled',
-})
-```
-
----
-
-## Order Note Loader
-
-Code: `orderNote`
-
-Add notes to orders.
-
-### Configuration
+### Input Fields
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `orderCodeField` | string | No | Source field for order code |
-| `orderIdField` | string | No | Source field for order ID |
-| `noteField` | string | Yes | Source field for note content |
-| `isPrivate` | boolean | No | Whether note is private (not visible to customer) |
-
-Note: Provide either `orderCodeField` or `orderIdField` to identify the order.
-
-### Example
-
-```typescript
-.load('add-order-notes', {
-    adapterCode: 'orderNote',
-    orderCodeField: 'orderCode',
-    noteField: 'note',
-    isPrivate: true,
-})
-```
-
----
-
-## Order Transition Loader
-
-Code: `orderTransition`
-
-Transition order state.
-
-### Configuration
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `orderIdField` | string | No | Source field for order ID |
-| `orderCodeField` | string | No | Source field for order code |
-| `state` | string | Yes | Target state to transition to |
-
-Note: Provide either `orderIdField` or `orderCodeField` to identify the order.
-
-### Example
-
-```typescript
-.load('transition-orders', {
-    adapterCode: 'orderTransition',
-    orderCodeField: 'orderCode',
-    state: 'Shipped',
-})
-```
-
----
-
-## Stock Adjust Loader
-
-Code: `stockAdjust`
-
-Adjust inventory levels by SKU and stock location.
-
-### Configuration
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `skuField` | string | Yes | Source field for variant SKU |
-| `stockByLocationField` | string | Yes | Source field for stock map (location code to quantity) |
-| `absolute` | boolean | No | If true, set absolute stock level; if false, apply delta |
+| `sku` | string | Yes | Product variant SKU |
+| `stockOnHand` | number | Yes | Stock quantity |
+| `stockLocationName` | string | No | Stock location name |
+| `stockLocationId` | string | No | Stock location ID (alternative) |
+| `reason` | string | No | Reason for adjustment |
 
 ### Example
 
 ```typescript
 .load('update-stock', {
-    adapterCode: 'stockAdjust',
-    skuField: 'sku',
-    stockByLocationField: 'stock',
-    absolute: true,
-})
-```
-
-### Stock Map Format
-
-The `stockByLocationField` should point to an object mapping location codes to quantities:
-
-```json
-{
-    "sku": "ABC-123",
-    "stock": {
-        "default": 100,
-        "warehouse-1": 50
-    }
-}
-```
-
----
-
-## Apply Coupon Loader
-
-Code: `applyCoupon`
-
-Apply coupon codes to orders.
-
-### Configuration
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `orderIdField` | string | No | Source field for order ID |
-| `orderCodeField` | string | No | Source field for order code |
-| `couponField` | string | Yes | Source field for coupon code |
-
-Note: Provide either `orderIdField` or `orderCodeField` to identify the order.
-
-### Example
-
-```typescript
-.load('apply-coupons', {
-    adapterCode: 'applyCoupon',
-    orderCodeField: 'orderCode',
-    couponField: 'couponCode',
+    entityType: 'INVENTORY',
+    operation: 'UPDATE',
+    lookupFields: ['sku'],
 })
 ```
 
 ---
 
-## Asset Attach Loader
+## Additional Loaders
 
-Code: `assetAttach`
+The following loaders are available but have similar patterns:
 
-Attach existing assets as featured asset to Products or Collections.
+### Order Loader (`ORDER`)
+Create/update orders with line items and addresses.
 
-### Configuration
+### Customer Group Loader (`CUSTOMER_GROUP`)
+Create/update customer groups with member assignments.
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `entity` | string | Yes | Entity type: `product` or `collection` |
-| `slugField` | string | Yes | Source field for entity slug |
-| `assetIdField` | string | Yes | Source field for asset ID |
-| `channel` | string | No | Channel code |
+### Facet Loader (`FACET`)
+Create/update facets for product categorization.
 
-### Example
+### Facet Value Loader (`FACET_VALUE`)
+Create/update facet values within facets.
 
-```typescript
-.load('attach-assets', {
-    adapterCode: 'assetAttach',
-    entity: 'product',
-    slugField: 'productSlug',
-    assetIdField: 'featuredAssetId',
-    channel: '__default_channel__',
-})
-```
+### Asset Loader (`ASSET`)
+Create/update assets and attach to entities.
 
----
+### Promotion Loader (`PROMOTION`)
+Create/update promotions with conditions and actions.
 
-## REST Post Loader
+### Shipping Method Loader (`SHIPPING_METHOD`)
+Create/update shipping methods with calculators.
 
-Code: `restPost`
+### Stock Location Loader (`STOCK_LOCATION`)
+Create/update stock locations for inventory.
 
-Send data to external REST APIs.
+### Tax Rate Loader (`TAX_RATE`)
+Create/update tax rates with category and zone.
 
-### Configuration
+### Payment Method Loader (`PAYMENT_METHOD`)
+Create/update payment methods with handlers.
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `endpoint` | string | Yes | Target API endpoint |
-| `method` | string | Yes | HTTP method: `POST` or `PUT` |
-| `headers` | object | No | Request headers (JSON) |
-| `auth` | string | No | Auth preset: `none`, `bearer`, `basic`, `hmac` |
-| `bearerTokenSecretCode` | string | No | Secret code for Bearer token |
-| `basicSecretCode` | string | No | Secret code for Basic auth |
-| `hmacSecretCode` | string | No | Secret code for HMAC signature |
-| `hmacHeader` | string | No | Header name for HMAC signature |
-| `hmacPayloadTemplate` | string | No | Template for HMAC payload |
-| `batchMode` | string | No | `single` (one per request) or `array` (batch) |
-| `maxBatchSize` | number | No | Chunk size when batchMode is `array` |
-| `retries` | number | No | Number of retries for failed requests |
-| `retryDelayMs` | number | No | Delay between retries in milliseconds |
-| `timeoutMs` | number | No | Request timeout in milliseconds |
-
-### Example - Single Records
-
-```typescript
-.load('send-to-erp', {
-    adapterCode: 'restPost',
-    endpoint: 'https://api.erp.com/products',
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json',
-    },
-    bearerTokenSecretCode: 'erp-api-key',
-    batchMode: 'single',
-    retries: 3,
-    timeoutMs: 30000,
-})
-```
-
-### Example - Batch Mode
-
-```typescript
-.load('batch-export', {
-    adapterCode: 'restPost',
-    endpoint: 'https://api.erp.com/products/batch',
-    method: 'POST',
-    batchMode: 'array',
-    maxBatchSize: 100,
-    bearerTokenSecretCode: 'erp-api-key',
-})
-```
+### Channel Loader (`CHANNEL`)
+Create/update channels with currencies and languages.
 
 ---
 
-## Tax Rate Loader
+## Using Sinks for External Systems
 
-Code: `taxRateUpsert`
+For sending data to external systems (REST APIs, search engines, message queues), use **Sinks** instead of loaders. See [Sinks Reference](./sinks.md) for details on:
 
-Create or update tax rates.
-
-### Configuration
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `nameField` | string | Yes | Source field for tax rate name |
-| `valueField` | string | Yes | Source field for rate value (percentage) |
-| `categoryField` | string | No | Source field for tax category code |
-| `zoneField` | string | No | Source field for zone code |
-| `channel` | string | No | Channel code |
-
-### Example
-
-```typescript
-.load('import-tax-rates', {
-    adapterCode: 'taxRateUpsert',
-    nameField: 'name',
-    valueField: 'rate',
-    categoryField: 'category',
-    zoneField: 'zone',
-    channel: '__default_channel__',
-})
-```
-
----
-
-## Payment Method Loader
-
-Code: `paymentMethodUpsert`
-
-Create or update payment methods.
-
-### Configuration
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `codeField` | string | Yes | Source field for payment method code |
-| `nameField` | string | Yes | Source field for name |
-| `enabledField` | string | No | Source field for enabled status |
-| `handlerField` | string | No | Source field for handler code |
-| `channel` | string | No | Channel code |
-
-### Example
-
-```typescript
-.load('import-payment-methods', {
-    adapterCode: 'paymentMethodUpsert',
-    codeField: 'code',
-    nameField: 'name',
-    enabledField: 'enabled',
-    channel: '__default_channel__',
-})
-```
-
----
-
-## Channel Loader
-
-Code: `channelUpsert`
-
-Create or update channels.
-
-### Configuration
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `codeField` | string | Yes | Source field for channel code |
-| `tokenField` | string | Yes | Source field for channel token |
-| `currencyCodeField` | string | No | Source field for default currency |
-| `defaultLanguageCodeField` | string | No | Source field for default language |
-
-### Example
-
-```typescript
-.load('import-channels', {
-    adapterCode: 'channelUpsert',
-    codeField: 'code',
-    tokenField: 'token',
-    currencyCodeField: 'currency',
-    defaultLanguageCodeField: 'language',
-})
-```
+- MeiliSearch, Elasticsearch, Algolia, Typesense (search indexing)
+- RabbitMQ Queue Producer (message queuing)
+- Webhook (REST API callbacks)
 
 ---
 
 ## Quick Reference
 
-| Code | Entity | Description |
-|------|--------|-------------|
-| `productUpsert` | Product | Create/update products with variants, prices, tax, and stock |
-| `variantUpsert` | ProductVariant | Create/update variants with multi-currency prices |
-| `customerUpsert` | Customer | Create/update customers with addresses and groups |
-| `collectionUpsert` | Collection | Create/update collections with parent relationships |
-| `promotionUpsert` | Promotion | Create/update promotions with conditions and actions |
-| `orderNote` | Order | Add public or private notes to orders |
-| `orderTransition` | Order | Transition order to new state (e.g., Shipped) |
-| `stockAdjust` | ProductVariant | Adjust inventory levels by SKU and location |
-| `applyCoupon` | Order | Apply coupon codes to orders |
-| `assetAttach` | Product/Collection | Attach assets as featured image |
-| `taxRateUpsert` | TaxRate | Create/update tax rates with category and zone |
-| `paymentMethodUpsert` | PaymentMethod | Configure payment methods with handlers |
-| `channelUpsert` | Channel | Create/update channels with currencies and languages |
-| `restPost` | External | POST/PUT data to external REST APIs |
+| Entity Type | Description |
+|-------------|-------------|
+| `PRODUCT` | Create/update products with name, slug, description, facets, assets |
+| `PRODUCT_VARIANT` | Update variants by SKU with prices and stock |
+| `CUSTOMER` | Create/update customers with addresses and groups |
+| `CUSTOMER_GROUP` | Create/update customer groups with member assignments |
+| `ORDER` | Create/update orders with line items |
+| `COLLECTION` | Create/update collections with parent relationships |
+| `FACET` | Create/update facets for product categorization |
+| `FACET_VALUE` | Create/update facet values within facets |
+| `ASSET` | Create/update assets and attach to entities |
+| `PROMOTION` | Create/update promotions with conditions and actions |
+| `SHIPPING_METHOD` | Create/update shipping methods with calculators |
+| `STOCK_LOCATION` | Create/update stock locations for inventory |
+| `INVENTORY` | Adjust inventory levels by SKU and stock location |
+| `TAX_RATE` | Create/update tax rates with category and zone |
+| `PAYMENT_METHOD` | Create/update payment methods with handlers |
+| `CHANNEL` | Create/update channels with currencies and languages |
 
 ### Required Permissions
 
 Each loader requires specific Vendure permissions:
 
-| Loader | Required Permission |
-|--------|---------------------|
-| `productUpsert`, `variantUpsert`, `stockAdjust`, `collectionUpsert`, `assetAttach` | `UpdateCatalog` |
-| `customerUpsert` | `UpdateCustomer` |
-| `orderNote`, `orderTransition`, `applyCoupon` | `UpdateOrder` |
-| `promotionUpsert` | `UpdatePromotion` |
-| `taxRateUpsert`, `paymentMethodUpsert`, `channelUpsert` | `UpdateSettings` |
-| `restPost` | `UpdateDataHubSettings` |
+| Entity Type | Required Permission |
+|-------------|---------------------|
+| `PRODUCT`, `PRODUCT_VARIANT`, `INVENTORY`, `COLLECTION`, `ASSET`, `FACET`, `FACET_VALUE` | `UpdateCatalog` |
+| `CUSTOMER`, `CUSTOMER_GROUP` | `UpdateCustomer` |
+| `ORDER` | `UpdateOrder` |
+| `PROMOTION` | `UpdatePromotion` |
+| `SHIPPING_METHOD`, `TAX_RATE`, `PAYMENT_METHOD`, `CHANNEL`, `STOCK_LOCATION` | `UpdateSettings` |

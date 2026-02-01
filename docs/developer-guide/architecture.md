@@ -86,7 +86,8 @@ Understanding the plugin architecture helps you use it effectively and extend it
 | `DataHubSecret` | Encrypted credentials |
 | `DataHubSettings` | Plugin configuration |
 | `DataHubRecordError` | Failed records |
-| `PipelineCheckpointEntity` | Resume checkpoints |
+| `DataHubCheckpoint` | Resume checkpoints |
+| `DataHubRecordRetryAudit` | Retry audit trail |
 
 ### Services
 
@@ -121,7 +122,7 @@ The registry manages all adapters:
 
 ```typescript
 // Extractors
-registry.registerExtractor('http-api', HttpApiExtractor);
+registry.registerExtractor('httpApi', HttpApiExtractor);
 registry.registerExtractor('database', DatabaseExtractor);
 
 // Operators
@@ -342,3 +343,244 @@ Pipeline runs use the job queue:
 - Distributed processing
 - Retry handling
 - Worker scaling
+
+## Enterprise Architecture
+
+### DAG-Based Workflow Engine
+
+Pipelines execute as Directed Acyclic Graphs (DAGs):
+
+```
+┌─────────┐     ┌───────────┐     ┌─────────┐
+│ Trigger │────▶│  Extract  │────▶│Transform│
+└─────────┘     └───────────┘     └────┬────┘
+                                       │
+                    ┌──────────────────┴──────────────────┐
+                    ▼                                      ▼
+              ┌───────────┐                         ┌───────────┐
+              │   Route   │                         │  Enrich   │
+              └─────┬─────┘                         └─────┬─────┘
+           ┌───────┴───────┐                              │
+           ▼               ▼                              ▼
+      ┌────────┐     ┌────────┐                    ┌───────────┐
+      │ Load A │     │ Load B │                    │   Sink    │
+      └────────┘     └────────┘                    └───────────┘
+```
+
+Features:
+- Parallel branch execution
+- Conditional routing based on record data
+- Fan-out/fan-in patterns
+- Topological sort for dependency resolution
+- Cycle detection during validation
+
+### Distributed Locking
+
+For multi-instance deployments:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Lock Backend Selection                     │
+├─────────────────┬─────────────────┬─────────────────────────┤
+│      Redis      │   PostgreSQL    │        Memory           │
+│   (Recommended) │   (Fallback)    │   (Single Instance)     │
+├─────────────────┼─────────────────┼─────────────────────────┤
+│ SET NX EX       │ Advisory Locks  │ Map<string, LockToken>  │
+│ Atomic ops      │ pg_try_advisory │ setTimeout cleanup      │
+│ TTL expiration  │ Transaction-    │ No cluster support      │
+│ Cluster support │ scoped          │                         │
+└─────────────────┴─────────────────┴─────────────────────────┘
+```
+
+Configuration:
+```typescript
+DataHubPlugin.init({
+    distributedLock: {
+        backend: 'redis',
+        redis: { host: 'localhost', port: 6379 },
+        defaultTtlMs: 30000,
+        waitTimeoutMs: 5000,
+    },
+})
+```
+
+### Circuit Breaker
+
+Protects external service calls:
+
+```
+         ┌─────────────────────────────────────────────┐
+         │              Circuit States                  │
+         ├─────────────────────────────────────────────┤
+         │                                             │
+         │   ┌────────┐  5 failures  ┌────────┐       │
+         │   │ CLOSED │─────────────▶│  OPEN  │       │
+         │   │(normal)│              │(blocked)│       │
+         │   └────┬───┘              └────┬───┘       │
+         │        ▲                       │           │
+         │        │    ┌───────────┐      │ 30s      │
+         │ 3 success   │HALF-OPEN  │◀─────┘           │
+         │        └────│ (testing) │                  │
+         │             └───────────┘                  │
+         └─────────────────────────────────────────────┘
+```
+
+Applied to:
+- HTTP API extractors
+- Search engine sinks (MeiliSearch, Elasticsearch, Algolia, Typesense)
+- Webhook sinks
+- HTTP lookup operators
+
+### Queue Architecture
+
+Message queue integration for event-driven pipelines:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Queue Adapters                            │
+├──────────────┬──────────────┬─────────────┬────────────────┤
+│ RabbitMQ     │ Amazon SQS   │ Redis       │ Internal       │
+│ (AMQP)       │              │ Streams     │ (BullMQ)       │
+├──────────────┼──────────────┼─────────────┼────────────────┤
+│ Native AMQP  │ AWS SDK      │ XREAD/XADD  │ Redis-backed   │
+│ Publisher    │ Long polling │ Consumer    │ Job queue      │
+│ confirms     │ Visibility   │ groups      │ Delayed jobs   │
+│ Dead-letter  │ timeout      │ Pending     │ Retries        │
+│ queues       │ Batch recv   │ entries     │                │
+└──────────────┴──────────────┴─────────────┴────────────────┘
+```
+
+Consumer patterns:
+- Manual acknowledgment for guaranteed processing
+- Configurable prefetch/batch size
+- Dead-letter queue for failed messages
+- Consumer groups for load balancing
+
+### Multi-Trigger Architecture
+
+Pipelines support multiple concurrent triggers:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Trigger Types                             │
+├──────────┬──────────┬──────────┬──────────┬────────────────┤
+│  Manual  │ Schedule │ Webhook  │  Event   │ Message Queue  │
+├──────────┼──────────┼──────────┼──────────┼────────────────┤
+│ UI/API   │ Cron     │ HTTP     │ Vendure  │ RabbitMQ/SQS/  │
+│ trigger  │ express  │ endpoint │ events   │ Redis Streams  │
+└──────────┴──────────┴──────────┴──────────┴────────────────┘
+         │           │          │          │           │
+         └───────────┴──────────┴──────────┴───────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │ Pipeline Runner │
+                    └─────────────────┘
+```
+
+All triggers converge to the same execution engine, enabling:
+- Unified error handling
+- Consistent logging
+- Shared checkpointing
+- Common metrics
+
+### Feed Generator Architecture
+
+Product feed generation for marketing channels:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  Feed Generation Pipeline                    │
+│                                                              │
+│  ┌────────────┐    ┌────────────┐    ┌──────────────────┐  │
+│  │  Vendure   │───▶│ Feed       │───▶│ Format Generator │  │
+│  │  Products  │    │ Filters    │    │                  │  │
+│  └────────────┘    └────────────┘    │ ┌──────────────┐ │  │
+│                                       │ │ Google XML  │ │  │
+│                                       │ ├──────────────┤ │  │
+│                                       │ │ Meta/FB     │ │  │
+│                                       │ ├──────────────┤ │  │
+│                                       │ │ RSS/Atom    │ │  │
+│                                       │ ├──────────────┤ │  │
+│                                       │ │ CSV/JSON    │ │  │
+│                                       │ └──────────────┘ │  │
+│                                       └──────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Supports:
+- Google Shopping XML
+- Meta/Facebook Product Catalog
+- RSS 2.0 / Atom 1.0
+- CSV, JSON, JSONL exports
+- Custom feed formats via adapters
+
+### Sink Architecture
+
+Output to external systems:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Sink Executor                           │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │                  Circuit Breaker                      │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                           │                                  │
+│           ┌───────────────┼───────────────┐                 │
+│           ▼               ▼               ▼                 │
+│     ┌───────────┐   ┌───────────┐   ┌───────────┐          │
+│     │  Search   │   │  Webhook  │   │   Queue   │          │
+│     │  Engines  │   │           │   │  Producer │          │
+│     ├───────────┤   ├───────────┤   ├───────────┤          │
+│     │MeiliSearch│   │ HTTP POST │   │ RabbitMQ  │          │
+│     │Elastic    │   │ Auth      │   │ SQS       │          │
+│     │Algolia    │   │ Retry     │   │ Redis     │          │
+│     │Typesense  │   │ Timeout   │   │           │          │
+│     └───────────┘   └───────────┘   └───────────┘          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+All sinks feature:
+- Batch processing for efficiency
+- Automatic retries with backoff
+- Circuit breaker protection
+- Configurable timeouts
+- Error aggregation and reporting
+
+## Directory Structure
+
+```
+src/plugins/data-hub/
+├── src/                          # Backend source
+│   ├── adapters/                 # Adapter registry
+│   ├── api/                      # GraphQL resolvers & schema
+│   ├── constants/                # Configuration constants
+│   ├── entities/                 # TypeORM entities
+│   ├── extractors/               # Data extractors
+│   ├── feeds/                    # Feed generators
+│   ├── jobs/                     # Job queue handlers
+│   ├── loaders/                  # Entity loaders
+│   ├── mappers/                  # Field mappers
+│   ├── operators/                # Transform operators
+│   ├── parsers/                  # File parsers
+│   ├── runtime/                  # Execution engine
+│   ├── sdk/                      # Public SDK & DSL
+│   ├── services/                 # Business logic
+│   ├── transforms/               # Transform execution
+│   ├── types/                    # TypeScript types
+│   ├── utils/                    # Utilities
+│   └── validation/               # Definition validators
+├── dashboard/                    # React Admin UI
+│   ├── components/               # UI components
+│   ├── constants/                # UI constants
+│   ├── gql/                      # GraphQL queries
+│   ├── hooks/                    # React hooks
+│   ├── routes/                   # Route components
+│   └── utils/                    # UI utilities
+├── shared/                       # Shared code
+│   ├── types/                    # Shared types
+│   └── utils/                    # Shared utilities
+├── docs/                         # Documentation
+└── e2e/                          # End-to-end tests
+```

@@ -81,8 +81,8 @@ const productImportPipeline = createPipeline()
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'manual' })
     .extract('fetch-products', {
-        adapterCode: 'rest',
-        endpoint: 'https://fakestoreapi.com/products',
+        adapterCode: 'httpApi',
+        url: 'https://fakestoreapi.com/products',
         method: 'GET',
     })
     .transform('map-fields', {
@@ -94,12 +94,12 @@ const productImportPipeline = createPipeline()
         ],
     })
     .load('create-products', {
-        adapterCode: 'productUpsert',
-        strategy: 'source-wins',
-        channel: '__default_channel__',
-        skuField: 'sku',
-        nameField: 'name',
-        slugField: 'slug',
+        entityType: 'PRODUCT',
+        operation: 'UPSERT',
+        lookupFields: ['slug'],
+        options: {
+            conflictResolution: 'source-wins',
+        },
     })
     .edge('start', 'fetch-products')
     .edge('fetch-products', 'map-fields')
@@ -170,16 +170,16 @@ const csvImport = createPipeline()
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'manual' })
     .extract('parse-csv', {
-        adapterCode: 'csv',
-        csvPath: '/uploads/products.csv',
+        adapterCode: 'file',
+        path: '/uploads/products.csv',
+        format: 'csv',
         delimiter: ',',
         hasHeader: true,
     })
     .load('import', {
-        adapterCode: 'productUpsert',
-        strategy: 'source-wins',
-        channel: '__default_channel__',
-        skuField: 'sku',
+        entityType: 'PRODUCT',
+        operation: 'UPSERT',
+        lookupFields: ['slug'],
     })
     .edge('start', 'parse-csv')
     .edge('parse-csv', 'import')
@@ -197,12 +197,11 @@ const scheduledSync = createPipeline()
         cron: '0 2 * * *',  // Daily at 2 AM
         timezone: 'UTC',
     })
-    .extract('fetch', { adapterCode: 'rest', endpoint: '...' })
+    .extract('fetch', { adapterCode: 'httpApi', url: 'https://api.example.com/products' })
     .load('sync', {
-        adapterCode: 'productUpsert',
-        strategy: 'source-wins',
-        channel: '__default_channel__',
-        skuField: 'sku',
+        entityType: 'PRODUCT',
+        operation: 'UPSERT',
+        lookupFields: ['slug'],
     })
     .edge('schedule', 'fetch')
     .edge('fetch', 'sync')
@@ -217,8 +216,8 @@ const productExport = createPipeline()
     .capabilities({ requires: ['ReadCatalog'] })
     .trigger('start', { type: 'manual' })
     .extract('query', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         relations: 'variants,featuredAsset',
         batchSize: 100,
     })

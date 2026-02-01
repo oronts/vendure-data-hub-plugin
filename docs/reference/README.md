@@ -18,58 +18,70 @@ Complete reference documentation for all Data Hub adapters.
 
 ## Quick Reference
 
-### Extractors
+### Extractors (8)
 
 | Code | Description |
 |------|-------------|
-| `rest` | REST API with pagination |
-| `csv` | CSV files or inline data |
-| `graphql` | External GraphQL endpoints |
-| `vendure-query` | Vendure entity queries |
+| `httpApi` | REST API with pagination, authentication, retry |
+| `graphql` | External GraphQL endpoints with cursor/offset/Relay pagination |
+| `vendureQuery` | Vendure entity queries with automatic pagination |
+| `file` | Parse files (CSV, JSON, XML, XLSX, NDJSON, TSV) |
+| `database` | SQL databases (PostgreSQL, MySQL, SQLite, MSSQL, Oracle) |
+| `s3` | S3-compatible storage (AWS, MinIO, DigitalOcean Spaces) |
+| `ftp` | FTP/SFTP servers |
+| `webhook` | Incoming webhook payloads |
 
-### Loaders
+### Loaders (16)
 
-| Code | Entity | Description |
-|------|--------|-------------|
-| `productUpsert` | Product | Create/update products with default variant |
-| `variantUpsert` | ProductVariant | Create/update product variants |
-| `customerUpsert` | Customer | Create/update customers with addresses |
-| `collectionUpsert` | Collection | Create/update collections |
-| `promotionUpsert` | Promotion | Create/update promotions |
-| `orderNote` | Order | Add notes to orders |
-| `orderTransition` | Order | Transition order states |
-| `stockAdjust` | ProductVariant | Adjust inventory levels |
-| `applyCoupon` | Order | Apply coupon codes to orders |
-| `assetAttach` | Product/Collection | Attach assets to entities |
-| `restPost` | External | POST/PUT data to external APIs |
+| Entity Type | Description |
+|-------------|-------------|
+| `PRODUCT` | Create/update products with facets and assets |
+| `PRODUCT_VARIANT` | Update variants by SKU with multi-currency prices |
+| `CUSTOMER` | Create/update customers with addresses and groups |
+| `CUSTOMER_GROUP` | Create/update customer groups with member assignments |
+| `COLLECTION` | Create/update collections with parent relationships |
+| `FACET` | Create/update facets for categorization |
+| `FACET_VALUE` | Create/update facet values within facets |
+| `PROMOTION` | Create/update promotions with conditions and actions |
+| `ORDER` | Create/update orders with line items |
+| `SHIPPING_METHOD` | Create/update shipping methods with calculators |
+| `STOCK_LOCATION` | Create/update stock locations |
+| `INVENTORY` | Adjust inventory levels by SKU and location |
+| `ASSET` | Create/update assets and attach to entities |
+| `TAX_RATE` | Create/update tax rates with category and zone |
+| `PAYMENT_METHOD` | Create/update payment methods with handlers |
+| `CHANNEL` | Create/update channels with currencies and languages |
 
-### Operator Categories
+### Operator Categories (58 operators)
 
 | Category | Operators |
 |----------|-----------|
-| Data | set, copy, rename, remove, map, template |
-| String | trim, uppercase, lowercase, slugify, split, join, replace, regex |
-| Numeric | round, floor, ceil, abs, add, multiply, divide, clamp |
-| Date | parse, format, add, diff |
-| Logic | when, if-then-else, switch, delta-filter |
-| JSON | get, flatten, merge, parse, stringify |
-| Validation | required, type, range, pattern, length |
-| Aggregation | count, sum, avg, min, max, groupBy |
+| Data (8) | `set`, `copy`, `rename`, `remove`, `map`, `template`, `hash`, `uuid` |
+| String (12) | `trim`, `uppercase`, `lowercase`, `slugify`, `split`, `join`, `concat`, `replace`, `extractRegex`, `replaceRegex`, `stripHtml`, `truncate` |
+| Numeric (9) | `math`, `toNumber`, `toString`, `currency`, `unit`, `parseNumber`, `formatNumber`, `toCents`, `round` |
+| Date (6) | `dateFormat`, `dateParse`, `dateAdd`, `dateDiff`, `now`, `formatDate` |
+| Logic (4) | `when`, `ifThenElse`, `switch`, `deltaFilter` |
+| JSON (4) | `pick`, `omit`, `parseJson`, `stringifyJson` |
+| Enrichment (5) | `lookup`, `enrich`, `coalesce`, `default`, `httpLookup` |
+| Aggregation (7) | `aggregate`, `count`, `unique`, `flatten`, `first`, `last`, `expand` |
+| Validation (2) | `validateRequired`, `validateFormat` |
+| Advanced (1) | `script` |
 
-### Feed Types
+### Feed Types (5)
 
-| Type | Platform |
-|------|----------|
-| `google-merchant` | Google Merchant Center |
-| `meta-catalog` | Meta/Facebook Catalog |
-| `amazon` | Amazon Product Ads |
-| `custom` | Custom format |
+| Adapter Code | Platform |
+|--------------|----------|
+| `googleMerchant` | Google Merchant Center / Google Shopping |
+| `metaCatalog` | Meta/Facebook/Instagram Catalog |
+| `customFeed` | Custom CSV, JSON, or XML format |
 
-### Sink Types
+### Sink Types (6)
 
-| Type | Engine |
+| Code | Engine |
 |------|--------|
 | `elasticsearch` | Elasticsearch / OpenSearch |
 | `meilisearch` | MeiliSearch |
 | `algolia` | Algolia |
 | `typesense` | Typesense |
+| `queueProducer` | RabbitMQ Queue |
+| `webhook` | HTTP Webhook (POST/PUT/PATCH) |

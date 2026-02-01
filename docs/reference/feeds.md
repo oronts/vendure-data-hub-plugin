@@ -138,53 +138,6 @@ SKU-001,Product Name,Description,in stock,new,29.99 USD,https://store.com/produc
 
 ---
 
-## Amazon Feed
-
-Code: `amazonFeed`
-
-Generate product feeds for Amazon Marketplace.
-
-### Configuration
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `outputPath` | string | Yes | File path or URL |
-| `marketplace` | select | Yes | US, UK, DE, FR, CA |
-| `feedType` | select | No | inventory, pricing, or product |
-| `sellerId` | string | Yes | Amazon Seller ID |
-
-### Example
-
-```typescript
-.feed('amazon-products', {
-    adapterCode: 'amazonFeed',
-    marketplace: 'US',
-    feedType: 'product',
-    sellerId: 'A12345678',
-    outputPath: '/feeds/amazon-products.xml',
-})
-```
-
-### Supported Marketplaces
-
-| Value | Description |
-|-------|-------------|
-| `US` | Amazon.com (United States) |
-| `UK` | Amazon.co.uk (United Kingdom) |
-| `DE` | Amazon.de (Germany) |
-| `FR` | Amazon.fr (France) |
-| `CA` | Amazon.ca (Canada) |
-
-### Feed Types
-
-| Type | Description |
-|------|-------------|
-| `inventory` | Stock levels and availability |
-| `pricing` | Prices and promotions |
-| `product` | Full product information |
-
----
-
 ## Custom Feed
 
 Code: `customFeed`
@@ -311,8 +264,8 @@ createPipeline()
         cron: '0 2 * * *',  // Daily at 2 AM
     })
     .extract('query-products', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         relations: 'variants,featuredAsset,translations',
         languageCode: 'en',
         batchSize: 500,

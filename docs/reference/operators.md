@@ -62,10 +62,12 @@ Transform records via field mapping.
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
-| `mapping` | object | Yes | JSON object of destination to source paths |
+| `mapping` | json | Yes | JSON object defining field mapping (target: source) |
+| `passthrough` | boolean | No | If true, include fields not in mapping |
 
 ```typescript
 { op: 'map', args: { mapping: { name: 'product_name', sku: 'product_sku', price: 'retail_price' } } }
+{ op: 'map', args: { mapping: { name: 'title', price: 'cost' }, passthrough: true } }
 ```
 
 ### enrich
@@ -96,6 +98,44 @@ Render a string template and set it at target path.
 { op: 'template', args: { template: '${firstName} ${lastName}', target: 'fullName', missingAsEmpty: true } }
 ```
 
+### hash
+
+Generate a cryptographic hash of field value(s).
+
+| Arg | Type | Required | Description |
+|-----|------|----------|-------------|
+| `source` | json | Yes | Single path string or array of paths to hash together |
+| `target` | string | Yes | Path where the hash will be stored |
+| `algorithm` | select | No | `md5`, `sha1`, `sha256`, `sha512` (default: `sha256`) |
+| `encoding` | select | No | `hex` or `base64` (default: `hex`) |
+
+```typescript
+{ op: 'hash', args: { source: 'data', target: 'checksum', algorithm: 'sha256' } }
+{ op: 'hash', args: { source: ['sku', 'name', 'price'], target: 'contentHash', algorithm: 'md5' } }
+{ op: 'hash', args: { source: 'password', target: 'passwordHash', algorithm: 'sha512', encoding: 'base64' } }
+```
+
+### uuid
+
+Generate a UUID.
+
+| Arg | Type | Required | Description |
+|-----|------|----------|-------------|
+| `target` | string | Yes | Target field path |
+| `version` | string | No | `v4` (random) or `v5` (namespace-based) |
+| `namespace` | string | No | Namespace for v5 (required if version is v5) |
+| `source` | string | No | Source field path for v5 name |
+
+```typescript
+{ op: 'uuid', args: { target: 'id' } }
+{ op: 'uuid', args: { target: 'productId', version: 'v4' } }
+{ op: 'uuid', args: { target: 'stableId', version: 'v5', namespace: 'products', source: 'sku' } }
+```
+
+---
+
+## Enrichment Operators
+
 ### lookup
 
 Lookup value from a map and set to target field.
@@ -109,6 +149,101 @@ Lookup value from a map and set to target field.
 
 ```typescript
 { op: 'lookup', args: { source: 'status', map: { 'A': 'active', 'I': 'inactive' }, target: 'statusText', default: 'unknown' } }
+```
+
+### enrich
+
+Set or default fields on records.
+
+| Arg | Type | Required | Description |
+|-----|------|----------|-------------|
+| `set` | object | No | Fields to set (overwrites) |
+| `defaults` | object | No | Fields to set if currently missing |
+
+```typescript
+{ op: 'enrich', args: { set: { source: 'import' }, defaults: { enabled: true } } }
+```
+
+### coalesce
+
+Return the first non-null value from paths.
+
+| Arg | Type | Required | Description |
+|-----|------|----------|-------------|
+| `paths` | array | Yes | Array of field paths to check |
+| `target` | string | Yes | Target field path |
+| `default` | any | No | Default value if all null |
+
+```typescript
+{ op: 'coalesce', args: { paths: ['name', 'title', 'sku'], target: 'displayName', default: 'Unnamed' } }
+```
+
+### default
+
+Set a default value if field is null or undefined.
+
+| Arg | Type | Required | Description |
+|-----|------|----------|-------------|
+| `path` | string | Yes | Field path |
+| `value` | json | Yes | Default value |
+
+```typescript
+{ op: 'default', args: { path: 'enabled', value: true } }
+{ op: 'default', args: { path: 'stock', value: 0 } }
+```
+
+### httpLookup
+
+Enrich records by fetching data from external HTTP endpoints with caching, authentication, and error handling.
+
+| Arg | Type | Required | Description |
+|-----|------|----------|-------------|
+| `url` | string | Yes | HTTP endpoint URL. Use `{{field}}` for dynamic values |
+| `method` | select | No | `GET` or `POST` (default: GET) |
+| `target` | string | Yes | Field path to store the response data |
+| `responsePath` | string | No | JSON path to extract from response |
+| `keyField` | string | No | Field to use as cache key. If not set, URL is used |
+| `default` | json | No | Value to use if lookup fails or returns 404 |
+| `timeoutMs` | number | No | Request timeout in milliseconds |
+| `cacheTtlSec` | number | No | Cache time-to-live in seconds. Set to 0 to disable |
+| `headers` | json | No | Static HTTP headers as JSON object |
+| `bearerTokenSecretCode` | string | No | Secret code for Bearer token authentication |
+| `apiKeySecretCode` | string | No | Secret code for API key authentication |
+| `apiKeyHeader` | string | No | Header name for API key |
+| `basicAuthSecretCode` | string | No | Secret code for Basic auth (username:password) |
+| `bodyField` | string | No | Field path for POST body (uses record value at this path) |
+| `body` | json | No | Static POST body (JSON object) |
+| `skipOn404` | boolean | No | Skip record if endpoint returns 404 |
+| `failOnError` | boolean | No | Fail pipeline if HTTP request fails |
+| `maxRetries` | number | No | Maximum retry attempts on transient errors |
+| `batchSize` | number | No | Process this many records in parallel (default: 50) |
+| `rateLimitPerSecond` | number | No | Max requests per second per domain (default: 100) |
+
+```typescript
+// Basic enrichment from external API
+{ op: 'httpLookup', args: {
+    url: 'https://api.example.com/products/{{sku}}',
+    target: 'externalData',
+    cacheTtlSec: 300,
+} }
+
+// With authentication and response extraction
+{ op: 'httpLookup', args: {
+    url: 'https://api.inventory.com/stock/{{productId}}',
+    target: 'stockLevel',
+    responsePath: 'data.available',
+    bearerTokenSecretCode: 'inventory-api-key',
+    default: 0,
+} }
+
+// POST request with body
+{ op: 'httpLookup', args: {
+    url: 'https://api.pricing.com/calculate',
+    method: 'POST',
+    bodyField: 'priceRequest',
+    target: 'calculatedPrice',
+    headers: { 'Content-Type': 'application/json' },
+} }
 ```
 
 ---
@@ -234,13 +369,15 @@ Extract text using regex capture groups.
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
 | `source` | string | Yes | Source field path |
-| `pattern` | string | Yes | Regex pattern with capture group |
 | `target` | string | Yes | Target field path |
-| `group` | number | No | Capture group index (default: 1) |
+| `pattern` | string | Yes | Regex pattern with capture group (without delimiters) |
+| `group` | number | No | Capture group index (0=full match, 1+=capture groups). Default: 1 |
+| `flags` | string | No | Regex flags (e.g., "i" for case-insensitive) |
 
 ```typescript
 { op: 'extractRegex', args: { source: 'sku', pattern: '^([A-Z]+)-\\d+$', target: 'prefix' } }
 { op: 'extractRegex', args: { source: 'url', pattern: '/products/([^/]+)/', target: 'productSlug' } }
+{ op: 'extractRegex', args: { source: 'text', pattern: '([a-z]+)', target: 'word', group: 1, flags: 'i' } }
 ```
 
 ### replaceRegex
@@ -394,15 +531,16 @@ Format numbers with locale support.
 |-----|------|----------|-------------|
 | `source` | string | Yes | Source field path |
 | `target` | string | Yes | Target field path |
-| `locale` | string | No | Output locale |
-| `style` | string | No | `decimal`, `currency`, `percent` |
-| `currency` | string | No | Currency code (for style: currency) |
-| `minimumFractionDigits` | number | No | Min decimal places |
-| `maximumFractionDigits` | number | No | Max decimal places |
+| `locale` | string | No | Output locale (e.g., "en-US", "de-DE"). Default: "en-US" |
+| `decimals` | number | No | Number of decimal places |
+| `style` | select | No | `decimal`, `currency`, `percent` |
+| `currency` | string | No | Currency code (e.g., "USD", "EUR") - required for currency style |
+| `useGrouping` | boolean | No | Use thousand separators |
 
 ```typescript
 { op: 'formatNumber', args: { source: 'price', target: 'priceDisplay', style: 'currency', currency: 'USD' } }
-{ op: 'formatNumber', args: { source: 'rate', target: 'ratePercent', style: 'percent', maximumFractionDigits: 1 } }
+{ op: 'formatNumber', args: { source: 'rate', target: 'ratePercent', style: 'percent', decimals: 1 } }
+{ op: 'formatNumber', args: { source: 'amount', target: 'formatted', decimals: 2, useGrouping: true } }
 ```
 
 ### toCents
@@ -494,14 +632,15 @@ Calculate the difference between two dates.
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
-| `start` | string | Yes | Start date field path |
-| `end` | string | Yes | End date field path |
+| `startDate` | string | Yes | Start date field path |
+| `endDate` | string | Yes | End date field path |
 | `target` | string | Yes | Target field path |
-| `unit` | string | Yes | `seconds`, `minutes`, `hours`, `days`, `weeks`, `months`, `years` |
+| `unit` | select | Yes | `seconds`, `minutes`, `hours`, `days`, `weeks`, `months`, `years` |
+| `absolute` | boolean | No | Return absolute value (no negative numbers) |
 
 ```typescript
-{ op: 'dateDiff', args: { start: 'createdAt', end: 'completedAt', target: 'durationDays', unit: 'days' } }
-{ op: 'dateDiff', args: { start: 'orderDate', end: 'deliveryDate', target: 'deliveryHours', unit: 'hours' } }
+{ op: 'dateDiff', args: { startDate: 'createdAt', endDate: 'completedAt', target: 'durationDays', unit: 'days' } }
+{ op: 'dateDiff', args: { startDate: 'orderDate', endDate: 'deliveryDate', target: 'deliveryHours', unit: 'hours', absolute: true } }
 ```
 
 ### now
@@ -549,7 +688,7 @@ Filter records by conditions.
 | `conditions` | array | Yes | Array of condition objects |
 | `action` | string | Yes | `keep` or `drop` |
 
-Condition operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `contains`, `regex`
+Condition operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `contains`, `notContains`, `startsWith`, `endsWith`, `regex`, `exists`, `isNull`
 
 ```typescript
 { op: 'when', args: {
@@ -755,80 +894,19 @@ Expand an array field into multiple records (one per element).
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
-| `source` | string | Yes | Array field to expand |
-| `preserveParent` | boolean | No | Merge parent fields into each expanded record |
-| `prefix` | string | No | Prefix for expanded fields |
+| `path` | string | Yes | Path to the array to expand (e.g., "variants" or "lines") |
+| `mergeParent` | boolean | No | Include all parent fields in expanded records |
+| `parentFields` | json | No | Map of target field names to source paths (e.g., `{"productId": "id", "productName": "name"}`) |
 
 ```typescript
-{ op: 'expand', args: { source: 'variants' } }
-{ op: 'expand', args: { source: 'lineItems', preserveParent: true } }
+{ op: 'expand', args: { path: 'variants' } }
+{ op: 'expand', args: { path: 'lineItems', mergeParent: true } }
+{ op: 'expand', args: { path: 'variants', parentFields: { productId: 'id', productName: 'name' } } }
 ```
 
 This operator changes the record count. For example, 1 product with 3 variants becomes 3 records.
 
 ---
-
-## Value Operators
-
-### coalesce
-
-Return the first non-null value from paths.
-
-| Arg | Type | Required | Description |
-|-----|------|----------|-------------|
-| `paths` | array | Yes | Array of field paths to check |
-| `target` | string | Yes | Target field path |
-| `default` | any | No | Default value if all null |
-
-```typescript
-{ op: 'coalesce', args: { paths: ['name', 'title', 'sku'], target: 'displayName', default: 'Unnamed' } }
-```
-
-### default
-
-Set a default value if field is null or undefined.
-
-| Arg | Type | Required | Description |
-|-----|------|----------|-------------|
-| `path` | string | Yes | Field path |
-| `value` | any | Yes | Default value |
-
-```typescript
-{ op: 'default', args: { path: 'enabled', value: true } }
-{ op: 'default', args: { path: 'stock', value: 0 } }
-```
-
-### hash
-
-Generate a hash of a field value.
-
-| Arg | Type | Required | Description |
-|-----|------|----------|-------------|
-| `source` | string | Yes | Source field path |
-| `target` | string | Yes | Target field path |
-| `algorithm` | string | No | `md5`, `sha1`, `sha256`, `sha512` (default: `sha256`) |
-
-```typescript
-{ op: 'hash', args: { source: 'data', target: 'checksum', algorithm: 'sha256' } }
-{ op: 'hash', args: { source: 'password', target: 'passwordHash', algorithm: 'sha512' } }
-```
-
-### uuid
-
-Generate a UUID.
-
-| Arg | Type | Required | Description |
-|-----|------|----------|-------------|
-| `target` | string | Yes | Target field path |
-| `version` | string | No | `v4` (random) or `v5` (namespace-based) |
-| `namespace` | string | No | Namespace for v5 (required if version is v5) |
-| `name` | string | No | Name field for v5 |
-
-```typescript
-{ op: 'uuid', args: { target: 'id' } }
-{ op: 'uuid', args: { target: 'productId', version: 'v4' } }
-{ op: 'uuid', args: { target: 'stableId', version: 'v5', namespace: 'products', name: 'sku' } }
-```
 
 ---
 
@@ -840,13 +918,16 @@ Compute aggregates over records.
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
-| `op` | string | Yes | `count` or `sum` |
-| `source` | string | No | Source field (required for `sum`) |
+| `op` | select | Yes | `count`, `sum`, `avg`, `min`, `max` |
+| `source` | string | No | Source field path (required for sum/avg/min/max) |
 | `target` | string | Yes | Target field path |
 
 ```typescript
 { op: 'aggregate', args: { op: 'count', target: 'totalRecords' } }
 { op: 'aggregate', args: { op: 'sum', source: 'quantity', target: 'totalQuantity' } }
+{ op: 'aggregate', args: { op: 'avg', source: 'price', target: 'averagePrice' } }
+{ op: 'aggregate', args: { op: 'min', source: 'price', target: 'lowestPrice' } }
+{ op: 'aggregate', args: { op: 'max', source: 'price', target: 'highestPrice' } }
 ```
 
 ---
@@ -892,13 +973,15 @@ Execute custom JavaScript for complex transformations that can't be achieved wit
 
 | Arg | Type | Required | Description |
 |-----|------|----------|-------------|
-| `code` | string | Yes | JavaScript code to execute |
-| `batch` | boolean | No | Process all records together (default: per-record) |
-| `timeout` | number | No | Execution timeout in ms (default: 5000) |
+| `code` | code | Yes | JavaScript code to execute. Receives `record`, `index`, `context` (single mode) or `records`, `context` (batch mode). Must return the transformed result. |
+| `batch` | boolean | No | If true, processes all records at once. If false (default), processes one record at a time. |
+| `timeout` | number | No | Maximum execution time in milliseconds (default: 5000) |
+| `failOnError` | boolean | No | If true, errors fail the entire step. If false, errors are logged and records skipped. |
+| `context` | json | No | Optional JSON data passed to the script as `context.data` |
 
 **Single Record Mode** (default):
 
-The code receives `record` and must return the modified record (or `null` to exclude).
+The code receives `record`, `index`, and `context`. Return the modified record (or `null` to exclude).
 
 ```typescript
 { op: 'script', args: {
@@ -912,11 +995,20 @@ The code receives `record` and must return the modified record (or `null` to exc
 { op: 'script', args: {
     code: `return record.stock > 0 ? record : null;`,
 }}
+
+// Use context data
+{ op: 'script', args: {
+    context: { taxRate: 0.2, currency: 'USD' },
+    code: `
+        const tax = record.price * context.data.taxRate;
+        return { ...record, priceWithTax: record.price + tax, currency: context.data.currency };
+    `,
+}}
 ```
 
 **Batch Mode**:
 
-The code receives `records` array and must return the modified array.
+The code receives `records` array and `context`. Return the modified array.
 
 ```typescript
 { op: 'script', args: {
@@ -940,6 +1032,8 @@ The code receives `records` array and must return the modified array.
 
 **Available in Script Context**:
 - `record` (single mode) or `records` (batch mode)
+- `index` (single mode) - current record index
+- `context` - contains `{ total, data, index }`
 - `Array`, `Object`, `String`, `Number`, `Boolean`, `Date`, `JSON`, `Math`
 - `parseInt`, `parseFloat`, `isNaN`, `isFinite`
 - `encodeURIComponent`, `decodeURIComponent`
@@ -953,14 +1047,13 @@ The code receives `records` array and must return the modified array.
 
 | Category | Operators |
 |----------|-----------|
-| Data | `set`, `copy`, `rename`, `remove`, `map`, `enrich`, `template`, `lookup` |
-| String | `trim`, `uppercase`, `lowercase`, `slugify`, `split`, `join`, `concat`, `replace`, `extractRegex`, `replaceRegex`, `stripHtml`, `truncate` |
-| Numeric | `math`, `toNumber`, `toString`, `currency`, `unit`, `parseNumber`, `formatNumber`, `toCents`, `round` |
-| Date | `dateFormat`, `dateParse`, `dateAdd`, `dateDiff`, `now`, `formatDate` |
-| Logic | `when`, `ifThenElse`, `switch`, `deltaFilter`, `coalesce`, `lookup` |
-| JSON | `pick`, `omit`, `parseJson`, `stringifyJson` |
-| Array | `flatten`, `unique`, `first`, `last`, `count`, `expand` |
-| Value | `coalesce`, `default`, `hash`, `uuid` |
-| Aggregation | `aggregate` |
-| Validation | `validateRequired`, `validateFormat` |
-| Advanced | `script` |
+| Data (8) | `set`, `copy`, `rename`, `remove`, `map`, `template`, `hash`, `uuid` |
+| String (12) | `trim`, `uppercase`, `lowercase`, `slugify`, `split`, `join`, `concat`, `replace`, `extractRegex`, `replaceRegex`, `stripHtml`, `truncate` |
+| Numeric (9) | `math`, `toNumber`, `toString`, `currency`, `unit`, `parseNumber`, `formatNumber`, `toCents`, `round` |
+| Date (6) | `dateFormat`, `dateParse`, `dateAdd`, `dateDiff`, `now`, `formatDate` |
+| Logic (4) | `when`, `ifThenElse`, `switch`, `deltaFilter` |
+| JSON (4) | `pick`, `omit`, `parseJson`, `stringifyJson` |
+| Enrichment (5) | `lookup`, `enrich`, `coalesce`, `default`, `httpLookup` |
+| Aggregation (7) | `aggregate`, `count`, `unique`, `flatten`, `first`, `last`, `expand` |
+| Validation (2) | `validateRequired`, `validateFormat` |
+| Advanced (1) | `script` |

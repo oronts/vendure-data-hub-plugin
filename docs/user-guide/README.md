@@ -16,6 +16,8 @@ This guide covers using the Data Hub Admin UI to create and manage data pipeline
 4. [Scheduling Pipelines](./scheduling.md) - Automate pipeline execution
 5. [Monitoring & Logs](./monitoring.md) - Track runs and debug issues
 6. [Product Feeds](./feeds.md) - Generate feeds for Google, Meta, and more
+7. [Queue & Messaging](./queue-messaging.md) - Consume from and produce to message queues
+8. [External Integrations](./external-integrations.md) - Search engines, webhooks, and external APIs
 
 ## Accessing Data Hub
 

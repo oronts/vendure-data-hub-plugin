@@ -61,10 +61,10 @@ Extract steps pull data from sources.
 
 1. Drag an **Extract** node
 2. Select an adapter:
-   - **REST** (`rest`) - REST API endpoints
-   - **CSV** (`csv`) - CSV files or inline data
+   - **HTTP API** (`httpApi`) - REST API endpoints with pagination, authentication, and retry support
+   - **File** (`file`) - Parse CSV, JSON, XML, XLSX, NDJSON, TSV files
    - **GraphQL** (`graphql`) - External GraphQL endpoints
-   - **Vendure Query** (`vendure-query`) - Vendure entity data
+   - **Vendure Query** (`vendureQuery`) - Vendure entity data
 3. Configure the adapter settings
 4. Connect to the trigger
 
@@ -207,29 +207,29 @@ Hooks allow you to execute custom code at specific stages of pipeline execution.
 
 | Stage | When It Runs | Can Modify Records |
 |-------|--------------|-------------------|
-| `beforeExtract` | Before data extraction | Yes (seed records) |
-| `afterExtract` | After data is extracted | Yes |
-| `beforeTransform` | Before transformation | Yes |
-| `afterTransform` | After transformation | Yes |
-| `beforeValidate` | Before validation | Yes |
-| `afterValidate` | After validation | Yes |
-| `beforeEnrich` | Before enrichment | Yes |
-| `afterEnrich` | After enrichment | Yes |
-| `beforeRoute` | Before routing | Yes |
-| `afterRoute` | After routing | Yes |
-| `beforeLoad` | Before loading | Yes |
-| `afterLoad` | After loading | No |
+| `BEFORE_EXTRACT` | Before data extraction | Yes (seed records) |
+| `AFTER_EXTRACT` | After data is extracted | Yes |
+| `BEFORE_TRANSFORM` | Before transformation | Yes |
+| `AFTER_TRANSFORM` | After transformation | Yes |
+| `BEFORE_VALIDATE` | Before validation | Yes |
+| `AFTER_VALIDATE` | After validation | Yes |
+| `BEFORE_ENRICH` | Before enrichment | Yes |
+| `AFTER_ENRICH` | After enrichment | Yes |
+| `BEFORE_ROUTE` | Before routing | Yes |
+| `AFTER_ROUTE` | After routing | Yes |
+| `BEFORE_LOAD` | Before loading | Yes |
+| `AFTER_LOAD` | After loading | No |
 
 **Lifecycle Stages:**
 
 | Stage | When It Runs |
 |-------|--------------|
-| `pipelineStarted` | Pipeline execution begins |
-| `pipelineCompleted` | Pipeline finishes successfully |
-| `pipelineFailed` | Pipeline fails |
-| `onError` | When an error occurs |
-| `onRetry` | When a record is retried |
-| `onDeadLetter` | When a record is sent to dead letter queue |
+| `PIPELINE_STARTED` | Pipeline execution begins |
+| `PIPELINE_COMPLETED` | Pipeline finishes successfully |
+| `PIPELINE_FAILED` | Pipeline fails |
+| `ON_ERROR` | When an error occurs |
+| `ON_RETRY` | When a record is retried |
+| `ON_DEAD_LETTER` | When a record is sent to dead letter queue |
 
 ### Hook Types
 
@@ -239,8 +239,8 @@ Interceptors run JavaScript code that can modify the records array:
 
 ```typescript
 .hooks({
-    afterExtract: [{
-        type: 'interceptor',
+    AFTER_EXTRACT: [{
+        type: 'INTERCEPTOR',
         name: 'Add metadata',
         code: `
             return records.map(r => ({
@@ -252,8 +252,8 @@ Interceptors run JavaScript code that can modify the records array:
         failOnError: false,  // Don't fail pipeline if hook fails
         timeout: 5000,       // 5 second timeout
     }],
-    beforeLoad: [{
-        type: 'interceptor',
+    BEFORE_LOAD: [{
+        type: 'INTERCEPTOR',
         name: 'Filter invalid',
         code: `
             return records.filter(r => r.sku && r.name);
@@ -284,8 +284,8 @@ hookService.registerScript('addSegment', async (records, context, args) => {
 
 // Use in pipeline
 .hooks({
-    afterTransform: [{
-        type: 'script',
+    AFTER_TRANSFORM: [{
+        type: 'SCRIPT',
         scriptName: 'addSegment',
         args: { threshold: 5000 },
     }],
@@ -298,12 +298,12 @@ Send HTTP notifications to external systems:
 
 ```typescript
 .hooks({
-    pipelineCompleted: [{
+    PIPELINE_COMPLETED: [{
         type: 'webhook',
         url: 'https://slack.example.com/webhook',
         headers: { 'Content-Type': 'application/json' },
     }],
-    pipelineFailed: [{
+    PIPELINE_FAILED: [{
         type: 'webhook',
         url: 'https://pagerduty.example.com/alert',
         secret: 'webhook-signing-secret',  // HMAC signature
@@ -323,8 +323,8 @@ Emit Vendure domain events:
 
 ```typescript
 .hooks({
-    pipelineCompleted: [{
-        type: 'emit',
+    PIPELINE_COMPLETED: [{
+        type: 'EMIT',
         event: 'ProductSyncCompleted',
     }],
 })
@@ -336,8 +336,8 @@ Start another pipeline with the current records:
 
 ```typescript
 .hooks({
-    afterLoad: [{
-        type: 'triggerPipeline',
+    AFTER_LOAD: [{
+        type: 'TRIGGER_PIPELINE',
         pipelineCode: 'reindex-search',
     }],
 })

@@ -5,17 +5,45 @@ Create extractors to pull data from new sources.
 ## Interface
 
 ```typescript
-interface DataExtractor {
+interface ExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
+    readonly type: 'extractor';
     readonly code: string;
     readonly name: string;
     readonly description?: string;
-    readonly configSchema: AdapterSchema;
+    readonly schema: AdapterSchema;
 
     extract(
-        ctx: RequestContext,
-        config: JsonObject,
-        context: ExtractionContext,
-    ): AsyncGenerator<JsonObject>;
+        context: ExtractContext,
+        config: TConfig,
+    ): AsyncGenerator<RecordEnvelope>;
+
+    // Optional methods
+    getSchema?(context: ExtractContext, config: TConfig): Promise<JsonObject | undefined>;
+    testConnection?(context: ExtractContext, config: TConfig): Promise<ConnectionTestResult>;
+    preview?(context: ExtractContext, config: TConfig, limit?: number): Promise<ExtractorPreviewResult>;
+}
+
+// Alternative: batch extraction
+interface BatchExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
+    extractAll(context: ExtractContext, config: TConfig): Promise<ExtractResult>;
+}
+
+interface ExtractContext {
+    ctx: RequestContext;
+    pipelineId: ID;
+    stepKey: string;
+    pipelineContext: PipelineCtx;
+    secrets: SecretResolver;
+    connections: ConnectionResolver;
+    logger: AdapterLogger;
+    checkpoint: PipelineCheckpoint;
+    setCheckpoint(data: JsonObject): void;
+    isCancelled(): Promise<boolean>;
+}
+
+interface RecordEnvelope {
+    data: JsonObject;
+    meta?: JsonObject;
 }
 ```
 
@@ -23,38 +51,49 @@ interface DataExtractor {
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { RequestContext } from '@vendure/core';
-import { DataExtractor, ExtractionContext, AdapterSchema } from '@oronts/vendure-data-hub-plugin';
+import { ExtractorAdapter, ExtractContext, AdapterSchema, RecordEnvelope } from '@oronts/vendure-data-hub-plugin';
+
+interface MyApiConfig {
+    apiUrl: string;
+    apiKeySecretCode: string;
+    pageSize?: number;
+}
 
 @Injectable()
-export class MyApiExtractor implements DataExtractor {
+export class MyApiExtractor implements ExtractorAdapter<MyApiConfig> {
+    readonly type = 'extractor' as const;
     readonly code = 'my-api';
     readonly name = 'My API Extractor';
     readonly description = 'Fetches data from My API';
 
-    readonly configSchema: AdapterSchema = {
+    readonly schema: AdapterSchema = {
         fields: [
             { key: 'apiUrl', type: 'string', required: true, label: 'API URL' },
-            { key: 'apiKey', type: 'secret', required: true, label: 'API Key' },
+            { key: 'apiKeySecretCode', type: 'string', required: true, label: 'API Key Secret' },
             { key: 'pageSize', type: 'number', required: false, default: 100 },
         ],
     };
 
     async *extract(
-        ctx: RequestContext,
-        config: JsonObject,
-        context: ExtractionContext,
-    ): AsyncGenerator<JsonObject> {
-        const { apiUrl, apiKey, pageSize = 100 } = config as {
-            apiUrl: string;
-            apiKey: string;
-            pageSize?: number;
-        };
+        context: ExtractContext,
+        config: MyApiConfig,
+    ): AsyncGenerator<RecordEnvelope> {
+        const { apiUrl, apiKeySecretCode, pageSize = 100 } = config;
+        const { secrets, logger } = context;
+
+        // Resolve API key from secrets
+        const apiKey = await secrets.get(apiKeySecretCode);
 
         let page = 1;
         let hasMore = true;
 
         while (hasMore) {
+            // Check if cancelled
+            if (await context.isCancelled()) {
+                logger.info('Extraction cancelled');
+                break;
+            }
+
             const response = await fetch(`${apiUrl}?page=${page}&limit=${pageSize}`, {
                 headers: { 'X-API-Key': apiKey },
             });
@@ -62,8 +101,11 @@ export class MyApiExtractor implements DataExtractor {
             const data = await response.json();
 
             for (const item of data.items) {
-                yield item;
+                yield { data: item };
             }
+
+            // Update checkpoint for resumability
+            context.setCheckpoint({ lastPage: page });
 
             hasMore = data.items.length === pageSize;
             page++;
@@ -133,17 +175,20 @@ readonly configSchema: AdapterSchema = {
 
 ## Extraction Context
 
-The context provides pipeline runtime information:
+The context provides pipeline runtime information and services:
 
 ```typescript
-interface ExtractionContext {
-    runId: string;
-    pipelineId: string;
-    pipelineCode: string;
-    triggeredBy: string;
-    parameters: Record<string, any>;
-    checkpoint?: CheckpointData;
-    logger: ExecutionLogger;
+interface ExtractContext {
+    ctx: RequestContext;            // Vendure request context
+    pipelineId: ID;                 // Current pipeline ID
+    stepKey: string;                // Current step key
+    pipelineContext: PipelineCtx;   // Pipeline-wide context
+    secrets: SecretResolver;        // Resolve secret values
+    connections: ConnectionResolver; // Resolve connections
+    logger: AdapterLogger;          // Logging
+    checkpoint: PipelineCheckpoint; // Resume data
+    setCheckpoint(data: JsonObject): void;  // Save progress
+    isCancelled(): Promise<boolean>;        // Check cancellation
 }
 ```
 
@@ -152,17 +197,19 @@ interface ExtractionContext {
 Resume from last position:
 
 ```typescript
-async *extract(ctx, config, context) {
-    const startFrom = context.checkpoint?.lastId || 0;
+async *extract(context, config) {
+    const { checkpoint, logger } = context;
+    const startFrom = checkpoint?.data?.lastId || 0;
 
     const items = await fetchItems({ after: startFrom });
 
     for (const item of items) {
-        yield item;
+        yield { data: item };
 
-        // Update checkpoint periodically
+        // Update checkpoint periodically for resumability
         if (item.id % 100 === 0) {
-            context.checkpoint = { lastId: item.id };
+            context.setCheckpoint({ lastId: item.id });
+            logger.debug(`Checkpoint saved at ID ${item.id}`);
         }
     }
 }

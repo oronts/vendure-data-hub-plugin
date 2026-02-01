@@ -47,10 +47,10 @@ const pipeline = createPipeline()
     .description('Sync products from ERP system')
     .trigger('schedule', { type: 'schedule', cron: '0 2 * * *' })
     .extract('fetch-erp', {
-        adapterCode: 'rest',
+        adapterCode: 'httpApi',
         connectionCode: 'erp-api',
-        endpoint: '/products',
-        itemsField: 'data.products',
+        url: '/products',
+        dataPath: 'data.products',
     })
     .transform('map-fields', {
         operators: [
@@ -60,12 +60,9 @@ const pipeline = createPipeline()
         ],
     })
     .load('upsert-products', {
-        adapterCode: 'productUpsert',
-        strategy: 'source-wins',
-        channel: '__default_channel__',
-        skuField: 'sku',
-        nameField: 'name',
-        slugField: 'slug',
+        entityType: 'PRODUCT',
+        operation: 'UPSERT',
+        lookupFields: ['slug'],
     })
     .edge('schedule', 'fetch-erp')
     .edge('fetch-erp', 'map-fields')
@@ -85,7 +82,7 @@ The DSL is fully typed. TypeScript will catch errors like:
 ```typescript
 // TypeScript error: Property 'invalidOption' does not exist
 .extract('fetch', {
-    adapterCode: 'rest',
+    adapterCode: 'httpApi',
     invalidOption: true,  // Error!
 })
 ```

@@ -165,9 +165,9 @@ Reference a connection by its code:
 
 ```typescript
 .extract('fetch-products', {
-    adapterCode: 'rest',
+    adapterCode: 'httpApi',
     connectionCode: 'erp-api',  // Connection code
-    endpoint: '/products',
+    url: '/products',
 })
 ```
 

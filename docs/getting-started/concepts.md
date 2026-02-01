@@ -99,9 +99,9 @@ Connections are referenced by code in extract and export steps:
 
 ```typescript
 .extract('fetch-api', {
-    adapterCode: 'rest',
+    adapterCode: 'httpApi',
     connectionCode: 'my-api',  // References saved connection
-    endpoint: '/products',
+    url: '/products',
 })
 ```
 
@@ -115,8 +115,8 @@ Secrets store sensitive values like API keys and passwords. They are:
 
 ```typescript
 .extract('api-call', {
-    adapterCode: 'rest',
-    endpoint: 'https://api.example.com/products',
+    adapterCode: 'httpApi',
+    url: 'https://api.example.com/products',
     bearerTokenSecretCode: 'api-key',  // References saved secret
 })
 ```

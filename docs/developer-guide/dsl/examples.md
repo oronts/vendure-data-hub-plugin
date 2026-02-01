@@ -17,16 +17,19 @@ export const productApiImport = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-products', {
-        adapterCode: 'rest',
-        endpoint: 'https://api.supplier.com/v2/products',
+        adapterCode: 'httpApi',
+        url: 'https://api.supplier.com/v2/products',
         method: 'GET',
         headers: {
             'Accept': 'application/json',
         },
         bearerTokenSecretCode: 'supplier-api-key',
-        itemsField: 'data.products',
-        pageParam: 'page',
-        maxPages: 100,
+        dataPath: 'data.products',
+        pagination: {
+            type: 'page',
+            limit: 100,
+            maxPages: 100,
+        },
         throughput: { batchSize: 100 },
     })
 
@@ -51,12 +54,9 @@ export const productApiImport = createPipeline()
     })
 
     .load('create-products', {
-        adapterCode: 'productUpsert',
-        strategy: 'source-wins',
-        channel: '__default_channel__',
-        nameField: 'name',
-        slugField: 'slug',
-        descriptionField: 'description',
+        entityType: 'PRODUCT',
+        operation: 'UPSERT',
+        lookupFields: ['slug'],
     })
 
     .edge('start', 'fetch-products')
@@ -79,8 +79,9 @@ export const csvProductImport = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('parse-csv', {
-        adapterCode: 'csv',
-        csvPath: '/uploads/products.csv',
+        adapterCode: 'file',
+        path: '/uploads/products.csv',
+        format: 'csv',
         delimiter: ',',
         hasHeader: true,
     })
@@ -96,10 +97,9 @@ export const csvProductImport = createPipeline()
     })
 
     .load('import', {
-        adapterCode: 'variantUpsert',
-        channel: '__default_channel__',
-        skuField: 'sku',
-        priceField: 'price',
+        entityType: 'PRODUCT_VARIANT',
+        operation: 'UPDATE',
+        lookupFields: ['sku'],
     })
 
     .edge('start', 'parse-csv')
@@ -124,13 +124,14 @@ export const deltaDatabaseSync = createPipeline()
     })
 
     .extract('query-changes', {
-        adapterCode: 'rest',
+        adapterCode: 'httpApi',
         connectionCode: 'erp-api',
-        endpoint: '/products',
-        query: {
+        url: '/products',
+        dataPath: 'data',
+        pagination: {
+            type: 'offset',
             limit: 5000,
         },
-        itemsField: 'data',
     })
 
     .transform('map-and-filter', {
@@ -145,9 +146,9 @@ export const deltaDatabaseSync = createPipeline()
     })
 
     .load('upsert', {
-        adapterCode: 'variantUpsert',
-        channel: '__default_channel__',
-        skuField: 'sku',
+        entityType: 'PRODUCT_VARIANT',
+        operation: 'UPDATE',
+        lookupFields: ['sku'],
     })
 
     .edge('schedule', 'query-changes')
@@ -172,8 +173,9 @@ export const ftpInventorySync = createPipeline()
     })
 
     .extract('download-file', {
-        adapterCode: 'csv',
-        csvPath: '/exports/inventory.csv',
+        adapterCode: 'file',
+        path: '/exports/inventory.csv',
+        format: 'csv',
         hasHeader: true,
     })
 
@@ -187,10 +189,9 @@ export const ftpInventorySync = createPipeline()
     })
 
     .load('update-stock', {
-        adapterCode: 'stockAdjust',
-        skuField: 'sku',
-        stockByLocationField: 'stockOnHand',
-        absolute: true,
+        entityType: 'INVENTORY',
+        operation: 'UPDATE',
+        lookupFields: ['sku'],
     })
 
     .edge('schedule', 'download-file')
@@ -212,10 +213,10 @@ export const customerImport = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-customers', {
-        adapterCode: 'rest',
-        endpoint: 'https://crm.example.com/api/customers',
+        adapterCode: 'httpApi',
+        url: 'https://crm.example.com/api/customers',
         bearerTokenSecretCode: 'crm-api-key',
-        itemsField: 'customers',
+        dataPath: 'customers',
     })
 
     .transform('prepare-customers', {
@@ -238,11 +239,9 @@ export const customerImport = createPipeline()
     })
 
     .load('create-customers', {
-        adapterCode: 'customerUpsert',
-        emailField: 'email',
-        firstNameField: 'firstName',
-        lastNameField: 'lastName',
-        phoneNumberField: 'phone',
+        entityType: 'CUSTOMER',
+        operation: 'UPSERT',
+        lookupFields: ['emailAddress'],
     })
 
     .edge('start', 'fetch-customers')
@@ -268,8 +267,8 @@ export const googleFeedPipeline = createPipeline()
     })
 
     .extract('get-products', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         relations: 'variants,featuredAsset,collections,translations',
         languageCode: 'en',
         batchSize: 500,
@@ -337,8 +336,8 @@ export const elasticsearchIndex = createPipeline()
     })
 
     .extract('get-products', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         relations: 'variants,featuredAsset,facetValues,facetValues.facet,collections,translations',
         languageCode: 'en',
         batchSize: 500,
@@ -388,8 +387,8 @@ export const categorizedProcessing = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-products', {
-        adapterCode: 'rest',
-        endpoint: 'https://api.supplier.com/products',
+        adapterCode: 'httpApi',
+        url: 'https://api.supplier.com/products',
     })
 
     .route('by-category', {
@@ -425,9 +424,9 @@ export const categorizedProcessing = createPipeline()
 
     // Merge back
     .load('import-all', {
-        adapterCode: 'productUpsert',
-        strategy: 'source-wins',
-        channel: '__default_channel__',
+        entityType: 'PRODUCT',
+        operation: 'UPSERT',
+        lookupFields: ['slug'],
     })
 
     .edge('start', 'fetch-products')
@@ -504,8 +503,8 @@ export const productExport = createPipeline()
     })
 
     .extract('query', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         relations: 'variants,featuredAsset,facetValues',
         batchSize: 100,
     })
@@ -544,8 +543,8 @@ export const customerExport = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('query', {
-        adapterCode: 'vendure-query',
-        entity: 'Customer',
+        adapterCode: 'vendureQuery',
+        entity: 'CUSTOMER',
         relations: 'addresses,groups',
         batchSize: 50,
     })
@@ -589,8 +588,8 @@ export const orderExport = createPipeline()
     })
 
     .extract('query', {
-        adapterCode: 'vendure-query',
-        entity: 'Order',
+        adapterCode: 'vendureQuery',
+        entity: 'ORDER',
         relations: 'lines,customer,shippingLines',
         batchSize: 20,
     })
@@ -612,6 +611,276 @@ export const orderExport = createPipeline()
     .edge('schedule', 'query')
     .edge('query', 'prepare')
     .edge('prepare', 'export')
+
+    .build();
+```
+
+## Validation and Enrichment
+
+### Comprehensive Data Validation
+
+Validate incoming records with multiple rule types:
+
+```typescript
+export const validatedProductImport = createPipeline()
+    .name('Validated Product Import')
+    .description('Import products with comprehensive validation')
+    .capabilities({ requires: ['UpdateCatalog'] })
+
+    .trigger('start', { type: 'manual' })
+
+    .extract('fetch-products', {
+        adapterCode: 'httpApi',
+        url: 'https://api.supplier.com/products',
+        dataPath: 'products',
+    })
+
+    .validate('validate-data', {
+        mode: 'accumulate',  // Collect all errors vs fail-fast
+        rules: [
+            // Required field validation
+            { type: 'business', spec: { field: 'sku', required: true } },
+            { type: 'business', spec: { field: 'name', required: true } },
+            { type: 'business', spec: { field: 'price', required: true } },
+
+            // Number range validation
+            { type: 'business', spec: { field: 'price', min: 0, max: 1000000 } },
+            { type: 'business', spec: { field: 'stockLevel', min: 0 } },
+
+            // Pattern matching (regex)
+            { type: 'business', spec: {
+                field: 'sku',
+                pattern: '^[A-Z]{2,4}-\\d{4,8}$',  // e.g., SKU-12345
+            }},
+            { type: 'business', spec: {
+                field: 'email',
+                pattern: '^[^@]+@[^@]+\\.[^@]+$',  // Basic email format
+            }},
+
+            // String length validation
+            { type: 'business', spec: {
+                field: 'name',
+                minLength: 3,
+                maxLength: 255,
+            }},
+            { type: 'business', spec: {
+                field: 'description',
+                maxLength: 5000,
+            }},
+
+            // Allowed values
+            { type: 'business', spec: {
+                field: 'status',
+                oneOf: ['active', 'inactive', 'draft'],
+            }},
+        ],
+    })
+
+    .load('import-products', {
+        entityType: 'PRODUCT',
+        operation: 'UPSERT',
+        lookupFields: ['sku'],
+    })
+
+    .edge('start', 'fetch-products')
+    .edge('fetch-products', 'validate-data')
+    .edge('validate-data', 'import-products')
+
+    .build();
+```
+
+### Static Data Enrichment
+
+Enrich records without external lookups:
+
+```typescript
+export const enrichedProductImport = createPipeline()
+    .name('Enriched Product Import')
+    .description('Import products with automatic enrichment')
+    .capabilities({ requires: ['UpdateCatalog'] })
+
+    .trigger('start', { type: 'manual' })
+
+    .extract('fetch-products', {
+        adapterCode: 'httpApi',
+        url: 'https://api.supplier.com/products',
+    })
+
+    .enrich('add-defaults', {
+        // Apply defaults only to missing fields
+        defaults: {
+            currency: 'USD',
+            status: 'draft',
+            stockLevel: 0,
+            enabled: false,
+            taxCategory: 'standard',
+        },
+        // Always set these values (overwrite existing)
+        set: {
+            importSource: 'api-sync',
+            importedAt: '${timestamp}',
+            needsReview: true,
+        },
+        // Computed fields using template expressions
+        computed: {
+            slug: '${sku}-${name}',
+            fullTitle: '${brand} - ${name}',
+            searchableText: '${name} ${description} ${sku}',
+        },
+    })
+
+    .load('import-products', {
+        entityType: 'PRODUCT',
+        operation: 'UPSERT',
+        lookupFields: ['sku'],
+    })
+
+    .edge('start', 'fetch-products')
+    .edge('fetch-products', 'add-defaults')
+    .edge('add-defaults', 'import-products')
+
+    .build();
+```
+
+### Combined Validation and Enrichment
+
+Full data quality pipeline with validation and enrichment:
+
+```typescript
+export const fullDataQualityPipeline = createPipeline()
+    .name('Customer Import with Data Quality')
+    .description('Import customers with validation, enrichment, and quality checks')
+    .capabilities({ requires: ['UpdateCustomer'] })
+
+    .trigger('webhook', {
+        type: 'webhook',
+        path: '/customer-import',
+    })
+
+    // Step 1: Validate required fields and format
+    .validate('validate-input', {
+        mode: 'fail-fast',
+        rules: [
+            { type: 'business', spec: { field: 'email', required: true } },
+            { type: 'business', spec: { field: 'email', pattern: '^[^@]+@[^@]+\\.[^@]+$' } },
+            { type: 'business', spec: { field: 'firstName', required: true, minLength: 1 } },
+            { type: 'business', spec: { field: 'lastName', required: true, minLength: 1 } },
+        ],
+    })
+
+    // Step 2: Clean and normalize data
+    .transform('normalize', {
+        operators: [
+            { op: 'trim', args: { path: 'email' } },
+            { op: 'lowercase', args: { path: 'email' } },
+            { op: 'trim', args: { path: 'firstName' } },
+            { op: 'trim', args: { path: 'lastName' } },
+            { op: 'capitalize', args: { path: 'firstName' } },
+            { op: 'capitalize', args: { path: 'lastName' } },
+        ],
+    })
+
+    // Step 3: Enrich with computed and default values
+    .enrich('enrich-customer', {
+        defaults: {
+            country: 'US',
+            customerGroup: 'retail',
+            marketingOptIn: false,
+        },
+        computed: {
+            fullName: '${firstName} ${lastName}',
+            displayName: '${firstName}',
+        },
+        set: {
+            source: 'webhook-import',
+            importedAt: '${timestamp}',
+        },
+    })
+
+    // Step 4: Final validation after enrichment
+    .validate('validate-output', {
+        mode: 'accumulate',
+        rules: [
+            { type: 'business', spec: { field: 'fullName', minLength: 3 } },
+            { type: 'business', spec: { field: 'country', oneOf: ['US', 'CA', 'UK', 'DE', 'FR'] } },
+        ],
+    })
+
+    .load('create-customer', {
+        entityType: 'CUSTOMER',
+        operation: 'UPSERT',
+        lookupFields: ['emailAddress'],
+    })
+
+    .edge('webhook', 'validate-input')
+    .edge('validate-input', 'normalize')
+    .edge('normalize', 'enrich-customer')
+    .edge('enrich-customer', 'validate-output')
+    .edge('validate-output', 'create-customer')
+
+    .build();
+```
+
+### Product Catalog Enrichment for SEO
+
+Enrich products with SEO-optimized computed fields:
+
+```typescript
+export const seoEnrichmentPipeline = createPipeline()
+    .name('Product SEO Enrichment')
+    .description('Enrich product catalog with SEO-friendly fields')
+    .capabilities({ requires: ['UpdateCatalog'] })
+
+    .trigger('schedule', {
+        type: 'schedule',
+        cron: '0 3 * * *',  // Daily at 3 AM
+    })
+
+    .extract('query-products', {
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
+        relations: 'variants,featuredAsset,facetValues',
+        batchSize: 100,
+    })
+
+    // Validate products have required SEO fields
+    .validate('validate-seo-ready', {
+        mode: 'accumulate',
+        rules: [
+            { type: 'business', spec: { field: 'name', required: true, minLength: 10 } },
+            { type: 'business', spec: { field: 'description', required: true, minLength: 50 } },
+        ],
+    })
+
+    // Enrich with SEO-optimized computed fields
+    .enrich('seo-enrichment', {
+        computed: {
+            metaTitle: '${name} | Buy Online | MyStore',
+            metaDescription: 'Shop ${name}. ${description}. Free shipping on orders over $50.',
+            canonicalUrl: 'https://mystore.com/products/${slug}',
+            structuredDataTitle: '${name}',
+            ogTitle: '${name} - MyStore',
+            ogDescription: '${description}',
+        },
+        defaults: {
+            metaRobots: 'index,follow',
+            priority: 0.8,
+        },
+        set: {
+            seoUpdatedAt: '${timestamp}',
+        },
+    })
+
+    .load('update-products', {
+        entityType: 'PRODUCT',
+        operation: 'UPDATE',
+        lookupFields: ['id'],
+    })
+
+    .edge('schedule', 'query-products')
+    .edge('query-products', 'validate-seo-ready')
+    .edge('validate-seo-ready', 'seo-enrichment')
+    .edge('seo-enrichment', 'update-products')
 
     .build();
 ```

@@ -1,10 +1,10 @@
-# Search Sinks Reference
+# Sinks Reference
 
-Complete reference for all search engine integrations.
+Complete reference for all sink integrations including search engines, message queues, and webhooks.
 
 ## Overview
 
-Search sinks index Vendure data into external search engines for enhanced search functionality.
+Sinks send transformed data to external systems for search indexing, message queuing, or webhook notifications.
 
 ---
 
@@ -157,7 +157,7 @@ Index records to Algolia search service.
 | `appId` | string | Yes | Algolia Application ID |
 | `apiKeySecretCode` | string | Yes | Secret code for Admin API key |
 | `indexName` | string | Yes | Target index name |
-| `objectIdField` | string | Yes | Field for object ID |
+| `idField` | string | Yes | Field for object ID |
 | `batchSize` | number | No | Records per batch |
 
 ### Example
@@ -168,24 +168,22 @@ Index records to Algolia search service.
     appId: 'YOUR_APP_ID',
     apiKeySecretCode: 'algolia-admin-key',
     indexName: 'products',
-    objectIdField: 'objectID',
+    idField: 'id',
     batchSize: 1000,
 })
 ```
 
 ### Object ID
 
-Algolia requires a unique `objectID` field. Map your ID field:
+Algolia requires a unique `objectID` field. The `idField` specifies which record field to use:
 
 ```typescript
-.transform('prepare-algolia', {
-    operators: [
-        { op: 'copy', args: { source: 'id', target: 'objectID' } },
-    ],
-})
 .sink('algolia-products', {
     adapterCode: 'algolia',
-    objectIdField: 'objectID',
+    appId: 'YOUR_APP_ID',
+    apiKeySecretCode: 'algolia-admin-key',
+    indexName: 'products',
+    idField: 'sku',  // Use SKU as the Algolia objectID
     // ...
 })
 ```
@@ -221,6 +219,7 @@ Index records to Typesense search engine.
 | `protocol` | select | No | http or https |
 | `apiKeySecretCode` | string | Yes | Secret code for API key |
 | `collectionName` | string | Yes | Target collection name |
+| `idField` | string | Yes | Document ID field |
 | `batchSize` | number | No | Records per batch |
 
 ### Example
@@ -233,6 +232,7 @@ Index records to Typesense search engine.
     protocol: 'http',
     apiKeySecretCode: 'typesense-api-key',
     collectionName: 'products',
+    idField: 'id',
     batchSize: 250,
 })
 ```
@@ -269,8 +269,8 @@ createPipeline()
         cron: '0 */4 * * *',  // Every 4 hours
     })
     .extract('query-products', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         relations: 'variants,featuredAsset,collections,facetValues,facetValues.facet,translations',
         languageCode: 'en',
         batchSize: 500,
@@ -301,8 +301,8 @@ createPipeline()
         event: 'ProductEvent',
     })
     .extract('get-product', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         relations: 'variants,featuredAsset',
         batchSize: 1,
     })
@@ -375,3 +375,157 @@ For Elasticsearch, control index refresh:
 ```
 
 Run manual refresh after bulk indexing.
+
+---
+
+## RabbitMQ Queue Producer
+
+Code: `queueProducer`
+
+Publish records to RabbitMQ message queue via HTTP Management API (port 15672).
+
+### Configuration
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `queueType` | select | Yes | Queue type (currently: `rabbitmq`) |
+| `connectionCode` | string | Yes | Reference to queue connection configuration |
+| `queueName` | string | Yes | RabbitMQ queue name to publish to |
+| `routingKey` | string | No | Routing key for RabbitMQ exchanges |
+| `messageType` | string | No | Message type header for consumers |
+| `headers` | json | No | Static headers to include in messages |
+| `idField` | string | No | Field to use as message ID for deduplication |
+| `batchSize` | number | No | Number of messages to send per batch |
+| `persistent` | boolean | No | Persist messages to disk (delivery mode 2) |
+| `priority` | number | No | Message priority (1-10, higher = more urgent) |
+| `delayMs` | number | No | Delay before message is available for consumption |
+| `ttlMs` | number | No | Message time-to-live in milliseconds |
+
+### Example
+
+```typescript
+.sink('rabbitmq-orders', {
+    adapterCode: 'queueProducer',
+    queueType: 'rabbitmq',
+    connectionCode: 'rabbitmq-connection',
+    queueName: 'order-processing',
+    messageType: 'order.created',
+    idField: 'orderId',
+    persistent: true,
+    batchSize: 100,
+})
+```
+
+### With Routing Key
+
+```typescript
+.sink('rabbitmq-events', {
+    adapterCode: 'queueProducer',
+    queueType: 'rabbitmq',
+    connectionCode: 'rabbitmq-connection',
+    queueName: 'events',
+    routingKey: 'product.updated',
+    persistent: true,
+    priority: 5,
+})
+```
+
+### Connection Configuration
+
+```typescript
+DataHubPlugin.init({
+    connections: [
+        {
+            code: 'rabbitmq-connection',
+            type: 'rabbitmq',
+            config: {
+                host: 'localhost',
+                port: 15672,  // HTTP Management API port
+                usernameSecretCode: 'rabbitmq-user',
+                passwordSecretCode: 'rabbitmq-pass',
+                vhost: '/',
+            },
+        },
+    ],
+})
+```
+
+---
+
+## Webhook
+
+Code: `webhook`
+
+Send records to an HTTP endpoint via POST requests.
+
+### Configuration
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | Yes | HTTP endpoint to send records to |
+| `method` | select | No | HTTP method (POST, PUT, PATCH) |
+| `headers` | json | No | HTTP headers as JSON object |
+| `bearerTokenSecretCode` | string | No | Secret code for Bearer authentication |
+| `apiKeySecretCode` | string | No | Secret code for API key authentication |
+| `apiKeyHeader` | string | No | Header name for API key (default: X-API-Key) |
+| `batchSize` | number | No | Records per request |
+| `timeoutMs` | number | No | Request timeout in milliseconds (default: 30000) |
+| `retries` | number | No | Maximum retry attempts on failure (default: 3) |
+
+### Example - Single Records with Bearer Auth
+
+```typescript
+.sink('webhook-notifications', {
+    adapterCode: 'webhook',
+    url: 'https://api.example.com/webhook/products',
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    bearerTokenSecretCode: 'webhook-bearer-token',
+    batchSize: 1,
+})
+```
+
+### Example - Batch Records with API Key
+
+```typescript
+.sink('webhook-bulk', {
+    adapterCode: 'webhook',
+    url: 'https://api.example.com/bulk-import',
+    method: 'POST',
+    apiKeySecretCode: 'webhook-api-key',
+    apiKeyHeader: 'X-API-Key',
+    batchSize: 100,
+    timeoutMs: 60000,
+    retries: 5,
+})
+```
+
+### Authentication
+
+**Bearer Token:**
+```typescript
+DataHubPlugin.init({
+    secrets: [
+        {
+            code: 'webhook-bearer-token',
+            provider: 'env',
+            envVar: 'WEBHOOK_BEARER_TOKEN',
+        },
+    ],
+})
+```
+Sent as `Authorization: Bearer {value}` header.
+
+**API Key:**
+```typescript
+DataHubPlugin.init({
+    secrets: [
+        {
+            code: 'webhook-api-key',
+            provider: 'env',
+            envVar: 'WEBHOOK_API_KEY',
+        },
+    ],
+})
+```
+Sent in the header specified by `apiKeyHeader` (default: X-API-Key).

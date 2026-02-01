@@ -68,8 +68,8 @@ Reference secrets by code in step configurations.
 Bearer token:
 ```typescript
 .extract('api-call', {
-    adapterCode: 'rest',
-    endpoint: 'https://api.example.com/products',
+    adapterCode: 'httpApi',
+    url: 'https://api.example.com/products',
     bearerTokenSecretCode: 'api-key',
 })
 ```
@@ -77,20 +77,19 @@ Bearer token:
 Basic auth:
 ```typescript
 .extract('api-call', {
-    adapterCode: 'rest',
-    endpoint: 'https://api.example.com/products',
-    basicSecretCode: 'api-credentials',  // Format: username:password
+    adapterCode: 'httpApi',
+    url: 'https://api.example.com/products',
+    basicAuthSecretCode: 'api-credentials',  // Format: username:password
 })
 ```
 
 API key header:
 ```typescript
 .extract('api-call', {
-    adapterCode: 'rest',
-    endpoint: 'https://api.example.com/products',
-    headers: {
-        'X-API-Key': '{{secrets.api-key}}',
-    },
+    adapterCode: 'httpApi',
+    url: 'https://api.example.com/products',
+    apiKeySecretCode: 'api-key',
+    apiKeyHeader: 'X-API-Key',
 })
 ```
 

@@ -16,9 +16,9 @@ import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 const pipeline = createPipeline()
     .name('My Pipeline')
     .trigger('start', { type: 'manual' })
-    .extract('fetch', { adapterCode: 'rest', endpoint: '...' })
+    .extract('fetch', { adapterCode: 'httpApi', url: 'https://api.example.com/products' })
     .transform('process', { operators: [...] })
-    .load('save', { adapterCode: 'productUpsert', strategy: 'source-wins', channel: '__default_channel__' })
+    .load('save', { entityType: 'PRODUCT', operation: 'UPSERT', lookupFields: ['slug'] })
     .edge('start', 'fetch')
     .edge('fetch', 'process')
     .edge('process', 'save')
@@ -64,8 +64,8 @@ Each step type has specific configuration:
 ```typescript
 // Extract step
 .extract('fetch', {
-    adapterCode: 'rest',
-    endpoint: 'https://api.example.com',
+    adapterCode: 'httpApi',
+    url: 'https://api.example.com/products',
     method: 'GET',
 })
 
@@ -78,11 +78,9 @@ Each step type has specific configuration:
 
 // Load step
 .load('save', {
-    adapterCode: 'productUpsert',
-    strategy: 'source-wins',
-    channel: '__default_channel__',
-    skuField: 'sku',
-    nameField: 'name',
+    entityType: 'PRODUCT',
+    operation: 'UPSERT',
+    lookupFields: ['slug'],
 })
 ```
 

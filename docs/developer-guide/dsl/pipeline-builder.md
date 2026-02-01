@@ -29,12 +29,16 @@ createPipeline()
 
 ```typescript
 .context({
-    defaultChannel: 'default',
-    defaultLanguage: 'en',
+    channel: 'default',
+    contentLanguage: 'en',
+    channelStrategy: 'EXPLICIT',  // 'EXPLICIT' | 'INHERIT' | 'MULTI'
+    validationMode: 'STRICT',     // 'STRICT' | 'LENIENT'
+    runMode: 'BATCH',             // 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM'
 })
 .capabilities({
-    allowConcurrent: false,
-    resumable: true,
+    writes: ['CATALOG'],     // 'CATALOG' | 'CUSTOMERS' | 'ORDERS' | 'PROMOTIONS' | 'INVENTORY' | 'CUSTOM'
+    requires: [],            // Required permissions
+    streamSafe: true,        // Safe for streaming mode
 })
 ```
 
@@ -48,11 +52,54 @@ Pipelines that must complete before this one can run.
 
 ### Hooks
 
+Pipeline lifecycle hooks using SCREAMING_SNAKE_CASE stage names:
+
 ```typescript
 .hooks({
-    onStart: async (ctx) => { ... },
-    onComplete: async (ctx, result) => { ... },
-    onError: async (ctx, error) => { ... },
+    // Pipeline lifecycle
+    PIPELINE_STARTED: async (ctx) => { ... },
+    PIPELINE_COMPLETED: async (ctx, result) => { ... },
+    PIPELINE_FAILED: async (ctx, error) => { ... },
+
+    // Step lifecycle (per-step hooks)
+    BEFORE_EXTRACT: async (ctx) => { ... },
+    AFTER_EXTRACT: async (ctx, records) => { ... },
+    BEFORE_TRANSFORM: async (ctx, records) => { ... },
+    AFTER_TRANSFORM: async (ctx, records) => { ... },
+    BEFORE_VALIDATE: async (ctx, records) => { ... },
+    AFTER_VALIDATE: async (ctx, records) => { ... },
+    BEFORE_ENRICH: async (ctx, records) => { ... },
+    AFTER_ENRICH: async (ctx, records) => { ... },
+    BEFORE_ROUTE: async (ctx, records) => { ... },
+    AFTER_ROUTE: async (ctx, records) => { ... },
+    BEFORE_LOAD: async (ctx, records) => { ... },
+    AFTER_LOAD: async (ctx, result) => { ... },
+
+    // Error handling
+    ON_ERROR: async (ctx, error) => { ... },
+    ON_RETRY: async (ctx, attempt, error) => { ... },
+    ON_DEAD_LETTER: async (ctx, record, error) => { ... },
+})
+```
+
+**Hook Actions** - Hooks can also be configured as action objects:
+
+```typescript
+.hooks({
+    PIPELINE_COMPLETED: {
+        type: 'webhook',
+        url: 'https://api.example.com/notify',
+        method: 'POST',
+        retries: 3,
+    },
+    ON_ERROR: {
+        type: 'EMIT',
+        event: 'pipeline.error',
+    },
+    AFTER_LOAD: {
+        type: 'TRIGGER_PIPELINE',
+        pipelineCode: 'post-import-sync',
+    },
 })
 ```
 
@@ -118,14 +165,16 @@ Pull data from external sources:
 **HTTP API:**
 ```typescript
 .extract('fetch-api', {
-    adapterCode: 'rest',
-    endpoint: 'https://api.example.com/products',
+    adapterCode: 'httpApi',
+    url: 'https://api.example.com/products',
     method: 'GET',
     headers: { 'Accept': 'application/json' },
-    query: { limit: 100 },
-    itemsField: 'data.items',
-    pageParam: 'page',
-    maxPages: 10,
+    dataPath: 'data.items',
+    pagination: {
+        type: 'page',
+        limit: 100,
+        maxPages: 10,
+    },
     bearerTokenSecretCode: 'api-key',
 })
 ```
@@ -134,17 +183,18 @@ Pull data from external sources:
 ```typescript
 .extract('query-graphql', {
     adapterCode: 'graphql',
-    endpoint: 'https://api.example.com/graphql',
+    url: 'https://api.example.com/graphql',
     query: `query { products { id name } }`,
-    itemsField: 'data.products',
+    dataPath: 'data.products',
 })
 ```
 
 **File:**
 ```typescript
 .extract('parse-file', {
-    adapterCode: 'csv',
-    csvPath: '/uploads/products.csv',
+    adapterCode: 'file',
+    path: '/uploads/products.csv',
+    format: 'csv',
     delimiter: ',',
     hasHeader: true,
 })
@@ -153,8 +203,8 @@ Pull data from external sources:
 **Vendure Query:**
 ```typescript
 .extract('query-vendure', {
-    adapterCode: 'vendure-query',
-    entity: 'Product',
+    adapterCode: 'vendureQuery',
+    entity: 'PRODUCT',  // UPPERCASE: PRODUCT, COLLECTION, FACET, CUSTOMER, ORDER, etc.
     relations: 'variants,featuredAsset,translations',
     languageCode: 'en',
     batchSize: 500,
@@ -284,24 +334,21 @@ Create or update Vendure entities:
 **Product Loader:**
 ```typescript
 .load('import-products', {
-    adapterCode: 'productUpsert',
-    strategy: 'source-wins',
-    channel: '__default_channel__',
-    skuField: 'sku',
-    nameField: 'name',
-    slugField: 'slug',
-    descriptionField: 'description',
+    entityType: 'PRODUCT',
+    operation: 'UPSERT',
+    lookupFields: ['slug'],
+    options: {
+        conflictResolution: 'source-wins',
+    },
 })
 ```
 
 **Variant Loader:**
 ```typescript
 .load('import-variants', {
-    adapterCode: 'variantUpsert',
-    channel: '__default_channel__',
-    skuField: 'sku',
-    priceField: 'price',
-    stockField: 'stock',
+    entityType: 'PRODUCT_VARIANT',
+    operation: 'UPDATE',
+    lookupFields: ['sku'],
 })
 ```
 
@@ -347,8 +394,8 @@ Generate product feeds:
 
 ```typescript
 .feed('step-key', {
-    adapterCode: 'feed-generator',
-    feedType?: 'google-merchant' | 'meta-catalog' | 'amazon' | 'custom',
+    adapterCode: 'googleMerchant' | 'metaCatalog' | 'customFeed',
+    feedType?: 'google-merchant' | 'meta-catalog' | 'amazon' | 'pinterest' | 'bing' | 'custom',
     format?: 'xml' | 'csv' | 'tsv' | 'json' | 'jsonl',
     // Feed-specific options...
 })
@@ -378,7 +425,7 @@ Index data to search engines:
 ```typescript
 .sink('step-key', {
     adapterCode: 'search-sink',
-    sinkType?: 'elasticsearch' | 'meilisearch' | 'algolia' | 'typesense',
+    sinkType?: 'elasticsearch' | 'opensearch' | 'meilisearch' | 'algolia' | 'typesense' | 'custom',
     indexName: string,
     // Sink-specific options...
 })
@@ -437,12 +484,19 @@ Control execution performance:
 ```typescript
 {
     throughput: {
-        batchSize: 100,      // Records per batch
-        concurrency: 4,      // Parallel batches
-        rateLimit: 10,       // Max ops per second
-        retryCount: 3,       // Retries on failure
-        retryDelay: 1000,    // Delay between retries (ms)
-    }
+        batchSize: 100,         // Records per batch
+        concurrency: 4,         // Parallel batches
+        rateLimitRps: 10,       // Max requests per second
+        drainStrategy: 'BACKOFF',  // 'BACKOFF' | 'SHED' | 'QUEUE'
+        pauseOnErrorRate: {
+            threshold: 0.5,     // Pause if error rate exceeds 50%
+            intervalSec: 60,    // Check interval
+        },
+    },
+    // Retry configuration (step-level, not in throughput)
+    retries: 3,
+    retryDelayMs: 1000,
+    timeoutMs: 30000,
 }
 ```
 
@@ -455,7 +509,7 @@ const productSync = createPipeline()
     .name('Daily Product Sync')
     .description('Sync products from ERP every day')
     .version(1)
-    .capabilities({ resumable: true })
+    .capabilities({ writes: ['CATALOG'], streamSafe: true })
 
     .trigger('schedule', {
         type: 'schedule',
@@ -464,10 +518,10 @@ const productSync = createPipeline()
     })
 
     .extract('fetch-erp', {
-        adapterCode: 'rest',
+        adapterCode: 'httpApi',
         connectionCode: 'erp-api',
-        endpoint: '/products',
-        itemsField: 'data',
+        url: '/products',
+        dataPath: 'data',
         throughput: { batchSize: 500 },
     })
 
@@ -491,13 +545,12 @@ const productSync = createPipeline()
     })
 
     .load('upsert-products', {
-        adapterCode: 'productUpsert',
-        strategy: 'source-wins',
-        channel: '__default_channel__',
-        skuField: 'sku',
-        nameField: 'name',
-        slugField: 'slug',
-        descriptionField: 'description',
+        entityType: 'PRODUCT',
+        operation: 'UPSERT',
+        lookupFields: ['slug'],
+        options: {
+            conflictResolution: 'source-wins',
+        },
         throughput: { batchSize: 50, concurrency: 2 },
     })
 

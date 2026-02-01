@@ -16,6 +16,7 @@ DataHubPlugin.init({
     enabled: true,
     registerBuiltinAdapters: true,
     debug: false,
+    enableDashboard: true,
 
     // Retention
     retentionDaysRuns: 30,
@@ -26,7 +27,20 @@ DataHubPlugin.init({
     secrets: [],
     connections: [],
     adapters: [],
+    feedGenerators: [],
     configPath: undefined,
+
+    // Runtime configuration
+    runtime: {
+        batch: { size: 50, bulkSize: 100 },
+        http: { timeoutMs: 30000, maxRetries: 3 },
+    },
+
+    // Security configuration
+    security: {
+        ssrf: { /* SSRF protection settings */ },
+        script: { enabled: true },
+    },
 })
 ```
 
@@ -67,6 +81,20 @@ Set to `false` if you want to register only custom adapters.
 ```typescript
 DataHubPlugin.init({
     debug: process.env.NODE_ENV !== 'production',
+})
+```
+
+### enableDashboard
+
+| | |
+|---|---|
+| Type | `boolean` |
+| Default | `true` |
+| Description | Enable or disable the Data Hub dashboard UI |
+
+```typescript
+DataHubPlugin.init({
+    enableDashboard: true,
 })
 ```
 
@@ -136,10 +164,10 @@ interface CodeFirstSecret {
 
 ```typescript
 interface CodeFirstConnection {
-    code: string;
-    type: string;
-    name: string;
-    settings: Record<string, any>;
+    code: string;           // Unique connection identifier
+    type: string;           // Connection type (e.g., 'postgres', 'mysql', 'rest', 's3')
+    name: string;           // Human-readable name
+    settings: JsonObject;   // Connection settings - supports env var references like ${DB_HOST}
 }
 ```
 
@@ -183,6 +211,120 @@ DataHubPlugin.init({
 ```
 
 See [Extending the Plugin](../developer-guide/extending/README.md) for detailed documentation on creating custom adapters.
+
+### feedGenerators
+
+| | |
+|---|---|
+| Type | `CustomFeedGenerator[]` |
+| Default | `[]` |
+| Description | Custom feed generator registrations |
+
+```typescript
+DataHubPlugin.init({
+    feedGenerators: [
+        myCustomFeedGenerator,
+    ],
+})
+```
+
+### runtime
+
+| | |
+|---|---|
+| Type | `RuntimeLimitsConfig` |
+| Default | See below |
+| Description | Runtime configuration for batch processing, HTTP, circuit breaker, etc. |
+
+```typescript
+interface RuntimeLimitsConfig {
+    batch?: {
+        size?: number;              // Default batch size (default: 50)
+        bulkSize?: number;          // Bulk operation size (default: 100)
+        maxInFlight?: number;       // Max concurrent operations (default: 5)
+        rateLimitRps?: number;      // Requests per second (default: 10)
+    };
+    http?: {
+        timeoutMs?: number;         // Request timeout (default: 30000)
+        maxRetries?: number;        // Max retry attempts (default: 3)
+        retryDelayMs?: number;      // Initial retry delay (default: 1000)
+        retryMaxDelayMs?: number;   // Max retry delay (default: 30000)
+        exponentialBackoff?: boolean;  // Enable exponential backoff (default: true)
+        backoffMultiplier?: number; // Backoff multiplier (default: 2)
+    };
+    circuitBreaker?: {
+        enabled?: boolean;          // Enable circuit breaker (default: true)
+        failureThreshold?: number;  // Failures before opening (default: 5)
+        successThreshold?: number;  // Successes to close (default: 3)
+        resetTimeoutMs?: number;    // Time before reset attempt (default: 30000)
+    };
+    connectionPool?: {
+        min?: number;               // Min connections (default: 1)
+        max?: number;               // Max connections (default: 10)
+        idleTimeoutMs?: number;     // Idle timeout (default: 30000)
+    };
+    pagination?: {
+        maxPages?: number;          // Max pages to fetch (default: 100)
+        pageSize?: number;          // Default page size (default: 100)
+        databasePageSize?: number;  // Database page size (default: 1000)
+    };
+    scheduler?: {
+        checkIntervalMs?: number;   // Cron check interval (default: 30000)
+        refreshIntervalMs?: number; // Cache refresh interval (default: 60000)
+    };
+}
+```
+
+Example:
+
+```typescript
+DataHubPlugin.init({
+    runtime: {
+        batch: { size: 100, maxInFlight: 10 },
+        http: { timeoutMs: 60000, maxRetries: 5 },
+        circuitBreaker: { failureThreshold: 10 },
+    },
+})
+```
+
+### security
+
+| | |
+|---|---|
+| Type | `SecurityConfig` |
+| Default | See below |
+| Description | Security configuration for SSRF protection and script execution |
+
+```typescript
+interface SecurityConfig {
+    ssrf?: UrlSecurityConfig;     // SSRF protection settings
+    script?: ScriptSecurityConfig; // Script operator security settings
+}
+
+interface ScriptSecurityConfig {
+    enabled?: boolean;            // Enable script operators (default: true)
+    validation?: {                // Code validation settings
+        maxExpressionLength?: number;
+        // ... other validation options
+    };
+    maxCacheSize?: number;        // Max cached expressions (default: 1000)
+    defaultTimeoutMs?: number;    // Script timeout (default: 5000)
+    enableCache?: boolean;        // Enable expression caching (default: true)
+}
+```
+
+Example:
+
+```typescript
+DataHubPlugin.init({
+    security: {
+        script: {
+            enabled: true,
+            defaultTimeoutMs: 10000,
+        },
+    },
+})
+```
 
 ### configPath
 
