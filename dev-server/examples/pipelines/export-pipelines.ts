@@ -11,8 +11,8 @@ export const productExportFull = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-products', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         // Load variants.translations as a nested relation to get variant names
         relations: 'translations,variants,variants.translations,featuredAsset,facetValues',
         languageCode: 'en',
@@ -159,8 +159,8 @@ export const customerExportFull = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-customers', {
-        adapterCode: 'vendure-query',
-        entity: 'Customer',
+        adapterCode: 'vendureQuery',
+        entity: 'CUSTOMER',
         relations: 'addresses,groups,orders',
         batchSize: 100,
     })
@@ -270,8 +270,8 @@ export const orderExportFull = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-orders', {
-        adapterCode: 'vendure-query',
-        entity: 'Order',
+        adapterCode: 'vendureQuery',
+        entity: 'ORDER',
         relations: 'customer,lines,shippingLines,payments',
         batchSize: 50,
     })
@@ -402,8 +402,8 @@ export const inventoryExport = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-variants', {
-        adapterCode: 'vendure-query',
-        entity: 'ProductVariant',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT_VARIANT',
         relations: 'translations,product,stockLevels',
         languageCode: 'en',
         batchSize: 100,
@@ -464,7 +464,7 @@ export const inventoryExport = createPipeline()
                 },
             },
             { op: 'set', args: { path: 'lowStock', value: true } },
-            { op: 'set', args: { path: 'exportedAt', value: new Date().toISOString() } },
+            { op: 'now', args: { target: 'exportedAt', format: 'ISO' } },
         ],
     })
 

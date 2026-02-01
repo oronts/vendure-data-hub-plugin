@@ -12,99 +12,53 @@
  * - SCHEDULED: Automated, recurring data operations
  */
 
-// =============================================================================
-// EXPORT PIPELINES
-// =============================================================================
 export {
-    // Full product catalog export with variants flattened to rows
     productExportFull,
-    // Customer export with addresses, order count, and total spent
     customerExportFull,
-    // Order export with line items flattened and customer info
     orderExportFull,
-    // Inventory export by SKU and stock location
     inventoryExport,
 } from './export-pipelines';
 
-// =============================================================================
-// IMPORT PIPELINES
-// =============================================================================
 export {
-    // Product import from CSV with transformations
     productImportCsv,
-    // Customer import with address parsing and validation
     customerImportCsv,
-    // Stock level update from CSV
     stockUpdateCsv,
-    // Bulk price update with currency support
     priceUpdateCsv,
 } from './import-pipelines';
 
-// =============================================================================
-// SYNC & INTEGRATION PIPELINES
-// =============================================================================
 export {
-    // Google Merchant Center product feed
     googleShoppingFeed,
-    // Facebook/Meta product catalog feed
     facebookCatalogFeed,
-    // Import from external REST API with pagination
     restApiImport,
 } from './sync-pipelines';
 
-// =============================================================================
-// DATA PROCESSING PIPELINES
-// =============================================================================
 export {
-    // Enrich products with calculated fields and SEO metadata
     productEnrichment,
-    // Extract and analyze order data
     orderAnalytics,
-    // Segment customers based on RFM analysis
     customerSegmentation,
 } from './processing-pipelines';
 
-// =============================================================================
-// SCHEDULED PIPELINES
-// =============================================================================
 export {
-    // Daily stock sync from ERP with delta detection
     dailyStockSync,
-    // Hourly price sync from pricing engine
     hourlyPriceSync,
-    // Weekly customer cleanup/archival
     weeklyCustomerCleanup,
-    // Webhook-triggered order processing
     webhookOrderSync,
-    // Event-triggered low stock alerts
     lowStockAlert,
-    // Webhook authentication examples
     webhookApiKeyAuth,
     webhookJwtAuth,
     webhookBasicAuth,
+    multiTriggerPipeline,
 } from './scheduled-pipelines';
 
-// =============================================================================
-// ADVANCED PIPELINES - Hooks, Scripts, Custom Adapters
-// =============================================================================
 export {
-    // Interceptor hooks that modify records during pipeline execution
     interceptorHooksPipeline,
-    // Script hooks using registered functions
     scriptHooksPipeline,
-    // Script operator for inline JavaScript transformations
     scriptOperatorPipeline,
-    // Comprehensive example combining all approaches
     comprehensiveAdvancedPipeline,
-    // All 18 hook stages demonstration
     allHookStagesPipeline,
-    // Custom SDK adapter pattern
     customAdapterPipeline,
 } from './advanced-pipelines';
 
-// =============================================================================
-// ALL PIPELINES (for bulk registration)
-// =============================================================================
 import {
     productExportFull,
     customerExportFull,
@@ -140,6 +94,7 @@ import {
     webhookApiKeyAuth,
     webhookJwtAuth,
     webhookBasicAuth,
+    multiTriggerPipeline,
 } from './scheduled-pipelines';
 
 import {
@@ -186,6 +141,7 @@ export const examplePipelines = {
         webhookApiKeyAuth,
         webhookJwtAuth,
         webhookBasicAuth,
+        multiTriggerPipeline,
     },
     advanced: {
         interceptorHooksPipeline,
@@ -201,25 +157,20 @@ export const examplePipelines = {
  * Flat array of all example pipelines for registration
  */
 export const allExamplePipelines = [
-    // Exports
     productExportFull,
     customerExportFull,
     orderExportFull,
     inventoryExport,
-    // Imports
     productImportCsv,
     customerImportCsv,
     stockUpdateCsv,
     priceUpdateCsv,
-    // Sync
     googleShoppingFeed,
     facebookCatalogFeed,
     restApiImport,
-    // Processing
     productEnrichment,
     orderAnalytics,
     customerSegmentation,
-    // Scheduled
     dailyStockSync,
     hourlyPriceSync,
     weeklyCustomerCleanup,
@@ -228,7 +179,7 @@ export const allExamplePipelines = [
     webhookApiKeyAuth,
     webhookJwtAuth,
     webhookBasicAuth,
-    // Advanced
+    multiTriggerPipeline,
     interceptorHooksPipeline,
     scriptHooksPipeline,
     scriptOperatorPipeline,

@@ -29,8 +29,8 @@ export const googleShoppingFeed = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-products', {
-        adapterCode: 'vendure-query',
-        entity: 'ProductVariant',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT_VARIANT',
         relations: 'translations,product,featuredAsset,stockLevels,facetValues',
         languageCode: 'en',
         batchSize: 100,
@@ -285,8 +285,8 @@ export const facebookCatalogFeed = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-products', {
-        adapterCode: 'vendure-query',
-        entity: 'ProductVariant',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT_VARIANT',
         relations: 'translations,product,featuredAsset,stockLevels',
         languageCode: 'en',
         batchSize: 100,
@@ -458,8 +458,8 @@ export const restApiImport = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-api', {
-        adapterCode: 'rest',
-        endpoint: 'https://api.supplier.com/v1/products',
+        adapterCode: 'httpApi',
+        url: 'https://api.supplier.com/v1/products',
         method: 'GET',
         headers: {
             'Accept': 'application/json',

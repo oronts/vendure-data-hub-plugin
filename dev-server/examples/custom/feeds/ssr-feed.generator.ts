@@ -1,5 +1,7 @@
-import { CustomFeedGenerator, FeedGeneratorContext, CustomFeedResult } from '../../../../src/feeds/generators/feed-types';
+import { CustomFeedGenerator, FeedGeneratorContext, CustomFeedResult, VariantWithCustomFields } from '../../../../src/feeds/generators/feed-types';
 import { CONTENT_TYPES } from '../../../../src/constants/index';
+
+const LOG_CONTEXT = 'SSRFeedGenerator';
 
 interface SSRFeedItem {
     id: string;
@@ -26,46 +28,17 @@ export const ssrFeedGenerator: CustomFeedGenerator = {
         const baseUrl = config.options?.baseUrl ?? 'https://example.com';
         const currency = config.options?.currency ?? 'USD';
 
-        const items: SSRFeedItem[] = products.map(variant => {
-            const product = variant.product;
-            const totalStock = variant.stockLevels?.reduce((sum, sl) => sum + sl.stockOnHand, 0) ?? 0;
+        const items: SSRFeedItem[] = [];
 
-            // Get brand from facet values
-            const brandFacet = product.facetValues?.find(fv => fv.facet?.code === 'brand');
-            const categoryFacet = product.facetValues?.find(fv => fv.facet?.code === 'category');
-
-            // Build image URL
-            const asset = variant.featuredAsset ?? product.featuredAsset;
-            const imageUrl = asset ? `${baseUrl}/assets/${asset.preview}` : '';
-
-            // Apply custom field mappings
-            const customAttributes: Record<string, string> = {};
-            if (config.fieldMappings) {
-                for (const [targetField, mapping] of Object.entries(config.fieldMappings)) {
-                    if (typeof mapping === 'string') {
-                        const value = getNestedValue(variant, mapping) ?? getNestedValue(product, mapping);
-                        if (value !== undefined) {
-                            customAttributes[targetField] = String(value);
-                        }
-                    }
-                }
+        for (const variant of products) {
+            try {
+                const item = transformVariantToSSRItem(variant, baseUrl, currency, config.fieldMappings);
+                items.push(item);
+            } catch (error) {
+                // Log and continue processing other variants
+                console.warn(`[${LOG_CONTEXT}] Failed to process variant ${variant.id}: ${error}`);
             }
-
-            return {
-                id: String(variant.id),
-                sku: variant.sku,
-                name: variant.name || product.name,
-                description: product.description?.replace(/<[^>]*>/g, '') ?? '',
-                price: variant.priceWithTax / 100,
-                currency,
-                availability: totalStock > 0 ? 'in_stock' : 'out_of_stock',
-                imageUrl,
-                productUrl: `${baseUrl}/products/${product.slug}?variant=${variant.id}`,
-                brand: brandFacet?.name,
-                category: categoryFacet?.name,
-                customAttributes: Object.keys(customAttributes).length > 0 ? customAttributes : undefined,
-            };
-        });
+        }
 
         // Generate XML output (SSR-friendly format)
         const xml = generateSSRXml(items, config.code);
@@ -78,8 +51,62 @@ export const ssrFeedGenerator: CustomFeedGenerator = {
     },
 };
 
-function getNestedValue(obj: any, path: string): any {
-    return path.split('.').reduce((acc, part) => acc?.[part], obj);
+/**
+ * Transform a variant to SSR feed item format
+ */
+function transformVariantToSSRItem(
+    variant: VariantWithCustomFields,
+    baseUrl: string,
+    currency: string,
+    fieldMappings?: Record<string, string | { source: string; default?: unknown }>,
+): SSRFeedItem {
+    const product = variant.product;
+    const totalStock = variant.stockLevels?.reduce((sum, sl) => sum + sl.stockOnHand, 0) ?? 0;
+
+    // Get brand from facet values
+    const brandFacet = product?.facetValues?.find(fv => fv.facet?.code === 'brand');
+    const categoryFacet = product?.facetValues?.find(fv => fv.facet?.code === 'category');
+
+    // Build image URL
+    const asset = variant.featuredAsset ?? product?.featuredAsset;
+    const imageUrl = asset ? `${baseUrl}/assets/${asset.preview}` : '';
+
+    // Apply custom field mappings
+    const customAttributes: Record<string, string> = {};
+    if (fieldMappings) {
+        for (const [targetField, mapping] of Object.entries(fieldMappings)) {
+            if (typeof mapping === 'string') {
+                const value = getNestedValue(variant, mapping) ?? getNestedValue(product, mapping);
+                if (value !== undefined) {
+                    customAttributes[targetField] = String(value);
+                }
+            }
+        }
+    }
+
+    return {
+        id: String(variant.id),
+        sku: variant.sku ?? '',
+        name: variant.name || product?.name || '',
+        description: product?.description?.replace(/<[^>]*>/g, '') ?? '',
+        price: variant.priceWithTax / 100,
+        currency,
+        availability: totalStock > 0 ? 'in_stock' : 'out_of_stock',
+        imageUrl,
+        productUrl: `${baseUrl}/products/${product?.slug ?? variant.id}?variant=${variant.id}`,
+        brand: brandFacet?.name,
+        category: categoryFacet?.name,
+        customAttributes: Object.keys(customAttributes).length > 0 ? customAttributes : undefined,
+    };
+}
+
+function getNestedValue(obj: unknown, path: string): unknown {
+    return path.split('.').reduce((acc: unknown, part) => {
+        if (acc && typeof acc === 'object' && part in acc) {
+            return (acc as Record<string, unknown>)[part];
+        }
+        return undefined;
+    }, obj);
 }
 
 function generateSSRXml(items: SSRFeedItem[], feedCode: string): string {

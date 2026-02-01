@@ -1,4 +1,4 @@
-import { JsonObject, LoaderAdapter, LoadContext, LoadResult, StepConfigSchema } from '../../../../src';
+import { JsonObject, LoaderAdapter, LoadContext, LoadResult, StepConfigSchema, BATCH, HTTP, WEBHOOK, SINK } from '../../../../src';
 
 export const webhookNotifySchema: StepConfigSchema = {
     fields: [
@@ -27,9 +27,9 @@ export const webhookNotifySchema: StepConfigSchema = {
                 { value: 'batch', label: 'Batch - All records in one request' },
             ],
         },
-        { key: 'maxBatchSize', type: 'number', label: 'Max Batch Size', required: false, defaultValue: 100 },
-        { key: 'retries', type: 'number', label: 'Retries', required: false, defaultValue: 3 },
-        { key: 'timeoutMs', type: 'number', label: 'Timeout (ms)', required: false, defaultValue: 30000 },
+        { key: 'maxBatchSize', type: 'number', label: 'Max Batch Size', required: false, defaultValue: SINK.WEBHOOK_BATCH_SIZE },
+        { key: 'retries', type: 'number', label: 'Retries', required: false, defaultValue: HTTP.MAX_RETRIES },
+        { key: 'timeoutMs', type: 'number', label: 'Timeout (ms)', required: false, defaultValue: WEBHOOK.TIMEOUT_MS },
     ],
 };
 
@@ -89,7 +89,7 @@ async function sendWebhook(
             lastError = (err as Error).message || 'Unknown error';
         }
 
-        if (attempt < retries) await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        if (attempt < retries) await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * HTTP.RETRY_DELAY_MS));
     }
 
     return { success: false, error: lastError };
@@ -106,7 +106,7 @@ export const webhookNotifyLoader: LoaderAdapter<WebhookNotifyConfig> = {
     version: '1.0.0',
 
     async load(context: LoadContext, config: WebhookNotifyConfig, records: readonly JsonObject[]): Promise<LoadResult> {
-        const { endpoint, method = 'POST', headers, batchMode = 'single', maxBatchSize = 100, retries = 3, timeoutMs = 30000 } = config;
+        const { endpoint, method = 'POST', headers, batchMode = 'single', maxBatchSize = SINK.WEBHOOK_BATCH_SIZE, retries = HTTP.MAX_RETRIES, timeoutMs = WEBHOOK.TIMEOUT_MS } = config;
 
         if (context.dryRun) {
             context.logger.info(`[DRY RUN] Would send ${records.length} records to ${endpoint}`);

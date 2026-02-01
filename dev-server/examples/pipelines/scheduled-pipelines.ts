@@ -39,8 +39,8 @@ export const dailyStockSync = createPipeline()
     })
 
     .extract('fetch-erp-stock', {
-        adapterCode: 'rest',
-        endpoint: 'https://erp.company.com/api/v1/inventory',
+        adapterCode: 'httpApi',
+        url: 'https://erp.company.com/api/v1/inventory',
         method: 'GET',
         headers: {
             'Accept': 'application/json',
@@ -192,16 +192,16 @@ export const dailyStockSync = createPipeline()
 
     // Configure hooks for monitoring
     .hooks({
-        pipelineCompleted: [
+        PIPELINE_COMPLETED: [
             {
-                type: 'webhook',
+                type: 'WEBHOOK',
                 name: 'Notify Slack on completion',
                 url: 'https://slack.company.com/webhooks/stock-sync',
             },
         ],
-        pipelineFailed: [
+        PIPELINE_FAILED: [
             {
-                type: 'webhook',
+                type: 'WEBHOOK',
                 name: 'Notify PagerDuty on error',
                 url: 'https://pagerduty.com/webhooks/stock-sync-error',
             },
@@ -229,8 +229,8 @@ export const hourlyPriceSync = createPipeline()
     })
 
     .extract('fetch-prices', {
-        adapterCode: 'rest',
-        endpoint: 'https://pricing.company.com/api/v1/prices',
+        adapterCode: 'httpApi',
+        url: 'https://pricing.company.com/api/v1/prices',
         method: 'GET',
         bearerTokenSecretCode: 'pricing-api-token',
         itemsField: 'prices',
@@ -284,8 +284,8 @@ export const weeklyCustomerCleanup = createPipeline()
     })
 
     .extract('fetch-customers', {
-        adapterCode: 'vendure-query',
-        entity: 'Customer',
+        adapterCode: 'vendureQuery',
+        entity: 'CUSTOMER',
         relations: 'orders',
         batchSize: 100,
     })
@@ -361,10 +361,10 @@ export const webhookOrderSync = createPipeline()
         type: 'webhook',
         webhookCode: 'external-orders',
         // Authentication: HMAC-SHA256 signature verification
-        authentication: 'HMAC',
+        authentication: 'hmac',
         secretCode: 'webhook-hmac-secret',  // Reference to DataHub Secret
         hmacHeaderName: 'x-webhook-signature',
-        hmacAlgorithm: 'sha256',
+        hmacAlgorithm: 'SHA256',
         // Require idempotency key to prevent duplicate processing
         requireIdempotencyKey: true,
         // Rate limit: 100 requests per minute
@@ -428,7 +428,7 @@ export const webhookOrderSync = createPipeline()
     // In production, you would use Vendure's order APIs or create a custom loader
     .load('log-orders', {
         adapterCode: 'restPost',
-        endpoint: 'https://your-system.com/api/orders/log',
+        endpoint: 'https://example.com/api/orders/log',
         method: 'POST',
     })
 
@@ -437,16 +437,16 @@ export const webhookOrderSync = createPipeline()
     .edge('transform-orders', 'log-orders')
 
     .hooks({
-        pipelineCompleted: [
+        PIPELINE_COMPLETED: [
             {
-                type: 'webhook',
+                type: 'WEBHOOK',
                 name: 'Callback on completion',
                 url: 'https://callback.example.com/orders/complete',
             },
         ],
-        pipelineFailed: [
+        PIPELINE_FAILED: [
             {
-                type: 'webhook',
+                type: 'WEBHOOK',
                 name: 'Error callback',
                 url: 'https://callback.example.com/orders/error',
             },
@@ -473,8 +473,8 @@ export const lowStockAlert = createPipeline()
 
     // Note: Deep relations like stockLevels.stockLocation don't work with TypeORM
     .extract('get-variant-details', {
-        adapterCode: 'vendure-query',
-        entity: 'ProductVariant',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT_VARIANT',
         relations: 'product,stockLevels',
         batchSize: 1,
     })
@@ -535,7 +535,7 @@ export const webhookApiKeyAuth = createPipeline()
         type: 'webhook',
         webhookCode: 'api-key-webhook',
         // Authentication: API Key in header
-        authentication: 'API_KEY',
+        authentication: 'api-key',
         apiKeySecretCode: 'webhook-api-key',  // Reference to DataHub Secret
         apiKeyHeaderName: 'x-api-key',        // Custom header name (default: x-api-key)
         // Rate limit: 50 requests per minute
@@ -554,7 +554,7 @@ export const webhookApiKeyAuth = createPipeline()
 
     .load('log-result', {
         adapterCode: 'restPost',
-        endpoint: 'https://your-system.com/api/log',
+        endpoint: 'https://example.com/api/log',
         method: 'POST',
     })
 
@@ -576,7 +576,7 @@ export const webhookJwtAuth = createPipeline()
         type: 'webhook',
         webhookCode: 'jwt-webhook',
         // Authentication: JWT Bearer token
-        authentication: 'JWT',
+        authentication: 'jwt',
         jwtSecretCode: 'webhook-jwt-secret',  // Reference to DataHub Secret (HS256 key)
         jwtHeaderName: 'Authorization',       // Standard Authorization header
         // Rate limit: 200 requests per minute
@@ -595,7 +595,7 @@ export const webhookJwtAuth = createPipeline()
 
     .load('log-result', {
         adapterCode: 'restPost',
-        endpoint: 'https://your-system.com/api/log',
+        endpoint: 'https://example.com/api/log',
         method: 'POST',
     })
 
@@ -617,7 +617,7 @@ export const webhookBasicAuth = createPipeline()
         type: 'webhook',
         webhookCode: 'basic-auth-webhook',
         // Authentication: HTTP Basic Auth
-        authentication: 'BASIC',
+        authentication: 'basic',
         basicSecretCode: 'webhook-basic-creds',  // Secret contains "username:password"
         // Rate limit: 30 requests per minute (more restrictive for basic auth)
         rateLimit: 30,
@@ -635,11 +635,293 @@ export const webhookBasicAuth = createPipeline()
 
     .load('log-result', {
         adapterCode: 'restPost',
-        endpoint: 'https://your-system.com/api/log',
+        endpoint: 'https://example.com/api/log',
         method: 'POST',
     })
 
     .edge('start', 'parse-data')
     .edge('parse-data', 'process')
     .edge('process', 'log-result')
+    .build();
+
+// =============================================================================
+// 22. MULTI-TRIGGER PIPELINE - Multiple triggers for the same pipeline
+// =============================================================================
+
+/**
+ * Pipeline with multiple triggers demonstrating flexible execution patterns.
+ * Can be triggered by:
+ * - Manual trigger (from dashboard or API)
+ * - Hourly schedule (for regular updates)
+ * - Daily schedule (for full sync)
+ * - Webhook (for immediate external triggers)
+ *
+ * All triggers invoke the same pipeline logic - useful when you need:
+ * - Regular scheduled sync + on-demand manual runs
+ * - Multiple schedules at different intervals
+ * - Both scheduled and webhook-based triggering
+ */
+export const multiTriggerPipeline = createPipeline()
+    .name('Multi-Trigger Inventory Sync')
+    .description('Pipeline with manual, scheduled, and webhook triggers for maximum flexibility')
+    .capabilities({ requires: ['UpdateCatalog'] })
+
+    // Context configuration for parallel step execution
+    .context({
+        parallelExecution: {
+            enabled: true,
+            maxConcurrentSteps: 4,
+            errorPolicy: 'continue',
+        },
+    })
+
+    // Trigger 1: Manual trigger for on-demand execution
+    .trigger('manual-trigger', {
+        type: 'manual',
+        enabled: true,
+    })
+
+    // Trigger 2: Hourly incremental sync
+    .trigger('hourly-sync', {
+        type: 'schedule',
+        cron: '0 * * * *',  // Every hour at minute 0
+        timezone: 'UTC',
+        enabled: true,
+    })
+
+    // Trigger 3: Daily full sync at 2 AM
+    .trigger('daily-full-sync', {
+        type: 'schedule',
+        cron: '0 2 * * *',  // Daily at 2 AM
+        timezone: 'UTC',
+        enabled: true,
+    })
+
+    // Trigger 4: Webhook for external system integration
+    .trigger('webhook-trigger', {
+        type: 'webhook',
+        authentication: 'api-key',
+        apiKeySecretCode: 'inventory-webhook-key',
+        apiKeyHeaderName: 'x-api-key',
+        rateLimit: 60,
+        enabled: true,
+    })
+
+    // Extract from multiple sources (parallel execution when enabled)
+    .extract('fetch-primary', {
+        adapterCode: 'httpApi',
+        url: 'https://primary.erp.com/api/inventory',
+        method: 'GET',
+        bearerTokenSecretCode: 'primary-erp-token',
+    })
+
+    .extract('fetch-secondary', {
+        adapterCode: 'httpApi',
+        url: 'https://secondary.erp.com/api/inventory',
+        method: 'GET',
+        bearerTokenSecretCode: 'secondary-erp-token',
+    })
+
+    .transform('merge-and-normalize', {
+        operators: [
+            { op: 'now', args: { target: 'syncedAt', format: 'ISO' } },
+            { op: 'coalesce', args: { fields: ['sku', 'productCode', 'itemId'], target: 'sku' } },
+        ],
+    })
+
+    .validate('check-stock', {
+        mode: 'fail-fast',
+        rules: [
+            { type: 'business', spec: { field: 'sku', test: { op: 'present' }, error: 'SKU is required' } },
+            { type: 'business', spec: { field: 'quantity', test: { op: 'gte', value: 0 }, error: 'Quantity must be non-negative' } },
+        ],
+    })
+
+    .load('update-inventory', {
+        adapterCode: 'stockAdjust',
+        strategy: 'upsert',
+        locationStrategy: 'default',
+    })
+
+    // Load to multiple destinations (parallel when enabled)
+    .load('notify-warehouse', {
+        adapterCode: 'restPost',
+        endpoint: 'https://warehouse.internal/api/stock-updates',
+        method: 'POST',
+    })
+
+    // Edges: All triggers connect to both extracts (parallel entry)
+    // Both extracts feed into the merge step
+    .edge('manual-trigger', 'fetch-primary')
+    .edge('manual-trigger', 'fetch-secondary')
+    .edge('hourly-sync', 'fetch-primary')
+    .edge('hourly-sync', 'fetch-secondary')
+    .edge('daily-full-sync', 'fetch-primary')
+    .edge('daily-full-sync', 'fetch-secondary')
+    .edge('webhook-trigger', 'fetch-primary')
+    .edge('webhook-trigger', 'fetch-secondary')
+    .edge('fetch-primary', 'merge-and-normalize')
+    .edge('fetch-secondary', 'merge-and-normalize')
+    .edge('merge-and-normalize', 'check-stock')
+    .edge('check-stock', 'update-inventory')
+    .edge('check-stock', 'notify-warehouse')
+    .build();
+
+// =============================================================================
+// 18. CUSTOMER IMPORT WITH VALIDATION & ENRICHMENT
+// =============================================================================
+
+/**
+ * Pipeline demonstrating comprehensive VALIDATE and ENRICH step usage.
+ * Imports customers from CSV, validates required fields and formats,
+ * enriches with default values and computed fields, then loads to Vendure.
+ *
+ * Features:
+ * - VALIDATE: Required fields, email format, phone format
+ * - ENRICH: Static defaults, computed fullName, set timestamps
+ * - Error accumulation mode to catch all validation issues
+ */
+export const customerImportWithValidationAndEnrichment = createPipeline()
+    .name('Customer Import with Validation & Enrichment')
+    .description('Import customers with comprehensive validation and data enrichment')
+    .capabilities({ requires: ['UpdateCustomer'] })
+
+    .trigger('manual-trigger', {
+        type: 'manual',
+    })
+
+    .extract('load-csv', {
+        adapterCode: 'csv',
+        filePath: '/imports/customers.csv',
+        hasHeader: true,
+    })
+
+    // VALIDATE step with rules array (UI format)
+    .validate('validate-customers', {
+        mode: 'accumulate', // Collect all errors instead of failing on first
+        rules: [
+            // Required fields
+            { type: 'business', spec: { field: 'email', required: true } },
+            { type: 'business', spec: { field: 'firstName', required: true } },
+            { type: 'business', spec: { field: 'lastName', required: true } },
+            // Email format validation
+            { type: 'business', spec: { field: 'email', pattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$' } },
+            // Phone format validation (optional field, only validate if present)
+            { type: 'business', spec: { field: 'phone', pattern: '^[+]?[0-9]{10,15}$' } },
+        ],
+    })
+
+    // ENRICH step with built-in static enrichment (no adapter needed)
+    .enrich('enrich-customer-data', {
+        sourceType: 'STATIC',
+        // Set default values for missing fields
+        defaults: {
+            country: 'US',
+            currency: 'USD',
+            marketingOptIn: false,
+            customerGroup: 'default',
+        },
+        // Always set these values (overwrites existing)
+        set: {
+            importedAt: new Date().toISOString(),
+            source: 'csv-import',
+        },
+        // Computed fields using template syntax
+        computed: {
+            fullName: '${firstName} ${lastName}',
+            displayName: '${firstName} ${lastName} (${email})',
+        },
+    })
+
+    .load('create-customers', {
+        adapterCode: 'customerUpsert',
+        strategy: 'upsert',
+        lookupField: 'emailAddress',
+    })
+
+    .edge('manual-trigger', 'load-csv')
+    .edge('load-csv', 'validate-customers')
+    .edge('validate-customers', 'enrich-customer-data')
+    .edge('enrich-customer-data', 'create-customers')
+    .build();
+
+// =============================================================================
+// 19. PRODUCT CATALOG ENRICHMENT
+// =============================================================================
+
+/**
+ * Pipeline demonstrating product data enrichment with multiple sources.
+ * Fetches products, enriches with SEO defaults and computed slugs,
+ * validates required catalog fields.
+ *
+ * Features:
+ * - ENRICH: Generate SEO-friendly slugs, add default metadata
+ * - VALIDATE: Ensure products have required catalog fields
+ */
+export const productCatalogEnrichment = createPipeline()
+    .name('Product Catalog Enrichment')
+    .description('Enrich product data with SEO defaults and computed fields')
+    .capabilities({ requires: ['UpdateCatalog'] })
+
+    .trigger('webhook', {
+        type: 'webhook',
+        webhookCode: 'product-enrichment',
+    })
+
+    .extract('fetch-products', {
+        adapterCode: 'httpApi',
+        url: 'https://pim.company.com/api/products',
+        method: 'GET',
+        itemsField: 'products',
+    })
+
+    // First enrich with computed SEO fields
+    .enrich('add-seo-fields', {
+        sourceType: 'STATIC',
+        computed: {
+            // Generate URL-friendly slug from name
+            slug: '${name}',
+            // Generate meta title
+            metaTitle: '${name} | Shop Now',
+            // Generate meta description from description or use name
+            metaDescription: 'Buy ${name} online. ${shortDescription}',
+        },
+        defaults: {
+            // Default SEO settings
+            metaKeywords: '',
+            canonicalUrl: '',
+            robotsIndex: true,
+            robotsFollow: true,
+        },
+    })
+
+    // Then validate required catalog fields
+    .validate('validate-catalog-fields', {
+        mode: 'fail-fast',
+        rules: [
+            { type: 'business', spec: { field: 'sku', required: true } },
+            { type: 'business', spec: { field: 'name', required: true } },
+            { type: 'business', spec: { field: 'price', required: true, min: 0 } },
+            { type: 'business', spec: { field: 'slug', required: true } },
+        ],
+    })
+
+    .transform('format-price', {
+        operators: [
+            { op: 'coerce', args: { path: 'price', type: 'number' } },
+            { op: 'math', args: { path: 'price', op: 'multiply', value: 100, target: 'priceInCents' } },
+        ],
+    })
+
+    .load('upsert-products', {
+        adapterCode: 'productUpsert',
+        strategy: 'upsert',
+        lookupField: 'slug',
+    })
+
+    .edge('webhook', 'fetch-products')
+    .edge('fetch-products', 'add-seo-fields')
+    .edge('add-seo-fields', 'validate-catalog-fields')
+    .edge('validate-catalog-fields', 'format-price')
+    .edge('format-price', 'upsert-products')
     .build();

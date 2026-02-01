@@ -7,24 +7,30 @@
  * - SKU/email-based entity lookup
  * - Price conversion and slug generation
  * - Bulk updates with proper error handling
+ * - VALIDATE steps with rules-based validation
+ * - ENRICH steps with built-in configuration
+ * - Parallel processing branches
  */
 
 import { createPipeline } from '../../../src';
 
 // =============================================================================
-// 5. PRODUCT IMPORT FROM CSV - Full product import with transformations
+// 5. PRODUCT IMPORT FROM CSV - Advanced import with VALIDATE, ENRICH & parallel branches
 // =============================================================================
 
 /**
  * Imports products from a CSV file with comprehensive field mapping.
- * Handles price conversion, slug generation, and multi-value fields.
+ * Demonstrates:
+ * - VALIDATE step with rules (required, min, max, pattern)
+ * - ENRICH step with defaults, set, and computed fields
+ * - Parallel processing: validation errors -> error export, valid records -> load
  *
  * Expected CSV columns: name, sku, description, price, category,
  * brand, weight, weight_unit, image_url, tags
  */
 export const productImportCsv = createPipeline()
     .name('Product Import - CSV')
-    .description('Import products from CSV with field mapping, price conversion, and slug generation')
+    .description('Import products from CSV with VALIDATE, ENRICH, and parallel error handling')
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'manual' })
 
@@ -35,20 +41,54 @@ export const productImportCsv = createPipeline()
         hasHeader: true,
     })
 
-    .transform('validate-required', {
+    // VALIDATE step - rules-based validation with error collection
+    .validate('validate-data', {
+        rules: [
+            // Required fields
+            { type: 'business', spec: { field: 'name', required: true, error: 'Product name is required' } },
+            { type: 'business', spec: { field: 'sku', required: true, error: 'SKU is required' } },
+            { type: 'business', spec: { field: 'price', required: true, error: 'Price is required' } },
+            // SKU format: alphanumeric with dashes
+            { type: 'business', spec: { field: 'sku', pattern: '^[A-Za-z0-9-]{3,20}$', error: 'SKU must be 3-20 alphanumeric characters or dashes' } },
+            // Price must be positive number
+            { type: 'business', spec: { field: 'price', min: 0.01, error: 'Price must be greater than 0' } },
+            { type: 'business', spec: { field: 'price', max: 1000000, error: 'Price cannot exceed 1,000,000' } },
+            // Weight validation (optional but if present must be positive)
+            { type: 'business', spec: { field: 'weight', min: 0, error: 'Weight cannot be negative' } },
+        ],
+        errorHandlingMode: 'accumulate', // Collect all errors, don't stop on first
+        validationMode: 'strict',
+    })
+
+    // Route invalid records to error export (parallel branch 1)
+    .transform('filter-invalid', {
         operators: [
-            {
-                op: 'validateRequired',
-                args: {
-                    fields: ['name', 'sku', 'price'],
-                    errorField: '_validationErrors',
-                },
-            },
-            // Filter out invalid records (or could route to error handling)
             {
                 op: 'when',
                 args: {
-                    conditions: [{ field: '_validationErrors', cmp: 'exists', value: false }],
+                    conditions: [{ field: '_errors', cmp: 'exists', value: true }],
+                    action: 'keep',
+                },
+            },
+        ],
+    })
+
+    .export('export-errors', {
+        adapterCode: 'csvExport',
+        target: 'file',
+        format: 'csv',
+        path: './imports/errors',
+        filenamePattern: 'product-import-errors-${date:YYYY-MM-DD-HHmmss}.csv',
+        includeHeader: true,
+    })
+
+    // Route valid records for processing (parallel branch 2)
+    .transform('filter-valid', {
+        operators: [
+            {
+                op: 'when',
+                args: {
+                    conditions: [{ field: '_errors', cmp: 'exists', value: false }],
                     action: 'keep',
                 },
             },
@@ -63,45 +103,18 @@ export const productImportCsv = createPipeline()
             { op: 'trim', args: { source: 'sku' } },
 
             // Generate slug from name
-            {
-                op: 'slugify',
-                args: { source: 'name', target: 'slug' },
-            },
+            { op: 'slugify', args: { source: 'name', target: 'slug' } },
 
-            // Convert price from string to cents (assuming input is in dollars like "19.99")
-            {
-                op: 'toNumber',
-                args: { source: 'price' },
-            },
-            {
-                op: 'currency',
-                args: { source: 'price', target: 'priceInCents', decimals: 2 },
-            },
+            // Convert price from string to cents
+            { op: 'toNumber', args: { source: 'price' } },
+            { op: 'currency', args: { source: 'price', target: 'priceInCents', decimals: 2 } },
 
             // Convert weight to grams if needed
-            {
-                op: 'toNumber',
-                args: { source: 'weight' },
-            },
-            {
-                op: 'unit',
-                args: {
-                    source: 'weight',
-                    target: 'weightInGrams',
-                    from: 'kg',
-                    to: 'g',
-                },
-            },
+            { op: 'toNumber', args: { source: 'weight' } },
+            { op: 'unit', args: { source: 'weight', target: 'weightInGrams', from: 'kg', to: 'g' } },
 
             // Split comma-separated tags into array
-            {
-                op: 'split',
-                args: {
-                    source: 'tags',
-                    target: 'tagArray',
-                    separator: ',',
-                },
-            },
+            { op: 'split', args: { source: 'tags', target: 'tagArray', separator: ',' } },
 
             // Map category to facet value
             {
@@ -119,19 +132,34 @@ export const productImportCsv = createPipeline()
                     default: 'cat-general',
                 },
             },
-
-            // Set default values
-            {
-                op: 'enrich',
-                args: {
-                    defaults: {
-                        trackInventory: true,
-                        enabled: true,
-                        taxCategoryCode: 'standard',
-                    },
-                },
-            },
         ],
+    })
+
+    // ENRICH step - add defaults, set computed values, and enrich data
+    .enrich('enrich-product', {
+        sourceType: 'STATIC',
+        // Default values for missing fields
+        defaults: {
+            trackInventory: true,
+            enabled: true,
+            taxCategoryCode: 'standard',
+            description: 'No description provided',
+        },
+        // Set fixed values
+        set: {
+            importedAt: '${@now}',
+            importSource: 'csv-import',
+            channel: '__default_channel__',
+        },
+        // Computed fields based on record data
+        computed: {
+            // Calculate discount eligibility based on price
+            eligibleForDiscount: 'record.priceInCents > 5000',
+            // Determine if premium product
+            isPremium: 'record.priceInCents > 10000',
+            // Generate canonical URL
+            canonicalUrl: '"https://store.example.com/products/" + record.slug',
+        },
     })
 
     .transform('map-to-vendure', {
@@ -153,6 +181,8 @@ export const productImportCsv = createPipeline()
                         'customFields.brand': 'brand',
                         'customFields.weight': 'weightInGrams',
                         'customFields.tags': 'tagArray',
+                        'customFields.isPremium': 'isPremium',
+                        'customFields.importedAt': 'importedAt',
                     },
                 },
             },
@@ -171,10 +201,17 @@ export const productImportCsv = createPipeline()
         priceField: 'price',
     })
 
+    // Edges define the flow - note parallel branches from validate-data
     .edge('start', 'read-csv')
-    .edge('read-csv', 'validate-required')
-    .edge('validate-required', 'transform-fields')
-    .edge('transform-fields', 'map-to-vendure')
+    .edge('read-csv', 'validate-data')
+    // Parallel branch 1: Invalid records -> error export
+    .edge('validate-data', 'filter-invalid')
+    .edge('filter-invalid', 'export-errors')
+    // Parallel branch 2: Valid records -> transform -> enrich -> load
+    .edge('validate-data', 'filter-valid')
+    .edge('filter-valid', 'transform-fields')
+    .edge('transform-fields', 'enrich-product')
+    .edge('enrich-product', 'map-to-vendure')
     .edge('map-to-vendure', 'upsert-products')
     .build();
 
@@ -311,7 +348,7 @@ export const customerImportCsv = createPipeline()
             {
                 op: 'when',
                 args: {
-                    conditions: [{ field: 'address_line1', cmp: 'notEmpty', value: true }],
+                    conditions: [{ field: 'address_line1', cmp: 'isNotEmpty', value: true }],
                     action: 'keep',
                 },
             },
@@ -382,18 +419,21 @@ export const customerImportCsv = createPipeline()
 
 
 // =============================================================================
-// 7. STOCK UPDATE FROM CSV - Bulk inventory update
+// 7. STOCK UPDATE FROM CSV - Bulk inventory with VALIDATE, ENRICH & parallel alerts
 // =============================================================================
 
 /**
  * Updates stock levels from a CSV file by SKU.
- * Supports multiple stock locations.
+ * Demonstrates:
+ * - VALIDATE step with numeric range validation
+ * - ENRICH step with computed stock status fields
+ * - Parallel branches: Update stock + Low stock alerts + Out of stock report
  *
- * Expected CSV columns: sku, stock_quantity, location (optional)
+ * Expected CSV columns: sku, stock_quantity, location (optional), reorder_point (optional)
  */
 export const stockUpdateCsv = createPipeline()
     .name('Stock Update - CSV')
-    .description('Import stock levels with SKU lookup and location support')
+    .description('Import stock with VALIDATE, ENRICH computed status, and parallel low-stock alerts')
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'manual' })
 
@@ -404,17 +444,22 @@ export const stockUpdateCsv = createPipeline()
         hasHeader: true,
     })
 
-    .transform('validate-data', {
+    // VALIDATE step - comprehensive stock data validation
+    .validate('validate-stock', {
+        rules: [
+            { type: 'business', spec: { field: 'sku', required: true, error: 'SKU is required' } },
+            { type: 'business', spec: { field: 'stock_quantity', required: true, error: 'Stock quantity is required' } },
+            { type: 'business', spec: { field: 'sku', pattern: '^[A-Za-z0-9_-]+$', error: 'SKU must be alphanumeric' } },
+            { type: 'business', spec: { field: 'stock_quantity', min: 0, error: 'Stock quantity cannot be negative' } },
+            { type: 'business', spec: { field: 'stock_quantity', max: 999999, error: 'Stock quantity exceeds maximum' } },
+            { type: 'business', spec: { field: 'reorder_point', min: 0, error: 'Reorder point cannot be negative' } },
+        ],
+        errorHandlingMode: 'accumulate',
+        validationMode: 'strict',
+    })
+
+    .transform('filter-valid', {
         operators: [
-            // Validate required fields
-            {
-                op: 'validateRequired',
-                args: {
-                    fields: ['sku', 'stock_quantity'],
-                    errorField: '_errors',
-                },
-            },
-            // Filter valid records
             {
                 op: 'when',
                 args: {
@@ -427,36 +472,42 @@ export const stockUpdateCsv = createPipeline()
 
     .transform('transform-data', {
         operators: [
-            // Trim SKU
             { op: 'trim', args: { source: 'sku' } },
             { op: 'uppercase', args: { source: 'sku' } },
+            { op: 'toNumber', args: { source: 'stock_quantity' } },
+            { op: 'toNumber', args: { source: 'reorder_point' } },
+        ],
+    })
 
-            // Convert stock to number
-            {
-                op: 'toNumber',
-                args: { source: 'stock_quantity' },
-            },
+    // ENRICH step - add computed stock status and alerts
+    .enrich('enrich-stock-status', {
+        sourceType: 'STATIC',
+        // Default values
+        defaults: {
+            location: 'default-warehouse',
+            reorder_point: 10, // Default reorder point if not provided
+        },
+        // Computed stock status fields
+        computed: {
+            // Determine stock status
+            stockStatus: 'record.stock_quantity === 0 ? "out_of_stock" : record.stock_quantity <= (record.reorder_point || 10) ? "low_stock" : "in_stock"',
+            // Check if needs reorder
+            needsReorder: 'record.stock_quantity <= (record.reorder_point || 10)',
+            // Calculate days of stock (assuming avg 5 units/day sold)
+            estimatedDaysOfStock: 'Math.floor(record.stock_quantity / 5)',
+            // Priority for restocking (higher = more urgent)
+            restockPriority: 'record.stock_quantity === 0 ? 3 : record.stock_quantity <= 5 ? 2 : record.stock_quantity <= (record.reorder_point || 10) ? 1 : 0',
+            // Flag critical items
+            isCritical: 'record.stock_quantity <= 5',
+        },
+        set: {
+            updatedAt: '${@now}',
+            updateSource: 'csv-import',
+        },
+    })
 
-            // Ensure non-negative
-            {
-                op: 'when',
-                args: {
-                    conditions: [{ field: 'stock_quantity', cmp: 'lt', value: 0 }],
-                    action: 'drop',
-                },
-            },
-
-            // Set default location if not provided
-            {
-                op: 'enrich',
-                args: {
-                    defaults: {
-                        location: 'default-warehouse',
-                    },
-                },
-            },
-
-            // Build stock by location map
+    .transform('build-stock-location', {
+        operators: [
             {
                 op: 'template',
                 args: {
@@ -464,16 +515,13 @@ export const stockUpdateCsv = createPipeline()
                     target: 'stockByLocationJson',
                 },
             },
-            {
-                op: 'parseJson',
-                args: {
-                    source: 'stockByLocationJson',
-                    target: 'stockByLocation',
-                },
-            },
+            { op: 'parseJson', args: { source: 'stockByLocationJson', target: 'stockByLocation' } },
         ],
     })
 
+    // =====================================================
+    // PARALLEL BRANCH 1: Update stock in Vendure
+    // =====================================================
     .transform('map-to-vendure', {
         operators: [
             {
@@ -492,14 +540,101 @@ export const stockUpdateCsv = createPipeline()
         adapterCode: 'stockAdjust',
         skuField: 'sku',
         stockByLocationField: 'stockByLocation',
-        absolute: true, // Set absolute value, not delta
+        absolute: true,
     })
 
+    // =====================================================
+    // PARALLEL BRANCH 2: Export low stock items for reorder
+    // =====================================================
+    .transform('filter-low-stock', {
+        operators: [
+            {
+                op: 'when',
+                args: {
+                    conditions: [
+                        { field: 'needsReorder', cmp: 'eq', value: true },
+                        { field: 'stock_quantity', cmp: 'gt', value: 0 },
+                    ],
+                    action: 'keep',
+                },
+            },
+            {
+                op: 'pick',
+                args: {
+                    fields: ['sku', 'stock_quantity', 'reorder_point', 'location', 'estimatedDaysOfStock', 'restockPriority'],
+                },
+            },
+        ],
+    })
+
+    .export('export-low-stock', {
+        adapterCode: 'csvExport',
+        target: 'file',
+        format: 'csv',
+        path: './reports/inventory',
+        filenamePattern: 'low-stock-alert-${date:YYYY-MM-DD-HHmmss}.csv',
+        includeHeader: true,
+    })
+
+    // =====================================================
+    // PARALLEL BRANCH 3: Export out of stock items (urgent)
+    // =====================================================
+    .transform('filter-out-of-stock', {
+        operators: [
+            {
+                op: 'when',
+                args: {
+                    conditions: [{ field: 'stock_quantity', cmp: 'eq', value: 0 }],
+                    action: 'keep',
+                },
+            },
+            {
+                op: 'pick',
+                args: {
+                    fields: ['sku', 'location', 'reorder_point', 'updatedAt'],
+                },
+            },
+            {
+                op: 'enrich',
+                args: {
+                    set: {
+                        urgency: 'CRITICAL',
+                        actionRequired: 'Immediate restock required',
+                    },
+                },
+            },
+        ],
+    })
+
+    .export('export-out-of-stock', {
+        adapterCode: 'csvExport',
+        target: 'file',
+        format: 'csv',
+        path: './reports/inventory',
+        filenamePattern: 'out-of-stock-urgent-${date:YYYY-MM-DD-HHmmss}.csv',
+        includeHeader: true,
+    })
+
+    // Flow with parallel branches
     .edge('start', 'read-csv')
-    .edge('read-csv', 'validate-data')
-    .edge('validate-data', 'transform-data')
-    .edge('transform-data', 'map-to-vendure')
+    .edge('read-csv', 'validate-stock')
+    .edge('validate-stock', 'filter-valid')
+    .edge('filter-valid', 'transform-data')
+    .edge('transform-data', 'enrich-stock-status')
+    .edge('enrich-stock-status', 'build-stock-location')
+
+    // Parallel Branch 1: Update stock
+    .edge('build-stock-location', 'map-to-vendure')
     .edge('map-to-vendure', 'adjust-stock')
+
+    // Parallel Branch 2: Export low stock alert
+    .edge('build-stock-location', 'filter-low-stock')
+    .edge('filter-low-stock', 'export-low-stock')
+
+    // Parallel Branch 3: Export out of stock urgent
+    .edge('build-stock-location', 'filter-out-of-stock')
+    .edge('filter-out-of-stock', 'export-out-of-stock')
+
     .build();
 
 
@@ -585,7 +720,7 @@ export const priceUpdateCsv = createPipeline()
             {
                 op: 'when',
                 args: {
-                    conditions: [{ field: 'sale_price', cmp: 'notEmpty', value: true }],
+                    conditions: [{ field: 'sale_price', cmp: 'isNotEmpty', value: true }],
                     action: 'keep',
                 },
             },

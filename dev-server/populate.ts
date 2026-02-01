@@ -12,7 +12,7 @@
 import { bootstrap, JobQueueService } from '@vendure/core';
 import { populate } from '@vendure/core/cli';
 import path from 'path';
-import { config } from './vendure-config';
+import { config } from '../vendure-config.dev';
 
 async function runPopulate() {
     console.log('Populating dev database...');

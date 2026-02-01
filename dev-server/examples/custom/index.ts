@@ -157,8 +157,8 @@ export const customLoadersPipelineExample = createPipeline()
     .description('Send data to webhook with custom loader')
     .trigger('start', { type: 'manual' })
     .extract('query', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         relations: 'translations',
         batchSize: 100,
     })

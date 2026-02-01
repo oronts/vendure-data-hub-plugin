@@ -1,191 +1,171 @@
 /**
  * Data Processing Pipelines - Data enrichment and analytics
+ *
+ * These pipelines demonstrate:
+ * - VALIDATE steps with comprehensive rules
+ * - ENRICH steps with defaults, set, and computed fields
+ * - Parallel processing branches for different enrichment paths
+ * - Data transformation and aggregation
  */
 
 import { createPipeline } from '../../../src';
 
+/**
+ * Advanced Product Enrichment Pipeline
+ *
+ * Demonstrates:
+ * - VALIDATE step to ensure data quality before enrichment
+ * - Parallel branches: SEO enrichment + Pricing enrichment running concurrently
+ * - ENRICH steps with computed fields
+ * - Merge of parallel branches before final load
+ */
 export const productEnrichment = createPipeline()
     .name('Product Enrichment')
-    .description('Enrich products with calculated fields, slugs, and SEO metadata')
+    .description('Enrich products with VALIDATE, parallel SEO/Pricing enrichment, and computed fields')
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-products', {
-        adapterCode: 'vendure-query',
-        entity: 'ProductVariant',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT_VARIANT',
         relations: 'translations,product,facetValues',
         languageCode: 'en',
         batchSize: 50,
     })
 
-    .transform('filter-products', {
+    // VALIDATE step - ensure data quality before processing
+    .validate('validate-products', {
+        rules: [
+            // Required fields for enrichment
+            { type: 'business', spec: { field: 'sku', required: true, error: 'SKU is required for enrichment' } },
+            { type: 'business', spec: { field: 'priceWithTax', required: true, error: 'Price is required' } },
+            { type: 'business', spec: { field: 'product.name', required: true, error: 'Product name is required' } },
+            // Price must be positive
+            { type: 'business', spec: { field: 'priceWithTax', min: 0, error: 'Price cannot be negative' } },
+            // SKU format validation
+            { type: 'business', spec: { field: 'sku', pattern: '^[A-Za-z0-9_-]+$', error: 'SKU must be alphanumeric' } },
+        ],
+        errorHandlingMode: 'accumulate',
+        validationMode: 'strict',
+    })
+
+    .transform('filter-valid', {
         operators: [
             {
                 op: 'when',
                 args: {
-                    conditions: [{ field: 'enabled', cmp: 'eq', value: true }],
+                    conditions: [
+                        { field: 'enabled', cmp: 'eq', value: true },
+                        { field: '_errors', cmp: 'exists', value: false },
+                    ],
                     action: 'keep',
                 },
             },
         ],
     })
 
+    // =====================================================
+    // PARALLEL BRANCH 1: SEO Enrichment
+    // =====================================================
     .transform('generate-slugs', {
         operators: [
             { op: 'slugify', args: { source: 'product.name', target: 'productSlug' } },
-            {
-                op: 'template',
-                args: {
-                    template: '${productSlug}-${sku}',
-                    target: 'variantSlug',
-                },
-            },
+            { op: 'template', args: { template: '${productSlug}-${sku}', target: 'variantSlug' } },
             { op: 'slugify', args: { source: 'variantSlug' } },
-            {
-                op: 'template',
-                args: {
-                    template: 'https://your-store.com/products/${productSlug}',
-                    target: 'canonicalUrl',
-                },
-            },
         ],
     })
 
-    .transform('calculate-pricing', {
-        operators: [
-            { op: 'toNumber', args: { source: 'customFields.costPrice' } },
-            {
-                op: 'when',
-                args: {
-                    conditions: [{ field: 'customFields.costPrice', cmp: 'gt', value: 0 }],
-                    action: 'keep',
-                },
-            },
-            {
-                op: 'template',
-                args: {
-                    template: '${(priceWithTax - customFields.costPrice) / priceWithTax * 100}',
-                    target: 'marginPercentRaw',
-                },
-            },
-            { op: 'toNumber', args: { source: 'marginPercentRaw' } },
-            {
-                op: 'round',
-                args: {
-                    source: 'marginPercentRaw',
-                    target: 'marginPercent',
-                    decimals: 2,
-                },
-            },
-            {
-                op: 'template',
-                args: {
-                    template: '${(priceWithTax - customFields.costPrice) / customFields.costPrice * 100}',
-                    target: 'markupPercentRaw',
-                },
-            },
-            { op: 'toNumber', args: { source: 'markupPercentRaw' } },
-            {
-                op: 'round',
-                args: {
-                    source: 'markupPercentRaw',
-                    target: 'markupPercent',
-                    decimals: 2,
-                },
-            },
-            {
-                op: 'template',
-                args: {
-                    template: '${priceWithTax - customFields.costPrice}',
-                    target: 'profitPerUnit',
-                },
-            },
-            { op: 'toNumber', args: { source: 'profitPerUnit' } },
-        ],
+    // ENRICH step for SEO metadata with computed fields
+    .enrich('enrich-seo', {
+        sourceType: 'STATIC',
+        // Computed fields using expressions
+        computed: {
+            // Generate SEO title from product name
+            seoTitle: 'record.product?.name ? record.product.name.substring(0, 50) + " - Buy Online | Store" : "Product | Store"',
+            // Generate canonical URL
+            canonicalUrl: '"https://store.example.com/products/" + record.productSlug',
+            // Check if needs SEO review (missing description)
+            needsSeoReview: '!record.product?.description || record.product.description.length < 50',
+        },
+        // Set fixed values
+        set: {
+            seoEnrichedAt: '${@now}',
+            seoVersion: '2.0',
+        },
     })
 
-    .transform('generate-seo', {
+    .transform('generate-seo-description', {
         operators: [
-            {
-                op: 'template',
-                args: {
-                    template: '${product.name} - Buy Online | Your Store',
-                    target: 'seoTitle',
-                },
-            },
-            {
-                op: 'truncate',
-                args: {
-                    source: 'seoTitle',
-                    length: 60,
-                    suffix: '',
-                },
-            },
             { op: 'stripHtml', args: { source: 'product.description', target: 'descriptionClean' } },
-            {
-                op: 'truncate',
-                args: {
-                    source: 'descriptionClean',
-                    target: 'seoDescription',
-                    length: 155,
-                    suffix: '...',
-                },
-            },
+            { op: 'truncate', args: { source: 'descriptionClean', target: 'seoDescription', length: 155, suffix: '...' } },
             {
                 op: 'template',
                 args: {
-                    template: '{"@type": "Product", "name": "${product.name}", "sku": "${sku}"}',
+                    template: '{"@type": "Product", "name": "${product.name}", "sku": "${sku}", "url": "${canonicalUrl}"}',
                     target: 'structuredData',
                 },
             },
         ],
     })
 
-    .transform('auto-categorize', {
+    // =====================================================
+    // PARALLEL BRANCH 2: Pricing Enrichment
+    // =====================================================
+    .transform('prepare-pricing', {
         operators: [
-            {
-                op: 'currency',
-                args: {
-                    source: 'priceWithTax',
-                    target: 'priceFormatted',
-                    decimals: 2,
-                },
-            },
-            // Set default tier
-            { op: 'set', args: { path: 'priceTier', value: 'standard' } },
-            // Budget tier: priceWithTax < 2500 cents ($25)
-            {
-                op: 'ifThenElse',
-                args: {
-                    condition: { field: 'priceWithTax', cmp: 'lt', value: 2500 },
-                    thenValue: 'budget',
-                    target: 'priceTier',
-                },
-            },
-            // Premium tier: priceWithTax >= 10000 cents ($100)
-            {
-                op: 'ifThenElse',
-                args: {
-                    condition: { field: 'priceWithTax', cmp: 'gte', value: 10000 },
-                    thenValue: 'premium',
-                    target: 'priceTier',
-                },
-            },
+            { op: 'toNumber', args: { source: 'customFields.costPrice' } },
+            { op: 'toNumber', args: { source: 'priceWithTax' } },
         ],
     })
 
-    .transform('prepare-update', {
+    // ENRICH step for pricing calculations with computed fields
+    .enrich('enrich-pricing', {
+        sourceType: 'STATIC',
+        // Default cost price if not set
+        defaults: {
+            'customFields.costPrice': 0,
+        },
+        // Computed pricing metrics
+        computed: {
+            // Calculate margin percentage
+            marginPercent: 'record.customFields?.costPrice > 0 ? Math.round((record.priceWithTax - record.customFields.costPrice) / record.priceWithTax * 10000) / 100 : 0',
+            // Calculate markup percentage
+            markupPercent: 'record.customFields?.costPrice > 0 ? Math.round((record.priceWithTax - record.customFields.costPrice) / record.customFields.costPrice * 10000) / 100 : 0',
+            // Profit per unit
+            profitPerUnit: 'record.priceWithTax - (record.customFields?.costPrice || 0)',
+            // Determine price tier
+            priceTier: 'record.priceWithTax < 2500 ? "budget" : record.priceWithTax >= 10000 ? "premium" : "standard"',
+            // Flag low-margin products (< 20%)
+            isLowMargin: 'record.customFields?.costPrice > 0 && ((record.priceWithTax - record.customFields.costPrice) / record.priceWithTax * 100) < 20',
+        },
+        set: {
+            pricingEnrichedAt: '${@now}',
+        },
+    })
+
+    // =====================================================
+    // MERGE: Combine SEO and Pricing enrichments
+    // =====================================================
+    .transform('merge-enrichments', {
         operators: [
             {
                 op: 'map',
                 args: {
                     mapping: {
                         sku: 'sku',
+                        // SEO fields
                         'customFields.seoTitle': 'seoTitle',
                         'customFields.seoDescription': 'seoDescription',
                         'customFields.canonicalUrl': 'canonicalUrl',
+                        'customFields.structuredData': 'structuredData',
+                        'customFields.needsSeoReview': 'needsSeoReview',
+                        // Pricing fields
                         'customFields.marginPercent': 'marginPercent',
+                        'customFields.markupPercent': 'markupPercent',
+                        'customFields.profitPerUnit': 'profitPerUnit',
                         'customFields.priceTier': 'priceTier',
+                        'customFields.isLowMargin': 'isLowMargin',
+                        // Timestamps
                         'customFields.enrichedAt': '@now',
                     },
                 },
@@ -198,14 +178,61 @@ export const productEnrichment = createPipeline()
         skuField: 'sku',
     })
 
+    // =====================================================
+    // PARALLEL BRANCH 3: Export low-margin products report
+    // =====================================================
+    .transform('filter-low-margin', {
+        operators: [
+            {
+                op: 'when',
+                args: {
+                    conditions: [{ field: 'isLowMargin', cmp: 'eq', value: true }],
+                    action: 'keep',
+                },
+            },
+            {
+                op: 'pick',
+                args: {
+                    fields: ['sku', 'product.name', 'priceWithTax', 'customFields.costPrice', 'marginPercent', 'priceTier'],
+                },
+            },
+        ],
+    })
+
+    .export('export-low-margin', {
+        adapterCode: 'csvExport',
+        target: 'file',
+        format: 'csv',
+        path: './reports',
+        filenamePattern: 'low-margin-products-${date:YYYY-MM-DD}.csv',
+        includeHeader: true,
+    })
+
+    // Define the flow with parallel branches
     .edge('start', 'fetch-products')
-    .edge('fetch-products', 'filter-products')
-    .edge('filter-products', 'generate-slugs')
-    .edge('generate-slugs', 'calculate-pricing')
-    .edge('calculate-pricing', 'generate-seo')
-    .edge('generate-seo', 'auto-categorize')
-    .edge('auto-categorize', 'prepare-update')
-    .edge('prepare-update', 'update-variants')
+    .edge('fetch-products', 'validate-products')
+    .edge('validate-products', 'filter-valid')
+
+    // Parallel Branch 1: SEO Enrichment
+    .edge('filter-valid', 'generate-slugs')
+    .edge('generate-slugs', 'enrich-seo')
+    .edge('enrich-seo', 'generate-seo-description')
+
+    // Parallel Branch 2: Pricing Enrichment
+    .edge('filter-valid', 'prepare-pricing')
+    .edge('prepare-pricing', 'enrich-pricing')
+
+    // Merge point: Both branches feed into merge-enrichments
+    .edge('generate-seo-description', 'merge-enrichments')
+    .edge('enrich-pricing', 'merge-enrichments')
+
+    // After merge: update variants
+    .edge('merge-enrichments', 'update-variants')
+
+    // Parallel Branch 3: Export low-margin report (branches from enrich-pricing)
+    .edge('enrich-pricing', 'filter-low-margin')
+    .edge('filter-low-margin', 'export-low-margin')
+
     .build();
 
 export const orderAnalytics = createPipeline()
@@ -215,8 +242,8 @@ export const orderAnalytics = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-orders', {
-        adapterCode: 'vendure-query',
-        entity: 'Order',
+        adapterCode: 'vendureQuery',
+        entity: 'ORDER',
         relations: 'customer,lines,channels',
         batchSize: 100,
     })
@@ -390,17 +417,37 @@ export const orderAnalytics = createPipeline()
     .edge('select-fields', 'write-analytics')
     .build();
 
+/**
+ * Advanced Customer Segmentation Pipeline
+ *
+ * Demonstrates:
+ * - VALIDATE step for data quality
+ * - ENRICH step with computed RFM scores
+ * - Parallel branches: Update customer groups + Export segment reports
+ * - Advanced computed expressions for business logic
+ */
 export const customerSegmentation = createPipeline()
     .name('Customer Segmentation')
-    .description('Segment customers based on purchase history using RFM analysis')
+    .description('Segment customers with VALIDATE, ENRICH computed RFM, and parallel reporting')
     .capabilities({ requires: ['ReadCustomer', 'ReadOrder', 'UpdateCustomer'] })
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-customers', {
-        adapterCode: 'vendure-query',
-        entity: 'Customer',
+        adapterCode: 'vendureQuery',
+        entity: 'CUSTOMER',
         relations: 'orders,groups',
         batchSize: 100,
+    })
+
+    // VALIDATE step - ensure customer data quality
+    .validate('validate-customers', {
+        rules: [
+            { type: 'business', spec: { field: 'emailAddress', required: true, error: 'Email is required' } },
+            { type: 'business', spec: { field: 'emailAddress', pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', error: 'Invalid email format' } },
+            { type: 'business', spec: { field: 'id', required: true, error: 'Customer ID is required' } },
+        ],
+        errorHandlingMode: 'accumulate',
+        validationMode: 'strict',
     })
 
     .transform('filter-active', {
@@ -409,96 +456,55 @@ export const customerSegmentation = createPipeline()
             {
                 op: 'when',
                 args: {
-                    conditions: [{ field: 'orderCount', cmp: 'gt', value: 0 }],
+                    conditions: [
+                        { field: 'orderCount', cmp: 'gt', value: 0 },
+                        { field: '_errors', cmp: 'exists', value: false },
+                    ],
                     action: 'keep',
                 },
             },
         ],
     })
 
-    .transform('calculate-rfm', {
+    .transform('calculate-base-metrics', {
         operators: [
             { op: 'first', args: { source: 'orders', target: 'lastOrder' } },
-            {
-                op: 'formatDate',
-                args: {
-                    source: 'lastOrder.orderPlacedAt',
-                    target: 'lastOrderDate',
-                    format: 'YYYY-MM-DD',
-                },
-            },
+            { op: 'formatDate', args: { source: 'lastOrder.orderPlacedAt', target: 'lastOrderDate', format: 'YYYY-MM-DD' } },
             { op: 'now', args: { target: 'today', format: 'YYYY-MM-DD' } },
-            {
-                op: 'aggregate',
-                args: {
-                    op: 'sum',
-                    source: 'orders.*.totalWithTax',
-                    target: 'totalSpentRaw',
-                },
-            },
-            {
-                op: 'currency',
-                args: {
-                    source: 'totalSpentRaw',
-                    target: 'lifetimeValue',
-                    decimals: 2,
-                },
-            },
-            {
-                op: 'template',
-                args: {
-                    template: '${totalSpentRaw / orderCount}',
-                    target: 'avgOrderValueRaw',
-                },
-            },
-            { op: 'toNumber', args: { source: 'avgOrderValueRaw' } },
-            {
-                op: 'currency',
-                args: {
-                    source: 'avgOrderValueRaw',
-                    target: 'avgOrderValue',
-                    decimals: 2,
-                },
-            },
+            { op: 'aggregate', args: { op: 'sum', source: 'orders.*.totalWithTax', target: 'totalSpentRaw' } },
         ],
     })
 
-    .transform('score-rfm', {
-        operators: [
-            // Frequency Score (1-5 based on order count)
-            { op: 'set', args: { path: 'frequencyScore', value: 1 } },
-            { op: 'ifThenElse', args: { condition: { field: 'orderCount', cmp: 'gte', value: 2 }, thenValue: 2, target: 'frequencyScore' } },
-            { op: 'ifThenElse', args: { condition: { field: 'orderCount', cmp: 'gte', value: 5 }, thenValue: 3, target: 'frequencyScore' } },
-            { op: 'ifThenElse', args: { condition: { field: 'orderCount', cmp: 'gte', value: 10 }, thenValue: 4, target: 'frequencyScore' } },
-            { op: 'ifThenElse', args: { condition: { field: 'orderCount', cmp: 'gte', value: 20 }, thenValue: 5, target: 'frequencyScore' } },
-            // Monetary Score (1-5 based on total spent in cents)
-            { op: 'set', args: { path: 'monetaryScore', value: 1 } },
-            { op: 'ifThenElse', args: { condition: { field: 'totalSpentRaw', cmp: 'gte', value: 10000 }, thenValue: 2, target: 'monetaryScore' } },
-            { op: 'ifThenElse', args: { condition: { field: 'totalSpentRaw', cmp: 'gte', value: 25000 }, thenValue: 3, target: 'monetaryScore' } },
-            { op: 'ifThenElse', args: { condition: { field: 'totalSpentRaw', cmp: 'gte', value: 50000 }, thenValue: 4, target: 'monetaryScore' } },
-            { op: 'ifThenElse', args: { condition: { field: 'totalSpentRaw', cmp: 'gte', value: 100000 }, thenValue: 5, target: 'monetaryScore' } },
-            // Calculate combined RFM score
-            {
-                op: 'template',
-                args: {
-                    template: '${frequencyScore + monetaryScore}',
-                    target: 'rfmScore',
-                },
-            },
-            { op: 'toNumber', args: { source: 'rfmScore' } },
-        ],
+    // ENRICH step - compute RFM scores and segments using expressions
+    .enrich('enrich-rfm-scores', {
+        sourceType: 'STATIC',
+        // Computed RFM metrics using JavaScript expressions
+        computed: {
+            // Lifetime value formatted
+            lifetimeValue: 'Math.round(record.totalSpentRaw) / 100',
+            // Average order value
+            avgOrderValue: 'record.orderCount > 0 ? Math.round(record.totalSpentRaw / record.orderCount) / 100 : 0',
+            // Frequency Score (1-5)
+            frequencyScore: 'record.orderCount >= 20 ? 5 : record.orderCount >= 10 ? 4 : record.orderCount >= 5 ? 3 : record.orderCount >= 2 ? 2 : 1',
+            // Monetary Score (1-5) - based on total spent in cents
+            monetaryScore: 'record.totalSpentRaw >= 100000 ? 5 : record.totalSpentRaw >= 50000 ? 4 : record.totalSpentRaw >= 25000 ? 3 : record.totalSpentRaw >= 10000 ? 2 : 1',
+            // Combined RFM score
+            rfmScore: '(record.orderCount >= 20 ? 5 : record.orderCount >= 10 ? 4 : record.orderCount >= 5 ? 3 : record.orderCount >= 2 ? 2 : 1) + (record.totalSpentRaw >= 100000 ? 5 : record.totalSpentRaw >= 50000 ? 4 : record.totalSpentRaw >= 25000 ? 3 : record.totalSpentRaw >= 10000 ? 2 : 1)',
+            // Segment assignment
+            segment: 'record.orderCount === 1 ? "new" : ((record.orderCount >= 20 ? 5 : record.orderCount >= 10 ? 4 : record.orderCount >= 5 ? 3 : record.orderCount >= 2 ? 2 : 1) + (record.totalSpentRaw >= 100000 ? 5 : record.totalSpentRaw >= 50000 ? 4 : record.totalSpentRaw >= 25000 ? 3 : record.totalSpentRaw >= 10000 ? 2 : 1)) >= 8 ? "champion" : ((record.orderCount >= 20 ? 5 : record.orderCount >= 10 ? 4 : record.orderCount >= 5 ? 3 : record.orderCount >= 2 ? 2 : 1) + (record.totalSpentRaw >= 100000 ? 5 : record.totalSpentRaw >= 50000 ? 4 : record.totalSpentRaw >= 25000 ? 3 : record.totalSpentRaw >= 10000 ? 2 : 1)) >= 5 ? "loyal" : "standard"',
+            // Engagement level for marketing
+            engagementLevel: 'record.orderCount >= 10 ? "high" : record.orderCount >= 3 ? "medium" : "low"',
+            // Churn risk indicator
+            isHighValue: 'record.totalSpentRaw >= 50000',
+        },
+        set: {
+            segmentedAt: '${@now}',
+            segmentVersion: 'rfm-v2',
+        },
     })
 
-    .transform('assign-segment', {
+    .transform('assign-group-codes', {
         operators: [
-            // Assign segment based on RFM score
-            { op: 'set', args: { path: 'segment', value: 'standard' } },
-            // New customers (only 1 order) - check first to override later
-            { op: 'ifThenElse', args: { condition: { field: 'orderCount', cmp: 'eq', value: 1 }, thenValue: 'new', target: 'segment' } },
-            // Loyal customers (5-7 RFM score)
-            { op: 'ifThenElse', args: { condition: { field: 'rfmScore', cmp: 'gte', value: 5 }, thenValue: 'loyal', target: 'segment' } },
-            // Champions (8+ RFM score) - highest priority, checked last
-            { op: 'ifThenElse', args: { condition: { field: 'rfmScore', cmp: 'gte', value: 8 }, thenValue: 'champion', target: 'segment' } },
             {
                 op: 'lookup',
                 args: {
@@ -518,6 +524,9 @@ export const customerSegmentation = createPipeline()
         ],
     })
 
+    // =====================================================
+    // PARALLEL BRANCH 1: Update customer groups
+    // =====================================================
     .transform('prepare-update', {
         operators: [
             {
@@ -533,6 +542,7 @@ export const customerSegmentation = createPipeline()
                         lifetimeValue: 'lifetimeValue',
                         orderCount: 'orderCount',
                         avgOrderValue: 'avgOrderValue',
+                        engagementLevel: 'engagementLevel',
                     },
                 },
             },
@@ -554,11 +564,87 @@ export const customerSegmentation = createPipeline()
         groupsMode: 'add',
     })
 
+    // =====================================================
+    // PARALLEL BRANCH 2: Export champion customers report
+    // =====================================================
+    .transform('filter-champions', {
+        operators: [
+            {
+                op: 'when',
+                args: {
+                    conditions: [{ field: 'segment', cmp: 'eq', value: 'champion' }],
+                    action: 'keep',
+                },
+            },
+            {
+                op: 'pick',
+                args: {
+                    fields: ['emailAddress', 'firstName', 'lastName', 'rfmScore', 'lifetimeValue', 'orderCount', 'avgOrderValue'],
+                },
+            },
+        ],
+    })
+
+    .export('export-champions', {
+        adapterCode: 'csvExport',
+        target: 'file',
+        format: 'csv',
+        path: './reports/segments',
+        filenamePattern: 'champion-customers-${date:YYYY-MM-DD}.csv',
+        includeHeader: true,
+    })
+
+    // =====================================================
+    // PARALLEL BRANCH 3: Export high-value at-risk report
+    // =====================================================
+    .transform('filter-high-value', {
+        operators: [
+            {
+                op: 'when',
+                args: {
+                    conditions: [
+                        { field: 'isHighValue', cmp: 'eq', value: true },
+                        { field: 'segment', cmp: 'neq', value: 'champion' },
+                    ],
+                    action: 'keep',
+                },
+            },
+            {
+                op: 'pick',
+                args: {
+                    fields: ['emailAddress', 'firstName', 'lastName', 'segment', 'rfmScore', 'lifetimeValue', 'lastOrderDate'],
+                },
+            },
+        ],
+    })
+
+    .export('export-high-value-non-champions', {
+        adapterCode: 'csvExport',
+        target: 'file',
+        format: 'csv',
+        path: './reports/segments',
+        filenamePattern: 'high-value-opportunities-${date:YYYY-MM-DD}.csv',
+        includeHeader: true,
+    })
+
+    // Flow with parallel branches
     .edge('start', 'fetch-customers')
-    .edge('fetch-customers', 'filter-active')
-    .edge('filter-active', 'calculate-rfm')
-    .edge('calculate-rfm', 'score-rfm')
-    .edge('score-rfm', 'assign-segment')
-    .edge('assign-segment', 'prepare-update')
+    .edge('fetch-customers', 'validate-customers')
+    .edge('validate-customers', 'filter-active')
+    .edge('filter-active', 'calculate-base-metrics')
+    .edge('calculate-base-metrics', 'enrich-rfm-scores')
+    .edge('enrich-rfm-scores', 'assign-group-codes')
+
+    // Parallel Branch 1: Update customer groups
+    .edge('assign-group-codes', 'prepare-update')
     .edge('prepare-update', 'update-customers')
+
+    // Parallel Branch 2: Export champion customers
+    .edge('assign-group-codes', 'filter-champions')
+    .edge('filter-champions', 'export-champions')
+
+    // Parallel Branch 3: Export high-value non-champions (marketing opportunities)
+    .edge('assign-group-codes', 'filter-high-value')
+    .edge('filter-high-value', 'export-high-value-non-champions')
+
     .build();

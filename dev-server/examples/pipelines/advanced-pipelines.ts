@@ -34,8 +34,8 @@ export const interceptorHooksPipeline = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-products', {
-        adapterCode: 'vendure-query',
-        entity: 'ProductVariant',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT_VARIANT',
         relations: 'product,stockLevels',
         batchSize: 50,
     })
@@ -58,7 +58,7 @@ export const interceptorHooksPipeline = createPipeline()
 
     .load('log-output', {
         adapterCode: 'restPost',
-        endpoint: 'https://your-system.com/api/products/log',
+        endpoint: 'https://example.com/api/products/log',
         method: 'POST',
     })
 
@@ -69,9 +69,9 @@ export const interceptorHooksPipeline = createPipeline()
     // Interceptor hooks that modify data
     .hooks({
         // After extract: Add metadata to all records
-        afterExtract: [
+        AFTER_EXTRACT: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Add extraction metadata',
                 code: `
                     return records.map(record => ({
@@ -87,9 +87,9 @@ export const interceptorHooksPipeline = createPipeline()
         ],
 
         // Before transform: Filter based on conditions
-        beforeTransform: [
+        BEFORE_TRANSFORM: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Filter low stock items',
                 code: `
                     // Only process items with stock > 0
@@ -102,9 +102,9 @@ export const interceptorHooksPipeline = createPipeline()
         ],
 
         // After transform: Add computed fields
-        afterTransform: [
+        AFTER_TRANSFORM: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Add computed fields',
                 code: `
                     return records.map(record => ({
@@ -119,9 +119,9 @@ export const interceptorHooksPipeline = createPipeline()
         ],
 
         // Before load: Final validation
-        beforeLoad: [
+        BEFORE_LOAD: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Validate before load',
                 code: `
                     return records.filter(record => {
@@ -138,10 +138,10 @@ export const interceptorHooksPipeline = createPipeline()
         ],
 
         // Observation hooks (don't modify data)
-        pipelineCompleted: [
+        PIPELINE_COMPLETED: [
             {
-                type: 'log',
-                level: 'info',
+                type: 'LOG',
+                level: 'INFO',
                 message: 'Pipeline completed with interceptor hooks',
             },
         ],
@@ -185,8 +185,8 @@ export const scriptHooksPipeline = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-customers', {
-        adapterCode: 'vendure-query',
-        entity: 'Customer',
+        adapterCode: 'vendureQuery',
+        entity: 'CUSTOMER',
         relations: 'orders',
         batchSize: 100,
     })
@@ -207,7 +207,7 @@ export const scriptHooksPipeline = createPipeline()
 
     .load('log-output', {
         adapterCode: 'restPost',
-        endpoint: 'https://your-system.com/api/customers/log',
+        endpoint: 'https://example.com/api/customers/log',
         method: 'POST',
     })
 
@@ -216,10 +216,10 @@ export const scriptHooksPipeline = createPipeline()
     .edge('calculate-totals', 'log-output')
 
     .hooks({
-        afterTransform: [
+        AFTER_TRANSFORM: [
             // Script hook - references a registered function
             {
-                type: 'script',
+                type: 'SCRIPT',
                 name: 'Add customer segment',
                 scriptName: 'addCustomerSegment',
                 args: {
@@ -231,10 +231,10 @@ export const scriptHooksPipeline = createPipeline()
             },
         ],
 
-        beforeLoad: [
+        BEFORE_LOAD: [
             // Another script hook
             {
-                type: 'script',
+                type: 'SCRIPT',
                 name: 'Enrich with external data',
                 scriptName: 'enrichWithCRM',
                 args: {
@@ -270,8 +270,8 @@ export const scriptOperatorPipeline = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-products', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         relations: 'variants',
         batchSize: 50,
     })
@@ -395,8 +395,8 @@ export const comprehensiveAdvancedPipeline = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-orders', {
-        adapterCode: 'vendure-query',
-        entity: 'Order',
+        adapterCode: 'vendureQuery',
+        entity: 'ORDER',
         relations: 'customer,lines,payments',
         batchSize: 50,
     })
@@ -493,9 +493,9 @@ export const comprehensiveAdvancedPipeline = createPipeline()
 
     .hooks({
         // Interceptor: Add customer lifetime value
-        afterExtract: [
+        AFTER_EXTRACT: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Add order sequence number',
                 code: `
                     // Group orders by customer and add sequence number
@@ -528,9 +528,9 @@ export const comprehensiveAdvancedPipeline = createPipeline()
         ],
 
         // Use script hook for final enrichment
-        beforeLoad: [
+        BEFORE_LOAD: [
             {
-                type: 'script',
+                type: 'SCRIPT',
                 name: 'Final enrichment',
                 scriptName: 'enrichOrdersWithAnalytics',
                 args: {
@@ -541,24 +541,24 @@ export const comprehensiveAdvancedPipeline = createPipeline()
             },
         ],
 
-        pipelineCompleted: [
+        PIPELINE_COMPLETED: [
             {
-                type: 'webhook',
+                type: 'WEBHOOK',
                 name: 'Notify on completion',
-                url: 'https://your-system.com/webhooks/pipeline-complete',
+                url: 'https://example.com/webhooks/pipeline-complete',
             },
             {
-                type: 'log',
-                level: 'info',
+                type: 'LOG',
+                level: 'INFO',
                 message: 'Order analysis pipeline completed',
             },
         ],
 
-        pipelineFailed: [
+        PIPELINE_FAILED: [
             {
-                type: 'webhook',
+                type: 'WEBHOOK',
                 name: 'Alert on failure',
-                url: 'https://your-system.com/webhooks/pipeline-failed',
+                url: 'https://example.com/webhooks/pipeline-failed',
             },
         ],
     })
@@ -592,8 +592,8 @@ export const allHookStagesPipeline = createPipeline()
     .trigger('start', { type: 'manual' })
 
     .extract('fetch-products', {
-        adapterCode: 'vendure-query',
-        entity: 'ProductVariant',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT_VARIANT',
         relations: 'product,stockLevels',
         batchSize: 50,
     })
@@ -616,7 +616,7 @@ export const allHookStagesPipeline = createPipeline()
 
     .load('log-output', {
         adapterCode: 'restPost',
-        endpoint: 'https://your-system.com/api/products/log',
+        endpoint: 'https://example.com/api/products/log',
         method: 'POST',
     })
 
@@ -628,78 +628,78 @@ export const allHookStagesPipeline = createPipeline()
         // =====================================================================
         // PIPELINE LIFECYCLE HOOKS (observation only)
         // =====================================================================
-        pipelineStarted: [
+        PIPELINE_STARTED: [
             {
-                type: 'webhook',
+                type: 'WEBHOOK',
                 name: 'Notify pipeline started',
-                url: 'https://your-system.com/webhooks/pipeline-started',
+                url: 'https://example.com/webhooks/pipeline-started',
             },
             {
-                type: 'emit',
+                type: 'EMIT',
                 name: 'Emit Vendure event',
                 event: 'DataHubPipelineStarted',
             },
         ],
 
-        pipelineCompleted: [
+        PIPELINE_COMPLETED: [
             {
-                type: 'webhook',
+                type: 'WEBHOOK',
                 name: 'Notify pipeline completed',
-                url: 'https://your-system.com/webhooks/pipeline-completed',
+                url: 'https://example.com/webhooks/pipeline-completed',
             },
             {
-                type: 'triggerPipeline',
+                type: 'TRIGGER_PIPELINE',
                 name: 'Trigger follow-up pipeline',
                 pipelineCode: 'post-processing-pipeline',
             },
         ],
 
-        pipelineFailed: [
+        PIPELINE_FAILED: [
             {
-                type: 'webhook',
+                type: 'WEBHOOK',
                 name: 'Alert on failure',
-                url: 'https://your-system.com/webhooks/pipeline-failed',
+                url: 'https://example.com/webhooks/pipeline-failed',
             },
         ],
 
         // =====================================================================
         // ERROR HANDLING HOOKS (observation only)
         // =====================================================================
-        onError: [
+        ON_ERROR: [
             {
-                type: 'log',
-                level: 'error',
+                type: 'LOG',
+                level: 'ERROR',
                 message: 'Error occurred in pipeline',
             },
             {
-                type: 'webhook',
+                type: 'WEBHOOK',
                 name: 'Error notification',
-                url: 'https://your-system.com/webhooks/pipeline-error',
+                url: 'https://example.com/webhooks/pipeline-error',
             },
         ],
 
-        onRetry: [
+        ON_RETRY: [
             {
-                type: 'log',
-                level: 'warn',
+                type: 'LOG',
+                level: 'WARN',
                 message: 'Retrying failed operation',
             },
         ],
 
-        onDeadLetter: [
+        ON_DEAD_LETTER: [
             {
-                type: 'webhook',
+                type: 'WEBHOOK',
                 name: 'Dead letter notification',
-                url: 'https://your-system.com/webhooks/dead-letter',
+                url: 'https://example.com/webhooks/dead-letter',
             },
         ],
 
         // =====================================================================
         // EXTRACT STAGE HOOKS (interceptors can modify data)
         // =====================================================================
-        beforeExtract: [
+        BEFORE_EXTRACT: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Pre-extract setup',
                 code: `
                     // Can modify seed records or add context before extraction
@@ -712,9 +712,9 @@ export const allHookStagesPipeline = createPipeline()
             },
         ],
 
-        afterExtract: [
+        AFTER_EXTRACT: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Post-extract enrichment',
                 code: `
                     // Add metadata after extraction
@@ -726,7 +726,7 @@ export const allHookStagesPipeline = createPipeline()
                 `,
             },
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Filter invalid extracts',
                 code: `
                     // Remove records without required data
@@ -738,9 +738,9 @@ export const allHookStagesPipeline = createPipeline()
         // =====================================================================
         // TRANSFORM STAGE HOOKS (interceptors can modify data)
         // =====================================================================
-        beforeTransform: [
+        BEFORE_TRANSFORM: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Pre-transform validation',
                 code: `
                     // Add validation flags before transform
@@ -753,9 +753,9 @@ export const allHookStagesPipeline = createPipeline()
             },
         ],
 
-        afterTransform: [
+        AFTER_TRANSFORM: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Post-transform computed fields',
                 code: `
                     // Add computed fields after transform
@@ -772,9 +772,9 @@ export const allHookStagesPipeline = createPipeline()
         // =====================================================================
         // VALIDATE STAGE HOOKS (interceptors can modify data)
         // =====================================================================
-        beforeValidate: [
+        BEFORE_VALIDATE: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Pre-validation cleanup',
                 code: `
                     // Clean data before validation
@@ -787,9 +787,9 @@ export const allHookStagesPipeline = createPipeline()
             },
         ],
 
-        afterValidate: [
+        AFTER_VALIDATE: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Post-validation marking',
                 code: `
                     // Mark records that passed validation
@@ -805,9 +805,9 @@ export const allHookStagesPipeline = createPipeline()
         // =====================================================================
         // ENRICH STAGE HOOKS (interceptors can modify data)
         // =====================================================================
-        beforeEnrich: [
+        BEFORE_ENRICH: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Pre-enrich preparation',
                 code: `
                     // Prepare records for enrichment
@@ -819,9 +819,9 @@ export const allHookStagesPipeline = createPipeline()
             },
         ],
 
-        afterEnrich: [
+        AFTER_ENRICH: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Post-enrich finalization',
                 code: `
                     // Finalize enriched records
@@ -837,9 +837,9 @@ export const allHookStagesPipeline = createPipeline()
         // =====================================================================
         // ROUTE STAGE HOOKS (interceptors can modify data)
         // =====================================================================
-        beforeRoute: [
+        BEFORE_ROUTE: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Pre-route classification',
                 code: `
                     // Classify records before routing
@@ -851,9 +851,9 @@ export const allHookStagesPipeline = createPipeline()
             },
         ],
 
-        afterRoute: [
+        AFTER_ROUTE: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Post-route logging',
                 code: `
                     // Log routing decisions
@@ -869,9 +869,9 @@ export const allHookStagesPipeline = createPipeline()
         // =====================================================================
         // LOAD STAGE HOOKS (interceptors can modify data)
         // =====================================================================
-        beforeLoad: [
+        BEFORE_LOAD: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Final validation before load',
                 code: `
                     // Last chance to filter/modify before loading
@@ -891,9 +891,9 @@ export const allHookStagesPipeline = createPipeline()
             },
         ],
 
-        afterLoad: [
+        AFTER_LOAD: [
             {
-                type: 'interceptor',
+                type: 'INTERCEPTOR',
                 name: 'Post-load statistics',
                 code: `
                     // Calculate load statistics

@@ -13,9 +13,6 @@
  * - SCHEDULED: Cron-based sync, webhooks, event triggers
  */
 
-// =============================================================================
-// CUSTOM ADAPTERS
-// =============================================================================
 export {
     currencyConvertOperator,
     currencyConvertSchema,
@@ -35,51 +32,35 @@ export {
     customAdapterPipelineExample,
 } from './custom';
 
-// =============================================================================
-// PRODUCTION-QUALITY PIPELINE EXAMPLES
-// =============================================================================
-
-// Export Pipelines
 export {
     productExportFull,
     customerExportFull,
     orderExportFull,
     inventoryExport,
-} from './pipelines';
-
-// Import Pipelines
-export {
     productImportCsv,
     customerImportCsv,
     stockUpdateCsv,
     priceUpdateCsv,
-} from './pipelines';
-
-// Sync & Integration Pipelines
-export {
     googleShoppingFeed,
     facebookCatalogFeed,
     restApiImport,
-} from './pipelines';
-
-// Data Processing Pipelines
-export {
     productEnrichment,
     orderAnalytics,
     customerSegmentation,
-} from './pipelines';
-
-// Scheduled Pipelines
-export {
     dailyStockSync,
     hourlyPriceSync,
     weeklyCustomerCleanup,
     webhookOrderSync,
     lowStockAlert,
-} from './pipelines';
-
-// Grouped exports for easy registration
-export {
+    webhookApiKeyAuth,
+    webhookJwtAuth,
+    webhookBasicAuth,
+    interceptorHooksPipeline,
+    scriptHooksPipeline,
+    scriptOperatorPipeline,
+    comprehensiveAdvancedPipeline,
+    allHookStagesPipeline,
+    customAdapterPipeline,
     examplePipelines,
     allExamplePipelines,
 } from './pipelines';
