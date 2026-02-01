@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createDataHubTestEnvironment } from './test-config';
 import gql from 'graphql-tag';
+import { StepType } from '../src/constants/enums';
 
 describe('DataHub Error Recovery', () => {
     const { server, adminClient } = createDataHubTestEnvironment();
@@ -36,9 +37,9 @@ describe('DataHub Error Recovery', () => {
                         version: 1,
                         steps: [{
                             key: 'extract',
-                            type: 'EXTRACT',
+                            type: StepType.EXTRACT,
                             config: {
-                                adapterCode: 'vendure-query',
+                                adapterCode: 'vendureQuery',
                                 entity: 'Product',
                             },
                         }],
@@ -177,8 +178,8 @@ describe('DataHub Error Recovery', () => {
                         },
                         steps: [{
                             key: 'extract',
-                            type: 'EXTRACT',
-                            config: { adapterCode: 'vendure-query', entity: 'Product' },
+                            type: StepType.EXTRACT,
+                            config: { adapterCode: 'vendureQuery', entity: 'Product' },
                         }],
                         edges: [],
                     },
@@ -213,8 +214,8 @@ describe('DataHub Error Recovery', () => {
                         },
                         steps: [{
                             key: 'extract',
-                            type: 'EXTRACT',
-                            config: { adapterCode: 'vendure-query', entity: 'Product' },
+                            type: StepType.EXTRACT,
+                            config: { adapterCode: 'vendureQuery', entity: 'Product' },
                         }],
                         edges: [],
                     },
@@ -304,9 +305,9 @@ describe('DataHub Error Recovery', () => {
                         },
                         steps: [{
                             key: 'extract',
-                            type: 'EXTRACT',
+                            type: StepType.EXTRACT,
                             config: {
-                                adapterCode: 'vendure-query',
+                                adapterCode: 'vendureQuery',
                                 entity: 'Product',
                             },
                         }],
@@ -342,16 +343,16 @@ describe('DataHub Error Recovery', () => {
         });
 
         it('sets checkpoint data', async () => {
-            const { setDataHubCheckpoint } = await adminClient.query(gql`
+            const { updateDataHubCheckpoint } = await adminClient.query(gql`
                 mutation SetCheckpoint($pipelineId: ID!, $data: JSON!) {
-                    setDataHubCheckpoint(pipelineId: $pipelineId, data: $data) {
+                    updateDataHubCheckpoint(pipelineId: $pipelineId, data: $data) {
                         id
                         data
                     }
                 }
             `, { pipelineId, data: { lastProcessedId: 50, processedCount: 50 } });
 
-            expect(setDataHubCheckpoint).toBeDefined();
+            expect(updateDataHubCheckpoint).toBeDefined();
         });
     });
 

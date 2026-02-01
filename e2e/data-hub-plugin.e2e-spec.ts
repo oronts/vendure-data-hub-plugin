@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createDataHubTestEnvironment } from './test-config';
 import gql from 'graphql-tag';
+import { ConnectionType, SecretProvider, StepType } from '../src/constants/enums';
 
 describe('DataHub Plugin', () => {
     const { server, adminClient } = createDataHubTestEnvironment();
@@ -128,13 +129,13 @@ describe('DataHub Plugin', () => {
             `, {
                 input: {
                     code: 'test-http-conn',
-                    type: 'http',
+                    type: ConnectionType.HTTP,
                     config: { baseUrl: 'https://api.example.com' },
                 },
             });
 
             expect(createDataHubConnection.code).toBe('test-http-conn');
-            expect(createDataHubConnection.type).toBe('http');
+            expect(createDataHubConnection.type).toBe(ConnectionType.HTTP);
             connectionId = createDataHubConnection.id;
         });
 
@@ -213,13 +214,13 @@ describe('DataHub Plugin', () => {
             `, {
                 input: {
                     code: 'test-api-key',
-                    provider: 'inline',
+                    provider: SecretProvider.INLINE,
                     value: 'secret-value-123',
                 },
             });
 
             expect(createDataHubSecret.code).toBe('test-api-key');
-            expect(createDataHubSecret.provider).toBe('inline');
+            expect(createDataHubSecret.provider).toBe(SecretProvider.INLINE);
             secretId = createDataHubSecret.id;
         });
 
@@ -314,9 +315,9 @@ describe('DataHub Plugin', () => {
                 }
             `);
 
-            const restExtractor = dataHubAdapters.find((a: any) => a.code === 'rest');
-            expect(restExtractor).toBeDefined();
-            expect(restExtractor.schema).toBeDefined();
+            const httpApiExtractor = dataHubAdapters.find((a: any) => a.code === 'httpApi');
+            expect(httpApiExtractor).toBeDefined();
+            expect(httpApiExtractor.schema).toBeDefined();
         });
     });
 
@@ -351,8 +352,8 @@ describe('DataHub Plugin', () => {
                     version: 1,
                     steps: [{
                         key: 'extract-1',
-                        type: 'EXTRACT',
-                        config: { adapterCode: 'rest', url: 'https://api.example.com/data' },
+                        type: StepType.EXTRACT,
+                        config: { adapterCode: 'httpApi', url: 'https://api.example.com/data' },
                     }],
                     edges: [],
                 },
@@ -375,7 +376,7 @@ describe('DataHub Plugin', () => {
                     version: 1,
                     steps: [{
                         key: 'invalid-step',
-                        type: 'EXTRACT',
+                        type: StepType.EXTRACT,
                         config: { adapterCode: 'non-existent-adapter' },
                     }],
                     edges: [],
@@ -403,9 +404,9 @@ describe('DataHub Plugin', () => {
         });
 
         it('updates settings', async () => {
-            const { setDataHubSettings } = await adminClient.query(gql`
+            const { updateDataHubSettings } = await adminClient.query(gql`
                 mutation UpdateSettings($input: DataHubSettingsInput!) {
-                    setDataHubSettings(input: $input) {
+                    updateDataHubSettings(input: $input) {
                         retentionDaysRuns
                         retentionDaysErrors
                     }
@@ -417,8 +418,8 @@ describe('DataHub Plugin', () => {
                 },
             });
 
-            expect(setDataHubSettings.retentionDaysRuns).toBe(60);
-            expect(setDataHubSettings.retentionDaysErrors).toBe(30);
+            expect(updateDataHubSettings.retentionDaysRuns).toBe(60);
+            expect(updateDataHubSettings.retentionDaysErrors).toBe(30);
         });
     });
 
@@ -470,8 +471,8 @@ describe('DataHub Plugin', () => {
                     version: 1,
                     steps: [{
                         key: 'step-1',
-                        type: 'EXTRACT',
-                        config: { adapterCode: 'rest', url: 'https://api.example.com' },
+                        type: StepType.EXTRACT,
+                        config: { adapterCode: 'httpApi', url: 'https://api.example.com' },
                     }],
                     edges: [],
                 },
@@ -495,7 +496,7 @@ describe('DataHub Plugin', () => {
                     nodes: [{
                         id: 'node-1',
                         type: 'source',
-                        data: { adapterCode: 'rest', config: { url: 'https://api.example.com' } },
+                        data: { adapterCode: 'httpApi', config: { url: 'https://api.example.com' } },
                         position: { x: 0, y: 0 },
                     }],
                     edges: [],

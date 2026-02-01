@@ -12,8 +12,23 @@ if (!fs.existsSync(dataPath)) {
     fs.mkdirSync(dataPath, { recursive: true });
 }
 
-// Track if initializer has been registered
-let initializerRegistered = false;
+// Clear any existing database files to ensure fresh state on module load
+// This runs once when the module is first imported in each fork
+if (fs.existsSync(dataPath)) {
+    const files = fs.readdirSync(dataPath);
+    for (const file of files) {
+        if (file.endsWith('.sqlite')) {
+            try {
+                fs.unlinkSync(path.join(dataPath, file));
+            } catch {
+                // Ignore errors when deleting files
+            }
+        }
+    }
+}
+
+// Register the initializer at module load time (once per process/fork)
+registerInitializer('sqljs', new SqljsInitializer(dataPath));
 
 export const testConfig = mergeConfig(defaultTestConfig, {
     plugins: [
@@ -21,6 +36,11 @@ export const testConfig = mergeConfig(defaultTestConfig, {
             enabled: true,
         }),
     ],
+    // Use dropSchema to ensure fresh database each time
+    dbConnectionOptions: {
+        ...defaultTestConfig.dbConnectionOptions,
+        synchronize: true,
+    },
 });
 
 /**
@@ -28,24 +48,5 @@ export const testConfig = mergeConfig(defaultTestConfig, {
  * Each call creates a fresh environment suitable for independent test execution.
  */
 export function createDataHubTestEnvironment() {
-    // Register the initializer only once per process
-    if (!initializerRegistered) {
-        // Clear any existing database files to ensure fresh state
-        if (fs.existsSync(dataPath)) {
-            const files = fs.readdirSync(dataPath);
-            for (const file of files) {
-                if (file.endsWith('.sqlite')) {
-                    try {
-                        fs.unlinkSync(path.join(dataPath, file));
-                    } catch {
-                        // Ignore errors when deleting files
-                    }
-                }
-            }
-        }
-        registerInitializer('sqljs', new SqljsInitializer(dataPath));
-        initializerRegistered = true;
-    }
-
     return createTestEnvironment(testConfig);
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createDataHubTestEnvironment } from './test-config';
 import gql from 'graphql-tag';
+import { StepType } from '../src/constants/enums';
 
 describe('DataHub Pipeline Execution', () => {
     const { server, adminClient } = createDataHubTestEnvironment();
@@ -40,9 +41,9 @@ describe('DataHub Pipeline Execution', () => {
                         version: 1,
                         steps: [{
                             key: 'extract-step',
-                            type: 'EXTRACT',
+                            type: StepType.EXTRACT,
                             config: {
-                                adapterCode: 'vendure-query',
+                                adapterCode: 'vendureQuery',
                                 entity: 'Product',
                             },
                         }],
@@ -130,9 +131,9 @@ describe('DataHub Pipeline Execution', () => {
                         version: 1,
                         steps: [{
                             key: 'extract',
-                            type: 'EXTRACT',
+                            type: StepType.EXTRACT,
                             config: {
-                                adapterCode: 'vendure-query',
+                                adapterCode: 'vendureQuery',
                                 entity: 'Product',
                             },
                         }],
@@ -184,15 +185,15 @@ describe('DataHub Pipeline Execution', () => {
                         steps: [
                             {
                                 key: 'extract',
-                                type: 'EXTRACT',
+                                type: StepType.EXTRACT,
                                 config: {
-                                    adapterCode: 'vendure-query',
+                                    adapterCode: 'vendureQuery',
                                     entity: 'Product',
                                 },
                             },
                             {
                                 key: 'transform',
-                                type: 'TRANSFORM',
+                                type: StepType.TRANSFORM,
                                 config: {
                                     operators: [
                                         { op: 'map', args: { mapping: { productName: '$.name', currency: '"USD"' } } },
@@ -306,9 +307,9 @@ describe('DataHub Pipeline Execution', () => {
                         version: 1,
                         steps: [{
                             key: 'extract',
-                            type: 'EXTRACT',
+                            type: StepType.EXTRACT,
                             config: {
-                                adapterCode: 'vendure-query',
+                                adapterCode: 'vendureQuery',
                                 entity: 'Product',
                             },
                         }],
@@ -359,9 +360,9 @@ describe('DataHub Pipeline Execution', () => {
                         version: 1,
                         steps: [{
                             key: 'extract',
-                            type: 'EXTRACT',
+                            type: StepType.EXTRACT,
                             config: {
-                                adapterCode: 'vendure-query',
+                                adapterCode: 'vendureQuery',
                                 entity: 'Product',
                             },
                         }],
