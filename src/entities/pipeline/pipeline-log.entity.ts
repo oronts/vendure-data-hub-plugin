@@ -1,66 +1,59 @@
-import { DeepPartial, ID, VendureEntity } from '@vendure/core';
+import { DeepPartial, VendureEntity } from '@vendure/core';
 import { Column, Entity, Index, ManyToOne } from 'typeorm';
+import type { JsonObject } from '../../types/index';
+import { LogLevel } from '../../constants/enums';
 import { PipelineRun } from './pipeline-run.entity';
 import { Pipeline } from './pipeline.entity';
+import { TABLE_NAMES } from '../../constants/table-names';
 
-/**
- * Log levels for pipeline execution logs.
- */
-export enum LogLevel {
-    DEBUG = 'DEBUG',
-    INFO = 'INFO',
-    WARN = 'WARN',
-    ERROR = 'ERROR',
-}
+export { LogLevel } from '../../constants/enums';
 
-/**
- * PipelineLog entity stores execution logs for pipeline runs.
- * Provides detailed logging with context and metadata for debugging.
- */
-@Entity('data_hub_pipeline_log')
+@Entity(TABLE_NAMES.PIPELINE_LOG)
 @Index(['level'])
 @Index(['stepKey'])
 @Index(['pipelineId'])
 @Index(['runId'])
 @Index(['createdAt'])
+@Index(['runId', 'level']) // Composite for filtering logs by level within a run
+@Index(['pipelineId', 'level', 'createdAt']) // Composite for pipeline log analysis
 export class PipelineLog extends VendureEntity {
     constructor(input?: DeepPartial<PipelineLog>) {
         super(input);
     }
 
     @Column({ type: 'varchar', length: 10 })
-    level: LogLevel;
+    level!: LogLevel;
 
     @Column({ type: 'text' })
-    message: string;
+    message!: string;
 
-    @Column({ nullable: true })
-    stepKey: string;
-
-    @Column({ type: 'simple-json', nullable: true })
-    context: Record<string, any>;
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    stepKey!: string | null;
 
     @Column({ type: 'simple-json', nullable: true })
-    metadata: Record<string, any>;
+    context!: JsonObject | null;
+
+    @Column({ type: 'simple-json', nullable: true })
+    metadata!: JsonObject | null;
 
     @ManyToOne(() => Pipeline, { nullable: true, onDelete: 'CASCADE' })
-    pipeline: Pipeline;
+    pipeline!: Pipeline | null;
 
-    @Column({ nullable: true })
-    pipelineId: ID;
+    @Column({ type: 'int', nullable: true })
+    pipelineId!: number | null;
 
     @ManyToOne(() => PipelineRun, { nullable: true, onDelete: 'CASCADE' })
-    run: PipelineRun;
+    run!: PipelineRun | null;
 
-    @Column({ nullable: true })
-    runId: ID;
+    @Column({ type: 'int', nullable: true })
+    runId!: number | null;
 
     @Column({ type: 'bigint', nullable: true })
-    durationMs: number;
+    durationMs!: number | null;
 
     @Column({ type: 'int', nullable: true })
-    recordsProcessed: number;
+    recordsProcessed!: number | null;
 
     @Column({ type: 'int', nullable: true })
-    recordsFailed: number;
+    recordsFailed!: number | null;
 }

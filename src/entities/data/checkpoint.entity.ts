@@ -1,24 +1,23 @@
 import { Column, Entity, Index, ManyToOne } from 'typeorm';
 import { DeepPartial, VendureEntity } from '@vendure/core';
+import type { JsonObject } from '../../types/index';
 import { Pipeline } from '../pipeline/pipeline.entity';
+import { TABLE_NAMES } from '../../constants/table-names';
 
-/**
- * PipelineCheckpointEntity stores checkpoint data for resumable pipeline execution.
- * Enables pipelines to resume from the last successful checkpoint after failures.
- */
-@Entity('data_hub_checkpoint')
-export class PipelineCheckpointEntity extends VendureEntity {
-    constructor(input?: DeepPartial<PipelineCheckpointEntity>) {
+@Entity(TABLE_NAMES.CHECKPOINT)
+@Index(['pipelineId', 'createdAt']) // Composite index for pipeline checkpoint history lookups
+export class DataHubCheckpoint extends VendureEntity {
+    constructor(input?: DeepPartial<DataHubCheckpoint>) {
         super(input);
     }
 
     @ManyToOne(() => Pipeline, { onDelete: 'CASCADE' })
-    pipeline: Pipeline;
+    pipeline!: Pipeline;
 
     @Index()
-    @Column({ nullable: true })
-    pipelineId: number;
+    @Column({ type: 'int', nullable: true })
+    pipelineId!: number | null;
 
-    @Column('simple-json')
-    data: Record<string, any>;
+    @Column({ type: 'simple-json' })
+    data!: JsonObject;
 }

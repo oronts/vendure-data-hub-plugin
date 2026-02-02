@@ -1,10 +1,8 @@
 import { Column, Entity } from 'typeorm';
 import { DeepPartial, VendureEntity } from '@vendure/core';
 import { LogPersistenceLevel } from '../../constants/enums';
+import { TABLE_NAMES } from '../../constants/table-names';
 
-/**
- * AutoMapper configuration for field mapping suggestions.
- */
 export interface StoredAutoMapperConfig {
     confidenceThreshold?: number;
     enableFuzzyMatching?: boolean;
@@ -19,46 +17,27 @@ export interface StoredAutoMapperConfig {
     };
 }
 
-/**
- * DataHubSettings entity stores global plugin settings.
- * Contains retention policies, logging settings, and AutoMapper configurations.
- */
-@Entity('data_hub_settings')
+@Entity(TABLE_NAMES.SETTINGS)
 export class DataHubSettings extends VendureEntity {
     constructor(input?: DeepPartial<DataHubSettings>) {
         super(input);
     }
 
     @Column({ type: 'int', nullable: true })
-    retentionDaysRuns: number | null;
+    retentionDaysRuns!: number | null;
 
     @Column({ type: 'int', nullable: true })
-    retentionDaysErrors: number | null;
+    retentionDaysErrors!: number | null;
 
-    /**
-     * Log persistence level - controls what gets saved to database for the dashboard.
-     * Defaults to PIPELINE (pipeline start/complete/fail + errors).
-     */
     @Column({ type: 'varchar', length: 20, default: LogPersistenceLevel.PIPELINE })
-    logPersistenceLevel: LogPersistenceLevel;
+    logPersistenceLevel!: LogPersistenceLevel;
 
-    /**
-     * Retention days for logs in the database.
-     * Null means use default (30 days).
-     */
     @Column({ type: 'int', nullable: true })
-    retentionDaysLogs: number | null;
+    retentionDaysLogs!: number | null;
 
-    /**
-     * Global AutoMapper configuration
-     */
     @Column({ type: 'simple-json', nullable: true })
-    autoMapperConfig: StoredAutoMapperConfig | null;
+    autoMapperConfig!: StoredAutoMapperConfig | null;
 
-    /**
-     * Per-pipeline AutoMapper configurations
-     * Key is the pipeline ID
-     */
     @Column({ type: 'simple-json', nullable: true })
-    pipelineAutoMapperConfigs: Record<string, StoredAutoMapperConfig> | null;
+    pipelineAutoMapperConfigs!: Record<string, StoredAutoMapperConfig> | null;
 }
