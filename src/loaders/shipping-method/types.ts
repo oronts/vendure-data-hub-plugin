@@ -1,6 +1,7 @@
 import { ID, ShippingMethod } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 export interface ShippingCalculatorInput {
     /** Calculator handler code */
@@ -44,7 +45,7 @@ export interface ExistingEntityResult {
 }
 
 export const SHIPPING_METHOD_LOADER_METADATA = {
-    entityType: 'ShippingMethod' as const,
+    entityType: VendureEntityType.SHIPPING_METHOD,
     name: 'Shipping Method Loader',
     description: 'Imports shipping methods with calculators and checkers',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

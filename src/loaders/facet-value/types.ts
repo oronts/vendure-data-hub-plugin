@@ -1,6 +1,7 @@
 import { ID, FacetValue } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 export interface FacetValueInput extends InputRecord {
     /** Display name for the facet value (e.g., "Red", "Large", "Nike") */
@@ -21,7 +22,7 @@ export interface ExistingEntityResult {
 }
 
 export const FACET_VALUE_LOADER_METADATA = {
-    entityType: 'FacetValue' as const,
+    entityType: VendureEntityType.FACET_VALUE,
     name: 'Facet Value Loader',
     description: 'Imports facet values (attribute options) with parent facet resolution',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

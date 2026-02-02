@@ -1,6 +1,7 @@
 import { ID, Asset } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 export interface FocalPointInput {
     /** Horizontal focal point (0-1) */
@@ -28,7 +29,7 @@ export interface ExistingEntityResult {
 }
 
 export const ASSET_LOADER_METADATA = {
-    entityType: 'Asset' as const,
+    entityType: VendureEntityType.ASSET,
     name: 'Asset Loader',
     description: 'Imports media assets (images, files) from URLs',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

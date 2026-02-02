@@ -5,6 +5,8 @@ import {
     TransactionalConnection,
     ProductVariantService,
     StockLocationService,
+    StockLevelService,
+    StockMovementService,
 } from '@vendure/core';
 import {
     EntityLoader,
@@ -16,25 +18,27 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
-import { InventoryInput } from './types';
+import { VendureEntityType } from '../../constants/enums';
+import { InventoryInput, INVENTORY_LOADER_METADATA } from './types';
 import { findVariantBySku, resolveStockLocationId, isRecoverableError } from './helpers';
 
 @Injectable()
 export class InventoryLoader implements EntityLoader<InventoryInput> {
     private readonly logger: DataHubLogger;
 
-    readonly entityType = 'Inventory' as const;
-    readonly name = 'Inventory Loader';
-    readonly description = 'Updates stock levels for product variants by SKU';
-
-    readonly supportedOperations: TargetOperation[] = ['UPDATE', 'UPSERT'];
-    readonly lookupFields = ['sku'];
-    readonly requiredFields = ['sku', 'stockOnHand'];
+    readonly entityType = INVENTORY_LOADER_METADATA.entityType;
+    readonly name = INVENTORY_LOADER_METADATA.name;
+    readonly description = INVENTORY_LOADER_METADATA.description;
+    readonly supportedOperations: TargetOperation[] = [...INVENTORY_LOADER_METADATA.supportedOperations];
+    readonly lookupFields = [...INVENTORY_LOADER_METADATA.lookupFields];
+    readonly requiredFields = [...INVENTORY_LOADER_METADATA.requiredFields];
 
     constructor(
         private _connection: TransactionalConnection,
         private productVariantService: ProductVariantService,
         private stockLocationService: StockLocationService,
+        private stockLevelService: StockLevelService,
+        private stockMovementService: StockMovementService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.INVENTORY_LOADER);
@@ -142,7 +146,7 @@ export class InventoryLoader implements EntityLoader<InventoryInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'Inventory',
+            entityType: VendureEntityType.INVENTORY,
             fields: [
                 {
                     key: 'sku',
@@ -190,7 +194,7 @@ export class InventoryLoader implements EntityLoader<InventoryInput> {
         variantId: ID,
         newStockLevel: number,
         stockLocationId?: ID,
-        reason?: string,
+        _reason?: string,
     ): Promise<void> {
         const locations = await this.stockLocationService.findAll(ctx, {});
         const targetLocationId = stockLocationId || (locations.totalItems > 0 ? locations.items[0].id : undefined);
@@ -199,6 +203,11 @@ export class InventoryLoader implements EntityLoader<InventoryInput> {
             throw new Error('No stock location available');
         }
 
-        this.logger.log(`Stock level set for variant ${variantId} to ${newStockLevel} at location ${targetLocationId}${reason ? ` (${reason})` : ''}`);
+        await this.stockMovementService.adjustProductVariantStock(
+            ctx,
+            variantId,
+            [{ stockLocationId: targetLocationId, stockOnHand: newStockLevel }],
+        );
+        this.logger.log(`Stock level set for variant ${variantId} to ${newStockLevel} at location ${targetLocationId}`);
     }
 }

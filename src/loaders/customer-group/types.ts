@@ -1,6 +1,7 @@
 import { ID, CustomerGroup } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 export interface CustomerGroupInput extends InputRecord {
     /** Unique name for the customer group */
@@ -17,7 +18,7 @@ export interface ExistingEntityResult {
 }
 
 export const CUSTOMER_GROUP_LOADER_METADATA = {
-    entityType: 'CustomerGroup' as const,
+    entityType: VendureEntityType.CUSTOMER_GROUP,
     name: 'Customer Group Loader',
     description: 'Imports customer groups/segments with customer assignment',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

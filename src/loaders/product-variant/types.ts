@@ -1,6 +1,7 @@
 import { ID, ProductVariant } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 export interface ProductVariantInput extends InputRecord {
     /** Stock keeping unit - primary identifier */
@@ -36,8 +37,13 @@ export interface ExistingEntityResult {
     entity: ProductVariant;
 }
 
+/**
+ * Default product name used when auto-creating a product for orphan variants
+ */
+export const DEFAULT_PRODUCT_NAME = 'Imported Product';
+
 export const PRODUCT_VARIANT_LOADER_METADATA = {
-    entityType: 'ProductVariant' as const,
+    entityType: VendureEntityType.PRODUCT_VARIANT,
     name: 'Product Variant Loader',
     description: 'Imports product variants with SKU-based lookup, prices, stock, and options',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

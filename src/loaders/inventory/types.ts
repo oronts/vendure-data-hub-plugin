@@ -1,4 +1,6 @@
 import { InputRecord } from '../../types/index';
+import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 export interface InventoryInput extends InputRecord {
     /** Product SKU to look up */
@@ -16,3 +18,12 @@ export interface InventoryInput extends InputRecord {
     /** Reason for stock adjustment */
     reason?: string;
 }
+
+export const INVENTORY_LOADER_METADATA = {
+    entityType: VendureEntityType.INVENTORY,
+    name: 'Inventory Loader',
+    description: 'Updates stock levels for product variants by SKU',
+    supportedOperations: ['UPDATE', 'UPSERT'] as TargetOperation[],
+    lookupFields: ['sku'],
+    requiredFields: ['sku', 'stockOnHand'],
+} as const;

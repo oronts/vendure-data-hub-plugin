@@ -16,20 +16,20 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
-import { StockLocationInput } from './types';
-import { isRecoverableError } from './helpers';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { StockLocationInput, STOCK_LOCATION_LOADER_METADATA } from './types';
+import { isRecoverableError, shouldUpdateField } from './helpers';
 
 @Injectable()
 export class StockLocationLoader implements EntityLoader<StockLocationInput> {
     private readonly logger: DataHubLogger;
 
-    readonly entityType = 'StockLocation' as const;
-    readonly name = 'Stock Location Loader';
-    readonly description = 'Imports stock locations/warehouses for inventory management';
-
-    readonly supportedOperations: TargetOperation[] = ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'];
-    readonly lookupFields = ['name', 'id'];
-    readonly requiredFields = ['name'];
+    readonly entityType = STOCK_LOCATION_LOADER_METADATA.entityType;
+    readonly name = STOCK_LOCATION_LOADER_METADATA.name;
+    readonly description = STOCK_LOCATION_LOADER_METADATA.description;
+    readonly supportedOperations: TargetOperation[] = [...STOCK_LOCATION_LOADER_METADATA.supportedOperations];
+    readonly lookupFields = [...STOCK_LOCATION_LOADER_METADATA.lookupFields];
+    readonly requiredFields = [...STOCK_LOCATION_LOADER_METADATA.requiredFields];
 
     constructor(
         private _connection: TransactionalConnection,
@@ -66,7 +66,7 @@ export class StockLocationLoader implements EntityLoader<StockLocationInput> {
                 const existing = await this.findExisting(context.ctx, context.lookupFields, record);
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -87,7 +87,7 @@ export class StockLocationLoader implements EntityLoader<StockLocationInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -148,7 +148,7 @@ export class StockLocationLoader implements EntityLoader<StockLocationInput> {
         const errors: { field: string; message: string; code?: string }[] = [];
         const warnings: { field: string; message: string }[] = [];
 
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
                 errors.push({ field: 'name', message: 'Stock location name is required', code: 'REQUIRED' });
             }
@@ -163,7 +163,7 @@ export class StockLocationLoader implements EntityLoader<StockLocationInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'StockLocation',
+            entityType: VendureEntityType.STOCK_LOCATION,
             fields: [
                 {
                     key: 'name',
@@ -207,22 +207,15 @@ export class StockLocationLoader implements EntityLoader<StockLocationInput> {
     private async updateStockLocation(context: LoaderContext, locationId: ID, record: StockLocationInput): Promise<void> {
         const { ctx, options } = context;
 
-        const shouldUpdate = (field: string) => {
-            if (!options.updateOnlyFields || options.updateOnlyFields.length === 0) {
-                return true;
-            }
-            return options.updateOnlyFields.includes(field);
-        };
-
         const updateInput: Record<string, unknown> = { id: locationId };
 
-        if (record.name !== undefined && shouldUpdate('name')) {
+        if (record.name !== undefined && shouldUpdateField('name', options.updateOnlyFields)) {
             updateInput.name = record.name;
         }
-        if (record.description !== undefined && shouldUpdate('description')) {
+        if (record.description !== undefined && shouldUpdateField('description', options.updateOnlyFields)) {
             updateInput.description = record.description;
         }
-        if (record.customFields !== undefined && shouldUpdate('customFields')) {
+        if (record.customFields !== undefined && shouldUpdateField('customFields', options.updateOnlyFields)) {
             updateInput.customFields = record.customFields;
         }
 

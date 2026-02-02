@@ -26,10 +26,12 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     ProductVariantInput,
     ExistingEntityResult,
     PRODUCT_VARIANT_LOADER_METADATA,
+    DEFAULT_PRODUCT_NAME,
 } from './types';
 import {
     resolveFacetValueIds,
@@ -92,7 +94,7 @@ export class ProductVariantLoader implements EntityLoader<ProductVariantInput> {
                 const existing = await this.findExisting(context.ctx, context.lookupFields, record);
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -114,7 +116,7 @@ export class ProductVariantLoader implements EntityLoader<ProductVariantInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -181,7 +183,7 @@ export class ProductVariantLoader implements EntityLoader<ProductVariantInput> {
         const warnings: { field: string; message: string }[] = [];
 
         // Required field validation
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.sku || typeof record.sku !== 'string' || record.sku.trim() === '') {
                 errors.push({ field: 'sku', message: 'SKU is required', code: 'REQUIRED' });
             }
@@ -230,7 +232,7 @@ export class ProductVariantLoader implements EntityLoader<ProductVariantInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'ProductVariant',
+            entityType: VendureEntityType.PRODUCT_VARIANT,
             fields: [
                 {
                     key: 'sku',
@@ -443,7 +445,7 @@ export class ProductVariantLoader implements EntityLoader<ProductVariantInput> {
             }
         }
 
-        const productName = record.productName || record.sku.split('-')[0] || 'Imported Product';
+        const productName = record.productName || record.sku.split('-')[0] || DEFAULT_PRODUCT_NAME;
         const product = await this.productService.create(ctx, {
             enabled: true,
             translations: [

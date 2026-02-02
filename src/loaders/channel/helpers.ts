@@ -1,5 +1,6 @@
 import { ID, RequestContext, ZoneService, CurrencyCode, LanguageCode } from '@vendure/core';
-import { ChannelInput } from './types';
+
+export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
 
 /**
  * Resolve zone ID from code or direct ID
@@ -95,30 +96,3 @@ export function generateChannelToken(code: string): string {
     return `${code.toLowerCase().replace(/[^a-z0-9]/g, '')}_${randomPart}`;
 }
 
-/**
- * Check if an error is recoverable (can be retried)
- */
-export function isRecoverableError(error: unknown): boolean {
-    if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        return (
-            message.includes('timeout') ||
-            message.includes('connection') ||
-            message.includes('temporarily')
-        );
-    }
-    return false;
-}
-
-/**
- * Check if a field should be updated based on updateOnlyFields option
- */
-export function shouldUpdateField(
-    field: string,
-    updateOnlyFields?: string[],
-): boolean {
-    if (!updateOnlyFields || updateOnlyFields.length === 0) {
-        return true;
-    }
-    return updateOnlyFields.includes(field);
-}

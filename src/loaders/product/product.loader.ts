@@ -17,6 +17,7 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     ProductInput,
     ExistingEntityResult,
@@ -77,7 +78,7 @@ export class ProductLoader implements EntityLoader<ProductInput> {
                 const existing = await this.findExisting(context.ctx, context.lookupFields, record);
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -99,7 +100,7 @@ export class ProductLoader implements EntityLoader<ProductInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -174,7 +175,7 @@ export class ProductLoader implements EntityLoader<ProductInput> {
         const warnings: { field: string; message: string }[] = [];
 
         // Required field validation
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
                 errors.push({ field: 'name', message: 'Product name is required', code: 'REQUIRED' });
             }
@@ -189,7 +190,7 @@ export class ProductLoader implements EntityLoader<ProductInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'Product',
+            entityType: VendureEntityType.PRODUCT,
             fields: [
                 {
                     key: 'name',

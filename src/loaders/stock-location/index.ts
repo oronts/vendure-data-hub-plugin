@@ -1,2 +1,2 @@
 export { StockLocationLoader } from './stock-location.loader';
-export { StockLocationInput } from './types';
+export { StockLocationInput, STOCK_LOCATION_LOADER_METADATA } from './types';

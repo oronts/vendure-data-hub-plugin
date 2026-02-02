@@ -18,6 +18,7 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     ChannelInput,
     ExistingEntityResult,
@@ -154,7 +155,7 @@ export class ChannelLoader implements EntityLoader<ChannelInput> {
                 const existing = await this.findExisting(context.ctx, context.lookupFields, record);
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -181,7 +182,7 @@ export class ChannelLoader implements EntityLoader<ChannelInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -259,7 +260,7 @@ export class ChannelLoader implements EntityLoader<ChannelInput> {
         const errors: { field: string; message: string; code?: string }[] = [];
         const warnings: { field: string; message: string }[] = [];
 
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.code || typeof record.code !== 'string' || record.code.trim() === '') {
                 errors.push({ field: 'code', message: 'Channel code is required', code: 'REQUIRED' });
             } else if (!/^[a-z0-9_-]+$/i.test(record.code)) {
@@ -338,7 +339,7 @@ export class ChannelLoader implements EntityLoader<ChannelInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'Channel',
+            entityType: VendureEntityType.CHANNEL,
             fields: [
                 {
                     key: 'code',

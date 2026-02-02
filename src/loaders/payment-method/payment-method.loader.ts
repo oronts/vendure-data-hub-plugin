@@ -15,6 +15,7 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     PaymentMethodInput,
     ExistingEntityResult,
@@ -94,7 +95,7 @@ export class PaymentMethodLoader implements EntityLoader<PaymentMethodInput> {
                 const existing = await this.findExisting(context.ctx, context.lookupFields, record);
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -115,7 +116,7 @@ export class PaymentMethodLoader implements EntityLoader<PaymentMethodInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -186,7 +187,7 @@ export class PaymentMethodLoader implements EntityLoader<PaymentMethodInput> {
         const errors: { field: string; message: string; code?: string }[] = [];
         const warnings: { field: string; message: string }[] = [];
 
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
                 errors.push({ field: 'name', message: 'Payment method name is required', code: 'REQUIRED' });
             }
@@ -215,7 +216,7 @@ export class PaymentMethodLoader implements EntityLoader<PaymentMethodInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'PaymentMethod',
+            entityType: VendureEntityType.PAYMENT_METHOD,
             fields: [
                 {
                     key: 'name',

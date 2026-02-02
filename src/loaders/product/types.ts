@@ -1,6 +1,7 @@
 import { ID, Product } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 export interface ProductInput extends InputRecord {
     /** Display name for the product */
@@ -27,7 +28,7 @@ export interface ExistingEntityResult {
 }
 
 export const PRODUCT_LOADER_METADATA = {
-    entityType: 'Product' as const,
+    entityType: VendureEntityType.PRODUCT,
     name: 'Product Loader',
     description: 'Imports products with slug-based lookup, facets, and assets',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

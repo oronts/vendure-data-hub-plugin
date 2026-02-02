@@ -1,6 +1,7 @@
-import { ID, Channel, CurrencyCode, LanguageCode } from '@vendure/core';
+import { ID, Channel } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 /**
  * Channel Input for data import
@@ -55,7 +56,7 @@ export interface ExistingEntityResult {
 }
 
 export const CHANNEL_LOADER_METADATA = {
-    entityType: 'Channel' as const,
+    entityType: VendureEntityType.CHANNEL,
     name: 'Channel Loader',
     description: 'Imports channels/storefronts with currency, language, and zone settings',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

@@ -1,6 +1,7 @@
 import { ID, PaymentMethod } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 /**
  * Configurable Operation Input for payment handlers/checkers
@@ -47,7 +48,7 @@ export interface ExistingEntityResult {
 }
 
 export const PAYMENT_METHOD_LOADER_METADATA = {
-    entityType: 'PaymentMethod' as const,
+    entityType: VendureEntityType.PAYMENT_METHOD,
     name: 'Payment Method Loader',
     description: 'Imports payment methods with handlers and eligibility checkers',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

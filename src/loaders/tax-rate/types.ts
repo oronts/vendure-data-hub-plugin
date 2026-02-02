@@ -1,6 +1,7 @@
 import { ID, TaxRate } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 /**
  * Tax Rate Input for data import
@@ -40,7 +41,7 @@ export interface ExistingEntityResult {
 }
 
 export const TAX_RATE_LOADER_METADATA = {
-    entityType: 'TaxRate' as const,
+    entityType: VendureEntityType.TAX_RATE,
     name: 'Tax Rate Loader',
     description: 'Imports tax rates with tax category and zone resolution',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

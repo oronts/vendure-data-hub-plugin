@@ -18,6 +18,7 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     TaxRateInput,
     ExistingEntityResult,
@@ -137,7 +138,7 @@ export class TaxRateLoader implements EntityLoader<TaxRateInput> {
                 const existing = await this.findExisting(context.ctx, context.lookupFields, record);
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -158,7 +159,7 @@ export class TaxRateLoader implements EntityLoader<TaxRateInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -218,7 +219,7 @@ export class TaxRateLoader implements EntityLoader<TaxRateInput> {
         const errors: { field: string; message: string; code?: string }[] = [];
         const warnings: { field: string; message: string }[] = [];
 
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
                 errors.push({ field: 'name', message: 'Tax rate name is required', code: 'REQUIRED' });
             }
@@ -259,7 +260,7 @@ export class TaxRateLoader implements EntityLoader<TaxRateInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'TaxRate',
+            entityType: VendureEntityType.TAX_RATE,
             fields: [
                 {
                     key: 'name',

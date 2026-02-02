@@ -1,6 +1,7 @@
 import { ID, Customer } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 export interface CustomerAddressInput {
     fullName?: string;
@@ -40,7 +41,7 @@ export interface ExistingEntityResult {
 }
 
 export const CUSTOMER_LOADER_METADATA = {
-    entityType: 'Customer' as const,
+    entityType: VendureEntityType.CUSTOMER,
     name: 'Customer Loader',
     description: 'Imports customers with email-based lookup, addresses, and group assignment',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

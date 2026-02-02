@@ -1,129 +1,62 @@
 import { Injectable } from '@nestjs/common';
 import {
     ID,
+    Facet,
     RequestContext,
     TransactionalConnection,
     FacetService,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     FacetInput,
-    ExistingEntityResult,
     FACET_LOADER_METADATA,
 } from './types';
-import {
-    isRecoverableError,
-    shouldUpdateField,
-} from './helpers';
+import { shouldUpdateField } from './helpers';
 
+/**
+ * FacetLoader - Refactored to extend BaseEntityLoader
+ *
+ * This eliminates ~60 lines of duplicate load() method code that was
+ * copy-pasted across all loaders. The base class handles:
+ * - Result initialization
+ * - Validation loop
+ * - Duplicate detection
+ * - CREATE/UPDATE/UPSERT operation logic
+ * - Dry run mode
+ * - Error handling
+ */
 @Injectable()
-export class FacetLoader implements EntityLoader<FacetInput> {
-    private readonly logger: DataHubLogger;
-
-    readonly entityType = FACET_LOADER_METADATA.entityType;
-    readonly name = FACET_LOADER_METADATA.name;
-    readonly description = FACET_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...FACET_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...FACET_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...FACET_LOADER_METADATA.requiredFields];
+export class FacetLoader extends BaseEntityLoader<FacetInput, Facet> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = FACET_LOADER_METADATA;
 
     constructor(
         private _connection: TransactionalConnection,
         private facetService: FacetService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FACET_LOADER);
     }
 
-    async load(context: LoaderContext, records: FacetInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === 'CREATE') {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Facet with code "${record.code}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updateFacet(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === 'UPDATE') {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createFacet(context, record);
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load facet`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: FacetInput): string {
+        return `Facet with code "${record.code}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: FacetInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<Facet> | null> {
         // Primary lookup: by code
         if (record.code && lookupFields.includes('code')) {
             const facets = await this.facetService.findAll(ctx, {
@@ -163,7 +96,7 @@ export class FacetLoader implements EntityLoader<FacetInput> {
         const errors: { field: string; message: string; code?: string }[] = [];
         const warnings: { field: string; message: string }[] = [];
 
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
                 errors.push({ field: 'name', message: 'Facet name is required', code: 'REQUIRED' });
             }
@@ -187,7 +120,7 @@ export class FacetLoader implements EntityLoader<FacetInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'Facet',
+            entityType: VendureEntityType.FACET,
             fields: [
                 {
                     key: 'name',
@@ -226,7 +159,7 @@ export class FacetLoader implements EntityLoader<FacetInput> {
         };
     }
 
-    private async createFacet(context: LoaderContext, record: FacetInput): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: FacetInput): Promise<ID | null> {
         const { ctx } = context;
 
         const facet = await this.facetService.create(ctx, {
@@ -245,7 +178,7 @@ export class FacetLoader implements EntityLoader<FacetInput> {
         return facet.id;
     }
 
-    private async updateFacet(context: LoaderContext, facetId: ID, record: FacetInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, facetId: ID, record: FacetInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: facetId };

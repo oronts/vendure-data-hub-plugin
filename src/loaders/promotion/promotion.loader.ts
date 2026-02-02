@@ -15,10 +15,12 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     PromotionInput,
     ExistingEntityResult,
     PROMOTION_LOADER_METADATA,
+    DEFAULT_PROMOTION_ACTION,
 } from './types';
 import {
     buildConfigurableOperations,
@@ -72,7 +74,7 @@ export class PromotionLoader implements EntityLoader<PromotionInput> {
                 const existing = await this.findExisting(context.ctx, context.lookupFields, record);
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -93,7 +95,7 @@ export class PromotionLoader implements EntityLoader<PromotionInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -164,7 +166,7 @@ export class PromotionLoader implements EntityLoader<PromotionInput> {
         const errors: { field: string; message: string; code?: string }[] = [];
         const warnings: { field: string; message: string }[] = [];
 
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
                 errors.push({ field: 'name', message: 'Promotion name is required', code: 'REQUIRED' });
             }
@@ -213,7 +215,7 @@ export class PromotionLoader implements EntityLoader<PromotionInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'Promotion',
+            entityType: VendureEntityType.PROMOTION,
             fields: [
                 {
                     key: 'name',
@@ -310,10 +312,7 @@ export class PromotionLoader implements EntityLoader<PromotionInput> {
         const actions = buildConfigurableOperations(record.actions ?? []);
 
         if (actions.length === 0) {
-            actions.push({
-                code: 'order_percentage_discount',
-                arguments: [{ name: 'discount', value: '0' }],
-            });
+            actions.push({ ...DEFAULT_PROMOTION_ACTION });
         }
 
         const result = await this.promotionService.createPromotion(ctx, {

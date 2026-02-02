@@ -17,6 +17,7 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     CustomerInput,
     ExistingEntityResult,
@@ -78,7 +79,7 @@ export class CustomerLoader implements EntityLoader<CustomerInput> {
                 const existing = await this.findExisting(context.ctx, context.lookupFields, record);
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -100,7 +101,7 @@ export class CustomerLoader implements EntityLoader<CustomerInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -164,7 +165,7 @@ export class CustomerLoader implements EntityLoader<CustomerInput> {
         const warnings: { field: string; message: string }[] = [];
 
         // Required field validation
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.emailAddress || typeof record.emailAddress !== 'string' || record.emailAddress.trim() === '') {
                 errors.push({ field: 'emailAddress', message: 'Email address is required', code: 'REQUIRED' });
             } else if (!isValidEmail(record.emailAddress)) {
@@ -205,7 +206,7 @@ export class CustomerLoader implements EntityLoader<CustomerInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'Customer',
+            entityType: VendureEntityType.CUSTOMER,
             fields: [
                 {
                     key: 'emailAddress',

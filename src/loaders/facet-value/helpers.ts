@@ -1,6 +1,8 @@
 import { ID, RequestContext, FacetService } from '@vendure/core';
 import { FacetValueInput } from './types';
 
+export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
+
 export async function resolveFacetId(
     ctx: RequestContext,
     facetService: FacetService,
@@ -44,24 +46,3 @@ export async function resolveFacetIdFromCode(
     return facets.totalItems > 0 ? facets.items[0].id : null;
 }
 
-export function isRecoverableError(error: unknown): boolean {
-    if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        return (
-            message.includes('timeout') ||
-            message.includes('connection') ||
-            message.includes('temporarily')
-        );
-    }
-    return false;
-}
-
-export function shouldUpdateField(
-    field: string,
-    updateOnlyFields?: string[],
-): boolean {
-    if (!updateOnlyFields || updateOnlyFields.length === 0) {
-        return true;
-    }
-    return updateOnlyFields.includes(field);
-}

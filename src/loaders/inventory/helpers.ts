@@ -1,6 +1,8 @@
 import { ID, RequestContext, ProductVariantService, StockLocationService } from '@vendure/core';
 import { InventoryInput } from './types';
 
+export { isRecoverableError } from '../shared-helpers';
+
 export async function findVariantBySku(
     productVariantService: ProductVariantService,
     ctx: RequestContext,
@@ -46,14 +48,3 @@ export async function resolveStockLocationId(
     return undefined;
 }
 
-export function isRecoverableError(error: unknown): boolean {
-    if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        return (
-            message.includes('timeout') ||
-            message.includes('connection') ||
-            message.includes('temporarily')
-        );
-    }
-    return false;
-}

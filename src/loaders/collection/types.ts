@@ -1,6 +1,7 @@
 import { ID, Collection } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 export interface CollectionFilterInput {
     /** Filter handler code */
@@ -45,7 +46,7 @@ export interface ExistingEntityResult {
 }
 
 export const COLLECTION_LOADER_METADATA = {
-    entityType: 'Collection' as const,
+    entityType: VendureEntityType.COLLECTION,
     name: 'Collection Loader',
     description: 'Imports collections/categories with hierarchical structure support',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

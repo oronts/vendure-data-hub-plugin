@@ -1,5 +1,29 @@
 export * from '../types/index';
 
+// Base loader infrastructure
+export {
+    BaseEntityLoader,
+    LoaderMetadata,
+    ExistingEntityLookupResult,
+    ValidationBuilder,
+    ValidationError,
+    ValidationWarning,
+    createValidationResult,
+    EntityLookupHelper,
+    LookupStrategy,
+    createLookupHelper,
+} from './base';
+
+// Shared helpers
+export {
+    slugify,
+    isRecoverableError,
+    shouldUpdateField,
+    isValidEmail,
+    buildConfigurableOperation,
+    buildConfigurableOperations,
+} from './shared-helpers';
+
 export { LoaderRegistryService, LoaderRegistrationCallback } from './registry';
 
 export { ProductLoader } from './product';

@@ -1,6 +1,7 @@
 import { ID, Facet } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 export interface FacetInput extends InputRecord {
     /** Display name for the facet (e.g., "Color", "Size", "Brand") */
@@ -19,7 +20,7 @@ export interface ExistingEntityResult {
 }
 
 export const FACET_LOADER_METADATA = {
-    entityType: 'Facet' as const,
+    entityType: VendureEntityType.FACET,
     name: 'Facet Loader',
     description: 'Imports facets (attributes/properties) for product categorization',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],

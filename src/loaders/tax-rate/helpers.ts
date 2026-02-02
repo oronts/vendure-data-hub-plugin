@@ -1,6 +1,8 @@
 import { ID, RequestContext, TaxCategoryService, ZoneService, TaxCategory } from '@vendure/core';
 import { TaxRateInput } from './types';
 
+export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
+
 /**
  * Resolve tax category ID from code or direct ID
  */
@@ -73,30 +75,3 @@ export async function resolveZoneId(
     return null;
 }
 
-/**
- * Check if an error is recoverable (can be retried)
- */
-export function isRecoverableError(error: unknown): boolean {
-    if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        return (
-            message.includes('timeout') ||
-            message.includes('connection') ||
-            message.includes('temporarily')
-        );
-    }
-    return false;
-}
-
-/**
- * Check if a field should be updated based on updateOnlyFields option
- */
-export function shouldUpdateField(
-    field: string,
-    updateOnlyFields?: string[],
-): boolean {
-    if (!updateOnlyFields || updateOnlyFields.length === 0) {
-        return true;
-    }
-    return updateOnlyFields.includes(field);
-}

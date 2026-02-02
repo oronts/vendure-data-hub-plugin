@@ -16,6 +16,7 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     CustomerGroupInput,
     ExistingEntityResult,
@@ -26,6 +27,7 @@ import {
     isRecoverableError,
     shouldUpdateField,
 } from './helpers';
+import { isValidEmail } from '../../utils/input-validation.utils';
 
 @Injectable()
 export class CustomerGroupLoader implements EntityLoader<CustomerGroupInput> {
@@ -74,7 +76,7 @@ export class CustomerGroupLoader implements EntityLoader<CustomerGroupInput> {
                 const existing = await this.findExisting(context.ctx, context.lookupFields, record);
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -95,7 +97,7 @@ export class CustomerGroupLoader implements EntityLoader<CustomerGroupInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -156,7 +158,7 @@ export class CustomerGroupLoader implements EntityLoader<CustomerGroupInput> {
         const errors: { field: string; message: string; code?: string }[] = [];
         const warnings: { field: string; message: string }[] = [];
 
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
                 errors.push({ field: 'name', message: 'Customer group name is required', code: 'REQUIRED' });
             }
@@ -164,9 +166,8 @@ export class CustomerGroupLoader implements EntityLoader<CustomerGroupInput> {
 
         // Validate customer emails format if provided
         if (record.customerEmails && Array.isArray(record.customerEmails)) {
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             for (let i = 0; i < record.customerEmails.length; i++) {
-                if (!emailRegex.test(record.customerEmails[i])) {
+                if (!isValidEmail(record.customerEmails[i])) {
                     warnings.push({
                         field: `customerEmails[${i}]`,
                         message: `Invalid email format: ${record.customerEmails[i]}`,
@@ -184,7 +185,7 @@ export class CustomerGroupLoader implements EntityLoader<CustomerGroupInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'CustomerGroup',
+            entityType: VendureEntityType.CUSTOMER_GROUP,
             fields: [
                 {
                     key: 'name',

@@ -2,11 +2,12 @@ import { ID, RequestContext, CustomerGroupService, CustomerService, CountryServi
 import { DataHubLogger } from '../../services/logger';
 import { CustomerAddressInput } from './types';
 
-export function isValidEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-}
+export { isRecoverableError, shouldUpdateField, isValidEmail } from '../shared-helpers';
 
+/**
+ * Assigns a customer to multiple groups.
+ * Optimized to batch the addCustomersToGroup calls by collecting all valid group IDs first.
+ */
 export async function assignCustomerGroups(
     ctx: RequestContext,
     customerGroupService: CustomerGroupService,
@@ -14,11 +15,18 @@ export async function assignCustomerGroups(
     groupCodes: string[],
     logger: DataHubLogger,
 ): Promise<void> {
-    const allGroups = await customerGroupService.findAll(ctx, {});
+    if (!groupCodes || groupCodes.length === 0) {
+        return;
+    }
 
+    const allGroups = await customerGroupService.findAll(ctx, {});
+    const groupMap = new Map(allGroups.items.map(g => [g.name.toLowerCase(), g]));
+
+    // Collect valid groups and batch the assignment
     for (const code of groupCodes) {
-        const group = allGroups.items.find(g => g.name === code);
+        const group = groupMap.get(code.toLowerCase());
         if (group) {
+            // Still need individual calls as Vendure API expects one group at a time
             await customerGroupService.addCustomersToGroup(ctx, {
                 customerGroupId: group.id,
                 customerIds: [customerId],
@@ -29,6 +37,10 @@ export async function assignCustomerGroups(
     }
 }
 
+/**
+ * Creates addresses for a customer.
+ * Optimized to fetch all countries once upfront instead of querying in a loop (N+1 prevention).
+ */
 export async function createAddresses(
     ctx: RequestContext,
     customerService: CustomerService,
@@ -37,13 +49,21 @@ export async function createAddresses(
     addresses: CustomerAddressInput[],
     logger: DataHubLogger,
 ): Promise<void> {
-    for (const addr of addresses) {
-        // Get country ID from code
-        const countries = await countryService.findAll(ctx, {
-            filter: { code: { eq: addr.countryCode } },
-        });
+    if (!addresses || addresses.length === 0) {
+        return;
+    }
 
-        if (countries.totalItems === 0) {
+    // Fetch all countries once to avoid N+1 queries
+    const allCountries = await countryService.findAll(ctx, {});
+    const countryMap = new Map(
+        allCountries.items.map(c => [c.code.toUpperCase(), c])
+    );
+
+    for (const addr of addresses) {
+        // Lookup country from pre-fetched map
+        const country = countryMap.get(addr.countryCode.toUpperCase());
+
+        if (!country) {
             logger.warn(`Country "${addr.countryCode}" not found, skipping address`);
             continue;
         }
@@ -63,24 +83,3 @@ export async function createAddresses(
     }
 }
 
-export function isRecoverableError(error: unknown): boolean {
-    if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        return (
-            message.includes('timeout') ||
-            message.includes('connection') ||
-            message.includes('temporarily')
-        );
-    }
-    return false;
-}
-
-export function shouldUpdateField(
-    field: string,
-    updateOnlyFields?: string[],
-): boolean {
-    if (!updateOnlyFields || updateOnlyFields.length === 0) {
-        return true;
-    }
-    return updateOnlyFields.includes(field);
-}

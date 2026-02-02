@@ -1,6 +1,8 @@
 import { ID, RequestContext, CustomerService, ProductVariantService, ShippingMethodService } from '@vendure/core';
 import { OrderAddressInput } from './types';
 
+export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
+
 export function validateAddress(
     address: OrderAddressInput,
     prefix: string,
@@ -56,24 +58,3 @@ export async function findShippingMethodByCode(
     return methods.totalItems > 0 ? { id: methods.items[0].id } : null;
 }
 
-export function isRecoverableError(error: unknown): boolean {
-    if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        return (
-            message.includes('timeout') ||
-            message.includes('connection') ||
-            message.includes('temporarily')
-        );
-    }
-    return false;
-}
-
-export function shouldUpdateField(
-    field: string,
-    updateOnlyFields?: string[],
-): boolean {
-    if (!updateOnlyFields || updateOnlyFields.length === 0) {
-        return true;
-    }
-    return updateOnlyFields.includes(field);
-}

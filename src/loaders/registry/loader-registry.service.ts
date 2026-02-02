@@ -1,7 +1,8 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { EntityLoader, LoaderRegistry, EntityFieldSchema } from '../../types/index';
-import { VendureEntityType } from '../../types/index';
+import { EntityLoader, LoaderRegistry, EntityFieldSchema, TargetOperation } from '../../types/index';
+import { VendureEntityType as VendureEntityTypeUnion } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 import { ProductVariantLoader } from '../product-variant';
 import { ProductLoader } from '../product';
 import { CustomerLoader } from '../customer';
@@ -26,7 +27,7 @@ export type LoaderRegistrationCallback = (registry: LoaderRegistryService) => vo
 @Injectable()
 export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
     private readonly logger: DataHubLogger;
-    private loaders = new Map<VendureEntityType, EntityLoader>();
+    private loaders = new Map<VendureEntityTypeUnion, EntityLoader>();
     private customCallbacks: LoaderRegistrationCallback[] = [];
 
     constructor(
@@ -100,7 +101,7 @@ export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
         });
     }
 
-    get(entityType: VendureEntityType): EntityLoader | undefined {
+    get(entityType: VendureEntityTypeUnion): EntityLoader | undefined {
         return this.loaders.get(entityType);
     }
 
@@ -108,16 +109,16 @@ export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
         return Array.from(this.loaders.values());
     }
 
-    has(entityType: VendureEntityType): boolean {
+    has(entityType: VendureEntityTypeUnion): boolean {
         return this.loaders.has(entityType);
     }
 
-    getRegisteredTypes(): VendureEntityType[] {
+    getRegisteredTypes(): VendureEntityTypeUnion[] {
         return Array.from(this.loaders.keys());
     }
 
     getLoaderMetadata(): Array<{
-        entityType: VendureEntityType;
+        entityType: VendureEntityTypeUnion;
         name: string;
         description?: string;
         supportedOperations: string[];
@@ -134,41 +135,41 @@ export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
         }));
     }
 
-    getFieldSchema(entityType: VendureEntityType): EntityFieldSchema | undefined {
+    getFieldSchema(entityType: VendureEntityTypeUnion): EntityFieldSchema | undefined {
         const loader = this.get(entityType);
         return loader?.getFieldSchema();
     }
 
-    getAllFieldSchemas(): Map<VendureEntityType, EntityFieldSchema> {
-        const schemas = new Map<VendureEntityType, EntityFieldSchema>();
+    getAllFieldSchemas(): Map<VendureEntityTypeUnion, EntityFieldSchema> {
+        const schemas = new Map<VendureEntityTypeUnion, EntityFieldSchema>();
         for (const loader of this.getAll()) {
             schemas.set(loader.entityType, loader.getFieldSchema());
         }
         return schemas;
     }
 
-    supportsOperation(entityType: VendureEntityType, operation: string): boolean {
+    supportsOperation(entityType: VendureEntityTypeUnion, operation: string): boolean {
         const loader = this.get(entityType);
-        return loader?.supportedOperations.includes(operation as any) ?? false;
+        return loader?.supportedOperations.includes(operation as TargetOperation) ?? false;
     }
 
     getLoadersByCategory(): Record<string, Array<{
-        entityType: VendureEntityType;
+        entityType: VendureEntityTypeUnion;
         name: string;
         description?: string;
     }>> {
-        const categories: Record<string, VendureEntityType[]> = {
-            'Products': ['Product', 'ProductVariant'],
-            'Customers': ['Customer', 'CustomerGroup'],
-            'Catalog': ['Collection', 'Facet', 'FacetValue'],
-            'Commerce': ['Promotion', 'Order', 'ShippingMethod', 'PaymentMethod'],
-            'Inventory': ['StockLocation', 'Inventory'],
-            'Media': ['Asset'],
-            'Configuration': ['TaxRate', 'Channel'],
+        const categories: Record<string, VendureEntityTypeUnion[]> = {
+            'Products': [VendureEntityType.PRODUCT, VendureEntityType.PRODUCT_VARIANT],
+            'Customers': [VendureEntityType.CUSTOMER, VendureEntityType.CUSTOMER_GROUP],
+            'Catalog': [VendureEntityType.COLLECTION, VendureEntityType.FACET, VendureEntityType.FACET_VALUE],
+            'Commerce': [VendureEntityType.PROMOTION, VendureEntityType.ORDER, VendureEntityType.SHIPPING_METHOD, VendureEntityType.PAYMENT_METHOD],
+            'Inventory': [VendureEntityType.STOCK_LOCATION, VendureEntityType.INVENTORY],
+            'Media': [VendureEntityType.ASSET],
+            'Configuration': [VendureEntityType.TAX_RATE, VendureEntityType.CHANNEL],
         };
 
         const result: Record<string, Array<{
-            entityType: VendureEntityType;
+            entityType: VendureEntityTypeUnion;
             name: string;
             description?: string;
         }>> = {};

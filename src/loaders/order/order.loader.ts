@@ -18,6 +18,7 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     OrderInput,
     ExistingEntityResult,
@@ -31,6 +32,7 @@ import {
     isRecoverableError,
     shouldUpdateField,
 } from './helpers';
+import { isValidEmail } from '../../utils/input-validation.utils';
 
 @Injectable()
 export class OrderLoader implements EntityLoader<OrderInput> {
@@ -81,7 +83,7 @@ export class OrderLoader implements EntityLoader<OrderInput> {
                 const existing = record.code ? await this.findExisting(context.ctx, context.lookupFields, record) : null;
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -102,7 +104,7 @@ export class OrderLoader implements EntityLoader<OrderInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -173,14 +175,11 @@ export class OrderLoader implements EntityLoader<OrderInput> {
         const errors: { field: string; message: string; code?: string }[] = [];
         const warnings: { field: string; message: string }[] = [];
 
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.customerEmail || typeof record.customerEmail !== 'string' || record.customerEmail.trim() === '') {
                 errors.push({ field: 'customerEmail', message: 'Customer email is required', code: 'REQUIRED' });
-            } else {
-                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                if (!emailRegex.test(record.customerEmail)) {
-                    errors.push({ field: 'customerEmail', message: 'Invalid email format', code: 'INVALID_FORMAT' });
-                }
+            } else if (!isValidEmail(record.customerEmail)) {
+                errors.push({ field: 'customerEmail', message: 'Invalid email format', code: 'INVALID_FORMAT' });
             }
 
             if (!record.lines || !Array.isArray(record.lines) || record.lines.length === 0) {
@@ -221,7 +220,7 @@ export class OrderLoader implements EntityLoader<OrderInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'Order',
+            entityType: VendureEntityType.ORDER,
             fields: [
                 {
                     key: 'code',

@@ -1,6 +1,7 @@
 import { ID, Order } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
+import { VendureEntityType } from '../../constants/enums';
 
 export interface OrderLineInput {
     /** Product variant SKU */
@@ -54,7 +55,7 @@ export interface ExistingEntityResult {
 }
 
 export const ORDER_LOADER_METADATA = {
-    entityType: 'Order' as const,
+    entityType: VendureEntityType.ORDER,
     name: 'Order Loader',
     description: 'Imports orders for system migrations (not for normal order processing)',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],

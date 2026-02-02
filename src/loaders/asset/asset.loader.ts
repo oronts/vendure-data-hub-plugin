@@ -15,6 +15,7 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     AssetInput,
     ExistingEntityResult,
@@ -77,7 +78,7 @@ export class AssetLoader implements EntityLoader<AssetInput> {
                 const existing = await this.findExisting(context.ctx, context.lookupFields, { ...record, name: assetName });
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -98,7 +99,7 @@ export class AssetLoader implements EntityLoader<AssetInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -181,13 +182,14 @@ export class AssetLoader implements EntityLoader<AssetInput> {
         const errors: { field: string; message: string; code?: string }[] = [];
         const warnings: { field: string; message: string }[] = [];
 
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.sourceUrl || typeof record.sourceUrl !== 'string' || record.sourceUrl.trim() === '') {
                 errors.push({ field: 'sourceUrl', message: 'Source URL is required', code: 'REQUIRED' });
             } else {
                 try {
                     new URL(record.sourceUrl);
                 } catch {
+                    // URL parsing failed - invalid format
                     errors.push({ field: 'sourceUrl', message: 'Invalid URL format', code: 'INVALID_FORMAT' });
                 }
             }
@@ -211,7 +213,7 @@ export class AssetLoader implements EntityLoader<AssetInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'Asset',
+            entityType: VendureEntityType.ASSET,
             fields: [
                 {
                     key: 'sourceUrl',

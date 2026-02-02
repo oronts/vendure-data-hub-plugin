@@ -3,21 +3,44 @@ import * as http from 'http';
 import * as path from 'path';
 import { Readable } from 'stream';
 import { MIME_TYPES } from './types';
-import { DEFAULTS } from '../../constants/index';
+import { DEFAULTS, HTTP_STATUS } from '../../constants/index';
 
+export { shouldUpdateField, isRecoverableError } from '../shared-helpers';
+
+/**
+ * Downloads a file from a URL.
+ *
+ * @param url - URL to download from
+ * @returns Buffer containing the file data, or null if download failed
+ */
 export async function downloadFile(url: string): Promise<Buffer | null> {
+    // Input validation
+    if (!url || typeof url !== 'string') {
+        return null;
+    }
+
+    // Validate URL format
+    try {
+        new URL(url);
+    } catch {
+        return null;
+    }
+
     return new Promise((resolve) => {
         const protocol = url.startsWith('https') ? https : http;
         const request = protocol.get(url, { timeout: DEFAULTS.HTTP_TIMEOUT_MS }, (response) => {
-            if (response.statusCode === 301 || response.statusCode === 302) {
+            if (response.statusCode === HTTP_STATUS.MOVED_PERMANENTLY || response.statusCode === HTTP_STATUS.FOUND) {
                 const redirectUrl = response.headers.location;
                 if (redirectUrl) {
+                    response.resume();
+                    request.destroy();
                     downloadFile(redirectUrl).then(resolve);
                     return;
                 }
             }
 
-            if (response.statusCode !== 200) {
+            if (response.statusCode !== HTTP_STATUS.OK) {
+                response.resume();
                 resolve(null);
                 return;
             }
@@ -43,6 +66,7 @@ export function extractFilenameFromUrl(url: string): string {
         const filename = path.basename(pathname);
         return filename || `asset-${Date.now()}`;
     } catch {
+        // URL parsing failed - return fallback filename
         return `asset-${Date.now()}`;
     }
 }
@@ -59,25 +83,3 @@ export function createReadStreamFromBuffer(data: Buffer): NodeJS.ReadableStream 
     return stream;
 }
 
-export function isRecoverableError(error: unknown): boolean {
-    if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        return (
-            message.includes('timeout') ||
-            message.includes('connection') ||
-            message.includes('temporarily') ||
-            message.includes('network')
-        );
-    }
-    return false;
-}
-
-export function shouldUpdateField(
-    field: string,
-    updateOnlyFields?: string[],
-): boolean {
-    if (!updateOnlyFields || updateOnlyFields.length === 0) {
-        return true;
-    }
-    return updateOnlyFields.includes(field);
-}

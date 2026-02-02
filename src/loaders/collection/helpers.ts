@@ -1,6 +1,7 @@
 import { ID, RequestContext, CollectionService } from '@vendure/core';
 import { CollectionInput, ConfigurableOperationInput } from './types';
-import { TRANSFORM_LIMITS } from '../../constants/defaults';
+
+export { slugify, isRecoverableError, shouldUpdateField } from '../shared-helpers';
 
 export function sortByHierarchy(records: CollectionInput[]): CollectionInput[] {
     const roots: CollectionInput[] = [];
@@ -56,34 +57,3 @@ export function buildFilterOperation(
     };
 }
 
-export function slugify(text: string): string {
-    return text
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .substring(0, TRANSFORM_LIMITS.SLUG_MAX_LENGTH);
-}
-
-export function isRecoverableError(error: unknown): boolean {
-    if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        return (
-            message.includes('timeout') ||
-            message.includes('connection') ||
-            message.includes('temporarily')
-        );
-    }
-    return false;
-}
-
-export function shouldUpdateField(
-    field: string,
-    updateOnlyFields?: string[],
-): boolean {
-    if (!updateOnlyFields || updateOnlyFields.length === 0) {
-        return true;
-    }
-    return updateOnlyFields.includes(field);
-}

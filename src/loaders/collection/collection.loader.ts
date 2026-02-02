@@ -16,6 +16,7 @@ import {
 import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     CollectionInput,
     ConfigurableOperationInput,
@@ -81,7 +82,7 @@ export class CollectionLoader implements EntityLoader<CollectionInput> {
                 const existing = await this.findExisting(context.ctx, context.lookupFields, record);
 
                 if (existing) {
-                    if (context.operation === 'CREATE') {
+                    if (context.operation === TARGET_OPERATION.CREATE) {
                         if (context.options.skipDuplicates) {
                             result.skipped++;
                             continue;
@@ -102,7 +103,7 @@ export class CollectionLoader implements EntityLoader<CollectionInput> {
                     result.updated++;
                     result.affectedIds.push(existing.id);
                 } else {
-                    if (context.operation === 'UPDATE') {
+                    if (context.operation === TARGET_OPERATION.UPDATE) {
                         result.skipped++;
                         continue;
                     }
@@ -173,7 +174,7 @@ export class CollectionLoader implements EntityLoader<CollectionInput> {
         const errors: { field: string; message: string; code?: string }[] = [];
         const warnings: { field: string; message: string }[] = [];
 
-        if (operation === 'CREATE' || operation === 'UPSERT') {
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
                 errors.push({ field: 'name', message: 'Collection name is required', code: 'REQUIRED' });
             }
@@ -202,7 +203,7 @@ export class CollectionLoader implements EntityLoader<CollectionInput> {
 
     getFieldSchema(): EntityFieldSchema {
         return {
-            entityType: 'Collection',
+            entityType: VendureEntityType.COLLECTION,
             fields: [
                 {
                     key: 'name',
