@@ -4,9 +4,9 @@ import { DataHubPluginOptions } from './types/index';
 // Pipeline entities
 import { Pipeline, PipelineRun, PipelineRevision, PipelineLog } from './entities/pipeline';
 // Data entities
-import { PipelineCheckpointEntity, DataHubRecordError, DataHubRecordRetryAudit } from './entities/data';
+import { DataHubCheckpoint, DataHubRecordError, DataHubRecordRetryAudit } from './entities/data';
 // Config entities
-import { DataHubConnection, DataHubSecret, DataHubSettings } from './entities/config';
+import { DataHubConnection, DataHubSecret, DataHubSettings, DataHubLock } from './entities/config';
 import { adminApiExtensions } from './api/api-extensions';
 import { DataHubPipelineAdminResolver } from './api/resolvers/pipeline.resolver';
 import { DataHubAdapterAdminResolver } from './api/resolvers/adapter.resolver';
@@ -24,6 +24,7 @@ import {
     RecordErrorService,
     CheckpointService,
     RecordRetryAuditService,
+    ErrorReplayService,
     SecretService,
     HookService,
     DataHubEventTriggerService,
@@ -37,6 +38,8 @@ import {
     ExportDestinationService,
     AnalyticsService,
     RateLimitService,
+    MessageConsumerService,
+    StepTestService,
 } from './services';
 import { DATAHUB_PERMISSION_DEFINITIONS } from './permissions';
 import { DataHubRunQueueHandler, DataHubScheduleHandler } from './jobs';
@@ -91,7 +94,7 @@ import { DataHubSandboxResolver } from './api/resolvers/sandbox.resolver';
 // Versioning Services
 import { DiffService, RevisionService, ImpactAnalysisService, RiskAssessmentService, SandboxService } from './services/versioning';
 // Runtime Services
-import { RuntimeConfigService, CircuitBreakerService, BatchRollbackService } from './services/runtime';
+import { RuntimeConfigService, CircuitBreakerService, BatchRollbackService, DistributedLockService } from './services/runtime';
 // Runtime Executors
 import { ExtractExecutor } from './runtime/executors/extract.executor';
 import { TransformExecutor as RuntimeTransformExecutor } from './runtime/executors/transform.executor';
@@ -111,6 +114,9 @@ import {
     CollectionHandler,
     PromotionHandler,
     AssetAttachHandler,
+    AssetImportHandler,
+    FacetHandler,
+    FacetValueHandler,
     RestPostHandler,
 } from './runtime/executors/loaders';
 
@@ -134,12 +140,13 @@ import {
  */
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [Pipeline, PipelineRun, DataHubRecordError, PipelineCheckpointEntity, DataHubRecordRetryAudit, DataHubSecret, PipelineRevision, DataHubConnection, DataHubSettings, PipelineLog],
+    entities: [Pipeline, PipelineRun, DataHubRecordError, DataHubCheckpoint, DataHubRecordRetryAudit, DataHubSecret, PipelineRevision, DataHubConnection, DataHubSettings, PipelineLog, DataHubLock],
     providers: [
         // Runtime Configuration Services
         RuntimeConfigService,
         CircuitBreakerService,
         BatchRollbackService,
+        DistributedLockService,
         // Core Services
         PipelineService,
         PipelineRunnerService,
@@ -151,10 +158,12 @@ import {
         RecordErrorService,
         CheckpointService,
         RecordRetryAuditService,
+        ErrorReplayService,
         DataHubScheduleHandler,
         SecretService,
         HookService,
         DataHubEventTriggerService,
+        MessageConsumerService,
         DataHubRetentionService,
         ConnectionService,
         DomainEventsService,
@@ -184,6 +193,9 @@ import {
         CollectionHandler,
         PromotionHandler,
         AssetAttachHandler,
+        AssetImportHandler,
+        FacetHandler,
+        FacetValueHandler,
         RestPostHandler,
         // Entity Loaders - Products
         ProductVariantLoader,
@@ -258,6 +270,8 @@ import {
         DefinitionValidationService,
         // Format conversion
         PipelineFormatService,
+        // Testing Services
+        StepTestService,
         {
             provide: DATAHUB_PLUGIN_OPTIONS,
             useFactory: () => DataHubPlugin.options,

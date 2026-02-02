@@ -11,9 +11,9 @@ export {
     RetryDataHubRecordPermission,
     ManageDataHubAdaptersPermission,
     ManageDataHubConnectionsPermission,
-    ViewQuarantinePermission,
-    EditQuarantinePermission,
-    ReplayRecordPermission,
+    ViewDataHubQuarantinePermission,
+    EditDataHubQuarantinePermission,
+    ReplayDataHubRecordPermission,
     PublishDataHubPipelinePermission,
     ReviewDataHubPipelinePermission,
     UpdateDataHubSettingsPermission,
@@ -32,6 +32,7 @@ export {
     RETENTION,
     PAGINATION,
     BATCH,
+    SINK,
     SCHEDULER,
     WEBHOOK,
     HTTP,
@@ -75,15 +76,6 @@ export {
     OAUTH2_GRANT_TYPES,
     BUILTIN_ADAPTERS,
     EXTRACTOR_ADAPTERS,
-    OPERATOR_ADAPTERS,
-    STRING_OPERATOR_ADAPTERS,
-    ARRAY_OPERATOR_ADAPTERS,
-    VALUE_OPERATOR_ADAPTERS,
-    DATE_OPERATOR_ADAPTERS,
-    JSON_OPERATOR_ADAPTERS,
-    NUMERIC_OPERATOR_ADAPTERS,
-    CONDITIONAL_OPERATOR_ADAPTERS,
-    VALIDATION_OPERATOR_ADAPTERS,
     LOADER_ADAPTERS,
     EXPORTER_ADAPTERS,
     FEED_ADAPTERS,
@@ -94,7 +86,7 @@ export {
     Pipeline,
     PipelineRun,
     DataHubRecordError,
-    PipelineCheckpointEntity,
+    DataHubCheckpoint,
     DataHubRecordRetryAudit,
     DataHubSecret,
     PipelineRevision,
@@ -118,7 +110,6 @@ export {
 } from './services';
 export {
     FeedGeneratorService,
-    // Re-exported feed types for extensibility
     FeedFormat as CustomFeedFormat,
     FeedConfig,
     FeedFilters,
@@ -184,6 +175,8 @@ export type {
     MessengerAdapter,
     ExtractMetrics,
     ExtractResult,
+    LoadError,
+    LoadResult,
     EnrichError,
     EnrichResult,
     FeedValidationError,
@@ -240,15 +233,11 @@ export { StockLocationLoader } from './loaders/stock-location';
 
 export { ALL_OPERATOR_DEFINITIONS, OPERATOR_DEFINITIONS_BY_CATEGORY } from './operators';
 
-// SDK Registry Service - for runtime adapter registration
 export { DataHubRegistryService } from './sdk/registry.service';
 
-// Runtime Configuration Service - for accessing merged runtime configuration
 export { RuntimeConfigService } from './services/runtime/runtime-config.service';
 
-// Adapter Registry - Registration API
 export {
-    // Type-specific registration (with type validation and logging)
     registerExtractor,
     registerLoader,
     registerOperator,
@@ -257,13 +246,11 @@ export {
     registerSink,
     registerValidator,
     registerEnricher,
-    // Generic registration
     registerAdapter,
     registerAdapterSafe,
     registerAdapters,
     unregisterAdapter,
     clearRegistry,
-    // Lookup functions
     getAdapter,
     getAdapterOrThrow,
     hasAdapter,
@@ -271,7 +258,6 @@ export {
     getRegisteredAdapters,
     getAdaptersByType,
     getAdapterCodesByType,
-    // Type-specific getters
     getExtractors,
     getLoaders,
     getOperators,
@@ -280,10 +266,8 @@ export {
     getSinks,
     getValidators,
     getEnrichers,
-    // Query functions
     findAdapters,
     searchAdapters,
-    // Registry info
     getAdapterCount,
     getAdapterCountByType,
     getAdapterCodes,
@@ -297,6 +281,7 @@ export { FileParserService } from './parsers/file-parser.service';
 export { TransformExecutor } from './transforms/transform-executor';
 
 export { validatePipelineDefinition } from './validation/pipeline-definition.validator';
+export { PipelineDefinitionError, PipelineDefinitionIssue } from './validation/pipeline-definition-error';
 
 export type {
     PipelineRunJobData,
@@ -311,4 +296,43 @@ export type {
     JobQueueConfig,
     JobOptions,
 } from './jobs';
-export { isCronSchedule, isIntervalSchedule } from './jobs';
+export { isCronSchedule, isIntervalSchedule, getCronExpression } from './jobs';
+
+// Script operator security exports
+export {
+    configureScriptOperators,
+    isScriptOperatorsEnabled,
+    disableScriptOperators,
+    enableScriptOperators,
+} from './operators/script';
+
+// Safe evaluator exports for secure expression evaluation
+export {
+    SafeEvaluator,
+    getDefaultEvaluator,
+    createEvaluator,
+    safeEvaluate,
+    validateExpression,
+    ALLOWED_OPERATORS,
+    ALLOWED_STRING_METHODS,
+    ALLOWED_ARRAY_METHODS,
+    ALLOWED_NUMBER_METHODS,
+    ALLOWED_METHODS,
+    DEFAULT_EVALUATOR_CONFIG,
+} from './runtime/sandbox';
+export type { EvaluationResult, SafeEvaluatorConfig } from './runtime/sandbox';
+
+// Code security utilities exports
+export {
+    validateUserCode,
+    validateConditionExpression,
+    createCodeSandbox,
+    DANGEROUS_PATTERNS,
+    DISALLOWED_KEYWORDS,
+    PROTOTYPE_POLLUTION_PATTERNS,
+    DEFAULT_CODE_SECURITY_CONFIG,
+} from './utils/code-security.utils';
+export type { CodeSecurityConfig } from './utils/code-security.utils';
+
+// Security configuration type exports
+export type { ScriptSecurityConfig, SecurityConfig } from './types/plugin-options';

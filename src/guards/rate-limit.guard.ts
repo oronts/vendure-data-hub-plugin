@@ -6,7 +6,7 @@
  *
  * Usage:
  *   @UseGuards(RateLimitGuard)
- *   @RateLimit({ maxRequests: 100, windowMs: 60000 })
+ *   @RateLimit({ maxRequests: 100, windowMs: INTERNAL_TIMINGS.DEFAULT_RATE_LIMIT_WINDOW_MS })
  *   async myEndpoint() { ... }
  *
  * Note: The webhook controller implements rate limiting directly via RateLimitService
@@ -16,6 +16,7 @@
 import { CanActivate, ExecutionContext, Injectable, HttpException, HttpStatus, SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RateLimitService, RateLimitKey } from '../services/rate-limit';
+import { INTERNAL_TIMINGS } from '../constants';
 
 export interface RateLimitOptions {
     maxRequests?: number;
@@ -56,8 +57,8 @@ export class RateLimitGuard implements CanActivate {
             identifier: options.identifier,
         };
 
-        const maxRequests = options.maxRequests || 60;
-        const windowMs = options.windowMs || 60000;
+        const maxRequests = options.maxRequests || INTERNAL_TIMINGS.DEFAULT_RATE_LIMIT_MAX_REQUESTS;
+        const windowMs = options.windowMs || INTERNAL_TIMINGS.DEFAULT_RATE_LIMIT_WINDOW_MS;
 
         const result = this.rateLimitService.isRateLimited(key, maxRequests, windowMs);
 

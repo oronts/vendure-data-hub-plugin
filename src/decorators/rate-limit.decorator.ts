@@ -7,6 +7,7 @@
 
 import { ExecutionContext, HttpException, HttpStatus } from '@nestjs/common';
 import { RateLimitService } from '../services/rate-limit';
+import { INTERNAL_TIMINGS } from '../constants/defaults';
 
 export interface RateLimitOptions {
     /** Maximum requests per window (default: 60) */
@@ -32,37 +33,50 @@ export interface RateLimitOptions {
 }
 
 function getRateLimitService(context: ExecutionContext): RateLimitService {
-    return (context as any).rateLimitService || new RateLimitService({} as any);
+    const contextWithService = context as ExecutionContext & { rateLimitService?: RateLimitService };
+    // RateLimitService requires a DataHubLoggerFactory - use a minimal fallback if not available
+    if (contextWithService.rateLimitService) {
+        return contextWithService.rateLimitService;
+    }
+    // Create a minimal logger factory for fallback
+    const minimalLoggerFactory = {
+        createLogger: () => ({
+            info: () => {},
+            warn: () => {},
+            error: () => {},
+            debug: () => {},
+        }),
+    } as unknown as import('../services/logger').DataHubLoggerFactory;
+    return new RateLimitService(minimalLoggerFactory);
 }
 
 /**
  * Rate Limit Decorator Factory
  */
 export function RateLimit(options: RateLimitOptions = {}): MethodDecorator {
-    return (target: any, propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
+    return (_target: object, _propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
         const originalMethod = descriptor.value as (...args: unknown[]) => Promise<unknown>;
 
-        descriptor.value = async function(this: any, ...args: any[]) {
+        descriptor.value = async function(this: unknown, ...args: unknown[]) {
             const context = args[args.length - 1] as ExecutionContext;
-            const request = context.switchToHttp().getRequest();
+            const request = context.switchToHttp().getRequest() as {
+                ip?: string;
+                connection?: { remoteAddress?: string };
+                params?: { code?: string; id?: string };
+            };
 
-            // Get IP address
-            const ip = (request as any).ip || (request as any).connection?.remoteAddress || 'unknown';
-
-            // Get pipeline code if applicable (from params)
-            const pipelineCode = (request as any).params?.code || (request as any).params?.id;
-
+            const ip = request.ip || request.connection?.remoteAddress || 'unknown';
+            const pipelineCode = request.params?.code || request.params?.id;
             const rateLimitService = getRateLimitService(context);
 
-            // Check rate limit
             const result = rateLimitService.isRateLimited(
                 {
                     ip: options.useIp !== false ? ip : undefined,
                     pipelineCode: options.usePipeline ? pipelineCode : undefined,
                     identifier: options.identifier,
                 },
-                options.maxRequests || 60,
-                options.windowMs || 60000,
+                options.maxRequests || INTERNAL_TIMINGS.DEFAULT_RATE_LIMIT_MAX_REQUESTS,
+                options.windowMs || INTERNAL_TIMINGS.DEFAULT_RATE_LIMIT_WINDOW_MS,
             );
 
             if (result.limited) {
@@ -72,7 +86,6 @@ export function RateLimit(options: RateLimitOptions = {}): MethodDecorator {
                 );
             }
 
-            // Execute original method
             return originalMethod.apply(this, args);
         };
 
