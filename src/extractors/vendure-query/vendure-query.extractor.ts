@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ID, TransactionalConnection } from '@vendure/core';
-import { BATCH, LOGGER_CONTEXTS } from '../../constants/index';
+import { BATCH, LOGGER_CONTEXTS, SortOrder, VendureEntityType } from '../../constants/index';
 import {
     DataExtractor,
     ExtractorContext,
@@ -22,10 +22,10 @@ interface EntityWithMeta {
 @Injectable()
 export class VendureQueryExtractor implements DataExtractor<VendureQueryExtractorConfig> {
     readonly type = 'extractor' as const;
-    readonly code = 'vendure-query';
+    readonly code = 'vendureQuery';
     readonly name = 'Vendure Entity Extractor';
     readonly description = 'Extract data from Vendure entities for export or sync';
-    readonly category: ExtractorCategory = 'vendure';
+    readonly category: ExtractorCategory = 'VENDURE';
     readonly version = '1.0.0';
     readonly icon = 'database';
     readonly supportsPagination = true;
@@ -50,15 +50,15 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
                 type: 'select',
                 required: true,
                 options: [
-                    { value: 'Product', label: 'Products' },
-                    { value: 'ProductVariant', label: 'Product Variants' },
-                    { value: 'Customer', label: 'Customers' },
-                    { value: 'Order', label: 'Orders' },
-                    { value: 'Collection', label: 'Collections' },
-                    { value: 'Facet', label: 'Facets' },
-                    { value: 'FacetValue', label: 'Facet Values' },
-                    { value: 'Promotion', label: 'Promotions' },
-                    { value: 'Asset', label: 'Assets' },
+                    { value: VendureEntityType.PRODUCT, label: 'Products' },
+                    { value: VendureEntityType.PRODUCT_VARIANT, label: 'Product Variants' },
+                    { value: VendureEntityType.CUSTOMER, label: 'Customers' },
+                    { value: VendureEntityType.ORDER, label: 'Orders' },
+                    { value: VendureEntityType.COLLECTION, label: 'Collections' },
+                    { value: VendureEntityType.FACET, label: 'Facets' },
+                    { value: VendureEntityType.FACET_VALUE, label: 'Facet Values' },
+                    { value: VendureEntityType.PROMOTION, label: 'Promotions' },
+                    { value: VendureEntityType.ASSET, label: 'Assets' },
                 ],
             },
             {
@@ -87,10 +87,10 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
                 label: 'Sort Order',
                 type: 'select',
                 options: [
-                    { value: 'ASC', label: 'Ascending' },
-                    { value: 'DESC', label: 'Descending' },
+                    { value: SortOrder.ASC, label: 'Ascending' },
+                    { value: SortOrder.DESC, label: 'Descending' },
                 ],
-                defaultValue: 'ASC',
+                defaultValue: SortOrder.ASC,
             },
         ],
     };
@@ -143,7 +143,7 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
                 }
 
                 const sortBy = config.sortBy || 'createdAt';
-                const sortOrder = config.sortOrder || 'ASC';
+                const sortOrder = config.sortOrder || SortOrder.ASC;
                 queryBuilder.orderBy(`entity.${sortBy}`, sortOrder);
 
                 queryBuilder.skip(offset).take(batchSize);

@@ -1,6 +1,6 @@
 import { ExtractorConfig } from '../../types/index';
 import { JsonValue } from '../../types/index';
-import { DatabaseType, PORTS } from '../../constants/index';
+import { DatabaseType, DatabasePaginationType, PORTS } from '../../constants/index';
 
 export interface DatabaseSslConfig {
     enabled: boolean;
@@ -12,7 +12,7 @@ export interface DatabaseSslConfig {
 
 export interface DatabasePaginationConfig {
     enabled: boolean;
-    type: 'offset' | 'cursor';
+    type: DatabasePaginationType;
     pageSize: number;
     cursorColumn?: string;
     maxPages?: number;

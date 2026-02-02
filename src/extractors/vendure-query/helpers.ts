@@ -28,25 +28,33 @@ type EntityClass = typeof Product | typeof ProductVariant | typeof Customer | ty
  * Not all entity types have directly importable class - some are undefined
  */
 const ENTITY_CLASS_MAP: Partial<Record<VendureEntityType, EntityClass>> = {
-    Product: Product,
-    ProductVariant: ProductVariant,
-    Customer: Customer,
-    Collection: Collection,
-    Facet: Facet,
-    FacetValue: FacetValue,
-    Order: Order,
-    Promotion: Promotion,
-    Asset: Asset,
+    PRODUCT: Product,
+    PRODUCT_VARIANT: ProductVariant,
+    CUSTOMER: Customer,
+    COLLECTION: Collection,
+    FACET: Facet,
+    FACET_VALUE: FacetValue,
+    ORDER: Order,
+    PROMOTION: Promotion,
+    ASSET: Asset,
     // Entities that don't have direct class exports or need different handling
-    // StockLocation, Inventory, ShippingMethod, CustomerGroup, Tag, TaxCategory,
-    // Country, Zone, PaymentMethod are not included as they need special handling
+    // STOCK_LOCATION, INVENTORY, SHIPPING_METHOD, CUSTOMER_GROUP, TAG, TAX_CATEGORY,
+    // COUNTRY, ZONE, PAYMENT_METHOD are not included as they need special handling
 };
 
 /**
  * Map entity type string to Vendure entity class
+ * Normalizes the input to uppercase for case-insensitive matching
  */
-export function getEntityClass(entityType: VendureEntityType): EntityClass | undefined {
-    return ENTITY_CLASS_MAP[entityType];
+export function getEntityClass(entityType: VendureEntityType | string): EntityClass | undefined {
+    const normalized = String(entityType).toUpperCase() as VendureEntityType;
+    return ENTITY_CLASS_MAP[normalized];
+}
+
+const VALID_FIELD_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/;
+
+function validateFieldName(field: string): boolean {
+    return VALID_FIELD_NAME_PATTERN.test(field) && field.length <= 128;
 }
 
 /**
@@ -56,6 +64,10 @@ export function applyFilter<T extends ObjectLiteral>(
     queryBuilder: SelectQueryBuilder<T>,
     filter: VendureQueryFilter,
 ): void {
+    if (!validateFieldName(filter.field)) {
+        throw new Error(`Invalid field name: ${filter.field}`);
+    }
+
     const paramName = `filter_${filter.field.replace(/\./g, '_')}`;
 
     switch (filter.operator) {

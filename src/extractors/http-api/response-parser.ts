@@ -6,6 +6,10 @@
 
 import { JsonObject } from '../../types/index';
 import { HttpResponse } from './types';
+import { getNestedValue } from '../../operators/helpers';
+import { HTTP_STATUS } from '../../constants/defaults';
+
+export { getNestedValue as getValueByPath };
 
 /**
  * Extract records from response data using a data path
@@ -17,29 +21,11 @@ export function extractRecords(data: unknown, dataPath?: string): JsonObject[] {
         return [];
     }
 
-    const value = getValueByPath(data, dataPath);
+    const value = getNestedValue(data as JsonObject, dataPath);
 
     if (Array.isArray(value)) return value as JsonObject[];
     if (typeof value === 'object' && value !== null) return [value as JsonObject];
     return [];
-}
-
-/**
- * Get value from object by dot-separated path
- */
-export function getValueByPath(obj: unknown, path: string): unknown {
-    const parts = path.split('.');
-    let current: unknown = obj;
-
-    for (const part of parts) {
-        if (current && typeof current === 'object') {
-            current = (current as Record<string, unknown>)[part];
-        } else {
-            return undefined;
-        }
-    }
-
-    return current;
 }
 
 /**
@@ -72,14 +58,14 @@ export async function buildHttpResponse(response: Response): Promise<HttpRespons
  * Check if response indicates success
  */
 export function isSuccessResponse(response: HttpResponse): boolean {
-    return response.status >= 200 && response.status < 300;
+    return response.status >= HTTP_STATUS.SUCCESS_MIN && response.status < HTTP_STATUS.SUCCESS_MAX;
 }
 
 /**
  * Check if response indicates rate limiting
  */
 export function isRateLimitResponse(response: HttpResponse): boolean {
-    return response.status === 429;
+    return response.status === HTTP_STATUS.TOO_MANY_REQUESTS;
 }
 
 /**

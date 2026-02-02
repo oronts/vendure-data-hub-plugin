@@ -83,7 +83,7 @@ export class ExtractorRegistryService implements OnModuleInit {
                 this.logger.debug(`Registered: ${info.metadata.name} (${code})`, {
                     adapterCode: code,
                     category: info.metadata.category,
-                } as any);
+                });
             }
         } catch (error) {
             this.logger.error(
@@ -112,7 +112,7 @@ export class ExtractorRegistryService implements OnModuleInit {
                 } catch (error) {
                     this.logger.warn(`Failed to register built-in extractor`, {
                         error: error instanceof Error ? error.message : String(error),
-                    } as any);
+                    });
                 }
             }
         }
@@ -133,7 +133,7 @@ export class ExtractorRegistryService implements OnModuleInit {
         const code = extractor.code;
 
         if (this.extractors.has(code)) {
-            this.logger.warn(`Overwriting existing extractor`, { adapterCode: code } as any);
+            this.logger.warn(`Overwriting existing extractor`, { adapterCode: code });
         }
 
         const metadata: ExtractorMetadata = {
@@ -158,7 +158,7 @@ export class ExtractorRegistryService implements OnModuleInit {
         };
 
         this.extractors.set(code, info);
-        this.logger.debug(`Registered extractor: ${extractor.name}`, { adapterCode: code } as any);
+        this.logger.debug(`Registered extractor: ${extractor.name}`, { adapterCode: code });
     }
 
     registerAll(
@@ -247,7 +247,7 @@ export class ExtractorRegistryService implements OnModuleInit {
     unregister(code: string): boolean {
         const existed = this.extractors.delete(code);
         if (existed) {
-            this.logger.debug(`Unregistered extractor`, { adapterCode: code } as any);
+            this.logger.debug(`Unregistered extractor`, { adapterCode: code });
         }
         return existed;
     }
@@ -265,14 +265,14 @@ export class ExtractorRegistryService implements OnModuleInit {
 
     getCategoryLabels(): Record<ExtractorCategory, string> {
         return {
-            'data-source': 'Data Sources',
-            'file-system': 'File System',
-            'cloud-storage': 'Cloud Storage',
-            'database': 'Databases',
-            'api': 'APIs',
-            'webhook': 'Webhooks',
-            'vendure': 'Vendure',
-            'custom': 'Custom',
+            'DATA_SOURCE': 'Data Sources',
+            'FILE_SYSTEM': 'File System',
+            'CLOUD_STORAGE': 'Cloud Storage',
+            'DATABASE': 'Databases',
+            'API': 'APIs',
+            'WEBHOOK': 'Webhooks',
+            'VENDURE': 'Vendure',
+            'CUSTOM': 'Custom',
         };
     }
 

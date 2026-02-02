@@ -20,7 +20,7 @@ export class WebhookExtractor implements BatchDataExtractor<WebhookExtractorConf
     readonly code = 'webhook';
     readonly name = 'Webhook Extractor';
     readonly description = 'Process incoming webhook payloads';
-    readonly category: ExtractorCategory = 'webhook';
+    readonly category: ExtractorCategory = 'WEBHOOK';
     readonly version = '1.0.0';
     readonly icon = 'webhook';
     readonly supportsPagination = false;

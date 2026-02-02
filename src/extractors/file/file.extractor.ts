@@ -16,6 +16,7 @@ import { FileParserService, ParseOptions } from '../../parsers/file-parser.servi
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { FileExtractorConfig, FILE_EXTRACTOR_DEFAULTS } from './types';
 import { getFiles, resolvePath } from './helpers';
+import { SortOrder, FileFormat } from '../../constants/enums';
 
 @Injectable()
 export class FileExtractor implements DataExtractor<FileExtractorConfig> {
@@ -23,7 +24,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
     readonly code = 'file';
     readonly name = 'File Extractor';
     readonly description = 'Extract data from local files (CSV, JSON, XML, Excel)';
-    readonly category: ExtractorCategory = 'file-system';
+    readonly category: ExtractorCategory = 'FILE_SYSTEM';
     readonly version = '1.0.0';
     readonly icon = 'file';
     readonly supportsPagination = false;
@@ -74,10 +75,10 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 type: 'select',
                 options: [
                     { value: '', label: 'Auto-detect' },
-                    { value: 'csv', label: 'CSV' },
-                    { value: 'json', label: 'JSON' },
-                    { value: 'xml', label: 'XML' },
-                    { value: 'xlsx', label: 'Excel (XLSX)' },
+                    { value: FileFormat.CSV, label: 'CSV' },
+                    { value: FileFormat.JSON, label: 'JSON' },
+                    { value: FileFormat.XML, label: 'XML' },
+                    { value: FileFormat.XLSX, label: 'Excel (XLSX)' },
                 ],
                 group: 'format',
             },
@@ -94,7 +95,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 ],
                 defaultValue: ',',
                 group: 'csv',
-                dependsOn: { field: 'format', value: 'csv' },
+                dependsOn: { field: 'format', value: FileFormat.CSV },
             },
             {
                 key: 'csv.header',
@@ -102,7 +103,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 type: 'boolean',
                 defaultValue: true,
                 group: 'csv',
-                dependsOn: { field: 'format', value: 'csv' },
+                dependsOn: { field: 'format', value: FileFormat.CSV },
             },
             {
                 key: 'csv.skipEmptyLines',
@@ -110,7 +111,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 type: 'boolean',
                 defaultValue: true,
                 group: 'csv',
-                dependsOn: { field: 'format', value: 'csv' },
+                dependsOn: { field: 'format', value: FileFormat.CSV },
             },
             // JSON Options
             {
@@ -120,7 +121,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 type: 'string',
                 placeholder: 'data.items',
                 group: 'json',
-                dependsOn: { field: 'format', value: 'json' },
+                dependsOn: { field: 'format', value: FileFormat.JSON },
             },
             // XML Options
             {
@@ -130,7 +131,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 type: 'string',
                 placeholder: '//products/product',
                 group: 'xml',
-                dependsOn: { field: 'format', value: 'xml' },
+                dependsOn: { field: 'format', value: FileFormat.XML },
             },
             {
                 key: 'xml.attributePrefix',
@@ -139,7 +140,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 type: 'string',
                 defaultValue: '@',
                 group: 'xml',
-                dependsOn: { field: 'format', value: 'xml' },
+                dependsOn: { field: 'format', value: FileFormat.XML },
             },
             // Excel Options
             {
@@ -149,7 +150,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 type: 'string',
                 placeholder: 'Sheet1 or 0',
                 group: 'xlsx',
-                dependsOn: { field: 'format', value: 'xlsx' },
+                dependsOn: { field: 'format', value: FileFormat.XLSX },
             },
             {
                 key: 'xlsx.range',
@@ -158,7 +159,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 type: 'string',
                 placeholder: 'A1:Z100',
                 group: 'xlsx',
-                dependsOn: { field: 'format', value: 'xlsx' },
+                dependsOn: { field: 'format', value: FileFormat.XLSX },
             },
             {
                 key: 'xlsx.header',
@@ -166,7 +167,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 type: 'boolean',
                 defaultValue: true,
                 group: 'xlsx',
-                dependsOn: { field: 'format', value: 'xlsx' },
+                dependsOn: { field: 'format', value: FileFormat.XLSX },
             },
             // Advanced Options
             {
@@ -210,10 +211,10 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 label: 'Sort Order',
                 type: 'select',
                 options: [
-                    { value: 'asc', label: 'Ascending' },
-                    { value: 'desc', label: 'Descending' },
+                    { value: SortOrder.ASC, label: 'Ascending' },
+                    { value: SortOrder.DESC, label: 'Descending' },
                 ],
-                defaultValue: 'asc',
+                defaultValue: SortOrder.ASC,
                 group: 'advanced',
             },
             {
@@ -368,12 +369,14 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                     const fullPath = resolvePath(config.path, config.baseDir);
                     await fs.access(fullPath);
                 } catch {
+                    // File access check failed - file not found or inaccessible
                     errors.push({ field: 'path', message: `File not found: ${config.path}` });
                 }
             }
         }
 
-        if (config.format && !['csv', 'json', 'xml', 'xlsx'].includes(config.format)) {
+        const validFormats = [FileFormat.CSV, FileFormat.JSON, FileFormat.XML, FileFormat.XLSX];
+        if (config.format && !validFormats.includes(config.format as FileFormat)) {
             errors.push({ field: 'format', message: 'Invalid file format' });
         }
 

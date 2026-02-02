@@ -6,23 +6,34 @@
 
 import { ExtractorContext } from '../../types/index';
 import { HttpApiExtractorConfig, PaginationState, HTTP_DEFAULTS } from './types';
-import { HttpMethod, PaginationType } from '../../constants/index';
+import { HttpMethod, PaginationType, HTTP_HEADERS, CONTENT_TYPES, PAGINATION_PARAMS } from '../../constants/index';
+import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
+import { applyAuthentication, AuthConfig, createSecretResolver } from '../../utils/auth-helpers';
+import { buildUrlWithConnection } from '../../utils/url-helpers';
 
 /**
  * Build full URL from config, resolving connection base URL if needed
+ * Validates URL against SSRF attacks before returning
+ *
+ * @param context - Extractor context
+ * @param config - HTTP API extractor config
+ * @param ssrfConfig - Optional SSRF security configuration
+ * @throws Error if URL fails SSRF validation
  */
 export async function buildUrl(
     context: ExtractorContext,
     config: HttpApiExtractorConfig,
+    ssrfConfig?: UrlSecurityConfig,
 ): Promise<string> {
     let url = config.url;
 
     if (config.connectionCode) {
         const connection = await context.connections.get(config.connectionCode);
-        if (connection?.baseUrl && url.startsWith('/')) {
-            url = connection.baseUrl.replace(/\/$/, '') + url;
-        }
+        url = buildUrlWithConnection(config.url, connection);
     }
+
+    // Validate URL against SSRF attacks
+    await assertUrlSafe(url, ssrfConfig);
 
     return url;
 }
@@ -35,7 +46,7 @@ export async function buildHeaders(
     config: HttpApiExtractorConfig,
 ): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
+        [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
         ...config.headers,
     };
 
@@ -46,7 +57,8 @@ export async function buildHeaders(
         }
 
         if (connection?.auth) {
-            await applyAuthentication(context, headers, connection.auth);
+            const secretResolver = createSecretResolver(context.secrets);
+            await applyAuthentication(headers, connection.auth as AuthConfig, secretResolver);
         }
     }
 
@@ -54,60 +66,11 @@ export async function buildHeaders(
 }
 
 /**
- * Apply authentication to headers
- */
-async function applyAuthentication(
-    context: ExtractorContext,
-    headers: Record<string, string>,
-    auth: {
-        type: string;
-        secretCode?: string;
-        headerName?: string;
-        username?: string;
-        usernameSecretCode?: string;
-    },
-): Promise<void> {
-    switch (auth.type) {
-        case 'bearer':
-            if (auth.secretCode) {
-                const token = await context.secrets.get(auth.secretCode);
-                if (token) {
-                    headers['Authorization'] = `Bearer ${token}`;
-                }
-            }
-            break;
-
-        case 'api-key':
-            if (auth.secretCode) {
-                const apiKey = await context.secrets.get(auth.secretCode);
-                if (apiKey) {
-                    const headerName = auth.headerName || 'X-API-Key';
-                    headers[headerName] = apiKey;
-                }
-            }
-            break;
-
-        case 'basic':
-            if (auth.secretCode) {
-                const password = await context.secrets.get(auth.secretCode);
-                const username = auth.username ||
-                    (auth.usernameSecretCode ? await context.secrets.get(auth.usernameSecretCode) : undefined);
-
-                if (username && password) {
-                    const credentials = Buffer.from(`${username}:${password}`).toString('base64');
-                    headers['Authorization'] = `Basic ${credentials}`;
-                }
-            }
-            break;
-    }
-}
-
-/**
  * Build paginated request by adding pagination parameters to URL
  */
 export function buildPaginatedRequest(
     config: HttpApiExtractorConfig,
-    paginationType: PaginationType | string,
+    paginationType: PaginationType,
     state: PaginationState,
 ): HttpApiExtractorConfig {
     const paginatedConfig = { ...config };
@@ -126,45 +89,41 @@ export function buildPaginatedRequest(
 
     switch (paginationType) {
         case PaginationType.OFFSET:
-        case 'offset':
             url.searchParams.set(
-                pagination.offsetParam || 'offset',
+                pagination.offsetParam || PAGINATION_PARAMS.OFFSET,
                 String(state.offset),
             );
             url.searchParams.set(
-                pagination.limitParam || 'limit',
+                pagination.limitParam || PAGINATION_PARAMS.LIMIT,
                 String(pagination.limit || HTTP_DEFAULTS.pageLimit),
             );
             break;
 
         case PaginationType.CURSOR:
-        case 'cursor':
             if (state.cursor) {
                 url.searchParams.set(
-                    pagination.cursorParam || 'cursor',
+                    pagination.cursorParam || PAGINATION_PARAMS.CURSOR,
                     state.cursor,
                 );
             }
             url.searchParams.set(
-                pagination.limitParam || 'limit',
+                pagination.limitParam || PAGINATION_PARAMS.LIMIT,
                 String(pagination.limit || HTTP_DEFAULTS.pageLimit),
             );
             break;
 
         case PaginationType.PAGE:
-        case 'page':
             url.searchParams.set(
-                pagination.pageParam || 'page',
+                pagination.pageParam || PAGINATION_PARAMS.PAGE,
                 String(state.page),
             );
             url.searchParams.set(
-                pagination.pageSizeParam || 'pageSize',
+                pagination.pageSizeParam || PAGINATION_PARAMS.PAGE_SIZE,
                 String(pagination.pageSize || HTTP_DEFAULTS.pageLimit),
             );
             break;
 
         case PaginationType.LINK_HEADER:
-        case 'link-header':
             // Link header pagination doesn't modify the initial URL
             break;
     }
@@ -198,6 +157,7 @@ export function isValidUrl(url: string, allowRelative: boolean = false): boolean
         new URL(url);
         return true;
     } catch {
+        // URL parsing failed - invalid URL format
         return false;
     }
 }

@@ -106,7 +106,7 @@ async function createMysqlClient(
         database: config.database,
         user: config.username,
         waitForConnections: true,
-        connectionLimit: config.pool?.max ?? 10,
+        connectionLimit: config.pool?.max ?? CONNECTION_POOL.MAX,
         queueLimit: 0,
         enableKeepAlive: true,
         keepAliveInitialDelay: 0,

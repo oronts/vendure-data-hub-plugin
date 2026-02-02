@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { LOGGER_CONTEXTS, DEFAULTS } from '../../constants/index';
+import { LOGGER_CONTEXTS, DEFAULTS, GraphQLPaginationType } from '../../constants/index';
 import {
     DataExtractor,
     ExtractorContext,
@@ -64,7 +64,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
     readonly code = 'graphql';
     readonly name = 'GraphQL Extractor';
     readonly description = 'Extract data from GraphQL APIs with pagination support';
-    readonly category: ExtractorCategory = 'api';
+    readonly category: ExtractorCategory = 'API';
     readonly version = '1.0.0';
     readonly icon = 'code';
     readonly supportsPagination = true;
@@ -148,12 +148,12 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                 label: 'Pagination Type',
                 type: 'select',
                 options: [
-                    { value: 'none', label: 'None' },
-                    { value: 'offset', label: 'Offset (skip/take)' },
-                    { value: 'cursor', label: 'Cursor' },
-                    { value: 'relay', label: 'Relay Connection' },
+                    { value: GraphQLPaginationType.NONE, label: 'None' },
+                    { value: GraphQLPaginationType.OFFSET, label: 'Offset (skip/take)' },
+                    { value: GraphQLPaginationType.CURSOR, label: 'Cursor' },
+                    { value: GraphQLPaginationType.RELAY, label: 'Relay Connection' },
                 ],
-                defaultValue: 'none',
+                defaultValue: GraphQLPaginationType.NONE,
                 group: 'pagination',
             },
             {
@@ -171,7 +171,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                 type: 'string',
                 defaultValue: 'skip',
                 group: 'pagination',
-                dependsOn: { field: 'pagination.type', value: 'offset' },
+                dependsOn: { field: 'pagination.type', value: GraphQLPaginationType.OFFSET },
             },
             {
                 key: 'pagination.limitVariable',
@@ -188,7 +188,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                 type: 'string',
                 defaultValue: 'after',
                 group: 'pagination',
-                dependsOn: { field: 'pagination.type', value: 'cursor' },
+                dependsOn: { field: 'pagination.type', value: GraphQLPaginationType.CURSOR },
             },
             {
                 key: 'pagination.totalCountPath',
@@ -197,7 +197,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                 type: 'string',
                 placeholder: 'data.products.totalItems',
                 group: 'pagination',
-                dependsOn: { field: 'pagination.type', value: 'offset' },
+                dependsOn: { field: 'pagination.type', value: GraphQLPaginationType.OFFSET },
             },
             {
                 key: 'pagination.pageInfoPath',
@@ -206,7 +206,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                 type: 'string',
                 placeholder: 'data.products.pageInfo',
                 group: 'pagination',
-                dependsOn: { field: 'pagination.type', value: 'relay' },
+                dependsOn: { field: 'pagination.type', value: GraphQLPaginationType.RELAY },
             },
             {
                 key: 'pagination.maxPages',
@@ -254,12 +254,12 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
             context.logger.info('Starting GraphQL extraction', {
                 url: config.url,
                 hasVariables: !!config.variables,
-                paginationType: config.pagination?.type || 'none',
+                paginationType: config.pagination?.type || GraphQLPaginationType.NONE,
             });
 
-            const paginationType = config.pagination?.type || 'none';
+            const paginationType = config.pagination?.type || GraphQLPaginationType.NONE;
 
-            if (paginationType === 'none') {
+            if (paginationType === GraphQLPaginationType.NONE) {
                 // Single request, no pagination
                 const response = await this.executeQuery(context, config, config.variables);
                 requestCount++;
@@ -392,7 +392,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
         }
 
         // Validate pagination config
-        if (config.pagination?.type === 'relay') {
+        if (config.pagination?.type === GraphQLPaginationType.RELAY) {
             if (!config.pagination.pageInfoPath) {
                 warnings.push({
                     field: 'pagination.pageInfoPath',
@@ -452,9 +452,9 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
     ): Promise<ExtractorPreviewResult> {
         try {
             // For preview, add a limit to variables if pagination is enabled
-            let variables = { ...config.variables };
+            const variables = { ...config.variables };
 
-            if (config.pagination?.type && config.pagination.type !== 'none') {
+            if (config.pagination?.type && config.pagination.type !== GraphQLPaginationType.NONE) {
                 const limitVar = config.pagination.limitVariable || 'take';
                 variables[limitVar] = limit;
             }
@@ -529,8 +529,6 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
 
                 const result = await response.json() as GraphQLResponse;
 
-                // GraphQL can return errors even with 200 status
-                // We still return the response but log the errors
                 if (result.errors?.length) {
                     context.logger.debug('GraphQL response contains errors', {
                         errorCount: result.errors.length,

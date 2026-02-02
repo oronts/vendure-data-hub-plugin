@@ -12,6 +12,7 @@ import {
 import { FileParserService } from '../../parsers/file-parser.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { FileFormat } from '../../constants/enums';
 import {
     S3ExtractorConfig,
     S3_DEFAULTS,
@@ -38,7 +39,7 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
     readonly code = 's3';
     readonly name = 'S3 Extractor';
     readonly description = 'Extract data from AWS S3 or S3-compatible storage';
-    readonly category: ExtractorCategory = 'cloud-storage';
+    readonly category: ExtractorCategory = 'CLOUD_STORAGE';
     readonly version = '1.0.0';
     readonly icon = 'cloud';
     readonly supportsPagination = true;
@@ -143,10 +144,10 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                 type: 'select',
                 options: [
                     { value: '', label: 'Auto-detect' },
-                    { value: 'csv', label: 'CSV' },
-                    { value: 'json', label: 'JSON' },
-                    { value: 'xml', label: 'XML' },
-                    { value: 'xlsx', label: 'Excel (XLSX)' },
+                    { value: FileFormat.CSV, label: 'CSV' },
+                    { value: FileFormat.JSON, label: 'JSON' },
+                    { value: FileFormat.XML, label: 'XML' },
+                    { value: FileFormat.XLSX, label: 'Excel (XLSX)' },
                 ],
                 group: 'format',
             },
@@ -162,7 +163,7 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                 ],
                 defaultValue: ',',
                 group: 'format',
-                dependsOn: { field: 'format', value: 'csv' },
+                dependsOn: { field: 'format', value: FileFormat.CSV },
             },
             {
                 key: 'csv.header',
@@ -170,7 +171,7 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                 type: 'boolean',
                 defaultValue: true,
                 group: 'format',
-                dependsOn: { field: 'format', value: 'csv' },
+                dependsOn: { field: 'format', value: FileFormat.CSV },
             },
             {
                 key: 'json.path',
@@ -179,7 +180,7 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                 type: 'string',
                 placeholder: 'data.items',
                 group: 'format',
-                dependsOn: { field: 'format', value: 'json' },
+                dependsOn: { field: 'format', value: FileFormat.JSON },
             },
             // S3 Select
             {
@@ -204,10 +205,10 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                 label: 'Input Format',
                 type: 'select',
                 options: [
-                    { value: 'csv', label: 'CSV' },
-                    { value: 'json', label: 'JSON' },
+                    { value: FileFormat.CSV, label: 'CSV' },
+                    { value: FileFormat.JSON, label: 'JSON' },
                 ],
-                defaultValue: 'csv',
+                defaultValue: FileFormat.CSV,
                 group: 's3select',
                 dependsOn: { field: 's3Select.enabled', value: true },
             },
@@ -408,7 +409,7 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                     message: 'SQL expression is required when S3 Select is enabled',
                 });
             }
-            if (config.format && !['csv', 'json'].includes(config.format)) {
+            if (config.format && ![FileFormat.CSV, FileFormat.JSON].includes(config.format as FileFormat)) {
                 errors.push({
                     field: 's3Select.enabled',
                     message: 'S3 Select only supports CSV and JSON formats',

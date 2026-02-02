@@ -18,18 +18,13 @@ export {
     filterByPattern,
     filterByModifiedAfter,
     filterFiles,
-    detectFileFormat,
-    ParseFileOptions,
     parseFtpContent,
     buildFileMetadata,
     attachMetadataToRecord,
     calculateDestinationPath,
-    parseModifiedAfterDate,
     isValidRemotePath,
     isValidHost,
     isValidPort,
-    getFileExtension,
-    hasExpectedExtension,
 } from './file-operations';
 
 export { FtpExtractor } from './ftp.extractor';

@@ -1,29 +1,40 @@
-import { JsonObject, JsonValue } from '../../types/index';
+import { JsonObject } from '../../types/index';
 import { ExtractorContext } from '../../types/index';
 import { GraphQLExtractorConfig, GraphQLPaginationConfig, GRAPHQL_DEFAULTS } from './types';
+import { GraphQLPaginationType, HTTP_HEADERS, CONTENT_TYPES } from '../../constants/index';
+import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
+import { applyAuthentication, AuthConfig, createSecretResolver } from '../../utils/auth-helpers';
+import { buildUrlWithConnection, isValidGraphQLUrl as isValidGraphQLUrlUtil } from '../../utils/url-helpers';
+import { getNestedValue as getNestedValueUtil } from '../../utils/object-path.utils';
 
 /**
  * Build the full GraphQL endpoint URL
+ * Validates URL against SSRF attacks before returning
+ *
+ * @param context - Extractor context
+ * @param config - GraphQL extractor config
+ * @param ssrfConfig - Optional SSRF security configuration
+ * @throws Error if URL fails SSRF validation
  */
 export async function buildUrl(
     context: ExtractorContext,
     config: GraphQLExtractorConfig,
+    ssrfConfig?: UrlSecurityConfig,
 ): Promise<string> {
+    let url: string;
+
     // If using a connection, resolve it and build URL
     if (config.connectionCode) {
         const connection = await context.connections.get(config.connectionCode);
-        if (connection?.baseUrl) {
-            // If config.url is a path, combine with base URL
-            if (config.url.startsWith('/')) {
-                return `${connection.baseUrl.replace(/\/$/, '')}${config.url}`;
-            }
-            // If config.url is empty, use base URL directly
-            if (!config.url) {
-                return connection.baseUrl;
-            }
-        }
+        url = buildUrlWithConnection(config.url, connection);
+    } else {
+        url = config.url;
     }
-    return config.url;
+
+    // Validate URL against SSRF attacks
+    await assertUrlSafe(url, ssrfConfig);
+
+    return url;
 }
 
 /**
@@ -34,9 +45,11 @@ export async function buildHeaders(
     config: GraphQLExtractorConfig,
 ): Promise<Record<string, string>> {
     const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
+        [HTTP_HEADERS.ACCEPT]: CONTENT_TYPES.JSON,
     };
+
+    const secretResolver = createSecretResolver(context.secrets);
 
     // Get connection headers if available
     if (config.connectionCode) {
@@ -46,7 +59,7 @@ export async function buildHeaders(
         }
         // Apply connection auth
         if (connection?.auth) {
-            await applyAuth(headers, connection.auth, context);
+            await applyAuthentication(headers, connection.auth as AuthConfig, secretResolver);
         }
     }
 
@@ -57,52 +70,10 @@ export async function buildHeaders(
 
     // Config auth overrides connection auth
     if (config.auth) {
-        await applyAuth(headers, config.auth, context);
+        await applyAuthentication(headers, config.auth as AuthConfig, secretResolver);
     }
 
     return headers;
-}
-
-/**
- * Apply authentication to headers
- */
-async function applyAuth(
-    headers: Record<string, string>,
-    auth: GraphQLExtractorConfig['auth'],
-    context: ExtractorContext,
-): Promise<void> {
-    if (!auth || auth.type === 'none') return;
-
-    switch (auth.type) {
-        case 'bearer': {
-            const token = auth.secretCode
-                ? await context.secrets.get(auth.secretCode)
-                : auth.token;
-            if (token) {
-                headers['Authorization'] = `Bearer ${token}`;
-            }
-            break;
-        }
-        case 'basic': {
-            const username = auth.username || '';
-            const password = auth.secretCode
-                ? await context.secrets.get(auth.secretCode)
-                : auth.password || '';
-            const credentials = Buffer.from(`${username}:${password}`).toString('base64');
-            headers['Authorization'] = `Basic ${credentials}`;
-            break;
-        }
-        case 'api-key': {
-            const apiKey = auth.secretCode
-                ? await context.secrets.get(auth.secretCode)
-                : auth.token;
-            const headerName = auth.headerName || 'X-API-Key';
-            if (apiKey) {
-                headers[headerName] = apiKey;
-            }
-            break;
-        }
-    }
 }
 
 /**
@@ -163,21 +134,10 @@ export function extractRecords(
 }
 
 /**
- * Get a value from nested object using dot notation path
+ * Get a value from nested object using dot notation path.
  */
 export function getNestedValue(obj: unknown, path: string): unknown {
-    if (!obj || !path) return undefined;
-
-    const parts = path.split('.');
-    let current: unknown = obj;
-
-    for (const part of parts) {
-        if (current === null || current === undefined) return undefined;
-        if (typeof current !== 'object') return undefined;
-        current = (current as Record<string, unknown>)[part];
-    }
-
-    return current;
+    return getNestedValueUtil(obj as JsonObject, path);
 }
 
 /**
@@ -190,22 +150,22 @@ export function buildPaginatedVariables(
 ): Record<string, unknown> {
     const variables = { ...baseVariables };
 
-    if (!pagination || pagination.type === 'none') {
+    if (!pagination || pagination.type === GraphQLPaginationType.NONE) {
         return variables;
     }
 
     const limit = pagination.limit || GRAPHQL_DEFAULTS.pageLimit;
 
     switch (pagination.type) {
-        case 'offset': {
+        case GraphQLPaginationType.OFFSET: {
             const offsetVar = pagination.offsetVariable || GRAPHQL_DEFAULTS.offsetVariable;
             const limitVar = pagination.limitVariable || GRAPHQL_DEFAULTS.limitVariable;
             variables[offsetVar] = state.offset || 0;
             variables[limitVar] = limit;
             break;
         }
-        case 'cursor':
-        case 'relay': {
+        case GraphQLPaginationType.CURSOR:
+        case GraphQLPaginationType.RELAY: {
             const cursorVar = pagination.cursorVariable || GRAPHQL_DEFAULTS.cursorVariable;
             const limitVar = pagination.limitVariable || 'first';
             variables[limitVar] = limit;
@@ -252,7 +212,7 @@ export function updatePaginationState(
     currentState: PaginationState,
     recordsInPage: number,
 ): { hasMore: boolean; state: PaginationState } {
-    if (!pagination || pagination.type === 'none') {
+    if (!pagination || pagination.type === GraphQLPaginationType.NONE) {
         return { hasMore: false, state: currentState };
     }
 
@@ -265,7 +225,7 @@ export function updatePaginationState(
     };
 
     switch (pagination.type) {
-        case 'offset': {
+        case GraphQLPaginationType.OFFSET: {
             newState.offset = currentState.offset + recordsInPage;
 
             // Check if we have more records
@@ -284,8 +244,8 @@ export function updatePaginationState(
 
             return { hasMore, state: newState };
         }
-        case 'cursor':
-        case 'relay': {
+        case GraphQLPaginationType.CURSOR:
+        case GraphQLPaginationType.RELAY: {
             // Get page info from response
             const pageInfoPath = pagination.pageInfoPath || 'pageInfo';
             const pageInfo = getNestedValue(response, pageInfoPath) as Record<string, unknown> | undefined;
@@ -317,23 +277,10 @@ export function updatePaginationState(
 }
 
 /**
- * Validate GraphQL URL
+ * Validate GraphQL URL.
+ * Uses canonical implementation from url-helpers.
  */
-export function isValidGraphQLUrl(url: string, hasConnection: boolean): boolean {
-    if (!url) return hasConnection; // Empty URL is ok if we have a connection
-
-    // If using connection, url can be a path
-    if (hasConnection && url.startsWith('/')) {
-        return true;
-    }
-
-    try {
-        const parsed = new URL(url);
-        return ['http:', 'https:'].includes(parsed.protocol);
-    } catch {
-        return false;
-    }
-}
+export const isValidGraphQLUrl = isValidGraphQLUrlUtil;
 
 /**
  * Validate GraphQL query string

@@ -12,7 +12,11 @@ import {
 import { FileParserService } from '../../parsers/file-parser.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { FileFormat } from '../../constants/enums';
+
 import {
+    FtpProtocol,
+    FTP_PROTOCOLS,
     FtpExtractorConfig,
     FTP_DEFAULTS,
     getDefaultPort,
@@ -28,10 +32,10 @@ import {
     buildFileMetadata,
     attachMetadataToRecord,
     calculateDestinationPath,
-    parseModifiedAfterDate,
     isValidHost,
     isValidPort,
 } from './file-operations';
+import { parseModifiedAfterDate } from '../shared';
 
 @Injectable()
 export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
@@ -39,7 +43,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
     readonly code = 'ftp';
     readonly name = 'FTP/SFTP Extractor';
     readonly description = 'Extract data from FTP/SFTP servers';
-    readonly category: ExtractorCategory = 'file-system';
+    readonly category: ExtractorCategory = 'FILE_SYSTEM';
     readonly version = '1.0.0';
     readonly icon = 'server';
     readonly supportsPagination = false;
@@ -79,10 +83,10 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                 type: 'select',
                 required: true,
                 options: [
-                    { value: 'ftp', label: 'FTP' },
-                    { value: 'sftp', label: 'SFTP' },
+                    { value: FTP_PROTOCOLS.FTP, label: 'FTP' },
+                    { value: FTP_PROTOCOLS.SFTP, label: 'SFTP' },
                 ],
-                defaultValue: 'sftp',
+                defaultValue: FTP_PROTOCOLS.SFTP,
                 group: 'connection',
             },
             {
@@ -108,7 +112,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                 type: 'boolean',
                 defaultValue: false,
                 group: 'connection',
-                dependsOn: { field: 'protocol', value: 'ftp' },
+                dependsOn: { field: 'protocol', value: FTP_PROTOCOLS.FTP },
             },
             {
                 key: 'passiveMode',
@@ -117,7 +121,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                 type: 'boolean',
                 defaultValue: true,
                 group: 'connection',
-                dependsOn: { field: 'protocol', value: 'ftp' },
+                dependsOn: { field: 'protocol', value: FTP_PROTOCOLS.FTP },
             },
             // Authentication
             {
@@ -140,7 +144,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                 description: 'Secret code for SSH private key (SFTP)',
                 type: 'secret',
                 group: 'auth',
-                dependsOn: { field: 'protocol', value: 'sftp' },
+                dependsOn: { field: 'protocol', value: FTP_PROTOCOLS.SFTP },
             },
             {
                 key: 'passphraseSecretCode',
@@ -148,7 +152,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                 description: 'Secret code for private key passphrase',
                 type: 'secret',
                 group: 'auth',
-                dependsOn: { field: 'protocol', value: 'sftp' },
+                dependsOn: { field: 'protocol', value: FTP_PROTOCOLS.SFTP },
             },
             // Source
             {
@@ -174,10 +178,10 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                 type: 'select',
                 options: [
                     { value: '', label: 'Auto-detect' },
-                    { value: 'csv', label: 'CSV' },
-                    { value: 'json', label: 'JSON' },
-                    { value: 'xml', label: 'XML' },
-                    { value: 'xlsx', label: 'Excel (XLSX)' },
+                    { value: FileFormat.CSV, label: 'CSV' },
+                    { value: FileFormat.JSON, label: 'JSON' },
+                    { value: FileFormat.XML, label: 'XML' },
+                    { value: FileFormat.XLSX, label: 'Excel (XLSX)' },
                 ],
                 group: 'format',
             },
@@ -333,9 +337,10 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
         const errors: Array<{ field: string; message: string; code?: string }> = [];
         const warnings: Array<{ field?: string; message: string }> = [];
 
+        const validProtocols = [FTP_PROTOCOLS.FTP, FTP_PROTOCOLS.SFTP];
         if (!config.protocol) {
             errors.push({ field: 'protocol', message: 'Protocol is required' });
-        } else if (!['ftp', 'sftp'].includes(config.protocol)) {
+        } else if (!validProtocols.includes(config.protocol as FtpProtocol)) {
             errors.push({ field: 'protocol', message: 'Protocol must be "ftp" or "sftp"' });
         }
 
@@ -363,7 +368,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                 });
             }
 
-            if (config.protocol === 'sftp' && !config.passwordSecretCode && !config.privateKeySecretCode) {
+            if (config.protocol === FTP_PROTOCOLS.SFTP && !config.passwordSecretCode && !config.privateKeySecretCode) {
                 warnings.push({
                     field: 'auth',
                     message: 'No password or private key specified for SFTP',

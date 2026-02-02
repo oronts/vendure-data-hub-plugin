@@ -3,6 +3,9 @@ import { JsonObject } from '../../types/index';
 import { HttpMethod, HTTP, PAGINATION, DEFAULTS } from '../../constants/index';
 
 export interface HttpApiExtractorConfig extends ExtractorConfig {
+    /** Adapter code identifier */
+    adapterCode: 'httpApi';
+
     /** HTTP method */
     method?: HttpMethod;
 

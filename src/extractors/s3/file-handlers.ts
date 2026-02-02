@@ -2,12 +2,17 @@
  * S3 File Handlers
  *
  * Utilities for handling S3 object filtering, parsing, and post-processing.
+ * Uses shared utilities from extractors/shared to eliminate duplication.
  */
 
 import { S3ObjectInfo, S3ExtractorConfig, S3ObjectMetadata } from './types';
 import { FileParserService } from '../../parsers/file-parser.service';
-import { FileFormat } from '../../parsers/types';
 import { JsonObject } from '../../types/index';
+import {
+    detectFileFormat as sharedDetectFileFormat,
+    parseFileContent,
+    parseModifiedAfterDate as sharedParseModifiedAfterDate,
+} from '../shared';
 
 /**
  * Filter objects by suffix
@@ -55,50 +60,13 @@ export function filterObjects(
 
 /**
  * Detect file format from object key
+ * Uses shared implementation to eliminate duplication
  */
-export function detectFileFormat(key: string): FileFormat | undefined {
-    const extension = key.split('.').pop()?.toLowerCase();
-
-    const formatMap: Record<string, FileFormat> = {
-        csv: 'csv',
-        tsv: 'csv',
-        json: 'json',
-        jsonl: 'json',
-        ndjson: 'json',
-        xml: 'xml',
-        xlsx: 'xlsx',
-        xls: 'xlsx',
-    };
-
-    return formatMap[extension || ''];
-}
-
-/**
- * Parse file content options
- */
-export interface ParseContentOptions {
-    format?: FileFormat;
-    csv?: {
-        delimiter?: ',' | ';' | '\t' | '|';
-        header?: boolean;
-        skipEmptyLines?: boolean;
-    };
-    json?: {
-        path?: string;
-    };
-    xml?: {
-        recordPath?: string;
-        attributePrefix?: string;
-    };
-    xlsx?: {
-        sheet?: string | number;
-        range?: string;
-        header?: boolean;
-    };
-}
+export const detectFileFormat = sharedDetectFileFormat;
 
 /**
  * Parse S3 object content
+ * Uses shared parseFileContent to eliminate duplication
  */
 export async function parseS3Content(
     content: Buffer,
@@ -106,21 +74,18 @@ export async function parseS3Content(
     config: S3ExtractorConfig,
     fileParser: FileParserService,
 ): Promise<JsonObject[]> {
-    // Determine format
-    const format = config.format || detectFileFormat(key);
-
-    const parseOptions: ParseContentOptions = {
-        format,
-        csv: config.csv,
-        json: config.json,
-        xml: config.xml,
-        xlsx: config.xlsx,
-    };
-
-    // Use file parser service
-    const result = await fileParser.parse(content, parseOptions);
-
-    return result.records as JsonObject[];
+    return parseFileContent(
+        content,
+        key,
+        {
+            format: config.format,
+            csv: config.csv,
+            json: config.json,
+            xml: config.xml,
+            xlsx: config.xlsx,
+        },
+        fileParser,
+    );
 }
 
 /**
@@ -203,11 +168,9 @@ export function isValidPrefix(prefix: string): boolean {
 
 /**
  * Parse ISO date string safely
+ * Uses shared implementation to eliminate duplication
  */
-export function parseModifiedAfterDate(dateStr: string): Date | null {
-    const date = new Date(dateStr);
-    return isNaN(date.getTime()) ? null : date;
-}
+export const parseModifiedAfterDate = sharedParseModifiedAfterDate;
 
 /**
  * Estimate total objects to process based on listing

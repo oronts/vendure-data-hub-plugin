@@ -115,6 +115,7 @@ export const S3_DEFAULTS = {
     region: 'us-east-1',
     maxObjects: 100,
     forcePathStyle: false,
+    listMaxKeys: 1000,
 } as const;
 
 export const S3_BUCKET_NAME_PATTERN = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;

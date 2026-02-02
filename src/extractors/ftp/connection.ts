@@ -2,7 +2,7 @@ import { Writable } from 'stream';
 import { Client as BasicFtpClient } from 'basic-ftp';
 import SftpClient from 'ssh2-sftp-client';
 import { ExtractorContext } from '../../types/index';
-import { FtpExtractorConfig, FtpFileInfo, FtpProtocol, FTP_DEFAULTS } from './types';
+import { FtpExtractorConfig, FtpFileInfo, FtpProtocol, FTP_DEFAULTS, FTP_PROTOCOLS, FTP_TYPE_CODE, FTP_ITEM_TYPE } from './types';
 
 export interface FtpClient {
     list(remotePath: string): Promise<FtpFileInfo[]>;
@@ -100,15 +100,15 @@ export async function createFtpClient(
         async list(remotePath: string): Promise<FtpFileInfo[]> {
             const list = await client.list(remotePath);
             return list
-                .filter((item: any) => item.type !== 2) // Filter out directories
-                .map((item: any) => ({
+                .filter((item: { type: number; name: string; size: number; modifiedAt?: Date }) => item.type !== FTP_ITEM_TYPE.DIRECTORY) // Filter out directories
+                .map((item: { type: number; name: string; size: number; modifiedAt?: Date }) => ({
                     name: item.name,
                     path: remotePath.endsWith('/')
                         ? `${remotePath}${item.name}`
                         : `${remotePath}/${item.name}`,
                     size: item.size,
                     modifiedAt: item.modifiedAt ? new Date(item.modifiedAt) : new Date(),
-                    isDirectory: item.type === 2,
+                    isDirectory: item.type === FTP_ITEM_TYPE.DIRECTORY,
                 }));
         },
 
@@ -168,15 +168,15 @@ export async function createSftpClient(
         async list(remotePath: string): Promise<FtpFileInfo[]> {
             const list = await client.list(remotePath);
             return list
-                .filter((item: any) => item.type !== 'd')
-                .map((item: any) => ({
+                .filter((item: { type: string; name: string; size: number; modifyTime: number }) => item.type !== FTP_TYPE_CODE.DIRECTORY)
+                .map((item: { type: string; name: string; size: number; modifyTime: number }) => ({
                     name: item.name,
                     path: remotePath.endsWith('/')
                         ? `${remotePath}${item.name}`
                         : `${remotePath}/${item.name}`,
                     size: item.size,
                     modifiedAt: new Date(item.modifyTime),
-                    isDirectory: item.type === 'd',
+                    isDirectory: item.type === FTP_TYPE_CODE.DIRECTORY,
                 }));
         },
 
@@ -213,7 +213,7 @@ export async function createClient(
     context: ExtractorContext,
     config: FtpExtractorConfig,
 ): Promise<FtpClient> {
-    if (config.protocol === 'sftp') {
+    if (config.protocol === FTP_PROTOCOLS.SFTP) {
         return createSftpClient(context, config);
     }
     return createFtpClient(context, config);

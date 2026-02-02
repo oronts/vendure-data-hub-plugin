@@ -8,24 +8,9 @@ import * as crypto from 'crypto';
 import { JsonObject } from '../../types/index';
 import { ExtractorContext } from '../../types/index';
 import { WebhookExtractorConfig } from './types';
+import { getNestedValue } from '../../operators/helpers';
 
-/**
- * Get value from object by dot-notation path
- */
-export function getValueByPath(obj: JsonObject, path: string): unknown {
-    const parts = path.split('.');
-    let current: unknown = obj;
-
-    for (const part of parts) {
-        if (current && typeof current === 'object') {
-            current = (current as Record<string, unknown>)[part];
-        } else {
-            return undefined;
-        }
-    }
-
-    return current;
-}
+export { getNestedValue as getValueByPath };
 
 /**
  * Validate webhook signature
@@ -65,10 +50,16 @@ export async function validateSignature(
         const expectedSignature = `${algorithm}=${computedSignature}`;
 
         // Compare signatures (timing-safe)
-        const isValid = crypto.timingSafeEqual(
-            Buffer.from(signature),
-            Buffer.from(expectedSignature),
-        );
+        // timingSafeEqual requires buffers of equal length, so we must check first
+        const signatureBuffer = Buffer.from(signature);
+        const expectedBuffer = Buffer.from(expectedSignature);
+
+        if (signatureBuffer.length !== expectedBuffer.length) {
+            context.logger.warn('Webhook signature validation failed: length mismatch');
+            return false;
+        }
+
+        const isValid = crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
 
         if (!isValid) {
             context.logger.warn('Webhook signature validation failed');

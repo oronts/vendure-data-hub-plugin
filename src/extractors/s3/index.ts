@@ -15,7 +15,6 @@ export {
     filterByModifiedAfter,
     filterObjects,
     detectFileFormat,
-    ParseContentOptions,
     parseS3Content,
     buildObjectMetadata,
     attachMetadataToRecord,

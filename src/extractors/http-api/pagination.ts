@@ -4,7 +4,7 @@
  * Handles various pagination strategies for API responses.
  */
 
-import { PaginationConfig } from '../../types/index';
+import { PaginationConfig, JsonObject } from '../../types/index';
 import { HttpResponse, UpdatedPaginationState, PaginationState, HTTP_DEFAULTS } from './types';
 import { PaginationType } from '../../constants/index';
 import { getValueByPath } from './response-parser';
@@ -13,7 +13,7 @@ import { getValueByPath } from './response-parser';
  * Update pagination state based on response
  */
 export function updatePaginationState(
-    paginationType: PaginationType | string,
+    paginationType: PaginationType,
     response: HttpResponse,
     config: { pagination?: PaginationConfig },
     currentState: PaginationState,
@@ -26,30 +26,25 @@ export function updatePaginationState(
 
     switch (paginationType) {
         case PaginationType.OFFSET:
-        case 'offset':
             offset += currentState.recordCount;
             hasMore = currentState.recordCount >= (pagination?.limit || HTTP_DEFAULTS.pageLimit);
             break;
 
         case PaginationType.CURSOR:
-        case 'cursor':
             cursor = extractCursor(response, pagination);
             hasMore = determineCursorHasMore(response, pagination, cursor, currentState.recordCount);
             break;
 
         case PaginationType.PAGE:
-        case 'page':
             page += 1;
             hasMore = currentState.recordCount >= (pagination?.pageSize || HTTP_DEFAULTS.pageLimit);
             break;
 
         case PaginationType.LINK_HEADER:
-        case 'link-header':
             hasMore = hasNextLink(response);
             break;
 
         case PaginationType.NONE:
-        case 'none':
             hasMore = false;
             break;
     }
@@ -66,7 +61,7 @@ function extractCursor(
 ): string | undefined {
     if (!pagination?.cursorPath) return undefined;
 
-    const cursor = getValueByPath(response.data, pagination.cursorPath);
+    const cursor = getValueByPath(response.data as JsonObject, pagination.cursorPath);
     if (typeof cursor === 'string') return cursor;
     if (typeof cursor === 'number') return String(cursor);
     return undefined;
@@ -83,7 +78,7 @@ function determineCursorHasMore(
 ): boolean {
     // Check explicit hasMore field
     if (pagination?.hasMorePath) {
-        const hasMore = getValueByPath(response.data, pagination.hasMorePath);
+        const hasMore = getValueByPath(response.data as JsonObject, pagination.hasMorePath);
         if (typeof hasMore === 'boolean') return hasMore;
     }
 
@@ -148,7 +143,7 @@ export function initPaginationState(): PaginationState {
  */
 export function isPaginationEnabled(config: { pagination?: PaginationConfig }): boolean {
     const type = config.pagination?.type;
-    return type !== undefined && type !== 'none';
+    return type !== undefined && type !== PaginationType.NONE;
 }
 
 /**
@@ -156,23 +151,12 @@ export function isPaginationEnabled(config: { pagination?: PaginationConfig }): 
  */
 export function getPaginationType(
     config: { pagination?: PaginationConfig },
-): PaginationType | 'none' {
+): PaginationType {
     const type = config.pagination?.type;
 
-    if (!type || type === 'none') return 'none';
+    if (!type || type === PaginationType.NONE) return PaginationType.NONE;
 
-    // Map string values to enum if needed
-    const typeMap: Record<string, PaginationType> = {
-        offset: PaginationType.OFFSET,
-        cursor: PaginationType.CURSOR,
-        page: PaginationType.PAGE,
-        'link-header': PaginationType.LINK_HEADER,
-    };
-
-    if (typeof type === 'string' && type in typeMap) {
-        return typeMap[type];
-    }
-
+    // The enum values match the string literal values exactly
     return type as PaginationType;
 }
 

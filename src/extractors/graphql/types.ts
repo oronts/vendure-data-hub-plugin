@@ -1,5 +1,5 @@
 import { ExtractorConfig, PaginationConfig, AuthConfig } from '../../types/index';
-import { HTTP, PAGINATION } from '../../constants/index';
+import { HTTP, PAGINATION, GraphQLPaginationType } from '../../constants/index';
 
 /**
  * GraphQL Extractor Configuration
@@ -40,7 +40,7 @@ export interface GraphQLExtractorConfig extends ExtractorConfig {
 }
 
 export interface GraphQLPaginationConfig extends Omit<PaginationConfig, 'type'> {
-    type: 'none' | 'offset' | 'cursor' | 'relay';
+    type: GraphQLPaginationType;
 
     /** Variable name for offset/skip */
     offsetVariable?: string;

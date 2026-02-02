@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { HttpMethod, LOGGER_CONTEXTS } from '../../constants/index';
+import { HttpMethod, PaginationType, LOGGER_CONTEXTS, TIME_UNITS } from '../../constants/index';
 import { DEFAULTS } from '../../constants/index';
 import {
     DataExtractor,
@@ -40,10 +40,10 @@ import {
 @Injectable()
 export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
     readonly type = 'extractor' as const;
-    readonly code = 'http-api';
+    readonly code = 'httpApi';
     readonly name = 'HTTP API Extractor';
     readonly description = 'Extract data from REST/GraphQL APIs with pagination support';
-    readonly category: ExtractorCategory = 'api';
+    readonly category: ExtractorCategory = 'API';
     readonly version = '1.0.0';
     readonly icon = 'globe';
     readonly supportsPagination = true;
@@ -110,13 +110,13 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
                 label: 'Pagination Type',
                 type: 'select',
                 options: [
-                    { value: 'none', label: 'None' },
-                    { value: 'offset', label: 'Offset' },
-                    { value: 'cursor', label: 'Cursor' },
-                    { value: 'page', label: 'Page' },
-                    { value: 'link-header', label: 'Link Header' },
+                    { value: PaginationType.NONE, label: 'None' },
+                    { value: PaginationType.OFFSET, label: 'Offset' },
+                    { value: PaginationType.CURSOR, label: 'Cursor' },
+                    { value: PaginationType.PAGE, label: 'Page' },
+                    { value: PaginationType.LINK_HEADER, label: 'Link Header' },
                 ],
-                defaultValue: 'none',
+                defaultValue: PaginationType.NONE,
             },
             {
                 key: 'pagination.limit',
@@ -163,7 +163,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
 
             const paginationType = getPaginationType(config);
 
-            if (paginationType === 'none') {
+            if (paginationType === PaginationType.NONE) {
                 const response = await this.makeRequest(context, config);
                 const records = extractRecords(response.data, config.dataPath);
                 requestCount++;
@@ -266,7 +266,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
             errors.push({ field: 'url', message: 'Invalid URL format' });
         }
 
-        if (config.pagination?.type === 'cursor' && !config.pagination.cursorPath) {
+        if (config.pagination?.type === PaginationType.CURSOR && !config.pagination.cursorPath) {
             warnings.push({
                 field: 'pagination.cursorPath',
                 message: 'Cursor path not specified for cursor pagination',
@@ -292,7 +292,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
         try {
             const response = await this.makeRequest(context, {
                 ...config,
-                pagination: { type: 'none' },
+                pagination: { type: PaginationType.NONE },
             });
 
             return {
@@ -411,7 +411,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
     }
 
     private async rateLimitDelay(requestsPerSecond: number): Promise<void> {
-        const delayMs = 1000 / requestsPerSecond;
+        const delayMs = TIME_UNITS.SECOND / requestsPerSecond;
         await this.sleep(delayMs);
     }
 

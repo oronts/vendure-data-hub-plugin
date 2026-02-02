@@ -1,5 +1,17 @@
 export * from '../types/index';
 
+// Shared utilities for extractors (eliminates duplication)
+export {
+    detectFileFormat,
+    getFileExtension,
+    hasExpectedExtension,
+    FileParseOptions,
+    parseFileContent,
+    parseModifiedAfterDate,
+    filterByModifiedAfter,
+    attachMetadataToRecord,
+} from './shared';
+
 export {
     ExtractorRegistryService,
     ExtractorRegistrationCallback,

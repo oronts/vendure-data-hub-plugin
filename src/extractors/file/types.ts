@@ -1,5 +1,6 @@
 import { ExtractorConfig } from '../../types/index';
 import { FileFormat } from '../../parsers/file-parser.service';
+import { SortOrder } from '../../constants/enums';
 
 export interface FileExtractorConfig extends ExtractorConfig {
     /** File path or glob pattern */
@@ -50,7 +51,7 @@ export interface FileExtractorConfig extends ExtractorConfig {
     sortBy?: 'name' | 'modified' | 'size';
 
     /** Sort order */
-    sortOrder?: 'asc' | 'desc';
+    sortOrder?: SortOrder;
 
     /** Continue on file parse errors */
     continueOnError?: boolean;
@@ -66,6 +67,6 @@ export interface FileInfo {
 export const FILE_EXTRACTOR_DEFAULTS = {
     maxFiles: 100,
     sortBy: 'modified' as const,
-    sortOrder: 'asc' as const,
+    sortOrder: SortOrder.ASC,
     continueOnError: true,
 } as const;

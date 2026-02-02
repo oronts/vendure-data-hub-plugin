@@ -125,6 +125,21 @@ export const FTP_DEFAULTS = {
     passiveMode: true,
 } as const;
 
+export const FTP_PROTOCOLS = {
+    FTP: 'ftp',
+    SFTP: 'sftp',
+} as const;
+
+export const FTP_TYPE_CODE = {
+    DIRECTORY: 'd',
+    FILE: '-',
+} as const;
+
+export const FTP_ITEM_TYPE = {
+    FILE: 0,
+    DIRECTORY: 2,
+} as const;
+
 export function getDefaultPort(protocol: FtpProtocol): number {
-    return protocol === 'sftp' ? FTP_DEFAULTS.sftpPort : FTP_DEFAULTS.ftpPort;
+    return protocol === FTP_PROTOCOLS.SFTP ? FTP_DEFAULTS.sftpPort : FTP_DEFAULTS.ftpPort;
 }

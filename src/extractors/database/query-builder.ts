@@ -7,6 +7,7 @@
 
 import { JsonValue } from '../../types/index';
 import { DatabaseExtractorConfig, DatabasePaginationConfig, PaginationState } from './types';
+import { DatabasePaginationType, PAGINATION } from '../../constants/index';
 import { validateColumnName, escapeSqlIdentifier, validateLimitOffset, containsSqlInjection } from '../../utils/sql-security.utils';
 
 /**
@@ -97,14 +98,14 @@ export function buildPaginatedQuery(
 
     if (!pagination?.enabled) return query;
 
-    const pageSize = validateLimitOffset(pagination.pageSize, 1, 100000);
+    const pageSize = validateLimitOffset(pagination.pageSize, 1, PAGINATION.DATABASE_MAX_PAGE_SIZE);
 
-    if (pagination.type === 'offset') {
+    if (pagination.type === DatabasePaginationType.OFFSET) {
         const offset = validateLimitOffset(state.offset, 0, Number.MAX_SAFE_INTEGER);
         return `${query} LIMIT ${pageSize} OFFSET ${offset}`;
     }
 
-    if (pagination.type === 'cursor') {
+    if (pagination.type === DatabasePaginationType.CURSOR) {
         if (!pagination.cursorColumn) {
             throw new Error('cursorColumn is required for cursor-based pagination');
         }

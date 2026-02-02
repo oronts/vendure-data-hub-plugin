@@ -1,3 +1,4 @@
+import { SortOrder } from '../../constants/index';
 import { ExtractorConfig } from '../../types/index';
 import { JsonObject } from '../../types/index';
 import { VendureEntityType } from '../../types/index';
@@ -40,7 +41,7 @@ export interface VendureQueryExtractorConfig extends ExtractorConfig {
     sortBy?: string;
 
     /** Sort order */
-    sortOrder?: 'ASC' | 'DESC';
+    sortOrder?: SortOrder;
 
     /** Custom where clause */
     where?: JsonObject;

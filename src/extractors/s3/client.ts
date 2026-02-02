@@ -102,7 +102,7 @@ export async function createS3Client(
                 Bucket: bucket,
                 Prefix: prefix || config.prefix,
                 ContinuationToken: continuationToken,
-                MaxKeys: 1000,
+                MaxKeys: S3_DEFAULTS.listMaxKeys,
             });
 
             const response = await s3.send(command);
@@ -130,8 +130,9 @@ export async function createS3Client(
 
             if (response.Body) {
                 // AWS SDK v3 uses web streams
-                if (typeof (response.Body as any).transformToByteArray === 'function') {
-                    return Buffer.from(await (response.Body as any).transformToByteArray());
+                const body = response.Body as { transformToByteArray?: () => Promise<Uint8Array> };
+                if (typeof body.transformToByteArray === 'function') {
+                    return Buffer.from(await body.transformToByteArray());
                 }
                 // Fallback for readable streams
                 const chunks: Buffer[] = [];

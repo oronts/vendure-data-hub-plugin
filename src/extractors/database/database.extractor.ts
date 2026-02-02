@@ -11,7 +11,7 @@ import {
     StepConfigSchema,
     ExtractorCategory,
 } from '../../types/index';
-import { DatabaseType, PAGINATION, HTTP, CONNECTION_POOL, LOGGER_CONTEXTS } from '../../constants/index';
+import { DatabaseType, DatabasePaginationType, PAGINATION, HTTP, CONNECTION_POOL, LOGGER_CONTEXTS } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import {
     DatabaseExtractorConfig,
@@ -36,7 +36,7 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
     readonly code = 'database';
     readonly name = 'Database Extractor';
     readonly description = 'Extract data from SQL databases (PostgreSQL, MySQL, SQLite, etc.)';
-    readonly category: ExtractorCategory = 'database';
+    readonly category: ExtractorCategory = 'DATABASE';
     readonly version = '1.0.0';
     readonly icon = 'database';
     readonly supportsPagination = true;
@@ -180,10 +180,10 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                 label: 'Pagination Type',
                 type: 'select',
                 options: [
-                    { value: 'offset', label: 'Offset (LIMIT/OFFSET)' },
-                    { value: 'cursor', label: 'Cursor (WHERE column > cursor)' },
+                    { value: DatabasePaginationType.OFFSET, label: 'Offset (LIMIT/OFFSET)' },
+                    { value: DatabasePaginationType.CURSOR, label: 'Cursor (WHERE column > cursor)' },
                 ],
-                defaultValue: 'offset',
+                defaultValue: DatabasePaginationType.OFFSET,
                 group: 'pagination',
                 dependsOn: { field: 'pagination.enabled', value: true },
             },
@@ -203,7 +203,7 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                 type: 'string',
                 placeholder: 'id',
                 group: 'pagination',
-                dependsOn: { field: 'pagination.type', value: 'cursor' },
+                dependsOn: { field: 'pagination.type', value: DatabasePaginationType.CURSOR },
             },
             {
                 key: 'pagination.maxPages',
@@ -368,7 +368,7 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                 // Update pagination state
                 pageCount++;
 
-                if (config.pagination?.type === 'cursor' && config.pagination.cursorColumn) {
+                if (config.pagination?.type === DatabasePaginationType.CURSOR && config.pagination.cursorColumn) {
                     // For cursor pagination, get the last row's cursor value
                     const lastRow = result.rows[result.rows.length - 1];
                     paginationState.cursor = lastRow[config.pagination.cursorColumn] as JsonValue;
@@ -444,7 +444,7 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
         }
 
         if (config.pagination?.enabled) {
-            if (config.pagination.type === 'cursor' && !config.pagination.cursorColumn) {
+            if (config.pagination.type === DatabasePaginationType.CURSOR && !config.pagination.cursorColumn) {
                 errors.push({
                     field: 'pagination.cursorColumn',
                     message: 'Cursor column is required for cursor-based pagination',
