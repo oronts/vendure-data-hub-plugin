@@ -1,6 +1,21 @@
-import { createHash, randomUUID } from 'crypto';
+import * as nodeCrypto from 'crypto';
 import { JsonObject, JsonValue } from '../types';
+import { isBrowser } from '../../utils/environment';
 import { getNestedValue, setNestedValue, removeNestedValue, deepClone } from '../helpers';
+
+function createHash(algorithm: string): nodeCrypto.Hash | null {
+    if (isBrowser) {
+        return null; // Hashing not supported in browser environment
+    }
+    return nodeCrypto.createHash(algorithm);
+}
+
+function randomUUID(): string {
+    if (isBrowser && typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    return nodeCrypto.randomUUID();
+}
 import { TemplateOperatorConfig, HashAlgorithm } from './types';
 
 export function applyMapping(
@@ -120,6 +135,11 @@ export function applyHash(
         // Serialize values to string for hashing
         const dataToHash = JSON.stringify(values.length === 1 ? values[0] : values);
         const hash = createHash(algorithm);
+        if (!hash) {
+            // Hashing not supported in browser environment
+            setNestedValue(result, target, null);
+            return result;
+        }
         hash.update(dataToHash);
         const hashValue = hash.digest(encoding);
         setNestedValue(result, target, hashValue);
@@ -144,15 +164,16 @@ const UUID_NAMESPACES: Record<string, string> = {
 /**
  * Generate a v5 UUID from namespace and name using SHA-1.
  * This is a simplified implementation following RFC 4122.
+ * Returns null on error instead of throwing.
  */
-function generateUuidV5(namespace: string, name: string): string {
+function generateUuidV5(namespace: string, name: string): string | null {
     // Resolve well-known namespace or use as-is
     const namespaceUuid = UUID_NAMESPACES[namespace.toLowerCase()] || namespace;
 
     // Parse namespace UUID to bytes
     const namespaceBytes = namespaceUuid.replace(/-/g, '');
     if (namespaceBytes.length !== 32) {
-        throw new Error('Invalid namespace UUID');
+        return null; // Invalid namespace UUID
     }
 
     const nsBuffer = Buffer.from(namespaceBytes, 'hex');
@@ -162,7 +183,11 @@ function generateUuidV5(namespace: string, name: string): string {
     const combined = Buffer.concat([nsBuffer, nameBuffer]);
 
     // Hash with SHA-1
-    const hash = createHash('sha1').update(combined).digest();
+    const hashInstance = createHash('sha1');
+    if (!hashInstance) {
+        return null; // Hashing not supported in browser environment
+    }
+    const hash = hashInstance.update(combined).digest();
 
     // Set version (5) and variant bits per RFC 4122
     hash[6] = (hash[6] & 0x0f) | 0x50; // Version 5
@@ -186,7 +211,7 @@ export function applyUuid(
     const result = deepClone(record);
 
     try {
-        let uuid: string;
+        let uuid: string | null;
 
         if (version === 'v5') {
             if (!namespace || !source) {
@@ -201,6 +226,10 @@ export function applyUuid(
             }
 
             uuid = generateUuidV5(namespace, String(name));
+            if (!uuid) {
+                setNestedValue(result, target, null);
+                return result;
+            }
         } else {
             // v4 - random UUID
             uuid = randomUUID();
@@ -208,6 +237,7 @@ export function applyUuid(
 
         setNestedValue(result, target, uuid);
     } catch {
+        // UUID generation failed - set null as fallback
         setNestedValue(result, target, null);
     }
 

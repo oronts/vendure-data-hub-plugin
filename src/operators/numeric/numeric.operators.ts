@@ -21,6 +21,7 @@ import {
     applyToCents,
     applyRound,
 } from './helpers';
+import { ROUNDING_MODES, UNIT_OPTIONS } from '../constants';
 
 export const MATH_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'operator',
@@ -69,11 +70,7 @@ export const CURRENCY_OPERATOR_DEFINITION: AdapterDefinition = {
                 key: 'round',
                 label: 'Rounding',
                 type: 'select',
-                options: [
-                    { value: 'round', label: 'round' },
-                    { value: 'floor', label: 'floor' },
-                    { value: 'ceil', label: 'ceil' },
-                ],
+                options: [...ROUNDING_MODES],
             },
         ],
     },
@@ -93,40 +90,14 @@ export const UNIT_OPERATOR_DEFINITION: AdapterDefinition = {
                 label: 'From unit',
                 type: 'select',
                 required: true,
-                options: [
-                    { value: 'g', label: 'g (grams)' },
-                    { value: 'kg', label: 'kg (kilograms)' },
-                    { value: 'lb', label: 'lb (pounds)' },
-                    { value: 'oz', label: 'oz (ounces)' },
-                    { value: 'cm', label: 'cm (centimeters)' },
-                    { value: 'm', label: 'm (meters)' },
-                    { value: 'mm', label: 'mm (millimeters)' },
-                    { value: 'in', label: 'in (inches)' },
-                    { value: 'ft', label: 'ft (feet)' },
-                    { value: 'ml', label: 'ml (milliliters)' },
-                    { value: 'l', label: 'l (liters)' },
-                    { value: 'gal', label: 'gal (gallons)' },
-                ],
+                options: [...UNIT_OPTIONS],
             },
             {
                 key: 'to',
                 label: 'To unit',
                 type: 'select',
                 required: true,
-                options: [
-                    { value: 'g', label: 'g (grams)' },
-                    { value: 'kg', label: 'kg (kilograms)' },
-                    { value: 'lb', label: 'lb (pounds)' },
-                    { value: 'oz', label: 'oz (ounces)' },
-                    { value: 'cm', label: 'cm (centimeters)' },
-                    { value: 'm', label: 'm (meters)' },
-                    { value: 'mm', label: 'mm (millimeters)' },
-                    { value: 'in', label: 'in (inches)' },
-                    { value: 'ft', label: 'ft (feet)' },
-                    { value: 'ml', label: 'ml (milliliters)' },
-                    { value: 'l', label: 'l (liters)' },
-                    { value: 'gal', label: 'gal (gallons)' },
-                ],
+                options: [...UNIT_OPTIONS],
             },
         ],
     },
@@ -162,7 +133,7 @@ export const TO_STRING_OPERATOR_DEFINITION: AdapterDefinition = {
 export function mathOperator(
     records: readonly JsonObject[],
     config: MathOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.operation || !config.source || !config.target) {
         return { records: [...records] };
@@ -177,7 +148,7 @@ export function mathOperator(
 export function currencyOperator(
     records: readonly JsonObject[],
     config: CurrencyOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target || config.decimals === undefined) {
         return { records: [...records] };
@@ -192,7 +163,7 @@ export function currencyOperator(
 export function unitOperator(
     records: readonly JsonObject[],
     config: UnitOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target || !config.from || !config.to) {
         return { records: [...records] };
@@ -207,7 +178,7 @@ export function unitOperator(
 export function toNumberOperator(
     records: readonly JsonObject[],
     config: ToNumberOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };
@@ -222,7 +193,7 @@ export function toNumberOperator(
 export function toStringOperator(
     records: readonly JsonObject[],
     config: ToStringOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };
@@ -234,9 +205,6 @@ export function toStringOperator(
     return { records: results };
 }
 
-/**
- * Operator definition for parsing numbers with locale support.
- */
 export const PARSE_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'operator',
     code: 'parseNumber',
@@ -252,9 +220,6 @@ export const PARSE_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-/**
- * Operator definition for formatting numbers with locale/currency support.
- */
 export const FORMAT_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'operator',
     code: 'formatNumber',
@@ -282,13 +247,10 @@ export const FORMAT_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-/**
- * Parse a string to a number with locale-aware handling.
- */
 export function parseNumberOperator(
     records: readonly JsonObject[],
     config: ParseNumberOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };
@@ -306,13 +268,10 @@ export function parseNumberOperator(
     return { records: results };
 }
 
-/**
- * Format a number as a localized string.
- */
 export function formatNumberOperator(
     records: readonly JsonObject[],
     config: FormatNumberOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target) {
         return { records: [...records] };
@@ -346,11 +305,7 @@ export const TO_CENTS_OPERATOR_DEFINITION: AdapterDefinition = {
                 key: 'round',
                 label: 'Rounding',
                 type: 'select',
-                options: [
-                    { value: 'round', label: 'Round (nearest)' },
-                    { value: 'floor', label: 'Floor (down)' },
-                    { value: 'ceil', label: 'Ceil (up)' },
-                ],
+                options: [...ROUNDING_MODES],
             },
         ],
     },
@@ -370,11 +325,7 @@ export const ROUND_OPERATOR_DEFINITION: AdapterDefinition = {
                 key: 'mode',
                 label: 'Rounding mode',
                 type: 'select',
-                options: [
-                    { value: 'round', label: 'Round (nearest)' },
-                    { value: 'floor', label: 'Floor (down)' },
-                    { value: 'ceil', label: 'Ceil (up)' },
-                ],
+                options: [...ROUNDING_MODES],
             },
         ],
     },
@@ -383,7 +334,7 @@ export const ROUND_OPERATOR_DEFINITION: AdapterDefinition = {
 export function toCentsOperator(
     records: readonly JsonObject[],
     config: ToCentsOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target) {
         return { records: [...records] };
@@ -398,7 +349,7 @@ export function toCentsOperator(
 export function roundOperator(
     records: readonly JsonObject[],
     config: RoundOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };

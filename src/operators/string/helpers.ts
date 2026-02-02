@@ -1,4 +1,4 @@
-import { JsonObject, JsonValue } from '../types';
+import { JsonObject } from '../types';
 import { getNestedValue, setNestedValue, deepClone, slugify as slugifyStr } from '../helpers';
 
 export function applySplit(
@@ -12,6 +12,10 @@ export function applySplit(
     const value = getNestedValue(result, source);
 
     if (typeof value === 'string') {
+        if (delimiter === '') {
+            setNestedValue(result, target, [value]);
+            return result;
+        }
         let parts = value.split(delimiter);
         if (trim) {
             parts = parts.map(p => p.trim());
@@ -218,7 +222,7 @@ export function applyStripHtml(
 
     if (typeof value === 'string') {
         // Remove HTML tags, decode entities, and normalize whitespace
-        let stripped = value
+        const stripped = value
             .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove script tags and content
             .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '') // Remove style tags and content
             .replace(/<[^>]+>/g, '') // Remove all remaining HTML tags

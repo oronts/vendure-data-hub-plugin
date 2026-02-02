@@ -4,7 +4,6 @@
 
 import { OperatorAdapter, OperatorHelpers, AdapterDefinition } from '../sdk/types';
 import { JsonObject } from '../types';
-import { OperatorResult } from './types';
 
 import {
     splitOperator, joinOperator, trimOperator, lowercaseOperator, uppercaseOperator,
@@ -35,9 +34,8 @@ import {
 
 import {
     whenOperator, ifThenElseOperator, switchOperator, deltaFilterOperator,
-    coalesceOperator, lookupOperator,
     WHEN_OPERATOR_DEFINITION, IF_THEN_ELSE_OPERATOR_DEFINITION, SWITCH_OPERATOR_DEFINITION,
-    DELTA_FILTER_OPERATOR_DEFINITION, COALESCE_OPERATOR_DEFINITION, LOOKUP_OPERATOR_DEFINITION,
+    DELTA_FILTER_OPERATOR_DEFINITION,
 } from './logic';
 
 import {
@@ -55,8 +53,9 @@ import {
 } from './data';
 
 import {
-    enrichOperator, defaultOperator,
-    ENRICH_OPERATOR_DEFINITION, DEFAULT_OPERATOR_DEFINITION,
+    lookupOperator, coalesceOperator, enrichOperator, defaultOperator, httpLookupOperator,
+    LOOKUP_OPERATOR_DEFINITION, COALESCE_OPERATOR_DEFINITION,
+    ENRICH_OPERATOR_DEFINITION, DEFAULT_OPERATOR_DEFINITION, HTTP_LOOKUP_OPERATOR_DEFINITION,
 } from './enrichment';
 
 import {
@@ -76,9 +75,20 @@ import {
     scriptOperator, SCRIPT_OPERATOR_DEFINITION,
 } from './script';
 
+import { OperatorResult } from './types';
+
+/**
+ * Generic operator function type for the registry.
+ *
+ * Each operator has its own strongly-typed config interface for internal implementation.
+ * At the registry level, we accept any config object - runtime validation happens
+ * through the operator's schema before execution.
+ */
+type OperatorConfig = Record<string, unknown>;
+
 type OperatorFn = (
     records: readonly JsonObject[],
-    config: any,
+    config: OperatorConfig,
     helpers: OperatorHelpers,
 ) => OperatorResult | Promise<OperatorResult>;
 
@@ -87,83 +97,96 @@ interface OperatorRegistryEntry {
     fn: OperatorFn;
 }
 
+/**
+ * Helper to cast operator functions to OperatorFn.
+ *
+ * This is necessary because function parameters are contravariant in TypeScript.
+ * Each operator has its own specific config type, but the registry needs a common type.
+ * Runtime validation happens through each operator's schema before execution.
+ */
+const op = <T>(fn: T): OperatorFn => fn as unknown as OperatorFn;
+
+/**
+ * Operator registry mapping codes to definitions and implementations.
+ */
 const OPERATOR_REGISTRY: Record<string, OperatorRegistryEntry> = {
     // String
-    split: { definition: SPLIT_OPERATOR_DEFINITION, fn: splitOperator },
-    join: { definition: JOIN_OPERATOR_DEFINITION, fn: joinOperator },
-    trim: { definition: TRIM_OPERATOR_DEFINITION, fn: trimOperator },
-    lowercase: { definition: LOWERCASE_OPERATOR_DEFINITION, fn: lowercaseOperator },
-    uppercase: { definition: UPPERCASE_OPERATOR_DEFINITION, fn: uppercaseOperator },
-    slugify: { definition: SLUGIFY_OPERATOR_DEFINITION, fn: slugifyOperator },
-    concat: { definition: CONCAT_OPERATOR_DEFINITION, fn: concatOperator },
-    replace: { definition: REPLACE_OPERATOR_DEFINITION, fn: replaceOperator },
-    extractRegex: { definition: EXTRACT_REGEX_OPERATOR_DEFINITION, fn: extractRegexOperator },
-    replaceRegex: { definition: REPLACE_REGEX_OPERATOR_DEFINITION, fn: replaceRegexOperator },
-    stripHtml: { definition: STRIP_HTML_OPERATOR_DEFINITION, fn: stripHtmlOperator },
-    truncate: { definition: TRUNCATE_OPERATOR_DEFINITION, fn: truncateOperator },
+    split: { definition: SPLIT_OPERATOR_DEFINITION, fn: op(splitOperator) },
+    join: { definition: JOIN_OPERATOR_DEFINITION, fn: op(joinOperator) },
+    trim: { definition: TRIM_OPERATOR_DEFINITION, fn: op(trimOperator) },
+    lowercase: { definition: LOWERCASE_OPERATOR_DEFINITION, fn: op(lowercaseOperator) },
+    uppercase: { definition: UPPERCASE_OPERATOR_DEFINITION, fn: op(uppercaseOperator) },
+    slugify: { definition: SLUGIFY_OPERATOR_DEFINITION, fn: op(slugifyOperator) },
+    concat: { definition: CONCAT_OPERATOR_DEFINITION, fn: op(concatOperator) },
+    replace: { definition: REPLACE_OPERATOR_DEFINITION, fn: op(replaceOperator) },
+    extractRegex: { definition: EXTRACT_REGEX_OPERATOR_DEFINITION, fn: op(extractRegexOperator) },
+    replaceRegex: { definition: REPLACE_REGEX_OPERATOR_DEFINITION, fn: op(replaceRegexOperator) },
+    stripHtml: { definition: STRIP_HTML_OPERATOR_DEFINITION, fn: op(stripHtmlOperator) },
+    truncate: { definition: TRUNCATE_OPERATOR_DEFINITION, fn: op(truncateOperator) },
 
     // Date
-    dateFormat: { definition: DATE_FORMAT_OPERATOR_DEFINITION, fn: dateFormatOperator },
-    dateParse: { definition: DATE_PARSE_OPERATOR_DEFINITION, fn: dateParseOperator },
-    dateAdd: { definition: DATE_ADD_OPERATOR_DEFINITION, fn: dateAddOperator },
-    dateDiff: { definition: DATE_DIFF_OPERATOR_DEFINITION, fn: dateDiffOperator },
-    now: { definition: NOW_OPERATOR_DEFINITION, fn: nowOperator },
-    formatDate: { definition: FORMAT_DATE_OPERATOR_DEFINITION, fn: formatDateOperator },
+    dateFormat: { definition: DATE_FORMAT_OPERATOR_DEFINITION, fn: op(dateFormatOperator) },
+    dateParse: { definition: DATE_PARSE_OPERATOR_DEFINITION, fn: op(dateParseOperator) },
+    dateAdd: { definition: DATE_ADD_OPERATOR_DEFINITION, fn: op(dateAddOperator) },
+    dateDiff: { definition: DATE_DIFF_OPERATOR_DEFINITION, fn: op(dateDiffOperator) },
+    now: { definition: NOW_OPERATOR_DEFINITION, fn: op(nowOperator) },
+    formatDate: { definition: FORMAT_DATE_OPERATOR_DEFINITION, fn: op(formatDateOperator) },
 
     // Numeric
-    math: { definition: MATH_OPERATOR_DEFINITION, fn: mathOperator },
-    currency: { definition: CURRENCY_OPERATOR_DEFINITION, fn: currencyOperator },
-    unit: { definition: UNIT_OPERATOR_DEFINITION, fn: unitOperator },
-    toNumber: { definition: TO_NUMBER_OPERATOR_DEFINITION, fn: toNumberOperator },
-    toString: { definition: TO_STRING_OPERATOR_DEFINITION, fn: toStringOperator },
-    parseNumber: { definition: PARSE_NUMBER_OPERATOR_DEFINITION, fn: parseNumberOperator },
-    formatNumber: { definition: FORMAT_NUMBER_OPERATOR_DEFINITION, fn: formatNumberOperator },
-    toCents: { definition: TO_CENTS_OPERATOR_DEFINITION, fn: toCentsOperator },
-    round: { definition: ROUND_OPERATOR_DEFINITION, fn: roundOperator },
+    math: { definition: MATH_OPERATOR_DEFINITION, fn: op(mathOperator) },
+    currency: { definition: CURRENCY_OPERATOR_DEFINITION, fn: op(currencyOperator) },
+    unit: { definition: UNIT_OPERATOR_DEFINITION, fn: op(unitOperator) },
+    toNumber: { definition: TO_NUMBER_OPERATOR_DEFINITION, fn: op(toNumberOperator) },
+    toString: { definition: TO_STRING_OPERATOR_DEFINITION, fn: op(toStringOperator) },
+    parseNumber: { definition: PARSE_NUMBER_OPERATOR_DEFINITION, fn: op(parseNumberOperator) },
+    formatNumber: { definition: FORMAT_NUMBER_OPERATOR_DEFINITION, fn: op(formatNumberOperator) },
+    toCents: { definition: TO_CENTS_OPERATOR_DEFINITION, fn: op(toCentsOperator) },
+    round: { definition: ROUND_OPERATOR_DEFINITION, fn: op(roundOperator) },
 
     // Logic
-    when: { definition: WHEN_OPERATOR_DEFINITION, fn: whenOperator },
-    ifThenElse: { definition: IF_THEN_ELSE_OPERATOR_DEFINITION, fn: ifThenElseOperator },
-    switch: { definition: SWITCH_OPERATOR_DEFINITION, fn: switchOperator },
-    deltaFilter: { definition: DELTA_FILTER_OPERATOR_DEFINITION, fn: deltaFilterOperator },
-    coalesce: { definition: COALESCE_OPERATOR_DEFINITION, fn: coalesceOperator },
-    lookup: { definition: LOOKUP_OPERATOR_DEFINITION, fn: lookupOperator },
+    when: { definition: WHEN_OPERATOR_DEFINITION, fn: op(whenOperator) },
+    ifThenElse: { definition: IF_THEN_ELSE_OPERATOR_DEFINITION, fn: op(ifThenElseOperator) },
+    switch: { definition: SWITCH_OPERATOR_DEFINITION, fn: op(switchOperator) },
+    deltaFilter: { definition: DELTA_FILTER_OPERATOR_DEFINITION, fn: op(deltaFilterOperator) },
 
     // JSON
-    parseJson: { definition: PARSE_JSON_OPERATOR_DEFINITION, fn: parseJsonOperator },
-    stringifyJson: { definition: STRINGIFY_JSON_OPERATOR_DEFINITION, fn: stringifyJsonOperator },
-    pick: { definition: PICK_OPERATOR_DEFINITION, fn: pickOperator },
-    omit: { definition: OMIT_OPERATOR_DEFINITION, fn: omitOperator },
+    parseJson: { definition: PARSE_JSON_OPERATOR_DEFINITION, fn: op(parseJsonOperator) },
+    stringifyJson: { definition: STRINGIFY_JSON_OPERATOR_DEFINITION, fn: op(stringifyJsonOperator) },
+    pick: { definition: PICK_OPERATOR_DEFINITION, fn: op(pickOperator) },
+    omit: { definition: OMIT_OPERATOR_DEFINITION, fn: op(omitOperator) },
 
     // Data
-    map: { definition: MAP_OPERATOR_DEFINITION, fn: mapOperator },
-    set: { definition: SET_OPERATOR_DEFINITION, fn: setOperator },
-    remove: { definition: REMOVE_OPERATOR_DEFINITION, fn: removeOperator },
-    rename: { definition: RENAME_OPERATOR_DEFINITION, fn: renameOperator },
-    copy: { definition: COPY_OPERATOR_DEFINITION, fn: copyOperator },
-    template: { definition: TEMPLATE_OPERATOR_DEFINITION, fn: templateOperator },
-    hash: { definition: HASH_OPERATOR_DEFINITION, fn: hashOperator },
-    uuid: { definition: UUID_OPERATOR_DEFINITION, fn: uuidOperator },
+    map: { definition: MAP_OPERATOR_DEFINITION, fn: op(mapOperator) },
+    set: { definition: SET_OPERATOR_DEFINITION, fn: op(setOperator) },
+    remove: { definition: REMOVE_OPERATOR_DEFINITION, fn: op(removeOperator) },
+    rename: { definition: RENAME_OPERATOR_DEFINITION, fn: op(renameOperator) },
+    copy: { definition: COPY_OPERATOR_DEFINITION, fn: op(copyOperator) },
+    template: { definition: TEMPLATE_OPERATOR_DEFINITION, fn: op(templateOperator) },
+    hash: { definition: HASH_OPERATOR_DEFINITION, fn: op(hashOperator) },
+    uuid: { definition: UUID_OPERATOR_DEFINITION, fn: op(uuidOperator) },
 
     // Enrichment
-    enrich: { definition: ENRICH_OPERATOR_DEFINITION, fn: enrichOperator },
-    default: { definition: DEFAULT_OPERATOR_DEFINITION, fn: defaultOperator },
+    lookup: { definition: LOOKUP_OPERATOR_DEFINITION, fn: op(lookupOperator) },
+    coalesce: { definition: COALESCE_OPERATOR_DEFINITION, fn: op(coalesceOperator) },
+    enrich: { definition: ENRICH_OPERATOR_DEFINITION, fn: op(enrichOperator) },
+    default: { definition: DEFAULT_OPERATOR_DEFINITION, fn: op(defaultOperator) },
+    httpLookup: { definition: HTTP_LOOKUP_OPERATOR_DEFINITION, fn: op(httpLookupOperator) },
 
     // Aggregation
-    aggregate: { definition: AGGREGATE_OPERATOR_DEFINITION, fn: aggregateOperator },
-    count: { definition: COUNT_OPERATOR_DEFINITION, fn: countOperator },
-    unique: { definition: UNIQUE_OPERATOR_DEFINITION, fn: uniqueOperator },
-    flatten: { definition: FLATTEN_OPERATOR_DEFINITION, fn: flattenOperator },
-    first: { definition: FIRST_OPERATOR_DEFINITION, fn: firstOperator },
-    last: { definition: LAST_OPERATOR_DEFINITION, fn: lastOperator },
-    expand: { definition: EXPAND_OPERATOR_DEFINITION, fn: expandOperator },
+    aggregate: { definition: AGGREGATE_OPERATOR_DEFINITION, fn: op(aggregateOperator) },
+    count: { definition: COUNT_OPERATOR_DEFINITION, fn: op(countOperator) },
+    unique: { definition: UNIQUE_OPERATOR_DEFINITION, fn: op(uniqueOperator) },
+    flatten: { definition: FLATTEN_OPERATOR_DEFINITION, fn: op(flattenOperator) },
+    first: { definition: FIRST_OPERATOR_DEFINITION, fn: op(firstOperator) },
+    last: { definition: LAST_OPERATOR_DEFINITION, fn: op(lastOperator) },
+    expand: { definition: EXPAND_OPERATOR_DEFINITION, fn: op(expandOperator) },
 
     // Validation
-    validateRequired: { definition: VALIDATE_REQUIRED_OPERATOR_DEFINITION, fn: validateRequiredOperator },
-    validateFormat: { definition: VALIDATE_FORMAT_OPERATOR_DEFINITION, fn: validateFormatOperator },
+    validateRequired: { definition: VALIDATE_REQUIRED_OPERATOR_DEFINITION, fn: op(validateRequiredOperator) },
+    validateFormat: { definition: VALIDATE_FORMAT_OPERATOR_DEFINITION, fn: op(validateFormatOperator) },
 
     // Advanced/Script
-    script: { definition: SCRIPT_OPERATOR_DEFINITION, fn: scriptOperator },
+    script: { definition: SCRIPT_OPERATOR_DEFINITION, fn: op(scriptOperator) },
 };
 
 function convertToSdkResult(result: OperatorResult): import('../sdk/types').OperatorResult {
@@ -200,7 +223,7 @@ function createOperatorAdapter(entry: OperatorRegistryEntry): OperatorAdapter {
 
         async apply(
             records: readonly JsonObject[],
-            config: any,
+            config: OperatorConfig,
             helpers: OperatorHelpers,
         ): Promise<import('../sdk/types').OperatorResult> {
             const result = await Promise.resolve(fn(records, config, helpers));

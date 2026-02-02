@@ -1,98 +1,21 @@
 import { JsonValue, JsonObject } from '../types';
 import { TRANSFORM_LIMITS } from '../constants/index';
+import {
+    getNestedValue as getNestedValueUtil,
+    setNestedValue as setNestedValueUtil,
+    removeNestedValue as removeNestedValueUtil,
+    hasNestedValue as hasNestedValueUtil,
+    deepClone as deepCloneUtil,
+} from '../utils/object-path.utils';
 
-export function getNestedValue(obj: JsonObject, path: string): JsonValue | undefined {
-    if (!path) return undefined;
-
-    const parts = path.split('.');
-    let current: JsonValue = obj;
-
-    for (const part of parts) {
-        if (current === null || current === undefined) {
-            return undefined;
-        }
-        if (typeof current !== 'object' || Array.isArray(current)) {
-            return undefined;
-        }
-        current = (current as JsonObject)[part];
-    }
-
-    return current;
-}
-
-export function setNestedValue(obj: JsonObject, path: string, value: JsonValue): void {
-    if (!path) return;
-
-    const parts = path.split('.');
-    let current: JsonObject = obj;
-
-    for (let i = 0; i < parts.length - 1; i++) {
-        const part = parts[i];
-        if (!(part in current) || typeof current[part] !== 'object' || current[part] === null) {
-            current[part] = {};
-        }
-        current = current[part] as JsonObject;
-    }
-
-    const lastPart = parts[parts.length - 1];
-    current[lastPart] = value;
-}
-
-export function removeNestedValue(obj: JsonObject, path: string): void {
-    if (!path) return;
-
-    const parts = path.split('.');
-    let current: JsonObject = obj;
-
-    for (let i = 0; i < parts.length - 1; i++) {
-        const part = parts[i];
-        if (!(part in current) || typeof current[part] !== 'object' || current[part] === null) {
-            return; // Path doesn't exist
-        }
-        current = current[part] as JsonObject;
-    }
-
-    const lastPart = parts[parts.length - 1];
-    delete current[lastPart];
-}
-
-export function hasNestedValue(obj: JsonObject, path: string): boolean {
-    if (!path) return false;
-
-    const parts = path.split('.');
-    let current: JsonValue = obj;
-
-    for (const part of parts) {
-        if (current === null || current === undefined) {
-            return false;
-        }
-        if (typeof current !== 'object' || Array.isArray(current)) {
-            return false;
-        }
-        if (!(part in (current as JsonObject))) {
-            return false;
-        }
-        current = (current as JsonObject)[part];
-    }
-
-    return true;
-}
-
-export function deepClone<T extends JsonValue>(value: T): T {
-    if (value === null || typeof value !== 'object') {
-        return value;
-    }
-
-    if (Array.isArray(value)) {
-        return value.map(item => deepClone(item)) as T;
-    }
-
-    const result: JsonObject = {};
-    for (const key of Object.keys(value)) {
-        result[key] = deepClone((value as JsonObject)[key]);
-    }
-    return result as T;
-}
+/**
+ * Path utilities for operators.
+ */
+export const getNestedValue = getNestedValueUtil;
+export const setNestedValue = setNestedValueUtil;
+export const removeNestedValue = removeNestedValueUtil;
+export const hasNestedValue = hasNestedValueUtil;
+export const deepClone = deepCloneUtil;
 
 export function compare(
     left: JsonValue,
@@ -129,6 +52,7 @@ export function compare(
                 try {
                     return new RegExp(right).test(left);
                 } catch {
+                    // Invalid regex pattern - return false
                     return false;
                 }
             }

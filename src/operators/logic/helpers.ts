@@ -3,12 +3,19 @@ import { getNestedValue, setNestedValue, deepClone, compare, simpleHash } from '
 import { OperatorCondition } from '../types';
 import { SwitchCase } from './types';
 
+/**
+ * Filter action type for operator use (lowercase to match operator schema options).
+ * Note: Different from FilterAction enum which uses SCREAMING_SNAKE_CASE for GraphQL.
+ */
+type FilterActionType = 'keep' | 'drop';
+
 export function evaluateCondition(
     record: JsonObject,
     condition: OperatorCondition,
 ): boolean {
     const fieldValue = getNestedValue(record, condition.field);
-    return compare(fieldValue ?? null, condition.cmp, condition.value ?? null);
+    const operator = condition.operator ?? 'eq';
+    return compare(fieldValue ?? null, operator, condition.value ?? null);
 }
 
 export function evaluateConditions(
@@ -29,17 +36,26 @@ export function evaluateSwitch(
     defaultValue?: JsonValue,
 ): JsonValue {
     for (const switchCase of cases) {
-        if (sourceValue === switchCase.value) {
+        if (looseEquals(sourceValue, switchCase.value)) {
             return switchCase.result;
         }
     }
     return defaultValue ?? null;
 }
 
+function looseEquals(a: JsonValue, b: JsonValue): boolean {
+    if (a === b) return true;
+    if (a === null || b === null) return a === b;
+    if (typeof a === typeof b) return a === b;
+    const strA = String(a);
+    const strB = String(b);
+    return strA === strB;
+}
+
 export function filterRecords(
     records: readonly JsonObject[],
     conditions: OperatorCondition[],
-    action: 'keep' | 'drop',
+    action: FilterActionType,
 ): JsonObject[] {
     return records.filter(record => {
         const matches = evaluateConditions(record, conditions);
@@ -83,7 +99,6 @@ export function calculateRecordHash(
     let dataToHash: JsonValue;
 
     if (includePaths && includePaths.length > 0) {
-        // Only include specified paths
         const subset: JsonObject = {};
         for (const path of includePaths) {
             const value = getNestedValue(record, path);
@@ -93,7 +108,6 @@ export function calculateRecordHash(
         }
         dataToHash = subset;
     } else if (excludePaths && excludePaths.length > 0) {
-        // Exclude specified paths
         const cloned = deepClone(record);
         for (const path of excludePaths) {
             const parts = path.split('.');
@@ -113,65 +127,4 @@ export function calculateRecordHash(
     }
 
     return simpleHash(dataToHash);
-}
-
-/**
- * Apply coalesce operation - returns first non-null value from multiple fields.
- */
-export function applyCoalesce(
-    record: JsonObject,
-    sources: string[],
-    target: string,
-    defaultValue?: JsonValue,
-): JsonObject {
-    const result = deepClone(record);
-
-    for (const source of sources) {
-        const value = getNestedValue(record, source);
-        if (value !== null && value !== undefined) {
-            setNestedValue(result, target, value);
-            return result;
-        }
-    }
-
-    // All sources were null/undefined - use default value
-    setNestedValue(result, target, defaultValue ?? null);
-    return result;
-}
-
-/**
- * Apply lookup operation - maps a value using a static lookup table.
- */
-export function applyLookup(
-    record: JsonObject,
-    source: string,
-    target: string,
-    mappings: Array<{ key: JsonValue; value: JsonValue }>,
-    defaultValue?: JsonValue,
-    caseInsensitive = false,
-): JsonObject {
-    const result = deepClone(record);
-    const sourceValue = getNestedValue(record, source);
-
-    // Find matching mapping
-    for (const mapping of mappings) {
-        let matches = false;
-
-        if (caseInsensitive &&
-            typeof sourceValue === 'string' &&
-            typeof mapping.key === 'string') {
-            matches = sourceValue.toLowerCase() === mapping.key.toLowerCase();
-        } else {
-            matches = sourceValue === mapping.key;
-        }
-
-        if (matches) {
-            setNestedValue(result, target, mapping.value);
-            return result;
-        }
-    }
-
-    // No match found - use default value
-    setNestedValue(result, target, defaultValue ?? null);
-    return result;
 }

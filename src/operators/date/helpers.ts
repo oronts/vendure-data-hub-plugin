@@ -1,6 +1,7 @@
 import { JsonObject, JsonValue } from '../types';
 import { getNestedValue, setNestedValue, deepClone } from '../helpers';
 import { DateUnit } from './types';
+import { TIME_UNITS } from '../../constants/index';
 
 function parseDate(value: JsonValue | undefined, format?: string): Date | null {
     if (value === null || value === undefined) {
@@ -37,7 +38,7 @@ function parseDate(value: JsonValue | undefined, format?: string): Date | null {
 function parseDateWithFormat(value: string, format: string): Date | null {
     try {
         // Build regex from format
-        let pattern = format
+        const pattern = format
             .replace('YYYY', '(\\d{4})')
             .replace('MM', '(\\d{2})')
             .replace('DD', '(\\d{2})')
@@ -98,6 +99,7 @@ function parseDateWithFormat(value: string, format: string): Date | null {
             parts.second,
         );
     } catch {
+        // Date parsing failed - return null as fallback
         return null;
     }
 }
@@ -233,27 +235,27 @@ export function applyDateDiff(
 
     switch (unit) {
         case 'seconds':
-            diff = diffMs / 1000;
+            diff = diffMs / TIME_UNITS.SECOND;
             break;
         case 'minutes':
-            diff = diffMs / (1000 * 60);
+            diff = diffMs / TIME_UNITS.MINUTE;
             break;
         case 'hours':
-            diff = diffMs / (1000 * 60 * 60);
+            diff = diffMs / TIME_UNITS.HOUR;
             break;
         case 'days':
-            diff = diffMs / (1000 * 60 * 60 * 24);
+            diff = diffMs / TIME_UNITS.DAY;
             break;
         case 'weeks':
-            diff = diffMs / (1000 * 60 * 60 * 24 * 7);
+            diff = diffMs / (TIME_UNITS.DAY * 7);
             break;
         case 'months':
             // Approximate months (30.44 days average)
-            diff = diffMs / (1000 * 60 * 60 * 24 * 30.44);
+            diff = diffMs / (TIME_UNITS.DAY * 30.44);
             break;
         case 'years':
             // Approximate years (365.25 days)
-            diff = diffMs / (1000 * 60 * 60 * 24 * 365.25);
+            diff = diffMs / (TIME_UNITS.DAY * 365.25);
             break;
         default:
             diff = diffMs;

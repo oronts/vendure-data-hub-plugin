@@ -1,6 +1,7 @@
 import { JsonObject, JsonValue } from '../types';
 import { getNestedValue, setNestedValue, deepClone } from '../helpers';
 import { ValidationError } from './types';
+import { VALIDATION_RULE } from '../constants';
 
 export function isEmpty(value: JsonValue | undefined): boolean {
     if (value === null || value === undefined) {
@@ -27,7 +28,7 @@ export function validateRequired(
             errors.push({
                 field,
                 message: `Field '${field}' is required`,
-                rule: 'required',
+                rule: VALIDATION_RULE.REQUIRED,
             });
         }
     }
@@ -52,7 +53,7 @@ export function validateFormat(
         return {
             field,
             message: errorMessage || `Field '${field}' must be a string for format validation`,
-            rule: 'format',
+            rule: VALIDATION_RULE.FORMAT,
         };
     }
 
@@ -62,14 +63,14 @@ export function validateFormat(
             return {
                 field,
                 message: errorMessage || `Field '${field}' does not match required format`,
-                rule: 'format',
+                rule: VALIDATION_RULE.FORMAT,
             };
         }
     } catch {
         return {
             field,
             message: `Invalid regex pattern for field '${field}'`,
-            rule: 'format',
+            rule: VALIDATION_RULE.FORMAT,
         };
     }
 

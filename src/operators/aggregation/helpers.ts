@@ -169,30 +169,27 @@ export function applyExpand(
         let newRecord: JsonObject;
 
         if (mergeParent) {
-            // Start with parent record (excluding the array field)
             newRecord = deepClone(record);
-            // Remove the original array to avoid bloating the record
             try {
                 const parts = path.split('.');
-                let cur: any = newRecord;
+                let cur: unknown = newRecord;
                 for (let i = 0; i < parts.length - 1; i++) {
-                    if (cur == null) break;
-                    cur = cur[parts[i]];
+                    if (cur == null || typeof cur !== 'object') break;
+                    cur = (cur as Record<string, unknown>)[parts[i]];
                 }
-                if (cur) delete cur[parts[parts.length - 1]];
+                if (cur != null && typeof cur === 'object') {
+                    delete (cur as Record<string, unknown>)[parts[parts.length - 1]];
+                }
             } catch {
                 // Ignore deletion errors
             }
 
-            // If element is an object, merge its properties
             if (element && typeof element === 'object' && !Array.isArray(element)) {
                 Object.assign(newRecord, element);
             } else {
-                // If element is a primitive, store it under a special key
                 setNestedValue(newRecord, '_item', element);
             }
         } else if (parentFields) {
-            // Start with just the array element
             if (element && typeof element === 'object' && !Array.isArray(element)) {
                 newRecord = deepClone(element) as JsonObject;
             } else {

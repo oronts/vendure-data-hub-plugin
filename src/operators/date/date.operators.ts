@@ -13,6 +13,7 @@ import {
     applyDateDiff,
     applyNow,
 } from './helpers';
+import { DATE_UNIT_OPTIONS, DATE_DIFF_UNIT_OPTIONS } from '../constants';
 
 export const DATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'operator',
@@ -60,15 +61,7 @@ export const DATE_ADD_OPERATOR_DEFINITION: AdapterDefinition = {
                 label: 'Unit',
                 type: 'select',
                 required: true,
-                options: [
-                    { value: 'seconds', label: 'Seconds' },
-                    { value: 'minutes', label: 'Minutes' },
-                    { value: 'hours', label: 'Hours' },
-                    { value: 'days', label: 'Days' },
-                    { value: 'weeks', label: 'Weeks' },
-                    { value: 'months', label: 'Months' },
-                    { value: 'years', label: 'Years' },
-                ],
+                options: [...DATE_UNIT_OPTIONS],
             },
         ],
     },
@@ -138,9 +131,6 @@ export function dateAddOperator(
     return { records: results };
 }
 
-/**
- * Operator definition for calculating the difference between two dates.
- */
 export const DATE_DIFF_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'operator',
     code: 'dateDiff',
@@ -156,24 +146,13 @@ export const DATE_DIFF_OPERATOR_DEFINITION: AdapterDefinition = {
                 label: 'Result unit',
                 type: 'select',
                 required: true,
-                options: [
-                    { value: 'seconds', label: 'Seconds' },
-                    { value: 'minutes', label: 'Minutes' },
-                    { value: 'hours', label: 'Hours' },
-                    { value: 'days', label: 'Days' },
-                    { value: 'weeks', label: 'Weeks' },
-                    { value: 'months', label: 'Months (approximate)' },
-                    { value: 'years', label: 'Years (approximate)' },
-                ],
+                options: [...DATE_DIFF_UNIT_OPTIONS],
             },
             { key: 'absolute', label: 'Absolute value', type: 'boolean', description: 'Return absolute value (no negative numbers)' },
         ],
     },
 };
 
-/**
- * Calculate the difference between two dates.
- */
 export function dateDiffOperator(
     records: readonly JsonObject[],
     config: DateDiffOperatorConfig,
@@ -236,7 +215,6 @@ export function nowOperator(
     return { records: results };
 }
 
-// Alias for dateFormat - some pipelines use 'formatDate' instead of 'dateFormat'
 export const FORMAT_DATE_OPERATOR_DEFINITION: AdapterDefinition = {
     ...DATE_FORMAT_OPERATOR_DEFINITION,
     code: 'formatDate',

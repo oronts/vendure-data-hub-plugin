@@ -4,16 +4,12 @@ import {
     IfThenElseOperatorConfig,
     SwitchOperatorConfig,
     DeltaFilterOperatorConfig,
-    CoalesceOperatorConfig,
-    LookupOperatorConfig,
 } from './types';
 import {
     filterRecords,
     applyIfThenElse,
     applySwitch,
     calculateRecordHash,
-    applyCoalesce,
-    applyLookup,
 } from './helpers';
 import { getNestedValue } from '../helpers';
 
@@ -114,7 +110,7 @@ export const DELTA_FILTER_OPERATOR_DEFINITION: AdapterDefinition = {
 export function whenOperator(
     records: readonly JsonObject[],
     config: WhenOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.conditions || !Array.isArray(config.conditions)) {
         return { records: [...records] };
@@ -130,7 +126,7 @@ export function whenOperator(
 export function ifThenElseOperator(
     records: readonly JsonObject[],
     config: IfThenElseOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.condition || !config.target) {
         return { records: [...records] };
@@ -151,7 +147,7 @@ export function ifThenElseOperator(
 export function switchOperator(
     records: readonly JsonObject[],
     config: SwitchOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.cases || !config.target) {
         return { records: [...records] };
@@ -172,7 +168,7 @@ export function switchOperator(
 export function deltaFilterOperator(
     records: readonly JsonObject[],
     config: DeltaFilterOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
     checkpoint?: Map<string, string>,
 ): OperatorResult {
     if (!config.idPath) {
@@ -217,86 +213,3 @@ export function deltaFilterOperator(
     };
 }
 
-/**
- * Operator definition for coalesce - returns first non-null value from multiple fields.
- */
-export const COALESCE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
-    code: 'coalesce',
-    description: 'Return the first non-null value from a list of field paths.',
-    pure: true,
-    schema: {
-        fields: [
-            { key: 'sources', label: 'Source field paths (JSON array)', type: 'json', required: true, description: 'Array of field paths to check in order' },
-            { key: 'target', label: 'Target field path', type: 'string', required: true },
-            { key: 'default', label: 'Default value (JSON)', type: 'json', description: 'Value if all sources are null/undefined' },
-        ],
-    },
-};
-
-/**
- * Operator definition for lookup - maps values using a static lookup table.
- */
-export const LOOKUP_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
-    code: 'lookup',
-    description: 'Map a value to another value using a static lookup table.',
-    pure: true,
-    schema: {
-        fields: [
-            { key: 'source', label: 'Source field path', type: 'string', required: true },
-            { key: 'target', label: 'Target field path', type: 'string', required: true },
-            { key: 'mappings', label: 'Mappings (JSON)', type: 'json', required: true, description: 'Array of { key, value } objects' },
-            { key: 'default', label: 'Default value (JSON)', type: 'json', description: 'Value if no mapping matches' },
-            { key: 'caseInsensitive', label: 'Case-insensitive matching', type: 'boolean', description: 'For string keys' },
-        ],
-    },
-};
-
-/**
- * Return the first non-null value from multiple field paths.
- */
-export function coalesceOperator(
-    records: readonly JsonObject[],
-    config: CoalesceOperatorConfig,
-    helpers: OperatorHelpers,
-): OperatorResult {
-    if (!config.sources || !Array.isArray(config.sources) || !config.target) {
-        return { records: [...records] };
-    }
-
-    const results = records.map(record =>
-        applyCoalesce(
-            record,
-            config.sources,
-            config.target,
-            config.default,
-        ),
-    );
-    return { records: results };
-}
-
-/**
- * Map a value to another value using a static lookup table.
- */
-export function lookupOperator(
-    records: readonly JsonObject[],
-    config: LookupOperatorConfig,
-    helpers: OperatorHelpers,
-): OperatorResult {
-    if (!config.source || !config.target || !config.mappings || !Array.isArray(config.mappings)) {
-        return { records: [...records] };
-    }
-
-    const results = records.map(record =>
-        applyLookup(
-            record,
-            config.source,
-            config.target,
-            config.mappings,
-            config.default,
-            config.caseInsensitive,
-        ),
-    );
-    return { records: results };
-}

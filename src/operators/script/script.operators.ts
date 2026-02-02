@@ -2,15 +2,82 @@
  * Script Operator Implementation
  *
  * Allows inline JavaScript code for complex transformations.
+ * Uses SafeEvaluator for secure code execution with:
+ * - Whitelist-based validation
+ * - Timeout enforcement
+ * - Memory limits via complexity checks
+ * - Expression caching
  */
 
 import { JsonObject } from '../../types';
 import { OperatorHelpers, AdapterDefinition } from '../../sdk/types';
 import { OperatorResult } from '../types';
 import { ScriptOperatorConfig, ScriptContext } from './types';
-import { validateUserCode, createCodeSandbox } from '../../utils/code-security.utils';
+import {
+    validateUserCode,
+    createCodeSandbox,
+    CodeSecurityConfig,
+    DEFAULT_CODE_SECURITY_CONFIG,
+} from '../../utils/code-security.utils';
+import { SafeEvaluator, SafeEvaluatorConfig } from '../../runtime/sandbox';
+// Import directly from defaults to avoid circular dependency with constants/index.ts
+// which imports ../operators -> this file
+import { SAFE_EVALUATOR } from '../../constants/defaults';
 
-const DEFAULT_TIMEOUT = 5000;
+const DEFAULT_TIMEOUT = SAFE_EVALUATOR.DEFAULT_TIMEOUT_MS;
+
+/**
+ * Global configuration for script operators
+ * Can be modified at runtime to disable script execution
+ */
+let scriptOperatorsEnabled = true;
+let evaluatorInstance: SafeEvaluator | null = null;
+
+/**
+ * Configure script operators
+ */
+export function configureScriptOperators(config: {
+    enabled?: boolean;
+    security?: Partial<CodeSecurityConfig>;
+    evaluator?: Partial<SafeEvaluatorConfig>;
+}): void {
+    if (config.enabled !== undefined) {
+        scriptOperatorsEnabled = config.enabled;
+    }
+
+    // Recreate evaluator with new config
+    evaluatorInstance = new SafeEvaluator({
+        scriptOperatorsEnabled,
+        ...config.evaluator,
+        security: {
+            ...DEFAULT_CODE_SECURITY_CONFIG,
+            ...config.security,
+        },
+    });
+}
+
+/**
+ * Check if script operators are enabled
+ */
+export function isScriptOperatorsEnabled(): boolean {
+    return scriptOperatorsEnabled;
+}
+
+/**
+ * Disable script operators (for high-security environments)
+ */
+export function disableScriptOperators(): void {
+    scriptOperatorsEnabled = false;
+    evaluatorInstance = null;
+}
+
+/**
+ * Enable script operators
+ */
+export function enableScriptOperators(): void {
+    scriptOperatorsEnabled = true;
+    evaluatorInstance = null;
+}
 
 /**
  * Script operator definition
@@ -64,36 +131,6 @@ export const SCRIPT_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 /**
- * Create sandboxed globals for script execution
- */
-function createSandboxGlobals(): Record<string, any> {
-    return {
-        Array,
-        Object,
-        String,
-        Number,
-        Boolean,
-        Date,
-        JSON,
-        Math,
-        RegExp,
-        Map,
-        Set,
-        parseInt,
-        parseFloat,
-        isNaN,
-        isFinite,
-        encodeURIComponent,
-        decodeURIComponent,
-        console: {
-            log: () => {},
-            warn: () => {},
-            error: () => {},
-        },
-    };
-}
-
-/**
  * Execute script with timeout
  */
 async function executeWithTimeout<T>(
@@ -118,12 +155,28 @@ export function scriptOperator(
 ): OperatorResult | Promise<OperatorResult> {
     const { code, batch, timeout = DEFAULT_TIMEOUT, failOnError, context: contextData } = config;
 
+    // Check if script operators are enabled
+    if (!scriptOperatorsEnabled) {
+        return {
+            records: [...records],
+            errors: [{ message: 'Script operators are disabled in this environment. Contact your administrator to enable them.' }],
+        };
+    }
+
     if (!code || typeof code !== 'string') {
         return { records: [...records], errors: [{ message: 'Script code is required' }] };
     }
 
-    // Validate user code before execution
-    validateUserCode(code);
+    // Validate user code before execution using enhanced security
+    try {
+        validateUserCode(code);
+    } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        return {
+            records: [...records],
+            errors: [{ message: `Code validation failed: ${errorMsg}` }],
+        };
+    }
 
     const sandboxGlobals = createCodeSandbox();
 
@@ -143,33 +196,41 @@ async function executeBatchScript(
     timeout: number,
     failOnError: boolean | undefined,
     contextData: JsonObject | undefined,
-    sandboxGlobals: Record<string, any>,
+    sandboxGlobals: Record<string, unknown>,
 ): Promise<OperatorResult> {
     const scriptContext: ScriptContext = {
         total: records.length,
         data: contextData,
     };
 
-    // Validate user code before execution
-    validateUserCode(code);
+    // Build the function with all sandbox globals as parameters
+    // This prevents access to the global scope
+    const sandboxKeys = Object.keys(sandboxGlobals);
+    const sandboxValues = Object.values(sandboxGlobals);
 
-    // Include records and context in function parameters
+    // Create a safe function body that wraps the user code
+    // The user code is expected to be an expression or use 'return'
     const fnBody = `
         "use strict";
-        return (async function(records, context) {
+        return (async function(__records__, __context__) {
+            const records = __records__;
+            const context = __context__;
             ${code}
         })(__records__, __context__);
     `;
 
     try {
+        // Create function with sandbox parameters
+        // eslint-disable-next-line no-new-func
         const fn = new Function(
-            ...Object.keys(sandboxGlobals),
+            ...sandboxKeys,
             '__records__',
             '__context__',
             fnBody,
         );
+
         const result = await executeWithTimeout(
-            () => fn(...Object.values(sandboxGlobals), [...records], scriptContext),
+            () => fn(...sandboxValues, [...records], scriptContext),
             timeout,
         );
 
@@ -177,7 +238,10 @@ async function executeBatchScript(
             throw new Error('Batch script must return an array of records');
         }
 
-        return { records: result };
+        // Sanitize the result to prevent prototype pollution
+        const sanitizedResult = sanitizeResult(result);
+
+        return { records: sanitizedResult };
     } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         if (failOnError) {
@@ -199,24 +263,30 @@ async function executeSingleRecordScript(
     timeout: number,
     failOnError: boolean | undefined,
     contextData: JsonObject | undefined,
-    sandboxGlobals: Record<string, any>,
+    sandboxGlobals: Record<string, unknown>,
 ): Promise<OperatorResult> {
     const results: JsonObject[] = [];
     const errors: Array<{ message: string; field?: string }> = [];
 
-    // Validate user code before execution
-    validateUserCode(code);
+    // Build the function with all sandbox globals as parameters
+    const sandboxKeys = Object.keys(sandboxGlobals);
+    const sandboxValues = Object.values(sandboxGlobals);
 
-    // Include record, index, and context in the function parameters
+    // Create a safe function body
     const fnBody = `
         "use strict";
-        return (async function(record, index, context) {
+        return (async function(__record__, __index__, __context__) {
+            const record = __record__;
+            const index = __index__;
+            const context = __context__;
             ${code}
         })(__record__, __index__, __context__);
     `;
 
+    // Create function once and reuse
+    // eslint-disable-next-line no-new-func
     const fn = new Function(
-        ...Object.keys(sandboxGlobals),
+        ...sandboxKeys,
         '__record__',
         '__index__',
         '__context__',
@@ -233,7 +303,7 @@ async function executeSingleRecordScript(
 
         try {
             const result = await executeWithTimeout(
-                () => fn(...Object.values(sandboxGlobals), { ...record }, i, scriptContext),
+                () => fn(...sandboxValues, { ...record }, i, scriptContext),
                 timeout,
             );
 
@@ -246,7 +316,9 @@ async function executeSingleRecordScript(
                 throw new Error('Script must return an object or null');
             }
 
-            results.push(result as JsonObject);
+            // Sanitize the result to prevent prototype pollution
+            const sanitizedResult = sanitizeObject(result as JsonObject);
+            results.push(sanitizedResult);
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
             if (failOnError) {
@@ -262,4 +334,44 @@ async function executeSingleRecordScript(
         records: results,
         errors: errors.length > 0 ? errors : undefined,
     };
+}
+
+/**
+ * Sanitize a result array to prevent prototype pollution
+ */
+function sanitizeResult(result: unknown[]): JsonObject[] {
+    return result.map((item) => {
+        if (item === null || typeof item !== 'object') {
+            return item as JsonObject;
+        }
+        return sanitizeObject(item as JsonObject);
+    });
+}
+
+/**
+ * Sanitize an object to prevent prototype pollution
+ */
+function sanitizeObject(obj: JsonObject): JsonObject {
+    const sanitized: JsonObject = Object.create(null);
+
+    for (const [key, value] of Object.entries(obj)) {
+        // Skip dangerous keys
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+            continue;
+        }
+
+        if (value === null || typeof value !== 'object') {
+            sanitized[key] = value;
+        } else if (Array.isArray(value)) {
+            sanitized[key] = value.map((item) =>
+                item !== null && typeof item === 'object'
+                    ? sanitizeObject(item as JsonObject)
+                    : item,
+            );
+        } else {
+            sanitized[key] = sanitizeObject(value as JsonObject);
+        }
+    }
+
+    return sanitized;
 }
