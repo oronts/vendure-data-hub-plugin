@@ -1,12 +1,3 @@
-/**
- * Test helpers schema for node-level step testing
- *
- * Provides mutations for testing individual pipeline steps:
- * - Extract: Run extractor and preview records
- * - Transform: Apply transforms to sample data
- * - Validate: Run validation rules on sample data
- * - Load: Simulate loader without database writes
- */
 export const testSchema = `
     "Result from extract preview"
     type DataHubPreviewResult {

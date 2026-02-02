@@ -1,30 +1,21 @@
-/**
- * Loader Entity Field Schema GraphQL definitions
- *
- * Exposes EntityFieldSchema from LoaderRegistry via GraphQL for:
- * - Pipeline UI field mapping
- * - Import wizard target field selection
- * - Auto-mapper suggestions
- */
-
 export const entitySchemaSchema = `
     """
     Supported field types for loader entity schemas
     """
     enum DataHubLoaderFieldType {
-        string
-        number
-        boolean
-        date
-        array
-        object
-        relation
-        asset
-        money
-        localized_string
-        id
-        enum
-        json
+        STRING
+        NUMBER
+        BOOLEAN
+        DATE
+        ARRAY
+        OBJECT
+        RELATION
+        ASSET
+        MONEY
+        LOCALIZED_STRING
+        ID
+        ENUM
+        JSON
     }
 
     """

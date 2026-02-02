@@ -1,6 +1,3 @@
-/**
- * Secrets API GraphQL schema definitions
- */
 export const secretSchema = `
     """
     Secrets API

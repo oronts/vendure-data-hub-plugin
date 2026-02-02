@@ -1,30 +1,29 @@
 import { Args, Resolver, Subscription } from '@nestjs/graphql';
-import { Allow, Permission } from '@vendure/core';
+import { Allow } from '@vendure/core';
 import { DomainEventsService } from '../../services';
+import { SubscribeDataHubEventsPermission } from '../../permissions';
 import { filter, map } from 'rxjs/operators';
 import { Observable } from 'rxjs';
+import { RunStatus } from '../../constants/enums';
+import { RUN_EVENT_TYPES, WEBHOOK_EVENT_TYPES, STEP_EVENT_TYPES, LOG_EVENT_TYPES } from '../../constants/events';
+import { WebhookDeliveryStatus } from '../../services/webhooks/webhook.types';
+import { PipelineRunUpdate, LogEntry, WebhookUpdate, StepProgress } from '../types';
 
 @Resolver()
 export class DataHubSubscriptionResolver {
     constructor(private domainEvents: DomainEventsService) {}
 
     @Subscription(() => Object, {
-        name: 'dataHubPipelineRunUpdated',
-        resolve: (payload: any) => payload,
+        name: 'onDataHubPipelineRunUpdated',
+        resolve: (payload: PipelineRunUpdate) => payload,
     })
-    @Allow(Permission.SuperAdmin)
-    dataHubPipelineRunUpdated(
+    @Allow(SubscribeDataHubEventsPermission.Permission)
+    onDataHubPipelineRunUpdated(
         @Args('pipelineCode', { nullable: true }) pipelineCode?: string,
-    ): Observable<any> {
+    ): Observable<PipelineRunUpdate> {
         return this.domainEvents.events$.pipe(
             filter(event => {
-                const isRunEvent = [
-                    'PipelineRunStarted',
-                    'PipelineRunProgress',
-                    'PipelineRunCompleted',
-                    'PipelineRunFailed',
-                    'PipelineRunCancelled',
-                ].includes(event.type);
+                const isRunEvent = (RUN_EVENT_TYPES as readonly string[]).includes(event.type);
 
                 if (!isRunEvent) return false;
                 if (pipelineCode && event.payload?.pipelineCode !== pipelineCode) return false;
@@ -32,67 +31,61 @@ export class DataHubSubscriptionResolver {
                 return true;
             }),
             map(event => ({
-                runId: event.payload?.runId,
-                pipelineCode: event.payload?.pipelineCode,
+                runId: String(event.payload?.runId ?? ''),
+                pipelineCode: String(event.payload?.pipelineCode ?? ''),
                 status: this.mapEventToStatus(event.type),
-                progressPercent: event.payload?.progressPercent ?? 0,
-                progressMessage: event.payload?.progressMessage,
-                recordsProcessed: event.payload?.recordsProcessed ?? 0,
-                recordsFailed: event.payload?.recordsFailed ?? 0,
-                currentStep: event.payload?.currentStep,
-                startedAt: event.payload?.startedAt,
-                finishedAt: event.payload?.finishedAt,
-                error: event.payload?.error,
-            })),
+                progressPercent: Number(event.payload?.progressPercent ?? 0),
+                progressMessage: event.payload?.progressMessage as string | undefined,
+                recordsProcessed: Number(event.payload?.recordsProcessed ?? 0),
+                recordsFailed: Number(event.payload?.recordsFailed ?? 0),
+                currentStep: event.payload?.currentStep as string | undefined,
+                startedAt: event.payload?.startedAt as Date | undefined,
+                finishedAt: event.payload?.finishedAt as Date | undefined,
+                error: event.payload?.error as string | undefined,
+            } as PipelineRunUpdate)),
         );
     }
 
     @Subscription(() => Object, {
-        name: 'dataHubLogAdded',
-        resolve: (payload: any) => payload,
+        name: 'onDataHubLogAdded',
+        resolve: (payload: LogEntry) => payload,
     })
-    @Allow(Permission.SuperAdmin)
-    dataHubLogAdded(
+    @Allow(SubscribeDataHubEventsPermission.Permission)
+    onDataHubLogAdded(
         @Args('pipelineCode', { nullable: true }) pipelineCode?: string,
         @Args('level', { type: () => [String], nullable: true }) level?: string[],
-    ): Observable<any> {
+    ): Observable<LogEntry> {
         return this.domainEvents.events$.pipe(
-            filter(event => event.type === 'LogAdded'),
+            filter(event => (LOG_EVENT_TYPES as readonly string[]).includes(event.type)),
             filter(event => {
                 if (pipelineCode && event.payload?.pipelineCode !== pipelineCode) return false;
                 if (level?.length && !level.includes(event.payload?.level as string)) return false;
                 return true;
             }),
             map(event => ({
-                id: event.payload?.id || `log_${Date.now()}`,
-                timestamp: event.payload?.timestamp || new Date(),
-                level: event.payload?.level || 'INFO',
-                message: event.payload?.message,
-                pipelineCode: event.payload?.pipelineCode,
-                runId: event.payload?.runId,
-                stepKey: event.payload?.stepKey,
-                metadata: event.payload?.metadata,
-            })),
+                id: String(event.payload?.id || `log_${Date.now()}`),
+                timestamp: (event.payload?.timestamp as Date) || new Date(),
+                level: (event.payload?.level as LogEntry['level']) || 'INFO',
+                message: String(event.payload?.message ?? ''),
+                pipelineCode: event.payload?.pipelineCode as string | undefined,
+                runId: event.payload?.runId as string | undefined,
+                stepKey: event.payload?.stepKey as string | undefined,
+                metadata: event.payload?.metadata as Record<string, unknown> | undefined,
+            } as LogEntry)),
         );
     }
 
     @Subscription(() => Object, {
-        name: 'dataHubWebhookUpdated',
-        resolve: (payload: any) => payload,
+        name: 'onDataHubWebhookUpdated',
+        resolve: (payload: WebhookUpdate) => payload,
     })
-    @Allow(Permission.SuperAdmin)
-    dataHubWebhookUpdated(
+    @Allow(SubscribeDataHubEventsPermission.Permission)
+    onDataHubWebhookUpdated(
         @Args('webhookId', { nullable: true }) webhookId?: string,
-    ): Observable<any> {
+    ): Observable<WebhookUpdate> {
         return this.domainEvents.events$.pipe(
             filter(event => {
-                const isWebhookEvent = [
-                    'WebhookDeliveryAttempted',
-                    'WebhookDeliverySucceeded',
-                    'WebhookDeliveryFailed',
-                    'WebhookDeliveryRetrying',
-                    'WebhookDeliveryDeadLetter',
-                ].includes(event.type);
+                const isWebhookEvent = (WEBHOOK_EVENT_TYPES as readonly string[]).includes(event.type);
 
                 if (!isWebhookEvent) return false;
                 if (webhookId && event.payload?.webhookId !== webhookId) return false;
@@ -100,37 +93,28 @@ export class DataHubSubscriptionResolver {
                 return true;
             }),
             map(event => ({
-                deliveryId: event.payload?.deliveryId,
-                webhookId: event.payload?.webhookId,
+                deliveryId: String(event.payload?.deliveryId ?? ''),
+                webhookId: String(event.payload?.webhookId ?? ''),
                 status: this.mapWebhookEventToStatus(event.type),
-                attempts: event.payload?.attempts ?? 0,
-                lastAttemptAt: event.payload?.lastAttemptAt,
-                responseStatus: event.payload?.responseStatus,
-                error: event.payload?.error,
-            })),
+                attempts: Number(event.payload?.attempts ?? 0),
+                lastAttemptAt: event.payload?.lastAttemptAt as Date | undefined,
+                responseStatus: event.payload?.responseStatus as number | undefined,
+                error: event.payload?.error as string | undefined,
+            } as WebhookUpdate)),
         );
     }
 
     @Subscription(() => Object, {
-        name: 'dataHubStepProgress',
-        resolve: (payload: any) => payload,
+        name: 'onDataHubStepProgress',
+        resolve: (payload: StepProgress) => payload,
     })
-    @Allow(Permission.SuperAdmin)
-    dataHubStepProgress(
+    @Allow(SubscribeDataHubEventsPermission.Permission)
+    onDataHubStepProgress(
         @Args('runId', { type: () => String }) runId: string,
-    ): Observable<any> {
+    ): Observable<StepProgress> {
         return this.domainEvents.events$.pipe(
             filter(event => {
-                const isStepEvent = [
-                    'StepStarted',
-                    'StepProgress',
-                    'StepCompleted',
-                    'StepFailed',
-                    'RecordExtracted',
-                    'RecordTransformed',
-                    'RecordValidated',
-                    'RecordLoaded',
-                ].includes(event.type);
+                const isStepEvent = (STEP_EVENT_TYPES as readonly string[]).includes(event.type);
 
                 if (!isStepEvent) return false;
                 if (String(event.payload?.runId) !== String(runId)) return false;
@@ -138,48 +122,48 @@ export class DataHubSubscriptionResolver {
                 return true;
             }),
             map(event => ({
-                runId: event.payload?.runId,
-                stepKey: event.payload?.stepKey,
+                runId: String(event.payload?.runId ?? ''),
+                stepKey: String(event.payload?.stepKey ?? ''),
                 status: event.type.replace('Step', '').replace('Record', ''),
-                recordsIn: event.payload?.recordsIn ?? 0,
-                recordsOut: event.payload?.recordsOut ?? 0,
-                recordsFailed: event.payload?.recordsFailed ?? 0,
-                durationMs: event.payload?.durationMs ?? 0,
-            })),
+                recordsIn: Number(event.payload?.recordsIn ?? 0),
+                recordsOut: Number(event.payload?.recordsOut ?? 0),
+                recordsFailed: Number(event.payload?.recordsFailed ?? 0),
+                durationMs: Number(event.payload?.durationMs ?? 0),
+            } as StepProgress)),
         );
     }
 
-    private mapEventToStatus(eventType: string): string {
+    private mapEventToStatus(eventType: string): RunStatus {
         switch (eventType) {
             case 'PipelineRunStarted':
-                return 'RUNNING';
+                return RunStatus.RUNNING;
             case 'PipelineRunProgress':
-                return 'RUNNING';
+                return RunStatus.RUNNING;
             case 'PipelineRunCompleted':
-                return 'COMPLETED';
+                return RunStatus.COMPLETED;
             case 'PipelineRunFailed':
-                return 'FAILED';
+                return RunStatus.FAILED;
             case 'PipelineRunCancelled':
-                return 'CANCELLED';
+                return RunStatus.CANCELLED;
             default:
-                return 'PENDING';
+                return RunStatus.PENDING;
         }
     }
 
-    private mapWebhookEventToStatus(eventType: string): string {
+    private mapWebhookEventToStatus(eventType: string): WebhookDeliveryStatus {
         switch (eventType) {
             case 'WebhookDeliveryAttempted':
-                return 'PENDING';
+                return WebhookDeliveryStatus.PENDING;
             case 'WebhookDeliverySucceeded':
-                return 'DELIVERED';
+                return WebhookDeliveryStatus.DELIVERED;
             case 'WebhookDeliveryFailed':
-                return 'FAILED';
+                return WebhookDeliveryStatus.FAILED;
             case 'WebhookDeliveryRetrying':
-                return 'RETRYING';
+                return WebhookDeliveryStatus.RETRYING;
             case 'WebhookDeliveryDeadLetter':
-                return 'DEAD_LETTER';
+                return WebhookDeliveryStatus.DEAD_LETTER;
             default:
-                return 'PENDING';
+                return WebhookDeliveryStatus.PENDING;
         }
     }
 }

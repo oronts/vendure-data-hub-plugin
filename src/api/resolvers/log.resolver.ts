@@ -9,16 +9,6 @@ import { DEFAULTS } from '../../constants/index';
 export class DataHubLogAdminResolver {
     constructor(private logService: PipelineLogService) {}
 
-    // LOG QUERIES
-
-    /**
-     * Query logs using Vendure's standard list options (filter, sort, pagination).
-     * Examples:
-     * - Filter by pipeline: { filter: { pipelineId: { eq: "123" } } }
-     * - Filter by level: { filter: { level: { eq: "ERROR" } } }
-     * - Sort by date: { sort: { createdAt: DESC } }
-     * - Pagination: { skip: 0, take: 50 }
-     */
     @Query()
     @Allow(ViewDataHubRunsPermission.Permission)
     async dataHubLogs(

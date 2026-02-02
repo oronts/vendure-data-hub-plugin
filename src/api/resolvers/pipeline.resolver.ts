@@ -9,7 +9,8 @@ import {
     Transaction,
 } from '@vendure/core';
 import { Pipeline, PipelineRun } from '../../entities/pipeline';
-import { PipelineService, CreatePipelineInput, UpdatePipelineInput, DefinitionValidationService, PipelineFormatService } from '../../services';
+import { PipelineService, CreatePipelineInput, UpdatePipelineInput, DefinitionValidationService, PipelineFormatService, VisualPipelineDefinition } from '../../services';
+import { PipelineDefinition } from '../../types';
 import { PipelineDefinitionError } from '../../validation/pipeline-definition-error';
 import {
     DataHubPipelinePermission,
@@ -18,6 +19,8 @@ import {
     PublishDataHubPipelinePermission,
     ReviewDataHubPipelinePermission,
 } from '../../permissions';
+import { ValidationLevel } from '../../services/validation/definition-validation.service';
+import { PipelineDefinitionInput, ValidationInput } from '../types';
 
 @Resolver()
 export class DataHubPipelineAdminResolver {
@@ -26,8 +29,6 @@ export class DataHubPipelineAdminResolver {
         private definitionValidator: DefinitionValidationService,
         private formatService: PipelineFormatService,
     ) {}
-
-    // PIPELINE QUERIES
 
     @Query()
     @Allow(DataHubPipelinePermission.Read)
@@ -66,16 +67,20 @@ export class DataHubPipelineAdminResolver {
         return this.pipelineService.listRevisions(ctx, args.pipelineId);
     }
 
-    // FORMAT CONVERSION QUERIES
-
-    /**
-     * Convert canonical (step-based) definition to visual (nodes/edges) format
-     */
     @Query()
     @Allow(DataHubPipelinePermission.Read)
-    dataHubToVisualFormat(@Args() args: { definition: any }) {
+    dataHubToVisualFormat(@Args() args: { definition: PipelineDefinitionInput }) {
         try {
-            const visual = this.formatService.toVisual(args.definition);
+            // Check if already in visual format (has nodes array)
+            if (this.isVisualFormat(args.definition)) {
+                return {
+                    definition: args.definition as VisualPipelineDefinition,
+                    success: true,
+                    issues: [],
+                };
+            }
+            // Convert from canonical to visual
+            const visual = this.formatService.toVisual(args.definition as PipelineDefinition);
             return {
                 definition: visual,
                 success: true,
@@ -90,14 +95,20 @@ export class DataHubPipelineAdminResolver {
         }
     }
 
-    /**
-     * Convert visual (nodes/edges) definition to canonical (step-based) format
-     */
     @Query()
     @Allow(DataHubPipelinePermission.Read)
-    dataHubToCanonicalFormat(@Args() args: { definition: any }) {
+    dataHubToCanonicalFormat(@Args() args: { definition: PipelineDefinitionInput | VisualPipelineDefinition }) {
         try {
-            const canonical = this.formatService.toCanonical(args.definition);
+            // Check if already in canonical format (has steps array)
+            if (this.isCanonicalFormat(args.definition)) {
+                return {
+                    definition: args.definition as PipelineDefinition,
+                    success: true,
+                    issues: [],
+                };
+            }
+            // Convert from visual to canonical
+            const canonical = this.formatService.toCanonical(args.definition as VisualPipelineDefinition);
             return {
                 definition: canonical,
                 success: true,
@@ -112,7 +123,15 @@ export class DataHubPipelineAdminResolver {
         }
     }
 
-    // PIPELINE MUTATIONS
+    /** Check if definition is in visual format (has nodes array) */
+    private isVisualFormat(def: unknown): def is VisualPipelineDefinition {
+        return def != null && typeof def === 'object' && 'nodes' in def && Array.isArray((def as VisualPipelineDefinition).nodes);
+    }
+
+    /** Check if definition is in canonical format (has steps array) */
+    private isCanonicalFormat(def: unknown): def is PipelineDefinition {
+        return def != null && typeof def === 'object' && 'steps' in def && Array.isArray((def as PipelineDefinition).steps);
+    }
 
     @Mutation()
     @Transaction()
@@ -166,17 +185,28 @@ export class DataHubPipelineAdminResolver {
     @Mutation()
     @Transaction()
     @Allow(PublishDataHubPipelinePermission.Permission)
+    archiveDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }) {
+        return this.pipelineService.archive(ctx, args.id);
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(PublishDataHubPipelinePermission.Permission)
     revertDataHubPipelineToRevision(@Ctx() ctx: RequestContext, @Args() args: { revisionId: ID }) {
         return this.pipelineService.revertToRevision(ctx, args.revisionId);
     }
 
     @Mutation()
     @Allow(DataHubPipelinePermission.Read)
-    async validateDataHubPipelineDefinition(@Args() args: { definition: any; level?: string }) {
+    async validateDataHubPipelineDefinition(@Args() args: ValidationInput) {
         try {
-            // Use async validation for full checks including dependency verification
-            const result = await this.definitionValidator.validateAsync(args.definition, {
-                level: args.level as any,
+            // Convert to canonical format if in visual format
+            let definition = args.definition;
+            if (this.isVisualFormat(definition)) {
+                definition = this.formatService.toCanonical(definition);
+            }
+            const result = await this.definitionValidator.validateAsync(definition as PipelineDefinition, {
+                level: args.level as ValidationLevel | undefined,
             });
             return {
                 isValid: result.isValid,
@@ -206,8 +236,6 @@ export class DataHubPipelineAdminResolver {
             };
         }
     }
-
-    // PIPELINE RUN QUERIES & MUTATIONS
 
     @Query()
     @Allow(ViewDataHubRunsPermission.Permission)
@@ -239,6 +267,7 @@ export class DataHubPipelineAdminResolver {
     }
 
     @Mutation()
+    @Transaction()
     @Allow(RunDataHubPipelinePermission.Permission)
     startDataHubPipelineDryRun(@Ctx() ctx: RequestContext, @Args() args: { pipelineId: ID }) {
         return this.pipelineService.dryRun(ctx, args.pipelineId);

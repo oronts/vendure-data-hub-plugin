@@ -6,6 +6,7 @@
  */
 
 import { ID, ListQueryOptions, VendureEntity } from '@vendure/core';
+import { JsonObject, PipelineDefinition } from '../../types/index';
 
 // GENERIC ARGS
 
@@ -37,7 +38,7 @@ export interface PipelineArgs {
  */
 export interface PipelineRunsArgs {
     pipelineId?: ID;
-    options?: ListQueryOptions<any>;
+    options?: ListQueryOptions<VendureEntity>;
 }
 
 /**
@@ -86,7 +87,7 @@ export interface RevertToRevisionArgs {
  * Validate definition args
  */
 export interface ValidateDefinitionArgs {
-    definition: any;
+    definition: PipelineDefinition;
 }
 
 // ANALYTICS ARGS
@@ -177,7 +178,7 @@ export interface RunErrorsArgs {
  */
 export interface RetryRecordArgs {
     errorId: ID;
-    patch?: any;
+    patch?: JsonObject;
 }
 
 /**
@@ -235,7 +236,7 @@ export interface CheckpointArgs {
  */
 export interface SetCheckpointArgs {
     pipelineId: ID;
-    data: any;
+    data: JsonObject;
 }
 
 // EVENTS ARGS
@@ -262,7 +263,7 @@ export interface PipelineHooksArgs {
 export interface RunHookTestArgs {
     pipelineId: ID;
     stage: string;
-    payload?: any;
+    payload?: JsonObject;
 }
 
 // LOG ARGS

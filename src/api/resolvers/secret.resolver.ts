@@ -1,9 +1,24 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, Transaction } from '@vendure/core';
+import { Allow, Ctx, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, Transaction, TransactionalConnection } from '@vendure/core';
 import { DeletionResponse, DeletionResult } from '@vendure/common/lib/generated-types';
+import type { JsonObject } from '../../types/index';
 import { DataHubSecret } from '../../entities/config';
 import { DataHubSecretPermission } from '../../permissions';
-import { TransactionalConnection } from '@vendure/core';
+import { SecretProvider } from '../../constants/enums';
+import { RESOLVER_ERROR_MESSAGES } from '../../constants/index';
+
+const MASKED_SECRET_VALUE = '********';
+
+/** Represents a DataHubSecret with the value masked for API responses */
+interface MaskedDataHubSecret {
+    id: ID;
+    createdAt: Date;
+    updatedAt: Date;
+    code: string;
+    provider: SecretProvider;
+    value: string | null;
+    metadata: JsonObject | null;
+}
 
 @Resolver()
 export class DataHubSecretAdminResolver {
@@ -12,63 +27,57 @@ export class DataHubSecretAdminResolver {
         private listQueryBuilder: ListQueryBuilder,
     ) {}
 
-    // SECRET QUERIES
-
     @Query()
     @Allow(DataHubSecretPermission.Read)
     async dataHubSecrets(
         @Ctx() ctx: RequestContext,
         @Args() args: { options?: ListQueryOptions<DataHubSecret> },
-    ): Promise<PaginatedList<DataHubSecret>> {
+    ): Promise<PaginatedList<MaskedDataHubSecret>> {
         const qb = this.listQueryBuilder.build(DataHubSecret, args.options, { ctx });
         const [items, totalItems] = await qb.getManyAndCount();
-        // Map to plain objects with all fields, masking only the value
-        const mapped = items.map(s => ({
-            id: s.id,
-            createdAt: s.createdAt,
-            updatedAt: s.updatedAt,
-            code: s.code,
-            provider: s.provider,
-            value: s.value ? '********' : null, // Mask value but indicate if one exists
-            metadata: s.metadata,
-        }));
-        return { items: mapped as any, totalItems };
+        const mapped = items.map(s => this.maskSecretValue(s));
+        return { items: mapped, totalItems };
     }
 
     @Query()
     @Allow(DataHubSecretPermission.Read)
-    async dataHubSecret(@Ctx() ctx: RequestContext, @Args() args: { id: ID }): Promise<DataHubSecret | null> {
-        const s = await this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { id: args.id } } as any);
+    async dataHubSecret(@Ctx() ctx: RequestContext, @Args() args: { id: ID }): Promise<MaskedDataHubSecret | null> {
+        const s = await this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { id: args.id } });
         if (!s) return null;
-        // Return plain object with all fields, masking the actual value
+        return this.maskSecretValue(s);
+    }
+
+    private maskSecretValue(s: DataHubSecret): MaskedDataHubSecret {
         return {
             id: s.id,
             createdAt: s.createdAt,
             updatedAt: s.updatedAt,
             code: s.code,
             provider: s.provider,
-            value: s.value ? '********' : null, // Mask value but indicate if one exists
+            value: s.value ? MASKED_SECRET_VALUE : null,
             metadata: s.metadata,
-        } as any;
+        };
     }
-
-    // SECRET MUTATIONS
 
     @Mutation()
     @Transaction()
     @Allow(DataHubSecretPermission.Create)
     async createDataHubSecret(
         @Ctx() ctx: RequestContext,
-        @Args() args: { input: { code: string; provider?: string; value?: string; metadata?: any } },
-    ): Promise<DataHubSecret> {
+        @Args() args: { input: { code: string; provider?: string; value?: string; metadata?: JsonObject } },
+    ): Promise<MaskedDataHubSecret> {
         const repo = this.connection.getRepository(ctx, DataHubSecret);
         const entity = new DataHubSecret();
         entity.code = args.input.code;
-        entity.provider = args.input.provider ?? 'inline';
+        entity.provider = (args.input.provider as SecretProvider) ?? SecretProvider.INLINE;
         entity.value = args.input.value ?? null;
-        entity.metadata = (args.input.metadata as any) ?? null;
+        entity.metadata = args.input.metadata ?? null;
         const saved = await repo.save(entity);
-        return this.dataHubSecret(ctx, { id: saved.id } as any) as any;
+        const result = await this.dataHubSecret(ctx, { id: saved.id });
+        if (!result) {
+            throw new Error(RESOLVER_ERROR_MESSAGES.SECRET_CREATE_FAILED);
+        }
+        return result;
     }
 
     @Mutation()
@@ -76,16 +85,20 @@ export class DataHubSecretAdminResolver {
     @Allow(DataHubSecretPermission.Update)
     async updateDataHubSecret(
         @Ctx() ctx: RequestContext,
-        @Args() args: { input: { id: ID; code?: string; provider?: string; value?: string; metadata?: any } },
-    ): Promise<DataHubSecret> {
+        @Args() args: { input: { id: ID; code?: string; provider?: string; value?: string; metadata?: JsonObject } },
+    ): Promise<MaskedDataHubSecret> {
         const repo = this.connection.getRepository(ctx, DataHubSecret);
         const entity = await this.connection.getEntityOrThrow(ctx, DataHubSecret, args.input.id);
         if (typeof args.input.code === 'string') entity.code = args.input.code;
-        if (typeof args.input.provider === 'string') entity.provider = args.input.provider;
+        if (typeof args.input.provider === 'string') entity.provider = args.input.provider as SecretProvider;
         if (typeof args.input.value === 'string' || args.input.value === null) entity.value = args.input.value ?? null;
         if (args.input.metadata !== undefined) entity.metadata = args.input.metadata ?? null;
         await repo.save(entity, { reload: false });
-        return this.dataHubSecret(ctx, { id: entity.id } as any) as any;
+        const result = await this.dataHubSecret(ctx, { id: entity.id });
+        if (!result) {
+            throw new Error(RESOLVER_ERROR_MESSAGES.SECRET_UPDATE_FAILED);
+        }
+        return result;
     }
 
     @Mutation()

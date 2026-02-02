@@ -5,30 +5,32 @@ import {
     ID,
     RequestContext,
     Transaction,
+    CachedSessionUser,
 } from '@vendure/core';
 import { Pipeline, PipelineRevision } from '../../entities/pipeline';
 import {
-    DiffService,
     RevisionService,
     ImpactAnalysisService,
     RiskAssessmentService,
 } from '../../services/versioning';
+import { PipelineFormatService, VisualPipelineDefinition } from '../../services';
 import {
     DataHubPipelinePermission,
     PublishDataHubPipelinePermission,
     RunDataHubPipelinePermission,
 } from '../../permissions';
-import { ImpactAnalysisOptions, TimelineEntry, RevisionDiff } from '../../types';
+import { ImpactAnalysisOptions, TimelineEntry, RevisionDiff, PipelineDefinition } from '../../types';
+import { PipelineDefinitionInput } from '../types';
 
 interface SaveDraftInput {
     pipelineId: ID;
-    definition: any;
+    definition: PipelineDefinitionInput;
 }
 
 interface PublishVersionInput {
     pipelineId: ID;
     commitMessage: string;
-    definition?: any;
+    definition?: PipelineDefinitionInput;
 }
 
 interface RevertInput {
@@ -36,32 +38,42 @@ interface RevertInput {
     commitMessage?: string;
 }
 
+const DEFAULT_TIMELINE_LIMIT = 50;
+
 @Resolver()
 export class DataHubVersioningResolver {
     constructor(
         private revisionService: RevisionService,
-        private diffService: DiffService,
         private impactAnalysisService: ImpactAnalysisService,
         private riskAssessmentService: RiskAssessmentService,
+        private formatService: PipelineFormatService,
     ) {}
 
-    // VERSIONING QUERIES
+    /** Convert definition to canonical format if needed */
+    private toCanonical(def: PipelineDefinitionInput): PipelineDefinition;
+    private toCanonical(def: PipelineDefinitionInput | undefined): PipelineDefinition | undefined;
+    private toCanonical(def: PipelineDefinitionInput | undefined): PipelineDefinition | undefined {
+        if (!def) return undefined;
+        // Already canonical format
+        if ('steps' in def && Array.isArray((def as PipelineDefinition).steps)) {
+            return def as PipelineDefinition;
+        }
+        // Visual format - convert to canonical
+        if ('nodes' in def && Array.isArray((def as VisualPipelineDefinition).nodes)) {
+            return this.formatService.toCanonical(def as VisualPipelineDefinition);
+        }
+        return def as PipelineDefinition;
+    }
 
-    /**
-     * Get timeline of revisions for a pipeline
-     */
     @Query()
     @Allow(DataHubPipelinePermission.Read)
     async dataHubPipelineTimeline(
         @Ctx() ctx: RequestContext,
         @Args() args: { pipelineId: ID; limit?: number },
     ): Promise<TimelineEntry[]> {
-        return this.revisionService.getTimeline(ctx, args.pipelineId, args.limit || 50);
+        return this.revisionService.getTimeline(ctx, args.pipelineId, args.limit || DEFAULT_TIMELINE_LIMIT);
     }
 
-    /**
-     * Get diff between two revisions
-     */
     @Query()
     @Allow(DataHubPipelinePermission.Read)
     async dataHubRevisionDiff(
@@ -71,9 +83,6 @@ export class DataHubVersioningResolver {
         return this.revisionService.getDiff(ctx, args.fromRevisionId, args.toRevisionId);
     }
 
-    /**
-     * Get a specific revision
-     */
     @Query()
     @Allow(DataHubPipelinePermission.Read)
     async dataHubRevision(
@@ -83,9 +92,6 @@ export class DataHubVersioningResolver {
         return this.revisionService.getRevision(ctx, args.revisionId);
     }
 
-    /**
-     * Check if pipeline has unpublished changes
-     */
     @Query()
     @Allow(DataHubPipelinePermission.Read)
     async dataHubHasUnpublishedChanges(
@@ -95,29 +101,16 @@ export class DataHubVersioningResolver {
         return this.revisionService.hasUnpublishedChanges(ctx, args.pipelineId);
     }
 
-    // IMPACT ANALYSIS QUERIES
-
-    /**
-     * Get impact analysis for a pipeline
-     */
     @Query()
     @Allow(RunDataHubPipelinePermission.Permission)
     async dataHubImpactAnalysis(
         @Ctx() ctx: RequestContext,
         @Args() args: { pipelineId: ID; options?: ImpactAnalysisOptions },
     ) {
-        // Run impact analysis
         const impact = await this.impactAnalysisService.analyze(ctx, args.pipelineId, args.options);
-
-        // Assess risk and update impact
-        const withRisk = await this.riskAssessmentService.assessAndUpdate(ctx, args.pipelineId, impact);
-
-        return withRisk;
+        return this.riskAssessmentService.assessAndUpdate(ctx, args.pipelineId, impact);
     }
 
-    /**
-     * Get detailed record information for drill-down
-     */
     @Query()
     @Allow(RunDataHubPipelinePermission.Permission)
     async dataHubRecordDetails(
@@ -127,9 +120,6 @@ export class DataHubVersioningResolver {
         return this.impactAnalysisService.getRecordDetails(ctx, args.pipelineId, args.recordIds);
     }
 
-    /**
-     * Analyze impact of a specific step
-     */
     @Query()
     @Allow(RunDataHubPipelinePermission.Permission)
     async dataHubStepAnalysis(
@@ -139,11 +129,6 @@ export class DataHubVersioningResolver {
         return this.impactAnalysisService.analyzeStep(ctx, args.pipelineId, args.stepKey, args.options);
     }
 
-    // VERSIONING MUTATIONS
-
-    /**
-     * Save a draft revision (auto-save)
-     */
     @Mutation()
     @Transaction()
     @Allow(DataHubPipelinePermission.Update)
@@ -153,15 +138,12 @@ export class DataHubVersioningResolver {
     ): Promise<PipelineRevision | null> {
         return this.revisionService.saveDraft(ctx, {
             pipelineId: args.input.pipelineId as number,
-            definition: args.input.definition,
+            definition: this.toCanonical(args.input.definition),
             authorUserId: ctx.activeUserId as string,
             authorName: this.getUserDisplayName(ctx),
         });
     }
 
-    /**
-     * Publish a new version with commit message
-     */
     @Mutation()
     @Transaction()
     @Allow(PublishDataHubPipelinePermission.Permission)
@@ -172,15 +154,12 @@ export class DataHubVersioningResolver {
         return this.revisionService.publishVersion(ctx, {
             pipelineId: args.input.pipelineId as number,
             commitMessage: args.input.commitMessage,
-            definition: args.input.definition,
+            definition: this.toCanonical(args.input.definition),
             authorUserId: ctx.activeUserId as string,
             authorName: this.getUserDisplayName(ctx),
         });
     }
 
-    /**
-     * Revert to a specific revision (creates new published version)
-     */
     @Mutation()
     @Transaction()
     @Allow(PublishDataHubPipelinePermission.Permission)
@@ -196,9 +175,6 @@ export class DataHubVersioningResolver {
         });
     }
 
-    /**
-     * Restore a draft to the working copy (without publishing)
-     */
     @Mutation()
     @Transaction()
     @Allow(DataHubPipelinePermission.Update)
@@ -209,9 +185,6 @@ export class DataHubVersioningResolver {
         return this.revisionService.restoreDraft(ctx, args.revisionId);
     }
 
-    /**
-     * Prune old draft revisions
-     */
     @Mutation()
     @Transaction()
     @Allow(DataHubPipelinePermission.Update)
@@ -222,14 +195,10 @@ export class DataHubVersioningResolver {
         return this.revisionService.pruneDrafts(ctx, args.pipelineId);
     }
 
-    // Private helpers
-
     private getUserDisplayName(ctx: RequestContext): string {
-        // Try to get user display name from session
-        const user = ctx.session?.user;
-        if (user) {
-            const identifier = (user as any).identifier;
-            if (identifier) return identifier;
+        const user = ctx.session?.user as CachedSessionUser | undefined;
+        if (user?.identifier) {
+            return user.identifier;
         }
         return ctx.activeUserId ? `User ${ctx.activeUserId}` : 'Unknown';
     }

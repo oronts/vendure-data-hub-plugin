@@ -1,11 +1,25 @@
 import { Args, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Permission } from '@vendure/core';
+import { Allow } from '@vendure/core';
 import { LoaderRegistryService } from '../../loaders/registry';
+import { ViewDataHubEntitySchemasPermission } from '../../permissions';
 import { VendureEntityType, EntityFieldSchema, EntityField } from '../../types/index';
 
-/**
- * GraphQL-safe field type mapping
- */
+const ENTITY_DESCRIPTIONS: Record<string, string> = {
+    Product: 'Products with variants, assets, and custom fields',
+    ProductVariant: 'Individual product variants with SKU, pricing, and inventory',
+    Customer: 'Customer accounts with addresses and order history',
+    CustomerGroup: 'Customer groups for segmentation and pricing',
+    Order: 'Customer orders with lines, payments, and fulfillments',
+    Collection: 'Product collections for navigation and categorization',
+    Facet: 'Facets for product filtering (e.g., Color, Size)',
+    FacetValue: 'Individual facet values (e.g., Red, Large)',
+    Asset: 'Media assets including images and files',
+    Promotion: 'Promotional rules and coupon codes',
+    ShippingMethod: 'Shipping method configurations',
+    StockLocation: 'Inventory locations and warehouses',
+    Inventory: 'Stock levels for product variants',
+};
+
 function mapFieldTypeToGraphQL(type: EntityField['type']): string {
     switch (type) {
         case 'localized-string':
@@ -15,9 +29,6 @@ function mapFieldTypeToGraphQL(type: EntityField['type']): string {
     }
 }
 
-/**
- * Transform EntityField to GraphQL-safe format
- */
 function transformField(field: EntityField): Record<string, unknown> {
     return {
         key: field.key,
@@ -35,9 +46,6 @@ function transformField(field: EntityField): Record<string, unknown> {
     };
 }
 
-/**
- * Transform EntityFieldSchema to GraphQL-safe format
- */
 function transformSchema(schema: EntityFieldSchema): Record<string, unknown> {
     return {
         entityType: schema.entityType,
@@ -50,7 +58,7 @@ export class EntitySchemaAdminResolver {
     constructor(private loaderRegistry: LoaderRegistryService) {}
 
     @Query()
-    @Allow(Permission.ReadSettings)
+    @Allow(ViewDataHubEntitySchemasPermission.Permission)
     async dataHubLoaderEntitySchema(
         @Args() args: { entityType: string },
     ): Promise<Record<string, unknown> | null> {
@@ -62,14 +70,14 @@ export class EntitySchemaAdminResolver {
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
+    @Allow(ViewDataHubEntitySchemasPermission.Permission)
     async dataHubLoaderEntitySchemas(): Promise<Record<string, unknown>[]> {
         const schemas = this.loaderRegistry.getAllFieldSchemas();
         return Array.from(schemas.values()).map(transformSchema);
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
+    @Allow(ViewDataHubEntitySchemasPermission.Permission)
     async dataHubSupportedEntities(): Promise<Array<{
         code: string;
         name: string;
@@ -86,26 +94,10 @@ export class EntitySchemaAdminResolver {
     }
 
     private formatEntityName(entityType: string): string {
-        // Convert PascalCase to Title Case with spaces
         return entityType.replace(/([A-Z])/g, ' $1').trim();
     }
 
     private getEntityDescription(entityType: string): string | null {
-        const descriptions: Record<string, string> = {
-            Product: 'Products with variants, assets, and custom fields',
-            ProductVariant: 'Individual product variants with SKU, pricing, and inventory',
-            Customer: 'Customer accounts with addresses and order history',
-            CustomerGroup: 'Customer groups for segmentation and pricing',
-            Order: 'Customer orders with lines, payments, and fulfillments',
-            Collection: 'Product collections for navigation and categorization',
-            Facet: 'Facets for product filtering (e.g., Color, Size)',
-            FacetValue: 'Individual facet values (e.g., Red, Large)',
-            Asset: 'Media assets including images and files',
-            Promotion: 'Promotional rules and coupon codes',
-            ShippingMethod: 'Shipping method configurations',
-            StockLocation: 'Inventory locations and warehouses',
-            Inventory: 'Stock levels for product variants',
-        };
-        return descriptions[entityType] ?? null;
+        return ENTITY_DESCRIPTIONS[entityType] ?? null;
     }
 }

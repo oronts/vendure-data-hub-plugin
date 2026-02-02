@@ -1,6 +1,3 @@
-/**
- * Connection GraphQL schema definitions
- */
 export const connectionSchema = `
     type DataHubConnection implements Node {
         id: ID!

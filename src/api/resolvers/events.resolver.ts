@@ -8,12 +8,9 @@ import { DEFAULTS } from '../../constants/index';
 export class DataHubEventsAdminResolver {
     constructor(private events: DomainEventsService) {}
 
-    // EVENTS QUERIES
-
     @Query()
     @Allow(DataHubPipelinePermission.Read)
     dataHubEvents(@Args() args: { limit?: number }) {
-        const list = this.events.list(args?.limit ?? DEFAULTS.EVENTS_LIMIT);
-        return list as any;
+        return this.events.list(args?.limit ?? DEFAULTS.EVENTS_LIMIT);
     }
 }

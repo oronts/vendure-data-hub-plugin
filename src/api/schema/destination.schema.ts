@@ -1,17 +1,16 @@
-/**
- * Export Destinations API GraphQL schema definitions - S3, SFTP, HTTP, etc.
- */
 export const destinationSchema = `
     """
     Export Destinations API - S3, SFTP, HTTP, etc.
     """
     enum DataHubDestinationType {
-        s3
-        sftp
-        ftp
-        http
-        local
-        email
+        DOWNLOAD
+        S3
+        SFTP
+        FTP
+        HTTP
+        LOCAL
+        EMAIL
+        GCS
     }
 
     type DataHubExportDestination {

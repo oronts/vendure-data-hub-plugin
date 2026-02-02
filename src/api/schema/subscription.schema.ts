@@ -1,6 +1,3 @@
-/**
- * Real-time Subscriptions GraphQL schema definitions for Pipeline Monitoring
- */
 export const subscriptionSchema = `
     """
     Real-time Subscriptions for Pipeline Monitoring

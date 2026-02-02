@@ -1,6 +1,3 @@
-/**
- * AutoMapper Configuration API GraphQL schema definitions
- */
 export const automapperSchema = `
     """
     AutoMapper Configuration API - Configure auto-mapping behavior
@@ -69,6 +66,8 @@ export const automapperQueries = `
         dataHubAutoMapperConfig(pipelineId: ID): DataHubAutoMapperConfig!
         """Get the default AutoMapper configuration"""
         dataHubAutoMapperDefaultConfig: DataHubAutoMapperConfig!
+        """Validate AutoMapper configuration without saving"""
+        validateDataHubAutoMapperConfig(input: DataHubAutoMapperConfigInput!): DataHubAutoMapperConfigValidation!
     }
 `;
 
@@ -78,7 +77,5 @@ export const automapperMutations = `
         updateDataHubAutoMapperConfig(input: DataHubAutoMapperConfigInput!): DataHubAutoMapperConfig!
         """Reset AutoMapper configuration to defaults (global or per-pipeline)"""
         resetDataHubAutoMapperConfig(pipelineId: ID): DataHubAutoMapperConfig!
-        """Validate AutoMapper configuration without saving"""
-        validateDataHubAutoMapperConfig(input: DataHubAutoMapperConfigInput!): DataHubAutoMapperConfigValidation!
     }
 `;

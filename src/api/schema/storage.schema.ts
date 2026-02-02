@@ -1,12 +1,9 @@
-/**
- * File Storage API GraphQL schema definitions
- */
 export const storageSchema = `
     """
     File Storage API - Upload and manage files
     """
-    type DataHubStoredFile {
-        id: String!
+    type DataHubStoredFile implements Node {
+        id: ID!
         originalName: String!
         mimeType: String!
         size: Int!
@@ -17,7 +14,7 @@ export const storageSchema = `
         previewUrl: String!
     }
 
-    type DataHubStoredFileList {
+    type DataHubStoredFileList implements PaginatedList {
         items: [DataHubStoredFile!]!
         totalItems: Int!
     }

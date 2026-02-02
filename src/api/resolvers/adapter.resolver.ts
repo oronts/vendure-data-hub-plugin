@@ -7,8 +7,6 @@ import { DataHubRegistryService } from '../../sdk/registry.service';
 export class DataHubAdapterAdminResolver {
     constructor(private registry: DataHubRegistryService) {}
 
-    // ADAPTER QUERIES
-
     @Query()
     @Allow(ManageDataHubAdaptersPermission.Permission)
     dataHubAdapters() {

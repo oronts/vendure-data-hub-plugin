@@ -1,6 +1,3 @@
-/**
- * Versioning and Impact Analysis GraphQL schema definitions
- */
 export const versioningSchema = `
     """
     Enhanced pipeline revision with versioning metadata
@@ -29,8 +26,8 @@ export const versioningSchema = `
     }
 
     enum DataHubRevisionType {
-        draft
-        published
+        DRAFT
+        PUBLISHED
     }
 
     """
@@ -61,9 +58,9 @@ export const versioningSchema = `
     }
 
     enum DataHubRunOutcome {
-        success
-        failed
-        partial
+        SUCCESS
+        FAILED
+        PARTIAL
     }
 
     """
@@ -83,12 +80,12 @@ export const versioningSchema = `
     }
 
     enum DataHubDiffType {
-        step
-        trigger
-        hook
-        edge
-        config
-        meta
+        STEP
+        TRIGGER
+        HOOK
+        EDGE
+        CONFIG
+        META
     }
 
     """
@@ -145,10 +142,10 @@ export const versioningSchema = `
     }
 
     enum DataHubFieldChangeType {
-        set
-        update
-        remove
-        transform
+        SET
+        UPDATE
+        REMOVE
+        TRANSFORM
     }
 
     """
@@ -174,9 +171,9 @@ export const versioningSchema = `
     }
 
     enum DataHubRiskSeverity {
-        info
-        warning
-        danger
+        INFO
+        WARNING
+        DANGER
     }
 
     """
@@ -189,10 +186,10 @@ export const versioningSchema = `
     }
 
     enum DataHubRiskLevel {
-        low
-        medium
-        high
-        critical
+        LOW
+        MEDIUM
+        HIGH
+        CRITICAL
     }
 
     """
@@ -223,9 +220,9 @@ export const versioningSchema = `
     }
 
     enum DataHubRecordOutcome {
-        success
-        filtered
-        error
+        SUCCESS
+        FILTERED
+        ERROR
     }
 
     """
@@ -241,15 +238,15 @@ export const versioningSchema = `
     }
 
     enum DataHubConfidenceLevel {
-        low
-        medium
-        high
+        LOW
+        MEDIUM
+        HIGH
     }
 
     enum DataHubEstimateBasis {
-        historical
-        sampling
-        estimate
+        HISTORICAL
+        SAMPLING
+        ESTIMATE
     }
 
     """
@@ -292,10 +289,10 @@ export const versioningSchema = `
     }
 
     enum DataHubRecordOperation {
-        create
-        update
-        delete
-        skip
+        CREATE
+        UPDATE
+        DELETE
+        SKIP
     }
 
     """

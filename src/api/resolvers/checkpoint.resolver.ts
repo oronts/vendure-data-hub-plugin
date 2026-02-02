@@ -1,13 +1,12 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, RequestContext } from '@vendure/core';
+import { Allow, Ctx, ID, RequestContext, Transaction } from '@vendure/core';
 import { DataHubPipelinePermission } from '../../permissions';
 import { CheckpointService } from '../../services';
+import { CheckpointData } from '../types';
 
 @Resolver()
 export class DataHubCheckpointAdminResolver {
     constructor(private checkpoints: CheckpointService) {}
-
-    // CHECKPOINT QUERIES
 
     @Query()
     @Allow(DataHubPipelinePermission.Read)
@@ -15,11 +14,10 @@ export class DataHubCheckpointAdminResolver {
         return this.checkpoints.getByPipeline(ctx, args.pipelineId);
     }
 
-    // CHECKPOINT MUTATIONS
-
     @Mutation()
+    @Transaction()
     @Allow(DataHubPipelinePermission.Update)
-    setDataHubCheckpoint(@Ctx() ctx: RequestContext, @Args() args: { pipelineId: ID; data: any }) {
+    updateDataHubCheckpoint(@Ctx() ctx: RequestContext, @Args() args: { pipelineId: ID; data: CheckpointData }) {
         return this.checkpoints.setForPipeline(ctx, args.pipelineId, args.data ?? {});
     }
 }

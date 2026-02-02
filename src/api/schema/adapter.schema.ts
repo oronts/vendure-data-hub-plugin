@@ -1,6 +1,3 @@
-/**
- * Adapter and Extractor GraphQL schema definitions
- */
 export const adapterSchema = `
     type DataHubAdapter {
         type: String!
@@ -30,6 +27,8 @@ export const adapterSchema = `
         description: String
         type: String!
         required: Boolean
+        defaultValue: JSON
+        placeholder: String
         options: [DataHubOption!]
     }
 
@@ -42,14 +41,14 @@ export const adapterSchema = `
     Extractor API - List and inspect data extractors
     """
     enum DataHubExtractorCategory {
-        data_source
-        file_system
-        cloud_storage
-        database
-        api
-        webhook
-        vendure
-        custom
+        DATA_SOURCE
+        FILE_SYSTEM
+        CLOUD_STORAGE
+        DATABASE
+        API
+        WEBHOOK
+        VENDURE
+        CUSTOM
     }
 
     type DataHubExtractor {

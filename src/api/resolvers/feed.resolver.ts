@@ -1,8 +1,26 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Ctx, RequestContext, Allow, Permission } from '@vendure/core';
+import { Ctx, RequestContext, Allow, Transaction } from '@vendure/core';
 import { FeedGeneratorService, FeedConfig } from '../../feeds/feed-generator.service';
+import { ManageDataHubFeedsPermission } from '../../permissions';
 import { DEFAULTS, FEED_FORMATS } from '../../constants/index';
 import type { FeedFormatInfo } from '../../constants/index';
+
+/** Result of feed generation operation */
+interface FeedGenerationResult {
+    success: boolean;
+    itemCount: number;
+    generatedAt: Date;
+    downloadUrl?: string;
+    errors: string[];
+    warnings: string[];
+}
+
+/** Result of feed preview operation */
+interface FeedPreviewResult {
+    content: string;
+    contentType: string;
+    itemCount: number;
+}
 
 @Resolver()
 export class DataHubFeedAdminResolver {
@@ -10,25 +28,22 @@ export class DataHubFeedAdminResolver {
         private feedGenerator: FeedGeneratorService,
     ) {}
 
-    // FEED QUERIES
-
     @Query()
-    @Allow(Permission.ReadSettings)
+    @Allow(ManageDataHubFeedsPermission.Permission)
     async dataHubFeeds(): Promise<FeedConfig[]> {
         return this.feedGenerator.getRegisteredFeeds();
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
+    @Allow(ManageDataHubFeedsPermission.Permission)
     async dataHubFeedFormats(): Promise<FeedFormatInfo[]> {
         return [...FEED_FORMATS];
     }
 
-    // FEED MUTATIONS
-
     @Mutation()
-    @Allow(Permission.UpdateSettings)
-    async registerDataHubFeed(
+    @Transaction()
+    @Allow(ManageDataHubFeedsPermission.Permission)
+    async createDataHubFeed(
         @Args('input') input: FeedConfig,
     ): Promise<FeedConfig> {
         this.feedGenerator.registerFeed(input);
@@ -36,18 +51,12 @@ export class DataHubFeedAdminResolver {
     }
 
     @Mutation()
-    @Allow(Permission.ReadSettings)
+    @Transaction()
+    @Allow(ManageDataHubFeedsPermission.Permission)
     async generateDataHubFeed(
         @Ctx() ctx: RequestContext,
         @Args('feedCode') feedCode: string,
-    ): Promise<{
-        success: boolean;
-        itemCount: number;
-        generatedAt: Date;
-        downloadUrl?: string;
-        errors: string[];
-        warnings: string[];
-    }> {
+    ): Promise<FeedGenerationResult> {
         try {
             const result = await this.feedGenerator.generateFeed(ctx, feedCode);
             return {
@@ -70,26 +79,22 @@ export class DataHubFeedAdminResolver {
     }
 
     @Mutation()
-    @Allow(Permission.ReadSettings)
+    @Transaction()
+    @Allow(ManageDataHubFeedsPermission.Permission)
     async previewDataHubFeed(
         @Ctx() ctx: RequestContext,
         @Args('feedCode') feedCode: string,
         @Args('limit') limit: number = DEFAULTS.FEED_PREVIEW_LIMIT,
-    ): Promise<{
-        content: string;
-        contentType: string;
-        itemCount: number;
-    }> {
+    ): Promise<FeedPreviewResult> {
         const result = await this.feedGenerator.generateFeed(ctx, feedCode);
-        // Truncate content for preview
         let previewContent = typeof result.content === 'string'
             ? result.content
             : result.content.toString('utf-8');
 
-        // Limit preview to first N lines
         const lines = previewContent.split('\n');
-        if (lines.length > limit + 10) {
-            previewContent = lines.slice(0, limit + 10).join('\n') + '\n...(truncated)';
+        const previewLineLimit = limit + 10;
+        if (lines.length > previewLineLimit) {
+            previewContent = lines.slice(0, previewLineLimit).join('\n') + '\n...(truncated)';
         }
 
         return {

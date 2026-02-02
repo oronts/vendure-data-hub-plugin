@@ -1,6 +1,3 @@
-/**
- * Feeds API GraphQL schema definitions - Export feeds for Google Shopping, Facebook, etc.
- */
 export const feedSchema = `
     """
     Feeds API - Export feeds for Google Shopping, Facebook, etc.
@@ -22,11 +19,16 @@ export const feedSchema = `
     }
 
     enum DataHubFeedFormat {
-        google_shopping
-        facebook_catalog
-        csv
-        json
-        xml
+        GOOGLE_SHOPPING
+        META_CATALOG
+        AMAZON
+        PINTEREST
+        TIKTOK
+        BING_SHOPPING
+        CSV
+        JSON
+        XML
+        CUSTOM
     }
 
     type DataHubFeedFormatInfo {
@@ -76,7 +78,7 @@ export const feedQueries = `
 
 export const feedMutations = `
     extend type Mutation {
-        registerDataHubFeed(input: DataHubFeedInput!): DataHubFeed!
+        createDataHubFeed(input: DataHubFeedInput!): DataHubFeed!
         generateDataHubFeed(feedCode: String!): DataHubFeedGenerationResult!
         previewDataHubFeed(feedCode: String!, limit: Int): DataHubFeedPreview!
     }

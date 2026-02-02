@@ -6,6 +6,39 @@
  */
 
 import { ID } from '@vendure/core';
+import { JsonObject, JsonValue, PipelineDefinition } from '../../types/index';
+import { VisualPipelineDefinition } from '../../services/pipeline/pipeline-format.service';
+
+// CHECKPOINT TYPES
+
+/**
+ * Checkpoint data for pipeline state persistence
+ * Maps step keys to their checkpoint state
+ */
+export interface CheckpointData {
+    [stepKey: string]: Record<string, JsonValue>;
+}
+
+// VALIDATION TYPES
+
+/**
+ * Input for pipeline definition validation
+ * Accepts either canonical or visual format definitions
+ */
+export interface ValidationInput {
+    /** Pipeline definition in canonical (steps) or visual (nodes/edges) format */
+    definition: PipelineDefinition | VisualPipelineDefinition;
+    /** Validation level: 'syntax', 'semantic', or 'full' */
+    level?: string;
+}
+
+// PIPELINE FORMAT TYPES
+
+/**
+ * Union type for pipeline definition formats
+ * Used in resolvers that accept either format
+ */
+export type PipelineDefinitionInput = PipelineDefinition | VisualPipelineDefinition;
 
 // PIPELINE INPUTS
 
@@ -17,7 +50,7 @@ export interface CreatePipelineInput {
     name: string;
     description?: string;
     enabled?: boolean;
-    definition: any;
+    definition: PipelineDefinition;
     tags?: string[];
 }
 
@@ -30,7 +63,7 @@ export interface UpdatePipelineInput {
     name?: string;
     description?: string;
     enabled?: boolean;
-    definition?: any;
+    definition?: PipelineDefinition;
     tags?: string[];
 }
 
@@ -43,7 +76,7 @@ export interface CreateSchemaInput {
     code: string;
     name: string;
     version?: number;
-    fields: Record<string, SchemaFieldDefinition>;
+    fields: Record<string, SchemaFieldInput>;
 }
 
 /**
@@ -54,13 +87,13 @@ export interface UpdateSchemaInput {
     code?: string;
     name?: string;
     version?: number;
-    fields?: Record<string, SchemaFieldDefinition>;
+    fields?: Record<string, SchemaFieldInput>;
 }
 
 /**
- * Schema field definition
+ * Schema field input for GraphQL mutations
  */
-export interface SchemaFieldDefinition {
+export interface SchemaFieldInput {
     type: 'string' | 'number' | 'boolean' | 'array' | 'object';
     required?: boolean;
     min?: number;
@@ -68,7 +101,7 @@ export interface SchemaFieldDefinition {
     minLength?: number;
     maxLength?: number;
     pattern?: string;
-    enum?: any[];
+    enum?: JsonValue[];
 }
 
 // SECRET INPUTS
@@ -80,7 +113,7 @@ export interface CreateSecretInput {
     code: string;
     provider?: string;
     value?: string;
-    metadata?: any;
+    metadata?: JsonObject;
 }
 
 /**
@@ -91,7 +124,7 @@ export interface UpdateSecretInput {
     code?: string;
     provider?: string;
     value?: string;
-    metadata?: any;
+    metadata?: JsonObject;
 }
 
 // CONNECTION INPUTS
@@ -102,7 +135,7 @@ export interface UpdateSecretInput {
 export interface CreateConnectionInput {
     code: string;
     type?: string;
-    config?: any;
+    config?: JsonObject;
 }
 
 /**
@@ -112,7 +145,7 @@ export interface UpdateConnectionInput {
     id: ID;
     code?: string;
     type?: string;
-    config?: any;
+    config?: JsonObject;
 }
 
 // SETTINGS INPUTS
@@ -152,7 +185,7 @@ export interface RegisterFeedInput {
     code: string;
     name: string;
     format: 'google_shopping' | 'facebook_catalog' | 'csv' | 'json' | 'xml';
-    config?: any;
+    config?: JsonObject;
 }
 
 // EXPORT DESTINATION INPUTS

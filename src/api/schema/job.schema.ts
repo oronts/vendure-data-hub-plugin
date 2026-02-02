@@ -1,6 +1,3 @@
-/**
- * Jobs API GraphQL schema definitions - Simplified ETL Configuration
- */
 export const jobSchema = `
     """
     Jobs API - Simplified ETL Configuration
@@ -41,7 +38,7 @@ export const jobSchema = `
         definition: JSON!
         runCount: Int!
         lastRunAt: DateTime
-        lastRunStatus: String
+        lastRunStatus: DataHubJobRunStatus
         totalRecordsProcessed: Int!
         totalRecordsFailed: Int!
         createdByUserId: String

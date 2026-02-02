@@ -12,8 +12,6 @@ import type { ExtractorOutput, ExtractorsByCategoryOutput } from '../types/index
 export class DataHubExtractorAdminResolver {
     constructor(private extractorRegistry: ExtractorRegistryService) {}
 
-    // EXTRACTOR QUERIES
-
     @Query()
     @Allow(ManageDataHubAdaptersPermission.Permission)
     dataHubExtractors(): ExtractorOutput[] {
@@ -54,11 +52,6 @@ export class DataHubExtractorAdminResolver {
         return this.mapSchemaToGql(extractor.schema);
     }
 
-    // HELPER METHODS
-
-    /**
-     * Map extractor metadata to GraphQL type
-     */
     private mapExtractorToGql(meta: ExtractorMetadata): ExtractorOutput {
         const extractor = this.extractorRegistry.getExtractor(meta.code);
         const schema = extractor?.schema ?? { fields: [] };
@@ -79,9 +72,6 @@ export class DataHubExtractorAdminResolver {
         };
     }
 
-    /**
-     * Map config schema to GraphQL type
-     */
     private mapSchemaToGql(schema: StepConfigSchema): ExtractorOutput['schema'] {
         return {
             fields: schema.fields.map(field => ({
@@ -110,10 +100,6 @@ export class DataHubExtractorAdminResolver {
         };
     }
 
-    /**
-     * Normalize category name for GraphQL enum compatibility
-     * GraphQL enums use underscores, not hyphens
-     */
     private normalizeCategoryForGql(category: ExtractorCategory): string {
         return category.replace(/-/g, '_');
     }

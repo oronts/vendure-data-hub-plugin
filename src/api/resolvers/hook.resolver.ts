@@ -1,5 +1,6 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, RequestContext, TransactionalConnection } from '@vendure/core';
+import { Allow, Ctx, ID, RequestContext, Transaction, TransactionalConnection } from '@vendure/core';
+import type { JsonObject, PipelineDefinition, HookStageValue, PipelineHooks } from '../../types/index';
 import { HookService } from '../../services';
 import { Pipeline } from '../../entities/pipeline';
 import { DataHubPipelinePermission } from '../../permissions';
@@ -11,28 +12,28 @@ export class DataHubHookAdminResolver {
         private connection: TransactionalConnection,
     ) {}
 
-    // HOOK QUERIES
-
     @Query()
     @Allow(DataHubPipelinePermission.Read)
-    async dataHubPipelineHooks(@Ctx() ctx: RequestContext, @Args() args: { pipelineId: ID }) {
+    async dataHubPipelineHooks(@Ctx() ctx: RequestContext, @Args() args: { pipelineId: ID }): Promise<PipelineHooks> {
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, args.pipelineId);
-        return (pipeline.definition as any)?.hooks ?? {};
+        const definition = pipeline.definition as PipelineDefinition | undefined;
+        return definition?.hooks ?? {};
     }
 
-    // HOOK MUTATIONS
-
     @Mutation()
+    @Transaction()
     @Allow(DataHubPipelinePermission.Update)
     async runDataHubHookTest(
         @Ctx() ctx: RequestContext,
-        @Args() args: { pipelineId: ID; stage: string; payload?: any },
+        @Args() args: { pipelineId: ID; stage: string; payload?: JsonObject | JsonObject[] },
     ): Promise<boolean> {
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, args.pipelineId);
+        const definition = pipeline.definition as PipelineDefinition;
+        const stage = args.stage as HookStageValue;
         await this.hooks.run(
             ctx,
-            pipeline.definition as any,
-            args.stage as any,
+            definition,
+            stage,
             Array.isArray(args.payload) ? args.payload : undefined,
             !Array.isArray(args.payload) ? args.payload : undefined,
         );

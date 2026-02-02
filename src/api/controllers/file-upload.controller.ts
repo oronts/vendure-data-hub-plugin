@@ -16,17 +16,22 @@
 import { Controller, Post, Get, Delete, Param, Query, Req, Res, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
 import multer from 'multer';
+
+/** Multer error type with code property */
+interface MulterErrorLike extends Error {
+    code?: string;
+}
 import {
     Ctx,
     RequestContext,
-    Logger,
     Allow,
-    Permission,
 } from '@vendure/core';
 import { FileStorageService, StoredFile } from '../../services';
 import { FileParserService } from '../../parsers/file-parser.service';
-import { DEFAULTS, LOGGER_CTX, FILE_STORAGE } from '../../constants/index';
-import { detectFormat } from './file-upload.utils';
+import { ManageDataHubFilesPermission, ReadDataHubFilesPermission } from '../../permissions';
+import { DEFAULTS, LOGGER_CONTEXTS, FILE_STORAGE } from '../../constants/index';
+import { detectFormat, isValidFileId, DATAHUB_FILES_PATH } from './file-upload.utils';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 
 /** Multer configuration for file uploads */
 const upload = multer({
@@ -58,12 +63,15 @@ const upload = multer({
 
 @Controller('data-hub')
 export class DataHubFileUploadController {
-    private readonly loggerCtx = LOGGER_CTX;
+    private readonly logger: DataHubLogger;
 
     constructor(
         private fileStorage: FileStorageService,
         private fileParser: FileParserService,
-    ) {}
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FILE_UPLOAD_CONTROLLER);
+    }
 
     // FILE UPLOAD
 
@@ -74,7 +82,7 @@ export class DataHubFileUploadController {
      * JSON body with base64-encoded content.
      */
     @Post('upload')
-    @Allow(Permission.UpdateSettings)
+    @Allow(ManageDataHubFilesPermission.Permission)
     async uploadFile(
         @Ctx() ctx: RequestContext,
         @Req() req: Request,
@@ -94,7 +102,7 @@ export class DataHubFileUploadController {
                 });
             }
         } catch (error) {
-            Logger.error(`Upload failed: ${error}`, this.loggerCtx);
+            this.logger.error('Upload failed', error instanceof Error ? error : undefined);
             return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
                 success: false,
                 error: error instanceof Error ? error.message : 'Upload failed',
@@ -108,7 +116,7 @@ export class DataHubFileUploadController {
      * List uploaded files
      */
     @Get('files')
-    @Allow(Permission.ReadSettings)
+    @Allow(ReadDataHubFilesPermission.Permission)
     async listFiles(
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
@@ -130,11 +138,18 @@ export class DataHubFileUploadController {
      * Get file metadata
      */
     @Get('files/:id')
-    @Allow(Permission.ReadSettings)
+    @Allow(ReadDataHubFilesPermission.Permission)
     async getFile(
         @Param('id') fileId: string,
         @Res() res: Response,
     ) {
+        if (!isValidFileId(fileId)) {
+            return res.status(HttpStatus.BAD_REQUEST).json({
+                success: false,
+                error: 'Invalid file ID format',
+            });
+        }
+
         const file = await this.fileStorage.getFile(fileId);
 
         if (!file) {
@@ -156,11 +171,18 @@ export class DataHubFileUploadController {
      * Download file
      */
     @Get('files/:id/download')
-    @Allow(Permission.ReadSettings)
+    @Allow(ReadDataHubFilesPermission.Permission)
     async downloadFile(
         @Param('id') fileId: string,
         @Res() res: Response,
     ) {
+        if (!isValidFileId(fileId)) {
+            return res.status(HttpStatus.BAD_REQUEST).json({
+                success: false,
+                error: 'Invalid file ID format',
+            });
+        }
+
         const file = await this.fileStorage.getFile(fileId);
 
         if (!file) {
@@ -190,12 +212,19 @@ export class DataHubFileUploadController {
      * Preview file with field detection
      */
     @Get('files/:id/preview')
-    @Allow(Permission.ReadSettings)
+    @Allow(ReadDataHubFilesPermission.Permission)
     async previewFile(
         @Param('id') fileId: string,
         @Res() res: Response,
         @Query('rows') rows?: string,
     ) {
+        if (!isValidFileId(fileId)) {
+            return res.status(HttpStatus.BAD_REQUEST).json({
+                success: false,
+                error: 'Invalid file ID format',
+            });
+        }
+
         const file = await this.fileStorage.getFile(fileId);
 
         if (!file) {
@@ -247,11 +276,18 @@ export class DataHubFileUploadController {
      * Delete file
      */
     @Delete('files/:id')
-    @Allow(Permission.UpdateSettings)
+    @Allow(ManageDataHubFilesPermission.Permission)
     async deleteFile(
         @Param('id') fileId: string,
         @Res() res: Response,
     ) {
+        if (!isValidFileId(fileId)) {
+            return res.status(HttpStatus.BAD_REQUEST).json({
+                success: false,
+                error: 'Invalid file ID format',
+            });
+        }
+
         const deleted = await this.fileStorage.deleteFile(fileId);
 
         if (!deleted) {
@@ -273,7 +309,7 @@ export class DataHubFileUploadController {
      * Get storage stats
      */
     @Get('storage/stats')
-    @Allow(Permission.ReadSettings)
+    @Allow(ReadDataHubFilesPermission.Permission)
     async getStorageStats() {
         return this.fileStorage.getStorageStats();
     }
@@ -291,7 +327,9 @@ export class DataHubFileUploadController {
         return new Promise((resolve) => {
             const singleUpload = upload.single('file');
 
-            singleUpload(req, res, async (err: any) => {
+            // Note: multer callback has different signature than Express NextFunction
+            // but TypeScript types it as RequestHandler which expects NextFunction
+            const multerCallback = async (err: MulterErrorLike | null): Promise<void> => {
                 try {
                     if (err) {
                         if (err.code === 'LIMIT_FILE_SIZE') {
@@ -308,7 +346,7 @@ export class DataHubFileUploadController {
                             });
                             return resolve();
                         }
-                        Logger.error(`Multer error: ${err.message}`, this.loggerCtx);
+                        this.logger.error('Multer error', err instanceof Error ? err : undefined);
                         res.status(HttpStatus.BAD_REQUEST).json({
                             success: false,
                             error: err.message || 'Failed to process upload',
@@ -346,14 +384,17 @@ export class DataHubFileUploadController {
                     }
                     resolve();
                 } catch (error) {
-                    Logger.error(`Upload processing error: ${error}`, this.loggerCtx);
+                    this.logger.error('Upload processing error', error instanceof Error ? error : undefined);
                     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
                         success: false,
                         error: error instanceof Error ? error.message : 'Failed to process upload',
                     });
                     resolve();
                 }
-            });
+            };
+
+            // Cast needed: multer callback signature differs from Express NextFunction
+            singleUpload(req, res, multerCallback as unknown as () => void);
         });
     }
 
@@ -420,7 +461,7 @@ export class DataHubFileUploadController {
                     }
                     resolve();
                 } catch (error) {
-                    Logger.error(`Base64 parse error: ${error}`, this.loggerCtx);
+                    this.logger.error('Base64 parse error', error instanceof Error ? error : undefined);
                     res.status(HttpStatus.BAD_REQUEST).json({
                         success: false,
                         error: error instanceof Error ? error.message : 'Failed to parse JSON body',
@@ -440,8 +481,8 @@ export class DataHubFileUploadController {
             hash: file.hash,
             uploadedAt: file.uploadedAt.toISOString(),
             expiresAt: file.expiresAt?.toISOString(),
-            downloadUrl: `/data-hub/files/${file.id}/download`,
-            previewUrl: `/data-hub/files/${file.id}/preview`,
+            downloadUrl: `${DATAHUB_FILES_PATH}/${file.id}/download`,
+            previewUrl: `${DATAHUB_FILES_PATH}/${file.id}/preview`,
         };
     }
 

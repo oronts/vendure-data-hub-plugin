@@ -1,54 +1,141 @@
-import { Query, Resolver } from '@nestjs/graphql';
-import { Allow, RequestContext, Ctx, TransactionalConnection } from '@vendure/core';
-import { ViewDataHubRunsPermission } from '../../permissions';
+import { Args, Query, Resolver, Mutation } from '@nestjs/graphql';
+import { Allow, RequestContext, Ctx, Transaction, TransactionalConnection } from '@vendure/core';
+import { ViewDataHubRunsPermission, DataHubPipelinePermission } from '../../permissions';
 import { PipelineRun, Pipeline } from '../../entities/pipeline';
+import { MessageConsumerService } from '../../services/events/message-consumer.service';
+import { RunStatus, SortOrder } from '../../constants/index';
+
+interface QueueStats {
+    pending: number;
+    running: number;
+    failed: number;
+    completedToday: number;
+    byPipeline: Array<{ code: string; pending: number; running: number }>;
+    recentFailed: Array<{ id: string; code: string; finishedAt: Date | null; error: string | null }>;
+}
+
+interface ConsumerStatus {
+    pipelineCode: string;
+    queueName: string;
+    isActive: boolean;
+    messagesProcessed: number;
+    messagesFailed: number;
+    lastMessageAt: Date | null;
+}
+
 
 @Resolver()
 export class DataHubQueueAdminResolver {
-    constructor(private connection: TransactionalConnection) {}
-
-    // QUEUE QUERIES
+    constructor(
+        private connection: TransactionalConnection,
+        private messageConsumer: MessageConsumerService,
+    ) {}
 
     @Query()
     @Allow(ViewDataHubRunsPermission.Permission)
-    async dataHubQueueStats(@Ctx() ctx: RequestContext) {
+    async dataHubQueueStats(@Ctx() ctx: RequestContext): Promise<QueueStats> {
         const repo = this.connection.getRepository(ctx, PipelineRun);
         const now = new Date();
         const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-        const pending = await repo.count({ where: { status: 'PENDING' as any } as any });
-        const running = await repo.count({ where: { status: 'RUNNING' as any } as any });
-        const failed = await repo.count({ where: { status: 'FAILED' as any } as any });
+        const pending = await repo.count({ where: { status: RunStatus.PENDING } });
+        const running = await repo.count({ where: { status: RunStatus.RUNNING } });
+        const failed = await repo.count({ where: { status: RunStatus.FAILED } });
 
         const completedTodayQb = repo.createQueryBuilder('pr')
-            .where('pr.status = :st', { st: 'COMPLETED' })
+            .where('pr.status = :st', { st: RunStatus.COMPLETED })
             .andWhere('pr.finishedAt >= :mid', { mid: midnight.toISOString() });
         const completedToday = await completedTodayQb.getCount();
 
-        // By pipeline
-        const pipeRepo = this.connection.getRepository(ctx, Pipeline);
-        const allPipes = await pipeRepo.find();
-        const byPipeline: Array<{ code: string; pending: number; running: number }> = [];
-        for (const p of allPipes) {
-            const pc = await repo.count({ where: { pipeline: { id: p.id } as any, status: 'PENDING' as any } as any });
-            const rc = await repo.count({ where: { pipeline: { id: p.id } as any, status: 'RUNNING' as any } as any });
-            byPipeline.push({ code: p.code, pending: pc, running: rc });
+        // Use a single aggregated query with GROUP BY instead of N queries per pipeline
+        const pipelineStats = await repo.createQueryBuilder('pr')
+            .leftJoin('pr.pipeline', 'pipeline')
+            .select('pipeline.code', 'code')
+            .addSelect('pr.status', 'status')
+            .addSelect('COUNT(*)', 'count')
+            .where('pr.status IN (:...statuses)', { statuses: [RunStatus.PENDING, RunStatus.RUNNING] })
+            .groupBy('pipeline.code')
+            .addGroupBy('pr.status')
+            .getRawMany<{ code: string; status: string; count: string }>();
+
+        // Transform aggregated stats into the expected format
+        const statsMap = new Map<string, { pending: number; running: number }>();
+        for (const row of pipelineStats) {
+            if (!statsMap.has(row.code)) {
+                statsMap.set(row.code, { pending: 0, running: 0 });
+            }
+            const entry = statsMap.get(row.code)!;
+            if (row.status === RunStatus.PENDING) {
+                entry.pending = parseInt(row.count, 10);
+            } else if (row.status === RunStatus.RUNNING) {
+                entry.running = parseInt(row.count, 10);
+            }
         }
 
-        // Recent failed runs
+        const byPipeline: Array<{ code: string; pending: number; running: number }> = Array.from(
+            statsMap.entries(),
+        ).map(([code, counts]) => ({ code, ...counts }));
+
         const recentFailedQb = repo.createQueryBuilder('pr')
             .leftJoin('pr.pipeline', 'pipeline')
-            .where('pr.status = :st', { st: 'FAILED' })
-            .orderBy('pr.finishedAt', 'DESC')
+            .addSelect(['pipeline.code'])
+            .where('pr.status = :st', { st: RunStatus.FAILED })
+            .orderBy('pr.finishedAt', SortOrder.DESC)
             .limit(10);
         const recentFailedRows = await recentFailedQb.getMany();
         const recentFailed = recentFailedRows.map(r => ({
-            id: r.id,
-            code: (r as any).pipeline?.code ?? '',
+            id: String(r.id),
+            code: (r.pipeline as Pipeline | undefined)?.code ?? '',
             finishedAt: r.finishedAt,
             error: r.error,
         }));
 
-        return { pending, running, failed, completedToday, byPipeline, recentFailed } as any;
+        return { pending, running, failed, completedToday, byPipeline, recentFailed };
+    }
+
+    @Query()
+    @Allow(ViewDataHubRunsPermission.Permission)
+    dataHubConsumers(): ConsumerStatus[] {
+        const statuses = this.messageConsumer.getConsumerStatus();
+        return statuses.map(s => ({
+            pipelineCode: s.pipelineCode,
+            queueName: s.queueName,
+            isActive: s.running,
+            messagesProcessed: s.messagesProcessed,
+            messagesFailed: s.messagesFailed,
+            lastMessageAt: s.lastMessageAt ?? null,
+        }));
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(DataHubPipelinePermission.Update)
+    async startDataHubConsumer(
+        @Ctx() _ctx: RequestContext,
+        @Args() args: { pipelineCode: string },
+    ): Promise<boolean> {
+        try {
+            await this.messageConsumer.startConsumerByCode(args.pipelineCode);
+            return true;
+        } catch {
+            // Consumer start failed - return false to indicate failure
+            return false;
+        }
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(DataHubPipelinePermission.Update)
+    async stopDataHubConsumer(
+        @Ctx() _ctx: RequestContext,
+        @Args() args: { pipelineCode: string },
+    ): Promise<boolean> {
+        try {
+            await this.messageConsumer.stopConsumerByCode(args.pipelineCode);
+            return true;
+        } catch {
+            // Consumer stop failed - return false to indicate failure
+            return false;
+        }
     }
 }

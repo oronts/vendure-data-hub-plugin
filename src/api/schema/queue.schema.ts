@@ -1,6 +1,3 @@
-/**
- * Queue and Settings GraphQL schema definitions
- */
 export const queueSchema = `
     type DataHubQueueStats {
         pending: Int!
@@ -28,6 +25,18 @@ export const queueSchema = `
         name: String!
         createdAt: DateTime!
         payload: JSON
+    }
+
+    """
+    Message consumer status for queue-triggered pipelines
+    """
+    type DataHubConsumerStatus {
+        pipelineCode: String!
+        queueName: String!
+        isActive: Boolean!
+        messagesProcessed: Int!
+        messagesFailed: Int!
+        lastMessageAt: DateTime
     }
 
     """
@@ -67,11 +76,14 @@ export const queueQueries = `
         dataHubQueueStats: DataHubQueueStats!
         dataHubEvents(limit: Int): [DataHubEvent!]!
         dataHubSettings: DataHubSettings!
+        dataHubConsumers: [DataHubConsumerStatus!]!
     }
 `;
 
 export const queueMutations = `
     extend type Mutation {
-        setDataHubSettings(input: DataHubSettingsInput!): DataHubSettings!
+        updateDataHubSettings(input: DataHubSettingsInput!): DataHubSettings!
+        startDataHubConsumer(pipelineCode: String!): Boolean!
+        stopDataHubConsumer(pipelineCode: String!): Boolean!
     }
 `;

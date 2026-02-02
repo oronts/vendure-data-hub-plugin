@@ -1,6 +1,3 @@
-/**
- * Webhook Delivery API GraphQL schema definitions - Retry and DLQ management
- */
 export const webhookSchema = `
     """
     Webhook Delivery API - Retry and DLQ management

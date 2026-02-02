@@ -6,6 +6,7 @@
  */
 
 import { ID } from '@vendure/core';
+import type { JsonValue, JsonObject } from '../../types/index';
 
 // GENERIC OUTPUTS
 
@@ -264,8 +265,8 @@ export interface FilePreviewResponse {
     fileId: string;
     originalName: string;
     format: string;
-    fields: Array<{ name: string; type: string; sample?: any }>;
-    sampleData: any[];
+    fields: Array<{ name: string; type: string; sample?: JsonValue }>;
+    sampleData: JsonObject[];
     totalRows: number;
     warnings: string[];
 }

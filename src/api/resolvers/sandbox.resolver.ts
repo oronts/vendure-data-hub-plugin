@@ -4,14 +4,15 @@ import {
     Ctx,
     ID,
     RequestContext,
+    Transaction,
 } from '@vendure/core';
 import { SandboxService, SandboxOptions, SandboxResult } from '../../services/versioning';
 import {
-    DataHubPipelinePermission,
     RunDataHubPipelinePermission,
 } from '../../permissions';
 import { PipelineDefinition } from '../../types';
 import { RevisionService } from '../../services/versioning';
+import { RESOLVER_ERROR_MESSAGES } from '../../constants/index';
 
 interface SandboxWithDefinitionInput {
     definition: PipelineDefinition;
@@ -40,6 +41,8 @@ interface SandboxComparisonResult {
     }>;
 }
 
+const DEFAULT_MAX_RECORDS = 100;
+
 @Resolver()
 export class DataHubSandboxResolver {
     constructor(
@@ -47,11 +50,6 @@ export class DataHubSandboxResolver {
         private revisionService: RevisionService,
     ) {}
 
-    // SANDBOX QUERIES
-
-    /**
-     * Execute a comprehensive sandbox/dry run for a pipeline
-     */
     @Query()
     @Allow(RunDataHubPipelinePermission.Permission)
     async dataHubSandbox(
@@ -61,9 +59,6 @@ export class DataHubSandboxResolver {
         return this.sandboxService.execute(ctx, args.pipelineId, args.options);
     }
 
-    /**
-     * Execute sandbox with a custom definition (for testing unpublished changes)
-     */
     @Query()
     @Allow(RunDataHubPipelinePermission.Permission)
     async dataHubSandboxWithDefinition(
@@ -77,9 +72,6 @@ export class DataHubSandboxResolver {
         );
     }
 
-    /**
-     * Compare sandbox results between two pipeline revisions
-     */
     @Query()
     @Allow(RunDataHubPipelinePermission.Permission)
     async dataHubCompareSandboxResults(
@@ -91,27 +83,21 @@ export class DataHubSandboxResolver {
             options?: SandboxOptions;
         },
     ): Promise<SandboxComparisonResult> {
-        // Get both revisions
         const fromRevision = await this.revisionService.getRevision(ctx, args.fromRevisionId);
         const toRevision = await this.revisionService.getRevision(ctx, args.toRevisionId);
 
         if (!fromRevision || !toRevision) {
-            throw new Error('One or both revisions not found');
+            throw new Error(RESOLVER_ERROR_MESSAGES.REVISION_NOT_FOUND);
         }
 
-        // Run sandbox on both definitions
         const [beforeResult, afterResult] = await Promise.all([
             this.sandboxService.executeWithDefinition(ctx, fromRevision.definition, args.options),
             this.sandboxService.executeWithDefinition(ctx, toRevision.definition, args.options),
         ]);
 
-        // Compare results
         return this.compareResults(beforeResult, afterResult);
     }
 
-    /**
-     * Get detailed record lineage for a specific record
-     */
     @Query()
     @Allow(RunDataHubPipelinePermission.Permission)
     async dataHubRecordLineageDetail(
@@ -121,15 +107,12 @@ export class DataHubSandboxResolver {
         const result = await this.sandboxService.execute(ctx, args.pipelineId, {
             ...args.options,
             includeLineage: true,
-            maxRecords: Math.max((args.options?.maxRecords || 100), args.recordIndex + 1),
+            maxRecords: Math.max((args.options?.maxRecords || DEFAULT_MAX_RECORDS), args.recordIndex + 1),
         });
 
         return result.dataLineage.find(l => l.recordIndex === args.recordIndex) || null;
     }
 
-    /**
-     * Preview load operations for a pipeline
-     */
     @Query()
     @Allow(RunDataHubPipelinePermission.Permission)
     async dataHubLoadPreview(
@@ -140,12 +123,8 @@ export class DataHubSandboxResolver {
         return result.loadPreviews;
     }
 
-    // SANDBOX MUTATIONS
-
-    /**
-     * Execute sandbox with custom seed data for testing specific scenarios
-     */
     @Mutation()
+    @Transaction()
     @Allow(RunDataHubPipelinePermission.Permission)
     async dataHubTestWithSeedData(
         @Ctx() ctx: RequestContext,
@@ -161,10 +140,8 @@ export class DataHubSandboxResolver {
         });
     }
 
-    /**
-     * Replay a specific step with custom input
-     */
     @Mutation()
+    @Transaction()
     @Allow(RunDataHubPipelinePermission.Permission)
     async dataHubReplayStep(
         @Ctx() ctx: RequestContext,
@@ -181,25 +158,20 @@ export class DataHubSandboxResolver {
             startFromStep: args.stepKey,
         });
 
-        // Return just the step result
         const stepResult = result.steps.find(s => s.stepKey === args.stepKey);
         if (!stepResult) {
-            throw new Error(`Step ${args.stepKey} not found in execution results`);
+            throw new Error(RESOLVER_ERROR_MESSAGES.STEP_NOT_FOUND(args.stepKey));
         }
 
         return stepResult;
     }
 
-    // Private helpers
-
     private compareResults(before: SandboxResult, after: SandboxResult): SandboxComparisonResult {
         const changedSteps: SandboxComparisonResult['changedSteps'] = [];
 
-        // Create maps for easy lookup
         const beforeStepsMap = new Map(before.steps.map(s => [s.stepKey, s]));
         const afterStepsMap = new Map(after.steps.map(s => [s.stepKey, s]));
 
-        // Find all unique step keys
         const allStepKeys = new Set([
             ...before.steps.map(s => s.stepKey),
             ...after.steps.map(s => s.stepKey),
@@ -209,7 +181,6 @@ export class DataHubSandboxResolver {
             const beforeStep = beforeStepsMap.get(stepKey);
             const afterStep = afterStepsMap.get(stepKey);
 
-            // Determine if step changed
             let hasChanged = false;
             const fieldChanges: string[] = [];
 
@@ -218,7 +189,6 @@ export class DataHubSandboxResolver {
                 if (!beforeStep) fieldChanges.push('step_added');
                 if (!afterStep) fieldChanges.push('step_removed');
             } else {
-                // Compare outputs
                 if (beforeStep.recordsOut !== afterStep.recordsOut) {
                     hasChanged = true;
                     fieldChanges.push('records_out_changed');
@@ -236,7 +206,6 @@ export class DataHubSandboxResolver {
                     fieldChanges.push('status_changed');
                 }
 
-                // Compare field changes
                 const beforeFields = new Set(beforeStep.fieldChanges.map(fc => fc.field));
                 const afterFields = new Set(afterStep.fieldChanges.map(fc => fc.field));
 
@@ -283,7 +252,6 @@ export class DataHubSandboxResolver {
     }
 
     private calculateAffectedRecords(before: SandboxResult, after: SandboxResult): number {
-        // A rough estimate of how many records would be processed differently
         const metricsDiff = Math.abs(
             after.metrics.totalRecordsSucceeded - before.metrics.totalRecordsSucceeded
         ) + Math.abs(

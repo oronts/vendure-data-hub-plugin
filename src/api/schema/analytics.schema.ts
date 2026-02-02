@@ -1,6 +1,3 @@
-/**
- * Analytics API GraphQL schema definitions - Comprehensive stats and metrics
- */
 export const analyticsSchema = `
     """
     Analytics API - Comprehensive stats and metrics

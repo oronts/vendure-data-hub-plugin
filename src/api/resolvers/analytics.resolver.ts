@@ -3,10 +3,60 @@ import {
     Ctx,
     RequestContext,
     Allow,
-    Permission,
     Transaction,
 } from '@vendure/core';
-import { AnalyticsService, WebhookRetryService, WebhookDeliveryStatus, ExportDestinationService, DestinationConfig } from '../../services';
+import {
+    AnalyticsService,
+    WebhookRetryService,
+    WebhookDeliveryStatus,
+    ExportDestinationService,
+    DestinationConfig,
+} from '../../services';
+import {
+    ViewDataHubAnalyticsPermission,
+    ManageDataHubWebhooksPermission,
+    ManageDataHubDestinationsPermission,
+} from '../../permissions';
+import type {
+    AnalyticsOverview,
+    PipelinePerformance,
+    ErrorAnalytics,
+    ThroughputMetrics,
+    RealTimeStats,
+} from '../../services/analytics/analytics.types';
+import type {
+    WebhookDelivery,
+    WebhookStats,
+} from '../../services/webhooks/webhook.types';
+import type {
+    DeliveryResult,
+    ConnectionTestResult,
+} from '../../services/destinations/destination.types';
+import { ConnectionType } from '../../constants/enums';
+
+/** Redacted destination config for API responses */
+interface RedactedDestinationConfig extends Omit<DestinationConfig, 'secretAccessKey' | 'password' | 'privateKey'> {
+    secretAccessKey?: string;
+    password?: string;
+    privateKey?: string;
+}
+
+/** Result of retry dead letter operation */
+interface RetryDeadLetterResult {
+    success: boolean;
+    delivery: WebhookDelivery | null;
+}
+
+/** Result of remove dead letter operation */
+interface RemoveDeadLetterResult {
+    success: boolean;
+}
+
+/** Result of registering export destination */
+interface RegisterDestinationResult {
+    success: boolean;
+    id: string;
+}
 
 @Resolver()
 export class DataHubAnalyticsAdminResolver {
@@ -16,20 +66,18 @@ export class DataHubAnalyticsAdminResolver {
         private exportDestinationService: ExportDestinationService,
     ) {}
 
-    // ANALYTICS QUERIES
-
     @Query()
-    @Allow(Permission.ReadSettings)
-    async dataHubAnalyticsOverview(@Ctx() ctx: RequestContext) {
+    @Allow(ViewDataHubAnalyticsPermission.Permission)
+    async dataHubAnalyticsOverview(@Ctx() ctx: RequestContext): Promise<AnalyticsOverview> {
         return this.analyticsService.getOverview(ctx);
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
+    @Allow(ViewDataHubAnalyticsPermission.Permission)
     async dataHubPipelinePerformance(
         @Ctx() ctx: RequestContext,
         @Args() args: { pipelineId?: string; fromDate?: string; toDate?: string; limit?: number },
-    ) {
+    ): Promise<PipelinePerformance[]> {
         return this.analyticsService.getPipelinePerformance(ctx, {
             pipelineId: args.pipelineId,
             limit: args.limit,
@@ -37,40 +85,39 @@ export class DataHubAnalyticsAdminResolver {
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
+    @Allow(ViewDataHubAnalyticsPermission.Permission)
     async dataHubErrorAnalytics(
         @Ctx() ctx: RequestContext,
         @Args() args: { pipelineId?: string; fromDate?: string; toDate?: string },
-    ) {
+    ): Promise<ErrorAnalytics> {
         return this.analyticsService.getErrorAnalytics(ctx, {
             pipelineId: args.pipelineId,
         });
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
+    @Allow(ViewDataHubAnalyticsPermission.Permission)
     async dataHubThroughputMetrics(
         @Ctx() ctx: RequestContext,
         @Args() args: { pipelineId?: string; intervalMinutes?: number; periods?: number },
-    ) {
+    ): Promise<ThroughputMetrics> {
         return this.analyticsService.getThroughputMetrics(ctx, {
             pipelineId: args.pipelineId,
         });
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
-    async dataHubRealTimeStats(@Ctx() ctx: RequestContext) {
+    @Allow(ViewDataHubAnalyticsPermission.Permission)
+    async dataHubRealTimeStats(@Ctx() ctx: RequestContext): Promise<RealTimeStats> {
         return this.analyticsService.getRealTimeStats(ctx);
     }
 
-    // WEBHOOK QUERIES & MUTATIONS
-
     @Query()
-    @Allow(Permission.ReadSettings)
+    @Allow(ManageDataHubWebhooksPermission.Permission)
     async dataHubWebhookDeliveries(
+        @Ctx() _ctx: RequestContext,
         @Args() args: { status?: string; webhookId?: string; limit?: number },
-    ) {
+    ): Promise<WebhookDelivery[]> {
         return this.webhookRetryService.getDeliveries({
             status: args.status as WebhookDeliveryStatus | undefined,
             webhookId: args.webhookId,
@@ -79,27 +126,33 @@ export class DataHubAnalyticsAdminResolver {
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
-    async dataHubWebhookDelivery(@Args() args: { deliveryId: string }) {
+    @Allow(ManageDataHubWebhooksPermission.Permission)
+    async dataHubWebhookDelivery(
+        @Ctx() _ctx: RequestContext,
+        @Args() args: { deliveryId: string },
+    ): Promise<WebhookDelivery | undefined> {
         return this.webhookRetryService.getDelivery(args.deliveryId);
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
-    async dataHubDeadLetterQueue() {
+    @Allow(ManageDataHubWebhooksPermission.Permission)
+    async dataHubDeadLetterQueue(@Ctx() _ctx: RequestContext): Promise<WebhookDelivery[]> {
         return this.webhookRetryService.getDeadLetterQueue();
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
-    async dataHubWebhookStats() {
+    @Allow(ManageDataHubWebhooksPermission.Permission)
+    async dataHubWebhookStats(@Ctx() _ctx: RequestContext): Promise<WebhookStats> {
         return this.webhookRetryService.getStats();
     }
 
     @Mutation()
     @Transaction()
-    @Allow(Permission.UpdateSettings)
-    async dataHubRetryDeadLetter(@Args() args: { deliveryId: string }) {
+    @Allow(ManageDataHubWebhooksPermission.Permission)
+    async dataHubRetryDeadLetter(
+        @Ctx() _ctx: RequestContext,
+        @Args() args: { deliveryId: string },
+    ): Promise<RetryDeadLetterResult> {
         const result = await this.webhookRetryService.retryDeadLetter(args.deliveryId);
         return {
             success: result !== null,
@@ -109,62 +162,69 @@ export class DataHubAnalyticsAdminResolver {
 
     @Mutation()
     @Transaction()
-    @Allow(Permission.UpdateSettings)
-    async dataHubRemoveDeadLetter(@Args() args: { deliveryId: string }) {
+    @Allow(ManageDataHubWebhooksPermission.Permission)
+    async dataHubRemoveDeadLetter(
+        @Ctx() _ctx: RequestContext,
+        @Args() args: { deliveryId: string },
+    ): Promise<RemoveDeadLetterResult> {
         const success = this.webhookRetryService.removeDeadLetter(args.deliveryId);
         return { success };
     }
 
-    // EXPORT DESTINATION QUERIES & MUTATIONS
-
     @Query()
-    @Allow(Permission.ReadSettings)
-    async dataHubExportDestinations() {
-        return this.exportDestinationService.getDestinations().map(dest => ({
-            ...dest,
-            // Redact sensitive fields
-            secretAccessKey: dest.type === 's3' ? '***' : undefined,
-            password: ['sftp', 'ftp'].includes(dest.type) ? '***' : undefined,
-            privateKey: dest.type === 'sftp' ? '***' : undefined,
-        }));
+    @Allow(ManageDataHubDestinationsPermission.Permission)
+    async dataHubExportDestinations(@Ctx() _ctx: RequestContext): Promise<RedactedDestinationConfig[]> {
+        return this.exportDestinationService.getDestinations().map(dest => this.redactDestinationSecrets(dest));
     }
 
     @Query()
-    @Allow(Permission.ReadSettings)
-    async dataHubExportDestination(@Args() args: { id: string }) {
+    @Allow(ManageDataHubDestinationsPermission.Permission)
+    async dataHubExportDestination(
+        @Ctx() _ctx: RequestContext,
+        @Args() args: { id: string },
+    ): Promise<RedactedDestinationConfig | null> {
         const dest = this.exportDestinationService.getDestination(args.id);
         if (!dest) return null;
+        return this.redactDestinationSecrets(dest);
+    }
+
+    private redactDestinationSecrets(dest: DestinationConfig): RedactedDestinationConfig {
         return {
             ...dest,
-            // Redact sensitive fields
-            secretAccessKey: dest.type === 's3' ? '***' : undefined,
-            password: ['sftp', 'ftp'].includes(dest.type) ? '***' : undefined,
-            privateKey: dest.type === 'sftp' ? '***' : undefined,
+            secretAccessKey: dest.type === ConnectionType.S3 ? '***' : undefined,
+            password: [ConnectionType.SFTP, ConnectionType.FTP].includes(dest.type as ConnectionType) ? '***' : undefined,
+            privateKey: dest.type === ConnectionType.SFTP ? '***' : undefined,
         };
     }
 
     @Mutation()
     @Transaction()
-    @Allow(Permission.UpdateSettings)
+    @Allow(ManageDataHubDestinationsPermission.Permission)
     async dataHubRegisterExportDestination(
+        @Ctx() _ctx: RequestContext,
         @Args() args: { input: DestinationConfig },
-    ) {
+    ): Promise<RegisterDestinationResult> {
         this.exportDestinationService.registerDestination(args.input);
         return { success: true, id: args.input.id };
     }
 
     @Mutation()
-    @Allow(Permission.UpdateSettings)
-    async dataHubTestExportDestination(@Args() args: { id: string }) {
+    @Transaction()
+    @Allow(ManageDataHubDestinationsPermission.Permission)
+    async dataHubTestExportDestination(
+        @Ctx() _ctx: RequestContext,
+        @Args() args: { id: string },
+    ): Promise<ConnectionTestResult> {
         return this.exportDestinationService.testDestination(args.id);
     }
 
     @Mutation()
     @Transaction()
-    @Allow(Permission.UpdateSettings)
+    @Allow(ManageDataHubDestinationsPermission.Permission)
     async dataHubDeliverToDestination(
+        @Ctx() _ctx: RequestContext,
         @Args() args: { destinationId: string; content: string; filename: string; mimeType?: string },
-    ) {
+    ): Promise<DeliveryResult> {
         return this.exportDestinationService.deliver(
             args.destinationId,
             args.content,

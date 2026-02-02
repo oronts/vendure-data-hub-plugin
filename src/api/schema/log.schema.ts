@@ -1,6 +1,3 @@
-/**
- * Logs & Telemetry API GraphQL schema definitions
- */
 export const logSchema = `
     """
     Logs & Telemetry API

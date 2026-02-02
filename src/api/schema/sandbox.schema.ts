@@ -1,7 +1,3 @@
-/**
- * Sandbox and Enhanced Dry Run GraphQL schema definitions
- * Provides comprehensive preview of pipeline execution with detailed record tracking
- */
 export const sandboxSchema = `
     # ============================================
     # SANDBOX EXECUTION TYPES
@@ -11,48 +7,48 @@ export const sandboxSchema = `
     Overall status of sandbox execution
     """
     enum DataHubSandboxStatus {
-        success
-        warning
-        error
+        SUCCESS
+        WARNING
+        ERROR
     }
 
     """
     Outcome of a record transformation in sandbox
     """
     enum DataHubSandboxRecordOutcome {
-        transformed
-        filtered
-        error
-        unchanged
+        SUCCESS
+        FILTERED
+        ERROR
+        UNCHANGED
     }
 
     """
     Type of field change detected in sandbox diff
     """
     enum DataHubSandboxFieldChangeType {
-        added
-        removed
-        modified
-        unchanged
-        type_changed
+        ADDED
+        REMOVED
+        MODIFIED
+        UNCHANGED
+        TYPE_CHANGED
     }
 
     """
     Severity of validation issues in sandbox
     """
     enum DataHubSandboxValidationSeverity {
-        error
-        warning
+        ERROR
+        WARNING
     }
 
     """
     Status of a step execution in sandbox
     """
     enum DataHubSandboxStepStatus {
-        success
-        warning
-        error
-        skipped
+        SUCCESS
+        WARNING
+        ERROR
+        SKIPPED
     }
 
     # ============================================
