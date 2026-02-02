@@ -6,6 +6,7 @@
  */
 
 import { ParseResult, ParseError, XlsxParseOptions } from '../types';
+import { FileFormat } from '../../constants/enums';
 
 /**
  * Extract unique fields from records
@@ -59,7 +60,7 @@ export async function parseExcel(
         if (!sheetName) {
             return {
                 success: false,
-                format: 'xlsx',
+                format: FileFormat.XLSX,
                 records: [],
                 fields: [],
                 totalRows: 0,
@@ -71,7 +72,7 @@ export async function parseExcel(
         if (!workbook.Sheets[sheetName]) {
             return {
                 success: false,
-                format: 'xlsx',
+                format: FileFormat.XLSX,
                 records: [],
                 fields: [],
                 totalRows: 0,
@@ -100,7 +101,7 @@ export async function parseExcel(
 
         return {
             success: true,
-            format: 'xlsx',
+            format: FileFormat.XLSX,
             records,
             fields,
             totalRows: records.length,
@@ -116,7 +117,7 @@ export async function parseExcel(
         if (err instanceof Error && err.message.includes('Cannot find module')) {
             return {
                 success: false,
-                format: 'xlsx',
+                format: FileFormat.XLSX,
                 records: [],
                 fields: [],
                 totalRows: 0,
@@ -127,7 +128,7 @@ export async function parseExcel(
 
         return {
             success: false,
-            format: 'xlsx',
+            format: FileFormat.XLSX,
             records: [],
             fields: [],
             totalRows: 0,
@@ -149,6 +150,7 @@ export async function getSheetNames(content: Buffer): Promise<string[]> {
         const workbook = XLSX.read(content, { type: 'buffer' });
         return workbook.SheetNames;
     } catch {
+        // Excel parsing failed - return empty array as fallback
         return [];
     }
 }
@@ -181,6 +183,7 @@ export async function getSheetDimensions(
             range: sheet['!ref'],
         };
     } catch {
+        // Excel parsing failed - return null as fallback
         return null;
     }
 }

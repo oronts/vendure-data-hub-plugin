@@ -6,16 +6,38 @@
  */
 
 import { ParseResult, ParseError, XmlParseOptions } from '../types';
+import { FileFormat } from '../../constants/enums';
+import { XML_PARSER } from '../../constants';
 
 /**
- * Default tag names to search for records
+ * Default tag names to search for records (from centralized constants)
  */
-const DEFAULT_RECORD_TAGS = ['item', 'record', 'row', 'product', 'customer', 'order', 'entry'];
+const DEFAULT_RECORD_TAGS: readonly string[] = XML_PARSER.DEFAULT_RECORD_TAGS;
 
 /**
- * Default attribute prefix
+ * Default attribute prefix (from centralized constants)
  */
-const DEFAULT_ATTR_PREFIX = '@';
+const DEFAULT_ATTR_PREFIX = XML_PARSER.DEFAULT_ATTR_PREFIX;
+
+/**
+ * Maximum tag name length to prevent ReDoS attacks
+ */
+const MAX_TAG_NAME_LENGTH = XML_PARSER.MAX_TAG_NAME_LENGTH;
+
+/**
+ * Validates a tag name to prevent ReDoS and injection attacks
+ *
+ * @param tagName - Tag name to validate
+ * @returns true if valid, false otherwise
+ */
+function isValidTagName(tagName: string): boolean {
+    // Check length to prevent ReDoS
+    if (!tagName || tagName.length > MAX_TAG_NAME_LENGTH) {
+        return false;
+    }
+    // Only allow alphanumeric, underscore, hyphen, and colon (for namespaces)
+    return /^[a-zA-Z_][a-zA-Z0-9_\-:]*$/.test(tagName);
+}
 
 /**
  * Parse XML element to object
@@ -104,14 +126,22 @@ function parseXmlValue(value: string): string | number | boolean | null {
  */
 function extractRecords(
     content: string,
-    tagNames: string[],
+    tagNames: readonly string[],
     attrPrefix: string,
 ): Record<string, unknown>[] {
     const records: Record<string, unknown>[] = [];
 
     for (const tagName of tagNames) {
+        // Validate tag name to prevent ReDoS attacks
+        if (!isValidTagName(tagName)) {
+            continue;
+        }
+
+        // Escape special regex characters in tag name (belt and suspenders after validation)
+        const escapedTagName = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
         // Match both self-closing and content tags
-        const regex = new RegExp(`<${tagName}[^>]*(?:>[\\s\\S]*?<\\/${tagName}>|\\/>)`, 'gi');
+        const regex = new RegExp(`<${escapedTagName}[^>]*(?:>[\\s\\S]*?<\\/${escapedTagName}>|\\/>)`, 'gi');
         let match;
 
         while ((match = regex.exec(content)) !== null) {
@@ -134,7 +164,7 @@ function extractRecords(
  * @param recordPath - XPath-like path (e.g., "//products/product" or "product|item")
  * @returns Array of tag names
  */
-function parseRecordPath(recordPath?: string): string[] {
+function parseRecordPath(recordPath?: string): readonly string[] {
     if (!recordPath) {
         return DEFAULT_RECORD_TAGS;
     }
@@ -197,7 +227,7 @@ export function parseXml(
 
         return {
             success: true,
-            format: 'xml',
+            format: FileFormat.XML,
             records,
             fields,
             totalRows: records.length,
@@ -207,7 +237,7 @@ export function parseXml(
     } catch (err) {
         return {
             success: false,
-            format: 'xml',
+            format: FileFormat.XML,
             records: [],
             fields: [],
             totalRows: 0,
@@ -264,11 +294,14 @@ export function getRootElement(content: string): string | undefined {
  */
 export function getChildElementNames(content: string): string[] {
     const root = getRootElement(content);
-    if (!root) return [];
+    if (!root || !isValidTagName(root)) return [];
+
+    // Escape special regex characters in root element name
+    const escapedRoot = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     // Find content inside root element
-    const startTagRegex = new RegExp(`<${root}[^>]*>`);
-    const endTagRegex = new RegExp(`</${root}>`);
+    const startTagRegex = new RegExp(`<${escapedRoot}[^>]*>`);
+    const endTagRegex = new RegExp(`</${escapedRoot}>`);
 
     const startMatch = startTagRegex.exec(content);
     const endMatch = endTagRegex.exec(content);

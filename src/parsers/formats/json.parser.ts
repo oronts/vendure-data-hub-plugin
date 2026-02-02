@@ -6,6 +6,18 @@
  */
 
 import { ParseResult, ParseError, JsonParseOptions } from '../types';
+import { FileFormat } from '../../constants/enums';
+import { CODE_SECURITY } from '../../constants';
+
+/**
+ * Maximum path length to prevent performance issues
+ */
+const MAX_PATH_LENGTH = CODE_SECURITY.MAX_CONDITION_LENGTH;
+
+/**
+ * Maximum path depth to prevent stack issues
+ */
+const MAX_PATH_DEPTH = 50;
 
 /**
  * Navigate to a nested path in an object
@@ -19,7 +31,18 @@ export function navigatePath(data: unknown, path: string): unknown {
         return data;
     }
 
+    // Validate path length to prevent performance issues
+    if (path.length > MAX_PATH_LENGTH) {
+        return undefined;
+    }
+
     const parts = path.split('.');
+
+    // Validate path depth
+    if (parts.length > MAX_PATH_DEPTH) {
+        return undefined;
+    }
+
     let current: unknown = data;
 
     for (const part of parts) {
@@ -28,13 +51,21 @@ export function navigatePath(data: unknown, path: string): unknown {
         }
 
         // Handle array index notation like "items[0]"
-        const arrayMatch = part.match(/^(\w+)\[(\d+)\]$/);
-        if (arrayMatch) {
-            const [, key, index] = arrayMatch;
+        // Using a simple check instead of regex for better performance
+        const bracketIdx = part.indexOf('[');
+        if (bracketIdx > 0 && part.endsWith(']')) {
+            const key = part.slice(0, bracketIdx);
+            const indexStr = part.slice(bracketIdx + 1, -1);
+            const index = parseInt(indexStr, 10);
+
+            if (isNaN(index) || index < 0) {
+                return undefined;
+            }
+
             const obj = current as Record<string, unknown>;
             const arr = obj[key];
             if (Array.isArray(arr)) {
-                current = arr[parseInt(index, 10)];
+                current = arr[index];
             } else {
                 return undefined;
             }
@@ -118,7 +149,7 @@ export function parseJson(
             if (navigated === undefined) {
                 return {
                     success: false,
-                    format: 'json',
+                    format: FileFormat.JSON,
                     records: [],
                     fields: [],
                     totalRows: 0,
@@ -138,7 +169,7 @@ export function parseJson(
             } else {
                 return {
                     success: false,
-                    format: 'json',
+                    format: FileFormat.JSON,
                     records: [],
                     fields: [],
                     totalRows: 0,
@@ -175,7 +206,7 @@ export function parseJson(
 
         return {
             success: errors.length === 0,
-            format: 'json',
+            format: FileFormat.JSON,
             records: validRecords,
             fields,
             totalRows: validRecords.length,
@@ -199,7 +230,7 @@ export function parseJson(
 
         return {
             success: false,
-            format: 'json',
+            format: FileFormat.JSON,
             records: [],
             fields: [],
             totalRows: 0,
@@ -246,7 +277,7 @@ export function parseJsonLines(content: string): ParseResult {
 
     return {
         success: errors.length === 0,
-        format: 'json',
+        format: FileFormat.JSON,
         records,
         fields,
         totalRows: records.length,
@@ -278,7 +309,8 @@ export function isJsonLines(content: string): boolean {
             if (typeof parsed !== 'object' || Array.isArray(parsed)) {
                 return false;
             }
-        } catch {
+        } catch (_err) {
+            // JSON parse failed - not valid NDJSON line
             return false;
         }
     }

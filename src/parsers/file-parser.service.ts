@@ -116,11 +116,16 @@ export class FileParserService {
     }
 
     /**
+     * Maximum allowed preview rows to prevent performance issues
+     */
+    private static readonly MAX_PREVIEW_ROWS = PAGINATION.DATABASE_PAGE_SIZE;
+
+    /**
      * Get preview of file content (first N rows with field analysis)
      *
      * @param content - File content
      * @param options - Parse options
-     * @param maxRows - Maximum rows for preview (default: 10)
+     * @param maxRows - Maximum rows for preview (default: 10, max: 1000)
      * @returns File preview with field info and sample data
      */
     async preview(
@@ -128,12 +133,21 @@ export class FileParserService {
         options: ParseOptions = {},
         maxRows: number = PAGINATION.FILE_PREVIEW_ROWS,
     ): Promise<FilePreview> {
+        // Validate and clamp maxRows to prevent performance issues
+        const validatedMaxRows = Math.max(
+            1,
+            Math.min(
+                Math.floor(maxRows) || PAGINATION.FILE_PREVIEW_ROWS,
+                FileParserService.MAX_PREVIEW_ROWS,
+            ),
+        );
+
         const parseResult = await this.parse(content, {
             ...options,
-            csv: { ...options.csv, preview: maxRows },
+            csv: { ...options.csv, preview: validatedMaxRows },
         });
 
-        const sampleData = parseResult.records.slice(0, maxRows);
+        const sampleData = parseResult.records.slice(0, validatedMaxRows);
         const fields = this.analyzeFields(parseResult.records, parseResult.fields);
 
         return {

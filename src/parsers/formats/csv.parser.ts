@@ -11,20 +11,26 @@ import {
     ParseError,
     CsvParseOptions,
     CsvDelimiter,
-    LineEnding,
 } from '../types';
 import { removeBom, detectLineEnding } from '../helpers/encoding';
+import { FileFormat } from '../../constants/enums';
+import {
+    CSV_DEFAULTS as PARSER_CSV_DEFAULTS,
+    NULL_VALUES,
+    BOOLEAN_TRUE_VALUES,
+    BOOLEAN_FALSE_VALUES,
+} from '../constants';
 
 /**
  * Default CSV options
  */
 const CSV_DEFAULTS: Required<Omit<CsvParseOptions, 'preview' | 'headers' | 'lineEnding'>> = {
-    delimiter: ',',
+    delimiter: PARSER_CSV_DEFAULTS.DELIMITER as CsvDelimiter,
     header: true,
     skipEmptyLines: true,
     encoding: 'utf-8',
-    quoteChar: '"',
-    escapeChar: '"',
+    quoteChar: PARSER_CSV_DEFAULTS.QUOTE_CHAR,
+    escapeChar: PARSER_CSV_DEFAULTS.ESCAPE_CHAR,
 };
 
 /**
@@ -187,7 +193,7 @@ export function parseCsv(
 
         return {
             success: errors.filter(e => e.code !== 'TooFewFields' && e.code !== 'TooManyFields').length === 0,
-            format: 'csv',
+            format: FileFormat.CSV,
             records,
             fields,
             totalRows: records.length,
@@ -200,7 +206,7 @@ export function parseCsv(
     } catch (err) {
         return {
             success: false,
-            format: 'csv',
+            format: FileFormat.CSV,
             records: [],
             fields: [],
             totalRows: 0,
@@ -237,7 +243,7 @@ export function parseCsvManual(
     if (lines.length === 0) {
         return {
             success: true,
-            format: 'csv',
+            format: FileFormat.CSV,
             records: [],
             fields: [],
             totalRows: 0,
@@ -292,7 +298,7 @@ export function parseCsvManual(
 
     return {
         success: errors.length === 0,
-        format: 'csv',
+        format: FileFormat.CSV,
         records,
         fields: headers,
         totalRows: lines.length - startRow,
@@ -316,15 +322,15 @@ function parseValue(value: string): string | number | boolean | null {
     // Empty string
     if (trimmed === '') return '';
 
-    // Null values
-    const nullValues = ['null', 'na', 'n/a', '-', ''];
-    if (nullValues.includes(trimmed.toLowerCase())) {
+    // Null values - use centralized constants
+    const lowerValue = trimmed.toLowerCase();
+    if ((NULL_VALUES as readonly string[]).includes(lowerValue)) {
         return null;
     }
 
-    // Boolean values
-    if (trimmed.toLowerCase() === 'true' || trimmed.toLowerCase() === 'yes') return true;
-    if (trimmed.toLowerCase() === 'false' || trimmed.toLowerCase() === 'no') return false;
+    // Boolean values - use centralized constants
+    if ((BOOLEAN_TRUE_VALUES as readonly string[]).includes(lowerValue)) return true;
+    if ((BOOLEAN_FALSE_VALUES as readonly string[]).includes(lowerValue)) return false;
 
     // Number values
     const num = Number(trimmed);

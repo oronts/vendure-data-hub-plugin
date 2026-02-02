@@ -133,14 +133,25 @@ export function removeBomFromBuffer(buffer: Buffer, encoding?: Encoding): Buffer
 }
 
 /**
+ * Maximum sample size for binary detection to prevent performance issues
+ */
+const MAX_BINARY_CHECK_SIZE = 8192;
+
+/**
  * Detect if content is likely binary
  *
  * @param buffer - Buffer to check
- * @param sampleSize - Number of bytes to check (default: 512)
+ * @param sampleSize - Number of bytes to check (default: 512, max: 8192)
  * @returns True if content appears to be binary
  */
 export function isBinaryContent(buffer: Buffer, sampleSize = 512): boolean {
-    const checkLength = Math.min(buffer.length, sampleSize);
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+        return false;
+    }
+
+    // Validate and clamp sampleSize
+    const validatedSampleSize = Math.max(1, Math.min(sampleSize, MAX_BINARY_CHECK_SIZE));
+    const checkLength = Math.min(buffer.length, validatedSampleSize);
 
     for (let i = 0; i < checkLength; i++) {
         const byte = buffer[i];
@@ -205,20 +216,19 @@ export function detectLineEnding(content: string): '\n' | '\r\n' | '\r' {
 }
 
 /**
- * Sanitize string for safe display/storage
- * Removes or replaces problematic characters
+ * Remove control characters from string for safe display/storage
  *
- * @param value - String to sanitize
- * @returns Sanitized string
+ * @param value - String to clean
+ * @returns String with control characters removed
  */
-export function sanitizeString(value: string): string {
-    // Remove null characters
+export function removeControlCharacters(value: string): string {
     let result = value.replace(/\0/g, '');
-    // Replace other control characters with space
     // eslint-disable-next-line no-control-regex
     result = result.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ');
     return result;
 }
+
+export { removeControlCharacters as sanitizeString };
 
 /**
  * Trim and normalize whitespace in a string

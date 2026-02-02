@@ -5,16 +5,17 @@
  */
 
 import { ParseError } from '../types';
+import { STREAMING } from '../../constants';
 
 /**
- * Default chunk size for streaming operations
+ * Default chunk size for streaming operations (from centralized constants)
  */
-export const DEFAULT_CHUNK_SIZE = 1000;
+export const DEFAULT_CHUNK_SIZE = STREAMING.DEFAULT_CHUNK_SIZE;
 
 /**
- * Maximum buffer size before forcing flush
+ * Maximum buffer size before forcing flush (from centralized constants)
  */
-export const MAX_BUFFER_SIZE = 10_000;
+export const MAX_BUFFER_SIZE = STREAMING.MAX_BUFFER_SIZE;
 
 /**
  * Chunk processing result
@@ -299,7 +300,7 @@ export function throttle<T extends (...args: unknown[]) => Promise<unknown>>(
 export async function mapWithConcurrency<T, R>(
     items: T[],
     processor: (item: T, index: number) => Promise<R>,
-    concurrency: number = 5,
+    concurrency: number = STREAMING.DEFAULT_CONCURRENCY,
 ): Promise<R[]> {
     const results: R[] = new Array(items.length);
     const executing = new Set<Promise<void>>();
@@ -328,6 +329,12 @@ export async function mapWithConcurrency<T, R>(
  * @param avgRecordSize - Average record size in bytes (estimated)
  * @returns Estimated record count
  */
-export function estimateRecordCount(contentSize: number, avgRecordSize: number = 100): number {
+export function estimateRecordCount(
+    contentSize: number,
+    avgRecordSize: number = STREAMING.DEFAULT_AVG_RECORD_SIZE,
+): number {
+    if (contentSize <= 0 || avgRecordSize <= 0) {
+        return 0;
+    }
     return Math.ceil(contentSize / avgRecordSize);
 }

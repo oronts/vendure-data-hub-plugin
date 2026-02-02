@@ -1,6 +1,5 @@
 import { CrudPermissionDefinition, PermissionDefinition } from '@vendure/core';
 
-// Permission definitions (for config)
 export const DataHubPipelinePermission = new CrudPermissionDefinition('DataHubPipeline');
 export const DataHubSecretPermission = new CrudPermissionDefinition('DataHubSecret');
 export const RunDataHubPipelinePermission = new PermissionDefinition({ name: 'RunDataHubPipeline' });
@@ -8,14 +7,21 @@ export const ViewDataHubRunsPermission = new PermissionDefinition({ name: 'ViewD
 export const RetryDataHubRecordPermission = new PermissionDefinition({ name: 'RetryDataHubRecord' });
 export const ManageDataHubAdaptersPermission = new PermissionDefinition({ name: 'ManageDataHubAdapters' });
 export const ManageDataHubConnectionsPermission = new PermissionDefinition({ name: 'ManageDataHubConnections' });
-export const ViewQuarantinePermission = new PermissionDefinition({ name: 'ViewQuarantine' });
-export const EditQuarantinePermission = new PermissionDefinition({ name: 'EditQuarantine' });
-export const ReplayRecordPermission = new PermissionDefinition({ name: 'ReplayRecord' });
+export const ViewDataHubQuarantinePermission = new PermissionDefinition({ name: 'ViewDataHubQuarantine' });
+export const EditDataHubQuarantinePermission = new PermissionDefinition({ name: 'EditDataHubQuarantine' });
+export const ReplayDataHubRecordPermission = new PermissionDefinition({ name: 'ReplayDataHubRecord' });
 export const PublishDataHubPipelinePermission = new PermissionDefinition({ name: 'PublishDataHubPipeline' });
 export const ReviewDataHubPipelinePermission = new PermissionDefinition({ name: 'ReviewDataHubPipeline' });
 export const UpdateDataHubSettingsPermission = new PermissionDefinition({ name: 'UpdateDataHubSettings' });
+export const ViewDataHubAnalyticsPermission = new PermissionDefinition({ name: 'ViewDataHubAnalytics' });
+export const ManageDataHubWebhooksPermission = new PermissionDefinition({ name: 'ManageDataHubWebhooks' });
+export const ManageDataHubDestinationsPermission = new PermissionDefinition({ name: 'ManageDataHubDestinations' });
+export const ManageDataHubFeedsPermission = new PermissionDefinition({ name: 'ManageDataHubFeeds' });
+export const ViewDataHubEntitySchemasPermission = new PermissionDefinition({ name: 'ViewDataHubEntitySchemas' });
+export const SubscribeDataHubEventsPermission = new PermissionDefinition({ name: 'SubscribeDataHubEvents' });
+export const ManageDataHubFilesPermission = new PermissionDefinition({ name: 'ManageDataHubFiles' });
+export const ReadDataHubFilesPermission = new PermissionDefinition({ name: 'ReadDataHubFiles' });
 
-// Definitions list for config.authOptions.customPermissions
 export const DATAHUB_PERMISSION_DEFINITIONS = [
     DataHubPipelinePermission,
     DataHubSecretPermission,
@@ -24,10 +30,18 @@ export const DATAHUB_PERMISSION_DEFINITIONS = [
     RetryDataHubRecordPermission,
     ManageDataHubAdaptersPermission,
     ManageDataHubConnectionsPermission,
-    ViewQuarantinePermission,
-    EditQuarantinePermission,
-    ReplayRecordPermission,
+    ViewDataHubQuarantinePermission,
+    EditDataHubQuarantinePermission,
+    ReplayDataHubRecordPermission,
     PublishDataHubPipelinePermission,
     ReviewDataHubPipelinePermission,
     UpdateDataHubSettingsPermission,
+    ViewDataHubAnalyticsPermission,
+    ManageDataHubWebhooksPermission,
+    ManageDataHubDestinationsPermission,
+    ManageDataHubFeedsPermission,
+    ViewDataHubEntitySchemasPermission,
+    SubscribeDataHubEventsPermission,
+    ManageDataHubFilesPermission,
+    ReadDataHubFilesPermission,
 ];
