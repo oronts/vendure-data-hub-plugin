@@ -5,6 +5,8 @@
  * allowing users to customize field matching behavior.
  */
 
+import { TRUNCATION } from '../../constants';
+
 /**
  * Scoring weights for field matching
  * All weights should sum to approximately 1.0
@@ -127,8 +129,8 @@ export function validateAutoMapperConfig(config: Partial<AutoMapperConfigInput>)
 
     // Validate customAliases structure
     if (config.customAliases) {
-        if (Object.keys(config.customAliases).length > 1000) {
-            errors.push('customAliases cannot exceed 1000 entries');
+        if (Object.keys(config.customAliases).length > TRUNCATION.MAX_CUSTOM_ALIASES) {
+            errors.push(`customAliases cannot exceed ${TRUNCATION.MAX_CUSTOM_ALIASES} entries`);
         }
         for (const [key, values] of Object.entries(config.customAliases)) {
             if (!Array.isArray(values)) {

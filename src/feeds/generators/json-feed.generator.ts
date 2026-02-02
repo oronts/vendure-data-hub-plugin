@@ -6,12 +6,14 @@
 
 import { RequestContext, Logger } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
-import { SERVICE_DEFAULTS } from '../../constants/index';
+import { SERVICE_DEFAULTS, TRANSFORM_LIMITS } from '../../constants/index';
 import {
     FeedConfig,
     FeedFieldMapping,
     VariantWithCustomFields,
     ProductWithCustomFields,
+    CustomFieldsRecord,
+    CustomFieldValue,
 } from './feed-types';
 import {
     buildProductUrl,
@@ -20,8 +22,10 @@ import {
     extractFacetValue,
     getProductType,
     getStockOnHand,
+    getGenericAvailability,
     stripHtml,
 } from './feed-helpers';
+import { FIELD_PREFIX, FEED_LIMITS, FEED_DEFAULTS, GenericAvailabilityStatus } from './feed-constants';
 
 const LOG_CONTEXT = 'JSONFeedGenerator';
 
@@ -35,7 +39,7 @@ export interface JSONFeedItem {
     description: string;
     price: number;
     currency: string;
-    availability: 'in_stock' | 'out_of_stock';
+    availability: GenericAvailabilityStatus;
     stockQuantity: number;
     url: string;
     imageUrl: string;
@@ -46,8 +50,9 @@ export interface JSONFeedItem {
         name: string;
         value: string;
     }>;
-    customFields?: Record<string, any>;
-    [key: string]: any; // Allow custom properties
+    customFields?: CustomFieldsRecord;
+    /** Additional custom mapped fields */
+    [key: string]: CustomFieldValue | string | number | string[] | Array<{ name: string; value: string }> | CustomFieldsRecord | undefined;
 }
 
 /**
@@ -94,7 +99,7 @@ async function transformVariantToItem(
     options: JSONGeneratorOptions,
 ): Promise<JSONFeedItem> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || 'USD';
+    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
     const product = variant.product as ProductWithCustomFields | undefined;
     const stockOnHand = getStockOnHand(variant);
 
@@ -103,9 +108,9 @@ async function transformVariantToItem(
         sku: variant.sku || null,
         name: variant.name || product?.name || '',
         description: stripHtml(product?.description || ''),
-        price: variant.priceWithTax / 100,
+        price: variant.priceWithTax / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER,
         currency,
-        availability: stockOnHand > 0 ? 'in_stock' : 'out_of_stock',
+        availability: getGenericAvailability(variant),
         stockQuantity: stockOnHand,
         url: buildProductUrl(baseUrl, variant, config.options?.utmParams),
         imageUrl: getImageUrl(variant, product, baseUrl),
@@ -141,7 +146,7 @@ async function transformVariantToItem(
 
     // Custom fields
     if (options.includeCustomFields) {
-        const customFields: Record<string, any> = {};
+        const customFields: Record<string, unknown> = {};
         const variantCustomFields = variant.customFields || {};
         const productCustomFields = product?.customFields || {};
 
@@ -153,7 +158,8 @@ async function transformVariantToItem(
         });
 
         if (Object.keys(customFields).length > 0) {
-            item.customFields = customFields;
+            // Cast to CustomFieldsRecord since we only keep non-null primitive values
+            item.customFields = customFields as CustomFieldsRecord;
         }
     }
 
@@ -180,14 +186,18 @@ function getValueByPath(
     variant: VariantWithCustomFields,
     product: ProductWithCustomFields | undefined,
     path: string,
-): any {
+): CustomFieldValue {
     const parts = path.split('.');
-    let value: any;
+    let value: Record<string, unknown> | unknown = variant;
 
-    if (parts[0] === 'variant') {
+    // Remove trailing dot for comparison (FIELD_PREFIX values end with '.')
+    const variantPrefix = FIELD_PREFIX.VARIANT.slice(0, -1);
+    const productPrefix = FIELD_PREFIX.PRODUCT.slice(0, -1);
+
+    if (parts[0] === variantPrefix) {
         value = variant;
         parts.shift();
-    } else if (parts[0] === 'product') {
+    } else if (parts[0] === productPrefix) {
         value = product;
         parts.shift();
     } else {
@@ -199,10 +209,21 @@ function getValueByPath(
         if (value === null || value === undefined) {
             return undefined;
         }
-        value = value[part];
+        if (typeof value === 'object' && value !== null) {
+            value = (value as Record<string, unknown>)[part];
+        } else {
+            return undefined;
+        }
     }
 
-    return value;
+    // Return only if it's a valid CustomFieldValue type
+    if (value === null || value === undefined) {
+        return value as CustomFieldValue;
+    }
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        return value;
+    }
+    return undefined;
 }
 
 /**
@@ -220,12 +241,12 @@ export async function generateJSONFeed(
         includeCustomFields: false,
         includeOptions: true,
         prettyPrint: true,
-        indentSpaces: 2,
+        indentSpaces: FEED_LIMITS.JSON_INDENT_SPACES,
         includeMetadata: true,
         ...options,
     };
 
-    const currency = config.options?.currency || 'USD';
+    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
     const items: JSONFeedItem[] = [];
 
     for (const variant of products) {
@@ -293,7 +314,7 @@ export async function generateFullJSONFeed(
         includeCustomFields: true,
         includeOptions: true,
         prettyPrint: true,
-        indentSpaces: 2,
+        indentSpaces: FEED_LIMITS.JSON_INDENT_SPACES,
         includeMetadata: true,
     });
 }

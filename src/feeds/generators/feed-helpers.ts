@@ -7,6 +7,22 @@
 import { Product, ProductVariant, RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
 import { VariantWithCustomFields } from './feed-types';
+import {
+    GOOGLE_AVAILABILITY,
+    FACEBOOK_AVAILABILITY,
+    GENERIC_AVAILABILITY,
+    FEED_DEFAULTS,
+    GoogleAvailabilityStatus,
+    FacebookAvailabilityStatus,
+    GenericAvailabilityStatus,
+} from './feed-constants';
+
+/**
+ * Extended variant type that may include legacy stockOnHand property
+ */
+interface VariantWithLegacyStock extends VariantWithCustomFields {
+    stockOnHand?: number;
+}
 
 /**
  * Get stock on hand from variant or stock levels
@@ -16,8 +32,8 @@ export function getStockOnHand(variant: VariantWithCustomFields): number {
     if (variant.stockLevels && variant.stockLevels.length > 0) {
         return variant.stockLevels.reduce((sum, sl) => sum + sl.stockOnHand, 0);
     }
-    // Fallback to stockOnHand if it exists as a direct property
-    return (variant as any).stockOnHand ?? 0;
+    // Fallback to stockOnHand if it exists as a direct property (legacy support)
+    return (variant as VariantWithLegacyStock).stockOnHand ?? 0;
 }
 
 /**
@@ -30,23 +46,19 @@ export function formatPrice(priceInCents: number, currency: string): string {
 /**
  * Get Google Shopping availability status
  */
-export function getGoogleAvailability(
-    variant: VariantWithCustomFields,
-): 'in_stock' | 'out_of_stock' | 'preorder' | 'backorder' {
+export function getGoogleAvailability(variant: VariantWithCustomFields): GoogleAvailabilityStatus {
     const stockOnHand = getStockOnHand(variant);
-    if (stockOnHand > 0) return 'in_stock';
-    return 'out_of_stock';
+    if (stockOnHand > 0) return GOOGLE_AVAILABILITY.IN_STOCK;
+    return GOOGLE_AVAILABILITY.OUT_OF_STOCK;
 }
 
 /**
  * Get Facebook Catalog availability status
  */
-export function getFacebookAvailability(
-    variant: VariantWithCustomFields,
-): 'in stock' | 'out of stock' | 'preorder' | 'available for order' {
+export function getFacebookAvailability(variant: VariantWithCustomFields): FacebookAvailabilityStatus {
     const stockOnHand = getStockOnHand(variant);
-    if (stockOnHand > 0) return 'in stock';
-    return 'out of stock';
+    if (stockOnHand > 0) return FACEBOOK_AVAILABILITY.IN_STOCK;
+    return FACEBOOK_AVAILABILITY.OUT_OF_STOCK;
 }
 
 /**
@@ -89,7 +101,16 @@ export function getImageUrl(
         }
         return `${baseUrl}/assets/${asset.source}`;
     }
-    return `${baseUrl}/placeholder.jpg`;
+    return `${baseUrl}${FEED_DEFAULTS.PLACEHOLDER_IMAGE_PATH}`;
+}
+
+/**
+ * Get generic availability status for JSON/XML feeds
+ */
+export function getGenericAvailability(variant: VariantWithCustomFields): GenericAvailabilityStatus {
+    const stockOnHand = getStockOnHand(variant);
+    if (stockOnHand > 0) return GENERIC_AVAILABILITY.IN_STOCK;
+    return GENERIC_AVAILABILITY.OUT_OF_STOCK;
 }
 
 /**
@@ -203,4 +224,49 @@ export function csvEscape(value: string): string {
         return `"${value.replace(/"/g, '""')}"`;
     }
     return value;
+}
+
+/**
+ * Safely convert a custom field value to string
+ * Returns undefined if the value is null, undefined, or not a string/number
+ */
+export function toStringOrUndefined(value: unknown): string | undefined {
+    if (value === null || value === undefined) {
+        return undefined;
+    }
+    if (typeof value === 'string') {
+        return value;
+    }
+    if (typeof value === 'number') {
+        return String(value);
+    }
+    return undefined;
+}
+
+/**
+ * Safely convert a custom field value to string with empty string fallback
+ * Returns empty string if the value is null, undefined, or not a string/number
+ */
+export function toStringOrEmpty(value: unknown): string {
+    return toStringOrUndefined(value) ?? '';
+}
+
+/**
+ * Extract custom labels from product custom fields
+ * Returns a record with keys 'customLabel0' through 'customLabel4' where values exist
+ */
+export function extractCustomLabels(
+    customFields: Record<string, unknown> | undefined,
+): Record<string, string> {
+    if (!customFields) return {};
+
+    const labels: Record<string, string> = {};
+    for (let i = 0; i < 5; i++) {
+        const key = `customLabel${i}`;
+        const value = toStringOrUndefined(customFields[key]);
+        if (value) {
+            labels[key] = value;
+        }
+    }
+    return labels;
 }

@@ -6,12 +6,13 @@
 
 import { RequestContext, Logger } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
-import { SERVICE_DEFAULTS } from '../../constants/index';
+import { SERVICE_DEFAULTS, TRANSFORM_LIMITS } from '../../constants/index';
 import {
     FeedConfig,
     FeedFieldMapping,
     VariantWithCustomFields,
     ProductWithCustomFields,
+    CustomFieldValue,
 } from './feed-types';
 import {
     formatPrice,
@@ -24,6 +25,7 @@ import {
     stripHtml,
     csvEscape,
 } from './feed-helpers';
+import { FIELD_PREFIX, FEED_DEFAULTS, GENERIC_AVAILABILITY } from './feed-constants';
 
 const LOG_CONTEXT = 'CSVFeedGenerator';
 
@@ -33,7 +35,7 @@ const LOG_CONTEXT = 'CSVFeedGenerator';
 export interface CSVFieldConfig {
     header: string;
     source: string;
-    transform?: (value: any, variant: VariantWithCustomFields, product?: ProductWithCustomFields) => string;
+    transform?: (value: CustomFieldValue | string, variant: VariantWithCustomFields, product?: ProductWithCustomFields) => string;
 }
 
 /**
@@ -81,7 +83,7 @@ function getFieldValue(
     productType?: string,
 ): string {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || 'USD';
+    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
 
     switch (source) {
         case 'id':
@@ -93,13 +95,13 @@ function getFieldValue(
         case 'description':
             return csvEscape(stripHtml(product?.description || ''));
         case 'price':
-            return (variant.priceWithTax / 100).toFixed(2);
+            return (variant.priceWithTax / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER).toFixed(TRANSFORM_LIMITS.CURRENCY_DECIMAL_PLACES);
         case 'price_formatted':
             return formatPrice(variant.priceWithTax, currency);
         case 'currency':
             return currency;
         case 'availability':
-            return getStockOnHand(variant) > 0 ? 'in_stock' : 'out_of_stock';
+            return getStockOnHand(variant) > 0 ? GENERIC_AVAILABILITY.IN_STOCK : GENERIC_AVAILABILITY.OUT_OF_STOCK;
         case 'stock':
             return getStockOnHand(variant).toString();
         case 'url':
@@ -114,28 +116,31 @@ function getFieldValue(
             return getOptionValue(variant, 'color') || '';
         case 'size':
             return getOptionValue(variant, 'size') || '';
-        case 'weight':
-            return product?.customFields?.weight?.toString() || '';
+        case 'weight': {
+            const weightValue = product?.customFields?.weight;
+            return weightValue !== null && weightValue !== undefined ? String(weightValue) : '';
+        }
         case 'product_id':
             return product?.id.toString() || '';
         case 'slug':
             return product?.slug || '';
         default:
             // Check for customFields path
-            if (source.startsWith('customFields.')) {
-                const fieldName = source.replace('customFields.', '');
+            if (source.startsWith(FIELD_PREFIX.CUSTOM_FIELDS)) {
+                const fieldName = source.replace(FIELD_PREFIX.CUSTOM_FIELDS, '');
                 const customFields = variant.customFields || {};
                 const productCustomFields = product?.customFields || {};
-                return String(customFields[fieldName] ?? productCustomFields[fieldName] ?? '');
+                const fieldValue = customFields[fieldName] ?? productCustomFields[fieldName];
+                return fieldValue !== null && fieldValue !== undefined ? String(fieldValue) : '';
             }
             // Check for options path
-            if (source.startsWith('option.')) {
-                const optionName = source.replace('option.', '');
+            if (source.startsWith(FIELD_PREFIX.OPTION)) {
+                const optionName = source.replace(FIELD_PREFIX.OPTION, '');
                 return getOptionValue(variant, optionName) || '';
             }
             // Check for facet path
-            if (source.startsWith('facet.')) {
-                const facetCode = source.replace('facet.', '');
+            if (source.startsWith(FIELD_PREFIX.FACET)) {
+                const facetCode = source.replace(FIELD_PREFIX.FACET, '');
                 return extractFacetValue(product, facetCode) || '';
             }
             return '';

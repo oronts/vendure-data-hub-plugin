@@ -5,8 +5,25 @@
 import { JsonValue } from '../../../types/index';
 import { TransformConfig } from '../../services/field-mapper.service';
 
+// Import canonical implementations for individual operations
+import {
+    applyParseNumber as applyParseNumberCanonical,
+    applyRound as applyRoundCanonical,
+    applyFloor as applyFloorCanonical,
+    applyCeil as applyCeilCanonical,
+    applyAbs as applyAbsCanonical,
+    applyToCents as applyToCentsCanonical,
+    applyFromCents as applyFromCentsCanonical,
+} from '../../../transforms/field/number-transforms';
+
+export const parseNumberCanonical = applyParseNumberCanonical;
+export const toMinorUnitsCanonical = applyToCentsCanonical;
+export const fromMinorUnitsCanonical = applyFromCentsCanonical;
+
 /**
  * Apply math transform
+ * Handles lowercase operations from mapper's TransformConfig
+ * and uses canonical functions where applicable.
  */
 export function applyMathTransform(
     value: JsonValue,
@@ -31,21 +48,21 @@ export function applyMathTransform(
             num = operand !== 0 ? num / operand : 0;
             break;
         case 'round':
-            num = Math.round(num);
+            num = applyRoundCanonical(num, { precision: 0 }) as number;
             break;
         case 'floor':
-            num = Math.floor(num);
+            num = applyFloorCanonical(num) as number;
             break;
         case 'ceil':
-            num = Math.ceil(num);
+            num = applyCeilCanonical(num) as number;
             break;
         case 'abs':
-            num = Math.abs(num);
+            num = applyAbsCanonical(num) as number;
             break;
     }
 
     if (config.precision !== undefined) {
-        num = parseFloat(num.toFixed(config.precision));
+        num = applyRoundCanonical(num, { precision: config.precision }) as number;
     }
 
     return num;
@@ -55,14 +72,8 @@ export function applyMathTransform(
  * Parse a string to number, handling currency formats
  */
 export function parseNumber(value: JsonValue): number {
-    if (typeof value === 'number') return value;
-    if (typeof value === 'string') {
-        // Handle currency strings by removing non-numeric chars except . and -
-        const cleaned = value.replace(/[^0-9.-]/g, '');
-        const num = parseFloat(cleaned);
-        return isNaN(num) ? 0 : num;
-    }
-    return Number(value);
+    const result = applyParseNumberCanonical(value);
+    return typeof result === 'number' ? result : 0;
 }
 
 /**

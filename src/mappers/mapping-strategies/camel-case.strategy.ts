@@ -5,24 +5,29 @@
  */
 
 import { MappingStrategy, NameScoreResult } from '../types/index';
+import { SEPARATOR_PATTERN, CAMEL_CASE_PATTERN } from '../constants';
+
+// Regex pattern for converting to camelCase
+const TO_CAMEL_CASE_PATTERN = /[-_\s]+(.)?/g;
 
 /**
  * Converts a string to camelCase
  */
 export function toCamelCase(str: string): string {
     return str
-        .replace(/[-_\s]+(.)?/g, (_, char) => (char ? char.toUpperCase() : ''))
+        .replace(TO_CAMEL_CASE_PATTERN, (_, char) => (char ? char.toUpperCase() : ''))
         .replace(/^./, char => char.toLowerCase());
 }
 
 /**
  * Splits camelCase string into parts
+ * Uses centralized CAMEL_CASE_PATTERN from constants
  */
 export function splitCamelCase(str: string): string[] {
     return str
-        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(CAMEL_CASE_PATTERN, '$1 $2')
         .toLowerCase()
-        .split(/[\s_-]+/)
+        .split(SEPARATOR_PATTERN)
         .filter(Boolean);
 }
 
@@ -34,7 +39,6 @@ export class CamelCaseMatchStrategy implements MappingStrategy {
         _targetNormalized: string,
         _targetKey: string,
     ): NameScoreResult | null {
-        // Convert both to camelCase and compare
         const sourceCamel = toCamelCase(sourceForComparison);
         const targetCamel = toCamelCase(targetForComparison);
 
@@ -42,7 +46,6 @@ export class CamelCaseMatchStrategy implements MappingStrategy {
             return { score: 90, reason: 'CamelCase normalized match' };
         }
 
-        // Check if parts match
         const sourceParts = splitCamelCase(sourceForComparison);
         const targetParts = splitCamelCase(targetForComparison);
 

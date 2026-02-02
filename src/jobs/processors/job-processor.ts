@@ -4,9 +4,12 @@
  * Common utilities for job processing, error handling, and logging.
  */
 
-import { Logger } from '@vendure/core';
-import { LOGGER_CTX, DEFAULTS, HTTP, TIME_UNITS } from '../../constants/index';
+import { LOGGER_CONTEXTS, DEFAULTS, HTTP, TIME_UNITS } from '../../constants/index';
 import { JobResult, JobContext } from '../types';
+import { sleep } from '../../runtime/utils';
+import { DataHubLogger } from '../../services/logger';
+
+const logger = new DataHubLogger(LOGGER_CONTEXTS.JOB_PROCESSOR);
 
 /**
  * Create a job context for tracking
@@ -80,24 +83,18 @@ export function withJobProcessing<T, R>(
         const startTime = Date.now();
 
         try {
-            Logger.debug(`Starting job: ${name}`, LOGGER_CTX);
+            logger.debug(`Starting job: ${name}`);
             await processor(data);
             const durationMs = Date.now() - startTime;
 
-            Logger.debug(
-                `Job completed: ${name} (${durationMs}ms)`,
-                LOGGER_CTX,
-            );
+            logger.debug(`Job completed: ${name}`, { durationMs });
 
             return createSuccessResult(durationMs);
         } catch (error) {
             const durationMs = Date.now() - startTime;
             const errorMessage = error instanceof Error ? error.message : String(error);
 
-            Logger.error(
-                `Job failed: ${name} - ${errorMessage}`,
-                LOGGER_CTX,
-            );
+            logger.error(`Job failed: ${name}`, error instanceof Error ? error : undefined, { durationMs });
 
             return createFailureResult(errorMessage, durationMs);
         }
@@ -149,10 +146,7 @@ export async function withRetry<T>(
 
             onRetry?.(attempt, lastError);
 
-            Logger.debug(
-                `Retrying in ${delay}ms (attempt ${attempt}/${maxAttempts})`,
-                LOGGER_CTX,
-            );
+            logger.debug(`Retrying in ${delay}ms`, { attempt, maxAttempts, delayMs: delay });
 
             await sleep(delay);
         }
@@ -161,14 +155,7 @@ export async function withRetry<T>(
     throw lastError ?? new Error('Retry failed with unknown error');
 }
 
-/**
- * Sleep for a specified duration
- *
- * @param ms - Duration in milliseconds
- */
-export function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
+export { sleep };
 
 /**
  * Calculate exponential backoff delay

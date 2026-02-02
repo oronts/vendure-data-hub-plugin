@@ -5,16 +5,24 @@
  */
 
 import { MappingStrategy, NameScoreResult } from '../types/index';
+import { CAMEL_CASE_PATTERN } from '../constants';
+
+// Regex pattern for replacing dashes/spaces with underscores
+const DASH_SPACE_PATTERN = /[-\s]+/g;
 
 /**
  * Converts a string to snake_case
+ * Uses centralized CAMEL_CASE_PATTERN from constants
  */
 export function toSnakeCase(str: string): string {
     return str
-        .replace(/([a-z])([A-Z])/g, '$1_$2')
-        .replace(/[-\s]+/g, '_')
+        .replace(CAMEL_CASE_PATTERN, '$1_$2')
+        .replace(DASH_SPACE_PATTERN, '_')
         .toLowerCase();
 }
+
+// Regex pattern for splitting snake_case strings
+const UNDERSCORE_SPLIT_PATTERN = /_+/;
 
 /**
  * Splits snake_case string into parts
@@ -22,7 +30,7 @@ export function toSnakeCase(str: string): string {
 export function splitSnakeCase(str: string): string[] {
     return str
         .toLowerCase()
-        .split(/_+/)
+        .split(UNDERSCORE_SPLIT_PATTERN)
         .filter(Boolean);
 }
 
@@ -34,7 +42,6 @@ export class SnakeCaseMatchStrategy implements MappingStrategy {
         _targetNormalized: string,
         _targetKey: string,
     ): NameScoreResult | null {
-        // Convert both to snake_case and compare
         const sourceSnake = toSnakeCase(sourceForComparison);
         const targetSnake = toSnakeCase(targetForComparison);
 
@@ -42,7 +49,6 @@ export class SnakeCaseMatchStrategy implements MappingStrategy {
             return { score: 90, reason: 'Snake_case normalized match' };
         }
 
-        // Check if parts match
         const sourceParts = splitSnakeCase(sourceForComparison);
         const targetParts = splitSnakeCase(targetForComparison);
 

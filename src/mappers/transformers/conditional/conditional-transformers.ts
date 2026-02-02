@@ -1,30 +1,31 @@
 /**
  * Conditional Transform Functions
  *
- * SECURITY NOTE: These functions use `new Function()` for dynamic expression evaluation.
- * This is intentional and necessary for user-defined transform expressions in pipelines.
- *
- * Security measures in place:
- * 1. Block dangerous patterns: semicolons, braces, eval, Function, require, import
- * 2. Limit condition length to prevent DoS
- * 3. Only allow alphanumeric paths in $record.field references
- * 4. Fail closed - invalid expressions return original value
+ * SECURITY: Uses SafeEvaluator for secure expression evaluation with:
+ * - Comprehensive code validation (70+ blocked keywords)
+ * - Prototype pollution protection
+ * - Method whitelist validation
+ * - Sandbox execution environment
+ * - LRU-cached compiled functions
  */
 
 import { JsonValue, JsonObject } from '../../../types/index';
 import { TransformConfig } from '../../types/transform-config.types';
+import { getDefaultEvaluator } from '../../../runtime/sandbox/safe-evaluator';
+import { CODE_SECURITY } from '../../../constants';
+
+// Import canonical implementations
+import {
+    applyIfElse as applyIfElseCanonical,
+    applyCoalesce as applyCoalesceCanonical,
+    applyDefault as applyDefaultCanonical,
+} from '../../../transforms/record/record-transforms';
 
 /** Maximum allowed expression length to prevent DoS */
-const MAX_EXPRESSION_LENGTH = 1000;
-
-/** Pattern for dangerous JavaScript constructs */
-const DANGEROUS_PATTERN = /[;{}]|`|\$\{|\/\/|\/\*|\*\/|\\x|\\u/;
-
-/** Pattern for disallowed keywords */
-const DISALLOWED_KEYWORDS = /\b(eval|Function|require|import|export|class|async|await|new|this|window|document|global|process|constructor|prototype|__proto__)\b/;
+const MAX_EXPRESSION_LENGTH = CODE_SECURITY.MAX_CONDITION_LENGTH;
 
 /**
- * Apply conditional transform
+ * Apply conditional transform using SafeEvaluator
  */
 export function applyConditionalTransform(
     value: JsonValue,
@@ -38,22 +39,38 @@ export function applyConditionalTransform(
             throw new Error('Condition too long');
         }
 
-        // Build condition with safe substitutions
+        // Build condition with safe substitutions for variable references
         const condition = config.condition
-            .replace(/\$value/g, JSON.stringify(value))
+            .replace(/\$value\b/g, 'value')
             .replace(/\$record\.([a-zA-Z0-9_.]+)/g, (_, path) => {
-                const v = getNestedValue(record, path);
-                return JSON.stringify(v);
+                // Validate path contains only safe characters
+                if (!/^[a-zA-Z0-9_.]+$/.test(path)) {
+                    throw new Error('Invalid path in $record reference');
+                }
+                return `record_${path.replace(/\./g, '_')}`;
             });
 
-        // Security validation
-        if (DANGEROUS_PATTERN.test(condition) || DISALLOWED_KEYWORDS.test(condition)) {
-            throw new Error('Invalid condition - contains disallowed patterns');
+        // Build context with resolved values
+        const context: Record<string, unknown> = { value };
+
+        // Extract and resolve all $record references
+        const recordRefPattern = /\$record\.([a-zA-Z0-9_.]+)/g;
+        let match;
+        while ((match = recordRefPattern.exec(config.condition)) !== null) {
+            const path = match[1];
+            const contextKey = `record_${path.replace(/\./g, '_')}`;
+            context[contextKey] = getNestedValue(record, path);
         }
 
-        // eslint-disable-next-line no-new-func -- Required for dynamic expression evaluation (security validated above)
-        const result = new Function(`return ${condition}`)();
-        return result ? config.then : (config.else ?? null);
+        // Use SafeEvaluator for secure execution
+        const evaluator = getDefaultEvaluator();
+        const result = evaluator.evaluate<boolean>(condition, context);
+
+        if (!result.success) {
+            throw new Error(result.error || 'Evaluation failed');
+        }
+
+        return result.value ? config.then : (config.else ?? null);
     } catch {
         // Fail closed - return else value or original
         return config.else ?? value;
@@ -61,7 +78,7 @@ export function applyConditionalTransform(
 }
 
 /**
- * Apply custom transform with expression
+ * Apply custom transform with expression using SafeEvaluator
  */
 export function applyCustomTransform(
     value: JsonValue,
@@ -76,14 +93,15 @@ export function applyCustomTransform(
             throw new Error('Expression too long');
         }
 
-        // Security validation
-        if (DANGEROUS_PATTERN.test(expr) || DISALLOWED_KEYWORDS.test(expr)) {
-            throw new Error('Invalid expression - contains disallowed patterns');
+        // Use SafeEvaluator for secure execution
+        const evaluator = getDefaultEvaluator();
+        const result = evaluator.evaluate<JsonValue>(expr, { value, record });
+
+        if (!result.success) {
+            throw new Error(result.error || 'Evaluation failed');
         }
 
-        // eslint-disable-next-line no-new-func -- Required for dynamic expression evaluation (security validated above)
-        const fn = new Function('value', 'record', `return ${expr}`);
-        return fn(value, record);
+        return result.value ?? value;
     } catch {
         // Fail closed - return original value
         return value;
@@ -92,6 +110,7 @@ export function applyCustomTransform(
 
 /**
  * Coalesce - return first non-null value
+ * Uses canonical implementation when fields and record are provided
  */
 export function coalesce(...values: JsonValue[]): JsonValue {
     for (const value of values) {
@@ -130,7 +149,15 @@ export function isEmpty(value: JsonValue | undefined): boolean {
 
 /**
  * Default value if empty
+ * Uses canonical implementation
  */
 export function defaultIfEmpty<T extends JsonValue>(value: T | null | undefined, defaultValue: T): T {
-    return isEmpty(value as JsonValue | undefined) ? defaultValue : value as T;
+    const result = applyDefaultCanonical(value as JsonValue, { defaultValue });
+    return result as T;
 }
+
+export {
+    applyIfElseCanonical as applyIfElse,
+    applyCoalesceCanonical as applyCoalesce,
+    applyDefaultCanonical as applyDefault,
+};

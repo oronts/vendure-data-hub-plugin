@@ -24,8 +24,11 @@ import {
     getProductType,
     truncate,
     stripHtml,
+    toStringOrUndefined,
+    extractCustomLabels,
 } from './feed-helpers';
 import { SERVICE_DEFAULTS } from '../../constants/index';
+import { PRODUCT_CONDITIONS, FEED_LIMITS, FEED_DEFAULTS } from './feed-constants';
 
 const LOG_CONTEXT = 'GoogleShoppingGenerator';
 
@@ -39,7 +42,7 @@ export async function generateGoogleShoppingFeed(
     connection: TransactionalConnection,
 ): Promise<string> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || 'USD';
+    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
 
     const items: GoogleShoppingItem[] = [];
 
@@ -56,13 +59,13 @@ export async function generateGoogleShoppingFeed(
 
             const item: GoogleShoppingItem = {
                 'g:id': variant.sku || variant.id.toString(),
-                'g:title': truncate(variant.name || product?.name || '', 150),
+                'g:title': truncate(variant.name || product?.name || '', FEED_LIMITS.TITLE_MAX_LENGTH),
                 'g:description': truncate(stripHtml(product?.description || ''), TRUNCATION.FEED_DESCRIPTION_MAX_LENGTH),
                 'g:link': buildProductUrl(baseUrl, variant, config.options?.utmParams),
                 'g:image_link': getImageUrl(variant, product, baseUrl),
                 'g:availability': getGoogleAvailability(variant),
                 'g:price': price,
-                'g:condition': 'new',
+                'g:condition': PRODUCT_CONDITIONS.NEW,
             };
 
             if (salePrice) {
@@ -70,21 +73,21 @@ export async function generateGoogleShoppingFeed(
             }
 
             // Add brand from product facets or custom fields
-            const brand = extractFacetValue(product, 'brand') || productCustomFields.brand;
+            const brand = extractFacetValue(product, 'brand') || toStringOrUndefined(productCustomFields.brand);
             if (brand) {
-                item['g:brand'] = brand as string;
+                item['g:brand'] = brand;
             }
 
             // Add GTIN/EAN/UPC
-            if (customFields.gtin) {
-                item['g:gtin'] = customFields.gtin as string;
-            } else if (customFields.ean) {
-                item['g:gtin'] = customFields.ean as string;
+            const gtin = toStringOrUndefined(customFields.gtin) || toStringOrUndefined(customFields.ean);
+            if (gtin) {
+                item['g:gtin'] = gtin;
             }
 
             // MPN (Manufacturer Part Number)
-            if (customFields.mpn || variant.sku) {
-                item['g:mpn'] = (customFields.mpn as string) || variant.sku;
+            const mpn = toStringOrUndefined(customFields.mpn) || variant.sku;
+            if (mpn) {
+                item['g:mpn'] = mpn;
             }
 
             // Product type from collections
@@ -112,20 +115,16 @@ export async function generateGoogleShoppingFeed(
             // Additional images
             const additionalImages = getAdditionalImages(variant, product, baseUrl);
             if (additionalImages.length > 0) {
-                item['g:additional_image_link'] = additionalImages.slice(0, 10); // Max 10 additional images
+                item['g:additional_image_link'] = additionalImages.slice(0, FEED_LIMITS.GOOGLE_ADDITIONAL_IMAGES_MAX);
             }
 
-            // Custom labels
-            if (productCustomFields.customLabel0)
-                item['g:custom_label_0'] = productCustomFields.customLabel0 as string;
-            if (productCustomFields.customLabel1)
-                item['g:custom_label_1'] = productCustomFields.customLabel1 as string;
-            if (productCustomFields.customLabel2)
-                item['g:custom_label_2'] = productCustomFields.customLabel2 as string;
-            if (productCustomFields.customLabel3)
-                item['g:custom_label_3'] = productCustomFields.customLabel3 as string;
-            if (productCustomFields.customLabel4)
-                item['g:custom_label_4'] = productCustomFields.customLabel4 as string;
+            // Custom labels (0-4)
+            const customLabels = extractCustomLabels(productCustomFields);
+            if (customLabels.customLabel0) item['g:custom_label_0'] = customLabels.customLabel0;
+            if (customLabels.customLabel1) item['g:custom_label_1'] = customLabels.customLabel1;
+            if (customLabels.customLabel2) item['g:custom_label_2'] = customLabels.customLabel2;
+            if (customLabels.customLabel3) item['g:custom_label_3'] = customLabels.customLabel3;
+            if (customLabels.customLabel4) item['g:custom_label_4'] = customLabels.customLabel4;
 
             items.push(item);
         } catch (error) {

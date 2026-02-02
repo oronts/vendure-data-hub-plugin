@@ -1,38 +1,35 @@
 /**
- * Transform Configuration Types
- *
- * These types are shared between the FieldMapperService and the transformer modules.
- * Extracting them to a separate file breaks the circular dependency chain.
+ * Transform Configuration Types for Mappers
  */
 
 import { JsonValue } from '../../types/index';
 import { RecordObject } from '../../runtime/executor-types';
 
-/**
- * Transform types supported by the field mapper
- */
-export type TransformType =
-    | 'template'      // String template with ${field} placeholders
-    | 'lookup'        // Lookup value in a table/map
-    | 'convert'       // Type conversion (string to number, etc.)
-    | 'split'         // Split string into array
-    | 'join'          // Join array into string
-    | 'map'           // Map values using a dictionary
-    | 'date'          // Date parsing/formatting
-    | 'trim'          // Trim whitespace
-    | 'lowercase'     // Convert to lowercase
-    | 'uppercase'     // Convert to uppercase
-    | 'replace'       // String replacement
-    | 'extract'       // Extract with regex
-    | 'default'       // Default value if empty
-    | 'concat'        // Concatenate multiple fields
-    | 'math'          // Mathematical operations
-    | 'conditional'   // Conditional logic
-    | 'custom';       // Custom JavaScript expression
+export type {
+    FieldMapping as SharedFieldMapping,
+    MappingResult as SharedMappingResult,
+    MappingError as SharedMappingError,
+} from '../../../shared/types';
 
-/**
- * Transform configuration
- */
+export type TransformType =
+    | 'template'
+    | 'lookup'
+    | 'convert'
+    | 'split'
+    | 'join'
+    | 'map'
+    | 'date'
+    | 'trim'
+    | 'lowercase'
+    | 'uppercase'
+    | 'replace'
+    | 'extract'
+    | 'default'
+    | 'concat'
+    | 'math'
+    | 'conditional'
+    | 'custom';
+
 export interface TransformConfig {
     type: TransformType;
     template?: string;
@@ -99,9 +96,6 @@ export interface TransformConfig {
     };
 }
 
-/**
- * Field mapping definition
- */
 export interface FieldMapping {
     source: string;
     target: string;
@@ -111,9 +105,6 @@ export interface FieldMapping {
     description?: string;
 }
 
-/**
- * Mapping result for a single record
- */
 export interface MappingResult {
     success: boolean;
     data: RecordObject;
@@ -127,9 +118,6 @@ export interface MappingError {
     value?: JsonValue;
 }
 
-/**
- * Lookup table for value lookups
- */
 export interface LookupTable {
     name: string;
     data: RecordObject[];

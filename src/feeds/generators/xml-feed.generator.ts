@@ -18,9 +18,10 @@ import {
     getImageUrl,
     extractFacetValue,
     getProductType,
-    getStockOnHand,
+    getGenericAvailability,
     stripHtml,
 } from './feed-helpers';
+import { FEED_DEFAULTS, GenericAvailabilityStatus } from './feed-constants';
 
 const LOG_CONTEXT = 'XMLFeedGenerator';
 
@@ -36,7 +37,7 @@ export interface XMLFeedItem {
         '@_currency': string;
         '#text': string;
     };
-    availability: 'in_stock' | 'out_of_stock';
+    availability: GenericAvailabilityStatus;
     url: string;
     image_url: string;
     category?: string;
@@ -47,6 +48,24 @@ export interface XMLFeedItem {
             '#text': string;
         }>;
     };
+}
+
+/**
+ * XML feed content structure for builder
+ */
+interface XMLFeedContent {
+    '@_generated': string;
+    title: string;
+    link: string;
+    [key: string]: string | XMLFeedItem[] | undefined;
+}
+
+/**
+ * XML feed structure for builder
+ */
+interface XMLFeedStructure {
+    '?xml'?: { '@_version': string; '@_encoding': string };
+    [key: string]: XMLFeedContent | { '@_version': string; '@_encoding': string } | undefined;
 }
 
 /**
@@ -82,9 +101,8 @@ async function transformVariantToXMLItem(
     options: XMLGeneratorOptions,
 ): Promise<XMLFeedItem> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || 'USD';
+    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
     const product = variant.product as ProductWithCustomFields | undefined;
-    const stockOnHand = getStockOnHand(variant);
 
     const item: XMLFeedItem = {
         id: variant.id.toString(),
@@ -94,7 +112,7 @@ async function transformVariantToXMLItem(
             '@_currency': currency,
             '#text': (variant.priceWithTax / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER).toFixed(TRANSFORM_LIMITS.CURRENCY_DECIMAL_PLACES),
         },
-        availability: stockOnHand > 0 ? 'in_stock' : 'out_of_stock',
+        availability: getGenericAvailability(variant),
         url: buildProductUrl(baseUrl, variant, config.options?.utmParams),
         image_url: getImageUrl(variant, product, baseUrl),
     };
@@ -169,7 +187,7 @@ export async function generateXMLFeed(
     });
 
     // Build feed structure
-    const feedContent: Record<string, any> = {
+    const feedContent: XMLFeedContent = {
         '@_generated': new Date().toISOString(),
         title: config.name,
         link: baseUrl,
@@ -182,7 +200,7 @@ export async function generateXMLFeed(
         feedContent[prefix] = opts.namespace;
     }
 
-    const feed: Record<string, any> = {};
+    const feed: XMLFeedStructure = {};
 
     // Add XML declaration
     if (opts.includeDeclaration) {
@@ -205,13 +223,13 @@ export async function generateAtomFeed(
     _connection: TransactionalConnection,
 ): Promise<string> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || 'USD';
+    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
 
     const entries = await Promise.all(
         products.map(async variant => {
             try {
                 const product = variant.product as ProductWithCustomFields | undefined;
-                const stockOnHand = getStockOnHand(variant);
+                const availability = getGenericAvailability(variant);
 
                 return {
                     id: `urn:product:${variant.id}`,
@@ -237,7 +255,7 @@ export async function generateAtomFeed(
                         '@_currency': currency,
                         '#text': (variant.priceWithTax / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER).toFixed(TRANSFORM_LIMITS.CURRENCY_DECIMAL_PLACES),
                     },
-                    'stock:availability': stockOnHand > 0 ? 'in_stock' : 'out_of_stock',
+                    'stock:availability': availability,
                 };
             } catch (error) {
                 Logger.warn(`Failed to process variant ${variant.id}: ${error}`, LOG_CONTEXT);

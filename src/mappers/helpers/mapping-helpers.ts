@@ -5,16 +5,18 @@
 import { EntityField } from '../../types/index';
 import { TransformConfig } from '../services/field-mapper.service';
 import { SourceFieldAnalysis } from '../types/mapping-types';
+import { BOOLEAN_MAPPINGS, BOOLEAN_DETECTOR_VALUES, ISO_DATE_PATTERN, SEPARATOR_PATTERN, CAMEL_CASE_PATTERN } from '../constants';
 
 /**
  * Normalize a field name for comparison
  * Removes separators and converts to lowercase
+ * Uses centralized patterns from constants
  */
 export function normalizeFieldName(name: string): string {
     return name
         .toLowerCase()
-        .replace(/[-_\s]+/g, '')      // Remove separators
-        .replace(/([a-z])([A-Z])/g, '$1$2'.toLowerCase()); // camelCase to lowercase
+        .replace(SEPARATOR_PATTERN, '')      // Remove separators
+        .replace(CAMEL_CASE_PATTERN, (_, p1, p2) => p1 + p2.toLowerCase()); // camelCase to lowercase
 }
 
 /**
@@ -83,8 +85,8 @@ export function detectValueType(value: unknown): string {
     if (typeof value === 'object') return 'object';
 
     if (typeof value === 'string') {
-        // Check if string is a date
-        if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+        // Check if string is a date - use centralized pattern
+        if (ISO_DATE_PATTERN.test(value)) {
             const date = new Date(value);
             if (!isNaN(date.getTime())) return 'date';
         }
@@ -166,24 +168,14 @@ export function suggestTransforms(
 
     // String to boolean conversion
     if (source.detectedType === 'string' && target.type === 'boolean') {
-        // Check sample values to suggest map
+        // Check sample values to suggest map - use centralized boolean detector values
         const samples = source.sampleValues.map(v => String(v).toLowerCase());
-        if (samples.some(s => ['yes', 'no', 'true', 'false', '1', '0', 'active', 'inactive'].includes(s))) {
+        if (samples.some(s => BOOLEAN_DETECTOR_VALUES.includes(s))) {
             transforms.push({
                 type: 'map',
                 map: {
-                    values: {
-                        yes: true,
-                        no: false,
-                        true: true,
-                        false: false,
-                        '1': true,
-                        '0': false,
-                        active: true,
-                        inactive: false,
-                        enabled: true,
-                        disabled: false,
-                    },
+                    // Use centralized boolean mappings
+                    values: BOOLEAN_MAPPINGS,
                     default: false,
                     caseSensitive: false,
                 },

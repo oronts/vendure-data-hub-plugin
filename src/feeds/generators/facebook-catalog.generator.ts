@@ -26,7 +26,11 @@ import {
     truncate,
     stripHtml,
     csvEscape,
+    toStringOrUndefined,
+    toStringOrEmpty,
+    extractCustomLabels,
 } from './feed-helpers';
+import { PRODUCT_CONDITIONS, FEED_LIMITS, FEED_DEFAULTS } from './feed-constants';
 
 const LOG_CONTEXT = 'FacebookCatalogGenerator';
 
@@ -70,7 +74,7 @@ export async function generateFacebookCatalogFeed(
     connection: TransactionalConnection,
 ): Promise<string> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || 'USD';
+    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
 
     const rows: string[][] = [FACEBOOK_CATALOG_HEADERS];
 
@@ -89,31 +93,34 @@ export async function generateFacebookCatalogFeed(
             // Get product type from collections
             const productType = await getProductType(ctx, product, connection);
 
+            // Extract custom labels using helper
+            const customLabels = extractCustomLabels(productCustomFields);
+
             const row = [
                 variant.sku || variant.id.toString(),
-                csvEscape(truncate(variant.name || product?.name || '', 150)),
+                csvEscape(truncate(variant.name || product?.name || '', FEED_LIMITS.TITLE_MAX_LENGTH)),
                 csvEscape(truncate(stripHtml(product?.description || ''), TRUNCATION.FEED_DESCRIPTION_MAX_LENGTH)),
                 getFacebookAvailability(variant),
-                'new',
+                PRODUCT_CONDITIONS.NEW,
                 price,
                 buildProductUrl(baseUrl, variant, config.options?.utmParams),
                 getImageUrl(variant, product, baseUrl),
-                csvEscape(extractFacetValue(product, 'brand') || (productCustomFields.brand as string) || ''),
-                (customFields.gtin as string) || (customFields.ean as string) || '',
+                csvEscape(extractFacetValue(product, 'brand') || toStringOrEmpty(productCustomFields.brand)),
+                toStringOrEmpty(customFields.gtin) || toStringOrEmpty(customFields.ean),
                 variant.sku || '',
-                (productCustomFields.googleProductCategory as string) || '',
+                toStringOrEmpty(productCustomFields.googleProductCategory),
                 productType || '',
                 salePrice,
                 product?.id.toString() || '',
                 getOptionValue(variant, 'color') || '',
                 getOptionValue(variant, 'size') || '',
-                (productCustomFields.gender as string) || '',
-                (productCustomFields.ageGroup as string) || '',
-                (productCustomFields.customLabel0 as string) || '',
-                (productCustomFields.customLabel1 as string) || '',
-                (productCustomFields.customLabel2 as string) || '',
-                (productCustomFields.customLabel3 as string) || '',
-                (productCustomFields.customLabel4 as string) || '',
+                toStringOrEmpty(productCustomFields.gender),
+                toStringOrEmpty(productCustomFields.ageGroup),
+                customLabels.customLabel0 || '',
+                customLabels.customLabel1 || '',
+                customLabels.customLabel2 || '',
+                customLabels.customLabel3 || '',
+                customLabels.customLabel4 || '',
             ];
 
             rows.push(row);
@@ -136,7 +143,7 @@ export async function generateFacebookCatalogXMLFeed(
     connection: TransactionalConnection,
 ): Promise<string> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || 'USD';
+    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
 
     const items: FacebookCatalogItem[] = [];
 
@@ -148,24 +155,25 @@ export async function generateFacebookCatalogXMLFeed(
 
             const item: FacebookCatalogItem = {
                 id: variant.sku || variant.id.toString(),
-                title: truncate(variant.name || product?.name || '', 150),
+                title: truncate(variant.name || product?.name || '', FEED_LIMITS.TITLE_MAX_LENGTH),
                 description: truncate(stripHtml(product?.description || ''), TRUNCATION.FEED_DESCRIPTION_MAX_LENGTH),
                 availability: getFacebookAvailability(variant),
-                condition: 'new',
+                condition: PRODUCT_CONDITIONS.NEW,
                 price: formatPrice(variant.priceWithTax, currency),
                 link: buildProductUrl(baseUrl, variant, config.options?.utmParams),
                 image_link: getImageUrl(variant, product, baseUrl),
             };
 
             // Brand
-            const brand = extractFacetValue(product, 'brand') || productCustomFields.brand;
+            const brand = extractFacetValue(product, 'brand') || toStringOrUndefined(productCustomFields.brand);
             if (brand) {
-                item.brand = brand as string;
+                item.brand = brand;
             }
 
             // GTIN/EAN
-            if (customFields.gtin || customFields.ean) {
-                item.gtin = (customFields.gtin as string) || (customFields.ean as string);
+            const gtin = toStringOrUndefined(customFields.gtin) || toStringOrUndefined(customFields.ean);
+            if (gtin) {
+                item.gtin = gtin;
             }
 
             // MPN
@@ -174,8 +182,9 @@ export async function generateFacebookCatalogXMLFeed(
             }
 
             // Google Product Category
-            if (productCustomFields.googleProductCategory) {
-                item.google_product_category = productCustomFields.googleProductCategory as string;
+            const googleProductCategory = toStringOrUndefined(productCustomFields.googleProductCategory);
+            if (googleProductCategory) {
+                item.google_product_category = googleProductCategory;
             }
 
             // Product type from collections
@@ -202,24 +211,22 @@ export async function generateFacebookCatalogXMLFeed(
             if (size) item.size = size;
 
             // Gender and age group from custom fields
-            if (productCustomFields.gender) {
-                item.gender = productCustomFields.gender as string;
+            const gender = toStringOrUndefined(productCustomFields.gender);
+            if (gender) {
+                item.gender = gender;
             }
-            if (productCustomFields.ageGroup) {
-                item.age_group = productCustomFields.ageGroup as string;
+            const ageGroup = toStringOrUndefined(productCustomFields.ageGroup);
+            if (ageGroup) {
+                item.age_group = ageGroup;
             }
 
-            // Custom labels
-            if (productCustomFields.customLabel0)
-                item.custom_label_0 = productCustomFields.customLabel0 as string;
-            if (productCustomFields.customLabel1)
-                item.custom_label_1 = productCustomFields.customLabel1 as string;
-            if (productCustomFields.customLabel2)
-                item.custom_label_2 = productCustomFields.customLabel2 as string;
-            if (productCustomFields.customLabel3)
-                item.custom_label_3 = productCustomFields.customLabel3 as string;
-            if (productCustomFields.customLabel4)
-                item.custom_label_4 = productCustomFields.customLabel4 as string;
+            // Custom labels (0-4) using helper
+            const customLabels = extractCustomLabels(productCustomFields);
+            if (customLabels.customLabel0) item.custom_label_0 = customLabels.customLabel0;
+            if (customLabels.customLabel1) item.custom_label_1 = customLabels.customLabel1;
+            if (customLabels.customLabel2) item.custom_label_2 = customLabels.customLabel2;
+            if (customLabels.customLabel3) item.custom_label_3 = customLabels.customLabel3;
+            if (customLabels.customLabel4) item.custom_label_4 = customLabels.customLabel4;
 
             items.push(item);
         } catch (error) {

@@ -1,5 +1,6 @@
 export * from './feed-types';
 export * from './feed-helpers';
+export * from './feed-constants';
 
 export { generateGoogleShoppingFeed } from './google-shopping.generator';
 

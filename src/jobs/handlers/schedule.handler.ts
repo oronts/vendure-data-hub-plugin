@@ -4,18 +4,53 @@
  * Manages scheduled pipeline execution using interval and cron triggers.
  */
 
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { RequestContextService, TransactionalConnection, ID } from '@vendure/core';
+import { In } from 'typeorm';
 import { Pipeline, PipelineRun } from '../../entities/pipeline';
-// Direct imports to avoid circular dependencies
 import { PipelineService } from '../../services/pipeline/pipeline.service';
 import { RuntimeConfigService } from '../../services/runtime/runtime-config.service';
+import { DistributedLockService } from '../../services/runtime/distributed-lock.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
-import { RunStatus } from '../../types/index';
+import { LOGGER_CONTEXTS, DISTRIBUTED_LOCK } from '../../constants/index';
+import { RunStatus, PipelineDefinition, JsonObject } from '../../types/index';
+import { PipelineStatus, TriggerType, TIMER_TYPE, TimerType } from '../../constants/enums';
+import { findEnabledTriggersByType } from '../../utils';
 import { ScheduledTimer } from '../types';
 import { cronMatches, isValidTimezone } from '../processors/cron-processor';
 import type { SchedulerConfig } from '../../types/plugin-options';
+
+/**
+ * Schedule trigger configuration - runtime representation
+ */
+interface ScheduleTriggerConfigParsed {
+    type: typeof TriggerType.SCHEDULE;
+    cron: string | null;
+    intervalSec: number | null;
+    timezone: string | null;
+}
+
+/**
+ * Check if config is a schedule trigger and parse it
+ */
+function parseScheduleTriggerConfig(config: JsonObject): ScheduleTriggerConfigParsed | null {
+    if (!config || typeof config !== 'object') return null;
+    if (config.type !== TriggerType.SCHEDULE) return null;
+
+    return {
+        type: TriggerType.SCHEDULE,
+        cron: typeof config.cron === 'string' ? config.cron : null,
+        intervalSec: typeof config.intervalSec === 'number' ? config.intervalSec : null,
+        timezone: typeof config.timezone === 'string' ? config.timezone : null,
+    };
+}
+
+/**
+ * Structured log data for consistent logging
+ */
+interface LogMetadata {
+    [key: string]: string | number | boolean | undefined;
+}
 
 /**
  * DataHub Schedule Handler
@@ -48,6 +83,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         private pipelineService: PipelineService,
         private runtimeConfigService: RuntimeConfigService,
         loggerFactory: DataHubLoggerFactory,
+        @Optional() private distributedLock?: DistributedLockService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.SCHEDULE_HANDLER);
         this.schedulerConfig = this.runtimeConfigService.getSchedulerConfig();
@@ -57,21 +93,21 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
      * Initialize schedules on module startup
      */
     async onModuleInit(): Promise<void> {
-        this.logger.info('Initializing schedule handler', {
+        const initMetadata: LogMetadata = {
             checkIntervalMs: this.schedulerConfig.checkIntervalMs,
             refreshIntervalMs: this.schedulerConfig.refreshIntervalMs,
             minIntervalMs: this.schedulerConfig.minIntervalMs,
-        } as any);
+        };
+        this.logger.info('Initializing schedule handler', initMetadata);
         try {
             await this.refresh();
         } catch (error) {
-            // Handle case where entity metadata is not yet available (e.g., during testing)
-            this.logger.warn('Failed to initialize schedules on startup, will retry on next refresh', {
+            const errorMetadata: LogMetadata = {
                 error: error instanceof Error ? error.message : String(error),
-            } as any);
+            };
+            this.logger.warn('Failed to initialize schedules on startup, will retry on next refresh', errorMetadata);
         }
 
-        // Periodically refresh schedules in case pipelines change
         const refreshHandle = setInterval(
             () => this.refresh().catch(err => {
                 this.logger.error('Failed to refresh schedules', err instanceof Error ? err : undefined, {});
@@ -81,7 +117,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         this.timers.push({
             code: '__refresh__',
             handle: refreshHandle,
-            type: 'refresh',
+            type: TIMER_TYPE.REFRESH,
         });
     }
 
@@ -91,19 +127,18 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
     async onModuleDestroy(): Promise<void> {
         this.isDestroying = true;
 
-        this.logger.info('Destroying schedule handler', {
+        const destroyMetadata: LogMetadata = {
             recordCount: this.timers.length,
             cronKeyCount: this.lastCronKeyByPipeline.size,
             failureTrackingCount: this.failureCountByPipeline.size,
-        } as any);
+        };
+        this.logger.info('Destroying schedule handler', destroyMetadata);
 
-        // Clear all timers
         for (const timer of this.timers) {
             clearInterval(timer.handle);
         }
         this.timers = [];
 
-        // Clear all maps to prevent memory leaks
         this.lastCronKeyByPipeline.clear();
         this.failureCountByPipeline.clear();
 
@@ -115,13 +150,11 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
      * Uses a mutex to prevent concurrent refresh operations which could cause race conditions
      */
     private async refresh(): Promise<void> {
-        // Prevent refresh during shutdown
         if (this.isDestroying) {
             this.logger.debug('Skipping refresh - module is being destroyed');
             return;
         }
 
-        // Mutex check to prevent concurrent refresh operations
         if (this.isRefreshing) {
             this.logger.debug('Skipping refresh - another refresh is already in progress');
             return;
@@ -131,15 +164,13 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         const refreshStartTime = Date.now();
 
         try {
-            // Clear existing non-refresh timers
-            const existingCount = this.timers.filter(t => t.type !== 'refresh').length;
+            const existingCount = this.timers.filter(t => t.type !== TIMER_TYPE.REFRESH).length;
 
-            for (const timer of this.timers.filter(t => t.type !== 'refresh')) {
+            for (const timer of this.timers.filter(t => t.type !== TIMER_TYPE.REFRESH)) {
                 clearInterval(timer.handle);
             }
-            this.timers = this.timers.filter(t => t.type === 'refresh');
+            this.timers = this.timers.filter(t => t.type === TIMER_TYPE.REFRESH);
 
-            // Fetch all pipelines
             const ctx = await this.requestContextService.create({ apiType: 'admin' });
             const repo = this.connection.getRepository(ctx, Pipeline);
             const allPipelines = await repo.find();
@@ -149,66 +180,69 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
 
             for (const pipeline of allPipelines) {
                 if (!pipeline.enabled) continue;
-                // Only schedule PUBLISHED pipelines for automatic triggers
-                if ((pipeline as any).status !== 'PUBLISHED') continue;
+                if (pipeline.status !== PipelineStatus.PUBLISHED) continue;
 
-                const trigger = (pipeline.definition as any)?.steps?.[0];
-                const config = trigger?.config ?? {};
+                const definition = pipeline.definition as PipelineDefinition;
+                const scheduleTriggers = findEnabledTriggersByType(definition, 'schedule');
+                if (scheduleTriggers.length === 0) continue;
 
-                if (trigger?.type !== 'TRIGGER' || config.type !== 'schedule') {
-                    continue;
-                }
-
-                // Check if pipeline is in circuit breaker state
                 const failureCount = this.failureCountByPipeline.get(pipeline.code) ?? 0;
                 if (failureCount >= this.maxConsecutiveFailures) {
-                    this.logger.warn('Pipeline schedule paused due to consecutive failures (circuit breaker)', {
+                    const circuitBreakerMetadata: LogMetadata = {
                         pipelineCode: pipeline.code,
                         failureCount,
                         maxAllowed: this.maxConsecutiveFailures,
-                    } as any);
+                    };
+                    this.logger.warn('Pipeline schedule paused due to consecutive failures (circuit breaker)', circuitBreakerMetadata);
                     skippedDueToFailures++;
                     continue;
                 }
 
-                const hasInterval = Number(config.intervalSec ?? 0) > 0;
-                const hasCron = typeof config.cron === 'string' && config.cron.trim().length > 0;
+                for (const trigger of scheduleTriggers) {
+                    const triggerKey = trigger.key;
+                    const config = parseScheduleTriggerConfig(trigger.config);
+                    if (!config) continue;
 
-                if (hasInterval && hasCron) {
-                    this.logger.warn('Pipeline has both interval and cron configured, using cron only', {
-                        pipelineCode: pipeline.code,
-                    } as any);
-                    this.setupCronSchedule(pipeline, config);
-                    scheduledCount++;
-                } else if (hasInterval) {
-                    this.setupIntervalSchedule(pipeline, config);
-                    scheduledCount++;
-                } else if (hasCron) {
-                    this.setupCronSchedule(pipeline, config);
-                    scheduledCount++;
+                    const hasInterval = (config.intervalSec ?? 0) > 0;
+                    const hasCron = config.cron !== null && config.cron.trim().length > 0;
+
+                    if (hasInterval && hasCron) {
+                        const warnMetadata: LogMetadata = { pipelineCode: pipeline.code, triggerKey };
+                        this.logger.warn('Schedule trigger has both interval and cron configured, using cron only', warnMetadata);
+                        this.setupCronSchedule(pipeline, config, triggerKey);
+                        scheduledCount++;
+                    } else if (hasInterval) {
+                        this.setupIntervalSchedule(pipeline, config, triggerKey);
+                        scheduledCount++;
+                    } else if (hasCron) {
+                        this.setupCronSchedule(pipeline, config, triggerKey);
+                        scheduledCount++;
+                    }
                 }
             }
 
-            // Build set of currently scheduled pipeline codes and clean up stale entries
-            const activePipelineCodes = new Set<string>(
-                this.timers
-                    .filter(t => t.type !== 'refresh')
-                    .map(t => t.code)
+            const activeTimers = this.timers.filter(t => t.type !== TIMER_TYPE.REFRESH);
+            const activePipelineCodes = new Set<string>(activeTimers.map(t => t.code));
+            const activeCronKeys = new Set<string>(
+                activeTimers
+                    .filter(t => t.type === TIMER_TYPE.CRON && t.triggerKey)
+                    .map(t => `${t.code}:${t.triggerKey}`)
             );
-            const cleanedCronKeys = this.cleanupStaleCronKeys(activePipelineCodes);
+            const cleanedCronKeys = this.cleanupStaleCronKeys(activeCronKeys);
             const cleanedFailureCounts = this.cleanupStaleFailureCounts(activePipelineCodes);
 
             const refreshDurationMs = Date.now() - refreshStartTime;
 
             if (scheduledCount > 0 || existingCount > 0 || cleanedCronKeys > 0 || skippedDueToFailures > 0) {
-                this.logger.info('Schedule refresh complete', {
+                const refreshMetadata: LogMetadata = {
                     recordCount: scheduledCount,
                     skippedDueToCircuitBreaker: skippedDueToFailures,
                     cleanedCronKeys,
                     cleanedFailureCounts,
                     activeCronKeyCount: this.lastCronKeyByPipeline.size,
                     refreshDurationMs,
-                } as any);
+                };
+                this.logger.info('Schedule refresh complete', refreshMetadata);
             }
         } catch (error) {
             this.logger.error('Error during schedule refresh', error instanceof Error ? error : undefined, {
@@ -221,17 +255,17 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
-     * Clean up stale cron keys for pipelines that are no longer scheduled
-     * @param activePipelineCodes Set of currently active pipeline codes
+     * Clean up stale cron keys for triggers that are no longer scheduled
+     * @param activeCronKeys Set of currently active composite keys (pipelineCode:triggerKey)
      * @returns Number of removed entries
      */
-    private cleanupStaleCronKeys(activePipelineCodes: Set<string>): number {
+    private cleanupStaleCronKeys(activeCronKeys: Set<string>): number {
         let removedCount = 0;
         const staleCodes: string[] = [];
 
-        for (const code of this.lastCronKeyByPipeline.keys()) {
-            if (!activePipelineCodes.has(code)) {
-                staleCodes.push(code);
+        for (const compositeKey of this.lastCronKeyByPipeline.keys()) {
+            if (!activeCronKeys.has(compositeKey)) {
+                staleCodes.push(compositeKey);
             }
         }
 
@@ -243,8 +277,8 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         if (removedCount > 0) {
             this.logger.debug('Cleaned up stale cron keys', {
                 removedCount,
-                stalePipelineCodes: staleCodes,
-            } as any);
+                stalePipelineCodes: staleCodes.join(','),
+            });
         }
 
         return removedCount;
@@ -274,8 +308,8 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         if (removedCount > 0) {
             this.logger.debug('Cleaned up stale failure counts', {
                 removedCount,
-                stalePipelineCodes: staleCodes,
-            } as any);
+                stalePipelineCodes: staleCodes.join(','),
+            });
         }
 
         return removedCount;
@@ -293,46 +327,37 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
 
         const activeRun = await runRepo.findOne({
             where: {
-                pipelineId: pipelineId as any,
-                status: RunStatus.RUNNING as any,
+                pipelineId: Number(pipelineId),
+                status: In([RunStatus.RUNNING, RunStatus.PENDING]),
             },
         });
 
-        if (activeRun) {
-            return true;
-        }
-
-        // Also check for pending runs that haven't started yet
-        const pendingRun = await runRepo.findOne({
-            where: {
-                pipelineId: pipelineId as any,
-                status: RunStatus.PENDING as any,
-            },
-        });
-
-        return !!pendingRun;
+        return !!activeRun;
     }
 
     /**
-     * Set up an interval-based schedule for a pipeline
+     * Set up an interval-based schedule for a pipeline trigger
      */
-    private setupIntervalSchedule(pipeline: Pipeline, config: any): void {
-        const intervalSec = Math.max(1, Number(config.intervalSec));
+    private setupIntervalSchedule(pipeline: Pipeline, config: ScheduleTriggerConfigParsed, triggerKey: string): void {
+        const intervalSec = Math.max(1, config.intervalSec ?? 1);
         const effectiveIntervalMs = Math.max(this.schedulerConfig.minIntervalMs, intervalSec * 1000);
 
-        this.logger.debug('Scheduling interval pipeline', {
+        const intervalMetadata: LogMetadata = {
             pipelineCode: pipeline.code,
+            triggerKey,
             intervalSec,
             effectiveIntervalMs,
-        } as any);
+        };
+        this.logger.debug('Scheduling interval pipeline', intervalMetadata);
 
         const handle = setInterval(
             async () => {
                 try {
-                    await this.triggerPipeline(pipeline, 'interval');
+                    await this.triggerPipeline(pipeline, TIMER_TYPE.INTERVAL, triggerKey);
                 } catch (error) {
                     this.logger.error('Interval schedule callback failed', error instanceof Error ? error : undefined, {
                         pipelineCode: pipeline.code,
+                        triggerKey,
                     });
                 }
             },
@@ -341,46 +366,52 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
 
         this.timers.push({
             code: pipeline.code,
+            triggerKey,
             handle,
-            type: 'interval',
+            type: TIMER_TYPE.INTERVAL,
         });
     }
 
     /**
-     * Set up a cron-based schedule for a pipeline
+     * Set up a cron-based schedule for a pipeline trigger
      */
-    private setupCronSchedule(pipeline: Pipeline, config: any): void {
-        const cronExpr = config.cron;
-        // Extract timezone from config
-        const timezone: string | undefined = config.timezone;
-        const hasValidTimezone = timezone && isValidTimezone(timezone);
+    private setupCronSchedule(pipeline: Pipeline, config: ScheduleTriggerConfigParsed, triggerKey: string): void {
+        const cronExpr = config.cron ?? '';
+        const timezone = config.timezone;
+        const hasValidTimezone = timezone !== null && isValidTimezone(timezone);
 
-        // Log timezone configuration
         if (timezone) {
             if (hasValidTimezone) {
-                this.logger.debug('Scheduling cron pipeline with timezone', {
+                const tzMetadata: LogMetadata = {
                     pipelineCode: pipeline.code,
+                    triggerKey,
                     cronExpr,
                     timezone,
                     checkIntervalMs: this.schedulerConfig.checkIntervalMs,
-                } as any);
+                };
+                this.logger.debug('Scheduling cron pipeline with timezone', tzMetadata);
             } else {
-                this.logger.warn('Invalid timezone specified, falling back to server time', {
+                const invalidTzMetadata: LogMetadata = {
                     pipelineCode: pipeline.code,
+                    triggerKey,
                     cronExpr,
                     invalidTimezone: timezone,
-                } as any);
+                };
+                this.logger.warn('Invalid timezone specified, falling back to server time', invalidTzMetadata);
             }
         } else {
-            this.logger.debug('Scheduling cron pipeline (server timezone)', {
+            const serverTzMetadata: LogMetadata = {
                 pipelineCode: pipeline.code,
+                triggerKey,
                 cronExpr,
                 checkIntervalMs: this.schedulerConfig.checkIntervalMs,
-            } as any);
+            };
+            this.logger.debug('Scheduling cron pipeline (server timezone)', serverTzMetadata);
         }
 
-        // Use valid timezone or undefined for server time
         const effectiveTimezone = hasValidTimezone ? timezone : undefined;
+
+        const cronTrackingKey = `${pipeline.code}:${triggerKey}`;
 
         const handle = setInterval(
             async () => {
@@ -388,16 +419,17 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                     const now = new Date();
                     if (cronMatches(now, String(cronExpr), effectiveTimezone)) {
                         const minuteKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}`;
-                        const lastKey = this.lastCronKeyByPipeline.get(pipeline.code);
+                        const lastKey = this.lastCronKeyByPipeline.get(cronTrackingKey);
 
                         if (lastKey !== minuteKey) {
-                            await this.triggerPipeline(pipeline, 'cron');
-                            this.lastCronKeyByPipeline.set(pipeline.code, minuteKey);
+                            await this.triggerPipeline(pipeline, TIMER_TYPE.CRON, triggerKey);
+                            this.lastCronKeyByPipeline.set(cronTrackingKey, minuteKey);
                         }
                     }
                 } catch (error) {
                     this.logger.error('Cron schedule callback failed', error instanceof Error ? error : undefined, {
                         pipelineCode: pipeline.code,
+                        triggerKey,
                         cronExpr,
                         timezone: effectiveTimezone,
                     });
@@ -408,20 +440,21 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
 
         this.timers.push({
             code: pipeline.code,
+            triggerKey,
             handle,
-            type: 'cron',
+            type: TIMER_TYPE.CRON,
         });
     }
 
     /**
-     * Trigger a pipeline run with concurrency control
-     * Prevents simultaneous runs of the same pipeline and tracks failures
+     * Trigger a pipeline run with concurrency control using distributed locks
+     * Prevents simultaneous runs of the same pipeline across multiple instances
      */
     private async triggerPipeline(
         pipeline: Pipeline,
-        triggerType: 'interval' | 'cron',
+        triggerType: Exclude<TimerType, typeof TIMER_TYPE.REFRESH>,
+        triggerKey?: string,
     ): Promise<void> {
-        // Skip if module is being destroyed
         if (this.isDestroying) {
             this.logger.debug('Skipping pipeline trigger - module is being destroyed', {
                 pipelineCode: pipeline.code,
@@ -429,29 +462,50 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
+        const lockKey = `schedule-trigger:${pipeline.id}:${triggerKey ?? 'default'}`;
+        let lockToken: string | undefined;
+
         try {
-            // Concurrency control: check if pipeline is already running
+            // Acquire distributed lock to prevent race conditions in multi-instance deployments
+            if (this.distributedLock) {
+                const lockResult = await this.distributedLock.acquire(lockKey, {
+                    ttlMs: DISTRIBUTED_LOCK.SCHEDULER_LOCK_TTL_MS,
+                    waitForLock: false, // Don't wait - another instance is handling it
+                });
+
+                if (!lockResult.acquired) {
+                    this.logger.debug('Skipping scheduled trigger - another instance is handling it', {
+                        pipelineCode: pipeline.code,
+                        triggerKey,
+                        currentOwner: lockResult.currentOwner,
+                    });
+                    return;
+                }
+                lockToken = lockResult.token;
+            }
+
             const isRunning = await this.isPipelineRunning(pipeline.id);
             if (isRunning) {
-                this.logger.info('Skipping scheduled run - pipeline already has an active run', {
+                const skipMetadata: LogMetadata = {
                     pipelineCode: pipeline.code,
                     triggerType,
-                } as any);
+                };
+                this.logger.info('Skipping scheduled run - pipeline already has an active run', skipMetadata);
                 return;
             }
 
             const ctx = await this.requestContextService.create({ apiType: 'admin' });
 
-            this.logger.debug('Triggering scheduled pipeline run', {
+            const triggerMetadata: LogMetadata = {
                 pipelineCode: pipeline.code,
                 triggerType,
                 currentFailureCount: this.failureCountByPipeline.get(pipeline.code) ?? 0,
-            } as any);
+            };
+            this.logger.debug('Triggering scheduled pipeline run', triggerMetadata);
 
-            // Skip permission check for scheduled runs - pipeline was already configured by admin
-            await this.pipelineService.startRun(ctx, pipeline.id as any, { skipPermissionCheck: true });
+            const triggeredBy = triggerKey ? `schedule:${triggerKey}` : 'schedule';
+            await this.pipelineService.startRun(ctx, pipeline.id, { skipPermissionCheck: true, triggeredBy });
 
-            // Reset failure count on successful trigger
             if (this.failureCountByPipeline.has(pipeline.code)) {
                 this.failureCountByPipeline.delete(pipeline.code);
                 this.logger.debug('Reset failure count after successful trigger', {
@@ -459,7 +513,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                 });
             }
         } catch (error) {
-            // Track consecutive failures for circuit breaker
             const currentFailures = this.failureCountByPipeline.get(pipeline.code) ?? 0;
             const newFailureCount = currentFailures + 1;
             this.failureCountByPipeline.set(pipeline.code, newFailureCount);
@@ -476,10 +529,23 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             );
 
             if (newFailureCount >= this.maxConsecutiveFailures) {
-                this.logger.warn('Pipeline schedule will be paused - exceeded max consecutive failures', {
+                const pauseMetadata: LogMetadata = {
                     pipelineCode: pipeline.code,
                     maxConsecutiveFailures: this.maxConsecutiveFailures,
-                } as any);
+                };
+                this.logger.warn('Pipeline schedule will be paused - exceeded max consecutive failures', pauseMetadata);
+            }
+        } finally {
+            // Release the distributed lock
+            if (this.distributedLock && lockToken) {
+                try {
+                    await this.distributedLock.release(lockKey, lockToken);
+                } catch (lockError) {
+                    this.logger.warn('Failed to release scheduler lock', {
+                        lockKey,
+                        error: lockError instanceof Error ? lockError.message : String(lockError),
+                    });
+                }
             }
         }
     }
@@ -495,7 +561,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
      * Get count of active schedules
      */
     getActiveScheduleCount(): number {
-        return this.timers.filter(t => t.type !== 'refresh').length;
+        return this.timers.filter(t => t.type !== TIMER_TYPE.REFRESH).length;
     }
 
     /**
@@ -503,7 +569,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
      */
     getScheduledPipelines(): string[] {
         return this.timers
-            .filter(t => t.type !== 'refresh')
+            .filter(t => t.type !== TIMER_TYPE.REFRESH)
             .map(t => t.code);
     }
 
@@ -515,9 +581,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
     clearCronKeyForPipeline(code: string): void {
         if (this.lastCronKeyByPipeline.has(code)) {
             this.lastCronKeyByPipeline.delete(code);
-            this.logger.debug('Cleared cron key for pipeline', {
-                pipelineCode: code,
-            } as any);
+            this.logger.debug('Cleared cron key for pipeline', { pipelineCode: code });
         }
     }
 
@@ -539,10 +603,11 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         if (this.failureCountByPipeline.has(code)) {
             const previousCount = this.failureCountByPipeline.get(code);
             this.failureCountByPipeline.delete(code);
-            this.logger.info('Circuit breaker reset for pipeline', {
+            const resetMetadata: LogMetadata = {
                 pipelineCode: code,
                 previousFailureCount: previousCount,
-            } as any);
+            };
+            this.logger.info('Circuit breaker reset for pipeline', resetMetadata);
         }
     }
 
@@ -554,9 +619,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         const count = this.failureCountByPipeline.size;
         this.failureCountByPipeline.clear();
         if (count > 0) {
-            this.logger.info('All circuit breakers reset', {
-                pipelinesReset: count,
-            } as any);
+            this.logger.info('All circuit breakers reset', { pipelinesReset: count });
         }
     }
 
@@ -596,7 +659,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         }
 
         return {
-            activeTimers: this.timers.filter(t => t.type !== 'refresh').length,
+            activeTimers: this.timers.filter(t => t.type !== TIMER_TYPE.REFRESH).length,
             cronKeyCount: this.lastCronKeyByPipeline.size,
             trackedFailures: this.failureCountByPipeline.size,
             pausedPipelines: pausedCount,

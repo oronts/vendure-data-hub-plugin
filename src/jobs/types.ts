@@ -1,16 +1,6 @@
-/**
- * DataHub Jobs - Type definitions
- *
- * Types for job data, job processing, and scheduler configuration.
- */
-
 import { ID } from '@vendure/core';
+import { TimerType } from '../constants/enums';
 
-// JOB DATA TYPES
-
-/**
- * Data payload for pipeline run jobs
- */
 export interface PipelineRunJobData {
     /** The ID of the pipeline run to execute */
     runId: ID;
@@ -36,11 +26,6 @@ export interface WebhookRetryJobData {
     deliveryId: string;
 }
 
-// JOB STATUS TYPES
-
-/**
- * Job processing result
- */
 export interface JobResult {
     /** Whether the job completed successfully */
     success: boolean;
@@ -66,18 +51,15 @@ export interface JobContext {
     createdAt: Date;
 }
 
-// SCHEDULER TYPES
-
-/**
- * Scheduled timer reference
- */
 export interface ScheduledTimer {
     /** Pipeline or task code */
     code: string;
+    /** Trigger step key (for multiple triggers per pipeline) */
+    triggerKey?: string;
     /** Timer handle from setInterval */
     handle: NodeJS.Timeout;
     /** Timer type */
-    type: 'interval' | 'cron' | 'refresh';
+    type: TimerType;
 }
 
 /**
@@ -105,11 +87,6 @@ export interface IntervalScheduleConfig {
  */
 export type ScheduleConfig = CronScheduleConfig | IntervalScheduleConfig;
 
-// JOB QUEUE CONFIGURATION
-
-/**
- * Job queue configuration options
- */
 export interface JobQueueConfig {
     /** Queue name */
     name: string;
@@ -135,11 +112,6 @@ export interface JobOptions {
     retries?: number;
 }
 
-// TYPE GUARDS
-
-/**
- * Check if schedule config is cron-based
- */
 export function isCronSchedule(config: ScheduleConfig): config is CronScheduleConfig {
     return 'cron' in config && typeof config.cron === 'string';
 }

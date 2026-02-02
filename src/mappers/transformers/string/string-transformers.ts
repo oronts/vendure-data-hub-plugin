@@ -5,6 +5,34 @@
 import { JsonValue, JsonObject } from '../../../types/index';
 import { TransformConfig } from '../../types/transform-config.types';
 
+// Import canonical implementations
+import {
+    applyTrim as applyTrimCanonical,
+    applyLowercase as applyLowercaseCanonical,
+    applyUppercase as applyUppercaseCanonical,
+    applyReplace as applyReplaceCanonical,
+    applySplit as applySplitCanonical,
+    applyJoin as applyJoinCanonical,
+    applyConcat as applyConcatCanonical,
+    applyTemplate as applyTemplateCanonical,
+    applyRegexExtract as applyRegexExtractCanonical,
+} from '../../../transforms/field/string-transforms';
+
+/**
+ * Trim whitespace from string
+ */
+export const applyTrimTransform = applyTrimCanonical;
+
+/**
+ * Convert to lowercase
+ */
+export const applyLowercaseTransform = applyLowercaseCanonical;
+
+/**
+ * Convert to uppercase
+ */
+export const applyUppercaseTransform = applyUppercaseCanonical;
+
 /**
  * Apply template transform with ${field} placeholders
  */
@@ -14,10 +42,18 @@ export function applyTemplateTransform(
     record: JsonObject,
     getNestedValue: (obj: JsonObject, path: string) => JsonValue | undefined,
 ): string {
-    return template.replace(/\$\{([^}]+)\}/g, (_, path) => {
-        const val = getNestedValue(record, path.trim());
-        return val !== null && val !== undefined ? String(val) : '';
-    });
+    // Use canonical template with adapter
+    return applyTemplateCanonical(
+        _value,
+        { template },
+        record,
+        (template: string, rec: JsonObject, _currentValue: JsonValue) => {
+            return template.replace(/\$\{([^}]+)\}/g, (_, path) => {
+                const val = getNestedValue(rec, path.trim());
+                return val !== null && val !== undefined ? String(val) : '';
+            });
+        },
+    ) as string;
 }
 
 /**
@@ -27,18 +63,10 @@ export function applySplitTransform(
     value: JsonValue,
     config: NonNullable<TransformConfig['split']>,
 ): JsonValue {
-    if (typeof value !== 'string') return value;
-
-    let parts = value.split(config.delimiter);
-    if (config.trim !== false) {
-        parts = parts.map(p => p.trim());
-    }
-
-    if (config.index !== undefined) {
-        return parts[config.index] ?? null;
-    }
-
-    return parts;
+    return applySplitCanonical(value, {
+        delimiter: config.delimiter,
+        index: config.index,
+    });
 }
 
 /**
@@ -61,10 +89,7 @@ export function applyJoinTransform(
         }
     }
 
-    return values
-        .filter(v => v !== null && v !== undefined)
-        .map(v => String(v))
-        .join(config.delimiter);
+    return applyJoinCanonical(values, { separator: config.delimiter }) as string;
 }
 
 /**
@@ -76,17 +101,11 @@ export function applyReplaceTransform(
 ): JsonValue {
     if (typeof value !== 'string') return value;
 
-    if (config.regex) {
-        const flags = config.global !== false ? 'g' : '';
-        const regex = new RegExp(config.search, flags);
-        return value.replace(regex, config.replacement);
-    }
-
-    if (config.global !== false) {
-        return value.split(config.search).join(config.replacement);
-    }
-
-    return value.replace(config.search, config.replacement);
+    return applyReplaceCanonical(value, {
+        search: config.search,
+        replacement: config.replacement,
+        global: config.global !== false,
+    });
 }
 
 /**
@@ -96,18 +115,10 @@ export function applyExtractTransform(
     value: JsonValue,
     config: NonNullable<TransformConfig['extract']>,
 ): JsonValue {
-    if (typeof value !== 'string') return value;
-
-    const regex = new RegExp(config.pattern);
-    const match = value.match(regex);
-
-    if (!match) return null;
-
-    if (config.group !== undefined && config.group > 0) {
-        return match[config.group] ?? null;
-    }
-
-    return match[0];
+    return applyRegexExtractCanonical(value, {
+        pattern: config.pattern,
+        group: config.group,
+    });
 }
 
 /**
@@ -119,36 +130,10 @@ export function applyConcatTransform(
     record: JsonObject,
     getNestedValue: (obj: JsonObject, path: string) => JsonValue | undefined,
 ): string {
-    const values: (JsonValue | undefined)[] = [value];
-
-    for (const field of config.fields) {
-        const v = getNestedValue(record, field);
-        values.push(v);
-    }
-
-    return values
-        .filter(v => v !== null && v !== undefined && v !== '')
-        .map(v => String(v))
-        .join(config.separator ?? ' ');
-}
-
-/**
- * Trim whitespace from string
- */
-export function applyTrimTransform(value: JsonValue): JsonValue {
-    return typeof value === 'string' ? value.trim() : value;
-}
-
-/**
- * Convert to lowercase
- */
-export function applyLowercaseTransform(value: JsonValue): JsonValue {
-    return typeof value === 'string' ? value.toLowerCase() : value;
-}
-
-/**
- * Convert to uppercase
- */
-export function applyUppercaseTransform(value: JsonValue): JsonValue {
-    return typeof value === 'string' ? value.toUpperCase() : value;
+    return applyConcatCanonical(
+        value,
+        { fields: config.fields, separator: config.separator ?? ' ' },
+        record,
+        (obj, path) => getNestedValue(obj, path) ?? null,
+    ) as string;
 }

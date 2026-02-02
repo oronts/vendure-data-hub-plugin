@@ -11,7 +11,7 @@ import {
     ProductVariant,
     RequestContext,
 } from '@vendure/core';
-import { LOGGER_CONTEXTS, CONTENT_TYPES, FEED_FORMAT_MAP } from '../constants/index';
+import { LOGGER_CONTEXTS, CONTENT_TYPES, FEED_FORMAT_MAP, FIELD_LIMITS, VALIDATION_PATTERNS } from '../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
 
 import {
@@ -22,7 +22,27 @@ import {
     VariantWithCustomFields,
     CustomFeedGenerator,
     FeedGeneratorContext,
+    BuiltInFeedFormat,
 } from './generators/feed-types';
+
+/**
+ * Valid built-in feed formats
+ */
+const VALID_BUILT_IN_FORMATS: readonly BuiltInFeedFormat[] = ['google_shopping', 'facebook_catalog', 'csv', 'json', 'xml'];
+
+/**
+ * Validation error for feed configuration
+ */
+export class FeedConfigValidationError extends Error {
+    constructor(
+        message: string,
+        public readonly field: string,
+        public readonly value?: unknown,
+    ) {
+        super(message);
+        this.name = 'FeedConfigValidationError';
+    }
+}
 
 import { generateGoogleShoppingFeed } from './generators/google-shopping.generator';
 import { generateFacebookCatalogFeed } from './generators/facebook-catalog.generator';
@@ -100,9 +120,135 @@ export class FeedGeneratorService implements OnModuleInit {
     }
 
     /**
+     * Validate a feed configuration
+     * @throws FeedConfigValidationError if validation fails
+     */
+    private validateFeedConfig(config: FeedConfig): void {
+        // Validate required code field
+        if (!config.code || typeof config.code !== 'string') {
+            throw new FeedConfigValidationError('Feed code is required and must be a string', 'code', config.code);
+        }
+
+        // Validate code format (alphanumeric with underscores/hyphens)
+        if (!VALIDATION_PATTERNS.SLUG.test(config.code)) {
+            throw new FeedConfigValidationError(
+                'Feed code must contain only alphanumeric characters, underscores, and hyphens',
+                'code',
+                config.code,
+            );
+        }
+
+        // Validate code length
+        if (config.code.length > FIELD_LIMITS.CODE_MAX) {
+            throw new FeedConfigValidationError(
+                `Feed code must not exceed ${FIELD_LIMITS.CODE_MAX} characters`,
+                'code',
+                config.code,
+            );
+        }
+
+        // Validate required name field
+        if (!config.name || typeof config.name !== 'string') {
+            throw new FeedConfigValidationError('Feed name is required and must be a string', 'name', config.name);
+        }
+
+        // Validate name length
+        if (config.name.length > FIELD_LIMITS.NAME_MAX) {
+            throw new FeedConfigValidationError(
+                `Feed name must not exceed ${FIELD_LIMITS.NAME_MAX} characters`,
+                'name',
+                config.name,
+            );
+        }
+
+        // Validate format
+        if (!config.format || typeof config.format !== 'string') {
+            throw new FeedConfigValidationError('Feed format is required and must be a string', 'format', config.format);
+        }
+
+        // Validate custom format has customGeneratorCode
+        if (config.format === 'custom') {
+            if (!config.customGeneratorCode) {
+                throw new FeedConfigValidationError(
+                    'customGeneratorCode is required when format is "custom"',
+                    'customGeneratorCode',
+                    config.customGeneratorCode,
+                );
+            }
+            if (!this.customGenerators.has(config.customGeneratorCode)) {
+                throw new FeedConfigValidationError(
+                    `Custom generator "${config.customGeneratorCode}" is not registered. Available: ${Array.from(this.customGenerators.keys()).join(', ') || 'none'}`,
+                    'customGeneratorCode',
+                    config.customGeneratorCode,
+                );
+            }
+        } else if (!VALID_BUILT_IN_FORMATS.includes(config.format as BuiltInFeedFormat)) {
+            // Unknown format that's not 'custom' - warn but allow (for future extensibility)
+            this.logger.warn('Unknown feed format registered', {
+                feedCode: config.code,
+                format: config.format,
+                validFormats: VALID_BUILT_IN_FORMATS,
+            });
+        }
+
+        // Validate baseUrl if provided
+        if (config.options?.baseUrl) {
+            if (!VALIDATION_PATTERNS.URL.test(config.options.baseUrl)) {
+                throw new FeedConfigValidationError(
+                    'baseUrl must be a valid URL',
+                    'options.baseUrl',
+                    config.options.baseUrl,
+                );
+            }
+        }
+
+        // Validate price filters
+        if (config.filters?.minPrice !== undefined && config.filters.minPrice < 0) {
+            throw new FeedConfigValidationError(
+                'minPrice must be a non-negative number',
+                'filters.minPrice',
+                config.filters.minPrice,
+            );
+        }
+        if (config.filters?.maxPrice !== undefined && config.filters.maxPrice < 0) {
+            throw new FeedConfigValidationError(
+                'maxPrice must be a non-negative number',
+                'filters.maxPrice',
+                config.filters.maxPrice,
+            );
+        }
+        if (
+            config.filters?.minPrice !== undefined &&
+            config.filters?.maxPrice !== undefined &&
+            config.filters.minPrice > config.filters.maxPrice
+        ) {
+            throw new FeedConfigValidationError(
+                'minPrice cannot be greater than maxPrice',
+                'filters.minPrice',
+                { minPrice: config.filters.minPrice, maxPrice: config.filters.maxPrice },
+            );
+        }
+
+        // Validate schedule cron expression if provided
+        if (config.schedule?.enabled && config.schedule.cron) {
+            // Basic cron validation - must have 5 or 6 space-separated parts
+            const cronParts = config.schedule.cron.trim().split(/\s+/);
+            if (cronParts.length < 5 || cronParts.length > 6) {
+                throw new FeedConfigValidationError(
+                    'Invalid cron expression: must have 5 or 6 space-separated parts',
+                    'schedule.cron',
+                    config.schedule.cron,
+                );
+            }
+        }
+    }
+
+    /**
      * Register a feed configuration
+     * @throws FeedConfigValidationError if configuration is invalid
      */
     registerFeed(config: FeedConfig): void {
+        this.validateFeedConfig(config);
         this.feedConfigs.set(config.code, config);
         this.logger.info('Registered feed configuration', {
             feedCode: config.code,
@@ -313,7 +459,9 @@ export class FeedGeneratorService implements OnModuleInit {
             });
         }
 
-        return queryBuilder.getMany();
+        // TypeORM returns ProductVariant[] but the entities already have the
+        // customFields and stockLevels properties loaded via joins
+        return queryBuilder.getMany() as Promise<VariantWithCustomFields[]>;
     }
 
     getContentType(format: FeedFormat): string {

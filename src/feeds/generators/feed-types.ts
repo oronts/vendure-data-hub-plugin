@@ -7,6 +7,11 @@
 import { StockLevel, ProductVariant, Product } from '@vendure/core';
 
 import { RequestContext, TransactionalConnection } from '@vendure/core';
+import {
+    ProductCondition,
+    GoogleAvailabilityStatus,
+    FacebookAvailabilityStatus,
+} from './feed-constants';
 
 /**
  * Built-in feed format types
@@ -19,18 +24,31 @@ export type BuiltInFeedFormat = 'google_shopping' | 'facebook_catalog' | 'csv' |
 export type FeedFormat = BuiltInFeedFormat | 'custom' | string;
 
 /**
+ * Custom field value types supported in feeds
+ */
+export type CustomFieldValue = string | number | boolean | null | undefined;
+
+/**
+ * Custom fields record type for feed entities
+ * Uses unknown to be compatible with Vendure's CustomFields types
+ */
+export type CustomFieldsRecord = Record<string, CustomFieldValue>;
+
+/**
  * Helper type for variants with optional customFields
+ * Uses Record<string, unknown> to be compatible with Vendure's CustomProductVariantFields
  */
 export type VariantWithCustomFields = ProductVariant & {
-    customFields?: Record<string, any>;
+    customFields?: Record<string, unknown>;
     stockLevels?: StockLevel[];
 };
 
 /**
  * Helper type for products with optional customFields
+ * Uses Record<string, unknown> to be compatible with Vendure's CustomProductFields
  */
 export type ProductWithCustomFields = Product & {
-    customFields?: Record<string, any>;
+    customFields?: Record<string, unknown>;
 };
 
 /**
@@ -71,7 +89,7 @@ export interface FeedFilters {
 export interface FeedFieldMapping {
     source: string;
     transform?: string;
-    default?: any;
+    default?: CustomFieldValue;
 }
 
 /**
@@ -109,13 +127,13 @@ export interface GoogleShoppingItem {
     'g:link': string;
     'g:image_link': string;
     'g:additional_image_link'?: string[];
-    'g:availability': 'in_stock' | 'out_of_stock' | 'preorder' | 'backorder';
+    'g:availability': GoogleAvailabilityStatus;
     'g:price': string;
     'g:sale_price'?: string;
     'g:brand'?: string;
     'g:gtin'?: string;
     'g:mpn'?: string;
-    'g:condition': 'new' | 'refurbished' | 'used';
+    'g:condition': ProductCondition;
     'g:product_type'?: string;
     'g:google_product_category'?: string;
     'g:item_group_id'?: string;
@@ -144,8 +162,8 @@ export interface FacebookCatalogItem {
     id: string;
     title: string;
     description: string;
-    availability: 'in stock' | 'out of stock' | 'preorder' | 'available for order';
-    condition: 'new' | 'refurbished' | 'used';
+    availability: FacebookAvailabilityStatus;
+    condition: ProductCondition;
     price: string;
     link: string;
     image_link: string;

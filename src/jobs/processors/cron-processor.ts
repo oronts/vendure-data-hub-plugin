@@ -99,6 +99,7 @@ export function isValidTimezone(timezone: string): boolean {
         Intl.DateTimeFormat(undefined, { timeZone: timezone });
         return true;
     } catch {
+        // Invalid timezone - return false
         return false;
     }
 }
