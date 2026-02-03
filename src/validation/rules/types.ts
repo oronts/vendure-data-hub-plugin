@@ -5,7 +5,7 @@
  */
 
 import { StepType } from '../../constants/enums';
-import { JsonObject } from '../../types/common';
+import { JsonObject } from '../../types/index';
 
 // STEP VALIDATION TYPES
 
@@ -37,9 +37,12 @@ export interface StepValidationWarning {
 
 /**
  * Step definition interface for validation
+ * Note: type accepts string for compatibility with external inputs,
+ * but validators will reject invalid step types with proper error messages.
  */
 export interface StepDefinition {
     key: string;
+    /** Step type - must be a valid StepType enum value */
     type: StepType | string;
     name?: string;
     config: JsonObject;

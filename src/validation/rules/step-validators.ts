@@ -12,6 +12,7 @@ import {
     DatabaseType,
     HttpMethod,
     PaginationType,
+    QueueType,
 } from '../../constants/enums';
 import {
     VALIDATION_PATTERNS,
@@ -24,7 +25,8 @@ import {
     TransformErrorCode,
 } from '../../constants/error-codes';
 import { BATCH, VALIDATION_TIMEOUTS } from '../../constants/defaults';
-import { JsonObject } from '../../types/common';
+import { EXTRACTOR_CODE } from '../../constants/adapters';
+import { JsonObject } from '../../types/index';
 import {
     StepValidationResult,
     StepValidationError,
@@ -36,6 +38,7 @@ import {
     createStepWarning as createWarning,
     combineStepResults as combineResults,
 } from './helpers';
+import { isValidTimezone as isValidTimezoneFromCron, validateCronExpression } from '../../jobs/processors/cron-processor';
 
 export type {
     StepValidationResult,
@@ -133,12 +136,7 @@ export function isValidTimezone(timezone: string): boolean {
     if (!timezone || typeof timezone !== 'string') {
         return false;
     }
-    try {
-        Intl.DateTimeFormat(undefined, { timeZone: timezone });
-        return true;
-    } catch {
-        return false;
-    }
+    return isValidTimezoneFromCron(timezone);
 }
 
 /**
@@ -172,6 +170,13 @@ export function validateTimezone(timezone: string | undefined): StepValidationRe
 
 /**
  * Validates TRIGGER step configuration
+ * Handles all trigger types defined in TriggerType enum:
+ * - MANUAL: No additional configuration required
+ * - SCHEDULE: Requires cron expression or intervalSec
+ * - WEBHOOK: Validates webhook path and authentication
+ * - EVENT: Requires eventType
+ * - FILE: Validates file watcher configuration
+ * - MESSAGE: Validates message queue configuration
  */
 export function validateTriggerConfig(config: JsonObject): StepValidationResult {
     const errors: StepValidationError[] = [];
@@ -185,14 +190,37 @@ export function validateTriggerConfig(config: JsonObject): StepValidationResult 
 
     const validTriggerTypes = Object.values(TriggerType);
     if (!validTriggerTypes.includes(triggerType as TriggerType)) {
-        errors.push(createError('config.type', `Invalid trigger type: ${triggerType}`, PipelineErrorCode.INVALID_DEFINITION));
+        errors.push(createError('config.type', `Invalid trigger type: ${triggerType}. Valid types: ${validTriggerTypes.join(', ')}`, PipelineErrorCode.INVALID_DEFINITION));
+    }
+
+    // Validate manual trigger - no additional config required
+    if (triggerType === TriggerType.MANUAL) {
+        // Manual triggers have no additional required fields
     }
 
     // Validate schedule trigger
     if (triggerType === TriggerType.SCHEDULE) {
         const cron = config.cron as string;
-        if (!cron) {
-            errors.push(createError('config.cron', 'Cron expression is required for schedule triggers', PipelineErrorCode.INVALID_DEFINITION));
+        const intervalSec = config.intervalSec as number;
+
+        // Either cron or intervalSec must be provided
+        if (!cron && (intervalSec === undefined || intervalSec === null)) {
+            errors.push(createError('config', 'Schedule trigger requires either cron expression or intervalSec', PipelineErrorCode.INVALID_DEFINITION));
+        }
+
+        // Validate cron expression syntax if provided
+        if (cron && typeof cron === 'string' && cron.trim().length > 0) {
+            const cronValidation = validateCronExpression(cron);
+            if (!cronValidation.valid) {
+                errors.push(createError('config.cron', cronValidation.error ?? 'Invalid cron expression', PipelineErrorCode.INVALID_DEFINITION));
+            }
+        }
+
+        // Validate intervalSec if provided
+        if (intervalSec !== undefined && intervalSec !== null) {
+            if (typeof intervalSec !== 'number' || intervalSec <= 0) {
+                errors.push(createError('config.intervalSec', 'intervalSec must be a positive number', PipelineErrorCode.INVALID_DEFINITION));
+            }
         }
 
         // Validate timezone if provided
@@ -218,6 +246,37 @@ export function validateTriggerConfig(config: JsonObject): StepValidationResult 
         }
     }
 
+    // Validate file trigger
+    if (triggerType === TriggerType.FILE) {
+        const watchPath = config.watchPath as string;
+        const connectionCode = config.connectionCode as string;
+        if (!watchPath && !connectionCode) {
+            errors.push(createError('config', 'File trigger requires watchPath or connectionCode', PipelineErrorCode.INVALID_DEFINITION));
+        }
+    }
+
+    // Validate message trigger
+    if (triggerType === TriggerType.MESSAGE) {
+        const queueType = config.queueType as string;
+        const queueName = config.queueName as string;
+        const connectionCode = config.connectionCode as string;
+
+        if (!connectionCode) {
+            errors.push(createError('config.connectionCode', 'Connection is required for message triggers', PipelineErrorCode.INVALID_DEFINITION));
+        }
+
+        if (!queueName) {
+            errors.push(createError('config.queueName', 'Queue name is required for message triggers', PipelineErrorCode.INVALID_DEFINITION));
+        }
+
+        if (queueType) {
+            const validQueueTypes = Object.values(QueueType);
+            if (!validQueueTypes.includes(queueType as QueueType)) {
+                errors.push(createError('config.queueType', `Invalid queue type: ${queueType}. Valid types: ${validQueueTypes.join(', ')}`, PipelineErrorCode.INVALID_DEFINITION));
+            }
+        }
+    }
+
     return { valid: errors.length === 0, errors, warnings };
 }
 
@@ -237,7 +296,7 @@ export function validateExtractConfig(config: JsonObject): StepValidationResult 
     }
 
     // Validate HTTP configuration
-    if (adapterCode === 'http' || adapterCode === 'rest-api') {
+    if (adapterCode === EXTRACTOR_CODE.HTTP_API) {
         const url = config.url as string;
         if (!url) {
             errors.push(createError('config.url', 'URL is required for HTTP extractor', ExtractorErrorCode.INVALID_FORMAT));
@@ -264,7 +323,7 @@ export function validateExtractConfig(config: JsonObject): StepValidationResult 
     }
 
     // Validate database configuration
-    if (adapterCode === 'database') {
+    if (adapterCode === EXTRACTOR_CODE.DATABASE) {
         const dbType = config.databaseType as string;
         if (dbType) {
             const validTypes = Object.values(DatabaseType);
@@ -280,7 +339,7 @@ export function validateExtractConfig(config: JsonObject): StepValidationResult 
     }
 
     // Validate file configuration
-    if (adapterCode === 'file' || adapterCode === 'csv' || adapterCode === 'json' || adapterCode === 'xml') {
+    if (adapterCode === EXTRACTOR_CODE.FILE || adapterCode === EXTRACTOR_CODE.CSV || adapterCode === EXTRACTOR_CODE.JSON || adapterCode === EXTRACTOR_CODE.XML) {
         // File can come from various sources - path, upload, or variable
         const hasSource = config.path || config.filePath || config.source || config.uploadId;
         if (!hasSource) {
@@ -380,7 +439,7 @@ export function validateValidateConfig(config: JsonObject): StepValidationResult
         errors.push(createError(
             'config',
             'Validate step requires rules, schemaCode, or adapterCode',
-            LoaderErrorCode.VALIDATION_FAILED,
+            PipelineErrorCode.INVALID_DEFINITION,
         ));
         return { valid: false, errors, warnings };
     }
@@ -392,14 +451,73 @@ export function validateValidateConfig(config: JsonObject): StepValidationResult
                 errors.push(createError(
                     `config.rules[${index}].field`,
                     'Validation rule field is required',
-                    LoaderErrorCode.VALIDATION_FAILED,
+                    PipelineErrorCode.INVALID_DEFINITION,
                 ));
             }
             if (!rule.type) {
                 errors.push(createError(
                     `config.rules[${index}].type`,
                     'Validation rule type is required',
-                    LoaderErrorCode.VALIDATION_FAILED,
+                    PipelineErrorCode.INVALID_DEFINITION,
+                ));
+            }
+        });
+    }
+
+    return { valid: errors.length === 0, errors, warnings };
+}
+
+// ENRICH STEP VALIDATORS
+
+/**
+ * Validates ENRICH step configuration
+ * ENRICH steps can use adapters, lookups, or transformations to add data
+ */
+export function validateEnrichConfig(config: JsonObject): StepValidationResult {
+    const errors: StepValidationError[] = [];
+    const warnings: StepValidationWarning[] = [];
+
+    const adapterCode = config.adapterCode as string;
+    const lookupConfig = config.lookupConfig as JsonObject;
+    const mappings = config.mappings as JsonObject[];
+    const operations = config.operations as JsonObject[];
+    const enrichmentSource = config.enrichmentSource as string;
+
+    // Must have adapterCode, lookupConfig, mappings, operations, or enrichmentSource
+    if (!adapterCode && !lookupConfig && !mappings && !operations && !enrichmentSource) {
+        errors.push(createError(
+            'config',
+            'Enrich step requires adapterCode, lookupConfig, mappings, operations, or enrichmentSource',
+            PipelineErrorCode.INVALID_DEFINITION,
+        ));
+        return { valid: false, errors, warnings };
+    }
+
+    // Validate lookupConfig if present
+    if (lookupConfig && typeof lookupConfig === 'object') {
+        if (!lookupConfig.type && !lookupConfig.source) {
+            warnings.push(createWarning(
+                'config.lookupConfig',
+                'Lookup configuration should specify type or source',
+            ));
+        }
+    }
+
+    // Validate mappings if present (reuse transform mapping validation)
+    if (mappings && Array.isArray(mappings)) {
+        mappings.forEach((mapping, index) => {
+            if (!mapping.source && !mapping.from) {
+                errors.push(createError(
+                    `config.mappings[${index}].source`,
+                    'Mapping source field is required',
+                    TransformErrorCode.FIELD_NOT_FOUND,
+                ));
+            }
+            if (!mapping.target && !mapping.to) {
+                errors.push(createError(
+                    `config.mappings[${index}].target`,
+                    'Mapping target field is required',
+                    TransformErrorCode.FIELD_NOT_FOUND,
                 ));
             }
         });
@@ -506,7 +624,7 @@ export function validateExportConfig(config: JsonObject): StepValidationResult {
     const adapterCode = config.adapterCode as string;
 
     if (!format && !adapterCode) {
-        errors.push(createError('config', 'EXPORT step requires format or adapterCode', LoaderErrorCode.VALIDATION_FAILED));
+        errors.push(createError('config', 'EXPORT step requires format or adapterCode', PipelineErrorCode.INVALID_DEFINITION));
         return { valid: false, errors, warnings };
     }
 
@@ -524,7 +642,7 @@ export function validateSinkConfig(config: JsonObject): StepValidationResult {
 
     const adapterCode = config.adapterCode as string;
     if (!adapterCode) {
-        errors.push(createError('config.adapterCode', 'SINK step requires adapterCode', LoaderErrorCode.VALIDATION_FAILED));
+        errors.push(createError('config.adapterCode', 'SINK step requires adapterCode', PipelineErrorCode.INVALID_DEFINITION));
         return { valid: false, errors, warnings };
     }
 
@@ -544,7 +662,7 @@ export function validateFeedConfig(config: JsonObject): StepValidationResult {
     const feedType = config.feedType as string;
 
     if (!adapterCode && !feedType) {
-        errors.push(createError('config', 'FEED step requires adapterCode or feedType', LoaderErrorCode.VALIDATION_FAILED));
+        errors.push(createError('config', 'FEED step requires adapterCode or feedType', PipelineErrorCode.INVALID_DEFINITION));
         return { valid: false, errors, warnings };
     }
 
@@ -588,8 +706,10 @@ export function validateStep(step: StepDefinition): StepValidationResult {
             configResult = validateExtractConfig(step.config);
             break;
         case StepType.TRANSFORM:
-        case StepType.ENRICH:
             configResult = validateTransformConfig(step.config);
+            break;
+        case StepType.ENRICH:
+            configResult = validateEnrichConfig(step.config);
             break;
         case StepType.VALIDATE:
             configResult = validateValidateConfig(step.config);
@@ -610,9 +730,8 @@ export function validateStep(step: StepDefinition): StepValidationResult {
             configResult = validateFeedConfig(step.config);
             break;
         default:
-            // Unknown step type - validateStepType already caught invalid types
-            // This handles future step types that may be added to the enum
-            // Return valid with a warning for extensibility
+            // This should not happen if StepType enum is exhaustive
+            // but provides a safety net for future step types
             configResult = {
                 valid: true,
                 errors: [],

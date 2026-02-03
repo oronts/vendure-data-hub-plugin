@@ -8,8 +8,8 @@
 import {
     VALIDATION_PATTERNS,
     FIELD_LIMITS,
-    VALIDATION_MESSAGES,
     matchesPattern,
+    ERROR_MESSAGES,
 } from '../../constants/validation';
 import {
     LoaderErrorCode,
@@ -30,7 +30,7 @@ export function validateRequired(value: unknown): FieldValidationResult {
     if (value === null || value === undefined || value === '') {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.REQUIRED,
+            error: ERROR_MESSAGES.REQUIRED,
             errorCode: LoaderErrorCode.MISSING_REQUIRED_FIELD,
         };
     }
@@ -48,7 +48,7 @@ export function validateStringLength(
     if (typeof value !== 'string') {
         return {
             valid: false,
-            error: 'Value must be a string',
+            error: ERROR_MESSAGES.INVALID_STRING,
             errorCode: LoaderErrorCode.INVALID_FIELD_TYPE,
         };
     }
@@ -56,7 +56,7 @@ export function validateStringLength(
     if (value.length < minLength) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.TOO_SHORT(minLength),
+            error: ERROR_MESSAGES.TOO_SHORT(minLength),
             errorCode: LoaderErrorCode.VALIDATION_FAILED,
         };
     }
@@ -64,7 +64,7 @@ export function validateStringLength(
     if (value.length > maxLength) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.TOO_LONG(maxLength),
+            error: ERROR_MESSAGES.TOO_LONG(maxLength),
             errorCode: LoaderErrorCode.VALIDATION_FAILED,
         };
     }
@@ -83,7 +83,7 @@ export function validateNumericRange(
     if (typeof value !== 'number' || isNaN(value)) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.INVALID_NUMBER,
+            error: ERROR_MESSAGES.INVALID_NUMBER,
             errorCode: LoaderErrorCode.INVALID_FIELD_TYPE,
         };
     }
@@ -91,7 +91,7 @@ export function validateNumericRange(
     if (value < min) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.TOO_SMALL(min),
+            error: ERROR_MESSAGES.TOO_SMALL(min),
             errorCode: LoaderErrorCode.VALIDATION_FAILED,
         };
     }
@@ -99,7 +99,7 @@ export function validateNumericRange(
     if (value > max) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.TOO_LARGE(max),
+            error: ERROR_MESSAGES.TOO_LARGE(max),
             errorCode: LoaderErrorCode.VALIDATION_FAILED,
         };
     }
@@ -118,7 +118,7 @@ export function validatePattern(
     if (typeof value !== 'string') {
         return {
             valid: false,
-            error: 'Value must be a string',
+            error: ERROR_MESSAGES.INVALID_STRING,
             errorCode: LoaderErrorCode.INVALID_FIELD_TYPE,
         };
     }
@@ -126,7 +126,7 @@ export function validatePattern(
     if (!matchesPattern(value, pattern)) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.PATTERN_MISMATCH(patternName),
+            error: ERROR_MESSAGES.PATTERN_MISMATCH(patternName),
             errorCode: LoaderErrorCode.VALIDATION_FAILED,
         };
     }
@@ -191,7 +191,7 @@ export function validateIsoDate(value: string): FieldValidationResult {
     if (typeof value !== 'string') {
         return {
             valid: false,
-            error: 'Value must be a string',
+            error: ERROR_MESSAGES.INVALID_STRING,
             errorCode: LoaderErrorCode.INVALID_FIELD_TYPE,
         };
     }
@@ -202,7 +202,7 @@ export function validateIsoDate(value: string): FieldValidationResult {
     if (!isDateFormat && !isDateTimeFormat) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.INVALID_DATE,
+            error: ERROR_MESSAGES.INVALID_DATE,
             errorCode: LoaderErrorCode.VALIDATION_FAILED,
         };
     }
@@ -211,7 +211,7 @@ export function validateIsoDate(value: string): FieldValidationResult {
     if (isNaN(date.getTime())) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.INVALID_DATE,
+            error: ERROR_MESSAGES.INVALID_DATE,
             errorCode: LoaderErrorCode.VALIDATION_FAILED,
         };
     }
@@ -298,7 +298,7 @@ export function validatePrice(value: number): FieldValidationResult {
     if (!Number.isInteger(value)) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.INVALID_INTEGER,
+            error: ERROR_MESSAGES.INVALID_INTEGER,
             errorCode: LoaderErrorCode.INVALID_FIELD_TYPE,
         };
     }
@@ -313,7 +313,7 @@ export function validateQuantity(value: number): FieldValidationResult {
     if (!Number.isInteger(value)) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.INVALID_INTEGER,
+            error: ERROR_MESSAGES.INVALID_INTEGER,
             errorCode: LoaderErrorCode.INVALID_FIELD_TYPE,
         };
     }
@@ -329,24 +329,33 @@ export function validatePercentage(value: number): FieldValidationResult {
 }
 
 /**
- * Validates an array does not exceed maximum length
+ * Validates array length constraints
  */
 export function validateArrayLength(
     value: unknown[],
     maxLength: number,
+    minLength: number = 0,
 ): FieldValidationResult {
     if (!Array.isArray(value)) {
         return {
             valid: false,
-            error: 'Value must be an array',
+            error: ERROR_MESSAGES.INVALID_ARRAY,
             errorCode: LoaderErrorCode.INVALID_FIELD_TYPE,
+        };
+    }
+
+    if (value.length < minLength) {
+        return {
+            valid: false,
+            error: ERROR_MESSAGES.TOO_SHORT(minLength),
+            errorCode: LoaderErrorCode.VALIDATION_FAILED,
         };
     }
 
     if (value.length > maxLength) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.TOO_LARGE(maxLength),
+            error: ERROR_MESSAGES.TOO_LARGE(maxLength),
             errorCode: LoaderErrorCode.VALIDATION_FAILED,
         };
     }
@@ -364,7 +373,7 @@ export function validateEnum(
     if (!allowedValues.includes(value)) {
         return {
             valid: false,
-            error: VALIDATION_MESSAGES.NOT_IN_ENUM([...allowedValues]),
+            error: ERROR_MESSAGES.NOT_IN_ENUM([...allowedValues]),
             errorCode: LoaderErrorCode.VALIDATION_FAILED,
         };
     }

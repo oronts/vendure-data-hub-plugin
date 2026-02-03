@@ -1,55 +1,21 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve, join } from 'path';
-import { readdirSync, statSync } from 'fs';
+import { resolve } from 'path';
 
 /**
  * Vite configuration for @vendure/data-hub-plugin dashboard
  *
  * This config builds the dashboard extensions as a library that can be
  * consumed by the main Vendure dashboard.
+ *
+ * Usage:
+ *   npm run build:dashboard    - Production build
+ *
+ * For development, use vite.dev.config.mts instead:
+ *   npm run build:dev          - Dev server build with HMR
  */
 
-// Get all component entry points for the dashboard
-function getDashboardEntries() {
-    const dashboardDir = resolve(__dirname, 'dashboard');
-    const entries: Record<string, string> = {
-        'dashboard/index': resolve(dashboardDir, 'index.tsx'),
-    };
-
-    // Add component directories as separate entries for code splitting
-    const componentDirs = ['components', 'pages', 'providers', 'hooks'];
-    for (const dir of componentDirs) {
-        const dirPath = join(dashboardDir, dir);
-        try {
-            const files = readdirSync(dirPath);
-            for (const file of files) {
-                const filePath = join(dirPath, file);
-                const stat = statSync(filePath);
-                if (stat.isDirectory()) {
-                    const indexFile = join(filePath, 'index.ts');
-                    try {
-                        statSync(indexFile);
-                        entries[`dashboard/${dir}/${file}/index`] = indexFile;
-                    } catch {
-                        // No index.ts, try index.tsx
-                        const indexTsx = join(filePath, 'index.tsx');
-                        try {
-                            statSync(indexTsx);
-                            entries[`dashboard/${dir}/${file}/index`] = indexTsx;
-                        } catch {
-                            // Skip directories without index files
-                        }
-                    }
-                }
-            }
-        } catch {
-            // Directory doesn't exist, skip
-        }
-    }
-
-    return entries;
-}
+const isProduction = process.env.NODE_ENV === 'production';
 
 export default defineConfig({
     plugins: [react()],
@@ -93,10 +59,10 @@ export default defineConfig({
                 },
             },
         },
-        // Generate sourcemaps for debugging
-        sourcemap: true,
-        // Minify for production
-        minify: 'esbuild',
+        // Generate sourcemaps for debugging (always for dev, conditional for prod)
+        sourcemap: !isProduction || process.env.GENERATE_SOURCEMAP === 'true',
+        // Minify for production only
+        minify: isProduction ? 'esbuild' : false,
         // Target modern browsers
         target: 'es2020',
     },

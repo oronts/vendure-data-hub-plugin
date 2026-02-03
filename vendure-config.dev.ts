@@ -13,6 +13,7 @@ import { DashboardPlugin } from '@vendure/dashboard/plugin';
 import path from 'path';
 
 import { DataHubPlugin, createPipeline } from './src';
+import { pimcoreConnectorDefinition, PimcoreConnectorConfig, pimcoreGraphQLExtractor } from './connectors/pimcore';
 import {
     allCustomAdapters,
     allCustomFeedGenerators,
@@ -57,19 +58,20 @@ import {
 
 const PORT = process.env.PORT ? +process.env.PORT : 3000;
 const VENDURE_BASE_URL = process.env.VENDURE_BASE_URL || `http://localhost:${PORT}`;
+const VITE_DEV_PORT = process.env.VITE_DEV_PORT ? +process.env.VITE_DEV_PORT : 5173;
 
 // =============================================================================
 // EXAMPLE PIPELINES
 // =============================================================================
 
-const restApiExtractorExample = createPipeline()
+const httpApiExtractorExample = createPipeline()
     .name('REST API Extractor')
     .description('Extract products from external REST API')
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'manual' })
     .extract('fetch', {
-        adapterCode: 'rest',
-        endpoint: 'https://api.example.com/products',
+        adapterCode: 'httpApi',
+        url: 'https://api.example.com/products',
         method: 'GET',
         headers: { Authorization: 'Bearer {{secret:demo-api-key}}' },
     })
@@ -99,8 +101,8 @@ const vendureQueryExample = createPipeline()
     .capabilities({ requires: ['UpdateDataHubSettings'] })
     .trigger('start', { type: 'manual' })
     .extract('query', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         relations: 'variants,featuredAsset',
         batchSize: 100,
     })
@@ -263,8 +265,8 @@ const productExportExample = createPipeline()
     .capabilities({ requires: ['ReadCatalog'] })
     .trigger('start', { type: 'schedule', cron: '0 2 * * *' }) // Daily at 2am
     .extract('query', {
-        adapterCode: 'vendure-query',
-        entity: 'Product',
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
         relations: 'variants,featuredAsset,facetValues',
         batchSize: 100,
     })
@@ -293,8 +295,8 @@ const customerExportExample = createPipeline()
     .capabilities({ requires: ['ReadCustomer'] })
     .trigger('start', { type: 'manual' })
     .extract('query', {
-        adapterCode: 'vendure-query',
-        entity: 'Customer',
+        adapterCode: 'vendureQuery',
+        entity: 'CUSTOMER',
         relations: 'addresses,groups',
         batchSize: 50,
     })
@@ -324,8 +326,8 @@ const orderExportExample = createPipeline()
     .capabilities({ requires: ['ReadOrder'] })
     .trigger('start', { type: 'schedule', cron: '*/15 * * * *' }) // Every 15 minutes
     .extract('query', {
-        adapterCode: 'vendure-query',
-        entity: 'Order',
+        adapterCode: 'vendureQuery',
+        entity: 'ORDER',
         relations: 'lines,customer,shippingLines',
         batchSize: 20,
     })
@@ -345,6 +347,34 @@ const orderExportExample = createPipeline()
     .edge('query', 'prepare')
     .edge('prepare', 'export')
     .build();
+
+// =============================================================================
+// PIMCORE CONNECTOR (Example Configuration)
+// =============================================================================
+const pimcoreConfig: PimcoreConnectorConfig = {
+    connection: {
+        // Demo endpoint - replace with actual Pimcore DataHub URL
+        endpoint: process.env.PIMCORE_ENDPOINT || 'https://pimcore.example.com/pimcore-datahub-webservices/shop',
+        apiKeySecretCode: 'pimcore-api-key',
+    },
+    vendureChannel: '__default_channel__',
+    defaultLanguage: 'en',
+    languages: ['en', 'de'],
+    sync: {
+        deltaSync: true,
+        batchSize: 100,
+        includeUnpublished: false,
+        includeVariants: true,
+    },
+    pipelines: {
+        productSync: { enabled: true, schedule: '0 */4 * * *' },
+        categorySync: { enabled: true, schedule: '0 2 * * *' },
+        assetSync: { enabled: true, schedule: '0 3 * * *' },
+        facetSync: { enabled: true, schedule: '0 1 * * 0' },
+    },
+};
+
+const pimcorePipelines = pimcoreConnectorDefinition.createPipelines(pimcoreConfig);
 
 export const config: VendureConfig = {
     apiOptions: {
@@ -391,7 +421,7 @@ export const config: VendureConfig = {
             retentionDaysErrors: 90,
 
             // Custom adapters (operators, extractors, loaders)
-            adapters: allCustomAdapters,
+            adapters: [...allCustomAdapters, pimcoreGraphQLExtractor],
 
             // Custom feed generators
             feedGenerators: [...allCustomFeedGenerators],
@@ -401,8 +431,8 @@ export const config: VendureConfig = {
                 // =====================================================================
                 // BASIC EXAMPLES (inline definitions)
                 // =====================================================================
-                { code: 'rest-api-extractor', name: 'REST API Extractor', definition: restApiExtractorExample, enabled: true },
-                { code: 'vendure-query', name: 'Vendure Query', definition: vendureQueryExample, enabled: true },
+                { code: 'http-api-extractor', name: 'HTTP API Extractor', definition: httpApiExtractorExample, enabled: true },
+                { code: 'vendureQuery', name: 'Vendure Query', definition: vendureQueryExample, enabled: true },
                 { code: 'product-loader', name: 'Product Loader', definition: productLoaderExample, enabled: true },
                 { code: 'customer-loader', name: 'Customer Loader', definition: customerLoaderExample, enabled: true },
                 { code: 'transform-operators', name: 'Transform Operators', definition: transformOperatorsExample, enabled: true },
@@ -467,15 +497,31 @@ export const config: VendureConfig = {
                 { code: 'comprehensive-advanced', name: 'Comprehensive Advanced Pipeline', definition: comprehensiveAdvancedPipeline, enabled: true },
                 { code: 'all-hook-stages', name: 'All 18 Hook Stages Demo', definition: allHookStagesPipeline, enabled: true },
                 { code: 'custom-adapter-sdk', name: 'Custom Adapter SDK Example', definition: customAdapterPipeline, enabled: true },
+
+                // =====================================================================
+                // PIMCORE CONNECTOR PIPELINES
+                // =====================================================================
+                { code: 'pimcore-product-sync', name: 'Pimcore Product Sync', definition: pimcorePipelines[0], enabled: true },
+                { code: 'pimcore-category-sync', name: 'Pimcore Category Sync', definition: pimcorePipelines[1], enabled: true },
+                { code: 'pimcore-asset-sync', name: 'Pimcore Asset Sync', definition: pimcorePipelines[2], enabled: true },
+                { code: 'pimcore-facet-sync', name: 'Pimcore Facet Sync', definition: pimcorePipelines[3], enabled: true },
             ],
 
             // Secrets for API authentication
+            // Providers: 'inline' (stored in DB, encrypted if DATAHUB_MASTER_KEY set)
+            //            'env' (reads from environment variable at runtime)
+            // Env provider supports fallback syntax: 'ENV_VAR|fallback_value'
             secrets: [
                 { code: 'demo-api-key', provider: 'inline', value: 'demo-key-12345' },
                 { code: 'crm-api-key', provider: 'inline', value: 'crm-demo-key-67890' },
                 { code: 'webhook-api-key', provider: 'inline', value: 'webhook-secret-abcdef' },
                 { code: 'google-merchant-key', provider: 'inline', value: 'google-merchant-demo-key' },
                 { code: 'facebook-catalog-key', provider: 'inline', value: 'fb-catalog-demo-key' },
+                // Pimcore connector secrets - use env provider with fallback for dev
+                // In production: set PIMCORE_API_KEY environment variable
+                // For testing: uses 'demo-pimcore-key' fallback (will fail auth but allows pipeline validation)
+                { code: 'pimcore-api-key', provider: 'env', value: 'PIMCORE_API_KEY|demo-pimcore-key' },
+                { code: 'pimcore-webhook-key', provider: 'env', value: 'PIMCORE_WEBHOOK_KEY|demo-webhook-key' },
             ],
 
             // Database connections
@@ -497,7 +543,7 @@ export const config: VendureConfig = {
         DashboardPlugin.init({
             route: 'admin',
             appDir: path.join(__dirname, 'dist/dashboard'),
-            viteDevServerPort: 5173,
+            viteDevServerPort: VITE_DEV_PORT,
         }),
     ],
 };

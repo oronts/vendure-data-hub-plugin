@@ -1,36 +1,21 @@
-/**
- * Pipeline Definition Validator
- *
- * Main validator for pipeline definitions. Provides a throwing interface
- * for convenience while delegating to the modular validators.
- *
- * Uses constants from ../constants for consistency:
- * - StepType enum for valid step types
- * - PipelineErrorCode for error codes
- * - FIELD_LIMITS for constraints
- */
-
-import { PipelineDefinition, PipelineStepDefinition, StepType, JsonObject } from '../types/index';
+import { PipelineDefinition, PipelineStepDefinition, PipelineEdge, StepType, JsonObject } from '../types/index';
 import { PipelineDefinitionError, PipelineDefinitionIssue } from './pipeline-definition-error';
+import { PIPELINE_VALIDATION_ERROR } from '../constants/enums';
 
-// TYPE GUARDS
+function createIssue(
+    message: string,
+    errorCode: string,
+    stepKey?: string,
+    field?: string,
+): PipelineDefinitionIssue {
+    return { message, errorCode, stepKey, field };
+}
 
 /**
  * Type guard for StepType enum
  */
 function isStepType(value: string): value is StepType {
     return Object.values(StepType).includes(value as StepType);
-}
-
-// EDGE TYPES
-
-/**
- * Pipeline edge connecting steps
- */
-interface PipelineEdge {
-    from: string;
-    to: string;
-    branch?: string;
 }
 
 // MAIN VALIDATOR
@@ -49,7 +34,9 @@ interface PipelineEdge {
  */
 export function validatePipelineDefinition(definition: PipelineDefinition): void {
     if (!definition || typeof definition !== 'object') {
-        throw new PipelineDefinitionError([{ message: 'Invalid pipeline definition' }]);
+        throw new PipelineDefinitionError([
+            createIssue('Invalid pipeline definition', PIPELINE_VALIDATION_ERROR.INVALID_DEFINITION),
+        ]);
     }
 
     // Coerce version to number if string
@@ -58,13 +45,17 @@ export function validatePipelineDefinition(definition: PipelineDefinition): void
         version = parseInt(version, 10);
     }
     if (typeof version !== 'number' || isNaN(version) || version < 1) {
-        throw new PipelineDefinitionError([{ message: 'PipelineDefinition.version must be a positive number' }]);
+        throw new PipelineDefinitionError([
+            createIssue('PipelineDefinition.version must be a positive number', PIPELINE_VALIDATION_ERROR.INVALID_VERSION, undefined, 'version'),
+        ]);
     }
-    // Update the definition with coerced version
-    (definition as any).version = version;
+    // Update the definition with coerced version (mutable operation for validation normalization)
+    (definition as { version: number }).version = version;
 
     if (!Array.isArray(definition.steps)) {
-        throw new PipelineDefinitionError([{ message: 'PipelineDefinition.steps must be an array' }]);
+        throw new PipelineDefinitionError([
+            createIssue('PipelineDefinition.steps must be an array', PIPELINE_VALIDATION_ERROR.INVALID_DEFINITION, undefined, 'steps'),
+        ]);
     }
 
     // Validate individual steps
@@ -76,15 +67,15 @@ export function validatePipelineDefinition(definition: PipelineDefinition): void
     });
 
     // Extract edges from definition
-    const edges: PipelineEdge[] = Array.isArray((definition as any).edges)
-        ? ((definition as any).edges as PipelineEdge[])
-        : [];
+    const edges: PipelineEdge[] = definition.edges ?? [];
 
     // Linear validations (no edges): first step should be TRIGGER or EXTRACT
     // EXTRACT is allowed for visual editor pipelines that start with a data source
     if (edges.length === 0) {
         if (firstStep && firstStep.type !== StepType.TRIGGER && firstStep.type !== StepType.EXTRACT) {
-            throw new PipelineDefinitionError([{ message: 'First step should be a TRIGGER or EXTRACT (data source)' }]);
+            throw new PipelineDefinitionError([
+                createIssue('First step should be a TRIGGER or EXTRACT (data source)', PIPELINE_VALIDATION_ERROR.INVALID_ROOT_TYPE, firstStep?.key, 'steps[0].type'),
+            ]);
         }
         return;
     }
@@ -104,35 +95,39 @@ function validateStep(
     keys: Set<string>,
 ): void {
     if (!step || typeof step !== 'object') {
-        throw new PipelineDefinitionError([{ message: `Step at index ${index} is invalid` }]);
+        throw new PipelineDefinitionError([
+            createIssue(`Step at index ${index} is invalid`, PIPELINE_VALIDATION_ERROR.INVALID_DEFINITION, undefined, `steps[${index}]`),
+        ]);
     }
 
     if (typeof step.key !== 'string' || step.key.length === 0) {
-        throw new PipelineDefinitionError([{ message: `Step at index ${index} must have a non-empty key` }]);
+        throw new PipelineDefinitionError([
+            createIssue(`Step at index ${index} must have a non-empty key`, PIPELINE_VALIDATION_ERROR.INVALID_DEFINITION, undefined, `steps[${index}].key`),
+        ]);
     }
 
     if (keys.has(step.key)) {
         throw new PipelineDefinitionError([
-            { message: `Duplicate step key: ${step.key}`, stepKey: step.key, reason: 'duplicate-step-key' },
+            createIssue(`Duplicate step key: ${step.key}`, PIPELINE_VALIDATION_ERROR.DUPLICATE_STEP_KEY, step.key, `steps[${index}].key`),
         ]);
     }
     keys.add(step.key);
 
     if (!isStepType(step.type as string)) {
         throw new PipelineDefinitionError([
-            { message: `Step ${step.key} has invalid type ${String(step.type)}`, stepKey: step.key, reason: 'invalid-step-type' },
+            createIssue(`Step ${step.key} has invalid type ${String(step.type)}`, PIPELINE_VALIDATION_ERROR.INVALID_STEP_TYPE, step.key, `steps[${index}].type`),
         ]);
     }
 
     if (!step.config || typeof step.config !== 'object') {
         throw new PipelineDefinitionError([
-            { message: `Step ${step.key} must have a config object`, stepKey: step.key, reason: 'missing-config' },
+            createIssue(`Step ${step.key} must have a config object`, PIPELINE_VALIDATION_ERROR.MISSING_CONFIG, step.key, `steps[${index}].config`),
         ]);
     }
 
-    if (step.concurrency !== undefined && step.concurrency! < 1) {
+    if (step.concurrency !== undefined && step.concurrency < 1) {
         throw new PipelineDefinitionError([
-            { message: `Step ${step.key} has invalid concurrency`, stepKey: step.key, reason: 'invalid-concurrency' },
+            createIssue(`Step ${step.key} has invalid concurrency`, PIPELINE_VALIDATION_ERROR.INVALID_CONCURRENCY, step.key, `steps[${index}].concurrency`),
         ]);
     }
 }
@@ -175,47 +170,50 @@ function validateEdges(
     stepByKey: Map<string, PipelineStepDefinition>,
     errors: PipelineDefinitionIssue[],
 ): void {
-    for (const e of edges) {
+    for (let i = 0; i < edges.length; i++) {
+        const e = edges[i];
         if (!e || typeof e !== 'object') {
-            errors.push({ message: 'Invalid edge entry', reason: 'invalid-edge' });
+            errors.push(createIssue('Invalid edge entry', PIPELINE_VALIDATION_ERROR.INVALID_EDGE, undefined, `edges[${i}]`));
             continue;
         }
 
         if (!e.from || !e.to) {
-            errors.push({ message: 'Edge missing from/to', reason: 'edge-missing-nodes' });
+            errors.push(createIssue('Edge missing from/to', PIPELINE_VALIDATION_ERROR.EDGE_MISSING_NODES, undefined, `edges[${i}]`));
             continue;
         }
 
         if (!stepByKey.has(e.from)) {
-            errors.push({ message: `Edge from unknown step "${e.from}"`, stepKey: e.from, reason: 'edge-unknown-source' });
+            errors.push(createIssue(`Edge from unknown step "${e.from}"`, PIPELINE_VALIDATION_ERROR.EDGE_UNKNOWN_SOURCE, e.from, `edges[${i}].from`));
         }
 
         if (!stepByKey.has(e.to)) {
-            errors.push({ message: `Edge to unknown step "${e.to}"`, stepKey: e.to, reason: 'edge-unknown-target' });
+            errors.push(createIssue(`Edge to unknown step "${e.to}"`, PIPELINE_VALIDATION_ERROR.EDGE_UNKNOWN_TARGET, e.to, `edges[${i}].to`));
         }
 
         if (e.from === e.to) {
-            errors.push({ message: `Edge cannot point to itself: "${e.from}"`, stepKey: e.from, reason: 'edge-self-loop' });
+            errors.push(createIssue(`Edge cannot point to itself: "${e.from}"`, PIPELINE_VALIDATION_ERROR.EDGE_SELF_LOOP, e.from, `edges[${i}]`));
         }
 
         // Validate branch references
         if (e.branch) {
             const fromStep = stepByKey.get(e.from);
             if (!fromStep || fromStep.type !== StepType.ROUTE) {
-                errors.push({
-                    message: `Edge from "${e.from}" specifies branch but source is not a ROUTE step`,
-                    stepKey: e.from,
-                    reason: 'edge-branch-non-route',
-                });
+                errors.push(createIssue(
+                    `Edge from "${e.from}" specifies branch but source is not a ROUTE step`,
+                    PIPELINE_VALIDATION_ERROR.EDGE_BRANCH_NON_ROUTE,
+                    e.from,
+                    `edges[${i}].branch`,
+                ));
             } else {
                 const branches = ((fromStep.config as JsonObject)?.branches ?? []) as Array<{ name: string }>;
                 const names = new Set<string>(branches.map(b => String(b?.name ?? '')));
                 if (!names.has(e.branch)) {
-                    errors.push({
-                        message: `Edge from "${e.from}" references unknown branch "${e.branch}"`,
-                        stepKey: e.from,
-                        reason: 'edge-unknown-branch',
-                    });
+                    errors.push(createIssue(
+                        `Edge from "${e.from}" references unknown branch "${e.branch}"`,
+                        PIPELINE_VALIDATION_ERROR.EDGE_UNKNOWN_BRANCH,
+                        e.from,
+                        `edges[${i}].branch`,
+                    ));
                 }
             }
         }
@@ -229,32 +227,37 @@ function validateRouteSteps(
     steps: PipelineStepDefinition[],
     errors: PipelineDefinitionIssue[],
 ): void {
-    for (const s of steps) {
+    for (let i = 0; i < steps.length; i++) {
+        const s = steps[i];
         if (s.type === StepType.ROUTE) {
             const branches = ((s.config as JsonObject)?.branches ?? []) as Array<{ name: string }>;
 
             if (!Array.isArray(branches) || branches.length === 0) {
-                errors.push({
-                    message: `Step "${s.key}": ROUTE requires non-empty branches[]`,
-                    stepKey: s.key,
-                    reason: 'route-missing-branches',
-                });
+                errors.push(createIssue(
+                    `Step "${s.key}": ROUTE requires non-empty branches[]`,
+                    PIPELINE_VALIDATION_ERROR.ROUTE_MISSING_BRANCHES,
+                    s.key,
+                    `steps[${i}].config.branches`,
+                ));
             } else {
                 const seen = new Set<string>();
-                for (const b of branches) {
-                    const name = String((b as any)?.name ?? '');
+                for (let j = 0; j < branches.length; j++) {
+                    const b = branches[j] as { name?: string } | undefined;
+                    const name = String(b?.name ?? '');
                     if (!name) {
-                        errors.push({
-                            message: `Step "${s.key}": ROUTE branch missing name`,
-                            stepKey: s.key,
-                            reason: 'route-branch-missing-name',
-                        });
+                        errors.push(createIssue(
+                            `Step "${s.key}": ROUTE branch missing name`,
+                            PIPELINE_VALIDATION_ERROR.ROUTE_BRANCH_MISSING_NAME,
+                            s.key,
+                            `steps[${i}].config.branches[${j}].name`,
+                        ));
                     } else if (seen.has(name)) {
-                        errors.push({
-                            message: `Step "${s.key}": duplicate branch name "${name}"`,
-                            stepKey: s.key,
-                            reason: 'route-branch-duplicate',
-                        });
+                        errors.push(createIssue(
+                            `Step "${s.key}": duplicate branch name "${name}"`,
+                            PIPELINE_VALIDATION_ERROR.ROUTE_BRANCH_DUPLICATE,
+                            s.key,
+                            `steps[${i}].config.branches[${j}].name`,
+                        ));
                     }
                     seen.add(name);
                 }
@@ -291,15 +294,51 @@ function validateTopology(
         .filter(([_, v]) => (v ?? 0) === 0)
         .map(([k]) => k);
 
-    if (roots.length !== 1) {
-        errors.push({ message: `Graph must have exactly one root; found ${roots.length}`, reason: 'invalid-root-count' });
-    } else {
-        const root = stepByKey.get(roots[0]);
-        // Allow TRIGGER or EXTRACT as root (EXTRACT for visual editor pipelines)
-        if (!root || (root.type !== StepType.TRIGGER && root.type !== StepType.EXTRACT)) {
-            errors.push({ message: 'Root step must be a TRIGGER or EXTRACT (data source)', stepKey: root?.key, reason: 'invalid-root-type' });
+    // Separate trigger roots from execution roots
+    // Multiple triggers are allowed (parallel entry points: manual, schedule, webhook, etc.)
+    const triggerRoots = roots.filter(k => stepByKey.get(k)?.type === StepType.TRIGGER);
+    const executionRoots = roots.filter(k => stepByKey.get(k)?.type !== StepType.TRIGGER);
+
+    // Validate roots:
+    // - Any number of TRIGGER roots is valid (they're parallel entry points)
+    // - Exactly one execution root (EXTRACT) if there are no triggers
+    // - Zero execution roots if there are triggers (triggers connect to the first step)
+    if (roots.length === 0) {
+        errors.push(createIssue(
+            'Graph must have at least one root (entry point)',
+            PIPELINE_VALIDATION_ERROR.INVALID_ROOT_COUNT,
+            undefined,
+            'topology',
+        ));
+    } else if (executionRoots.length > 1) {
+        // Multiple execution roots (non-trigger) means disconnected execution paths
+        errors.push(createIssue(
+            `Graph has ${executionRoots.length} disconnected execution paths; all triggers should connect to the same first step`,
+            PIPELINE_VALIDATION_ERROR.INVALID_ROOT_COUNT,
+            undefined,
+            'topology',
+        ));
+    } else if (executionRoots.length === 1 && triggerRoots.length > 0) {
+        // Has both triggers and an unconnected execution root - triggers should connect to execution
+        const executionRoot = stepByKey.get(executionRoots[0]);
+        if (executionRoot?.type === StepType.EXTRACT) {
+            // This is valid - triggers connect to the extract step which is also a root
+            // Actually check if all triggers connect to the same step
+        }
+    } else if (executionRoots.length === 1 && triggerRoots.length === 0) {
+        // Single execution root with no triggers - must be EXTRACT
+        const root = stepByKey.get(executionRoots[0]);
+        if (!root || root.type !== StepType.EXTRACT) {
+            errors.push(createIssue(
+                'Root step must be a TRIGGER or EXTRACT (data source)',
+                PIPELINE_VALIDATION_ERROR.INVALID_ROOT_TYPE,
+                root?.key,
+                'topology',
+            ));
         }
     }
+    // If only trigger roots exist (triggerRoots.length > 0 && executionRoots.length === 0),
+    // this is valid - multiple parallel triggers feeding into the pipeline
 
     // Kahn's algorithm for cycle detection
     const queue: string[] = roots.slice();
@@ -318,7 +357,12 @@ function validateTopology(
     }
 
     if (visited.length !== steps.length) {
-        errors.push({ message: 'Graph contains a cycle or disconnected component', reason: 'graph-cycle' });
+        errors.push(createIssue(
+            'Graph contains a cycle or disconnected component',
+            PIPELINE_VALIDATION_ERROR.GRAPH_CYCLE,
+            undefined,
+            'topology',
+        ));
     }
 
     // Reachability: at least one LOAD reachable from root
@@ -340,7 +384,12 @@ function validateTopology(
             s => s.type === StepType.LOAD && reachable.has(s.key),
         );
         if (!loadReachable) {
-            errors.push({ message: 'No LOAD step is reachable from the TRIGGER', reason: 'no-load-reachable' });
+            errors.push(createIssue(
+                'No LOAD step is reachable from the TRIGGER',
+                PIPELINE_VALIDATION_ERROR.NO_LOAD_REACHABLE,
+                undefined,
+                'topology',
+            ));
         }
     }
 }

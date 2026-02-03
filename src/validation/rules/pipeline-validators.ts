@@ -5,10 +5,10 @@
  * Validates pipeline structure, graph topology, and cross-step dependencies.
  */
 
-import { StepType } from '../../constants/enums';
+import { StepType, HookStage } from '../../constants/enums';
 import { PipelineErrorCode } from '../../constants/error-codes';
-import { validateSteps } from './step-validators';
-import { JsonObject } from '../../types/common';
+import { JsonObject } from '../../types/index';
+import { validateSteps, validateRouteConfig } from './step-validators';
 import {
     StepDefinition,
     PipelineEdge,
@@ -107,7 +107,8 @@ export function validateEdges(
                     PipelineErrorCode.INVALID_DEFINITION,
                 ));
             } else if (fromStep && fromStep.type === StepType.ROUTE) {
-                const branches = ((fromStep.config as any)?.branches ?? []) as Array<{ name: string }>;
+                const stepConfig = fromStep.config as { branches?: Array<{ name?: string }> } | undefined;
+                const branches = stepConfig?.branches ?? [];
                 const branchNames = new Set(branches.map(b => String(b?.name ?? '')));
                 if (!branchNames.has(edge.branch)) {
                     errors.push(createError(
@@ -300,7 +301,8 @@ export function validateTopology(
 // ROUTE STEP VALIDATORS
 
 /**
- * Validates ROUTE step configurations for consistency
+ * Validates ROUTE step configurations for consistency at the pipeline level.
+ * Delegates to validateRouteConfig from step-validators to avoid duplication.
  */
 export function validateRouteSteps(steps: StepDefinition[]): PipelineValidationResult {
     const errors: PipelineValidationError[] = [];
@@ -308,36 +310,24 @@ export function validateRouteSteps(steps: StepDefinition[]): PipelineValidationR
 
     steps
         .filter(s => s.type === StepType.ROUTE)
-        .forEach((step, index) => {
-            const branches = ((step.config as any)?.branches ?? []) as Array<{ name: string }>;
+        .forEach((step) => {
+            const result = validateRouteConfig(step.config);
 
-            if (!Array.isArray(branches) || branches.length === 0) {
+            // Convert step errors to pipeline errors with step context
+            result.errors.forEach(e => {
                 errors.push(createError(
-                    `step "${step.key}"`,
-                    'ROUTE step requires non-empty branches array',
-                    PipelineErrorCode.INVALID_DEFINITION,
+                    `step "${step.key}".${e.field}`,
+                    e.message,
+                    e.errorCode,
                 ));
-                return;
-            }
+            });
 
-            const seenNames = new Set<string>();
-            for (const branch of branches) {
-                const name = String((branch as any)?.name ?? '');
-                if (!name) {
-                    errors.push(createError(
-                        `step "${step.key}"`,
-                        'ROUTE branch missing name',
-                        PipelineErrorCode.INVALID_DEFINITION,
-                    ));
-                } else if (seenNames.has(name)) {
-                    errors.push(createError(
-                        `step "${step.key}"`,
-                        `Duplicate branch name "${name}"`,
-                        PipelineErrorCode.INVALID_DEFINITION,
-                    ));
-                }
-                seenNames.add(name);
-            }
+            result.warnings.forEach(w => {
+                warnings.push(createWarning(
+                    `step "${step.key}".${w.field}`,
+                    w.message,
+                ));
+            });
         });
 
     return { valid: errors.length === 0, errors, warnings };
@@ -392,26 +382,7 @@ export function validateHooks(hooks?: JsonObject): PipelineValidationResult {
         return { valid: true, errors, warnings };
     }
 
-    const validHookStages = [
-        'beforeExtract',
-        'afterExtract',
-        'beforeTransform',
-        'afterTransform',
-        'beforeValidate',
-        'afterValidate',
-        'beforeEnrich',
-        'afterEnrich',
-        'beforeRoute',
-        'afterRoute',
-        'beforeLoad',
-        'afterLoad',
-        'onError',
-        'onRetry',
-        'onDeadLetter',
-        'pipelineStarted',
-        'pipelineCompleted',
-        'pipelineFailed',
-    ];
+    const validHookStages = Object.values(HookStage) as string[];
 
     for (const [stage, config] of Object.entries(hooks)) {
         if (!validHookStages.includes(stage)) {

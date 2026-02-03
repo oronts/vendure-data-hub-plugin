@@ -1,8 +1,5 @@
 /**
  * DataHub Default Configuration Values
- *
- * Default settings and constants for the DataHub plugin.
- * This file re-exports values from the main constants module for convenience.
  */
 
 import { DataHubPluginOptions } from '../types/index';
