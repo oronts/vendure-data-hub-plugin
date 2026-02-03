@@ -1,21 +1,26 @@
-/**
- * Entity Loader Interfaces
- *
- * Entity loaders handle CRUD operations for Vendure entities during import.
- * Each entity type has a dedicated loader that knows how to:
- * - Find existing entities by lookup fields
- * - Create new entities
- * - Update existing entities
- * - Handle relationships and nested data
- */
-
 import { ID, RequestContext } from '@vendure/core';
-import { TargetOperation, VendureEntityType } from './pipeline';
+import {
+    TargetOperation,
+    VendureEntityType,
+    InputRecord,
+    LoaderOptions,
+    EntityLoadResult,
+    EntityValidationResult,
+    EntityFieldSchema,
+} from '../../shared/types';
 
-// Generic record type for input data
-export type InputRecord = Record<string, unknown>;
-
-// LOADER CONTEXT
+export type {
+    InputRecord,
+    LoaderOptions,
+    EntityLoadResult,
+    EntityLoadError,
+    EntityValidationResult,
+    EntityValidationError,
+    EntityValidationWarning,
+    EntityFieldSchema,
+    EntityFieldType,
+    EntityField,
+} from '../../shared/types';
 
 export interface LoaderContext {
     ctx: RequestContext;
@@ -27,41 +32,6 @@ export interface LoaderContext {
     dryRun: boolean;
     options: LoaderOptions;
 }
-
-export interface LoaderOptions {
-    /** Publish changes immediately */
-    publishChanges?: boolean;
-    /** Only update these fields (for UPDATE operation) */
-    updateOnlyFields?: string[];
-    /** Only set these fields on create (for UPSERT) */
-    createOnlyFields?: string[];
-    /** Skip if entity already exists */
-    skipDuplicates?: boolean;
-    /** Language code for translations */
-    languageCode?: string;
-}
-
-// LOAD RESULT (Entity-specific, distinct from pipeline LoadResult)
-
-export interface EntityLoadResult {
-    succeeded: number;
-    failed: number;
-    created: number;
-    updated: number;
-    skipped: number;
-    errors: EntityLoadError[];
-    affectedIds: ID[];
-}
-
-export interface EntityLoadError {
-    record: InputRecord;
-    message: string;
-    field?: string;
-    code?: string;
-    recoverable: boolean;
-}
-
-// ENTITY LOADER INTERFACE
 
 export interface EntityLoader<TInput extends InputRecord = InputRecord> {
     /** Entity type this loader handles */
@@ -123,84 +93,6 @@ export interface EntityLoader<TInput extends InputRecord = InputRecord> {
     getFieldSchema(): EntityFieldSchema;
 }
 
-// VALIDATION (Entity-specific, distinct from pipeline ValidationResult)
-
-export interface EntityValidationResult {
-    valid: boolean;
-    errors: EntityValidationError[];
-    warnings: EntityValidationWarning[];
-}
-
-export interface EntityValidationError {
-    field: string;
-    message: string;
-    code?: string;
-}
-
-export interface EntityValidationWarning {
-    field: string;
-    message: string;
-}
-
-// FIELD SCHEMA
-
-export interface EntityFieldSchema {
-    entityType: VendureEntityType;
-    fields: EntityField[];
-}
-
-/** Supported field types for entity schemas */
-export type EntityFieldType =
-    | 'string'
-    | 'number'
-    | 'boolean'
-    | 'date'
-    | 'array'
-    | 'object'
-    | 'relation'
-    | 'asset'
-    | 'money'
-    | 'localized-string'
-    | 'id'
-    | 'enum'
-    | 'json';
-
-export interface EntityField {
-    /** Field key/path */
-    key: string;
-    /** Human-readable label */
-    label: string;
-    /** Field type */
-    type: EntityFieldType;
-    /** Is this field required? */
-    required?: boolean;
-    /** Is this field read-only? */
-    readonly?: boolean;
-    /** Can be used for lookup? */
-    lookupable?: boolean;
-    /** Is this field translatable? */
-    translatable?: boolean;
-    /** Related entity type (for relations) */
-    relatedEntity?: VendureEntityType;
-    /** Nested fields (for objects) */
-    children?: EntityField[];
-    /** Description/help text */
-    description?: string;
-    /** Example value */
-    example?: unknown;
-    /** Validation rules */
-    validation?: {
-        minLength?: number;
-        maxLength?: number;
-        min?: number;
-        max?: number;
-        pattern?: string;
-        enum?: unknown[];
-    };
-}
-
-// LOADER REGISTRY
-
 export interface LoaderRegistry {
     /**
      * Register an entity loader
@@ -222,4 +114,3 @@ export interface LoaderRegistry {
      */
     has(entityType: VendureEntityType): boolean;
 }
-

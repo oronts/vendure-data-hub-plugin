@@ -2,7 +2,7 @@
  * Example Schema Definitions
  */
 
-import { EnhancedSchemaDefinition } from './definition';
+import type { EnhancedSchemaDefinition } from '../index';
 
 /**
  * Example: Product Import Schema
