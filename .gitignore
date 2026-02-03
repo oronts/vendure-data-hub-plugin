@@ -52,3 +52,4 @@ yarn-error.log*
 # Temporary
 tmp/
 temp/
+vite.dev.config.mts.timestamp-*
