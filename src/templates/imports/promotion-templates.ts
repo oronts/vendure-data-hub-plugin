@@ -38,7 +38,7 @@ export const couponsTemplate: ImportTemplate = {
             },
         },
         target: {
-            entity: 'Promotion',
+            entity: 'PROMOTION',
             operation: 'UPSERT',
             lookupFields: ['couponCode'],
         },

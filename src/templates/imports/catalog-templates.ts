@@ -39,7 +39,7 @@ export const collectionsTemplate: ImportTemplate = {
             },
         },
         target: {
-            entity: 'Collection',
+            entity: 'COLLECTION',
             operation: 'UPSERT',
             lookupFields: ['slug'],
         },
@@ -102,7 +102,7 @@ export const facetsTemplate: ImportTemplate = {
             },
         },
         target: {
-            entity: 'FacetValue',
+            entity: 'FACET_VALUE',
             operation: 'UPSERT',
             lookupFields: ['code'],
         },

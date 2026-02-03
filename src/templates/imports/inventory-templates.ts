@@ -39,7 +39,7 @@ export const stockUpdateTemplate: ImportTemplate = {
             },
         },
         target: {
-            entity: 'Inventory',
+            entity: 'INVENTORY',
             operation: 'UPDATE',
             lookupFields: ['sku'],
         },

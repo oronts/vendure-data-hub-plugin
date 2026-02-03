@@ -10,7 +10,7 @@ import {
     SourceError,
     DataSource,
 } from '../types';
-import { DEFAULTS } from '../../constants/index';
+import { DEFAULTS, GraphQLPaginationStyle } from '../../constants/index';
 import { navigatePath } from '../../parsers/formats/json.parser';
 import { buildAuthHeaders } from '../shared';
 
@@ -223,7 +223,7 @@ export class GraphqlApiSource implements DataSource<GraphqlApiSourceConfig> {
         const { style, pageInfoPath, endCursorPath, hasNextPagePath } = config.pagination;
 
         switch (style) {
-            case 'relay': {
+            case GraphQLPaginationStyle.RELAY: {
                 // Navigate to pageInfo (e.g., "products.pageInfo")
                 const basePath = config.dataPath ?? '';
                 const pageInfo = navigatePath(
@@ -240,7 +240,7 @@ export class GraphqlApiSource implements DataSource<GraphqlApiSourceConfig> {
                 break;
             }
 
-            case 'cursor': {
+            case GraphQLPaginationStyle.CURSOR: {
                 const cursor = endCursorPath
                     ? (navigatePath(data, endCursorPath) as string)
                     : undefined;
@@ -251,7 +251,7 @@ export class GraphqlApiSource implements DataSource<GraphqlApiSourceConfig> {
                 return { hasMore: hasNext, cursor };
             }
 
-            case 'offset': {
+            case GraphQLPaginationStyle.OFFSET: {
                 // For offset pagination, check if we got a full page
                 return { hasMore: recordCount >= pageSize };
             }

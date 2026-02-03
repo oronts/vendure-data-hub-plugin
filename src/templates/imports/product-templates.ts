@@ -40,7 +40,7 @@ export const simpleProductsTemplate: ImportTemplate = {
             },
         },
         target: {
-            entity: 'ProductVariant',
+            entity: 'PRODUCT_VARIANT',
             operation: 'UPSERT',
             lookupFields: ['sku'],
         },
@@ -114,7 +114,7 @@ export const productsWithVariantsTemplate: ImportTemplate = {
             },
         },
         target: {
-            entity: 'ProductVariant',
+            entity: 'PRODUCT_VARIANT',
             operation: 'UPSERT',
             lookupFields: ['sku'],
         },
@@ -189,7 +189,7 @@ export const shopifyProductsTemplate: ImportTemplate = {
             },
         },
         target: {
-            entity: 'ProductVariant',
+            entity: 'PRODUCT_VARIANT',
             operation: 'UPSERT',
             lookupFields: ['sku'],
         },

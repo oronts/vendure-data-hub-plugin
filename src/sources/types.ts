@@ -3,7 +3,7 @@
  */
 
 import { JsonObject } from '../types/index';
-import { DataSourceType } from '../constants/enums';
+import { DataSourceType, RestPaginationStrategy, GraphQLPaginationStyle, AuthType } from '../constants/enums';
 
 export type SourceType = DataSourceType;
 
@@ -226,7 +226,7 @@ export type AuthConfig =
  * Basic authentication
  */
 export interface BasicAuthConfig {
-    type: 'basic';
+    type: typeof AuthType.BASIC;
     username: string;
     /** Password or secret reference */
     password: string;
@@ -236,7 +236,7 @@ export interface BasicAuthConfig {
  * Bearer token authentication
  */
 export interface BearerAuthConfig {
-    type: 'bearer';
+    type: typeof AuthType.BEARER;
     /** Token or secret reference */
     token: string;
 }
@@ -245,7 +245,7 @@ export interface BearerAuthConfig {
  * API key authentication
  */
 export interface ApiKeyAuthConfig {
-    type: 'api-key';
+    type: typeof AuthType.API_KEY;
     /** Key name */
     key: string;
     /** Key value or secret reference */
@@ -258,7 +258,7 @@ export interface ApiKeyAuthConfig {
  * OAuth2 authentication
  */
 export interface OAuth2AuthConfig {
-    type: 'oauth2';
+    type: typeof AuthType.OAUTH2;
     /** Grant type */
     grantType: 'client_credentials' | 'password' | 'refresh_token';
     /** Token endpoint URL */
@@ -284,7 +284,7 @@ export interface OAuth2AuthConfig {
  */
 export interface PaginationConfig {
     /** Pagination strategy */
-    strategy: 'offset' | 'cursor' | 'page' | 'link';
+    strategy: RestPaginationStrategy;
     /** Page size */
     pageSize?: number;
     /** Maximum pages to fetch */
@@ -326,7 +326,7 @@ export interface PaginationConfig {
  */
 export interface GraphqlPaginationConfig {
     /** Pagination style */
-    style: 'relay' | 'offset' | 'cursor';
+    style: GraphQLPaginationStyle;
     /** Page size */
     pageSize?: number;
     /** Maximum pages to fetch */

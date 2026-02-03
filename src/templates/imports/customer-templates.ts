@@ -39,7 +39,7 @@ export const simpleCustomersTemplate: ImportTemplate = {
             },
         },
         target: {
-            entity: 'Customer',
+            entity: 'CUSTOMER',
             operation: 'UPSERT',
             lookupFields: ['emailAddress'],
         },
@@ -116,7 +116,7 @@ export const customersWithAddressesTemplate: ImportTemplate = {
             },
         },
         target: {
-            entity: 'Customer',
+            entity: 'CUSTOMER',
             operation: 'UPSERT',
             lookupFields: ['emailAddress'],
         },

@@ -11,7 +11,7 @@ import {
     DataSource,
     PaginationConfig,
 } from '../types';
-import { DEFAULTS } from '../../constants/index';
+import { DEFAULTS, RestPaginationStrategy } from '../../constants/index';
 import { navigatePath } from '../../parsers/formats/json.parser';
 import { buildAuthHeaders } from '../shared';
 
@@ -136,7 +136,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
             const { strategy } = config.pagination;
 
             switch (strategy) {
-                case 'offset':
+                case RestPaginationStrategy.OFFSET:
                     if (pagination.offset !== undefined) {
                         url.searchParams.set(
                             config.pagination.offset?.offsetParam ?? 'offset',
@@ -151,7 +151,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
                     }
                     break;
 
-                case 'cursor':
+                case RestPaginationStrategy.CURSOR:
                     if (pagination.cursor) {
                         url.searchParams.set(
                             config.pagination.cursor?.cursorParam ?? 'cursor',
@@ -163,7 +163,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
                     }
                     break;
 
-                case 'page':
+                case RestPaginationStrategy.PAGE:
                     if (pagination.pageCount !== undefined) {
                         url.searchParams.set(
                             config.pagination.page?.pageParam ?? 'page',
@@ -236,7 +236,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
         }
 
         switch (config.strategy) {
-            case 'offset': {
+            case RestPaginationStrategy.OFFSET: {
                 const totalPath = config.offset?.totalPath;
                 if (totalPath) {
                     const total = navigatePath(data, totalPath) as number;
@@ -247,7 +247,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
                 return { hasMore: (recordCount ?? 0) >= (pageSize ?? DEFAULTS.PAGE_SIZE) };
             }
 
-            case 'cursor': {
+            case RestPaginationStrategy.CURSOR: {
                 const cursorPath = config.cursor?.cursorPath;
                 const hasNextPath = config.cursor?.hasNextPath;
 
@@ -257,7 +257,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
                 return { hasMore: hasNext, cursor };
             }
 
-            case 'page': {
+            case RestPaginationStrategy.PAGE: {
                 const totalPagesPath = config.page?.totalPagesPath;
                 if (totalPagesPath) {
                     const totalPages = navigatePath(data, totalPagesPath) as number;
@@ -266,7 +266,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
                 return { hasMore: (recordCount ?? 0) >= (pageSize ?? DEFAULTS.PAGE_SIZE) };
             }
 
-            case 'link': {
+            case RestPaginationStrategy.LINK: {
                 const linkHeader = headers.get('Link');
                 if (linkHeader) {
                     const hasNext = linkHeader.includes('rel="next"');

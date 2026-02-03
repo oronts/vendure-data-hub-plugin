@@ -8,7 +8,6 @@
 import {
     SqlDatabaseSourceConfig,
     SourceResult,
-    SourceError,
     DataSource,
     DatabaseConnection,
 } from '../types';
@@ -217,7 +216,7 @@ export class SqlDatabaseSource implements DataSource<SqlDatabaseSourceConfig> {
                     db.close();
                 }
             } catch {
-                // Fall back to sqlite3 (async)
+                // better-sqlite3 not available - fall back to sqlite3 (async)
                 const sqlite3 = await import('sqlite3');
                 const { open } = await import('sqlite');
 
