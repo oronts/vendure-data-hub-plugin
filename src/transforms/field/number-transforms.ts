@@ -7,13 +7,18 @@
 import { TransformConfig } from '../../types/index';
 import { JsonValue } from '../../types/index';
 import { TRANSFORM_LIMITS } from '../../constants/defaults';
+import { MathOperation } from '../../constants/enums';
+
+// Regex patterns as constants for performance and maintainability
+const NUMERIC_CHARS_PATTERN = /[^\d.-]/g;
+const INTEGER_CHARS_PATTERN = /[^\d-]/g;
 
 /**
  * Apply parse number/parse float transform
  */
 export function applyParseNumber(value: JsonValue): JsonValue {
     if (typeof value === 'string') {
-        const cleaned = value.replace(/[^\d.-]/g, '');
+        const cleaned = value.replace(NUMERIC_CHARS_PATTERN, '');
         const num = parseFloat(cleaned);
         return isNaN(num) ? null : num;
     }
@@ -25,7 +30,7 @@ export function applyParseNumber(value: JsonValue): JsonValue {
  */
 export function applyParseInt(value: JsonValue): JsonValue {
     if (typeof value === 'string') {
-        const cleaned = value.replace(/[^\d-]/g, '');
+        const cleaned = value.replace(INTEGER_CHARS_PATTERN, '');
         const num = parseInt(cleaned, 10);
         return isNaN(num) ? null : num;
     }
@@ -73,7 +78,7 @@ export function applyToCents(value: JsonValue): JsonValue {
         return Math.round(value * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
     }
     if (typeof value === 'string') {
-        const num = parseFloat(value.replace(/[^\d.-]/g, ''));
+        const num = parseFloat(value.replace(NUMERIC_CHARS_PATTERN, ''));
         return isNaN(num) ? null : Math.round(num * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
     }
     return value;
@@ -95,14 +100,18 @@ export function applyFromCents(value: JsonValue): JsonValue {
 export function applyMath(value: JsonValue, config: TransformConfig): JsonValue {
     if (typeof value === 'number' && config.operation && config.operand !== undefined) {
         switch (config.operation) {
-            case 'ADD':
+            case MathOperation.ADD:
                 return value + config.operand;
-            case 'SUBTRACT':
+            case MathOperation.SUBTRACT:
                 return value - config.operand;
-            case 'MULTIPLY':
+            case MathOperation.MULTIPLY:
                 return value * config.operand;
-            case 'DIVIDE':
+            case MathOperation.DIVIDE:
                 return config.operand !== 0 ? value / config.operand : null;
+            case MathOperation.MODULO:
+                return config.operand !== 0 ? value % config.operand : null;
+            case MathOperation.POWER:
+                return Math.pow(value, config.operand);
         }
     }
     return value;

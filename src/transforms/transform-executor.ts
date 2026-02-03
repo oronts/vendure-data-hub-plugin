@@ -9,10 +9,9 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
-import { Transform, TransformType } from '../types/index';
-import { JsonValue, JsonObject } from '../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
+import { Transform, TransformType, JsonValue, JsonObject } from '../types/index';
 import { LOGGER_CONTEXTS } from '../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
 
 import { CustomTransformFn, CustomTransformInfo } from './types';
 
@@ -76,7 +75,6 @@ import { performLookup, applyMap } from './record';
 import {
     getNestedValue,
     interpolateTemplate,
-    evaluateCondition,
     evaluateExpression,
 } from './helpers';
 

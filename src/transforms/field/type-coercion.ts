@@ -62,6 +62,7 @@ export function applyToJson(value: JsonValue): JsonValue {
     try {
         return JSON.stringify(value);
     } catch {
+        // JSON stringify failed (circular reference etc.) - return null
         return null;
     }
 }
@@ -75,6 +76,7 @@ export function applyParseJson(value: JsonValue): JsonValue {
         try {
             return JSON.parse(value);
         } catch {
+            // JSON parse failed - return null as fallback
             return null;
         }
     }

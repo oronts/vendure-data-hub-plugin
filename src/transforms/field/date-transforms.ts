@@ -4,6 +4,7 @@
  * Date/time manipulation transform operations.
  */
 
+import { DATE_FORMAT } from '../../constants/enums';
 import { TransformConfig } from '../../types/index';
 import { JsonValue } from '../../types/index';
 
@@ -12,23 +13,23 @@ import { JsonValue } from '../../types/index';
  */
 export function parseDateWithFormat(value: string, format: string): Date {
     const formatMap: Record<string, RegExp> = {
-        'YYYY-MM-DD': /^(\d{4})-(\d{2})-(\d{2})$/,
-        'DD/MM/YYYY': /^(\d{2})\/(\d{2})\/(\d{4})$/,
-        'MM/DD/YYYY': /^(\d{2})\/(\d{2})\/(\d{4})$/,
-        'DD.MM.YYYY': /^(\d{2})\.(\d{2})\.(\d{4})$/,
+        [DATE_FORMAT.ISO_DATE]: /^(\d{4})-(\d{2})-(\d{2})$/,
+        [DATE_FORMAT.EU_SLASH]: /^(\d{2})\/(\d{2})\/(\d{4})$/,
+        [DATE_FORMAT.US_DATE]: /^(\d{2})\/(\d{2})\/(\d{4})$/,
+        [DATE_FORMAT.EU_DOT]: /^(\d{2})\.(\d{2})\.(\d{4})$/,
     };
 
     const regex = formatMap[format];
     if (regex) {
         const match = value.match(regex);
         if (match) {
-            if (format === 'YYYY-MM-DD') {
+            if (format === DATE_FORMAT.ISO_DATE) {
                 return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
             }
-            if (format === 'DD/MM/YYYY' || format === 'DD.MM.YYYY') {
+            if (format === DATE_FORMAT.EU_SLASH || format === DATE_FORMAT.EU_DOT) {
                 return new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
             }
-            if (format === 'MM/DD/YYYY') {
+            if (format === DATE_FORMAT.US_DATE) {
                 return new Date(parseInt(match[3]), parseInt(match[1]) - 1, parseInt(match[2]));
             }
         }

@@ -3,8 +3,6 @@
  *
  * Individual field-level transform operations.
  * Handles string, number, date, boolean, and array transformations.
- *
- * This barrel file re-exports all field transforms from category-specific modules.
  */
 
 // String transforms

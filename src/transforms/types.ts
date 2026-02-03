@@ -5,8 +5,7 @@
  */
 
 import { RequestContext } from '@vendure/core';
-import { TransformConfig } from '../types/index';
-import { JsonValue, JsonObject } from '../types/index';
+import { TransformConfig, JsonValue, JsonObject } from '../types/index';
 
 /**
  * Custom transform function type
@@ -26,6 +25,6 @@ export interface CustomTransformInfo {
     type: string;
     name: string;
     description: string;
-    configSchema?: Record<string, any>;
+    configSchema?: Record<string, JsonValue>;
     transform: CustomTransformFn;
 }

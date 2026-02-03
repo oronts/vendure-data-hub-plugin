@@ -6,20 +6,25 @@
 
 import { TransformConfig } from '../../types/index';
 import { JsonValue, JsonObject } from '../../types/index';
-import { TRANSFORM_LIMITS } from '../../constants/defaults';
+import { slugify } from '../../operators/helpers';
+import { PadPosition } from '../../constants/enums';
 
-/**
- * Slugify a string value - converts to URL-friendly format
- */
-export function slugify(text: string): string {
-    return text
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .substring(0, TRANSFORM_LIMITS.SLUG_MAX_LENGTH);
-}
+export { slugify };
+
+// Regex patterns as constants for performance and maintainability
+const HTML_TAG_PATTERN = /<[^>]*>/g;
+const WORD_BOUNDARY_PATTERN = /\b\w/g;
+const SENTENCE_START_PATTERN = /(^\w|[.!?]\s+\w)/g;
+
+// HTML escape mapping for single-pass replacement
+const HTML_ESCAPE_MAP: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+};
+const HTML_ESCAPE_PATTERN = /[&<>"']/g;
 
 /**
  * Apply trim transform
@@ -65,7 +70,7 @@ export function applyTruncate(value: JsonValue, config: TransformConfig): JsonVa
 export function applyPad(value: JsonValue, config: TransformConfig): JsonValue {
     if (typeof value === 'string' && config.length) {
         const char = config.padChar ?? ' ';
-        if (config.padPosition === 'LEFT') {
+        if (config.padPosition === PadPosition.LEFT) {
             return value.padStart(config.length, char);
         }
         return value.padEnd(config.length, char);
@@ -173,22 +178,18 @@ export function applyTemplate(
  */
 export function applyStripHtml(value: JsonValue): JsonValue {
     if (typeof value === 'string') {
-        return value.replace(/<[^>]*>/g, '');
+        return value.replace(HTML_TAG_PATTERN, '');
     }
     return value;
 }
 
 /**
  * Apply escape HTML transform
+ * Uses single-pass replacement for better performance
  */
 export function applyEscapeHtml(value: JsonValue): JsonValue {
     if (typeof value === 'string') {
-        return value
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
+        return value.replace(HTML_ESCAPE_PATTERN, char => HTML_ESCAPE_MAP[char]);
     }
     return value;
 }
@@ -198,7 +199,7 @@ export function applyEscapeHtml(value: JsonValue): JsonValue {
  */
 export function applyTitleCase(value: JsonValue): JsonValue {
     if (typeof value === 'string') {
-        return value.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+        return value.toLowerCase().replace(WORD_BOUNDARY_PATTERN, c => c.toUpperCase());
     }
     return value;
 }
@@ -208,7 +209,7 @@ export function applyTitleCase(value: JsonValue): JsonValue {
  */
 export function applySentenceCase(value: JsonValue): JsonValue {
     if (typeof value === 'string') {
-        return value.toLowerCase().replace(/(^\w|[.!?]\s+\w)/g, c => c.toUpperCase());
+        return value.toLowerCase().replace(SENTENCE_START_PATTERN, c => c.toUpperCase());
     }
     return value;
 }

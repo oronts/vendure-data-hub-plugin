@@ -11,6 +11,9 @@ import { RequestContext } from '@vendure/core';
 import { CustomTransformInfo } from './types';
 import { JsonValue } from '../types/index';
 
+// Regex patterns as constants for performance and maintainability
+const WHITESPACE_PATTERN = /\s+/g;
+
 // HASH TRANSFORMS
 
 /**
@@ -48,7 +51,7 @@ export const urlEncodeTransform: CustomTransformInfo = {
     type: 'URL_ENCODE',
     name: 'URL Encode',
     description: 'URL-encode the value',
-    transform: (ctx: RequestContext, value: JsonValue) => {
+    transform: (_ctx: RequestContext, value: JsonValue) => {
         if (typeof value !== 'string') return value;
         return encodeURIComponent(value);
     },
@@ -61,11 +64,12 @@ export const urlDecodeTransform: CustomTransformInfo = {
     type: 'URL_DECODE',
     name: 'URL Decode',
     description: 'URL-decode the value',
-    transform: (ctx: RequestContext, value: JsonValue) => {
+    transform: (_ctx: RequestContext, value: JsonValue) => {
         if (typeof value !== 'string') return value;
         try {
             return decodeURIComponent(value);
         } catch {
+            // URL decode failed (invalid encoding) - return original value
             return value;
         }
     },
@@ -80,7 +84,7 @@ export const base64EncodeTransform: CustomTransformInfo = {
     type: 'BASE64_ENCODE',
     name: 'Base64 Encode',
     description: 'Base64-encode the value',
-    transform: (ctx: RequestContext, value: JsonValue) => {
+    transform: (_ctx: RequestContext, value: JsonValue) => {
         if (typeof value !== 'string') return value;
         return Buffer.from(value).toString('base64');
     },
@@ -93,11 +97,12 @@ export const base64DecodeTransform: CustomTransformInfo = {
     type: 'BASE64_DECODE',
     name: 'Base64 Decode',
     description: 'Base64-decode the value',
-    transform: (ctx: RequestContext, value: JsonValue) => {
+    transform: (_ctx: RequestContext, value: JsonValue) => {
         if (typeof value !== 'string') return value;
         try {
             return Buffer.from(value, 'base64').toString('utf-8');
         } catch {
+            // Base64 decode failed (invalid encoding) - return original value
             return value;
         }
     },
@@ -112,9 +117,9 @@ export const cleanWhitespaceTransform: CustomTransformInfo = {
     type: 'CLEAN_WHITESPACE',
     name: 'Clean Whitespace',
     description: 'Normalize whitespace (trim and collapse multiple spaces)',
-    transform: (ctx: RequestContext, value: JsonValue) => {
+    transform: (_ctx: RequestContext, value: JsonValue) => {
         if (typeof value !== 'string') return value;
-        return value.trim().replace(/\s+/g, ' ');
+        return value.trim().replace(WHITESPACE_PATTERN, ' ');
     },
 };
 
