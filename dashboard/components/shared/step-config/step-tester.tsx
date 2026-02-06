@@ -11,7 +11,7 @@ import {
     Badge,
 } from '@vendure/dashboard';
 import { PlayIcon, ChevronDown, ChevronUp } from 'lucide-react';
-import { STEP_TYPES, ADAPTER_TYPES } from '../../../constants';
+import { STEP_TYPES, ADAPTER_TYPES, DEFAULT_SAMPLE_DATA, STEP_TEST_DESCRIPTIONS, PLACEHOLDERS } from '../../../constants';
 import { runStepTest, canTestStepType, type TestResult } from './step-test-handlers';
 import { ExtractTestResults } from './ExtractTestResults';
 import { TransformTestResults, ValidateTestResults } from './TransformTestResults';
@@ -22,11 +22,6 @@ interface StepTesterProps {
     adapterType: string;
     config: Record<string, unknown>;
 }
-
-const DEFAULT_SAMPLE_DATA = `[
-  { "id": "1", "sku": "SKU-001", "name": "Product One", "price": 99.99 },
-  { "id": "2", "sku": "SKU-002", "name": "Product Two", "price": 149.99 }
-]`;
 
 function getEffectiveStepType(stepType: string, adapterType: string): string {
     const st = stepType?.toUpperCase() || '';
@@ -82,17 +77,21 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
                         <Input type="number" value={limit} onChange={e => setLimit(Math.max(1, parseInt(e.target.value) || 10))} className="w-20 h-8" min={1} max={100} />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        {effectiveType === STEP_TYPES.EXTRACT ? 'Extracts data using the configured adapter and returns sample records.' : 'Generates feed output using the configured feed adapter.'}
+                        {effectiveType === STEP_TYPES.EXTRACT ? STEP_TEST_DESCRIPTIONS.EXTRACT : 'Generates feed output using the configured feed adapter.'}
                     </p>
                 </div>
             );
         }
         if ([STEP_TYPES.TRANSFORM, STEP_TYPES.VALIDATE, STEP_TYPES.LOAD].includes(effectiveType as typeof STEP_TYPES[keyof typeof STEP_TYPES])) {
-            const descriptions = { [STEP_TYPES.TRANSFORM]: 'Applies configured transformations to these records.', [STEP_TYPES.VALIDATE]: 'Runs validation rules on these records.', [STEP_TYPES.LOAD]: 'Simulates loading these records (no actual database changes).' };
+            const descriptions = {
+                [STEP_TYPES.TRANSFORM]: STEP_TEST_DESCRIPTIONS.TRANSFORM,
+                [STEP_TYPES.VALIDATE]: STEP_TEST_DESCRIPTIONS.VALIDATE,
+                [STEP_TYPES.LOAD]: STEP_TEST_DESCRIPTIONS.LOAD,
+            };
             return (
                 <div className="space-y-2">
                     <Label className="text-xs">Sample Input Records (JSON Array)</Label>
-                    <Textarea value={sampleInput} onChange={e => setSampleInput(e.target.value)} className="font-mono text-xs min-h-[100px]" placeholder="Enter JSON array of records..." />
+                    <Textarea value={sampleInput} onChange={e => setSampleInput(e.target.value)} className="font-mono text-xs min-h-[100px]" placeholder={PLACEHOLDERS.SAMPLE_RECORDS} />
                     <p className="text-xs text-muted-foreground">{descriptions[effectiveType as keyof typeof descriptions]}</p>
                 </div>
             );
