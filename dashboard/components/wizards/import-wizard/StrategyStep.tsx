@@ -1,3 +1,4 @@
+import { useCallback, memo } from 'react';
 import {
     Button,
     Card,
@@ -79,30 +80,16 @@ function LookupFieldsCard({ config, updateConfig, strategies, primaryKeyFields }
             <CardContent className="space-y-4">
                 <div>
                     <Label className="mb-2 block">Lookup Fields (for matching existing records)</Label>
-                    <div className="flex flex-wrap gap-2">
-                        {config.targetSchema && Object.keys(config.targetSchema.fields).map(field => {
-                            const isSelected = strategies.lookupFields.includes(field);
-                            const isPrimaryKey = primaryKeyFields.includes(field);
-
-                            return (
-                                <Button
-                                    key={field}
-                                    variant={isSelected ? 'default' : 'outline'}
-                                    size="sm"
-                                    onClick={() => {
-                                        const newFields = isSelected
-                                            ? strategies.lookupFields.filter(f => f !== field)
-                                            : [...strategies.lookupFields, field];
-                                        updateConfig({
-                                            strategies: { ...strategies, lookupFields: newFields },
-                                        });
-                                    }}
-                                >
-                                    {field}
-                                    {isPrimaryKey && <Badge variant="secondary" className="ml-1 text-[10px]">PK</Badge>}
-                                </Button>
-                            );
-                        })}
+                    <div className="flex flex-wrap gap-2" role="group" aria-label="Lookup field selection">
+                        {config.targetSchema && Object.keys(config.targetSchema.fields).map(field => (
+                            <LookupFieldButton
+                                key={field}
+                                field={field}
+                                strategies={strategies}
+                                primaryKeyFields={primaryKeyFields}
+                                updateConfig={updateConfig}
+                            />
+                        ))}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
                         Selected: {strategies.lookupFields.join(', ') || 'None'}
@@ -112,6 +99,46 @@ function LookupFieldsCard({ config, updateConfig, strategies, primaryKeyFields }
         </Card>
     );
 }
+
+interface LookupFieldButtonProps {
+    field: string;
+    strategies: ImportConfiguration['strategies'];
+    primaryKeyFields: string[];
+    updateConfig: (updates: Partial<ImportConfiguration>) => void;
+}
+
+const LookupFieldButton = memo(function LookupFieldButton({
+    field,
+    strategies,
+    primaryKeyFields,
+    updateConfig,
+}: LookupFieldButtonProps) {
+    const isSelected = strategies.lookupFields.includes(field);
+    const isPrimaryKey = primaryKeyFields.includes(field);
+
+    const handleClick = useCallback(() => {
+        const newFields = isSelected
+            ? strategies.lookupFields.filter(f => f !== field)
+            : [...strategies.lookupFields, field];
+        updateConfig({
+            strategies: { ...strategies, lookupFields: newFields },
+        });
+    }, [field, isSelected, strategies, updateConfig]);
+
+    return (
+        <Button
+            variant={isSelected ? 'default' : 'outline'}
+            size="sm"
+            onClick={handleClick}
+            aria-pressed={isSelected}
+            aria-label={`${isSelected ? 'Remove' : 'Add'} ${field} as lookup field${isPrimaryKey ? ' (primary key)' : ''}`}
+            data-testid={`datahub-wizard-lookup-field-${field}-btn`}
+        >
+            {field}
+            {isPrimaryKey && <Badge variant="secondary" className="ml-1 text-[10px]">PK</Badge>}
+        </Button>
+    );
+});
 
 interface ExistingRecordsCardProps {
     strategies: ImportConfiguration['strategies'];
@@ -126,21 +153,17 @@ function ExistingRecordsCard({ strategies, updateConfig }: ExistingRecordsCardPr
                 <CardDescription>What to do when a record already exists</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3" role="group" aria-label="Existing records strategy options">
                     {EXISTING_RECORDS_STRATEGIES.map(option => (
-                        <button
+                        <StrategyOptionButton
                             key={option.value}
-                            className={`p-3 border rounded-lg text-left transition-all ${
-                                strategies.existingRecords === option.value
-                                    ? 'border-primary bg-primary/5'
-                                    : 'hover:border-primary/50'
-                            }`}
-                            onClick={() => updateConfig({
-                                strategies: { ...strategies, existingRecords: option.value as ExistingRecordsStrategy },
-                            })}
-                        >
-                            <div className="font-medium">{option.label}</div>
-                        </button>
+                            option={option}
+                            isSelected={strategies.existingRecords === option.value}
+                            strategies={strategies}
+                            updateConfig={updateConfig}
+                            strategyKey="existingRecords"
+                            testIdPrefix="existing"
+                        />
                     ))}
                 </div>
             </CardContent>
@@ -161,27 +184,63 @@ function NewRecordsCard({ strategies, updateConfig }: NewRecordsCardProps) {
                 <CardDescription>What to do with records that don't exist yet</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-3" role="group" aria-label="New records strategy options">
                     {NEW_RECORDS_STRATEGIES.map(option => (
-                        <button
+                        <StrategyOptionButton
                             key={option.value}
-                            className={`p-3 border rounded-lg text-left transition-all ${
-                                strategies.newRecords === option.value
-                                    ? 'border-primary bg-primary/5'
-                                    : 'hover:border-primary/50'
-                            }`}
-                            onClick={() => updateConfig({
-                                strategies: { ...strategies, newRecords: option.value as NewRecordsStrategy },
-                            })}
-                        >
-                            <div className="font-medium">{option.label}</div>
-                        </button>
+                            option={option}
+                            isSelected={strategies.newRecords === option.value}
+                            strategies={strategies}
+                            updateConfig={updateConfig}
+                            strategyKey="newRecords"
+                            testIdPrefix="new"
+                        />
                     ))}
                 </div>
             </CardContent>
         </Card>
     );
 }
+
+interface StrategyOptionButtonProps {
+    option: { value: string; label: string };
+    isSelected: boolean;
+    strategies: ImportConfiguration['strategies'];
+    updateConfig: (updates: Partial<ImportConfiguration>) => void;
+    strategyKey: 'existingRecords' | 'newRecords';
+    testIdPrefix: string;
+}
+
+const StrategyOptionButton = memo(function StrategyOptionButton({
+    option,
+    isSelected,
+    strategies,
+    updateConfig,
+    strategyKey,
+    testIdPrefix,
+}: StrategyOptionButtonProps) {
+    const handleClick = useCallback(() => {
+        updateConfig({
+            strategies: { ...strategies, [strategyKey]: option.value },
+        });
+    }, [option.value, strategies, strategyKey, updateConfig]);
+
+    return (
+        <button
+            className={`p-3 border rounded-lg text-left transition-all ${
+                isSelected
+                    ? 'border-primary bg-primary/5'
+                    : 'hover:border-primary/50'
+            }`}
+            onClick={handleClick}
+            aria-pressed={isSelected}
+            aria-label={`${option.label} strategy for ${testIdPrefix} records`}
+            data-testid={`datahub-wizard-strategy-${testIdPrefix}-${option.value}-btn`}
+        >
+            <div className="font-medium">{option.label}</div>
+        </button>
+    );
+});
 
 interface AdvancedOptionsCardProps {
     strategies: ImportConfiguration['strategies'];

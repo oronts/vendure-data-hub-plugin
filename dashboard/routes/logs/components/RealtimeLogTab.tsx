@@ -46,11 +46,15 @@ export function RealtimeLogTab() {
                         <CardTitle>Real-time Log Feed</CardTitle>
                     </div>
                     <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${recentLogsQuery.isLoading ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
+                        <div
+                            className={`w-2 h-2 rounded-full ${recentLogsQuery.isLoading ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`}
+                            aria-label={recentLogsQuery.isLoading ? 'Loading logs' : 'Connected and receiving logs'}
+                            role="status"
+                        />
                         <span className="text-sm text-muted-foreground">
-                            Auto-refreshing every 3s
+                            {recentLogsQuery.isLoading ? 'Loading...' : 'Auto-refreshing every 3s'}
                         </span>
-                        <Button variant="ghost" size="sm" onClick={handleRefetch} disabled={recentLogsQuery.isLoading}>
+                        <Button variant="ghost" size="sm" onClick={handleRefetch} disabled={recentLogsQuery.isLoading} data-testid="datahub-realtime-log-refresh-button" aria-label="Refresh real-time logs">
                             <RefreshCw className={`w-4 h-4 ${recentLogsQuery.isLoading ? 'animate-spin' : ''}`} />
                         </Button>
                     </div>
@@ -60,11 +64,12 @@ export function RealtimeLogTab() {
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                <div className={`space-y-2 ${SCROLL_HEIGHTS.REALTIME_LOGS} overflow-y-auto`}>
+                <div className={`space-y-2 ${SCROLL_HEIGHTS.REALTIME_LOGS} overflow-y-auto`} role="list" aria-label="Real-time log entries">
                     {logs.map((log) => (
                         <div
                             key={log.id}
                             className="flex items-start gap-3 p-3 border rounded-lg hover:bg-muted/30"
+                            role="listitem"
                         >
                             <LogLevelBadge level={log.level} />
                             <div className="flex-1 min-w-0">

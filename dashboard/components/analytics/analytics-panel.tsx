@@ -160,13 +160,13 @@ export function AnalyticsPanel() {
                                         .filter(([level]) => level !== '__typename')
                                         .map(([level, count]) => {
                                         const config = LOG_LEVEL_CONFIG[level as LogLevel];
-                                        const numCount = typeof count === 'number' ? count : 0;
-                                        const percentage = stats.total > 0 ? (numCount / stats.total) * 100 : 0;
+                                        const normalizedCount = typeof count === 'number' ? count : 0;
+                                        const percentage = stats.total > 0 ? (normalizedCount / stats.total) * 100 : 0;
                                         return (
                                             <div key={level} className="flex-1">
                                                 <div className="flex items-center justify-between mb-2">
                                                     <span className={`text-sm font-medium ${config.color}`}>{level}</span>
-                                                    <span className="text-sm text-muted-foreground">{numCount}</span>
+                                                    <span className="text-sm text-muted-foreground">{normalizedCount}</span>
                                                 </div>
                                                 <div className="h-2 bg-muted rounded-full overflow-hidden">
                                                     <div

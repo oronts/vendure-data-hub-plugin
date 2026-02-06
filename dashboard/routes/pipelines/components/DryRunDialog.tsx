@@ -81,7 +81,7 @@ export function DryRunDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className={`${DIALOG_DIMENSIONS.MAX_WIDTH_4XL} ${DIALOG_DIMENSIONS.MAX_HEIGHT_85VH} overflow-hidden flex flex-col`}>
+            <DialogContent className={`${DIALOG_DIMENSIONS.MAX_WIDTH_4XL} ${DIALOG_DIMENSIONS.MAX_HEIGHT_85VH} overflow-hidden flex flex-col`} data-testid="dry-run-dialog">
                 <DialogHeader>
                     <DialogTitle>Dry Run</DialogTitle>
                     <DialogDescription>
@@ -90,9 +90,9 @@ export function DryRunDialog({
                 </DialogHeader>
                 <Tabs value={dryRunTab} onValueChange={v => setDryRunTab(v as typeof dryRunTab)} className="flex-1 overflow-hidden flex flex-col">
                     <TabsList className="grid w-full grid-cols-3">
-                        <TabsTrigger value="summary">Summary</TabsTrigger>
-                        <TabsTrigger value="diff">Record Diff</TabsTrigger>
-                        <TabsTrigger value="simulation">Simulate</TabsTrigger>
+                        <TabsTrigger value="summary" data-testid="datahub-dryrun-tab-summary">Summary</TabsTrigger>
+                        <TabsTrigger value="diff" data-testid="datahub-dryrun-tab-diff">Record Diff</TabsTrigger>
+                        <TabsTrigger value="simulation" data-testid="datahub-dryrun-tab-simulation">Simulate</TabsTrigger>
                     </TabsList>
                     <div className="flex-1 overflow-auto mt-4">
                         <TabsContent value="summary" className="mt-0">
@@ -120,7 +120,7 @@ export function DryRunDialog({
                                         </div>
                                     </div>
                                     <div className="mt-4 flex justify-center">
-                                        <Button variant="outline" size="sm" onClick={handleDryRun}>
+                                        <Button variant="outline" size="sm" onClick={handleDryRun} data-testid="datahub-dryrun-retry-btn">
                                             Retry Dry Run
                                         </Button>
                                     </div>
@@ -223,12 +223,12 @@ export function DryRunDialog({
 }
 
 function DryRunMetricsSummary({ metrics }: Readonly<{ metrics: unknown }>) {
-    const m = (metrics ?? {}) as DryRunMetrics;
+    const dryRunMetrics = (metrics ?? {}) as DryRunMetrics;
     const cards = [
-        { label: 'Processed', value: m.recordsProcessed ?? 0, color: 'text-blue-600' },
-        { label: 'Succeeded', value: m.recordsSucceeded ?? 0, color: 'text-green-600' },
-        { label: 'Failed', value: m.recordsFailed ?? 0, color: 'text-red-600' },
-        { label: 'Skipped', value: m.recordsSkipped ?? 0, color: 'text-amber-600' },
+        { label: 'Processed', value: dryRunMetrics.recordsProcessed ?? 0, color: 'text-blue-600' },
+        { label: 'Succeeded', value: dryRunMetrics.recordsSucceeded ?? 0, color: 'text-green-600' },
+        { label: 'Failed', value: dryRunMetrics.recordsFailed ?? 0, color: 'text-red-600' },
+        { label: 'Skipped', value: dryRunMetrics.recordsSkipped ?? 0, color: 'text-amber-600' },
     ];
 
     return (
@@ -244,8 +244,8 @@ function DryRunMetricsSummary({ metrics }: Readonly<{ metrics: unknown }>) {
 }
 
 function DryRunStepDetails({ metrics }: Readonly<{ metrics: unknown }>) {
-    const m = (metrics ?? {}) as DryRunMetrics;
-    const details = m.details ?? [];
+    const metricsData = (metrics ?? {}) as DryRunMetrics;
+    const details = metricsData.details ?? [];
 
     if (details.length === 0) {
         return null;

@@ -31,7 +31,7 @@ export function getTriggerStep(definition: PipelineDefinition): PipelineStepDefi
 export function stepToTrigger(step: PipelineStepDefinition): PipelineTrigger {
     return {
         ...(step.config as PipelineTrigger),
-        _stepKey: step.key,
+        stepKey: step.key,
     };
 }
 
@@ -51,10 +51,10 @@ export function triggerToStep(
     trigger: PipelineTrigger,
     existingKey?: string
 ): PipelineStepDefinition {
-    const { _stepKey, ...triggerConfig } = trigger as PipelineTrigger & { _stepKey?: string };
+    const { stepKey, ...triggerConfig } = trigger as PipelineTrigger & { stepKey?: string };
 
     return {
-        key: existingKey ?? _stepKey ?? `trigger-${Date.now()}`,
+        key: existingKey ?? stepKey ?? `trigger-${Date.now()}`,
         type: TRIGGER_STEP_TYPE,
         config: triggerConfig,
     };
@@ -71,9 +71,9 @@ export function triggersToSteps(
     const nonTriggerSteps = existingSteps.filter(s => s.type !== TRIGGER_STEP_TYPE);
 
     const newTriggerSteps: PipelineStepDefinition[] = triggers.map((trigger, index) => {
-        const stepKey = (trigger as PipelineTrigger & { _stepKey?: string })._stepKey;
-        const existingStep = stepKey
-            ? existingTriggerSteps.find(s => s.key === stepKey)
+        const triggerStepKey = (trigger as PipelineTrigger & { stepKey?: string }).stepKey;
+        const existingStep = triggerStepKey
+            ? existingTriggerSteps.find(s => s.key === triggerStepKey)
             : existingTriggerSteps[index];
 
         return triggerToStep(trigger, existingStep?.key);

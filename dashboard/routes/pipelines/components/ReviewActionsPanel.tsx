@@ -176,6 +176,8 @@ export function ReviewActionsPanel({
                             variant="default"
                             size="sm"
                             onClick={() => setSubmitDialogOpen(true)}
+                            aria-label="Submit pipeline for review"
+                            data-testid="datahub-review-submit-btn"
                         >
                             <Send className="mr-1.5 h-3.5 w-3.5" />
                             Submit for Review
@@ -188,6 +190,8 @@ export function ReviewActionsPanel({
                                 variant="outline"
                                 size="sm"
                                 onClick={() => setRejectDialogOpen(true)}
+                                aria-label="Reject pipeline and return to draft"
+                                data-testid="datahub-review-reject-btn"
                             >
                                 <XCircle className="mr-1.5 h-3.5 w-3.5" />
                                 Reject
@@ -196,6 +200,8 @@ export function ReviewActionsPanel({
                                 variant="default"
                                 size="sm"
                                 onClick={() => setApproveDialogOpen(true)}
+                                aria-label="Approve and publish pipeline"
+                                data-testid="datahub-review-approve-btn"
                             >
                                 <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
                                 Approve
@@ -208,6 +214,8 @@ export function ReviewActionsPanel({
                             variant="outline"
                             size="sm"
                             onClick={() => setArchiveDialogOpen(true)}
+                            aria-label="Archive pipeline"
+                            data-testid="datahub-review-archive-btn"
                         >
                             <Archive className="mr-1.5 h-3.5 w-3.5" />
                             Archive
@@ -219,6 +227,8 @@ export function ReviewActionsPanel({
                             variant="outline"
                             size="sm"
                             onClick={() => setSubmitDialogOpen(true)}
+                            aria-label="Reactivate archived pipeline"
+                            data-testid="datahub-review-reactivate-btn"
                         >
                             <Play className="mr-1.5 h-3.5 w-3.5" />
                             Reactivate

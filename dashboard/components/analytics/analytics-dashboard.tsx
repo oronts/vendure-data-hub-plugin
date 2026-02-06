@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { memo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import {
     Button,
     Card,
@@ -174,27 +174,27 @@ export function AnalyticsDashboard({
 }: AnalyticsDashboardProps) {
     const [timeRange, setTimeRange] = React.useState('7d');
 
-    const handleTimeRangeChange = (range: string) => {
+    const handleTimeRangeChange = useCallback((range: string) => {
         setTimeRange(range);
         onTimeRangeChange?.(range);
-    };
+    }, [onTimeRangeChange]);
 
     const successRate = metrics.total > 0
         ? ((metrics.successful / metrics.total) * 100).toFixed(1)
         : '0.0';
 
-    const runStatusData = [
+    const runStatusData = useMemo(() => [
         { label: 'Success', value: metrics.successful, color: CHART_COLORS.success },
         { label: 'Failed', value: metrics.failed, color: CHART_COLORS.error },
         { label: 'Pending', value: metrics.pending, color: CHART_COLORS.warning },
         { label: 'Cancelled', value: metrics.cancelled, color: CHART_COLORS.neutral },
-    ];
+    ], [metrics.successful, metrics.failed, metrics.pending, metrics.cancelled]);
 
-    const dailyRunsData = runsByDay.map(point => ({
+    const dailyRunsData = useMemo(() => runsByDay.map(point => ({
         label: new Date(point.timestamp).toLocaleDateString('en-US', { weekday: 'short' }),
         value: point.value,
         color: 'bg-primary',
-    }));
+    })), [runsByDay]);
 
     return (
         <div className="space-y-6">

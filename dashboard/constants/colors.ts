@@ -32,12 +32,6 @@ export const STATUS_COLORS = {
     neutral: 'bg-gray-100 text-gray-800',
 } as const;
 
-export const ADAPTER_TYPE_COLORS = {
-    source: 'bg-blue-100 text-blue-800',
-    transform: 'bg-purple-100 text-purple-800',
-    destination: 'bg-green-100 text-green-800',
-} as const;
-
 export const FALLBACK_COLORS = {
     MUTED: '#6b7280',
     BORDER: '#e5e7eb',
@@ -60,7 +54,6 @@ export const FILE_TYPE_ICON_CONFIG: Record<string, { icon: LucideIcon; color: st
 
 export type UILogLevel = keyof typeof LOG_LEVEL_COLORS;
 export type UIStatusType = keyof typeof STATUS_COLORS;
-export type UIAdapterTypeColor = keyof typeof ADAPTER_TYPE_COLORS;
 export type LogLevel = keyof typeof LOG_LEVEL_CONFIG;
 
 export function getLogLevelColor(level: string): string {

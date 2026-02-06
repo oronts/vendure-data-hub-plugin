@@ -28,8 +28,8 @@ export function formatKey(key: string): string {
 }
 
 export function formatDate(date: Date | string | number, options?: Intl.DateTimeFormatOptions): string {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return '\u2014';
+    const dateObj = date instanceof Date ? date : new Date(date);
+    if (isNaN(dateObj.getTime())) return '\u2014';
 
     const defaultOptions: Intl.DateTimeFormatOptions = {
         year: 'numeric',
@@ -37,12 +37,12 @@ export function formatDate(date: Date | string | number, options?: Intl.DateTime
         day: 'numeric',
     };
 
-    return d.toLocaleDateString('en-US', options || defaultOptions);
+    return dateObj.toLocaleDateString('en-US', options || defaultOptions);
 }
 
 export function formatDateTime(date: Date | string | number, options?: Intl.DateTimeFormatOptions): string {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return '\u2014';
+    const dateObj = date instanceof Date ? date : new Date(date);
+    if (isNaN(dateObj.getTime())) return '\u2014';
 
     const defaultOptions: Intl.DateTimeFormatOptions = {
         year: 'numeric',
@@ -52,20 +52,20 @@ export function formatDateTime(date: Date | string | number, options?: Intl.Date
         minute: '2-digit',
     };
 
-    return d.toLocaleString('en-US', options || defaultOptions);
+    return dateObj.toLocaleString('en-US', options || defaultOptions);
 }
 
 export function formatSmartDateTime(date: Date | string | number): string {
-    const d = date instanceof Date ? date : new Date(date);
-    if (isNaN(d.getTime())) return '\u2014';
+    const dateObj = date instanceof Date ? date : new Date(date);
+    if (isNaN(dateObj.getTime())) return '\u2014';
 
     const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
+    const isToday = dateObj.toDateString() === now.toDateString();
 
     if (isToday) {
-        return d.toLocaleTimeString();
+        return dateObj.toLocaleTimeString();
     }
-    return d.toLocaleString(undefined, {
+    return dateObj.toLocaleString(undefined, {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',

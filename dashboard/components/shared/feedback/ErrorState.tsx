@@ -19,7 +19,7 @@ function ErrorStateComponent({
     }, []);
 
     return (
-        <Card className={`border-destructive/50 ${className}`}>
+        <Card className={`border-destructive/50 ${className}`} data-testid="error-state">
             <CardContent className="p-6">
                 <div className="flex items-start gap-4">
                     <div className="rounded-full bg-destructive/10 p-2">
@@ -36,6 +36,7 @@ function ErrorStateComponent({
                                     size="sm"
                                     onClick={onRetry}
                                     className="gap-2"
+                                    data-testid="error-retry-button"
                                 >
                                     <RefreshCw className={ICON_SIZES.SM} />
                                     Try again

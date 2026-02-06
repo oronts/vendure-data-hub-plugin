@@ -94,19 +94,26 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
         });
     }, [runPipeline]);
 
+    const handleCancelRunClick = React.useCallback((runId: string) => {
+        handleCancelRun(runId);
+    }, [handleCancelRun]);
+
     const columns: ColumnDef<RunRow, unknown>[] = React.useMemo(() => [
         {
             id: 'id',
             header: 'ID',
             accessorFn: row => row.id,
-            cell: ({ row }) => (
-                <button
-                    className="font-mono text-muted-foreground underline-offset-2 hover:underline"
-                    onClick={() => handleSelectRun(row.original)}
-                >
-                    {row.original.id}
-                </button>
-            ),
+            cell: ({ row }) => {
+                const handleClick = () => handleSelectRun(row.original);
+                return (
+                    <button
+                        className="font-mono text-muted-foreground underline-offset-2 hover:underline"
+                        onClick={handleClick}
+                    >
+                        {row.original.id}
+                    </button>
+                );
+            },
             enableSorting: false,
         },
         {
@@ -140,12 +147,14 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             cell: ({ row }) => {
                 const st = row.original.status;
                 const canCancel = st === RUN_STATUS.RUNNING || st === RUN_STATUS.PENDING;
+                const handleClick = () => handleCancelRunClick(row.original.id);
                 return canCancel ? (
                     <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => handleCancelRun(row.original.id)}
+                        onClick={handleClick}
                         disabled={cancelRun.isPending}
+                        data-testid="datahub-run-cancel-button"
                     >
                         Cancel
                     </Button>
@@ -155,7 +164,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             },
             enableSorting: false,
         },
-    ], [handleSelectRun, handleCancelRun, cancelRun.isPending]);
+    ], [handleSelectRun, handleCancelRunClick, cancelRun.isPending]);
 
     if (isError && !data) {
         return (
@@ -184,7 +193,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                     <h3 className="text-base font-semibold">Runs</h3>
                     <div className="flex items-center gap-2">
                         <Select value={status || FILTER_VALUES.ALL} onValueChange={handleStatusChange}>
-                            <SelectTrigger className={SELECT_WIDTHS.RUN_STATUS}>
+                            <SelectTrigger className={SELECT_WIDTHS.RUN_STATUS} data-testid="datahub-run-status-filter">
                                 <SelectValue placeholder="All statuses" />
                             </SelectTrigger>
                             <SelectContent>
@@ -197,7 +206,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                                 <SelectItem value={RUN_STATUS.CANCELLED}>Cancelled</SelectItem>
                             </SelectContent>
                         </Select>
-                        <Button variant="ghost" onClick={() => refetch()} disabled={isLoading}>
+                        <Button variant="ghost" onClick={() => refetch()} disabled={isLoading} data-testid="datahub-run-history-refresh-button">
                             Refresh
                         </Button>
                     </div>
@@ -214,6 +223,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                     onSortChange={setSorting}
                     onRefresh={refetch}
                     disableViewOptions
+                    data-testid="datahub-run-history-table"
                 />
             </PageBlock>
             <Drawer open={!!selectedRun} onOpenChange={handleCloseDrawer}>
@@ -244,9 +254,9 @@ function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCancelling }
     const { data: errors } = useRunErrors(runId);
     const retryError = useRetryError();
 
-    const d = runData;
-    const status = d?.status ?? initialData.status;
-    const metrics: IndividualRunMetrics = (d?.metrics as IndividualRunMetrics) ?? initialData.metrics ?? {};
+    const run = runData;
+    const status = run?.status ?? initialData.status;
+    const metrics: IndividualRunMetrics = (run?.metrics as IndividualRunMetrics) ?? initialData.metrics ?? {};
     const processed = Number(metrics.processed ?? 0);
     const succeeded = Number(metrics.succeeded ?? 0);
     const failed = Number(metrics.failed ?? 0);
@@ -262,55 +272,58 @@ function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCancelling }
     }, [retryError]);
 
     const handleCancel = React.useCallback(() => {
-        onCancel(d?.id ?? runId);
-    }, [onCancel, d?.id, runId]);
+        onCancel(run?.id ?? runId);
+    }, [onCancel, run?.id, runId]);
 
     const handleRerun = React.useCallback(() => {
-        onRerun(String(d!.pipeline!.id));
-    }, [onRerun, d]);
+        const pipelineId = run?.pipeline?.id;
+        if (pipelineId) {
+            onRerun(String(pipelineId));
+        }
+    }, [onRerun, run]);
 
     return (
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4" data-testid="datahub-run-details-panel">
             <div className="flex items-center justify-between">
                 <div className="text-sm">Status: {status}</div>
-                <Button variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching}>
+                <Button variant="ghost" size="sm" onClick={() => refetch()} disabled={isFetching} data-testid="datahub-run-details-refresh-button">
                     Refresh
                 </Button>
             </div>
             <div className="text-sm text-muted-foreground">{summary}</div>
-            <div className="text-xs text-muted-foreground">Started by: {d?.startedByUserId ?? '—'}</div>
+            <div className="text-xs text-muted-foreground">Started by: {run?.startedByUserId ?? '—'}</div>
 
             <StepCounters metrics={metrics} />
             <StepSummaryTable metrics={metrics} />
 
             <div>
                 <div className="text-sm font-medium mb-1">Metrics</div>
-                <Json value={d?.metrics ?? initialData.metrics ?? {}} />
+                <Json value={run?.metrics ?? initialData.metrics ?? {}} />
             </div>
             <div className="text-sm">
                 <div className="text-sm font-medium mb-1">Started</div>
-                <div>{formatDateTime(d?.startedAt ?? initialData.startedAt)}</div>
+                <div>{formatDateTime(run?.startedAt ?? initialData.startedAt)}</div>
             </div>
             <div className="text-sm">
                 <div className="text-sm font-medium mb-1">Finished</div>
-                <div>{formatDateTime(d?.finishedAt ?? initialData.finishedAt)}</div>
+                <div>{formatDateTime(run?.finishedAt ?? initialData.finishedAt)}</div>
             </div>
 
-            {d?.error && (
+            {run?.error && (
                 <div className="text-sm">
                     <div className="text-sm font-medium mb-1">Error</div>
-                    <pre className="bg-muted p-3 rounded text-xs overflow-auto">{String(d.error)}</pre>
+                    <pre className="bg-muted p-3 rounded text-xs overflow-auto">{String(run.error)}</pre>
                 </div>
             )}
 
             {(status === RUN_STATUS.RUNNING || status === RUN_STATUS.PENDING) && (
-                <Button variant="secondary" onClick={handleCancel} disabled={isCancelling}>
+                <Button variant="secondary" onClick={handleCancel} disabled={isCancelling} data-testid="datahub-run-details-cancel-button">
                     Cancel run
                 </Button>
             )}
 
-            {d?.pipeline?.id && (
-                <Button variant="outline" onClick={handleRerun}>
+            {run?.pipeline?.id && (
+                <Button variant="outline" onClick={handleRerun} data-testid="datahub-run-details-rerun-button">
                     Re-run
                 </Button>
             )}
@@ -482,7 +495,7 @@ function ErrorRow({ item, onStartEditing }: ErrorRowProps) {
             </td>
             <td className="px-2 py-1 align-top">
                 <PermissionGuard requires={[DATAHUB_PERMISSIONS.REPLAY_RECORD]}>
-                    <Button variant="outline" size="sm" onClick={handleClick}>
+                    <Button variant="outline" size="sm" onClick={handleClick} data-testid="datahub-error-retry-button">
                         Retry with patch
                     </Button>
                 </PermissionGuard>

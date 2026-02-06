@@ -21,10 +21,10 @@ export function PipelineExportDialog({ definition }: Readonly<Props>) {
     function downloadFile() {
         const blob = new Blob([code], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'pipeline.ts';
-        a.click();
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = 'pipeline.ts';
+        downloadLink.click();
         URL.revokeObjectURL(url);
     }
 

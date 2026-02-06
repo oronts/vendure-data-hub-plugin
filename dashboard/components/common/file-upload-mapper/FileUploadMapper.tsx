@@ -153,12 +153,12 @@ export function FileUploadMapper({
 
     return (
         <div className="space-y-6">
-            <div className="flex items-center gap-4">
-                <StepIndicator number={1} label="Upload" active={step === MAPPER_STEP.UPLOAD} completed={step !== MAPPER_STEP.UPLOAD} />
+            <div className="flex items-center gap-4" data-testid="datahub-file-upload-step-indicators">
+                <StepIndicator number={1} label="Upload" active={step === MAPPER_STEP.UPLOAD} completed={step !== MAPPER_STEP.UPLOAD} data-testid="datahub-file-upload-step-1" />
                 <div className="flex-1 h-px bg-border" />
-                <StepIndicator number={2} label="Preview" active={step === MAPPER_STEP.PREVIEW} completed={step === MAPPER_STEP.MAPPING} />
+                <StepIndicator number={2} label="Preview" active={step === MAPPER_STEP.PREVIEW} completed={step === MAPPER_STEP.MAPPING} data-testid="datahub-file-upload-step-2" />
                 <div className="flex-1 h-px bg-border" />
-                <StepIndicator number={3} label="Map Fields" active={step === MAPPER_STEP.MAPPING} completed={false} />
+                <StepIndicator number={3} label="Map Fields" active={step === MAPPER_STEP.MAPPING} completed={false} data-testid="datahub-file-upload-step-3" />
             </div>
 
             {step === MAPPER_STEP.UPLOAD && (
@@ -220,10 +220,10 @@ export function FileUploadMapper({
                     </div>
 
                     <div className="flex justify-between">
-                        <Button variant="outline" onClick={handleReset}>
+                        <Button variant="outline" onClick={handleReset} data-testid="datahub-file-upload-back-button">
                             Back
                         </Button>
-                        <Button onClick={handleContinueToMapping}>
+                        <Button onClick={handleContinueToMapping} data-testid="datahub-file-upload-continue-button">
                             Continue to Mapping
                             <ArrowRight className="w-4 h-4 ml-2" />
                         </Button>
@@ -253,16 +253,16 @@ export function FileUploadMapper({
                     )}
 
                     <div className="flex justify-between">
-                        <Button variant="outline" onClick={handleBackToPreview}>
+                        <Button variant="outline" onClick={handleBackToPreview} data-testid="datahub-file-upload-mapping-back-button">
                             Back
                         </Button>
                         <div className="flex gap-2">
                             {onCancel && (
-                                <Button variant="outline" onClick={onCancel}>
+                                <Button variant="outline" onClick={onCancel} data-testid="datahub-file-upload-cancel-button">
                                     Cancel
                                 </Button>
                             )}
-                            <Button onClick={handleComplete}>
+                            <Button onClick={handleComplete} data-testid="datahub-file-upload-complete-button">
                                 <Check className="w-4 h-4 mr-2" />
                                 Complete Mapping
                             </Button>

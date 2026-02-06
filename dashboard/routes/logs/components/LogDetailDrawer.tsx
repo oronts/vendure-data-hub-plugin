@@ -30,7 +30,7 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
 
     return (
         <Drawer open={!!log} onOpenChange={handleOpenChange}>
-            <DrawerContent>
+            <DrawerContent data-testid="datahub-log-detail-drawer">
                 <DrawerHeader>
                     <DrawerTitle>Log Details</DrawerTitle>
                     <DrawerDescription>

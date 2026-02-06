@@ -60,6 +60,7 @@ function StepListItemComponent({
                 isSelected ? 'bg-primary/10 border border-primary/30' : 'hover:bg-muted'
             }`}
             onClick={onClick}
+            data-testid={`datahub-step-item-${step.key}`}
         >
             <div
                 className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs"
@@ -96,6 +97,8 @@ function StepListItemComponent({
                     className="h-6 w-6 p-0"
                     onClick={handleMoveUp}
                     disabled={isFirst}
+                    data-testid={`datahub-step-move-up-${step.key}`}
+                    aria-label="Move step up"
                 >
                     <ChevronUp className={ICON_SIZES.XS} />
                 </Button>
@@ -105,6 +108,8 @@ function StepListItemComponent({
                     className="h-6 w-6 p-0"
                     onClick={handleMoveDown}
                     disabled={isLast}
+                    data-testid={`datahub-step-move-down-${step.key}`}
+                    aria-label="Move step down"
                 >
                     <ChevronDown className={ICON_SIZES.XS} />
                 </Button>
@@ -114,6 +119,7 @@ function StepListItemComponent({
                     className="h-6 w-6 p-0 text-destructive"
                     onClick={handleRemove}
                     title={deleteTitle}
+                    data-testid={`datahub-step-remove-${step.key}`}
                 >
                     <Trash2 className={ICON_SIZES.XS} />
                 </Button>

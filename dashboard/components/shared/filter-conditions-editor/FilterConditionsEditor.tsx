@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useRef, useCallback } from 'react';
+import { useCallback } from 'react';
 import {
     Button,
     Input,
@@ -14,24 +14,7 @@ import {
 import { Plus, Trash2 } from 'lucide-react';
 import { COMPARISON_OPERATORS, COMPONENT_WIDTHS, SENTINEL_VALUES } from '../../../constants';
 import type { FilterCondition, FilterOperator } from '../../../types';
-import { generateStableKey } from '../../../utils';
-
-function useConditionKeys(conditions: FilterCondition[]): string[] {
-    const keysRef = useRef<Map<FilterCondition, string>>(new Map());
-    const prevConditionsRef = useRef<FilterCondition[]>([]);
-
-    if (prevConditionsRef.current !== conditions) {
-        const newMap = new Map<FilterCondition, string>();
-        for (const condition of conditions) {
-            const existingKey = keysRef.current.get(condition);
-            newMap.set(condition, existingKey ?? generateStableKey('condition'));
-        }
-        keysRef.current = newMap;
-        prevConditionsRef.current = conditions;
-    }
-
-    return conditions.map(c => keysRef.current.get(c) ?? generateStableKey('condition'));
-}
+import { useStableKeys } from '../../../hooks';
 
 export interface FilterConditionsEditorProps {
     /** Array of filter conditions */
@@ -78,7 +61,7 @@ export function FilterConditionsEditor({
     addLabel = 'Add Condition',
     compact = false,
 }: FilterConditionsEditorProps) {
-    const conditionKeys = useConditionKeys(conditions);
+    const conditionKeys = useStableKeys(conditions, 'condition');
 
     const addCondition = useCallback(() => {
         onChange([...conditions, { field: '', operator: 'eq' as FilterOperator, value: '' }]);
@@ -113,7 +96,7 @@ export function FilterConditionsEditor({
                             </SelectContent>
                         </Select>
                     )}
-                    <Button variant="outline" size="sm" onClick={addCondition}>
+                    <Button variant="outline" size="sm" onClick={addCondition} data-testid="datahub-filter-conditions-add-button">
                         <Plus className="w-4 h-4 mr-2" />
                         {addLabel}
                     </Button>

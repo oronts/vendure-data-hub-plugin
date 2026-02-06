@@ -235,10 +235,10 @@ function HttpConnectionFields({
                 />
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3" role="group" aria-labelledby="default-headers-label">
                 <div className="flex items-center justify-between">
                     <div>
-                        <Label className="text-sm font-medium">Default Headers</Label>
+                        <Label id="default-headers-label" className="text-sm font-medium">Default Headers</Label>
                         <p className="text-xs text-muted-foreground">Applied to every request.</p>
                     </div>
                     <Button
@@ -247,6 +247,7 @@ function HttpConnectionFields({
                         size="sm"
                         onClick={() => commitHeaders([...headerRows, createHeaderRow()])}
                         disabled={disabled}
+                        aria-label="Add new HTTP header"
                     >
                         <PlusCircle className="w-4 h-4 mr-2" />
                         Add header
@@ -287,9 +288,9 @@ function HttpConnectionFields({
                 ))}
             </div>
 
-            <div className="space-y-3">
-                <Label className="text-sm font-medium">Authentication</Label>
-                <div className="flex flex-wrap gap-2">
+            <div className="space-y-3" role="group" aria-labelledby="authentication-label">
+                <Label id="authentication-label" className="text-sm font-medium">Authentication</Label>
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Select authentication method">
                     {AUTH_OPTIONS.map(option => (
                         <Button
                             key={option.value}
@@ -297,6 +298,7 @@ function HttpConnectionFields({
                             variant={auth.type === option.value ? 'default' : 'outline'}
                             onClick={() => handleAuthTypeChange(option.value)}
                             disabled={disabled}
+                            aria-pressed={auth.type === option.value}
                         >
                             {option.label}
                         </Button>

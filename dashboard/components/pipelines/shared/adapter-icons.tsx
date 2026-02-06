@@ -70,15 +70,15 @@ const LOADER_ICON_MAP: Record<string, IconType> = {
 };
 
 export function getAdapterIcon(adapterType: string, code?: string): IconType {
-    const c = (code || '').trim();
+    const adapterCode = (code || '').trim();
     if (adapterType === ADAPTER_TYPES.OPERATOR) {
-        return OPERATOR_ICON_MAP[c] || RefreshCw;
+        return OPERATOR_ICON_MAP[adapterCode] || RefreshCw;
     }
     if (adapterType === ADAPTER_TYPES.EXTRACTOR) {
-        return EXTRACTOR_ICON_MAP[c] || Download;
+        return EXTRACTOR_ICON_MAP[adapterCode] || Download;
     }
     if (adapterType === ADAPTER_TYPES.LOADER) {
-        return LOADER_ICON_MAP[c] || Upload;
+        return LOADER_ICON_MAP[adapterCode] || Upload;
     }
     return Box;
 }

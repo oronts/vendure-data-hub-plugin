@@ -225,14 +225,23 @@ export function ReactFlowPipelineEditor({
         setSelectedNode(null);
     }, []);
 
+    const handleAutoLayout = React.useCallback(() => {
+        autoLayout();
+    }, [autoLayout]);
+
     const issueMap = React.useMemo(() => {
-        const m = new Map<string, number>();
-        for (const i of issues) {
-            if (!i.stepKey) continue;
-            m.set(i.stepKey, (m.get(i.stepKey) || 0) + 1);
+        const issueCountMap = new Map<string, number>();
+        for (const issue of issues) {
+            if (!issue.stepKey) continue;
+            issueCountMap.set(issue.stepKey, (issueCountMap.get(issue.stepKey) || 0) + 1);
         }
-        return m;
+        return issueCountMap;
     }, [issues]);
+
+    const defaultEdgeOptions = React.useMemo(() => ({
+        markerEnd: { type: MarkerType.ArrowClosed },
+        style: { strokeWidth: 2 },
+    }), []);
 
     return (
         <div className="flex h-full gap-4">
@@ -246,7 +255,7 @@ export function ReactFlowPipelineEditor({
                         <Badge variant="outline">{nodes.length} nodes</Badge>
                         <Badge variant="outline">{edges.length} connections</Badge>
                         {!readOnly && (
-                            <Button variant="ghost" size="sm" onClick={autoLayout} className="gap-1 text-xs">
+                            <Button variant="ghost" size="sm" onClick={handleAutoLayout} className="gap-1 text-xs" data-testid="datahub-pipeline-editor-auto-layout-button" aria-label="Auto-layout pipeline nodes">
                                 <LayoutGrid className="w-3 h-3" />
                                 Auto-layout
                             </Button>
@@ -254,13 +263,13 @@ export function ReactFlowPipelineEditor({
                     </div>
                     <div className="flex items-center gap-2">
                         {onRun && (
-                            <Button onClick={onRun} className="gap-2">
+                            <Button onClick={onRun} className="gap-2" data-testid="datahub-pipeline-editor-run-button">
                                 <Play className="w-4 h-4" />
                                 Run Pipeline
                             </Button>
                         )}
                         {onSave && (
-                            <Button variant="outline" onClick={onSave} className="gap-2">
+                            <Button variant="outline" onClick={onSave} className="gap-2" data-testid="datahub-pipeline-editor-save-button">
                                 <Save className="w-4 h-4" />
                                 Save
                             </Button>
@@ -268,7 +277,7 @@ export function ReactFlowPipelineEditor({
                     </div>
                 </div>
 
-                <div className="flex-1 border rounded-lg overflow-hidden" ref={reactFlowRef}>
+                <div className="flex-1 border rounded-lg overflow-hidden" ref={reactFlowRef} data-testid="datahub-pipeline-editor-canvas">
                     <ReactFlow
                         nodes={nodes}
                         edges={edges}
@@ -279,10 +288,7 @@ export function ReactFlowPipelineEditor({
                         onDragOver={onDragOver}
                         onDrop={onDrop}
                         nodeTypes={pipelineNodeTypes}
-                        defaultEdgeOptions={{
-                            markerEnd: { type: MarkerType.ArrowClosed },
-                            style: { strokeWidth: 2 },
-                        }}
+                        defaultEdgeOptions={defaultEdgeOptions}
                         fitView
                         className="bg-gray-50"
                     >
@@ -332,6 +338,110 @@ export function ReactFlowPipelineEditor({
     );
 }
 
+// Memoized adapter palette item to avoid inline onDragStart handlers
+interface PaletteAdapterItemProps {
+    readonly adapter: AdapterMetadata;
+    readonly category: string;
+    readonly onDragStart: (e: React.DragEvent, nodeType: string, category: string, label: string) => void;
+}
+
+const PaletteAdapterItem = React.memo(function PaletteAdapterItem({
+    adapter,
+    category,
+    onDragStart,
+}: PaletteAdapterItemProps) {
+    const Icon = adapter.icon;
+
+    const handleDragStart = React.useCallback((e: React.DragEvent) => {
+        onDragStart(e, adapter.code, category, adapter.name);
+    }, [onDragStart, adapter.code, category, adapter.name]);
+
+    const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            // Create a synthetic drag event for keyboard users
+            const syntheticEvent = {
+                dataTransfer: {
+                    setData: (type: string, data: string) => {
+                        // Store data for keyboard-initiated drag
+                        sessionStorage.setItem('keyboard-drag-data', data);
+                    },
+                    effectAllowed: 'move',
+                },
+            } as unknown as React.DragEvent;
+            onDragStart(syntheticEvent, adapter.code, category, adapter.name);
+        }
+    }, [onDragStart, adapter.code, category, adapter.name]);
+
+    return (
+        <div
+            className="border rounded p-2 cursor-move hover:bg-muted active:cursor-grabbing focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+            draggable
+            onDragStart={handleDragStart}
+            onKeyDown={handleKeyDown}
+            title={adapter.description || ''}
+            role="button"
+            tabIndex={0}
+            aria-label={`Add ${adapter.name} node to pipeline`}
+        >
+            <div className="flex items-center gap-2">
+                <div
+                    className="w-6 h-6 rounded flex items-center justify-center text-white"
+                    style={{ backgroundColor: adapter.color }}
+                >
+                    <Icon className="w-3 h-3" />
+                </div>
+                <div className="truncate text-xs flex-1 min-w-0">
+                    <div className="font-medium truncate">{adapter.name}</div>
+                    {adapter.description && (
+                        <div className="text-[10px] text-muted-foreground truncate">
+                            {adapter.description}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+});
+
+// Memoized section header button to avoid inline onClick handlers
+interface PaletteSectionHeaderProps {
+    readonly sectionKey: string;
+    readonly label: string;
+    readonly Icon: React.ComponentType<{ className?: string }>;
+    readonly isExpanded: boolean;
+    readonly onToggle: (key: string) => void;
+}
+
+const PaletteSectionHeader = React.memo(function PaletteSectionHeader({
+    sectionKey,
+    label,
+    Icon,
+    isExpanded,
+    onToggle,
+}: PaletteSectionHeaderProps) {
+    const handleClick = React.useCallback(() => {
+        onToggle(sectionKey);
+    }, [onToggle, sectionKey]);
+
+    return (
+        <button
+            className="w-full flex items-center justify-between px-2 py-1.5 text-sm font-medium hover:bg-muted rounded"
+            onClick={handleClick}
+        >
+            <span className="flex items-center gap-2">
+                <Icon className="w-4 h-4 text-muted-foreground" />
+                {label}
+            </span>
+            {isExpanded ? (
+                <ChevronDown className="w-4 h-4" />
+            ) : (
+                <ChevronRight className="w-4 h-4" />
+            )}
+        </button>
+    );
+});
+
 function NodePaletteDynamic({ adapters, onDragStart }: { adapters: AdapterMetadata[]; onDragStart: (e: React.DragEvent, nodeType: string, category: string, label: string) => void }) {
     const [expanded, setExpanded] = React.useState<Record<string, boolean>>({
         sources: true,
@@ -344,17 +454,21 @@ function NodePaletteDynamic({ adapters, onDragStart }: { adapters: AdapterMetada
         sinks: false,
     });
 
-    const sources = adapters.filter(a => a.type === ADAPTER_TYPES.EXTRACTOR);
-    const transforms = adapters.filter(a => a.type === ADAPTER_TYPES.OPERATOR);
-    const enrichers = adapters.filter(a => a.type === ADAPTER_TYPES.ENRICHER);
-    const validation = adapters.filter(a => a.type === ADAPTER_TYPES.VALIDATOR);
-    const routing = adapters.filter(a => a.type === ADAPTER_TYPES.ROUTER);
-    const destinations = adapters.filter(a => a.type === ADAPTER_TYPES.LOADER);
-    const feeds = adapters.filter(a => a.type === ADAPTER_TYPES.FEED);
-    const exports = adapters.filter(a => a.type === ADAPTER_TYPES.EXPORTER);
-    const sinks = adapters.filter(a => a.type === ADAPTER_TYPES.SINK);
+    const handleToggleSection = React.useCallback((sectionKey: string) => {
+        setExpanded(e => ({ ...e, [sectionKey]: !e[sectionKey] }));
+    }, []);
 
-    const sections = [
+    const sources = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.EXTRACTOR), [adapters]);
+    const transforms = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.OPERATOR), [adapters]);
+    const enrichers = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.ENRICHER), [adapters]);
+    const validation = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.VALIDATOR), [adapters]);
+    const routing = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.ROUTER), [adapters]);
+    const destinations = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.LOADER), [adapters]);
+    const feeds = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.FEED), [adapters]);
+    const exports = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.EXPORTER), [adapters]);
+    const sinks = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.SINK), [adapters]);
+
+    const sections = React.useMemo(() => [
         { key: 'sources', label: 'Data Sources', items: sources, category: 'source', icon: Download },
         { key: 'transforms', label: 'Transforms', items: transforms, category: 'transform', icon: RefreshCw },
         { key: 'enrichers', label: 'Enrichers', items: enrichers, category: 'enrich', icon: RefreshCw },
@@ -364,7 +478,7 @@ function NodePaletteDynamic({ adapters, onDragStart }: { adapters: AdapterMetada
         { key: 'feeds', label: 'Feeds', items: feeds, category: 'feed', icon: Globe },
         { key: 'exports', label: 'Exports', items: exports, category: 'export', icon: Globe },
         { key: 'sinks', label: 'Sinks', items: sinks, category: 'sink', icon: Layers },
-    ].filter(s => s.items.length > 0);
+    ].filter(s => s.items.length > 0), [sources, transforms, enrichers, validation, routing, destinations, feeds, exports, sinks]);
 
     return (
         <Card className={`${PANEL_WIDTHS.NODE_PALETTE} h-full overflow-hidden`}>
@@ -379,51 +493,23 @@ function NodePaletteDynamic({ adapters, onDragStart }: { adapters: AdapterMetada
                     <div className="space-y-1 p-2">
                         {sections.map(section => (
                             <div key={section.key}>
-                                <button
-                                    className="w-full flex items-center justify-between px-2 py-1.5 text-sm font-medium hover:bg-muted rounded"
-                                    onClick={() => setExpanded(e => ({ ...e, [section.key]: !e[section.key] }))}
-                                >
-                                    <span className="flex items-center gap-2">
-                                        <section.icon className="w-4 h-4 text-muted-foreground" />
-                                        {section.label}
-                                    </span>
-                                    {expanded[section.key] ? (
-                                        <ChevronDown className="w-4 h-4" />
-                                    ) : (
-                                        <ChevronRight className="w-4 h-4" />
-                                    )}
-                                </button>
+                                <PaletteSectionHeader
+                                    sectionKey={section.key}
+                                    label={section.label}
+                                    Icon={section.icon}
+                                    isExpanded={expanded[section.key]}
+                                    onToggle={handleToggleSection}
+                                />
                                 {expanded[section.key] && (
                                     <div className="grid grid-cols-2 gap-2 px-2 py-2">
-                                        {section.items.map(adapter => {
-                                            const Icon = adapter.icon;
-                                            return (
-                                                <div
-                                                    key={adapter.code}
-                                                    className="border rounded p-2 cursor-move hover:bg-muted active:cursor-grabbing"
-                                                    draggable
-                                                    onDragStart={(e) => onDragStart(e, adapter.code, section.category, adapter.name)}
-                                                    title={adapter.description || ''}
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <div
-                                                            className="w-6 h-6 rounded flex items-center justify-center text-white"
-                                                            style={{ backgroundColor: adapter.color }}
-                                                        >
-                                                            <Icon className="w-3 h-3" />
-                                                        </div>
-                                                        <div className="truncate text-xs flex-1 min-w-0">
-                                                            <div className="font-medium truncate">{adapter.name}</div>
-                                                            {adapter.description && (
-                                                                <div className="text-[10px] text-muted-foreground truncate">
-                                                                    {adapter.description}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                        {section.items.map(adapter => (
+                                            <PaletteAdapterItem
+                                                key={adapter.code}
+                                                adapter={adapter}
+                                                category={section.category}
+                                                onDragStart={onDragStart}
+                                            />
+                                        ))}
                                     </div>
                                 )}
                             </div>

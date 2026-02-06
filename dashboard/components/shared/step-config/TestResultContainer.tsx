@@ -12,7 +12,7 @@ export interface TestResultContainerProps {
 
 /**
  * Shared container for test result displays.
- * Provides consistent layout with status badge, message, and optional view toggle.
+ * Consistent layout with status badge, message, and optional view toggle.
  *
  * Used by: ExtractTestResults, TransformTestResults, LoadTestResults,
  * FeedTestResults, ValidateTestResults, GenericTestResults

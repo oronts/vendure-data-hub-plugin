@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useCallback } from 'react';
+import { memo, useCallback } from 'react';
 import { Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@vendure/dashboard';
 import { MOVE_DIRECTION } from '../../../constants';
 import type { MoveDirection } from '../../../constants';
@@ -41,7 +41,7 @@ interface OperatorCardProps {
  * Individual operator display with expand/collapse, delete, and reorder buttons.
  * Renders operator configuration fields when expanded.
  */
-export function OperatorCard({
+function OperatorCardComponent({
     operator,
     index,
     isExpanded,
@@ -97,14 +97,25 @@ export function OperatorCard({
         setNewArgKey('');
     }, []);
 
+    const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggleExpand();
+        }
+    }, [onToggleExpand]);
+
     return (
         <div
             className={`border rounded-md transition-colors ${isExpanded ? 'border-primary/40 bg-muted/50' : 'border-border bg-background hover:bg-muted/30'}`}
+            data-testid={`datahub-operatorcard-card-${index}`}
         >
             {/* Header - always visible */}
             <div
+                role="button"
+                tabIndex={0}
                 className="flex items-center justify-between p-2.5 cursor-pointer"
                 onClick={onToggleExpand}
+                onKeyDown={handleKeyDown}
             >
                 <div className="flex items-center gap-2">
                     <span className="text-xs font-mono text-muted-foreground/70 w-4">{index + 1}</span>
@@ -234,3 +245,5 @@ export function OperatorCard({
         </div>
     );
 }
+
+export const OperatorCard = memo(OperatorCardComponent);

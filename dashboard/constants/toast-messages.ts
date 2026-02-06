@@ -129,14 +129,6 @@ export const formatParseError = (error: unknown): string => {
 };
 
 /**
- * Helper to format generic mutation errors
- */
-export const formatMutationError = (action: string, error: unknown): string => {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return `Failed to ${action}: ${message}`;
-};
-
-/**
  * Helper to format auto-mapping toast
  */
 export const formatAutoMapped = (count: number): string => {
@@ -164,11 +156,4 @@ export const formatParsedRowsColumns = (rows: number, columns: number): string =
  */
 export const formatMissingRequired = (fields: string[]): string => {
     return TOAST_FILE.MISSING_REQUIRED.replace('{fields}', fields.join(', '));
-};
-
-/**
- * Helper to format connection failed toast
- */
-export const formatConnectionFailed = (details: string): string => {
-    return `${TOAST_CONNECTION.TEST_FAILED}: ${details}`;
 };

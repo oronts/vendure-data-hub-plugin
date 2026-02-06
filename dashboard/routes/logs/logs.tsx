@@ -23,7 +23,7 @@ import { RealtimeLogTab } from './components/RealtimeLogTab';
 
 /**
  * Route definition for the Logs & Analytics page.
- * Provides navigation and permission guarding.
+ * Navigation and permission guarding.
  */
 export const logsPage: DashboardRouteDefinition = {
     navMenuItem: {
@@ -42,11 +42,7 @@ export const logsPage: DashboardRouteDefinition = {
 };
 
 /**
- * Main logs page component that orchestrates the tab-based layout.
- * Contains three tabs:
- * - Overview: Analytics dashboard with statistics and pipeline health
- * - Log Explorer: Filterable log table with search and export
- * - Real-time Feed: Auto-refreshing live log stream
+ * Logs page with tabbed layout: Overview, Log Explorer, Real-time Feed.
  */
 function LogsPage() {
     const [activeTab, setActiveTab] = React.useState('overview');
@@ -59,16 +55,16 @@ function LogsPage() {
 
             <PageBlock column="main" blockId="tabs">
                 <Tabs value={activeTab} onValueChange={setActiveTab}>
-                    <TabsList className="mb-4">
-                        <TabsTrigger value="overview" className="gap-2">
+                    <TabsList className="mb-4" data-testid="datahub-logs-tabs">
+                        <TabsTrigger value="overview" className="gap-2" data-testid="datahub-logs-tab-overview">
                             <BarChart3 className="w-4 h-4" />
                             Overview
                         </TabsTrigger>
-                        <TabsTrigger value="logs" className="gap-2">
+                        <TabsTrigger value="logs" className="gap-2" data-testid="datahub-logs-tab-explorer">
                             <FileText className="w-4 h-4" />
                             Log Explorer
                         </TabsTrigger>
-                        <TabsTrigger value="realtime" className="gap-2">
+                        <TabsTrigger value="realtime" className="gap-2" data-testid="datahub-logs-tab-realtime">
                             <Zap className="w-4 h-4" />
                             Real-time Feed
                         </TabsTrigger>

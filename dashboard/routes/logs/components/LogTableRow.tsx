@@ -17,11 +17,19 @@ export const LogTableRow = React.memo(function LogTableRow({
     onSelect,
 }: LogTableRowProps) {
     const handleClick = React.useCallback(() => onSelect(log), [onSelect, log]);
+    const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            onSelect(log);
+        }
+    }, [onSelect, log]);
 
     return (
         <tr
             className="border-t hover:bg-muted/30 cursor-pointer"
             onClick={handleClick}
+            onKeyDown={handleKeyDown}
+            tabIndex={0}
+            data-testid={`datahub-log-row-${log.id}`}
         >
             <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
                 {formatSmartDateTime(log.createdAt)}

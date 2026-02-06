@@ -44,6 +44,10 @@ interface SchemaFieldsCardProps {
 function SchemaFieldsCard({ config }: SchemaFieldsCardProps) {
     const entityName = VENDURE_ENTITY_LIST.find(e => e.code === config.targetEntity)?.name;
 
+    if (!config.targetSchema) {
+        return null;
+    }
+
     return (
         <Card>
             <CardHeader>
@@ -54,7 +58,7 @@ function SchemaFieldsCard({ config }: SchemaFieldsCardProps) {
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {Object.entries(config.targetSchema!.fields).map(([name, field]) => (
+                    {Object.entries(config.targetSchema.fields).map(([name, field]) => (
                         <div
                             key={name}
                             className="flex items-center gap-2 p-2 rounded bg-muted/50"

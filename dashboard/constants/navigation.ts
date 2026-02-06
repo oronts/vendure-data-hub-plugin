@@ -15,12 +15,6 @@ export const DATAHUB_NAV_ID = 'data-hub-pipelines';
 /** Base route for pipeline pages */
 export const DATAHUB_ROUTE_BASE = '/data-hub/pipelines';
 
-/** Navigation item ID for jobs */
-export const DATAHUB_JOBS_NAV_ID = 'data-hub-jobs';
-
-/** Base route for jobs pages */
-export const DATAHUB_JOBS_ROUTE_BASE = '/data-hub/jobs';
-
 /** Base path for DataHub REST API endpoints */
 export const DATAHUB_API_BASE = '/data-hub';
 

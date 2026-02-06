@@ -15,6 +15,7 @@ function EmptyStateComponent({
     return (
         <div
             className={`flex flex-col items-center justify-center py-12 px-4 text-center ${className}`}
+            data-testid="empty-state"
         >
             <div className="mb-4 text-muted-foreground">
                 {icon || <Inbox className={ICON_SIZES.HERO} />}
@@ -24,7 +25,7 @@ function EmptyStateComponent({
                 <p className="text-sm text-muted-foreground max-w-sm mb-4">{description}</p>
             )}
             {action && (
-                <Button onClick={action.onClick} variant="outline">
+                <Button onClick={action.onClick} variant="outline" data-testid="empty-state-action-button">
                     {action.label}
                 </Button>
             )}

@@ -63,6 +63,7 @@ export function PipelineFormFields({
                                     ? 'border-destructive focus-visible:ring-destructive'
                                     : ''
                             }
+                            data-testid="pipeline-name-input"
                         />
                         <FieldError
                             error={fieldState.error?.message}
@@ -92,6 +93,7 @@ export function PipelineFormFields({
                                     ? 'border-destructive focus-visible:ring-destructive'
                                     : ''
                             }
+                            data-testid="pipeline-code-input"
                         />
                         <FieldError
                             error={fieldState.error?.message}
@@ -114,6 +116,7 @@ export function PipelineFormFields({
                         <Switch
                             checked={Boolean(field.value)}
                             onCheckedChange={field.onChange}
+                            data-testid="pipeline-enabled-toggle"
                         />
                     </div>
                 )}

@@ -17,12 +17,14 @@ function EntitySelectorComponent({ value, onChange, className = '' }: EntitySele
                     <button
                         key={entity.code}
                         type="button"
+                        aria-label={`Select ${entity.name}`}
                         className={`p-4 border rounded-lg text-left transition-all ${
                             isSelected
                                 ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
                                 : 'hover:border-primary/50'
                         }`}
                         onClick={() => onChange(entity.code)}
+                        data-testid={`datahub-entityselector-entity-${entity.code}`}
                     >
                         <div className="flex items-center justify-between mb-2">
                             <span className="font-medium">{entity.name}</span>

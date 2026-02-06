@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState, memo } from 'react';
 import { Button } from '@vendure/dashboard';
 import {
     Play,
@@ -32,8 +32,8 @@ import type {
 import { getCombinedTriggers, updateDefinitionWithTriggers } from '../../utils';
 
 export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEditorProps) {
-    const [selectedStepIndex, setSelectedStepIndex] = React.useState<number | null>(null);
-    const [activePanel, setActivePanel] = React.useState<PipelineEditorPanel>(PIPELINE_EDITOR_PANEL.STEPS);
+    const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
+    const [activePanel, setActivePanel] = useState<PipelineEditorPanel>(PIPELINE_EDITOR_PANEL.STEPS);
 
     const { adapters, connectionCodes, secretOptions } = useAdapterCatalog();
 
@@ -164,43 +164,94 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
     // Get combined triggers from both steps and triggers array
     const combinedTriggers = useMemo(() => getCombinedTriggers(definition), [definition]);
 
+    // Panel switch handlers
+    const handleSwitchToSteps = useCallback(() => setActivePanel(PIPELINE_EDITOR_PANEL.STEPS), []);
+    const handleSwitchToTriggers = useCallback(() => setActivePanel(PIPELINE_EDITOR_PANEL.TRIGGERS), []);
+    const handleSwitchToSettings = useCallback(() => setActivePanel(PIPELINE_EDITOR_PANEL.SETTINGS), []);
+
+    // Settings change handler
+    const handleContextChange = useCallback((context: JsonObject) => {
+        onChange({ ...definition, context });
+    }, [definition, onChange]);
+
+    // Step selection handler factory - memoized per step index
+    const handleStepClick = useCallback((index: number) => {
+        setSelectedStepIndex(index);
+    }, []);
+
+    // Step action handler factories
+    const handleMoveStepUp = useCallback((index: number) => {
+        moveStep(index, MOVE_DIRECTION.UP);
+    }, [moveStep]);
+
+    const handleMoveStepDown = useCallback((index: number) => {
+        moveStep(index, MOVE_DIRECTION.DOWN);
+    }, [moveStep]);
+
+    const handleRemoveStep = useCallback((index: number) => {
+        removeStep(index);
+    }, [removeStep]);
+
+    // Selected step update handler
+    const handleSelectedStepChange = useCallback((updated: { key: string; type: string; config: JsonObject; adapterCode?: string }) => {
+        if (selectedStepIndex === null || !selectedStep) return;
+        updateStep(selectedStepIndex, {
+            ...selectedStep,
+            key: updated.key,
+            type: updated.type as StepType,
+            config: { ...updated.config, adapterCode: updated.adapterCode },
+        });
+    }, [selectedStepIndex, selectedStep, updateStep]);
+
     return (
         <div className="flex h-full border rounded-lg overflow-hidden bg-background">
             <div className="w-80 border-r flex flex-col">
                 <div className="border-b">
-                    <div className="flex">
+                    <div className="flex" role="tablist" aria-label="Pipeline editor panels">
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activePanel === PIPELINE_EDITOR_PANEL.STEPS}
+                            aria-controls="panel-steps"
                             className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
                                 activePanel === PIPELINE_EDITOR_PANEL.STEPS
                                     ? 'bg-primary/10 text-primary border-b-2 border-primary'
                                     : 'text-muted-foreground hover:bg-muted'
                             }`}
-                            onClick={() => setActivePanel(PIPELINE_EDITOR_PANEL.STEPS)}
+                            onClick={handleSwitchToSteps}
+                            data-testid="datahub-editor-tab-steps"
                         >
                             <Play className="h-3 w-3 inline mr-1" />
                             Steps
                         </button>
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activePanel === PIPELINE_EDITOR_PANEL.TRIGGERS}
+                            aria-controls="panel-triggers"
                             className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
                                 activePanel === PIPELINE_EDITOR_PANEL.TRIGGERS
                                     ? 'bg-primary/10 text-primary border-b-2 border-primary'
                                     : 'text-muted-foreground hover:bg-muted'
                             }`}
-                            onClick={() => setActivePanel(PIPELINE_EDITOR_PANEL.TRIGGERS)}
+                            onClick={handleSwitchToTriggers}
+                            data-testid="datahub-editor-tab-triggers"
                         >
                             <Bell className="h-3 w-3 inline mr-1" />
                             Triggers
                         </button>
                         <button
                             type="button"
+                            role="tab"
+                            aria-selected={activePanel === PIPELINE_EDITOR_PANEL.SETTINGS}
+                            aria-controls="panel-settings"
                             className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
                                 activePanel === PIPELINE_EDITOR_PANEL.SETTINGS
                                     ? 'bg-primary/10 text-primary border-b-2 border-primary'
                                     : 'text-muted-foreground hover:bg-muted'
                             }`}
-                            onClick={() => setActivePanel(PIPELINE_EDITOR_PANEL.SETTINGS)}
+                            onClick={handleSwitchToSettings}
+                            data-testid="datahub-editor-tab-settings"
                         >
                             <Settings className="h-3 w-3 inline mr-1" />
                             Settings
@@ -215,29 +266,21 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                             <p className="text-xs text-muted-foreground">Click to configure each step</p>
                         </div>
                         <div className="flex-1 overflow-auto p-2 space-y-1">
-                            {steps.map((step, index) => {
-                                const edges = definition.edges ?? [];
-                                const connectionCount = edges.filter(
-                                    e => e.from === step.key || e.to === step.key
-                                ).length;
-
-                                return (
-                                    <StepListItem
-                                        key={step.key}
-                                        step={step}
-                                        index={index}
-                                        isSelected={selectedStepIndex === index}
-                                        onClick={() => setSelectedStepIndex(index)}
-                                        onMoveUp={() => moveStep(index, MOVE_DIRECTION.UP)}
-                                        onMoveDown={() => moveStep(index, MOVE_DIRECTION.DOWN)}
-                                        onRemove={() => removeStep(index)}
-                                        isFirst={index === 0}
-                                        isLast={index === steps.length - 1}
-                                        issueCount={issues.filter(i => i.stepKey === step.key).length}
-                                        connectionCount={connectionCount}
-                                    />
-                                );
-                            })}
+                            {steps.map((step, index) => (
+                                <StepListItemWrapper
+                                    key={step.key}
+                                    step={step}
+                                    index={index}
+                                    edges={definition.edges ?? []}
+                                    selectedStepIndex={selectedStepIndex}
+                                    stepsLength={steps.length}
+                                    issues={issues}
+                                    onStepClick={handleStepClick}
+                                    onMoveUp={handleMoveStepUp}
+                                    onMoveDown={handleMoveStepDown}
+                                    onRemove={handleRemoveStep}
+                                />
+                            ))}
                             {steps.length === 0 && (
                                 <div className="p-4 text-center text-muted-foreground text-sm">
                                     No steps yet. Add a step to get started.
@@ -246,24 +289,14 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                         </div>
                         <div className="p-3 border-t bg-muted/50">
                             <p className="text-xs text-muted-foreground mb-2">Add Step:</p>
-                            <div className="grid grid-cols-3 gap-1">
-                                {([STEP_TYPES.TRIGGER, STEP_TYPES.EXTRACT, STEP_TYPES.TRANSFORM, STEP_TYPES.VALIDATE, STEP_TYPES.ENRICH, STEP_TYPES.LOAD, STEP_TYPES.EXPORT, STEP_TYPES.FEED, STEP_TYPES.SINK] as StepType[]).map((type) => {
-                                    const config = STEP_CONFIGS[type];
-                                    const Icon = getStepTypeIcon(type) ?? Play;
-                                    return (
-                                        <Button
-                                            key={type}
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-8 text-xs"
-                                            onClick={() => addStep(type)}
-                                            title={config?.description}
-                                        >
-                                            <Icon className="h-3 w-3 mr-1" />
-                                            {config?.label ?? type}
-                                        </Button>
-                                    );
-                                })}
+                            <div className="grid grid-cols-3 gap-1" data-testid="datahub-editor-add-step-buttons">
+                                {([STEP_TYPES.TRIGGER, STEP_TYPES.EXTRACT, STEP_TYPES.TRANSFORM, STEP_TYPES.VALIDATE, STEP_TYPES.ENRICH, STEP_TYPES.LOAD, STEP_TYPES.EXPORT, STEP_TYPES.FEED, STEP_TYPES.SINK] as StepType[]).map((type) => (
+                                    <AddStepButton
+                                        key={type}
+                                        type={type}
+                                        onAddStep={addStep}
+                                    />
+                                ))}
                             </div>
                         </div>
                     </>
@@ -280,7 +313,7 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                 {activePanel === PIPELINE_EDITOR_PANEL.SETTINGS && (
                     <PipelineSettingsPanel
                         context={definition.context ?? {}}
-                        onChange={(context) => onChange({ ...definition, context })}
+                        onChange={handleContextChange}
                     />
                 )}
             </div>
@@ -295,12 +328,7 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                                 config: selectedStep.config ?? {},
                                 adapterCode: selectedStep.config?.adapterCode as string | undefined,
                             }}
-                            onChange={(updated) => updateStep(selectedStepIndex!, {
-                                ...selectedStep,
-                                key: updated.key,
-                                type: updated.type as StepType,
-                                config: { ...updated.config, adapterCode: updated.adapterCode },
-                            })}
+                            onChange={handleSelectedStepChange}
                             catalog={adapters}
                             connectionCodes={connectionCodes}
                             secretOptions={secretOptions}
@@ -380,3 +408,93 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
         </div>
     );
 }
+
+interface StepListItemWrapperProps {
+    step: PipelineStepDefinition;
+    index: number;
+    edges: Array<{ from: string; to: string }>;
+    selectedStepIndex: number | null;
+    stepsLength: number;
+    issues: Array<{ stepKey?: string }>;
+    onStepClick: (index: number) => void;
+    onMoveUp: (index: number) => void;
+    onMoveDown: (index: number) => void;
+    onRemove: (index: number) => void;
+}
+
+const StepListItemWrapper = memo(function StepListItemWrapper({
+    step,
+    index,
+    edges,
+    selectedStepIndex,
+    stepsLength,
+    issues,
+    onStepClick,
+    onMoveUp,
+    onMoveDown,
+    onRemove,
+}: StepListItemWrapperProps) {
+    const connectionCount = edges.filter(
+        e => e.from === step.key || e.to === step.key
+    ).length;
+
+    const handleClick = useCallback(() => {
+        onStepClick(index);
+    }, [index, onStepClick]);
+
+    const handleMoveUp = useCallback(() => {
+        onMoveUp(index);
+    }, [index, onMoveUp]);
+
+    const handleMoveDown = useCallback(() => {
+        onMoveDown(index);
+    }, [index, onMoveDown]);
+
+    const handleRemove = useCallback(() => {
+        onRemove(index);
+    }, [index, onRemove]);
+
+    return (
+        <StepListItem
+            step={step}
+            index={index}
+            isSelected={selectedStepIndex === index}
+            onClick={handleClick}
+            onMoveUp={handleMoveUp}
+            onMoveDown={handleMoveDown}
+            onRemove={handleRemove}
+            isFirst={index === 0}
+            isLast={index === stepsLength - 1}
+            issueCount={issues.filter(i => i.stepKey === step.key).length}
+            connectionCount={connectionCount}
+        />
+    );
+});
+
+interface AddStepButtonProps {
+    type: StepType;
+    onAddStep: (type: StepType) => void;
+}
+
+const AddStepButton = memo(function AddStepButton({ type, onAddStep }: AddStepButtonProps) {
+    const config = STEP_CONFIGS[type];
+    const Icon = getStepTypeIcon(type) ?? Play;
+
+    const handleClick = useCallback(() => {
+        onAddStep(type);
+    }, [type, onAddStep]);
+
+    return (
+        <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleClick}
+            title={config?.description}
+            data-testid={`datahub-editor-add-step-${type.toLowerCase()}`}
+        >
+            <Icon className="h-3 w-3 mr-1" />
+            {config?.label ?? type}
+        </Button>
+    );
+});

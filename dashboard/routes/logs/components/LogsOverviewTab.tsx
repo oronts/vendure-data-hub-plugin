@@ -55,6 +55,8 @@ const PipelineStatCard = React.memo(function PipelineStatCard({ pipeline }: { pi
     );
 });
 
+const PIPELINE_HEALTH_PAGE_SIZE = 6;
+
 /**
  * Overview tab displaying analytics dashboard with log statistics and pipeline health.
  * Shows total logs, errors, warnings, average duration, and per-pipeline metrics.
@@ -62,9 +64,17 @@ const PipelineStatCard = React.memo(function PipelineStatCard({ pipeline }: { pi
 export function LogsOverviewTab() {
     const statsQuery = useLogStats();
     const pipelinesQuery = usePipelines({ take: QUERY_LIMITS.ALL_ITEMS });
+    const [displayCount, setDisplayCount] = React.useState(PIPELINE_HEALTH_PAGE_SIZE);
 
     const stats = statsQuery.data;
     const pipelines = pipelinesQuery.data?.items ?? [];
+
+    const displayedPipelines = pipelines.slice(0, displayCount);
+    const hasMorePipelines = displayCount < pipelines.length;
+
+    const handleLoadMore = React.useCallback(() => {
+        setDisplayCount(c => c + PIPELINE_HEALTH_PAGE_SIZE);
+    }, []);
 
     const handleRefetch = React.useCallback(() => statsQuery.refetch(), [statsQuery]);
 
@@ -141,17 +151,28 @@ export function LogsOverviewTab() {
 
             <Card>
                 <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Pipeline Health</CardTitle>
-                    <CardDescription>
-                        Log statistics for each pipeline
-                    </CardDescription>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle className="text-base">Pipeline Health</CardTitle>
+                            <CardDescription>
+                                Log statistics for each pipeline ({pipelines.length} total)
+                            </CardDescription>
+                        </div>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 gap-4">
-                        {pipelines.slice(0, UI_DEFAULTS.PIPELINE_STATS_DISPLAY_COUNT).map((p) => (
+                        {displayedPipelines.map((p) => (
                             <PipelineStatCard key={p.id} pipeline={p} />
                         ))}
                     </div>
+                    {hasMorePipelines && (
+                        <div className="flex justify-center mt-4">
+                            <Button variant="outline" onClick={handleLoadMore}>
+                                Load More ({pipelines.length - displayCount} remaining)
+                            </Button>
+                        </div>
+                    )}
                     {pipelines.length === 0 && (
                         <div className="text-center py-8 text-muted-foreground">
                             No pipelines found

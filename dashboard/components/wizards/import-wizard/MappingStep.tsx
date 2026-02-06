@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, memo, type MouseEvent } from 'react';
 import {
     Button,
     Card,
@@ -76,7 +76,12 @@ export function MappingStep({
             description={STEP_CONTENT.mapping.description}
         >
             <div className="flex justify-end">
-                <Button variant="outline" onClick={addMapping}>
+                <Button
+                    variant="outline"
+                    onClick={addMapping}
+                    aria-label="Add field mapping"
+                    data-testid="datahub-wizard-mapping-add-btn"
+                >
                     <Plus className="w-4 h-4 mr-2" />
                     Add Mapping
                 </Button>
@@ -132,7 +137,7 @@ interface MappingRowProps {
     removeMapping: (index: number) => void;
 }
 
-function MappingRow({
+const MappingRow = memo(function MappingRow({
     mapping,
     index,
     sourceFields,
@@ -145,8 +150,12 @@ function MappingRow({
 }: MappingRowProps) {
     const fieldDef = config.targetSchema?.fields[mapping.targetField] as EnhancedFieldDefinition | undefined;
 
+    const handleRemove = useCallback(() => {
+        removeMapping(index);
+    }, [index, removeMapping]);
+
     return (
-        <div className="grid grid-cols-12 gap-4 p-4 items-center">
+        <div className="grid grid-cols-12 gap-4 p-4 items-center" data-testid={`datahub-wizard-mapping-row-${index}`}>
             <div className="col-span-4">
                 <Select
                     value={mapping.sourceField || SENTINEL_VALUES.EMPTY}
@@ -231,7 +240,7 @@ function MappingRow({
                 <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => removeMapping(index)}
+                    onClick={handleRemove}
                     aria-label="Remove mapping"
                 >
                     <Trash2 className="w-4 h-4 text-destructive" />
@@ -239,7 +248,7 @@ function MappingRow({
             </div>
         </div>
     );
-}
+});
 
 interface UnmappedFieldsWarningProps {
     config: Partial<ImportConfiguration>;

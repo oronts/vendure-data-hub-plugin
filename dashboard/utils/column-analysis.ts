@@ -15,20 +15,20 @@ export function detectColumnType(values: JsonValue[]): ParsedColumn['type'] {
     const nonNullValues = values.filter(v => v !== null && v !== undefined && v !== '');
     if (nonNullValues.length === 0) return 'unknown';
 
-    let numCount = 0;
-    let boolCount = 0;
+    let numberCount = 0;
+    let booleanCount = 0;
     let dateCount = 0;
 
     for (const val of nonNullValues) {
         const str = String(val).trim().toLowerCase();
 
         if (['true', 'false', '1', '0', 'yes', 'no'].includes(str)) {
-            boolCount++;
+            booleanCount++;
             continue;
         }
 
         if (!isNaN(Number(val)) && str !== '') {
-            numCount++;
+            numberCount++;
             continue;
         }
 
@@ -39,8 +39,8 @@ export function detectColumnType(values: JsonValue[]): ParsedColumn['type'] {
     }
 
     const total = nonNullValues.length;
-    if (numCount / total > 0.8) return 'number';
-    if (boolCount / total > 0.8) return 'boolean';
+    if (numberCount / total > 0.8) return 'number';
+    if (booleanCount / total > 0.8) return 'boolean';
     if (dateCount / total > 0.8) return 'date';
     return 'string';
 }

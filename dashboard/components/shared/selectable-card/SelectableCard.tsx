@@ -18,6 +18,7 @@ function SelectableCardComponent({
         <button
             type="button"
             disabled={disabled}
+            aria-pressed={selected}
             className={`p-4 border rounded-lg text-left transition-all ${
                 selected
                     ? 'border-primary bg-primary/5 ring-2 ring-primary/20'

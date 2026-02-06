@@ -10,26 +10,29 @@ function SimpleDonutChartComponent({
     showLegend = true,
     className,
 }: SimpleDonutChartProps) {
-    const { total, radius, circumference, segments } = useMemo(() => {
-        const t = data.reduce((sum, d) => sum + d.value, 0) || 1;
-        const r = (size - thickness) / 2;
-        const c = 2 * Math.PI * r;
+    const { total, radius, circumference, segments, ariaLabel } = useMemo(() => {
+        const total = data.reduce((sum, d) => sum + d.value, 0) || 1;
+        const radius = (size - thickness) / 2;
+        const circumference = 2 * Math.PI * radius;
 
         let offset = 0;
         const segs = data.map((item) => {
-            const percentage = item.value / t;
-            const strokeDasharray = `${c * percentage} ${c}`;
+            const percentage = item.value / total;
+            const strokeDasharray = `${circumference * percentage} ${circumference}`;
             const segmentOffset = offset;
-            offset += c * percentage;
+            offset += circumference * percentage;
             return { ...item, strokeDasharray, offset: segmentOffset };
         });
 
-        return { total: t, radius: r, circumference: c, segments: segs };
+        const description = data.map(d => `${d.label}: ${d.value}`).join(', ');
+        const label = `Donut chart showing ${description}. Total: ${total}`;
+
+        return { total, radius, circumference, segments: segs, ariaLabel: label };
     }, [data, size, thickness]);
 
     return (
-        <div className={`flex items-center gap-6 ${className ?? ''}`}>
-            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <div className={`flex items-center gap-6 ${className ?? ''}`} data-testid="datahub-donutchart-chart">
+            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={ariaLabel}>
                 <circle
                     cx={size / 2}
                     cy={size / 2}

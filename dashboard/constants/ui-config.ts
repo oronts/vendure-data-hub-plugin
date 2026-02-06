@@ -1,5 +1,5 @@
 import { LogPersistenceLevel } from '../gql/graphql';
-import { CONFIDENCE_THRESHOLDS, type MatchConfidence } from './defaults';
+import { type MatchConfidence } from './defaults';
 
 // Re-use from defaults to avoid duplication
 export type { MatchConfidence };

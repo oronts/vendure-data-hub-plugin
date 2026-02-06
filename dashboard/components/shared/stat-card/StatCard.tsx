@@ -46,6 +46,13 @@ function StatCardComponent({
               ? TrendingDown
               : Minus;
 
+    const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+        if (onClick && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            onClick();
+        }
+    }, [onClick]);
+
     if (isLoading) {
         return (
             <Card className={cn(VARIANT_STYLES[variant], className)}>
@@ -100,6 +107,10 @@ function StatCardComponent({
                 className
             )}
             onClick={onClick}
+            onKeyDown={handleKeyDown}
+            role={onClick ? 'button' : undefined}
+            tabIndex={onClick ? 0 : undefined}
+            data-testid="datahub-statcard-card"
         >
             {content}
         </Card>

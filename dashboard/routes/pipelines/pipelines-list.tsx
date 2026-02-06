@@ -14,10 +14,10 @@ import { pipelinesListDocument, deletePipelineDocument } from '../../hooks';
 import type { DataHubPipeline } from '../../types';
 
 function StatusBadge({ status }: { status?: string | null }) {
-    const s = status || PIPELINE_STATUS.DRAFT;
+    const pipelineStatus = status || PIPELINE_STATUS.DRAFT;
     return (
-        <Badge variant={getStatusBadgeVariant(s)}>
-            {s}
+        <Badge variant={getStatusBadgeVariant(pipelineStatus)}>
+            {pipelineStatus}
         </Badge>
     );
 }
@@ -62,7 +62,7 @@ export const pipelinesList: DashboardRouteDefinition = {
                 }}
             >
                 <PageActionBarRight>
-                    <Button asChild>
+                    <Button asChild data-testid="datahub-pipeline-create-button">
                         <Link to="./new">
                             <PlusIcon className="mr-2 h-4 w-4" />
                             New pipeline

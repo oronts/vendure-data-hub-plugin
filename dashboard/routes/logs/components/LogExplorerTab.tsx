@@ -26,7 +26,7 @@ import {
     useLogs,
     usePipelines,
 } from '../../../hooks';
-import { ErrorState } from '../../../components/shared';
+import { ErrorState, LoadingState } from '../../../components/shared';
 import { QUERY_LIMITS, UI_DEFAULTS, FILTER_VALUES, TOAST_LOG } from '../../../constants';
 import { LogTableRow } from './LogTableRow';
 import { LogDetailDrawer } from './LogDetailDrawer';
@@ -48,28 +48,28 @@ export function LogExplorerTab() {
 
     const pipelinesQuery = usePipelines({ take: QUERY_LIMITS.ALL_ITEMS });
 
-    const buildFilter = (): DataHubLogListOptions['filter'] => {
-        const filter: DataHubLogListOptions['filter'] = {};
+    const filter = React.useMemo((): DataHubLogListOptions['filter'] => {
+        const f: DataHubLogListOptions['filter'] = {};
         if (pipelineId) {
-            filter.pipelineId = { eq: pipelineId };
+            f.pipelineId = { eq: pipelineId };
         }
         if (level) {
-            filter.level = { eq: level };
+            f.level = { eq: level };
         }
         if (search) {
-            filter.message = { contains: search };
+            f.message = { contains: search };
         }
         if (startDate) {
-            filter.createdAt = { ...(filter.createdAt || {}), after: new Date(startDate).toISOString() };
+            f.createdAt = { ...(f.createdAt || {}), after: new Date(startDate).toISOString() };
         }
         if (endDate) {
-            filter.createdAt = { ...(filter.createdAt || {}), before: new Date(endDate).toISOString() };
+            f.createdAt = { ...(f.createdAt || {}), before: new Date(endDate).toISOString() };
         }
-        return Object.keys(filter).length > 0 ? filter : undefined;
-    };
+        return Object.keys(f).length > 0 ? f : undefined;
+    }, [pipelineId, level, search, startDate, endDate]);
 
     const logsQuery = useLogs({
-        filter: buildFilter(),
+        filter,
         sort: { createdAt: 'DESC' },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -138,10 +138,10 @@ export function LogExplorerTab() {
             const json = JSON.stringify(data, null, 2);
             const blob = new Blob([json], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `datahub-logs-${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
+            const downloadLink = document.createElement('a');
+            downloadLink.href = url;
+            downloadLink.download = `datahub-logs-${new Date().toISOString().split('T')[0]}.json`;
+            downloadLink.click();
             URL.revokeObjectURL(url);
             toast.success(TOAST_LOG.EXPORT_SUCCESS);
         } catch {
@@ -167,9 +167,9 @@ export function LogExplorerTab() {
                         <Filter className="w-4 h-4 text-muted-foreground" />
                         <span className="text-sm font-medium">Filters</span>
                     </div>
-                    <div className="grid grid-cols-6 gap-3">
+                    <div className="grid grid-cols-6 gap-3" data-testid="datahub-logs-filters">
                         <Select value={pipelineId || FILTER_VALUES.ALL} onValueChange={handlePipelineChange}>
-                            <SelectTrigger>
+                            <SelectTrigger data-testid="datahub-logs-filter-pipeline">
                                 <SelectValue placeholder="All Pipelines" />
                             </SelectTrigger>
                             <SelectContent>
@@ -183,7 +183,7 @@ export function LogExplorerTab() {
                         </Select>
 
                         <Select value={level || FILTER_VALUES.ALL} onValueChange={handleLevelChange}>
-                            <SelectTrigger>
+                            <SelectTrigger data-testid="datahub-logs-filter-level">
                                 <SelectValue placeholder="All Levels" />
                             </SelectTrigger>
                             <SelectContent>
@@ -203,6 +203,7 @@ export function LogExplorerTab() {
                                 onChange={handleStartDateChange}
                                 className="pl-9"
                                 placeholder="Start date"
+                                data-testid="datahub-logs-filter-start-date"
                             />
                         </div>
 
@@ -214,6 +215,7 @@ export function LogExplorerTab() {
                                 onChange={handleEndDateChange}
                                 className="pl-9"
                                 placeholder="End date"
+                                data-testid="datahub-logs-filter-end-date"
                             />
                         </div>
 
@@ -224,14 +226,15 @@ export function LogExplorerTab() {
                                 onChange={handleSearchChange}
                                 placeholder="Search logs..."
                                 className="pl-9"
+                                data-testid="datahub-logs-search"
                             />
                         </div>
 
                         <div className="flex gap-2">
-                            <Button variant="outline" size="icon" onClick={handleRefetch} disabled={logsQuery.isLoading}>
+                            <Button variant="outline" size="icon" onClick={handleRefetch} disabled={logsQuery.isLoading} data-testid="datahub-logs-refresh-button" aria-label="Refresh logs">
                                 <RefreshCw className={`w-4 h-4 ${logsQuery.isLoading ? 'animate-spin' : ''}`} />
                             </Button>
-                            <Button variant="outline" onClick={handleExport} disabled={logs.length === 0}>
+                            <Button variant="outline" onClick={handleExport} disabled={logs.length === 0} data-testid="datahub-logs-export-button">
                                 <Download className="w-4 h-4 mr-2" />
                                 Export
                             </Button>
@@ -246,12 +249,13 @@ export function LogExplorerTab() {
                         <CardTitle className="text-base">
                             Log Entries ({totalItems.toLocaleString()})
                         </CardTitle>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2" data-testid="datahub-logs-pagination">
                             <Button
                                 variant="outline"
                                 size="sm"
                                 onClick={handlePrevPage}
                                 disabled={page === 1}
+                                data-testid="datahub-logs-prev-page"
                             >
                                 <ChevronLeft className="w-4 h-4" />
                             </Button>
@@ -263,6 +267,7 @@ export function LogExplorerTab() {
                                 size="sm"
                                 onClick={handleNextPage}
                                 disabled={page >= totalPages}
+                                data-testid="datahub-logs-next-page"
                             >
                                 <ChevronRight className="w-4 h-4" />
                             </Button>
@@ -271,7 +276,7 @@ export function LogExplorerTab() {
                 </CardHeader>
                 <CardContent>
                     <div className="border rounded-lg overflow-hidden">
-                        <table className="w-full text-sm">
+                        <table className="w-full text-sm" data-testid="datahub-logs-table">
                             <thead>
                                 <tr className="bg-muted">
                                     <th className="text-left px-3 py-2 w-36">Time</th>
@@ -284,19 +289,26 @@ export function LogExplorerTab() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {logs.map((log) => (
-                                    <LogTableRow
-                                        key={log.id}
-                                        log={log}
-                                        onSelect={handleSelectLog}
-                                    />
-                                ))}
-                                {logs.length === 0 && (
+                                {logsQuery.isLoading && logs.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
-                                            {logsQuery.isLoading ? 'Loading...' : 'No log entries found'}
+                                        <td colSpan={7} className="p-4">
+                                            <LoadingState type="table" rows={10} message="Loading log entries..." />
                                         </td>
                                     </tr>
+                                ) : logs.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
+                                            No log entries found
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    logs.map((log) => (
+                                        <LogTableRow
+                                            key={log.id}
+                                            log={log}
+                                            onSelect={handleSelectLog}
+                                        />
+                                    ))
                                 )}
                             </tbody>
                         </table>

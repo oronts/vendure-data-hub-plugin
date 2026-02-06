@@ -85,7 +85,7 @@ export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWiza
         }
     }, [config.sourceEntity]);
 
-    const handleNext = () => {
+    const handleNext = React.useCallback(() => {
         setAttemptedNext(true);
         const validation = validateCurrentStep();
 
@@ -103,23 +103,23 @@ export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWiza
             setStepErrors({});
             setCurrentStep(prev => prev + 1);
         }
-    };
+    }, [validateCurrentStep, currentStep]);
 
-    const handleBack = () => {
+    const handleBack = React.useCallback(() => {
         if (currentStep > 0) {
             setAttemptedNext(false);
             setStepErrors({});
             setCurrentStep(prev => prev - 1);
         }
-    };
+    }, [currentStep]);
 
-    const handleComplete = () => {
+    const handleComplete = React.useCallback(() => {
         if (!config.name) {
             toast.error(TOAST_WIZARD.EXPORT_NAME_REQUIRED);
             return;
         }
         onComplete(config as ExportConfiguration);
-    };
+    }, [config, onComplete]);
 
     return (
         <div className="flex flex-col h-full">

@@ -3,7 +3,7 @@ import { Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { Button, Input, Label } from '@vendure/dashboard';
 import { ROUTE_BRANCH_DEFAULTS } from '../../../constants/step-configs';
 import { ERROR_MESSAGES } from '../../../constants/validation-patterns';
-import { generateStableKey } from '../../../utils';
+import { useStableKeys } from '../../../hooks';
 
 export interface RouteConfigComponentProps {
     readonly config: Record<string, unknown>;
@@ -16,24 +16,13 @@ interface Branch {
     conditions?: unknown[];
 }
 
-function useBranchKeys(branches: Branch[]): string[] {
-    const keysRef = React.useRef(new WeakMap<Branch, string>());
-    branches.forEach(branch => {
-        const existingKey = keysRef.current.get(branch);
-        if (!existingKey) {
-            keysRef.current.set(branch, generateStableKey('branch'));
-        }
-    });
-    return branches.map(b => keysRef.current.get(b) ?? generateStableKey('branch'));
-}
-
 export function RouteConfigComponent({
     config,
     onChange,
     showDuplicateWarning = true,
 }: RouteConfigComponentProps) {
     const branches = (config.branches as Branch[]) ?? [];
-    const branchKeys = useBranchKeys(branches);
+    const branchKeys = useStableKeys(branches, 'branch');
 
     const getDuplicateBranches = React.useCallback((branchList: Branch[]) => {
         const names = branchList.map((b) => b.name.trim().toLowerCase());

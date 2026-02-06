@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useCallback } from 'react';
 import {
     Card,
     CardContent,
@@ -40,12 +41,12 @@ export function TriggerForm({
     secretCodes = [],
     compact = false,
 }: TriggerFormProps) {
-    const handleChange = <K extends keyof PipelineTrigger>(
+    const handleChange = useCallback(<K extends keyof PipelineTrigger>(
         key: K,
         value: PipelineTrigger[K]
     ) => {
         onChange({ ...trigger, [key]: value });
-    };
+    }, [trigger, onChange]);
 
     const TriggerIcon = TRIGGER_ICONS[trigger.type];
 
@@ -63,7 +64,7 @@ export function TriggerForm({
                 </div>
             )}
 
-            <div className="space-y-2">
+            <div className="space-y-2" data-testid="datahub-triggerform-field-type">
                 <Label>Trigger Type</Label>
                 <Select
                     value={trigger.type}
@@ -90,7 +91,7 @@ export function TriggerForm({
             </div>
 
             {trigger.type === TRIGGER_TYPES.SCHEDULE && (
-                <div className="space-y-4 border-t pt-4">
+                <div className="space-y-4 border-t pt-4" data-testid="datahub-triggerform-field-schedule">
                     <div className="space-y-2">
                         <Label>Cron Expression</Label>
                         <div className="flex gap-2">
@@ -137,7 +138,7 @@ export function TriggerForm({
             )}
 
             {trigger.type === TRIGGER_TYPES.WEBHOOK && (
-                <div className="space-y-4 border-t pt-4">
+                <div className="space-y-4 border-t pt-4" data-testid="datahub-triggerform-field-webhook">
                     <div className="space-y-2">
                         <Label>Webhook Code</Label>
                         <Input
@@ -196,7 +197,7 @@ export function TriggerForm({
             )}
 
             {trigger.type === TRIGGER_TYPES.EVENT && (
-                <div className="space-y-4 border-t pt-4">
+                <div className="space-y-4 border-t pt-4" data-testid="datahub-triggerform-field-event">
                     <div className="space-y-2">
                         <Label>Event Type</Label>
                         <Select
@@ -227,7 +228,7 @@ export function TriggerForm({
             )}
 
             {trigger.type === TRIGGER_TYPES.FILE && (
-                <div className="space-y-4 border-t pt-4">
+                <div className="space-y-4 border-t pt-4" data-testid="datahub-triggerform-field-file">
                     <div className="space-y-2">
                         <Label>Connection Code</Label>
                         <Input
@@ -261,7 +262,7 @@ export function TriggerForm({
             )}
 
             {trigger.type === TRIGGER_TYPES.MESSAGE && (
-                <div className="space-y-4 border-t pt-4">
+                <div className="space-y-4 border-t pt-4" data-testid="datahub-triggerform-field-message">
                     <div className="space-y-2">
                         <Label>Queue Type</Label>
                         <Select
@@ -423,11 +424,11 @@ export function TriggerForm({
     );
 
     if (compact) {
-        return <div className="space-y-4">{formContent}</div>;
+        return <div className="space-y-4" data-testid="datahub-triggerform-form">{formContent}</div>;
     }
 
     return (
-        <Card>
+        <Card data-testid="datahub-triggerform-form">
             <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                     <CardTitle className="text-sm flex items-center gap-2">
@@ -445,6 +446,7 @@ export function TriggerForm({
                             size="sm"
                             onClick={onRemove}
                             className="text-destructive hover:text-destructive"
+                            data-testid="datahub-trigger-remove-btn"
                         >
                             <Trash2 className="h-4 w-4" />
                         </Button>

@@ -1594,7 +1594,7 @@ export type DataHubAdapter = {
   version?: Maybe<Scalars['String']['output']>;
 };
 
-/** Analytics API - Comprehensive stats and metrics */
+/** Analytics API - Stats and metrics */
 export type DataHubAnalyticsOverview = {
   __typename?: 'DataHubAnalyticsOverview';
   activeJobs: Scalars['Int']['output'];
@@ -7827,7 +7827,7 @@ export type Query = {
   dataHubRunErrors: Array<DataHubRecordError>;
   dataHubRunLogs: Array<DataHubLog>;
   /**
-   * Execute a comprehensive sandbox/dry run for a pipeline
+   * Execute a full sandbox/dry run for a pipeline
    * Returns detailed step-by-step results with record samples and field diffs
    */
   dataHubSandbox: DataHubSandboxResult;

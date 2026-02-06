@@ -1,3 +1,4 @@
+import { useCallback, memo } from 'react';
 import {
     Card,
     CardContent,
@@ -46,32 +47,55 @@ interface FormatTemplateSelectionProps {
 function FormatTemplateSelection({ format, updateConfig }: FormatTemplateSelectionProps) {
     return (
         <SelectableCardGrid columns={3}>
-            {FEED_TEMPLATES.map(template => {
-                const isSelected = format.type === template.id ||
-                    (template.id.startsWith('custom-') && format.type === template.format);
-
-                return (
-                    <SelectableCard
-                        key={template.id}
-                        icon={template.icon}
-                        title={template.name}
-                        description={template.description}
-                        selected={isSelected}
-                        onClick={() => updateConfig({
-                            format: {
-                                type: template.id as FormatType,
-                                options: {
-                                    ...format.options,
-                                    feedTemplate: template.id.startsWith('custom-') ? undefined : template.id,
-                                },
-                            },
-                        })}
-                    />
-                );
-            })}
+            {FEED_TEMPLATES.map(template => (
+                <FormatTemplateCard
+                    key={template.id}
+                    template={template}
+                    format={format}
+                    updateConfig={updateConfig}
+                />
+            ))}
         </SelectableCardGrid>
     );
 }
+
+interface FormatTemplateCardProps {
+    template: typeof FEED_TEMPLATES[number];
+    format: ExportConfiguration['format'];
+    updateConfig: (updates: Partial<ExportConfiguration>) => void;
+}
+
+const FormatTemplateCard = memo(function FormatTemplateCard({
+    template,
+    format,
+    updateConfig,
+}: FormatTemplateCardProps) {
+    const isSelected = format.type === template.id ||
+        (template.id.startsWith('custom-') && format.type === template.format);
+
+    const handleClick = useCallback(() => {
+        updateConfig({
+            format: {
+                type: template.id as FormatType,
+                options: {
+                    ...format.options,
+                    feedTemplate: template.id.startsWith('custom-') ? undefined : template.id,
+                },
+            },
+        });
+    }, [template.id, format.options, updateConfig]);
+
+    return (
+        <SelectableCard
+            icon={template.icon}
+            title={template.name}
+            description={template.description}
+            selected={isSelected}
+            onClick={handleClick}
+            data-testid={`datahub-export-format-${template.id}-btn`}
+        />
+    );
+});
 
 interface FormatOptionsCardProps {
     format: ExportConfiguration['format'];

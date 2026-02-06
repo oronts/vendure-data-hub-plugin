@@ -79,7 +79,7 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
         };
     }, [validateCurrentStep]);
 
-    const handleNext = () => {
+    const handleNext = React.useCallback(() => {
         setAttemptedNext(true);
         const validation = validateCurrentStep();
 
@@ -97,23 +97,23 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
             setStepErrors({});
             setCurrentStep(prev => prev + 1);
         }
-    };
+    }, [validateCurrentStep, currentStep]);
 
-    const handleBack = () => {
+    const handleBack = React.useCallback(() => {
         if (currentStep > 0) {
             setAttemptedNext(false);
             setStepErrors({});
             setCurrentStep(prev => prev - 1);
         }
-    };
+    }, [currentStep]);
 
-    const handleComplete = () => {
+    const handleComplete = React.useCallback(() => {
         if (!config.name) {
             toast.error(TOAST_WIZARD.IMPORT_NAME_REQUIRED);
             return;
         }
         onComplete(config as ImportConfiguration);
-    };
+    }, [config, onComplete]);
 
     // Store file config in refs to avoid unnecessary parseFile recreation
     const fileFormatRef = React.useRef(config.source?.fileConfig?.format ?? FILE_FORMAT.CSV);
@@ -224,14 +224,14 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
     }, [config.targetEntity, parsedData]);
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full" data-testid="datahub-importwizard-wizard">
             <WizardProgressBar
                 steps={WIZARD_STEPS}
                 currentStep={currentStep}
                 onStepClick={setCurrentStep}
             />
 
-            <div className="flex-1 overflow-auto p-6">
+            <div className="flex-1 overflow-auto p-6" data-testid="datahub-importwizard-steps">
                 <ValidationErrorDisplay errors={stepErrors} show={attemptedNext} />
 
                 {WIZARD_STEPS[currentStep].id === IMPORT_STEP_ID.SOURCE && (

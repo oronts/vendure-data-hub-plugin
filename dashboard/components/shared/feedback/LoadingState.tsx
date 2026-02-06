@@ -18,7 +18,7 @@ export function LoadingState({
 }: LoadingStateProps) {
     if (type === LOADING_STATE_TYPE.SPINNER) {
         return (
-            <div className={`flex items-center justify-center p-8 ${className}`}>
+            <div className={`flex items-center justify-center p-8 ${className}`} data-testid="loading-spinner">
                 <Loader2 className={`${ICON_SIZES.XL} animate-spin text-muted-foreground`} />
                 {message && <span className="ml-3 text-muted-foreground">{message}</span>}
             </div>
@@ -28,7 +28,7 @@ export function LoadingState({
     if (type === LOADING_STATE_TYPE.TABLE) {
         // Index as key is acceptable for skeleton placeholders - purely decorative, never reordered
         return (
-            <div className={`space-y-3 ${className}`}>
+            <div className={`space-y-3 ${className}`} data-testid="loading-table-skeleton">
                 <div className="flex gap-4 border-b pb-2">
                     {[0, 1, 2, 3].map((colIndex) => (
                         <div

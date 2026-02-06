@@ -10,9 +10,13 @@ function SimpleBarChartComponent({
     className,
 }: SimpleBarChartProps) {
     const maxValue = useMemo(() => Math.max(...data.map(d => d.value), 1), [data]);
+    const ariaLabel = useMemo(() => {
+        const description = data.map(d => `${d.label}: ${d.value}`).join(', ');
+        return `Bar chart showing ${description}`;
+    }, [data]);
 
     return (
-        <div className={`w-full ${className ?? ''}`} style={{ height }}>
+        <div className={`w-full ${className ?? ''}`} style={{ height }} role="img" aria-label={ariaLabel} data-testid="datahub-barchart-chart">
             <div className="flex items-end justify-between gap-2 h-full">
                 {data.map((item) => {
                     const barHeight = (item.value / maxValue) * 100;

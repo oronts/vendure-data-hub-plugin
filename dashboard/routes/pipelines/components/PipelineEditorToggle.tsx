@@ -22,7 +22,7 @@ export interface PipelineEditorToggleProps {
 
 /**
  * Editor component with toggle between Simple (list-based) and Visual (ReactFlow) modes.
- * Handles conversion between canonical and visual pipeline definitions.
+ * Converts between canonical and visual pipeline definitions on mode switch.
  */
 export function PipelineEditorToggle({
     form,

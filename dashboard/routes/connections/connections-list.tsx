@@ -26,7 +26,7 @@ export const connectionsList: DashboardRouteDefinition = {
                 }}
             >
                 <PageActionBarRight>
-                    <Button asChild><Link to="./new">New connection</Link></Button>
+                    <Button asChild data-testid="datahub-connection-create-button"><Link to="./new">New connection</Link></Button>
                 </PageActionBarRight>
             </ListPage>
         </PermissionGuard>

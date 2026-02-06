@@ -1,3 +1,4 @@
+import { useCallback, memo } from 'react';
 import {
     Button,
     Card,
@@ -86,17 +87,42 @@ function DestinationTypeSelection({ destination, updateConfig }: DestinationType
     return (
         <SelectableCardGrid columns={3}>
             {EXPORT_DESTINATION_TYPES.map(type => (
-                <SelectableCard
+                <DestinationTypeCard
                     key={type.value}
-                    icon={DESTINATION_TYPE_ICONS[type.value] ?? FolderOpen}
-                    title={type.label}
-                    selected={destination.type === type.value}
-                    onClick={() => updateConfig({ destination: { type: type.value as DestinationType } })}
+                    type={type}
+                    destination={destination}
+                    updateConfig={updateConfig}
                 />
             ))}
         </SelectableCardGrid>
     );
 }
+
+interface DestinationTypeCardProps {
+    type: typeof EXPORT_DESTINATION_TYPES[number];
+    destination: ExportConfiguration['destination'];
+    updateConfig: (updates: Partial<ExportConfiguration>) => void;
+}
+
+const DestinationTypeCard = memo(function DestinationTypeCard({
+    type,
+    destination,
+    updateConfig,
+}: DestinationTypeCardProps) {
+    const handleClick = useCallback(() => {
+        updateConfig({ destination: { type: type.value as DestinationType } });
+    }, [type.value, updateConfig]);
+
+    return (
+        <SelectableCard
+            icon={DESTINATION_TYPE_ICONS[type.value] ?? FolderOpen}
+            title={type.label}
+            selected={destination.type === type.value}
+            onClick={handleClick}
+            data-testid={`datahub-export-destination-${type.value}-btn`}
+        />
+    );
+});
 
 interface DestinationConfigProps {
     destination: ExportConfiguration['destination'];
@@ -229,7 +255,7 @@ function SftpDestinationConfig({ destination, updateConfig }: DestinationConfigP
                     />
                 </div>
 
-                <Button variant="outline">
+                <Button variant="outline" aria-label="Test connection to destination" data-testid="datahub-export-test-connection-btn">
                     <Play className="w-4 h-4 mr-2" />
                     Test Connection
                 </Button>

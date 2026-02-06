@@ -26,7 +26,7 @@ export const secretsList: DashboardRouteDefinition = {
                 }}
             >
                 <PageActionBarRight>
-                    <Button asChild><Link to="./new">New secret</Link></Button>
+                    <Button asChild data-testid="datahub-secret-create-button"><Link to="./new">New secret</Link></Button>
                 </PageActionBarRight>
             </ListPage>
         </PermissionGuard>

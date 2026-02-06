@@ -119,7 +119,7 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
     };
 
     return (
-        <Card className="mt-4">
+        <Card className="mt-4" data-testid="datahub-steptester-tester">
             <CardHeader className="py-2 px-3">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -136,7 +136,7 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
                     {canTest ? (
                         <>
                             {renderInputSection()}
-                            <Button onClick={runTest} disabled={loading} size="sm" className="gap-2">
+                            <Button onClick={runTest} disabled={loading} size="sm" className="gap-2" data-testid="datahub-steptester-run">
                                 <PlayIcon className="h-3 w-3" />
                                 {loading ? 'Running...' : 'Run Test'}
                             </Button>

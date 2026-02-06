@@ -86,6 +86,208 @@ const FailedRunRow = React.memo(function FailedRunRow({
     );
 });
 
+// Failed Runs Table with virtualization
+function FailedRunsTable({
+    recentFailed,
+    onSelectRun,
+}: {
+    recentFailed: FailedRun[];
+    onSelectRun: (id: string) => void;
+}) {
+    const ITEMS_PER_PAGE = 10;
+    const [displayCount, setDisplayCount] = React.useState(ITEMS_PER_PAGE);
+
+    const displayedRuns = recentFailed.slice(0, displayCount);
+    const hasMore = displayCount < recentFailed.length;
+
+    const handleLoadMore = React.useCallback(() => {
+        setDisplayCount(c => c + ITEMS_PER_PAGE);
+    }, []);
+
+    return (
+        <div className="mt-6" data-testid="datahub-failed-runs-table">
+            <div className="text-sm font-medium mb-2">Recent Failed Runs</div>
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="bg-muted">
+                        <th className="text-left px-3 py-2">Run ID</th>
+                        <th className="text-left px-3 py-2">Pipeline</th>
+                        <th className="text-left px-3 py-2">Finished</th>
+                        <th className="text-left px-3 py-2">Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {displayedRuns.map((r) => (
+                        <FailedRunRow key={r.id} run={r} onSelectRun={onSelectRun} />
+                    ))}
+                    {recentFailed.length === 0 && (
+                        <tr>
+                            <td className="px-3 py-4 text-muted-foreground" colSpan={4}>
+                                No recent failures
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+            {hasMore && (
+                <div className="flex justify-center mt-4">
+                    <Button variant="outline" onClick={handleLoadMore}>
+                        Load More ({recentFailed.length - displayCount} remaining)
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Dead Letters Table with virtualization
+function DeadLettersTable({
+    deadLetters,
+    onRetry,
+    onUnmark,
+    isRetryPending,
+    isUnmarkPending,
+}: {
+    deadLetters: DeadLetter[];
+    onRetry: (id: string) => void;
+    onUnmark: (id: string) => void;
+    isRetryPending: boolean;
+    isUnmarkPending: boolean;
+}) {
+    const ITEMS_PER_PAGE = 20;
+    const [displayCount, setDisplayCount] = React.useState(ITEMS_PER_PAGE);
+
+    const displayedLetters = deadLetters.slice(0, displayCount);
+    const hasMore = displayCount < deadLetters.length;
+
+    const handleLoadMore = React.useCallback(() => {
+        setDisplayCount(c => c + ITEMS_PER_PAGE);
+    }, []);
+
+    return (
+        <div data-testid="datahub-dead-letters-table">
+            <div className="mb-4">
+                <p className="text-sm text-muted-foreground">
+                    Dead letters are records that failed processing and have been marked for manual review.
+                </p>
+            </div>
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="bg-muted">
+                        <th className="text-left px-3 py-2">ID</th>
+                        <th className="text-left px-3 py-2">Step</th>
+                        <th className="text-left px-3 py-2">Message</th>
+                        <th className="text-left px-3 py-2">Payload</th>
+                        <th className="text-left px-3 py-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {displayedLetters.map((r) => (
+                        <DeadLetterRow
+                            key={r.id}
+                            deadLetter={r}
+                            onRetry={onRetry}
+                            onUnmark={onUnmark}
+                            isRetryPending={isRetryPending}
+                            isUnmarkPending={isUnmarkPending}
+                        />
+                    ))}
+                    {deadLetters.length === 0 && (
+                        <tr>
+                            <td className="px-3 py-8 text-muted-foreground text-center" colSpan={5}>
+                                <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-muted-foreground/50" />
+                                No dead letters
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+            {hasMore && (
+                <div className="flex justify-center mt-4">
+                    <Button variant="outline" onClick={handleLoadMore}>
+                        Load More ({deadLetters.length - displayCount} remaining)
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Consumers Table with virtualization
+function ConsumersTable({
+    consumers,
+    onStop,
+    onStart,
+    isStopPending,
+    isStartPending,
+}: {
+    consumers: Consumer[];
+    onStop: (pipelineCode: string) => void;
+    onStart: (pipelineCode: string) => void;
+    isStopPending: boolean;
+    isStartPending: boolean;
+}) {
+    const ITEMS_PER_PAGE = 20;
+    const [displayCount, setDisplayCount] = React.useState(ITEMS_PER_PAGE);
+
+    const displayedConsumers = consumers.slice(0, displayCount);
+    const hasMore = displayCount < consumers.length;
+
+    const handleLoadMore = React.useCallback(() => {
+        setDisplayCount(c => c + ITEMS_PER_PAGE);
+    }, []);
+
+    return (
+        <>
+            <div className="mb-4">
+                <p className="text-sm text-muted-foreground">
+                    Message queue consumers that process pipeline triggers. Start/stop consumers to manage message processing.
+                </p>
+            </div>
+            <table className="w-full text-sm">
+                <thead>
+                    <tr className="bg-muted">
+                        <th className="text-left px-3 py-2">Pipeline</th>
+                        <th className="text-left px-3 py-2">Queue</th>
+                        <th className="text-left px-3 py-2">Status</th>
+                        <th className="text-left px-3 py-2">Processed</th>
+                        <th className="text-left px-3 py-2">Failed</th>
+                        <th className="text-left px-3 py-2">Last Message</th>
+                        <th className="text-left px-3 py-2">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {displayedConsumers.map((c) => (
+                        <ConsumerRow
+                            key={c.pipelineCode}
+                            consumer={c}
+                            onStop={onStop}
+                            onStart={onStart}
+                            isStopPending={isStopPending}
+                            isStartPending={isStartPending}
+                        />
+                    ))}
+                    {consumers.length === 0 && (
+                        <tr>
+                            <td className="px-3 py-8 text-muted-foreground text-center" colSpan={7}>
+                                <Radio className="w-8 h-8 mx-auto mb-2 text-muted-foreground/50" />
+                                No message queue consumers configured
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+            {hasMore && (
+                <div className="flex justify-center mt-4">
+                    <Button variant="outline" onClick={handleLoadMore}>
+                        Load More ({consumers.length - displayCount} remaining)
+                    </Button>
+                </div>
+            )}
+        </>
+    );
+}
+
 // Memoized row component for dead letters
 const DeadLetterRow = React.memo(function DeadLetterRow({
     deadLetter,
@@ -220,7 +422,7 @@ function QueuesPage() {
     const mark = useMarkDeadLetter();
     const retry = useRetryError();
 
-    const s = statsQuery.data;
+    const stats = statsQuery.data;
     const deadLetters = deadLettersQuery.data ?? [];
     const consumers = consumersQueryResult.data ?? [];
     const [selectedRunId, setSelectedRunId] = React.useState<string | null>(null);
@@ -329,10 +531,10 @@ function QueuesPage() {
 
                     <TabsContent value="overview" className="mt-4">
                         <div className="grid grid-cols-4 gap-3">
-                            <StatCard title="Pending" value={s?.pending ?? 0} icon={<Clock className="w-4 h-4" />} />
-                            <StatCard title="Running" value={s?.running ?? 0} icon={<RefreshCw className="w-4 h-4 animate-spin" />} />
-                            <StatCard title="Failed" value={s?.failed ?? 0} icon={<XCircle className="w-4 h-4" />} variant="error" />
-                            <StatCard title="Completed today" value={s?.completedToday ?? 0} icon={<CheckCircle className="w-4 h-4" />} variant="success" />
+                            <StatCard title="Pending" value={stats?.pending ?? 0} icon={<Clock className="w-4 h-4" />} />
+                            <StatCard title="Running" value={stats?.running ?? 0} icon={<RefreshCw className="w-4 h-4 animate-spin" />} />
+                            <StatCard title="Failed" value={stats?.failed ?? 0} icon={<XCircle className="w-4 h-4" />} variant="error" />
+                            <StatCard title="Completed today" value={stats?.completedToday ?? 0} icon={<CheckCircle className="w-4 h-4" />} variant="success" />
                         </div>
 
                         <div className="mt-6">
@@ -346,125 +548,44 @@ function QueuesPage() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(s?.byPipeline ?? []).map((r) => (
+                                    {(stats?.byPipeline ?? []).map((r) => (
                                         <tr key={r.code} className="border-t">
                                             <td className="px-3 py-2 font-mono text-muted-foreground">{r.code}</td>
                                             <td className="px-3 py-2">{r.pending}</td>
                                             <td className="px-3 py-2">{r.running}</td>
                                         </tr>
                                     ))}
-                                    {(s?.byPipeline ?? []).length === 0 && (
+                                    {(stats?.byPipeline ?? []).length === 0 && (
                                         <tr><td className="px-3 py-4 text-muted-foreground" colSpan={3}>No active pipelines</td></tr>
                                     )}
                                 </tbody>
                             </table>
                         </div>
 
-                        <div className="mt-6">
-                            <div className="text-sm font-medium mb-2">Recent Failed Runs</div>
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="bg-muted">
-                                        <th className="text-left px-3 py-2">Run ID</th>
-                                        <th className="text-left px-3 py-2">Pipeline</th>
-                                        <th className="text-left px-3 py-2">Finished</th>
-                                        <th className="text-left px-3 py-2">Error</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(s?.recentFailed ?? []).map((r) => (
-                                        <FailedRunRow key={r.id} run={r} onSelectRun={handleSelectRun} />
-                                    ))}
-                                    {(s?.recentFailed ?? []).length === 0 && (
-                                        <tr>
-                                            <td className="px-3 py-4 text-muted-foreground" colSpan={4}>
-                                                No recent failures
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
+                        <FailedRunsTable
+                            recentFailed={stats?.recentFailed ?? []}
+                            onSelectRun={handleSelectRun}
+                        />
                     </TabsContent>
 
                     <TabsContent value="dead-letters" className="mt-4">
-                        <div className="mb-4">
-                            <p className="text-sm text-muted-foreground">
-                                Dead letters are records that failed processing and have been marked for manual review.
-                            </p>
-                        </div>
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="bg-muted">
-                                    <th className="text-left px-3 py-2">ID</th>
-                                    <th className="text-left px-3 py-2">Step</th>
-                                    <th className="text-left px-3 py-2">Message</th>
-                                    <th className="text-left px-3 py-2">Payload</th>
-                                    <th className="text-left px-3 py-2">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {deadLetters.map((r) => (
-                                    <DeadLetterRow
-                                        key={r.id}
-                                        deadLetter={r}
-                                        onRetry={handleRetryDeadLetter}
-                                        onUnmark={handleUnmarkDeadLetter}
-                                        isRetryPending={retry.isPending}
-                                        isUnmarkPending={mark.isPending}
-                                    />
-                                ))}
-                                {deadLetters.length === 0 && (
-                                    <tr>
-                                        <td className="px-3 py-8 text-muted-foreground text-center" colSpan={5}>
-                                            <AlertTriangle className="w-8 h-8 mx-auto mb-2 text-muted-foreground/50" />
-                                            No dead letters
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                        <DeadLettersTable
+                            deadLetters={deadLetters}
+                            onRetry={handleRetryDeadLetter}
+                            onUnmark={handleUnmarkDeadLetter}
+                            isRetryPending={retry.isPending}
+                            isUnmarkPending={mark.isPending}
+                        />
                     </TabsContent>
 
                     <TabsContent value="consumers" className="mt-4">
-                        <div className="mb-4">
-                            <p className="text-sm text-muted-foreground">
-                                Message queue consumers that process pipeline triggers. Start/stop consumers to manage message processing.
-                            </p>
-                        </div>
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="bg-muted">
-                                    <th className="text-left px-3 py-2">Pipeline</th>
-                                    <th className="text-left px-3 py-2">Queue</th>
-                                    <th className="text-left px-3 py-2">Status</th>
-                                    <th className="text-left px-3 py-2">Processed</th>
-                                    <th className="text-left px-3 py-2">Failed</th>
-                                    <th className="text-left px-3 py-2">Last Message</th>
-                                    <th className="text-left px-3 py-2">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {consumers.map((c) => (
-                                    <ConsumerRow
-                                        key={c.pipelineCode}
-                                        consumer={c}
-                                        onStop={handleStopConsumer}
-                                        onStart={handleStartConsumer}
-                                        isStopPending={stopConsumer.isPending}
-                                        isStartPending={startConsumer.isPending}
-                                    />
-                                ))}
-                                {consumers.length === 0 && (
-                                    <tr>
-                                        <td className="px-3 py-8 text-muted-foreground text-center" colSpan={7}>
-                                            <Radio className="w-8 h-8 mx-auto mb-2 text-muted-foreground/50" />
-                                            No message queue consumers configured
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                        <ConsumersTable
+                            consumers={consumers}
+                            onStop={handleStopConsumer}
+                            onStart={handleStartConsumer}
+                            isStopPending={stopConsumer.isPending}
+                            isStartPending={startConsumer.isPending}
+                        />
                     </TabsContent>
                 </Tabs>
             </PageBlock>

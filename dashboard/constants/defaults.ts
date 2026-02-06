@@ -3,8 +3,6 @@
  * The shared folder can be used by both dashboard and backend.
  */
 
-import { CONFIDENCE_THRESHOLDS } from '../../shared/constants';
-
 /**
  * Time units in milliseconds - re-exported from shared constants
  */
@@ -26,6 +24,12 @@ export const UI_TIMEOUTS = {
  * Network port defaults - re-exported from shared constants
  */
 export { PORTS, DEFAULT_HOSTS, SEARCH_SERVICE_PORTS, CONFIDENCE_THRESHOLDS } from '../../shared/constants';
+
+/**
+ * Match confidence type and conversion function - re-exported from src/constants
+ */
+export type { MatchConfidence } from '../../src/constants/validation';
+export { scoreToConfidence } from '../../src/constants/validation';
 
 /**
  * HTTP configuration defaults
@@ -78,17 +82,3 @@ export const RETENTION = {
     /** Minimum retention days */
     MIN_DAYS: 1,
 } as const;
-
-/**
- * Match confidence type
- */
-export type MatchConfidence = 'high' | 'medium' | 'low';
-
-/**
- * Convert numeric score to confidence level
- */
-export function scoreToConfidence(score: number): MatchConfidence {
-    if (score >= CONFIDENCE_THRESHOLDS.HIGH) return 'high';
-    if (score >= CONFIDENCE_THRESHOLDS.MEDIUM) return 'medium';
-    return 'low';
-}

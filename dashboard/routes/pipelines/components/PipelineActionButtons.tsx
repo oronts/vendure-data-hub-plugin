@@ -134,6 +134,7 @@ export function PipelineActionButtons({
                     size="sm"
                     onClick={onOpenDryRun}
                     className="gap-1.5"
+                    data-testid="pipeline-dry-run-button"
                 >
                     <FlaskConical className="h-4 w-4" />
                     Dry Run
@@ -148,6 +149,7 @@ export function PipelineActionButtons({
                     disabled={isRunning || status !== PIPELINE_STATUS.PUBLISHED}
                     className="gap-1.5"
                     title={status !== PIPELINE_STATUS.PUBLISHED ? 'Pipeline must be published to run' : undefined}
+                    data-testid="pipeline-run-now-button"
                 >
                     <Play className="h-4 w-4" />
                     {isRunning ? 'Starting...' : 'Run Now'}
@@ -161,6 +163,7 @@ export function PipelineActionButtons({
                 size="sm"
                 onClick={onOpenHistory}
                 className="gap-1.5"
+                data-testid="pipeline-history-button"
             >
                 <History className="h-4 w-4" />
                 History
@@ -174,6 +177,7 @@ export function PipelineActionButtons({
                         onClick={handlePublish}
                         disabled={isPublishing}
                         className="gap-1.5"
+                        data-testid="pipeline-publish-button"
                     >
                         <Rocket className="h-4 w-4" />
                         {isPublishing ? 'Publishing...' : 'Publish'}

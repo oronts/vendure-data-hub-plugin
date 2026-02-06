@@ -86,13 +86,17 @@ function AdaptersPage() {
     const { data: rows = [], isLoading, isError, error, refetch } = useAdapters();
     const [selected, setSelected] = React.useState<DataHubAdapter | null>(null);
 
+    const handleCloseDrawer = React.useCallback((open: boolean) => {
+        if (!open) setSelected(null);
+    }, []);
+
     const extractors = rows.filter(r => r.type === ADAPTER_TYPES.EXTRACTOR);
     const operators = rows.filter(r => r.type === ADAPTER_TYPES.OPERATOR);
     const loaders = rows.filter(r => r.type === ADAPTER_TYPES.LOADER);
 
-    const isBuiltIn = (code: string) => {
+    const isBuiltIn = React.useCallback((code: string) => {
         return BUILT_IN_ADAPTER_PREFIXES.some(p => code.startsWith(p));
-    };
+    }, []);
 
     if (isError) {
         return (
@@ -122,7 +126,7 @@ function AdaptersPage() {
         <Page pageId="data-hub-adapters">
             <PageActionBar>
                 <PageActionBarRight>
-                    <Button variant="ghost" onClick={() => refetch()} disabled={isLoading}>
+                    <Button variant="ghost" onClick={() => refetch()} disabled={isLoading} data-testid="datahub-adapters-refresh-button">
                         <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
                         Refresh
                     </Button>
@@ -167,20 +171,20 @@ function AdaptersPage() {
 
             <PageBlock column="main" blockId="adapters">
                 <Tabs defaultValue="extractors" className="w-full">
-                    <TabsList className="mb-4">
-                        <TabsTrigger value="extractors" className="gap-2">
+                    <TabsList className="mb-4" data-testid="datahub-adapters-tabs">
+                        <TabsTrigger value="extractors" className="gap-2" data-testid="datahub-adapters-tab-extractors">
                             <Database className="w-4 h-4" />
                             Extractors ({extractors.length})
                         </TabsTrigger>
-                        <TabsTrigger value="operators" className="gap-2">
+                        <TabsTrigger value="operators" className="gap-2" data-testid="datahub-adapters-tab-operators">
                             <Cog className="w-4 h-4" />
                             Operators ({operators.length})
                         </TabsTrigger>
-                        <TabsTrigger value="loaders" className="gap-2">
+                        <TabsTrigger value="loaders" className="gap-2" data-testid="datahub-adapters-tab-loaders">
                             <Upload className="w-4 h-4" />
                             Loaders ({loaders.length})
                         </TabsTrigger>
-                        <TabsTrigger value="all" className="gap-2">
+                        <TabsTrigger value="all" className="gap-2" data-testid="datahub-adapters-tab-all">
                             <Settings2 className="w-4 h-4" />
                             All ({rows.length})
                         </TabsTrigger>
@@ -224,8 +228,8 @@ function AdaptersPage() {
                 </Tabs>
             </PageBlock>
 
-            <Drawer open={!!selected} onOpenChange={open => !open && setSelected(null)}>
-                <DrawerContent>
+            <Drawer open={!!selected} onOpenChange={handleCloseDrawer}>
+                <DrawerContent data-testid="datahub-adapter-detail-drawer">
                     <DrawerHeader>
                         <div className="flex items-center gap-2">
                             <Badge className={ADAPTER_TYPE_INFO[selected?.type || 'extractor']?.color ?? ''}>
@@ -256,9 +260,26 @@ function AdapterTypeSection({
     onSelect: (adapter: DataHubAdapter) => void;
     isBuiltIn: (code: string) => boolean;
 }>) {
+    const ITEMS_PER_PAGE = 20;
+    const [builtInDisplayCount, setBuiltInDisplayCount] = React.useState(ITEMS_PER_PAGE);
+    const [customDisplayCount, setCustomDisplayCount] = React.useState(ITEMS_PER_PAGE);
+
     const info = ADAPTER_TYPE_INFO[type];
     const builtIn = adapters.filter(a => isBuiltIn(a.code));
     const custom = adapters.filter(a => !isBuiltIn(a.code));
+
+    const displayedBuiltIn = builtIn.slice(0, builtInDisplayCount);
+    const displayedCustom = custom.slice(0, customDisplayCount);
+    const hasMoreBuiltIn = builtInDisplayCount < builtIn.length;
+    const hasMoreCustom = customDisplayCount < custom.length;
+
+    const handleLoadMoreBuiltIn = React.useCallback(() => {
+        setBuiltInDisplayCount(c => c + ITEMS_PER_PAGE);
+    }, []);
+
+    const handleLoadMoreCustom = React.useCallback(() => {
+        setCustomDisplayCount(c => c + ITEMS_PER_PAGE);
+    }, []);
 
     return (
         <div className="space-y-6">
@@ -277,7 +298,7 @@ function AdapterTypeSection({
                         Built-in Adapters ({builtIn.length})
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
-                        {builtIn.map(adapter => (
+                        {displayedBuiltIn.map(adapter => (
                             <AdapterCard
                                 key={adapter.code}
                                 adapter={adapter}
@@ -286,6 +307,13 @@ function AdapterTypeSection({
                             />
                         ))}
                     </div>
+                    {hasMoreBuiltIn && (
+                        <div className="flex justify-center mt-4">
+                            <Button variant="outline" onClick={handleLoadMoreBuiltIn} data-testid={`datahub-adapters-load-more-builtin-${type}`}>
+                                Load More ({builtIn.length - builtInDisplayCount} remaining)
+                            </Button>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -296,7 +324,7 @@ function AdapterTypeSection({
                         Custom Adapters ({custom.length})
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
-                        {custom.map(adapter => (
+                        {displayedCustom.map(adapter => (
                             <AdapterCard
                                 key={adapter.code}
                                 adapter={adapter}
@@ -304,6 +332,13 @@ function AdapterTypeSection({
                             />
                         ))}
                     </div>
+                    {hasMoreCustom && (
+                        <div className="flex justify-center mt-4">
+                            <Button variant="outline" onClick={handleLoadMoreCustom} data-testid={`datahub-adapters-load-more-custom-${type}`}>
+                                Load More ({custom.length - customDisplayCount} remaining)
+                            </Button>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -331,10 +366,22 @@ const AdapterCard = React.memo(function AdapterCard({
         onSelect(adapter);
     }, [onSelect, adapter]);
 
+    const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect(adapter);
+        }
+    }, [onSelect, adapter]);
+
     return (
         <div
             className="border rounded-lg p-3 cursor-pointer hover:border-primary hover:shadow-sm transition-all"
             onClick={handleClick}
+            onKeyDown={handleKeyDown}
+            role="button"
+            tabIndex={0}
+            aria-label={`View ${adapter.name} adapter details`}
+            data-testid={`datahub-adapter-card-${adapter.code}`}
         >
             <div className="flex items-start justify-between mb-2">
                 <code className="text-sm font-medium">{adapter.code}</code>
@@ -367,6 +414,8 @@ const AdapterCard = React.memo(function AdapterCard({
     );
 });
 
+const ADAPTERS_TABLE_PAGE_SIZE = 25;
+
 function AdaptersTable({
     adapters,
     onSelect,
@@ -378,6 +427,16 @@ function AdaptersTable({
     isBuiltIn: (code: string) => boolean;
     isLoading: boolean;
 }>) {
+    const [page, setPage] = React.useState(1);
+
+    const handleSelectAdapter = React.useCallback((adapter: DataHubAdapter) => {
+        onSelect(adapter);
+    }, [onSelect]);
+
+    const handlePageChange = React.useCallback((newPage: number) => {
+        setPage(newPage);
+    }, []);
+
     const columns: ColumnDef<DataHubAdapter, unknown>[] = React.useMemo(() => [
         {
             id: 'type',
@@ -396,14 +455,19 @@ function AdaptersTable({
             id: 'code',
             header: 'Code',
             accessorFn: row => row.code,
-            cell: ({ row }) => (
-                <button
-                    className="font-mono text-sm underline-offset-2 hover:underline"
-                    onClick={() => onSelect(row.original)}
-                >
-                    {row.original.code}
-                </button>
-            ),
+            cell: function CodeCell({ row }) {
+                const handleClick = React.useCallback(() => {
+                    handleSelectAdapter(row.original);
+                }, [row.original]);
+                return (
+                    <button
+                        className="font-mono text-sm underline-offset-2 hover:underline"
+                        onClick={handleClick}
+                    >
+                        {row.original.code}
+                    </button>
+                );
+            },
         },
         {
             id: 'description',
@@ -430,17 +494,25 @@ function AdaptersTable({
                 </Badge>
             ),
         },
-    ], [onSelect, isBuiltIn]);
+    ], [handleSelectAdapter, isBuiltIn]);
+
+    // Client-side pagination for the adapters table
+    const paginatedAdapters = React.useMemo(() => {
+        const start = (page - 1) * ADAPTERS_TABLE_PAGE_SIZE;
+        return adapters.slice(start, start + ADAPTERS_TABLE_PAGE_SIZE);
+    }, [adapters, page]);
 
     return (
         <DataTable
             columns={columns}
-            data={adapters}
+            data={paginatedAdapters}
             isLoading={isLoading}
             totalItems={adapters.length}
-            itemsPerPage={adapters.length || 10}
-            page={1}
+            itemsPerPage={ADAPTERS_TABLE_PAGE_SIZE}
+            page={page}
+            onPageChange={handlePageChange}
             disableViewOptions
+            data-testid="datahub-adapters-table"
         />
     );
 }
@@ -569,7 +641,7 @@ function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>) {
                         <Code2 className="w-4 h-4" />
                         Example Configuration
                     </h4>
-                    <Button variant="outline" size="sm" onClick={copyConfig}>
+                    <Button variant="outline" size="sm" onClick={copyConfig} data-testid="datahub-adapter-config-copy-button">
                         {copied ? (
                             <CheckCircle2 className="w-4 h-4 mr-1 text-green-600" />
                         ) : (

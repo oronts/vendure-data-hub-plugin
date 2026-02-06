@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import {
     Input,
     Label,
@@ -83,12 +84,16 @@ function StringField({ field, value, onChange, compact, disabled }: StringFieldP
                       fieldType === 'email' ? 'email' :
                       fieldType === 'url' ? 'url' : 'text';
 
+    const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        onChange(e.target.value);
+    }, [onChange]);
+
     return (
         <Input
             id={field.key}
             type={inputType}
             value={value ?? field.default ?? ''}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={handleChange}
             placeholder={field.placeholder}
             disabled={disabled}
             className={compact ? 'h-8 text-sm' : ''}
@@ -105,15 +110,17 @@ interface NumberFieldProps {
 }
 
 function NumberField({ field, value, onChange, compact, disabled }: NumberFieldProps) {
+    const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        onChange(val === '' ? undefined : Number(val));
+    }, [onChange]);
+
     return (
         <Input
             id={field.key}
             type="number"
             value={value ?? field.default ?? ''}
-            onChange={(e) => {
-                const val = e.target.value;
-                onChange(val === '' ? undefined : Number(val));
-            }}
+            onChange={handleChange}
             placeholder={field.placeholder}
             disabled={disabled}
             min={field.validation?.min}
@@ -214,11 +221,15 @@ interface TextareaFieldProps {
 }
 
 function TextareaField({ field, value, onChange, compact, disabled, isCode = false }: TextareaFieldProps) {
+    const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        onChange(e.target.value);
+    }, [onChange]);
+
     return (
         <Textarea
             id={field.key}
             value={value ?? field.default ?? ''}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={handleChange}
             placeholder={field.placeholder}
             disabled={disabled}
             rows={compact ? 2 : 5}
@@ -236,13 +247,13 @@ interface FileUploadFieldProps {
 }
 
 function FileUploadField({ field, value, onChange, compact, disabled }: FileUploadFieldProps) {
-    const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
-    const [uploading, setUploading] = React.useState(false);
-    const [error, setError] = React.useState<string | null>(null);
-    const [uploadedFileName, setUploadedFileName] = React.useState<string | null>(null);
-    const inputRef = React.useRef<HTMLInputElement>(null);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const [uploading, setUploading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
-    const handleFileSelect = async (file: File) => {
+    const handleFileSelect = useCallback(async (file: File) => {
         setSelectedFile(file);
         setError(null);
         setUploading(true);
@@ -277,9 +288,9 @@ function FileUploadField({ field, value, onChange, compact, disabled }: FileUplo
         } finally {
             setUploading(false);
         }
-    };
+    }, [onChange]);
 
-    const handleClear = () => {
+    const handleClear = useCallback(() => {
         setSelectedFile(null);
         setUploadedFileName(null);
         setError(null);
@@ -287,22 +298,42 @@ function FileUploadField({ field, value, onChange, compact, disabled }: FileUplo
         if (inputRef.current) {
             inputRef.current.value = '';
         }
-    };
+    }, [onChange]);
 
-    const handleDrop = (e: React.DragEvent) => {
+    const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         const file = e.dataTransfer.files[0];
         if (file && !disabled) handleFileSelect(file);
-    };
+    }, [disabled, handleFileSelect]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) handleFileSelect(file);
-    };
+    }, [handleFileSelect]);
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+    }, []);
 
     const hasFile = !!value || !!uploadedFileName;
     const displayName = uploadedFileName || (value ? `File ID: ${value}` : null);
     const padding = compact ? 'p-3' : 'p-4';
+
+    const handleDropzoneClick = useCallback(() => {
+        if (!value && !uploadedFileName && !disabled) inputRef.current?.click();
+    }, [disabled, value, uploadedFileName]);
+
+    const handleDropzoneKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!value && !uploadedFileName && !disabled) inputRef.current?.click();
+        }
+    }, [disabled, value, uploadedFileName]);
+
+    const handleRemoveClick = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        handleClear();
+    }, [handleClear]);
 
     return (
         <div className="space-y-2">
@@ -312,15 +343,20 @@ function FileUploadField({ field, value, onChange, compact, disabled }: FileUplo
                         ? 'border-green-500 bg-green-50 dark:bg-green-950/20'
                         : 'border-muted-foreground/25 hover:border-primary/50 cursor-pointer'
                 } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                onDragOver={(e) => { e.preventDefault(); }}
+                onDragOver={handleDragOver}
                 onDrop={handleDrop}
-                onClick={() => !hasFile && !disabled && inputRef.current?.click()}
+                onClick={handleDropzoneClick}
+                onKeyDown={handleDropzoneKeyDown}
+                role="button"
+                tabIndex={disabled ? -1 : 0}
+                aria-label="Upload file"
+                aria-disabled={disabled}
             >
                 <input
                     ref={inputRef}
                     type="file"
                     accept=".csv,.json,.xlsx,.xls,.xml"
-                    onChange={handleChange}
+                    onChange={handleInputChange}
                     className="hidden"
                     disabled={disabled}
                 />
@@ -344,7 +380,7 @@ function FileUploadField({ field, value, onChange, compact, disabled }: FileUplo
                                 variant="ghost"
                                 size="sm"
                                 className="mt-1 h-7 text-xs"
-                                onClick={(e) => { e.stopPropagation(); handleClear(); }}
+                                onClick={handleRemoveClick}
                             >
                                 <X className="w-3 h-3 mr-1" />
                                 Remove
@@ -373,19 +409,19 @@ interface JsonFieldProps {
 }
 
 function JsonField({ field, value, onChange, compact, disabled }: JsonFieldProps) {
-    const [text, setText] = React.useState(() => {
+    const [text, setText] = useState(() => {
         try {
             return value ? JSON.stringify(value, null, 2) : '';
         } catch {
             return '';
         }
     });
-    const [error, setError] = React.useState<string | null>(null);
-    const [isPending, setIsPending] = React.useState(false);
-    const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-    const mountedRef = React.useRef(true);
+    const [error, setError] = useState<string | null>(null);
+    const [isPending, setIsPending] = useState(false);
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const mountedRef = useRef(true);
 
-    React.useEffect(() => {
+    useEffect(() => {
         return () => {
             mountedRef.current = false;
             if (timeoutRef.current) {
@@ -394,7 +430,7 @@ function JsonField({ field, value, onChange, compact, disabled }: JsonFieldProps
         };
     }, []);
 
-    React.useEffect(() => {
+    useEffect(() => {
         try {
             const newText = value ? JSON.stringify(value, null, 2) : '';
             const currentParsed = text.trim() ? JSON.parse(text) : undefined;
@@ -405,9 +441,9 @@ function JsonField({ field, value, onChange, compact, disabled }: JsonFieldProps
         } catch {
             // JSON parse/stringify failed - keep existing text
         }
-    }, [value]);
+    }, [value, text]);
 
-    const validateJson = React.useCallback((jsonText: string): string | null => {
+    const validateJson = useCallback((jsonText: string): string | null => {
         if (!jsonText.trim()) {
             return null;
         }
@@ -433,7 +469,7 @@ function JsonField({ field, value, onChange, compact, disabled }: JsonFieldProps
         }
     }, []);
 
-    const handleChange = (newText: string) => {
+    const handleChange = useCallback((newText: string) => {
         setText(newText);
         setIsPending(true);
 
@@ -462,21 +498,25 @@ function JsonField({ field, value, onChange, compact, disabled }: JsonFieldProps
                 }
             }
         }, DEBOUNCE_DELAYS.JSON_VALIDATION);
-    };
+    }, [onChange, validateJson]);
 
-    const getBorderClass = () => {
+    const getBorderClass = useCallback(() => {
         if (disabled) return '';
         if (error) return 'border-destructive focus:border-destructive focus:ring-destructive/20';
         if (isPending) return 'border-amber-400';
         return '';
-    };
+    }, [disabled, error, isPending]);
+
+    const handleTextareaChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        handleChange(e.target.value);
+    }, [handleChange]);
 
     return (
         <div className="space-y-1">
             <Textarea
                 id={field.key}
                 value={text}
-                onChange={(e) => handleChange(e.target.value)}
+                onChange={handleTextareaChange}
                 placeholder={field.placeholder ?? '{}'}
                 disabled={disabled}
                 rows={compact ? 3 : 6}
@@ -498,7 +538,7 @@ export function SchemaFormRenderer({
     connectionCodes = [],
     compact = false,
 }: SchemaFormRendererProps) {
-    const visibleFields = React.useMemo(() => {
+    const visibleFields = useMemo(() => {
         if (!schema?.fields) return [];
         return schema.fields.filter((field) => {
             if (field.hidden) {
@@ -514,7 +554,7 @@ export function SchemaFormRenderer({
         });
     }, [schema?.fields, values, hideOptional]);
 
-    const groupedFields = React.useMemo(() => {
+    const groupedFields = useMemo(() => {
         const groups: Record<string, AdapterSchemaField[]> = { _default: [] };
 
         for (const field of visibleFields) {
@@ -528,9 +568,9 @@ export function SchemaFormRenderer({
         return groups;
     }, [visibleFields]);
 
-    const handleFieldChange = (key: string, value: unknown) => {
+    const handleFieldChange = useCallback((key: string, value: unknown) => {
         onChange({ ...values, [key]: value });
-    };
+    }, [onChange, values]);
 
     const renderField = (field: AdapterSchemaField) => {
         const value = values[field.key];

@@ -21,6 +21,7 @@ export function createPipelineNode(category: VisualNodeCategory) {
                     selected ? 'shadow-lg' : ''
                 }`}
                 style={{ borderColor: selected ? config.color : FALLBACK_COLORS.BORDER }}
+                data-testid={`datahub-pipeline-node-${category}`}
             >
                 {config.hasTargetHandle && (
                     <Handle
@@ -62,6 +63,7 @@ export function ConditionNodeComponent({ data, selected }: NodeProps<Node<Pipeli
                 selected ? 'shadow-lg' : ''
             }`}
             style={{ borderColor: selected ? config.color : FALLBACK_COLORS.BORDER }}
+            data-testid="datahub-pipeline-node-condition"
         >
             <Handle
                 type="target"
@@ -101,25 +103,25 @@ function StatusBadge({ status }: { status: PipelineNodeData['status'] }) {
     switch (status) {
         case TEST_STATUS.TESTING:
             return (
-                <div className="px-3 pb-2">
+                <div className="px-3 pb-2" role="status" aria-live="polite">
                     <Badge variant="secondary" className="animate-pulse">Running...</Badge>
                 </div>
             );
         case TEST_STATUS.SUCCESS:
             return (
-                <div className="px-3 pb-2">
+                <div className="px-3 pb-2" role="status" aria-live="polite">
                     <Badge className="bg-green-500">Complete</Badge>
                 </div>
             );
         case TEST_STATUS.ERROR:
             return (
-                <div className="px-3 pb-2">
+                <div className="px-3 pb-2" role="status" aria-live="assertive">
                     <Badge variant="destructive">Error</Badge>
                 </div>
             );
         case TEST_STATUS.WARNING:
             return (
-                <div className="px-3 pb-2">
+                <div className="px-3 pb-2" role="status" aria-live="polite">
                     <Badge variant="outline" className="border-amber-500 text-amber-500">Warning</Badge>
                 </div>
             );

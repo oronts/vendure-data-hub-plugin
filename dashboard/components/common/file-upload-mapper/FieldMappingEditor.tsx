@@ -63,13 +63,13 @@ export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onCh
         return mappings.find(m => m.targetField === targetField)?.sourceField || '';
     }, [mappings]);
 
-    const unmappedSourceFields = sourceColumns.filter(
+    const unmappedSourceFields = React.useMemo(() => sourceColumns.filter(
         col => !mappings.some(m => m.sourceField === col.name)
-    );
+    ), [sourceColumns, mappings]);
 
-    const unmappedTargetFields = targetSchema.filter(
+    const unmappedTargetFields = React.useMemo(() => targetSchema.filter(
         field => !mappings.some(m => m.targetField === field.name && m.sourceField)
-    );
+    ), [targetSchema, mappings]);
 
     return (
         <div className="space-y-4">
@@ -86,7 +86,7 @@ export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onCh
                     )}
                 </div>
                 <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={handleAutoMap}>
+                    <Button variant="outline" size="sm" onClick={handleAutoMap} data-testid="datahub-field-mapping-auto-map-button">
                         <Wand2 className="w-4 h-4 mr-2" />
                         Auto-Map
                     </Button>
@@ -101,7 +101,7 @@ export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onCh
             </div>
 
             <div className="border rounded-lg overflow-hidden">
-                <Table>
+                <Table data-testid="datahub-field-mapping-table">
                     <TableHeader>
                         <TableRow>
                             <TableHead className="w-1/3">Target Field</TableHead>

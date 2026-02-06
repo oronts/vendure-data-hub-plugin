@@ -1,9 +1,10 @@
 import * as React from 'react';
+import { useCallback, memo } from 'react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@vendure/dashboard';
 import { COMPARISON_OPERATORS, getOperatorPlaceholder, MOVE_DIRECTION, ERROR_MESSAGES } from '../../../constants';
 import type { MoveDirection } from '../../../constants';
 import { OperatorCard, OperatorConfig, StepOperatorDefinition } from './OperatorCard';
-import { generateStableKey } from '../../../utils';
+import { useStableKeys } from '../../../hooks';
 
 export type { OperatorConfig, StepOperatorDefinition } from './OperatorCard';
 export type { OperatorSchemaField } from './OperatorFieldInput';
@@ -50,18 +51,83 @@ function getPath(obj: JsonRecord, path: string): unknown {
 function collectPaths(obj: JsonRecord, prefix = ''): string[] {
     const out: string[] = [];
     if (obj && typeof obj === 'object') {
-        for (const k of Object.keys(obj)) {
-            const v = obj[k];
-            const p = prefix ? `${prefix}.${k}` : k;
-            if (v && typeof v === 'object' && !Array.isArray(v)) {
-                out.push(...collectPaths(v as JsonRecord, p));
+        for (const key of Object.keys(obj)) {
+            const value = obj[key];
+            const path = prefix ? `${prefix}.${key}` : key;
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                out.push(...collectPaths(value as JsonRecord, path));
             } else {
-                out.push(p);
+                out.push(path);
             }
         }
     }
     return out.sort();
 }
+
+// Memoized button components to avoid inline handlers in map iterations
+
+interface PathButtonProps {
+    path: string;
+    isSelected: boolean;
+    onSelect: (path: string) => void;
+}
+
+const PathButton = memo(function PathButton({ path, isSelected, onSelect }: PathButtonProps) {
+    const handleClick = useCallback(() => {
+        onSelect(path);
+    }, [path, onSelect]);
+
+    return (
+        <button
+            type="button"
+            className={`text-[11px] text-left px-2 py-1 rounded ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-muted'}`}
+            onClick={handleClick}
+            aria-pressed={isSelected}
+            aria-label={`Select field path ${path}`}
+        >
+            {path}
+        </button>
+    );
+});
+
+interface InsertPathButtonProps {
+    path: string;
+    onInsert: (path: string) => void;
+}
+
+const InsertPathButton = memo(function InsertPathButton({ path, onInsert }: InsertPathButtonProps) {
+    const handleClick = useCallback(() => {
+        onInsert(path);
+    }, [path, onInsert]);
+
+    return (
+        <button
+            type="button"
+            className="block w-full text-left text-[11px] px-2 py-1 rounded hover:bg-muted"
+            onClick={handleClick}
+            aria-label={`Insert ${path} at cursor`}
+        >
+            {path}
+        </button>
+    );
+});
+
+interface RemoveRuleButtonProps {
+    ruleIndex: number;
+    onRemove: (index: number) => void;
+}
+
+const RemoveRuleButton = memo(function RemoveRuleButton({ ruleIndex, onRemove }: RemoveRuleButtonProps) {
+    const handleClick = useCallback(() => {
+        onRemove(ruleIndex);
+    }, [ruleIndex, onRemove]);
+
+    return (
+        <Button variant="ghost" size="sm" className="text-destructive" onClick={handleClick}>
+            Remove
+        </Button>
+    );
+});
 
 export function AdvancedMapEditor({ config, onChange }: { config: JsonRecord; onChange: (values: JsonRecord) => void }) {
     const typedConfig = config as MapEditorConfig;
@@ -72,7 +138,7 @@ export function AdvancedMapEditor({ config, onChange }: { config: JsonRecord; on
     const [helpOpen, setHelpOpen] = React.useState<boolean>(false);
 
     const mappingValid = React.useMemo(() => { try { JSON.parse(mappingText); return true; } catch { return false; } }, [mappingText]);
-    const sampleValid = React.useMemo(() => { try { const v = JSON.parse(sample); return Array.isArray(v); } catch { return false; } }, [sample]);
+    const sampleValid = React.useMemo(() => { try { const parsedSample = JSON.parse(sample); return Array.isArray(parsedSample); } catch { return false; } }, [sample]);
 
     function apply() {
         try {
@@ -104,21 +170,21 @@ export function AdvancedMapEditor({ config, onChange }: { config: JsonRecord; on
         }
     }
     const result = preview();
-    const first = React.useMemo(() => { try { const r = JSON.parse(sample); return Array.isArray(r) ? r[0] : null; } catch { return null; } }, [sample]);
+    const first = React.useMemo(() => { try { const parsedResult = JSON.parse(sample); return Array.isArray(parsedResult) ? parsedResult[0] : null; } catch { return null; } }, [sample]);
     const pathList = React.useMemo(() => (first ? collectPaths(first) : []), [first]);
     function addMappingFromSelection() {
         if (!selectedPath || !destKey) return;
         try {
-            const m = (JSON.parse(mappingText) || {}) as Record<string, string>;
-            m[String(destKey)] = selectedPath;
-            setMappingText(JSON.stringify(m, null, 2));
+            const mappingObj = (JSON.parse(mappingText) || {}) as Record<string, string>;
+            mappingObj[String(destKey)] = selectedPath;
+            setMappingText(JSON.stringify(mappingObj, null, 2));
         } catch {
             // JSON parse failed - ignore invalid mapping text
         }
     }
 
     return (
-        <Card>
+        <Card data-testid="datahub-advanced-map-editor">
             <CardHeader className="py-3"><CardTitle className="text-sm">Advanced: Map Editor</CardTitle></CardHeader>
             <CardContent className="space-y-3">
                 <div className="flex items-center justify-between -mt-1">
@@ -154,16 +220,12 @@ export function AdvancedMapEditor({ config, onChange }: { config: JsonRecord; on
                                 <div className="border rounded p-2 max-h-32 overflow-auto">
                                     <div className="grid grid-cols-1 gap-1">
                                         {pathList.map((p) => (
-                                            <button
+                                            <PathButton
                                                 key={p}
-                                                type="button"
-                                                className={`text-[11px] text-left px-2 py-1 rounded ${selectedPath === p ? 'bg-primary/10 text-primary' : 'hover:bg-muted'}`}
-                                                onClick={() => setSelectedPath(p)}
-                                                aria-pressed={selectedPath === p}
-                                                aria-label={`Select field path ${p}`}
-                                            >
-                                                {p}
-                                            </button>
+                                                path={p}
+                                                isSelected={selectedPath === p}
+                                                onSelect={setSelectedPath}
+                                            />
                                         ))}
                                     </div>
                                 </div>
@@ -216,29 +278,29 @@ export function AdvancedTemplateEditor({ config, onChange }: { config: JsonRecor
         try {
             const obj = JSON.parse(sample);
             return template.replace(/\$\{([^}]+)\}/g, (_m, p1) => {
-                const v = getPath(obj, String(p1));
-                return v == null ? '' : String(v);
+                const pathValue = getPath(obj, String(p1));
+                return pathValue == null ? '' : String(pathValue);
             });
         } catch { return ''; }
     }
     const paths = React.useMemo(() => { try { const obj = JSON.parse(sample); return collectPaths(obj); } catch { return []; } }, [sample]);
     function insertPath(path: string) {
-        const t = templateRef.current;
+        const textarea = templateRef.current;
         const ins = '${' + path + '}';
-        if (!t) { setTemplate(prev => prev + ins); return; }
-        const start = t.selectionStart ?? template.length;
-        const end = t.selectionEnd ?? start;
+        if (!textarea) { setTemplate(prev => prev + ins); return; }
+        const start = textarea.selectionStart ?? template.length;
+        const end = textarea.selectionEnd ?? start;
         const next = template.slice(0, start) + ins + template.slice(end);
         setTemplate(next);
         requestAnimationFrame(() => {
-            t.focus();
+            textarea.focus();
             const pos = start + ins.length;
-            try { t.setSelectionRange(pos, pos); } catch { /* Selection range not supported */ }
+            try { textarea.setSelectionRange(pos, pos); } catch { /* Selection range not supported */ }
         });
     }
 
     return (
-        <Card>
+        <Card data-testid="datahub-advanced-template-editor">
             <CardHeader className="py-3"><CardTitle className="text-sm">Advanced: Template Editor</CardTitle></CardHeader>
             <CardContent className="space-y-3">
                 <div className="flex items-center justify-between -mt-1">
@@ -276,15 +338,11 @@ export function AdvancedTemplateEditor({ config, onChange }: { config: JsonRecor
                                 <Label className="text-xs font-medium">Quick insert</Label>
                                 <div className="border rounded p-2 max-h-28 overflow-auto">
                                     {paths.map(p => (
-                                        <button
+                                        <InsertPathButton
                                             key={p}
-                                            type="button"
-                                            className="block w-full text-left text-[11px] px-2 py-1 rounded hover:bg-muted"
-                                            onClick={() => insertPath(p)}
-                                            aria-label={`Insert ${p} at cursor`}
-                                        >
-                                            {p}
-                                        </button>
+                                            path={p}
+                                            onInsert={insertPath}
+                                        />
                                     ))}
                                 </div>
                             </div>
@@ -302,26 +360,6 @@ export function AdvancedTemplateEditor({ config, onChange }: { config: JsonRecor
     );
 }
 
-function useGroupKeys(groups: RuleGroup[]): string[] {
-    const keysRef = React.useRef<Map<RuleGroup, string>>(new Map());
-    groups.forEach(group => {
-        if (!keysRef.current.has(group)) {
-            keysRef.current.set(group, generateStableKey('group'));
-        }
-    });
-    return groups.map(g => keysRef.current.get(g) ?? generateStableKey('group'));
-}
-
-function useRuleKeys(rules: RuleCondition[]): string[] {
-    const keysRef = React.useRef<Map<RuleCondition, string>>(new Map());
-    rules.forEach(rule => {
-        if (!keysRef.current.has(rule)) {
-            keysRef.current.set(rule, generateStableKey('rule'));
-        }
-    });
-    return rules.map(r => keysRef.current.get(r) ?? generateStableKey('rule'));
-}
-
 export function AdvancedWhenEditor({ config, onChange }: { config: JsonRecord; onChange: (values: JsonRecord) => void }) {
     const typedConfig = config as WhenEditorConfig;
     const rawConds = Array.isArray(typedConfig.conditions) ? typedConfig.conditions : [];
@@ -329,7 +367,7 @@ export function AdvancedWhenEditor({ config, onChange }: { config: JsonRecord; o
     const groups: RuleGroup[] = isGrouped ? (rawConds as RuleGroup[]) : [{ logic: 'AND', rules: rawConds as RuleCondition[] }];
     const action = typedConfig.action ?? 'keep';
     const combine: LogicType = typedConfig.combine === 'OR' ? 'OR' : 'AND';
-    const groupKeys = useGroupKeys(groups);
+    const groupKeys = useStableKeys(groups, 'group');
 
     function commit(nextGroups: RuleGroup[]) { onChange({ ...config, conditions: nextGroups, combine }); }
     function addGroup() { commit([...groups, { logic: 'AND', rules: [] }]); }
@@ -340,7 +378,7 @@ export function AdvancedWhenEditor({ config, onChange }: { config: JsonRecord; o
     function removeRule(gi: number, ri: number) { commit(groups.map((g, idx) => idx === gi ? { ...g, rules: g.rules.filter((_r, ridx)=> ridx!==ri) } : g)); }
 
     return (
-        <Card>
+        <Card data-testid="datahub-advanced-when-editor">
             <CardHeader className="py-3"><CardTitle className="text-sm">Advanced: Rule Builder (When)</CardTitle></CardHeader>
             <CardContent className="space-y-3">
                 <div className="flex items-center gap-2">
@@ -393,8 +431,8 @@ interface RuleGroupCardProps {
     onRemoveRule: (ruleIndex: number) => void;
 }
 
-function RuleGroupCard({ group: g, groupIndex: gi, onUpdateLogic, onRemoveGroup, onAddRule, onUpdateRule, onRemoveRule }: RuleGroupCardProps) {
-    const ruleKeys = useRuleKeys(g.rules);
+const RuleGroupCard = React.memo(function RuleGroupCard({ group: g, groupIndex: gi, onUpdateLogic, onRemoveGroup, onAddRule, onUpdateRule, onRemoveRule }: RuleGroupCardProps) {
+    const ruleKeys = useStableKeys(g.rules, 'rule');
 
     return (
                         <div className="border rounded p-2 space-y-2">
@@ -407,10 +445,17 @@ function RuleGroupCard({ group: g, groupIndex: gi, onUpdateLogic, onRemoveGroup,
                                         <SelectItem value="OR">OR</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <Button variant="ghost" size="sm" className="text-destructive ml-auto" onClick={onRemoveGroup}>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-destructive ml-auto"
+                                    onClick={onRemoveGroup}
+                                    aria-label={`Remove rule group ${gi + 1}`}
+                                    data-testid={`datahub-when-remove-group-${gi}-btn`}
+                                >
                                     Remove
                                 </Button>
-                                <Button variant="outline" size="sm" onClick={onAddRule}>Add rule</Button>
+                                <Button variant="outline" size="sm" onClick={onAddRule} aria-label="Add rule to condition group" data-testid="datahub-rule-group-add-rule-btn">Add rule</Button>
                             </div>
                             <div className="space-y-2">
                                 {g.rules.map((c, ri) => (
@@ -449,30 +494,19 @@ function RuleGroupCard({ group: g, groupIndex: gi, onUpdateLogic, onRemoveGroup,
                                                 </>
                                             );
                                         })()}
-                                        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => onRemoveRule(ri)}>Remove</Button>
+                                        <RemoveRuleButton ruleIndex={ri} onRemove={onRemoveRule} />
                                     </div>
                                 ))}
                                 {g.rules.length === 0 && (<p className="text-xs text-muted-foreground">No rules in this group.</p>)}
                             </div>
                         </div>
     );
-}
+});
 
 interface MultiOperatorEditorProps {
     operators: OperatorConfig[];
     availableOperators: StepOperatorDefinition[];
     onChange: (operators: OperatorConfig[]) => void;
-}
-
-function useOperatorKeys(operators: OperatorConfig[]): string[] {
-    const keysRef = React.useRef(new WeakMap<OperatorConfig, string>());
-    operators.forEach(op => {
-        const existingKey = keysRef.current.get(op);
-        if (!existingKey) {
-            keysRef.current.set(op, generateStableKey('op'));
-        }
-    });
-    return operators.map(op => keysRef.current.get(op) ?? generateStableKey('op'));
 }
 
 /**
@@ -482,7 +516,7 @@ function useOperatorKeys(operators: OperatorConfig[]): string[] {
 export function MultiOperatorEditor({ operators, availableOperators, onChange }: MultiOperatorEditorProps) {
     const [expandedIndex, setExpandedIndex] = React.useState<number | null>(null);
     const [addingNew, setAddingNew] = React.useState(false);
-    const operatorKeys = useOperatorKeys(operators);
+    const operatorKeys = useStableKeys(operators, 'op');
 
     const updateOperator = (index: number, updates: Partial<OperatorConfig>) => {
         const newOps = [...operators];

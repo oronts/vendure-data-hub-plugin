@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useCallback } from 'react';
+import { useCallback, useMemo, useRef, memo } from 'react';
 import {
     Label,
     Select,
@@ -14,6 +14,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { VALIDATION_MODES, ERROR_HANDLING_MODES } from '../../../constants/step-configs';
 
 interface ValidationRule {
+    id?: string;
     type: string;
     spec: {
         field: string;
@@ -23,6 +24,50 @@ interface ValidationRule {
         pattern?: string;
         error?: string;
     };
+}
+
+interface ValidationRuleWithId extends ValidationRule {
+    id: string;
+}
+
+let validationRuleIdCounter = 0;
+function generateValidationRuleId(): string {
+    return `validation-rule-${Date.now()}-${++validationRuleIdCounter}`;
+}
+
+/**
+ * Hook to ensure all rules have stable IDs.
+ * Assigns IDs to rules that don't have them and maintains stability across renders.
+ */
+function useRulesWithStableIds(rules: ValidationRule[]): ValidationRuleWithId[] {
+    const idMapRef = useRef<Map<number, string>>(new Map());
+
+    return useMemo(() => {
+        const newIdMap = new Map<number, string>();
+
+        const rulesWithIds = rules.map((rule, index) => {
+            // If rule already has an ID, use it
+            if (rule.id) {
+                newIdMap.set(index, rule.id);
+                return rule as ValidationRuleWithId;
+            }
+
+            // Try to reuse ID from previous render at same index
+            const existingId = idMapRef.current.get(index);
+            if (existingId) {
+                newIdMap.set(index, existingId);
+                return { ...rule, id: existingId } as ValidationRuleWithId;
+            }
+
+            // Generate new ID
+            const newId = generateValidationRuleId();
+            newIdMap.set(index, newId);
+            return { ...rule, id: newId } as ValidationRuleWithId;
+        });
+
+        idMapRef.current = newIdMap;
+        return rulesWithIds;
+    }, [rules]);
 }
 
 export interface ValidateConfigComponentProps {
@@ -48,27 +93,33 @@ export function ValidateConfigComponent({
 }: ValidateConfigComponentProps) {
     const errorHandlingMode = (config.errorHandlingMode as string) || 'fail-fast';
     const validationMode = (config.validationMode as string) || 'strict';
-    const rules = (config.rules as ValidationRule[]) || [];
+    const rawRules = (config.rules as ValidationRule[]) || [];
+    const rules = useRulesWithStableIds(rawRules);
 
     const updateField = useCallback((key: string, value: unknown) => {
         onChange({ ...config, [key]: value });
     }, [config, onChange]);
 
     const addRule = useCallback(() => {
-        const newRules = [...rules, { type: 'business', spec: { field: '', required: true } }];
+        const newRule: ValidationRuleWithId = {
+            id: generateValidationRuleId(),
+            type: 'business',
+            spec: { field: '', required: true }
+        };
+        const newRules = [...rawRules, newRule];
         onChange({ ...config, rules: newRules });
-    }, [config, rules, onChange]);
+    }, [config, rawRules, onChange]);
 
     const updateRule = useCallback((index: number, spec: ValidationRule['spec']) => {
-        const newRules = [...rules];
+        const newRules = [...rawRules];
         newRules[index] = { ...newRules[index], spec };
         onChange({ ...config, rules: newRules });
-    }, [config, rules, onChange]);
+    }, [config, rawRules, onChange]);
 
     const removeRule = useCallback((index: number) => {
-        const newRules = rules.filter((_, i) => i !== index);
+        const newRules = rawRules.filter((_, i) => i !== index);
         onChange({ ...config, rules: newRules });
-    }, [config, rules, onChange]);
+    }, [config, rawRules, onChange]);
 
     return (
         <div className="space-y-4">
@@ -124,7 +175,13 @@ export function ValidateConfigComponent({
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <Label className="text-sm font-medium">Validation Rules</Label>
-                        <Button variant="outline" size="sm" onClick={addRule}>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={addRule}
+                            aria-label="Add validation rule"
+                            data-testid="datahub-validate-add-rule-btn"
+                        >
                             <Plus className="h-3 w-3 mr-1" />
                             Add Rule
                         </Button>
@@ -137,83 +194,137 @@ export function ValidateConfigComponent({
                     )}
 
                     {rules.map((rule, index) => (
-                        <div key={index} className="flex items-start gap-2 p-3 border rounded-md bg-muted/30">
-                            <div className="flex-1 space-y-2">
-                                <div className="flex gap-2">
-                                    <Input
-                                        value={rule.spec.field || ''}
-                                        onChange={(e) => updateRule(index, { ...rule.spec, field: e.target.value })}
-                                        placeholder="Field name (e.g., sku, price)"
-                                        className="flex-1"
-                                    />
-                                    <Select
-                                        value={rule.spec.required ? 'required' : rule.spec.min !== undefined ? 'range' : rule.spec.pattern ? 'pattern' : 'required'}
-                                        onValueChange={(v) => {
-                                            if (v === 'required') {
-                                                updateRule(index, { field: rule.spec.field, required: true });
-                                            } else if (v === 'range') {
-                                                updateRule(index, { field: rule.spec.field, min: 0 });
-                                            } else if (v === 'pattern') {
-                                                updateRule(index, { field: rule.spec.field, pattern: '' });
-                                            }
-                                        }}
-                                    >
-                                        <SelectTrigger className="w-32">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {RULE_TYPES.map((rt) => (
-                                                <SelectItem key={rt.value} value={rt.value}>
-                                                    {rt.label}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                {rule.spec.min !== undefined && (
-                                    <div className="flex gap-2">
-                                        <Input
-                                            type="number"
-                                            value={rule.spec.min ?? ''}
-                                            onChange={(e) => updateRule(index, { ...rule.spec, min: parseFloat(e.target.value) || 0 })}
-                                            placeholder="Min"
-                                            className="w-24"
-                                        />
-                                        <Input
-                                            type="number"
-                                            value={rule.spec.max ?? ''}
-                                            onChange={(e) => updateRule(index, { ...rule.spec, max: parseFloat(e.target.value) || undefined })}
-                                            placeholder="Max"
-                                            className="w-24"
-                                        />
-                                    </div>
-                                )}
-                                {rule.spec.pattern !== undefined && (
-                                    <Input
-                                        value={rule.spec.pattern || ''}
-                                        onChange={(e) => updateRule(index, { ...rule.spec, pattern: e.target.value })}
-                                        placeholder="Regex pattern (e.g., ^[A-Z]{3}-\\d+$)"
-                                    />
-                                )}
-                                <Input
-                                    value={rule.spec.error || ''}
-                                    onChange={(e) => updateRule(index, { ...rule.spec, error: e.target.value })}
-                                    placeholder="Error message (optional)"
-                                    className="text-xs"
-                                />
-                            </div>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeRule(index)}
-                                className="text-destructive hover:text-destructive"
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
-                        </div>
+                        <ValidationRuleRow
+                            key={rule.id}
+                            rule={rule}
+                            index={index}
+                            updateRule={updateRule}
+                            removeRule={removeRule}
+                        />
                     ))}
                 </div>
             )}
         </div>
     );
 }
+
+interface ValidationRuleRowProps {
+    rule: ValidationRuleWithId;
+    index: number;
+    updateRule: (index: number, spec: ValidationRule['spec']) => void;
+    removeRule: (index: number) => void;
+}
+
+const ValidationRuleRow = memo(function ValidationRuleRow({
+    rule,
+    index,
+    updateRule,
+    removeRule,
+}: ValidationRuleRowProps) {
+    const handleFieldChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        updateRule(index, { ...rule.spec, field: e.target.value });
+    }, [index, rule.spec, updateRule]);
+
+    const handleTypeChange = useCallback((v: string) => {
+        if (v === 'required') {
+            updateRule(index, { field: rule.spec.field, required: true });
+        } else if (v === 'range') {
+            updateRule(index, { field: rule.spec.field, min: 0 });
+        } else if (v === 'pattern') {
+            updateRule(index, { field: rule.spec.field, pattern: '' });
+        }
+    }, [index, rule.spec.field, updateRule]);
+
+    const handleMinChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        updateRule(index, { ...rule.spec, min: parseFloat(e.target.value) || 0 });
+    }, [index, rule.spec, updateRule]);
+
+    const handleMaxChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        updateRule(index, { ...rule.spec, max: parseFloat(e.target.value) || undefined });
+    }, [index, rule.spec, updateRule]);
+
+    const handlePatternChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        updateRule(index, { ...rule.spec, pattern: e.target.value });
+    }, [index, rule.spec, updateRule]);
+
+    const handleErrorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        updateRule(index, { ...rule.spec, error: e.target.value });
+    }, [index, rule.spec, updateRule]);
+
+    const handleRemove = useCallback(() => {
+        removeRule(index);
+    }, [index, removeRule]);
+
+    const currentType = rule.spec.required ? 'required' : rule.spec.min !== undefined ? 'range' : rule.spec.pattern ? 'pattern' : 'required';
+
+    return (
+        <div className="flex items-start gap-2 p-3 border rounded-md bg-muted/30" data-testid={`datahub-validate-rule-row-${index}`}>
+            <div className="flex-1 space-y-2">
+                <div className="flex gap-2">
+                    <Input
+                        value={rule.spec.field || ''}
+                        onChange={handleFieldChange}
+                        placeholder="Field name (e.g., sku, price)"
+                        className="flex-1"
+                    />
+                    <Select
+                        value={currentType}
+                        onValueChange={handleTypeChange}
+                    >
+                        <SelectTrigger className="w-32">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {RULE_TYPES.map((rt) => (
+                                <SelectItem key={rt.value} value={rt.value}>
+                                    {rt.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                {rule.spec.min !== undefined && (
+                    <div className="flex gap-2">
+                        <Input
+                            type="number"
+                            value={rule.spec.min ?? ''}
+                            onChange={handleMinChange}
+                            placeholder="Min"
+                            className="w-24"
+                        />
+                        <Input
+                            type="number"
+                            value={rule.spec.max ?? ''}
+                            onChange={handleMaxChange}
+                            placeholder="Max"
+                            className="w-24"
+                        />
+                    </div>
+                )}
+                {rule.spec.pattern !== undefined && (
+                    <Input
+                        value={rule.spec.pattern || ''}
+                        onChange={handlePatternChange}
+                        placeholder="Regex pattern (e.g., ^[A-Z]{3}-\\d+$)"
+                    />
+                )}
+                <Input
+                    value={rule.spec.error || ''}
+                    onChange={handleErrorChange}
+                    placeholder="Error message (optional)"
+                    className="text-xs"
+                />
+            </div>
+            <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRemove}
+                className="text-destructive hover:text-destructive"
+                aria-label={`Delete validation rule for ${rule.spec.field || 'field'}`}
+                data-testid={`datahub-validate-rule-delete-${index}-btn`}
+            >
+                <Trash2 className="h-4 w-4" />
+            </Button>
+        </div>
+    );
+});

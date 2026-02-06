@@ -54,10 +54,7 @@ export {
 
 export type { FilterOptions } from './adapter-grouping';
 
-export {
-    normalizeString,
-    generateStableKey,
-} from './string-helpers';
+export { normalizeString } from './string-helpers';
 
 export {
     FIELD_VARIATIONS,

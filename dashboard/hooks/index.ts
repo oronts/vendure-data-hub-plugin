@@ -31,3 +31,5 @@ export * from './api';
 
 export { useEditorData } from './useEditorData';
 export type { EditorData, EditorDataError } from './useEditorData';
+
+export { useStableKeys } from './useStableKeys';

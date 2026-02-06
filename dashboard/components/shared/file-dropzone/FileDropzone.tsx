@@ -50,6 +50,13 @@ function FileDropzoneComponent({
         }
     }, [selectedFile]);
 
+    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if ((e.key === 'Enter' || e.key === ' ') && !selectedFile) {
+            e.preventDefault();
+            inputRef.current?.click();
+        }
+    }, [selectedFile]);
+
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setDragOver(true);
@@ -82,11 +89,15 @@ function FileDropzoneComponent({
 
     return (
         <div
+            role="button"
+            tabIndex={0}
             className={`border-2 border-dashed rounded-lg ${padding} text-center transition-colors cursor-pointer ${borderClass} ${className}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             onClick={handleClick}
+            onKeyDown={handleKeyDown}
+            data-testid="datahub-filedropzone-dropzone"
         >
             <input
                 ref={inputRef}
@@ -94,6 +105,7 @@ function FileDropzoneComponent({
                 accept={acceptString}
                 onChange={handleChange}
                 className="hidden"
+                aria-label="Upload file"
             />
 
             {loading ? (
@@ -114,6 +126,7 @@ function FileDropzoneComponent({
                             size="sm"
                             className="mt-2"
                             onClick={handleClearClick}
+                            data-testid="datahub-filedropzone-remove"
                         >
                             <X className={`${ICON_SIZES.SM} mr-2`} />
                             Remove
@@ -141,12 +154,13 @@ function FileDropzoneComponent({
                     </p>
                     {allowedTypes && allowedTypes.length > 0 && (
                         <p className="text-sm text-muted-foreground mb-4">
-                            Supports: {allowedTypes.filter(Boolean).map(t => t!.toUpperCase()).join(', ')}
+                            Supports: {allowedTypes.filter((t): t is FileType => Boolean(t)).map(t => t.toUpperCase()).join(', ')}
                         </p>
                     )}
                     <Button
                         variant="outline"
                         onClick={handleBrowseClick}
+                        data-testid="datahub-filedropzone-browse"
                     >
                         <Upload className={`${ICON_SIZES.SM} mr-2`} />
                         Browse Files

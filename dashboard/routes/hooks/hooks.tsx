@@ -528,6 +528,15 @@ const HookStageCard = React.memo(function HookStageCard({
         }
     }, [disabled, onTest]);
 
+    const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            if (!disabled) {
+                onTest();
+            }
+        }
+    }, [disabled, onTest]);
+
     return (
         <div
             className={`
@@ -537,6 +546,11 @@ const HookStageCard = React.memo(function HookStageCard({
                 ${isConfigured ? 'bg-primary/5' : ''}
             `}
             onClick={handleClick}
+            onKeyDown={handleKeyDown}
+            role="button"
+            tabIndex={disabled ? -1 : 0}
+            aria-label={`Configure ${stage.label} hook stage`}
+            aria-disabled={disabled}
         >
             <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">

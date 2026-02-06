@@ -28,18 +28,19 @@ function ConfirmDialogComponent({
 
     return (
         <Dialog open={open} onOpenChange={() => onClose()}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-md" data-testid="datahub-confirm-dialog">
                 <DialogHeader>
                     <DialogTitle>{title}</DialogTitle>
                     <DialogDescription>{message}</DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
-                    <Button variant="outline" onClick={onClose}>
+                    <Button variant="outline" onClick={onClose} data-testid="datahub-confirm-dialog-cancel">
                         {cancelLabel}
                     </Button>
                     <Button
                         variant={destructive ? 'destructive' : 'default'}
                         onClick={handleConfirm}
+                        data-testid="datahub-confirm-dialog-confirm"
                     >
                         {confirmLabel}
                     </Button>

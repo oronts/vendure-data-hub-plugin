@@ -166,6 +166,51 @@ export function StepConfigPanel({
         });
     }, [onChange, data]);
 
+    const handleKeyChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        updateKey(e.target.value);
+    }, [updateKey]);
+
+    const handleAdapterCodeChange = useCallback((code: string) => {
+        if (code !== adapterCode) {
+            updateAdapterCode(code);
+        }
+    }, [adapterCode, updateAdapterCode]);
+
+    const handleResetDefaults = useCallback(() => {
+        const defaults: Record<string, unknown> = {};
+        for (const f of dynamicFields) {
+            if (f.defaultValue !== undefined) {
+                defaults[f.key] = f.defaultValue;
+            }
+        }
+        updateConfigBatch(defaults);
+    }, [dynamicFields, updateConfigBatch]);
+
+    const handleTriggerChange = useCallback((trigger: PipelineTrigger) => {
+        updateConfigBatch({
+            type: trigger.type,
+            enabled: trigger.enabled,
+            cron: trigger.cron,
+            timezone: trigger.timezone,
+            webhookCode: trigger.webhookCode,
+            authentication: trigger.authentication,
+            secretCode: trigger.secretCode,
+            event: trigger.eventType,
+            eventType: trigger.eventType,
+        });
+    }, [updateConfigBatch]);
+
+    const triggerValue = useMemo(() => ({
+        type: (data.config?.type as TriggerType) || 'manual',
+        enabled: data.config?.enabled !== false,
+        cron: data.config?.cron as string,
+        timezone: data.config?.timezone as string,
+        webhookCode: data.config?.webhookCode as string,
+        authentication: data.config?.authentication as PipelineTrigger['authentication'],
+        secretCode: data.config?.secretCode as string,
+        eventType: (data.config?.event as string) || (data.config?.eventType as string),
+    }), [data.config?.type, data.config?.enabled, data.config?.cron, data.config?.timezone, data.config?.webhookCode, data.config?.authentication, data.config?.secretCode, data.config?.event, data.config?.eventType]);
+
     const renderHeader = () => {
         if (!showHeader) return null;
 
@@ -233,7 +278,7 @@ export function StepConfigPanel({
                 </Label>
                 <Input
                     value={data.key}
-                    onChange={(e) => updateKey(e.target.value)}
+                    onChange={handleKeyChange}
                     placeholder="unique-step-key"
                     className={compact ? 'h-8 font-mono' : 'font-mono'}
                 />
@@ -251,29 +296,8 @@ export function StepConfigPanel({
 
         return (
             <TriggerForm
-                trigger={{
-                    type: (data.config?.type as TriggerType) || 'manual',
-                    enabled: data.config?.enabled !== false,
-                    cron: data.config?.cron as string,
-                    timezone: data.config?.timezone as string,
-                    webhookCode: data.config?.webhookCode as string,
-                    authentication: data.config?.authentication as PipelineTrigger['authentication'],
-                    secretCode: data.config?.secretCode as string,
-                    eventType: (data.config?.event as string) || (data.config?.eventType as string),
-                }}
-                onChange={(trigger) =>
-                    updateConfigBatch({
-                        type: trigger.type,
-                        enabled: trigger.enabled,
-                        cron: trigger.cron,
-                        timezone: trigger.timezone,
-                        webhookCode: trigger.webhookCode,
-                        authentication: trigger.authentication,
-                        secretCode: trigger.secretCode,
-                        event: trigger.eventType,
-                        eventType: trigger.eventType,
-                    })
-                }
+                trigger={triggerValue}
+                onChange={handleTriggerChange}
                 compact={compact}
             />
         );
@@ -339,11 +363,7 @@ export function StepConfigPanel({
                     <AdapterSelector
                         stepType={stepType}
                         value={adapterCode}
-                        onChange={(code) => {
-                            if (code !== adapterCode) {
-                                updateAdapterCode(code);
-                            }
-                        }}
+                        onChange={handleAdapterCodeChange}
                         placeholder={`Select ${getAdapterTypeLabel(adapterType).toLowerCase()}...`}
                         adapters={availableAdapters as unknown as DataHubAdapter[]}
                     />
@@ -395,15 +415,7 @@ export function StepConfigPanel({
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 text-xs"
-                                onClick={() => {
-                                    const defaults: Record<string, unknown> = {};
-                                    for (const f of dynamicFields) {
-                                        if (f.defaultValue !== undefined) {
-                                            defaults[f.key] = f.defaultValue;
-                                        }
-                                    }
-                                    updateConfigBatch(defaults);
-                                }}
+                                onClick={handleResetDefaults}
                             >
                                 Reset defaults
                             </Button>

@@ -189,7 +189,7 @@ function SettingsPage() {
         <Page pageId="data-hub-settings">
             <PageActionBar>
                 <PageActionBarRight>
-                    <Button onClick={handleSave} disabled={updateSettings.isPending || !isDirty || !isFormValid}>
+                    <Button onClick={handleSave} disabled={updateSettings.isPending || !isDirty || !isFormValid} data-testid="settings-save-button">
                         <Save className="w-4 h-4 mr-2" />
                         Save Settings
                     </Button>
@@ -224,6 +224,7 @@ function SettingsPage() {
                                         onChange={e => handleRunsDaysChange(e.target.value)}
                                         onBlur={() => handleBlur('runsDays')}
                                         className={errors.runsDays && touched.runsDays ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                        data-testid="settings-runs-retention-input"
                                     />
                                     <FieldError error={errors.runsDays} touched={touched.runsDays} />
                                     {!errors.runsDays && (
@@ -244,6 +245,7 @@ function SettingsPage() {
                                         onChange={e => handleErrorsDaysChange(e.target.value)}
                                         onBlur={() => handleBlur('errorsDays')}
                                         className={errors.errorsDays && touched.errorsDays ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                        data-testid="settings-errors-retention-input"
                                     />
                                     <FieldError error={errors.errorsDays} touched={touched.errorsDays} />
                                     {!errors.errorsDays && (
@@ -287,7 +289,7 @@ function SettingsPage() {
                                 <div className="space-y-2">
                                     <Label htmlFor="log-level">Log Persistence Level</Label>
                                     <Select value={logLevel} onValueChange={handleLogLevelChange}>
-                                        <SelectTrigger id="log-level">
+                                        <SelectTrigger id="log-level" data-testid="settings-log-level-select">
                                             <SelectValue placeholder="Select level..." />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -316,6 +318,7 @@ function SettingsPage() {
                                         onChange={e => handleLogsDaysChange(e.target.value)}
                                         onBlur={() => handleBlur('logsDays')}
                                         className={errors.logsDays && touched.logsDays ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                        data-testid="settings-logs-retention-input"
                                     />
                                     <FieldError error={errors.logsDays} touched={touched.logsDays} />
                                     {!errors.logsDays && (

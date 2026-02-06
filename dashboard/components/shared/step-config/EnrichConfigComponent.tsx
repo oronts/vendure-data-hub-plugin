@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useMemo, memo } from 'react';
 import {
     Label,
     Select,
@@ -18,8 +18,45 @@ export interface EnrichConfigComponentProps {
 }
 
 interface DefaultValue {
+    id: string;
     field: string;
     value: string;
+}
+
+let defaultValueIdCounter = 0;
+function generateDefaultValueId(): string {
+    return `default-value-${Date.now()}-${++defaultValueIdCounter}`;
+}
+
+/**
+ * Hook to maintain stable IDs for list items across renders.
+ * Maps field names to stable IDs, generating new IDs only for new fields.
+ */
+function useStableIds(fields: string[]): Map<number, string> {
+    const idMapRef = useRef<Map<number, string>>(new Map());
+    const previousFieldsRef = useRef<string[]>([]);
+
+    return useMemo(() => {
+        const newIdMap = new Map<number, string>();
+        const previousFields = previousFieldsRef.current;
+        const previousIdMap = idMapRef.current;
+
+        fields.forEach((field, index) => {
+            // Try to find a matching previous item by index first (most common case)
+            if (index < previousFields.length && previousIdMap.has(index)) {
+                // Reuse the ID from the same position
+                newIdMap.set(index, previousIdMap.get(index)!);
+            } else {
+                // Generate a new ID for new items
+                newIdMap.set(index, generateDefaultValueId());
+            }
+        });
+
+        previousFieldsRef.current = [...fields];
+        idMapRef.current = newIdMap;
+
+        return newIdMap;
+    }, [fields]);
 }
 
 const SOURCE_TYPES = [
@@ -34,10 +71,16 @@ export function EnrichConfigComponent({
 }: EnrichConfigComponentProps) {
     const sourceType = (config.sourceType as string) || 'STATIC';
 
+    // Use refs to avoid stale closures in the initialization effect
+    const configRef = useRef(config);
+    const onChangeRef = useRef(onChange);
+    configRef.current = config;
+    onChangeRef.current = onChange;
+
     // Initialize sourceType if not set - ensures validation passes
     useEffect(() => {
-        if (!config.sourceType) {
-            onChange({ ...config, sourceType: 'STATIC' });
+        if (!configRef.current.sourceType) {
+            onChangeRef.current({ ...configRef.current, sourceType: 'STATIC' });
         }
     }, []);
     const defaults = (config.defaults as Record<string, unknown>) || {};
@@ -45,7 +88,11 @@ export function EnrichConfigComponent({
     const entity = (config.entity as string) || '';
     const matchField = (config.matchField as string) || '';
 
-    const defaultsList: DefaultValue[] = Object.entries(defaults).map(([field, value]) => ({
+    const defaultsEntries = Object.entries(defaults);
+    const stableIds = useStableIds(defaultsEntries.map(([field]) => field));
+
+    const defaultsList: DefaultValue[] = defaultsEntries.map(([field, value], index) => ({
+        id: stableIds.get(index) || generateDefaultValueId(),
         field,
         value: typeof value === 'string' ? value : JSON.stringify(value),
     }));
@@ -69,12 +116,12 @@ export function EnrichConfigComponent({
     }, [config, onChange]);
 
     const addDefault = useCallback(() => {
-        updateDefaults([...defaultsList, { field: '', value: '' }]);
+        updateDefaults([...defaultsList, { id: generateDefaultValueId(), field: '', value: '' }]);
     }, [defaultsList, updateDefaults]);
 
     const updateDefaultItem = useCallback((index: number, field: string, value: string) => {
         const newList = [...defaultsList];
-        newList[index] = { field, value };
+        newList[index] = { ...newList[index], field, value };
         updateDefaults(newList);
     }, [defaultsList, updateDefaults]);
 
@@ -91,7 +138,7 @@ export function EnrichConfigComponent({
                     value={sourceType}
                     onValueChange={(v) => updateField('sourceType', v)}
                 >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="w-full" data-testid="datahub-enrich-source-select">
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -111,7 +158,13 @@ export function EnrichConfigComponent({
                 <div className="space-y-3">
                     <div className="flex items-center justify-between">
                         <Label className="text-sm font-medium">Default Values</Label>
-                        <Button variant="outline" size="sm" onClick={addDefault}>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={addDefault}
+                            aria-label="Add default field value"
+                            data-testid="datahub-enrich-add-default-btn"
+                        >
                             <Plus className="h-3 w-3 mr-1" />
                             Add Field
                         </Button>
@@ -124,28 +177,13 @@ export function EnrichConfigComponent({
                     )}
 
                     {defaultsList.map((item, index) => (
-                        <div key={index} className="flex items-start gap-2">
-                            <Input
-                                value={item.field}
-                                onChange={(e) => updateDefaultItem(index, e.target.value, item.value)}
-                                placeholder="Field name"
-                                className="w-40"
-                            />
-                            <Input
-                                value={item.value}
-                                onChange={(e) => updateDefaultItem(index, item.field, e.target.value)}
-                                placeholder="Value (JSON or string)"
-                                className="flex-1"
-                            />
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeDefault(index)}
-                                className="text-destructive hover:text-destructive"
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
-                        </div>
+                        <DefaultValueRow
+                            key={item.id}
+                            item={item}
+                            index={index}
+                            updateDefaultItem={updateDefaultItem}
+                            removeDefault={removeDefault}
+                        />
                     ))}
                 </div>
             )}
@@ -213,3 +251,56 @@ export function EnrichConfigComponent({
         </div>
     );
 }
+
+interface DefaultValueRowProps {
+    item: DefaultValue;
+    index: number;
+    updateDefaultItem: (index: number, field: string, value: string) => void;
+    removeDefault: (index: number) => void;
+}
+
+const DefaultValueRow = memo(function DefaultValueRow({
+    item,
+    index,
+    updateDefaultItem,
+    removeDefault,
+}: DefaultValueRowProps) {
+    const handleFieldChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        updateDefaultItem(index, e.target.value, item.value);
+    }, [index, item.value, updateDefaultItem]);
+
+    const handleValueChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        updateDefaultItem(index, item.field, e.target.value);
+    }, [index, item.field, updateDefaultItem]);
+
+    const handleRemove = useCallback(() => {
+        removeDefault(index);
+    }, [index, removeDefault]);
+
+    return (
+        <div className="flex items-start gap-2" data-testid={`datahub-enrich-default-row-${index}`}>
+            <Input
+                value={item.field}
+                onChange={handleFieldChange}
+                placeholder="Field name"
+                className="w-40"
+            />
+            <Input
+                value={item.value}
+                onChange={handleValueChange}
+                placeholder="Value (JSON or string)"
+                className="flex-1"
+            />
+            <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRemove}
+                className="text-destructive hover:text-destructive"
+                aria-label={`Remove default value for ${item.field || 'field'}`}
+                data-testid={`datahub-enrich-remove-default-${index}-btn`}
+            >
+                <Trash2 className="h-4 w-4" />
+            </Button>
+        </div>
+    );
+});

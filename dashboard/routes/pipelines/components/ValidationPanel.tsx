@@ -26,7 +26,7 @@ export function ValidationPanel({
 }: ValidationPanelProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className={DIALOG_DIMENSIONS.MAX_WIDTH_2XL}>
+            <DialogContent className={DIALOG_DIMENSIONS.MAX_WIDTH_2XL} data-testid="validation-dialog">
                 <DialogHeader>
                     <DialogTitle>Validation Issues</DialogTitle>
                     <DialogDescription>Fix the following before publishing.</DialogDescription>
@@ -55,7 +55,7 @@ export function ValidationPanel({
                 </div>
                 <div className="flex justify-end">
                     <DialogClose asChild>
-                        <Button variant="outline">Close</Button>
+                        <Button variant="outline" data-testid="validation-dialog-close-button">Close</Button>
                     </DialogClose>
                 </div>
             </DialogContent>
