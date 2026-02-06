@@ -111,24 +111,3 @@ export interface JobOptions {
     /** Maximum retry attempts for this job */
     retries?: number;
 }
-
-export function isCronSchedule(config: ScheduleConfig): config is CronScheduleConfig {
-    return 'cron' in config && typeof config.cron === 'string';
-}
-
-/**
- * Check if schedule config is interval-based
- */
-export function isIntervalSchedule(config: ScheduleConfig): config is IntervalScheduleConfig {
-    return 'intervalSec' in config && typeof config.intervalSec === 'number';
-}
-
-/**
- * Get the cron expression from a config
- */
-export function getCronExpression(config: ScheduleConfig): string | undefined {
-    if ('cron' in config && typeof config.cron === 'string') {
-        return config.cron;
-    }
-    return undefined;
-}

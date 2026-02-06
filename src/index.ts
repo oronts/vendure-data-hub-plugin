@@ -17,6 +17,14 @@ export {
     PublishDataHubPipelinePermission,
     ReviewDataHubPipelinePermission,
     UpdateDataHubSettingsPermission,
+    ViewDataHubAnalyticsPermission,
+    ManageDataHubWebhooksPermission,
+    ManageDataHubDestinationsPermission,
+    ManageDataHubFeedsPermission,
+    ViewDataHubEntitySchemasPermission,
+    SubscribeDataHubEventsPermission,
+    ManageDataHubFilesPermission,
+    ReadDataHubFilesPermission,
 } from './permissions';
 
 export {
@@ -44,7 +52,6 @@ export {
     DOMAIN_EVENTS,
     CONNECTION_POOL,
     METRICS,
-    DEFAULTS,
     TIME_UNITS,
     TIME_INTERVALS,
     UI_TIMEOUTS,
@@ -52,7 +59,6 @@ export {
     WEIGHT_UNITS,
     LENGTH_UNITS,
     VOLUME_UNITS,
-    TEMPERATURE_UNITS,
     UNIT_CONVERSIONS,
     CURRENCY_DECIMALS,
     STEP_ICONS,
@@ -60,20 +66,12 @@ export {
     STEP_COLORS,
     STATUS_COLORS,
     PIPELINE_STATUS_COLORS,
-    NODE_COLORS,
-    BRAND_COLORS,
-    UI_COLORS,
-    DISPLAY_CHARS,
-    FILE_SIZE_UNITS,
-    FILE_SIZE_BASE,
     SEARCH_SERVICE_URLS,
     EXAMPLE_URLS,
     SERVICE_DEFAULTS,
     FEED_NAMESPACES,
-    RSS_VERSIONS,
     CONTENT_TYPES,
     HTTP_HEADERS,
-    OAUTH2_GRANT_TYPES,
     BUILTIN_ADAPTERS,
     EXTRACTOR_ADAPTERS,
     LOADER_ADAPTERS,
@@ -207,7 +205,7 @@ export { FeedExecutor } from './runtime/executors/feed.executor';
 export { SinkExecutor } from './runtime/executors/sink.executor';
 export { TransformExecutor as RuntimeTransformExecutor } from './runtime/executors/transform.executor';
 
-export { ExtractorRegistryService, BUILT_IN_EXTRACTOR_CLASSES, BUILT_IN_EXTRACTORS } from './extractors';
+export { ExtractorRegistryService } from './extractors';
 export { HttpApiExtractor } from './extractors/http-api';
 export { DatabaseExtractor } from './extractors/database';
 export { S3Extractor } from './extractors/s3';
@@ -231,7 +229,7 @@ export { ShippingMethodLoader } from './loaders/shipping-method';
 export { InventoryLoader } from './loaders/inventory';
 export { StockLocationLoader } from './loaders/stock-location';
 
-export { ALL_OPERATOR_DEFINITIONS, OPERATOR_DEFINITIONS_BY_CATEGORY } from './operators';
+export { ALL_OPERATOR_DEFINITIONS } from './operators';
 
 export { DataHubRegistryService } from './sdk/registry.service';
 
@@ -296,7 +294,6 @@ export type {
     JobQueueConfig,
     JobOptions,
 } from './jobs';
-export { isCronSchedule, isIntervalSchedule, getCronExpression } from './jobs';
 
 // Script operator security exports
 export {
