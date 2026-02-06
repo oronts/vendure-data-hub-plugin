@@ -17,6 +17,7 @@ import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/inde
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { getErrorMessage } from '../../../services/logger/error-utils';
+import { getStringValue } from '../../../loaders/shared-helpers';
 
 /**
  * Configuration for collection handler step
@@ -44,21 +45,6 @@ interface CoercedCollectionFields {
     name: string | undefined;
     description: string | undefined;
     parentSlug: string | undefined;
-}
-
-/**
- * Type guard to safely get a string value from a record
- */
-function getStringValue(record: RecordObject, key: string): string | undefined {
-    const value = record[key];
-    if (typeof value === 'string') {
-        return value || undefined;
-    }
-    if (value !== null && value !== undefined) {
-        const str = String(value);
-        return str || undefined;
-    }
-    return undefined;
 }
 
 /**
@@ -244,8 +230,8 @@ export class CollectionHandler implements LoaderHandler {
             const { slug } = fields;
             if (!slug) continue;
 
-            const c = await this.collectionService.findOneBySlug(ctx, slug);
-            if (c) {
+            const collection = await this.collectionService.findOneBySlug(ctx, slug);
+            if (collection) {
                 exists++;
             } else {
                 missing++;

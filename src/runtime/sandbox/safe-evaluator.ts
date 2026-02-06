@@ -1,7 +1,7 @@
 /**
  * Safe Expression Evaluator
  *
- * Provides secure evaluation of user-provided expressions with:
+ * Secure evaluation of user-provided expressions with:
  * - Whitelist of allowed operations
  * - No access to global objects
  * - Timeout enforcement
@@ -348,7 +348,7 @@ export class SafeEvaluator {
      * Validate an expression for security issues
      */
     private validateExpression(expr: string): void {
-        // Use the comprehensive code security validation
+        // Use the code security validation
         validateUserCode(expr, this.config.security);
 
         // Additional whitelist validation for methods
@@ -414,7 +414,7 @@ export class SafeEvaluator {
     /**
      * Create a safe function from an expression
      *
-     * Security: Uses Function constructor after comprehensive validation:
+     * Security: Uses Function constructor after validation:
      * 1. Expression validated against dangerous patterns (semicolons, braces, backticks)
      * 2. Disallowed keywords blocked (eval, Function, constructor, __proto__, etc.)
      * 3. Prototype pollution patterns detected and blocked
@@ -432,7 +432,7 @@ export class SafeEvaluator {
 
         // Build the function body with strict mode and return
         // The expression is wrapped to ensure it returns a value
-        const fnBody = `
+        const functionBody = `
             "use strict";
             return (${expr});
         `;
@@ -440,7 +440,7 @@ export class SafeEvaluator {
         try {
             // Create the function with all parameters
             // eslint-disable-next-line no-new-func
-            const fn = new Function(...allParams, fnBody) as CompiledFunction;
+            const fn = new Function(...allParams, functionBody) as CompiledFunction;
 
             // Verify the function doesn't expose dangerous properties
             // eslint-disable-next-line @typescript-eslint/ban-types

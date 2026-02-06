@@ -7,7 +7,7 @@ import { RequestContext } from '@vendure/core';
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { SecretService } from '../../../services/config/secret.service';
-import { CircuitBreakerService, CircuitOpenError } from '../../../services/runtime/circuit-breaker.service';
+import { CircuitBreakerService } from '../../../services/runtime/circuit-breaker.service';
 import { sleep, chunk } from '../../utils';
 import { LoaderHandler } from './types';
 import { TIME, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, AuthType, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
@@ -133,12 +133,12 @@ export class RestPostHandler implements LoaderHandler {
                             '${timestamp}': String(ts),
                             '${body}': JSON.stringify(body),
                         };
-                        let strToSign = payloadTemplate;
+                        let payloadToSign = payloadTemplate;
                         for (const [k, v] of Object.entries(replMap)) {
-                            strToSign = strToSign.split(k).join(v);
+                            payloadToSign = payloadToSign.split(k).join(v);
                         }
                         if (secret) {
-                            const signature = crypto.createHmac('sha256', secret).update(strToSign).digest('hex');
+                            const signature = crypto.createHmac('sha256', secret).update(payloadToSign).digest('hex');
                             reqHeaders = { ...reqHeaders, [String(cfg.hmacHeader)]: signature, 'x-timestamp': String(ts) };
                         }
                     }

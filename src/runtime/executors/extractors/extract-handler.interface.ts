@@ -8,7 +8,7 @@
  */
 
 import { RequestContext } from '@vendure/core';
-import { PipelineStepDefinition, JsonObject } from '../../../types/index';
+import { PipelineStepDefinition } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutorContext } from '../../executor-types';
 
 /**

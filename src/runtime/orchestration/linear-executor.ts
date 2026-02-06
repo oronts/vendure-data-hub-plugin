@@ -1,10 +1,10 @@
 /**
  * Linear Executor
  *
- * Handles linear pipeline execution where steps are executed sequentially
- * in the order they are defined (no graph edges).
+ * Sequential pipeline execution where steps are executed in
+ * the order they are defined (no graph edges).
  *
- * Uses the Strategy pattern to delegate step execution to specialized strategies.
+ * Uses the Strategy pattern for step execution.
  */
 
 import { Logger } from '@nestjs/common';

@@ -1,7 +1,7 @@
 /**
  * Sink Step Strategy
  *
- * Handles SINK step execution in linear pipelines.
+ * SINK step execution in linear pipelines.
  */
 
 import { SinkExecutor } from '../../executors';

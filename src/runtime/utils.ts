@@ -53,25 +53,25 @@ export function parseCsv(text: string, delimiter = ',', hasHeader = true): Recor
  */
 export function splitCsvLine(line: string, delimiter: string): string[] {
     const out: string[] = [];
-    let cur = '';
+    let currentValue = '';
     let inQuotes = false;
     for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (ch === '"') {
+        const char = line[i];
+        if (char === '"') {
             if (inQuotes && line[i + 1] === '"') {
-                cur += '"';
+                currentValue += '"';
                 i++;
             } else {
                 inQuotes = !inQuotes;
             }
-        } else if (ch === delimiter && !inQuotes) {
-            out.push(cur);
-            cur = '';
+        } else if (char === delimiter && !inQuotes) {
+            out.push(currentValue);
+            currentValue = '';
         } else {
-            cur += ch;
+            currentValue += char;
         }
     }
-    out.push(cur);
+    out.push(currentValue);
     return out.map(s => s.trim());
 }
 
@@ -79,20 +79,20 @@ export function splitCsvLine(line: string, delimiter: string): string[] {
  * Converts parallel arrays of keys and values into an object
  */
 export function arrayToObject(keys: string[], values: JsonValue[]): JsonObject {
-    const o: JsonObject = {};
+    const result: JsonObject = {};
     for (let i = 0; i < keys.length; i++) {
-        o[keys[i]] = values[i];
+        result[keys[i]] = values[i];
     }
-    return o;
+    return result;
 }
 
 /**
  * Converts a value to string or returns undefined if empty
  */
-export function strOrUndefined(v: unknown): string | undefined {
+export function toStringOrUndefined(v: unknown): string | undefined {
     if (v == null) return undefined;
-    const s = String(v);
-    return s.length ? s : undefined;
+    const str = String(v);
+    return str.length ? str : undefined;
 }
 
 /**
@@ -239,31 +239,31 @@ export function validateAgainstSimpleSpec(
 ): string[] {
     const errors: string[] = [];
     for (const [key, spec] of Object.entries(fields)) {
-        const v = getPath(rec, key);
-        if (spec.required && (v === undefined || v === null || v === '')) {
+        const value = getPath(rec, key);
+        if (spec.required && (value === undefined || value === null || value === '')) {
             errors.push(`${key} is required`);
             continue;
         }
-        if (v != null && spec.type) {
-            const t = typeof v;
-            if (spec.type === 'number' && t !== 'number') errors.push(`${key} must be number`);
-            if (spec.type === 'string' && t !== 'string') errors.push(`${key} must be string`);
-            if (spec.type === 'boolean' && t !== 'boolean') errors.push(`${key} must be boolean`);
+        if (value != null && spec.type) {
+            const valueType = typeof value;
+            if (spec.type === 'number' && valueType !== 'number') errors.push(`${key} must be number`);
+            if (spec.type === 'string' && valueType !== 'string') errors.push(`${key} must be string`);
+            if (spec.type === 'boolean' && valueType !== 'boolean') errors.push(`${key} must be boolean`);
         }
-        if (v != null && Array.isArray(spec.enum) && spec.enum.length > 0) {
-            if (!spec.enum.includes(v)) errors.push(`${key} must be one of [${spec.enum.join(', ')}]`);
+        if (value != null && Array.isArray(spec.enum) && spec.enum.length > 0) {
+            if (!spec.enum.includes(value)) errors.push(`${key} must be one of [${spec.enum.join(', ')}]`);
         }
-        if (v != null && typeof v === 'number') {
-            if (typeof spec.min === 'number' && v < spec.min) errors.push(`${key} must be >= ${spec.min}`);
-            if (typeof spec.max === 'number' && v > spec.max) errors.push(`${key} must be <= ${spec.max}`);
+        if (value != null && typeof value === 'number') {
+            if (typeof spec.min === 'number' && value < spec.min) errors.push(`${key} must be >= ${spec.min}`);
+            if (typeof spec.max === 'number' && value > spec.max) errors.push(`${key} must be <= ${spec.max}`);
         }
-        if (v != null && typeof v === 'string') {
-            if (typeof spec.minLength === 'number' && v.length < spec.minLength) errors.push(`${key} length must be >= ${spec.minLength}`);
-            if (typeof spec.maxLength === 'number' && v.length > spec.maxLength) errors.push(`${key} length must be <= ${spec.maxLength}`);
+        if (value != null && typeof value === 'string') {
+            if (typeof spec.minLength === 'number' && value.length < spec.minLength) errors.push(`${key} length must be >= ${spec.minLength}`);
+            if (typeof spec.maxLength === 'number' && value.length > spec.maxLength) errors.push(`${key} length must be <= ${spec.maxLength}`);
             if (spec.pattern) {
                 try {
                     const re = new RegExp(spec.pattern);
-                    if (!re.test(v)) errors.push(`${key} does not match pattern`);
+                    if (!re.test(value)) errors.push(`${key} does not match pattern`);
                 } catch (error) {
                     errors.push(`${key} has invalid regex pattern: ${error instanceof Error ? error.message : String(error)}`);
                 }

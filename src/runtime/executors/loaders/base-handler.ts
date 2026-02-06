@@ -1,7 +1,7 @@
 /**
  * Base Handler Abstract Class
  *
- * Provides common functionality for all loader handlers to eliminate
+ * Common functionality for all loader handlers to eliminate
  * duplicate code patterns across handler implementations.
  *
  * @module runtime/executors/loaders

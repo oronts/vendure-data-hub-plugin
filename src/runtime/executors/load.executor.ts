@@ -1,8 +1,5 @@
 /**
- * Load Executor - Coordinator for all loader handlers
- *
- * This file coordinates the execution of various loader handlers.
- * The handlers have been split into specialized modules for better maintainability:
+ * Load Executor - Routes load operations to handler modules:
  *
  * - product-handler.ts: Product and variant upsert
  * - variant-handler.ts: Variant upsert standalone
@@ -59,7 +56,7 @@ interface LoadStepCfg {
 @Injectable()
 export class LoadExecutor {
     private readonly logger: DataHubLogger;
-    private readonly impls: Record<string, (ctx: RequestContext, step: PipelineStepDefinition, input: RecordObject[], onRecordError?: OnRecordErrorCallback, errorHandling?: ErrorHandlingConfig) => Promise<ExecutionResult>>;
+    private readonly handlers: Record<string, (ctx: RequestContext, step: PipelineStepDefinition, input: RecordObject[], onRecordError?: OnRecordErrorCallback, errorHandling?: ErrorHandlingConfig) => Promise<ExecutionResult>>;
 
     constructor(
         private productHandler: ProductHandler,
@@ -82,7 +79,7 @@ export class LoadExecutor {
         @Optional() private registry?: DataHubRegistryService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.LOAD_EXECUTOR);
-        this.impls = {
+        this.handlers = {
             [LOADER_CODE.PRODUCT_UPSERT]: (ctx, step, input, onErr, err) => this.productHandler.execute(ctx, step, input, onErr, err),
             [LOADER_CODE.VARIANT_UPSERT]: (ctx, step, input, onErr, err) => this.variantHandler.execute(ctx, step, input, onErr, err),
             [LOADER_CODE.CUSTOMER_UPSERT]: (ctx, step, input, onErr, err) => this.customerHandler.execute(ctx, step, input, onErr, err),
@@ -108,7 +105,6 @@ export class LoadExecutor {
         errorHandling?: ErrorHandlingConfig,
         pipelineContext?: PipelineContext,
     ): Promise<ExecutionResult> {
-        const cfg = step.config as LoadStepCfg;
         const adapterCode = getAdapterCode(step) || undefined;
         const startTime = Date.now();
 
@@ -119,9 +115,9 @@ export class LoadExecutor {
         });
 
         // Try built-in loaders first
-        const impl = adapterCode ? this.impls[adapterCode] : undefined;
-        if (impl) {
-            const result = await impl(ctx, step, input, onRecordError, errorHandling);
+        const handler = adapterCode ? this.handlers[adapterCode] : undefined;
+        if (handler) {
+            const result = await handler(ctx, step, input, onRecordError, errorHandling);
             const durationMs = Date.now() - startTime;
             this.logger.logLoaderOperation(adapterCode ?? 'unknown', 'upsert', result.ok, result.fail, durationMs);
             return result;
@@ -129,7 +125,7 @@ export class LoadExecutor {
 
         // Try custom loaders from registry
         if (adapterCode && this.registry) {
-            const customLoader = this.registry.getRuntime('loader', adapterCode) as LoaderAdapter<any> | undefined;
+            const customLoader = this.registry.getRuntime('loader', adapterCode) as LoaderAdapter<unknown> | undefined;
             if (customLoader && typeof customLoader.load === 'function') {
                 const result = await this.executeCustomLoader(ctx, step, input, customLoader, pipelineContext);
                 const durationMs = Date.now() - startTime;
@@ -151,7 +147,7 @@ export class LoadExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        loader: LoaderAdapter<any>,
+        loader: LoaderAdapter<unknown>,
         pipelineContext?: PipelineContext,
     ): Promise<ExecutionResult> {
         const cfg = step.config as LoadStepCfg;

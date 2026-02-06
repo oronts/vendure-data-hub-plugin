@@ -1,7 +1,7 @@
 /**
  * Memory Extract Handler
  *
- * Handles extraction of records from in-memory sources:
+ * Extracts records from in-memory sources:
  * - inMemory: Direct data from webhook payloads or inline definitions
  * - generator: Synthetic test data generation
  *
@@ -29,8 +29,6 @@ interface GeneratorExtractConfig {
     count?: number;
     template?: Record<string, unknown>;
 }
-
-type GeneratorType = 'uuid' | 'timestamp' | 'isoDate' | 'index' | string;
 
 @Injectable()
 export class MemoryExtractHandler implements ExtractHandler {

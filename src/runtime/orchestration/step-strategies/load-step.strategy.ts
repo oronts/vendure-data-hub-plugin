@@ -1,7 +1,7 @@
 /**
  * Load Step Strategy
  *
- * Handles LOAD step execution in linear pipelines.
+ * LOAD step execution in linear pipelines.
  */
 
 import { RequestContext } from '@vendure/core';

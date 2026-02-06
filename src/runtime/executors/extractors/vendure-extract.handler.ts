@@ -1,7 +1,7 @@
 /**
  * Vendure Entity Extract Handler
  *
- * Handles extraction of records from Vendure entities with support for:
+ * Extracts records from Vendure entities with support for:
  * - TypeORM relations (single and two-level)
  * - Filtering with various operators
  * - Pagination with offset
@@ -12,11 +12,11 @@
 
 import { Injectable } from '@nestjs/common';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
-import { SelectQueryBuilder } from 'typeorm';
+import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { SortOrder } from '../../../constants/index';
 import { RecordObject } from '../../executor-types';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { DEFAULTS, LOGGER_CONTEXTS } from '../../../constants/index';
+import { BATCH, LOGGER_CONTEXTS } from '../../../constants/index';
 import { getEntityClass, entityToRecord, EntityLike } from '../../../extractors/vendure-query/helpers';
 import { VendureQueryExtractorConfig } from '../../../extractors/vendure-query/types';
 import {
@@ -131,7 +131,7 @@ export class VendureExtractHandler implements ExtractHandler {
         const totalCount = await repo.count();
         this.logger.info('vendureQuery: total entities in table', { stepKey: step.key, entity: cfg.entity, totalCount });
 
-        const batchSize = Number(cfg.batchSize) || DEFAULTS.BATCH_SIZE;
+        const batchSize = Number(cfg.batchSize) || BATCH.SIZE;
         const offset = getCheckpointValue(executorCtx, step.key, 'offset', 0);
         this.logger.info('vendureQuery: using offset', { stepKey: step.key, offset, batchSize, totalCount });
 
@@ -156,7 +156,7 @@ export class VendureExtractHandler implements ExtractHandler {
         return results as RecordObject[];
     }
 
-    private addRelations(queryBuilder: SelectQueryBuilder<any>, relations: string[]): void {
+    private addRelations(queryBuilder: SelectQueryBuilder<ObjectLiteral>, relations: string[]): void {
         const addedAliases = new Set<string>();
 
         for (const relation of relations) {
@@ -169,7 +169,7 @@ export class VendureExtractHandler implements ExtractHandler {
     }
 
     private addNestedRelation(
-        queryBuilder: SelectQueryBuilder<any>,
+        queryBuilder: SelectQueryBuilder<ObjectLiteral>,
         relation: string,
         addedAliases: Set<string>,
     ): void {
@@ -186,7 +186,7 @@ export class VendureExtractHandler implements ExtractHandler {
     }
 
     private addSingleRelation(
-        queryBuilder: SelectQueryBuilder<any>,
+        queryBuilder: SelectQueryBuilder<ObjectLiteral>,
         relation: string,
         addedAliases: Set<string>,
     ): void {
@@ -196,7 +196,7 @@ export class VendureExtractHandler implements ExtractHandler {
         }
     }
 
-    private addFilters(queryBuilder: SelectQueryBuilder<any>, filters?: VendureExtractConfig['filters']): void {
+    private addFilters(queryBuilder: SelectQueryBuilder<ObjectLiteral>, filters?: VendureExtractConfig['filters']): void {
         if (!Array.isArray(filters)) return;
 
         for (const filter of filters) {
@@ -235,7 +235,7 @@ export class VendureExtractHandler implements ExtractHandler {
         return value;
     }
 
-    private addWhereClause(queryBuilder: SelectQueryBuilder<any>, where?: Record<string, unknown>): void {
+    private addWhereClause(queryBuilder: SelectQueryBuilder<ObjectLiteral>, where?: Record<string, unknown>): void {
         if (!where || typeof where !== 'object') return;
 
         for (const [field, value] of Object.entries(where)) {
@@ -245,7 +245,7 @@ export class VendureExtractHandler implements ExtractHandler {
     }
 
     private addSortingAndPagination(
-        queryBuilder: SelectQueryBuilder<any>,
+        queryBuilder: SelectQueryBuilder<ObjectLiteral>,
         cfg: VendureExtractConfig,
         offset: number,
         batchSize: number,

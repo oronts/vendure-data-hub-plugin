@@ -176,9 +176,9 @@ export class FeedExecutor {
                 try {
                     const filePath = cfg.outputPath ?? getOutputPath('custom-feed', 'json');
                     outputPath = filePath;
-                    const customCfg = cfg as Record<string, JsonValue>;
-                    const format = (customCfg.format as string) ?? 'json';
-                    const customFields = customCfg.fieldMapping as Record<string, string> | undefined;
+                    const customConfig = cfg as Record<string, JsonValue>;
+                    const format = (customConfig.format as string) ?? 'json';
+                    const customFields = customConfig.fieldMapping as Record<string, string> | undefined;
                     const items = input.map(rec => {
                         if (customFields) {
                             const mapped: RecordObject = {};
@@ -213,7 +213,7 @@ export class FeedExecutor {
             default: {
                 // Try custom feed generators from registry
                 if (adapterCode && this.registry) {
-                    const customFeed = this.registry.getRuntime('feed', adapterCode) as FeedAdapter<any> | undefined;
+                    const customFeed = this.registry.getRuntime('feed', adapterCode) as FeedAdapter<unknown> | undefined;
                     if (customFeed && typeof customFeed.generateFeed === 'function') {
                         const result = await this.executeCustomFeed(ctx, step, input, customFeed, pipelineContext);
                         ok = result.ok;
@@ -248,7 +248,7 @@ export class FeedExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        feed: FeedAdapter<any>,
+        feed: FeedAdapter<unknown>,
         pipelineContext?: PipelineContext,
     ): Promise<FeedExecutionResult> {
         const cfg = step.config as BaseFeedConfig;

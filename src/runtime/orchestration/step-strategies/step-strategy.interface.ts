@@ -6,7 +6,7 @@
  */
 
 import { RequestContext, ID } from '@vendure/core';
-import { PipelineDefinition, PipelineStepDefinition, HookStageValue } from '../../../types/index';
+import { PipelineDefinition, PipelineStepDefinition } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutorContext } from '../../executor-types';
 import { HookService } from '../../../services/events/hook.service';
 import { DomainEventsService } from '../../../services/events/domain-events.service';

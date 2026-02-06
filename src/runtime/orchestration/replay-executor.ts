@@ -1,7 +1,7 @@
 /**
  * Replay Executor
  *
- * Handles replaying pipeline execution from a specific step,
+ * Replays pipeline execution from a specific step,
  * supporting both linear and graph-based pipelines.
  */
 
@@ -22,7 +22,6 @@ import {
     FeedExecutor,
     SinkExecutor,
 } from '../executors';
-import { PipelineEdge } from './graph-executor';
 
 const logger = new Logger('DataHub:ReplayExecutor');
 
@@ -179,10 +178,11 @@ export async function replayFromStepGraph(params: {
     const reachable = new Set<string>();
     const stack = [startStepKey];
     while (stack.length) {
-        const u = stack.pop()!;
-        if (reachable.has(u)) continue;
-        reachable.add(u);
-        for (const n of adj.get(u) ?? []) stack.push(n.to);
+        const node = stack.pop();
+        if (node === undefined) break;
+        if (reachable.has(node)) continue;
+        reachable.add(node);
+        for (const n of adj.get(node) ?? []) stack.push(n.to);
     }
 
     // Build topology for reachable subgraph
@@ -224,7 +224,8 @@ export async function replayFromStepGraph(params: {
     let failed = 0;
 
     while (queue.length) {
-        const key = queue.shift()!;
+        const key = queue.shift();
+        if (key === undefined) break;
         const step = stepByKey.get(key);
         if (!step) continue;
         if (onCancelRequested && (await onCancelRequested())) break;

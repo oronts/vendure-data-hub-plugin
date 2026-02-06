@@ -11,7 +11,6 @@ import { PipelineDefinition, PipelineStepDefinition, StepType } from '../../../t
 import { StepType as StepTypeEnum } from '../../../constants/enums';
 import {
     RecordObject,
-    BranchOutput,
     OnRecordErrorCallback,
     ExecutorContext,
 } from '../../executor-types';
@@ -30,7 +29,6 @@ import {
     StepStrategy,
     StepExecutionContext,
     StepStrategyResult,
-    GraphStepStrategyResult,
 } from './step-strategy.interface';
 import { ExtractStepStrategy } from './extract-step.strategy';
 import {

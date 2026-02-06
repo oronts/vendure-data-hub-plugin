@@ -1,7 +1,7 @@
 /**
  * Extract Step Strategy
  *
- * Handles EXTRACT step execution in linear pipelines.
+ * EXTRACT step execution in linear pipelines.
  */
 
 import { ExtractExecutor } from '../../executors';
@@ -23,7 +23,7 @@ export class ExtractStepStrategy implements StepStrategy {
         const t0 = Date.now();
 
         await this.logStepStart(context);
-        const afterBeforeHook = await this.runBeforeHook(context, records);
+        const _afterBeforeHook = await this.runBeforeHook(context, records);
 
         const out = await this.executeExtract(context);
         const durationMs = Date.now() - t0;

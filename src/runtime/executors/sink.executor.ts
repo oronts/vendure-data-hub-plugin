@@ -6,7 +6,7 @@ import { ConnectionService } from '../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../executor-types';
 import { getPath, chunk } from '../utils';
-import { DEFAULTS, SERVICE_DEFAULTS, SERVICE_URL_TEMPLATES, LOGGER_CONTEXTS, HttpMethod, QueueType, SINK_ADAPTER_CODES, CONTENT_TYPES, HTTP_HEADERS, AUTH_SCHEMES, SINK, TRUNCATION, CIRCUIT_BREAKER } from '../../constants/index';
+import { BATCH, HTTP, SERVICE_DEFAULTS, SERVICE_URL_TEMPLATES, LOGGER_CONTEXTS, HttpMethod, QueueType, SINK_ADAPTER_CODES, CONTENT_TYPES, HTTP_HEADERS, AUTH_SCHEMES, SINK, TRUNCATION, CIRCUIT_BREAKER } from '../../constants/index';
 import { CircuitState } from '../../constants/enums';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { SinkAdapter, SinkContext } from '../../sdk/types';
@@ -126,7 +126,7 @@ export class SinkExecutor {
         // Common config - use constants for default values
         const indexName = cfg.indexName ?? SINK.DEFAULT_INDEX_NAME;
         const idField = cfg.idField ?? SINK.DEFAULT_ID_FIELD;
-        const bulkSize = Number(cfg.bulkSize ?? DEFAULTS.BULK_SIZE) || DEFAULTS.BULK_SIZE;
+        const bulkSize = Number(cfg.bulkSize ?? BATCH.BULK_SIZE) || BATCH.BULK_SIZE;
 
         // Apply field selection
         const fields = cfg.fields;
@@ -593,8 +593,8 @@ export class SinkExecutor {
         const apiKeySecretCode = cfg.apiKeySecretCode;
         const apiKeyHeader = cfg.apiKeyHeader ?? HTTP_HEADERS.X_API_KEY;
         const batchSize = Number(cfg.batchSize ?? SINK.WEBHOOK_BATCH_SIZE) || SINK.WEBHOOK_BATCH_SIZE;
-        const timeoutMs = Number(cfg.timeoutMs ?? DEFAULTS.HTTP_TIMEOUT_MS) || DEFAULTS.HTTP_TIMEOUT_MS;
-        const maxRetries = Number(cfg.retries ?? DEFAULTS.MAX_RETRIES) || DEFAULTS.MAX_RETRIES;
+        const timeoutMs = Number(cfg.timeoutMs ?? HTTP.TIMEOUT_MS) || HTTP.TIMEOUT_MS;
+        const maxRetries = Number(cfg.retries ?? HTTP.MAX_RETRIES) || HTTP.MAX_RETRIES;
 
         let ok = 0;
         let fail = 0;

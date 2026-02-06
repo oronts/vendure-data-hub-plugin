@@ -1,7 +1,7 @@
 /**
  * File Extract Handler
  *
- * Handles extraction of records from file sources:
+ * Extracts records from file sources:
  * - CSV files (uploaded, inline text, or local path)
  * - JSON files (uploaded, inline text, or local path)
  * - XML files (future support)

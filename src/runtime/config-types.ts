@@ -1,4 +1,4 @@
-import { JsonObject, JsonValue } from '../types/index';
+import { JsonValue } from '../types/index';
 import { AuthType, LoadStrategy } from '../constants/index';
 
 export interface BaseStepConfig {

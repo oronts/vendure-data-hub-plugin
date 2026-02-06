@@ -1,7 +1,7 @@
 /**
  * Transform Step Strategy
  *
- * Handles TRANSFORM, VALIDATE, ENRICH, and ROUTE step execution in linear pipelines.
+ * TRANSFORM, VALIDATE, ENRICH, and ROUTE step execution in linear pipelines.
  */
 
 import { TransformExecutor } from '../../executors';

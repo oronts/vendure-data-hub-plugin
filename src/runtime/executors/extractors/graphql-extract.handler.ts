@@ -1,7 +1,7 @@
 /**
  * GraphQL Extract Handler
  *
- * Handles extraction of records from GraphQL APIs with support for:
+ * Extracts records from GraphQL APIs with support for:
  * - Cursor-based pagination
  * - Relay-style connections (edges/node pattern)
  * - Bearer and Basic authentication
@@ -16,7 +16,7 @@ import { JsonObject, JsonValue } from '../../../types/index';
 import { SecretService } from '../../../services/config/secret.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getPath } from '../../utils';
-import { DEFAULTS, LOGGER_CONTEXTS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
+import { PAGINATION, LOGGER_CONTEXTS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
 import { ConnectionAuthType } from '../../../sdk/types/connection-types';
 import {
     ExtractHandler,
@@ -72,7 +72,7 @@ export class GraphqlExtractHandler implements ExtractHandler {
 
         let cursor: unknown = getCheckpointValue(executorCtx, step.key, 'cursor', null);
 
-        for (let i = 0; i < DEFAULTS.MAX_GRAPHQL_PAGES; i++) {
+        for (let i = 0; i < PAGINATION.MAX_GRAPHQL_PAGES; i++) {
             const fetchResult = await this.executeGraphqlQuery({
                 fetchImpl,
                 endpoint,
@@ -187,7 +187,8 @@ export class GraphqlExtractHandler implements ExtractHandler {
     }
 
     private extractFromEdges(data: RecordObject, cfg: GraphqlExtractConfig): RecordObject[] {
-        const edges = getPath(data, cfg.edgesField!) ?? [];
+        const edgesField = cfg.edgesField ?? 'edges';
+        const edges = getPath(data, edgesField) ?? [];
         if (!Array.isArray(edges)) return [];
 
         const nodeField = cfg.nodeField ?? 'node';

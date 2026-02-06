@@ -24,14 +24,14 @@ import {
     ErrorHandlingConfig,
     CustomerUpsertLoaderConfig,
     JsonObject,
-    JsonValue,
 } from '../../../types/index';
 import { LOGGER_CONTEXTS } from '../../../constants/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
-import { strOrUndefined } from '../../utils';
+import { toStringOrUndefined } from '../../utils';
 import { LoaderHandler } from './types';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getErrorMessage } from '../../../services/logger/error-utils';
+import { getStringValue, getArrayValue } from '../../../loaders/shared-helpers';
 
 /**
  * Configuration extracted from step.config for customer upsert operations.
@@ -98,29 +98,6 @@ function hasCustomerLoaderConfigShape(config: unknown): config is Partial<Custom
 }
 
 /**
- * Safely extract a string value from a record by field name
- */
-function getRecordStringField(rec: RecordObject, fieldName: string): string | undefined {
-    const value = rec[fieldName];
-    if (value === null || value === undefined) {
-        return undefined;
-    }
-    const str = String(value);
-    return str === '' ? undefined : str;
-}
-
-/**
- * Safely extract an array value from a record by field name
- */
-function getRecordArrayField<T>(rec: RecordObject, fieldName: string): T[] | undefined {
-    const value = rec[fieldName];
-    if (!value || !Array.isArray(value)) {
-        return undefined;
-    }
-    return value as T[];
-}
-
-/**
  * Type guard to check if a value is an AddressRecord
  */
 function isAddressRecord(value: unknown): value is AddressRecord {
@@ -172,15 +149,15 @@ export class CustomerHandler implements LoaderHandler {
 
         for (const rec of input) {
             try {
-                const email = getRecordStringField(rec, config.emailField ?? 'email');
+                const email = getStringValue(rec, config.emailField ?? 'email');
                 if (!email) {
                     fail++;
                     continue;
                 }
 
-                const firstName = strOrUndefined(getRecordStringField(rec, config.firstNameField ?? 'firstName'));
-                const lastName = strOrUndefined(getRecordStringField(rec, config.lastNameField ?? 'lastName'));
-                const phoneNumber = strOrUndefined(getRecordStringField(rec, config.phoneNumberField ?? 'phoneNumber'));
+                const firstName = toStringOrUndefined(getStringValue(rec, config.firstNameField ?? 'firstName'));
+                const lastName = toStringOrUndefined(getStringValue(rec, config.lastNameField ?? 'lastName'));
+                const phoneNumber = toStringOrUndefined(getStringValue(rec, config.phoneNumberField ?? 'phoneNumber'));
 
                 const customerInput: CustomerCreateOrUpdateInput = {
                     emailAddress: email,
@@ -230,7 +207,7 @@ export class CustomerHandler implements LoaderHandler {
         const config = this.extractConfig(step.config);
 
         for (const rec of input) {
-            const email = getRecordStringField(rec, config.emailField ?? 'email');
+            const email = getStringValue(rec, config.emailField ?? 'email');
             if (!email) continue;
 
             const listOptions: ListQueryOptions<Customer> = {
@@ -302,7 +279,7 @@ export class CustomerHandler implements LoaderHandler {
             return;
         }
 
-        const addresses = getRecordArrayField<unknown>(rec, addressesField);
+        const addresses = getArrayValue<unknown>(rec, addressesField);
         if (!addresses) {
             return;
         }
@@ -345,7 +322,7 @@ export class CustomerHandler implements LoaderHandler {
             return;
         }
 
-        const codes = getRecordArrayField<string>(rec, groupsField);
+        const codes = getArrayValue<string>(rec, groupsField);
         if (!codes) {
             return;
         }

@@ -1,7 +1,7 @@
 /**
  * REST API Extract Handler
  *
- * Handles extraction of records from REST APIs with support for:
+ * Extracts records from REST APIs with support for:
  * - Pagination (page-based)
  * - Retry with exponential backoff
  * - Connection-based authentication
@@ -19,7 +19,7 @@ import { SecretService } from '../../../services/config/secret.service';
 import { ConnectionService } from '../../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getPath, sleep } from '../../utils';
-import { DEFAULTS, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
+import { PAGINATION, RATE_LIMIT, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
 import { ConnectionAuthType } from '../../../sdk/types/connection-types';
 import {
     ExtractHandler,
@@ -202,7 +202,7 @@ export class RestExtractHandler implements ExtractHandler {
         const { ctx, step, executorCtx, onRecordError, cfg, connectionConfig, endpoint, method, baseHeaders, retryConfig } = params;
 
         const pageParam = cfg.pageParam;
-        const maxPages = Number(cfg.maxPages ?? DEFAULTS.MAX_PAGES);
+        const maxPages = Number(cfg.maxPages ?? PAGINATION.MAX_PAGES);
         const results: RecordObject[] = [];
 
         let page = getCheckpointValue(executorCtx, step.key, 'page', 0) + 1;
@@ -317,15 +317,24 @@ export class RestExtractHandler implements ExtractHandler {
                 }
 
                 if (res?.status === HTTP_STATUS.TOO_MANY_REQUESTS || res?.status === HTTP_STATUS.SERVICE_UNAVAILABLE) {
-                    adaptiveDelay = Math.max(DEFAULTS.ADAPTIVE_DELAY_MIN_MS, adaptiveDelay ? adaptiveDelay * 2 : DEFAULTS.ADAPTIVE_DELAY_INITIAL_MS);
+                    adaptiveDelay = Math.max(RATE_LIMIT.ADAPTIVE_DELAY_MIN_MS, adaptiveDelay ? adaptiveDelay * 2 : RATE_LIMIT.ADAPTIVE_DELAY_INITIAL_MS);
                 }
 
                 if (attempt < retryConfig.retries) {
                     await this.waitBeforeRetry(attempt, retryConfig, adaptiveDelay);
                 }
-            } catch {
+            } catch (error) {
+                // Warn log for retry attempt failure with reason
+                this.logger.warn('REST fetch attempt failed', {
+                    url,
+                    method,
+                    attempt: attempt + 1,
+                    maxRetries: retryConfig.retries,
+                    willRetry: attempt < retryConfig.retries,
+                    error: error instanceof Error ? error.message : String(error),
+                });
                 if (attempt < retryConfig.retries) {
-                    await this.waitBeforeRetry(attempt, retryConfig, adaptiveDelay || DEFAULTS.ADAPTIVE_DELAY_INITIAL_MS);
+                    await this.waitBeforeRetry(attempt, retryConfig, adaptiveDelay || RATE_LIMIT.ADAPTIVE_DELAY_INITIAL_MS);
                 } else {
                     return { success: false, status: undefined, adaptiveDelay };
                 }
@@ -366,7 +375,8 @@ export class RestExtractHandler implements ExtractHandler {
         if (!Array.isArray(items)) items = [];
 
         if (cfg.mapFields && Object.keys(cfg.mapFields).length > 0) {
-            return items.map(it => this.applyMapping(it as RecordObject, cfg.mapFields!));
+            const mapping = cfg.mapFields;
+            return items.map(it => this.applyMapping(it as RecordObject, mapping));
         }
 
         return items as RecordObject[];

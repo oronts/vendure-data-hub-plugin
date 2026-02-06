@@ -123,7 +123,7 @@ export class TransformExecutor {
             ctx,
             step,
             input,
-            operator as OperatorAdapter<any> | SingleRecordOperator<any>,
+            operator as OperatorAdapter<unknown> | SingleRecordOperator<unknown>,
             pipelineContext,
         );
     }
@@ -209,7 +209,7 @@ export class TransformExecutor {
         return {
             get: async (code: string): Promise<string | undefined> => {
                 try {
-                    const value = await this.secretService!.resolve(ctx, code);
+                    const value = await this.secretService?.resolve(ctx, code);
                     return value ?? undefined;
                 } catch {
                     return undefined;
@@ -248,16 +248,16 @@ export class TransformExecutor {
                 return new Intl.NumberFormat(locale ?? 'en-US', { style: 'currency', currency: currencyCode }).format(amount);
             },
             date: (date: Date | string | number, format: string) => {
-                const d = new Date(date);
-                return d.toISOString();
+                const dateObj = new Date(date);
+                return dateObj.toISOString();
             },
             number: (value: number, decimals?: number, locale?: string) => {
                 return new Intl.NumberFormat(locale ?? 'en-US', { maximumFractionDigits: decimals ?? 2 }).format(value);
             },
             template: (template: string, data: JsonObject) => {
                 return template.replace(/\{\{([^}]+)\}\}/g, (_m, p1) => {
-                    const v = getPath(data as RecordObject, String(p1).trim());
-                    return v == null ? '' : String(v);
+                    const pathValue = getPath(data as RecordObject, String(p1).trim());
+                    return pathValue == null ? '' : String(pathValue);
                 });
             },
         };
@@ -272,8 +272,8 @@ export class TransformExecutor {
             fromMinorUnits: (amount: number, decimals = 2) => amount / Math.pow(10, decimals),
             unit: (value: number, from: string, to: string) => unitFactor(from, to) * value,
             parseDate: (value: string, format?: string) => {
-                const d = new Date(value);
-                return isNaN(d.getTime()) ? null : d;
+                const dateObj = new Date(value);
+                return isNaN(dateObj.getTime()) ? null : dateObj;
             },
         };
     }
@@ -317,21 +317,21 @@ export class TransformExecutor {
      * Execute operator in sandboxed environment with proper error handling
      */
     private async executeInSandbox(
-        operator: OperatorAdapter<any> | SingleRecordOperator<any>,
+        operator: OperatorAdapter<unknown> | SingleRecordOperator<unknown>,
         input: RecordObject[],
         cfg: JsonObject,
         helpers: OperatorHelpers,
     ): Promise<RecordObject[]> {
         // Check if it's a batch operator
-        if ('apply' in operator && typeof (operator as OperatorAdapter<any>).apply === 'function') {
-            const batchOperator = operator as OperatorAdapter<any>;
+        if ('apply' in operator && typeof (operator as OperatorAdapter<unknown>).apply === 'function') {
+            const batchOperator = operator as OperatorAdapter<unknown>;
             const result = await batchOperator.apply(input as readonly JsonObject[], cfg, helpers);
             return result.records as RecordObject[];
         }
 
         // Check if it's a single-record operator
-        if ('applyOne' in operator && typeof (operator as SingleRecordOperator<any>).applyOne === 'function') {
-            const singleOperator = operator as SingleRecordOperator<any>;
+        if ('applyOne' in operator && typeof (operator as SingleRecordOperator<unknown>).applyOne === 'function') {
+            const singleOperator = operator as SingleRecordOperator<unknown>;
             const results: RecordObject[] = [];
             for (const record of input) {
                 const result = await singleOperator.applyOne(record as JsonObject, cfg, helpers);
@@ -350,7 +350,7 @@ export class TransformExecutor {
      */
     private validateCustomOutput(
         error: unknown,
-        operator: OperatorAdapter<any> | SingleRecordOperator<any>,
+        operator: OperatorAdapter<unknown> | SingleRecordOperator<unknown>,
         stepKey: string,
     ): never {
         if (error instanceof OperatorNotFoundError) {
@@ -372,7 +372,7 @@ export class TransformExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        operator: OperatorAdapter<any> | SingleRecordOperator<any>,
+        operator: OperatorAdapter<unknown> | SingleRecordOperator<unknown>,
         pipelineContext?: PipelineContext,
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;
@@ -584,9 +584,9 @@ export class TransformExecutor {
 
         for (const b of branchesCfg) {
             const matched = input.filter((rec, idx) => {
-                const m = (b.when ?? []).every(cond => evalCondition(rec, cond));
-                if (m) matchedSet.add(idx);
-                return m;
+                const isMatch = (b.when ?? []).every(cond => evalCondition(rec, cond));
+                if (isMatch) matchedSet.add(idx);
+                return isMatch;
             });
             result[b.name] = matched;
         }

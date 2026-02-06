@@ -8,9 +8,8 @@ import { ConnectionService } from '../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult, ExecutorContext } from '../executor-types';
 import { getPath, setPath, recordsToCsv, chunk, sleep, ensureDirectoryExists, deepClone } from '../utils';
-import { DEFAULTS, LOGGER_CONTEXTS, HTTP, FILE_STORAGE, TRUNCATION, HttpMethod, EXPORTER_CODE, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../constants/index';
+import { BATCH, LOGGER_CONTEXTS, HTTP, FILE_STORAGE, TRUNCATION, HttpMethod, EXPORTER_CODE, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../constants/index';
 import { FileFormat } from '../../constants/enums';
-import { ExportConfig } from '../config-types';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { ExporterAdapter, ExportContext, ConnectionConfig, ConnectionType } from '../../sdk/types';
 import { formatDate } from '../../transforms/field/date-transforms';
@@ -169,12 +168,12 @@ export class ExportExecutor {
         switch (adapterCode) {
             case EXPORTER_CODE.CSV: {
                 try {
-                    const csvCfg = step.config as Record<string, JsonValue>;
-                    const basePath = (csvCfg.path as string) ?? FILE_STORAGE.TEMP_DIR;
-                    const filenamePattern = csvCfg.filenamePattern as string | undefined;
+                    const csvConfig = step.config as Record<string, JsonValue>;
+                    const basePath = (csvConfig.path as string) ?? FILE_STORAGE.TEMP_DIR;
+                    const filenamePattern = csvConfig.filenamePattern as string | undefined;
                     const outputPath = resolveOutputPath(basePath, filenamePattern, 'export.csv');
-                    const delimiter = (csvCfg.delimiter as string) ?? ',';
-                    const includeHeader = csvCfg.includeHeader !== false;
+                    const delimiter = (csvConfig.delimiter as string) ?? ',';
+                    const includeHeader = csvConfig.includeHeader !== false;
                     const records = input.map(prepareRecord);
                     const csv = recordsToCsv(records, delimiter, includeHeader);
                     ensureDirectoryExists(outputPath);
@@ -190,17 +189,17 @@ export class ExportExecutor {
             }
             case EXPORTER_CODE.JSON: {
                 try {
-                    const jsonCfg = step.config as Record<string, JsonValue>;
-                    const basePath = (jsonCfg.path as string) ?? FILE_STORAGE.TEMP_DIR;
-                    const filenamePattern = jsonCfg.filenamePattern as string | undefined;
+                    const jsonConfig = step.config as Record<string, JsonValue>;
+                    const basePath = (jsonConfig.path as string) ?? FILE_STORAGE.TEMP_DIR;
+                    const filenamePattern = jsonConfig.filenamePattern as string | undefined;
                     const outputPath = resolveOutputPath(basePath, filenamePattern, 'export.json');
-                    const format = (jsonCfg.format as string) ?? 'json';
+                    const format = (jsonConfig.format as string) ?? 'json';
                     const records = input.map(prepareRecord);
                     let content: string;
                     if (format === FileFormat.NDJSON || format === 'jsonl') {
                         content = records.map(r => JSON.stringify(r)).join('\n');
                     } else {
-                        const pretty = jsonCfg.pretty !== false;
+                        const pretty = jsonConfig.pretty !== false;
                         content = JSON.stringify(records, null, pretty ? 2 : undefined);
                     }
                     ensureDirectoryExists(outputPath);
@@ -216,13 +215,13 @@ export class ExportExecutor {
             }
             case EXPORTER_CODE.XML: {
                 try {
-                    const xmlCfg = step.config as Record<string, JsonValue>;
-                    const basePath = (xmlCfg.path as string) ?? FILE_STORAGE.TEMP_DIR;
-                    const filenamePattern = xmlCfg.filenamePattern as string | undefined;
+                    const xmlConfig = step.config as Record<string, JsonValue>;
+                    const basePath = (xmlConfig.path as string) ?? FILE_STORAGE.TEMP_DIR;
+                    const filenamePattern = xmlConfig.filenamePattern as string | undefined;
                     const outputPath = resolveOutputPath(basePath, filenamePattern, 'export.xml');
-                    const rootElement = (xmlCfg.rootElement as string) ?? 'records';
-                    const itemElement = (xmlCfg.itemElement as string) ?? 'record';
-                    const declaration = xmlCfg.declaration !== false;
+                    const rootElement = (xmlConfig.rootElement as string) ?? 'records';
+                    const itemElement = (xmlConfig.itemElement as string) ?? 'record';
+                    const declaration = xmlConfig.declaration !== false;
                     const records = input.map(prepareRecord);
                     let xml = declaration ? '<?xml version="1.0" encoding="UTF-8"?>\n' : '';
                     xml += `<${rootElement}>\n`;
@@ -248,14 +247,14 @@ export class ExportExecutor {
             }
             case EXPORTER_CODE.REST_POST:
             case EXPORTER_CODE.WEBHOOK: {
-                const webhookCfg = step.config as Record<string, JsonValue>;
-                const endpoint = webhookCfg.url as string | undefined;
-                const method = ((webhookCfg.method as string) ?? HttpMethod.POST).toUpperCase();
-                const headers = (webhookCfg.headers as Record<string, string>) ?? {};
-                const batchSize = Number(webhookCfg.batchSize ?? DEFAULTS.BULK_SIZE) || DEFAULTS.BULK_SIZE;
+                const webhookConfig = step.config as Record<string, JsonValue>;
+                const endpoint = webhookConfig.url as string | undefined;
+                const method = ((webhookConfig.method as string) ?? HttpMethod.POST).toUpperCase();
+                const headers = (webhookConfig.headers as Record<string, string>) ?? {};
+                const batchSize = Number(webhookConfig.batchSize ?? BATCH.BULK_SIZE) || BATCH.BULK_SIZE;
                 const records = input.map(prepareRecord);
-                const retryOptions = resolveRetryOptions(webhookCfg);
-                const timeoutMs = Math.max(0, Number(webhookCfg.timeoutMs ?? 0) || 0);
+                const retryOptions = resolveRetryOptions(webhookConfig);
+                const timeoutMs = Math.max(0, Number(webhookConfig.timeoutMs ?? 0) || 0);
 
                 if (!endpoint) {
                     fail = records.length;
@@ -266,8 +265,8 @@ export class ExportExecutor {
                 }
 
                 // Get auth headers from secrets
-                const bearerSecret = webhookCfg.bearerTokenSecretCode as string | undefined;
-                const basicSecret = webhookCfg.basicSecretCode as string | undefined;
+                const bearerSecret = webhookConfig.bearerTokenSecretCode as string | undefined;
+                const basicSecret = webhookConfig.basicSecretCode as string | undefined;
                 const finalHeaders: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...headers };
 
                 if (bearerSecret) {
@@ -339,7 +338,7 @@ export class ExportExecutor {
             default: {
                 // Try custom exporters from registry
                 if (adapterCode && this.registry) {
-                    const customExporter = this.registry.getRuntime('exporter', adapterCode) as ExporterAdapter<any> | undefined;
+                    const customExporter = this.registry.getRuntime('exporter', adapterCode) as ExporterAdapter<unknown> | undefined;
                     if (customExporter && typeof customExporter.export === 'function') {
                         const result = await this.executeCustomExporter(ctx, step, input, customExporter, pipelineContext, executorCtx);
                         ok = result.ok;
@@ -371,7 +370,7 @@ export class ExportExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        exporter: ExporterAdapter<any>,
+        exporter: ExporterAdapter<unknown>,
         pipelineContext?: PipelineContext,
         executorCtx?: ExecutorContext,
     ): Promise<ExecutionResult> {

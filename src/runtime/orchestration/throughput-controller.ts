@@ -1,7 +1,7 @@
 /**
  * Throughput Controller
  *
- * Handles rate limiting, batching, and throughput control
+ * Rate limiting, batching, and throughput control
  * for pipeline load operations.
  */
 
@@ -101,12 +101,12 @@ export async function executeLoadWithThroughput(params: {
         1,
         Number(stepThroughput.concurrency ?? contextThroughput.concurrency ?? 1) || 1
     );
-    const pauseCfg = stepThroughput.pauseOnErrorRate;
+    const pauseConfig = stepThroughput.pauseOnErrorRate;
     const drainStrategy = (stepThroughput.drainStrategy as DrainStrategy) ?? 'backoff';
 
     // Split into batches
     const groups = chunk(batch, batchSize);
-    const queueArr = [...groups];
+    const batchQueue = [...groups];
     const deferredQueue = new DrainQueue();
 
     let succeeded = 0;
@@ -126,18 +126,19 @@ export async function executeLoadWithThroughput(params: {
 
         // Check error rate and apply drain strategy
         const ratio = group.length > 0 ? fail / group.length : 0;
-        if (pauseCfg && ratio >= Number(pauseCfg.threshold ?? 1)) {
+        if (pauseConfig && ratio >= Number(pauseConfig.threshold ?? 1)) {
             switch (drainStrategy) {
                 case 'shed':
                     // Drop remaining batches
-                    queueArr.length = 0;
+                    batchQueue.length = 0;
                     break;
 
                 case 'queue':
                     // Move remaining batches to deferred queue
                     isPaused = true;
-                    while (queueArr.length > 0) {
-                        const remaining = queueArr.shift()!;
+                    while (batchQueue.length > 0) {
+                        const remaining = batchQueue.shift();
+                        if (remaining === undefined) break;
                         deferredQueue.enqueue(remaining);
                     }
                     break;
@@ -145,7 +146,7 @@ export async function executeLoadWithThroughput(params: {
                 case 'backoff':
                 default:
                     // Pause before continuing
-                    await sleep(Math.max(RATE_LIMIT.PAUSE_CHECK_INTERVAL_MS, Number(pauseCfg.intervalSec ?? 1) * TIME.SECOND));
+                    await sleep(Math.max(RATE_LIMIT.PAUSE_CHECK_INTERVAL_MS, Number(pauseConfig.intervalSec ?? 1) * TIME.SECOND));
                     break;
             }
         }
@@ -158,14 +159,15 @@ export async function executeLoadWithThroughput(params: {
 
     // Process batches with controlled concurrency using a Set to track in-flight promises
     const inFlightSet = new Set<Promise<void>>();
-    while (queueArr.length || inFlightSet.size) {
+    while (batchQueue.length || inFlightSet.size) {
         // Start new batches up to concurrency limit
-        while (queueArr.length && inFlightSet.size < concurrency) {
-            const grp = queueArr.shift()!;
-            const p = runNext(grp).finally(() => {
-                inFlightSet.delete(p);
+        while (batchQueue.length && inFlightSet.size < concurrency) {
+            const grp = batchQueue.shift();
+            if (grp === undefined) break;
+            const promise = runNext(grp).finally(() => {
+                inFlightSet.delete(promise);
             });
-            inFlightSet.add(p);
+            inFlightSet.add(promise);
         }
 
         // Wait for at least one to complete
@@ -177,16 +179,17 @@ export async function executeLoadWithThroughput(params: {
     // Process deferred queue if we were paused (for 'queue' strategy)
     if (drainStrategy === 'queue' && isPaused) {
         // Wait for error rate to potentially recover
-        await sleep(Number(pauseCfg?.intervalSec ?? THROUGHPUT.DEFERRED_RETRY_DELAY_SEC) * TIME.SECOND);
+        await sleep(Number(pauseConfig?.intervalSec ?? THROUGHPUT.DEFERRED_RETRY_DELAY_SEC) * TIME.SECOND);
 
         const deferred = deferredQueue.getAll();
         for (const group of deferred) {
-            queueArr.push(group);
+            batchQueue.push(group);
         }
 
         // Retry deferred batches
-        while (queueArr.length) {
-            const grp = queueArr.shift()!;
+        while (batchQueue.length) {
+            const grp = batchQueue.shift();
+            if (grp === undefined) break;
             const { ok, fail } = await loadExecutor.execute(ctx, step, grp, onRecordError, errorHandling);
             succeeded += ok;
             failed += fail;

@@ -1,9 +1,7 @@
 /**
  * Extract Executor
  *
- * Orchestrates data extraction from various sources by delegating to
- * specialized handler classes. This executor acts as the main entry point
- * for all extraction operations in the pipeline.
+ * Routes data extraction requests to format-specific handlers.
  *
  * @module runtime/executors
  */
@@ -36,7 +34,7 @@ type ExtractImpl = (ctx: RequestContext, step: PipelineStepDefinition, executorC
 export class ExtractExecutor {
     private readonly logger: DataHubLogger;
     private readonly handlers: Map<string, ExtractHandler>;
-    private readonly impls: Record<string, ExtractImpl>;
+    private readonly handlerFunctions: Record<string, ExtractImpl>;
 
     constructor(
         private secretService: SecretService,
@@ -52,7 +50,7 @@ export class ExtractExecutor {
         this.handlers = this.initializeHandlers(loggerFactory);
 
         // Map adapter codes to handler execution
-        this.impls = this.buildImplMap();
+        this.handlerFunctions = this.buildImplMap();
     }
 
     private initializeHandlers(loggerFactory: DataHubLoggerFactory): Map<string, ExtractHandler> {
@@ -110,23 +108,22 @@ export class ExtractExecutor {
         executorCtx: ExecutorContext,
         onRecordError?: OnRecordErrorCallback,
     ): Promise<RecordObject[]> {
-        const cfg = step.config as JsonObject;
         const adapterCode = getAdapterCode(step) || undefined;
         const startTime = Date.now();
 
         this.logger.debug(`Executing extract step`, { stepKey: step.key, adapterCode });
 
         // Try built-in extractors first
-        const impl = adapterCode ? this.impls[adapterCode] : undefined;
-        if (impl) {
-            const result = await impl(ctx, step, executorCtx, onRecordError);
+        const handler = adapterCode ? this.handlerFunctions[adapterCode] : undefined;
+        if (handler) {
+            const result = await handler(ctx, step, executorCtx, onRecordError);
             this.logOperationResult(adapterCode ?? 'unknown', result.length, startTime, step.key);
             return result;
         }
 
         // Try custom extractors from registry
         if (adapterCode && this.registry) {
-            const customExtractor = this.registry.getRuntime('extractor', adapterCode) as ExtractorAdapter<any> | undefined;
+            const customExtractor = this.registry.getRuntime('extractor', adapterCode) as ExtractorAdapter<unknown> | undefined;
             if (customExtractor && typeof customExtractor.extract === 'function') {
                 const result = await this.executeCustomExtractor(ctx, step, executorCtx, customExtractor, onRecordError);
                 this.logOperationResult(adapterCode, result.length, startTime, step.key);
@@ -155,7 +152,7 @@ export class ExtractExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         executorCtx: ExecutorContext,
-        extractor: ExtractorAdapter<any>,
+        extractor: ExtractorAdapter<unknown>,
         onRecordError?: OnRecordErrorCallback,
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;

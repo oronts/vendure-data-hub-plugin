@@ -1,7 +1,7 @@
 /**
  * Sandbox Module
  *
- * Provides secure code execution environment for user-provided expressions.
+ * Secure code execution environment for user-provided expressions.
  */
 
 export {

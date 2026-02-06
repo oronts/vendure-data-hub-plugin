@@ -1,10 +1,10 @@
 /**
  * Graph Executor
  *
- * Handles graph-based pipeline execution where steps can have
+ * Graph-based pipeline execution where steps can have
  * complex dependencies via edges (DAG topology).
  *
- * Step execution is delegated to reusable strategies from ./step-strategies/.
+ * Step execution uses strategies from ./step-strategies/.
  */
 
 import { Logger } from '@nestjs/common';
@@ -151,7 +151,7 @@ async function executeNode(
 }
 
 /**
- * Handles error when publishing domain events
+ * Logs errors that occur when publishing domain events.
  */
 function handleNodeError(
     error: Error,
@@ -270,7 +270,7 @@ function getParallelConfig(definition: PipelineDefinition): Required<ParallelExe
  * Supports both sequential and parallel execution modes
  */
 export async function executeGraph(params: ExecuteGraphParams): Promise<GraphExecutionResult> {
-    const { ctx, definition, executorCtx, hookService, domainEvents, onCancelRequested, onRecordError, pipelineId, runId, stepLog } = params;
+    const { definition, domainEvents, onCancelRequested, pipelineId } = params;
 
     const stepDispatcher = createDispatcher(params);
     const { stepByKey, edges, topology } = buildExecutionOrder(definition);
@@ -323,7 +323,8 @@ async function executeSequential(
     const { ctx, definition, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog } = params;
 
     while (queue.length) {
-        const key = queue.shift()!;
+        const key = queue.shift();
+        if (key === undefined) break;
         const step = stepByKey.get(key);
         if (!step) continue;
         if (onCancelRequested && (await onCancelRequested())) break;
@@ -385,7 +386,8 @@ async function executeParallel(
 
         // Start new steps up to max concurrency
         while (queue.length > 0 && inFlight.size < parallelConfig.maxConcurrentSteps) {
-            const key = queue.shift()!;
+            const key = queue.shift();
+            if (key === undefined) break;
             const step = stepByKey.get(key);
             if (!step) continue;
 

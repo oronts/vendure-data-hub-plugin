@@ -6,7 +6,6 @@ import {
     RequestContext,
     ProductService,
     ProductVariantService,
-    ListQueryOptions,
     RequestContextService,
     TaxCategoryService,
     ChannelService,
@@ -14,8 +13,6 @@ import {
     ProductVariant,
     StockLocationService,
     ID,
-    TaxCategory,
-    StockLocation,
     LanguageCode,
 } from '@vendure/core';
 import {
@@ -33,10 +30,16 @@ import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/inde
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { slugify } from '../../utils';
 import { LoaderHandler, CoercedProductFields } from './types';
+import {
+    findVariantBySku,
+    resolveTaxCategoryId,
+    resolveStockLevels,
+} from './shared-lookups';
 import { TRANSFORM_LIMITS, LOGGER_CONTEXTS } from '../../../constants/index';
 import { LoadStrategy, ConflictStrategy } from '../../../constants/enums';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getErrorMessage } from '../../../services/logger/error-utils';
+import { getStringValue, getNumberValue, getObjectValue } from '../../../loaders/shared-helpers';
 
 /**
  * Configuration for product handler step
@@ -80,46 +83,6 @@ interface ProductProcessingContext {
 }
 
 /**
- * Type guard to safely get a string value from a record
- */
-function getStringValue(record: RecordObject, key: string): string | undefined {
-    const value = record[key];
-    if (typeof value === 'string') {
-        return value;
-    }
-    if (value !== null && value !== undefined) {
-        return String(value);
-    }
-    return undefined;
-}
-
-/**
- * Type guard to safely get a number value from a record
- */
-function getNumberValue(record: RecordObject, key: string): number | undefined {
-    const value = record[key];
-    if (typeof value === 'number') {
-        return value;
-    }
-    if (typeof value === 'string') {
-        const num = Number(value);
-        return Number.isNaN(num) ? undefined : num;
-    }
-    return undefined;
-}
-
-/**
- * Type guard to safely get an object value from a record
- */
-function getObjectValue(record: RecordObject, key: string): Record<string, unknown> | undefined {
-    const value = record[key];
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-        return value as Record<string, unknown>;
-    }
-    return undefined;
-}
-
-/**
  * Safely cast step config to ProductHandlerConfig
  */
 function getConfig(config: Record<string, unknown>): ProductHandlerConfig {
@@ -132,9 +95,9 @@ function getConfig(config: Record<string, unknown>): ProductHandlerConfig {
 function parsePriceByCurrency(priceObj: Record<string, unknown>): Record<string, number> {
     const result: Record<string, number> = {};
     for (const [cc, val] of Object.entries(priceObj)) {
-        const n = typeof val === 'number' ? val : Number(val);
-        if (!Number.isNaN(n)) {
-            result[cc] = Math.round(n * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
+        const numericValue = typeof val === 'number' ? val : Number(val);
+        if (!Number.isNaN(numericValue)) {
+            result[cc] = Math.round(numericValue * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
         }
     }
     return result;
@@ -146,9 +109,9 @@ function parsePriceByCurrency(priceObj: Record<string, unknown>): Record<string,
 function parseStockByLocation(stockObj: Record<string, unknown>): Record<string, number> {
     const result: Record<string, number> = {};
     for (const [locName, val] of Object.entries(stockObj)) {
-        const n = typeof val === 'number' ? val : Number(val);
-        if (!Number.isNaN(n)) {
-            result[locName] = Math.max(0, Math.floor(n));
+        const numericValue = typeof val === 'number' ? val : Number(val);
+        if (!Number.isNaN(numericValue)) {
+            result[locName] = Math.max(0, Math.floor(numericValue));
         }
     }
     return result;
@@ -458,9 +421,9 @@ export class ProductHandler implements LoaderHandler {
         const conflictResolution = cfg.conflictResolution ?? ConflictStrategy.SOURCE_WINS;
         const targetChannel = cfg.channel;
 
-        const existingVariant = await this.findVariantBySku(opCtx, sku);
-        const taxCategoryId = await this.resolveTaxCategoryId(opCtx, cfg.taxCategoryName);
-        const stockLevels = await this.resolveStockLevels(opCtx, stockByLocation);
+        const existingVariant = await findVariantBySku(this.productVariantService, opCtx, sku);
+        const taxCategoryId = await resolveTaxCategoryId(this.taxCategoryService, opCtx, cfg.taxCategoryName, this.logger);
+        const stockLevels = await resolveStockLevels(this.stockLocationService, opCtx, stockByLocation, this.logger);
 
         const shouldUpdateVariant = existingVariant && strategy !== LoadStrategy.CREATE && conflictResolution !== ConflictStrategy.VENDURE_WINS;
         const shouldCreateVariant = !existingVariant && strategy !== LoadStrategy.UPDATE;
@@ -612,7 +575,7 @@ export class ProductHandler implements LoaderHandler {
         trackInventory: boolean | undefined,
         targetChannel: string | undefined,
     ): Promise<void> {
-        const stockLevels = await this.resolveStockLevels(opCtx, stockByLocation);
+        const stockLevels = await resolveStockLevels(this.stockLocationService, opCtx, stockByLocation, this.logger);
         const input = this.buildVariantInput(
             productId, sku, variantTranslation, taxCategoryId,
             priceMinor, priceByCurrency, stockOnHand, stockLevels, trackInventory,
@@ -689,53 +652,5 @@ export class ProductHandler implements LoaderHandler {
         const trackInventory = parseTrackInventory(cfg);
 
         return { slug, name, description, sku, priceMinor, priceByCurrency, trackInventory, stockOnHand, stockByLocation };
-    }
-
-    async findVariantBySku(ctx: RequestContext, sku: string): Promise<ProductVariant | undefined> {
-        const result = await this.productVariantService.findAll(ctx, {
-            filter: { sku: { eq: sku } },
-        } as ListQueryOptions<ProductVariant>);
-        return result.items[0];
-    }
-
-    async resolveTaxCategoryId(ctx: RequestContext, name?: string | null): Promise<ID | undefined> {
-        if (!name) return undefined;
-        try {
-            const list = await this.taxCategoryService.findAll(ctx, {
-                filter: { name: { eq: name } },
-                take: 1,
-            } as ListQueryOptions<TaxCategory>);
-            return list.items[0]?.id;
-        } catch (error) {
-            this.logger.warn('Failed to resolve tax category by name', {
-                taxCategoryName: name,
-                error: (error as Error)?.message,
-            });
-            return undefined;
-        }
-    }
-
-    async resolveStockLevels(ctx: RequestContext, stockByLocation?: Record<string, number>): Promise<StockLevelInput[] | undefined> {
-        if (!stockByLocation) return undefined;
-        const result: StockLevelInput[] = [];
-        for (const [locName, qty] of Object.entries(stockByLocation)) {
-            try {
-                const list = await this.stockLocationService.findAll(ctx, {
-                    filter: { name: { eq: locName } },
-                    take: 1,
-                } as ListQueryOptions<StockLocation>);
-                const locationId = list.items[0]?.id;
-                if (locationId) {
-                    result.push({ stockLocationId: locationId, stockOnHand: qty });
-                }
-            } catch (error) {
-                this.logger.warn('Failed to resolve stock location by name', {
-                    locationName: locName,
-                    error: (error as Error)?.message,
-                });
-                // continue with remaining locations
-            }
-        }
-        return result;
     }
 }

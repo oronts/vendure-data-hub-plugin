@@ -15,6 +15,7 @@ import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../.
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { getErrorMessage } from '../../../services/logger/error-utils';
+import { getStringValue, getIdValue } from '../../../loaders/shared-helpers';
 
 // ============================================================================
 // Config Interfaces
@@ -40,33 +41,8 @@ interface OrderTransitionHandlerConfig {
 }
 
 // ============================================================================
-// Type Guard Functions
+// Config Extractors
 // ============================================================================
-
-/**
- * Safely get a string value from a record
- */
-function getStringValue(record: RecordObject, key: string): string | undefined {
-    const value = record[key];
-    if (typeof value === 'string') {
-        return value;
-    }
-    if (typeof value === 'number' || typeof value === 'boolean') {
-        return String(value);
-    }
-    return undefined;
-}
-
-/**
- * Safely get an ID value from a record (string or number)
- */
-function getIdValue(record: RecordObject, key: string): ID | undefined {
-    const value = record[key];
-    if (typeof value === 'string' || typeof value === 'number') {
-        return value;
-    }
-    return undefined;
-}
 
 /**
  * Extract OrderNoteHandlerConfig from step config
