@@ -47,9 +47,9 @@ function looseEquals(a: JsonValue, b: JsonValue): boolean {
     if (a === b) return true;
     if (a === null || b === null) return a === b;
     if (typeof a === typeof b) return a === b;
-    const strA = String(a);
-    const strB = String(b);
-    return strA === strB;
+    const leftString = String(a);
+    const rightString = String(b);
+    return leftString === rightString;
 }
 
 export function filterRecords(

@@ -66,18 +66,10 @@ export function compare(
     }
 }
 
-export function evaluateConditions(
-    record: JsonObject,
-    conditions: Array<{ field: string; cmp: string; value?: JsonValue }>,
-): boolean {
-    for (const condition of conditions) {
-        const fieldValue = getNestedValue(record, condition.field);
-        if (!compare(fieldValue ?? null, condition.cmp, condition.value ?? null)) {
-            return false;
-        }
-    }
-    return true;
-}
+// evaluateConditions has been consolidated into operators/logic/helpers.ts
+// which uses the OperatorCondition type with 'operator' field (not 'cmp').
+// Re-export for backwards compatibility if needed.
+export { evaluateConditions } from './logic/helpers';
 
 export function slugify(text: string, separator = '-'): string {
     return text
