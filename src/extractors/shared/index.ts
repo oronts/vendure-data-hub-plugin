@@ -19,3 +19,14 @@ export {
     BaseFileMetadata,
     attachMetadataToRecord,
 } from './file-format.utils';
+
+export {
+    BasePaginationState,
+    ExtendedPaginationState,
+    PaginationUpdateResult,
+    initBasePaginationState,
+    initExtendedPaginationState,
+    hasReachedMaxPages,
+    calculateNextOffset,
+    hasMoreByRecordCount,
+} from './pagination.utils';

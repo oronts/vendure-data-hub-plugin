@@ -1,13 +1,19 @@
 /**
  * HTTP API Pagination
  *
- * Handles various pagination strategies for API responses.
+ * Various pagination strategies for API responses.
+ * Uses shared pagination utilities where applicable.
  */
 
 import { PaginationConfig, JsonObject } from '../../types/index';
 import { HttpResponse, UpdatedPaginationState, PaginationState, HTTP_DEFAULTS } from './types';
 import { PaginationType } from '../../constants/index';
 import { getValueByPath } from './response-parser';
+import {
+    initBasePaginationState,
+    hasReachedMaxPages as sharedHasReachedMaxPages,
+    hasMoreByRecordCount,
+} from '../shared';
 
 /**
  * Update pagination state based on response
@@ -127,15 +133,11 @@ export function getNextPageUrl(response: HttpResponse): string | undefined {
 }
 
 /**
- * Initialize pagination state
+ * Initialize pagination state.
+ * Uses shared base pagination state initialization.
  */
 export function initPaginationState(): PaginationState {
-    return {
-        cursor: undefined,
-        offset: 0,
-        page: 1,
-        recordCount: 0,
-    };
+    return initBasePaginationState();
 }
 
 /**
@@ -172,12 +174,13 @@ export function estimateTotalPages(
 }
 
 /**
- * Check if we've reached max pages limit
+ * Check if we've reached max pages limit.
+ * Uses shared utility with HTTP-specific default.
  */
 export function hasReachedMaxPages(
     currentPage: number,
     maxPages: number | undefined,
 ): boolean {
     const limit = maxPages || HTTP_DEFAULTS.maxPages;
-    return currentPage >= limit;
+    return sharedHasReachedMaxPages(currentPage, limit);
 }

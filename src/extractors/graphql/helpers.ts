@@ -5,7 +5,12 @@ import { GraphQLPaginationType, HTTP_HEADERS, CONTENT_TYPES } from '../../consta
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 import { applyAuthentication, AuthConfig, createSecretResolver } from '../../utils/auth-helpers';
 import { buildUrlWithConnection, isValidGraphQLUrl as isValidGraphQLUrlUtil } from '../../utils/url-helpers';
-import { getNestedValue as getNestedValueUtil } from '../../utils/object-path.utils';
+import { getNestedValue as getNestedValueUtil, getNestedValue } from '../../utils/object-path.utils';
+import {
+    ExtendedPaginationState,
+    initExtendedPaginationState,
+    hasMoreByRecordCount,
+} from '../shared';
 
 /**
  * Build the full GraphQL endpoint URL
@@ -133,12 +138,8 @@ export function extractRecords(
     return current ? [current as JsonObject] : [];
 }
 
-/**
- * Get a value from nested object using dot notation path.
- */
-export function getNestedValue(obj: unknown, path: string): unknown {
-    return getNestedValueUtil(obj as JsonObject, path);
-}
+// Re-export getNestedValue from canonical location
+export { getNestedValue };
 
 /**
  * Build variables for paginated request
@@ -180,27 +181,17 @@ export function buildPaginatedVariables(
 }
 
 /**
- * Pagination state for tracking progress
+ * Pagination state for tracking progress.
+ * Extends the shared ExtendedPaginationState interface.
  */
-export interface PaginationState {
-    offset: number;
-    cursor?: string;
-    page: number;
-    recordCount: number;
-    totalFetched: number;
-}
+export type PaginationState = ExtendedPaginationState;
 
 /**
- * Initialize pagination state
+ * Initialize pagination state.
+ * Uses shared extended pagination state initialization.
  */
 export function initPaginationState(): PaginationState {
-    return {
-        offset: 0,
-        cursor: undefined,
-        page: 0,
-        recordCount: 0,
-        totalFetched: 0,
-    };
+    return initExtendedPaginationState();
 }
 
 /**
