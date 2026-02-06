@@ -78,6 +78,10 @@ export interface BaseAdapter<TConfig = JsonObject> {
     readonly deprecated?: boolean;
     /** Message explaining deprecation and migration path */
     readonly deprecatedMessage?: string;
+    /** Whether the adapter is experimental/beta and may change */
+    readonly experimental?: boolean;
+    /** Message explaining experimental status and limitations */
+    readonly experimentalMessage?: string;
 }
 
 /**
@@ -101,6 +105,10 @@ export interface AdapterDefinition {
     readonly version?: string;
     readonly deprecated?: boolean;
     readonly deprecatedMessage?: string;
+    /** Whether the adapter is experimental/beta and may change */
+    readonly experimental?: boolean;
+    /** Message explaining experimental status and limitations */
+    readonly experimentalMessage?: string;
 }
 
 // RECORD TYPES
