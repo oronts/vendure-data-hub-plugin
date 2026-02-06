@@ -48,12 +48,16 @@ export class DataHubErrorAdminResolver {
             const runRepo = this.connection.getRepository(ctx, PipelineRun);
             const run = await runRepo.findOne({ where: { id: runId }, relations: { pipeline: true } });
             const definition = run?.pipeline?.definition as PipelineDefinitionWithSecurity | undefined;
-            const maskFields = definition?.security?.maskFields;
-            return Array.isArray(maskFields) ? maskFields : [];
-        } catch {
-            // Failed to retrieve mask fields - return empty array to allow unmasked access
+            return this.extractMaskFields(definition);
+        } catch (error) {
+            logger.debug(`Failed to retrieve mask fields for run ${runId}`, { error });
             return [];
         }
+    }
+
+    private extractMaskFields(definition: PipelineDefinitionWithSecurity | undefined): string[] {
+        const maskFields = definition?.security?.maskFields;
+        return Array.isArray(maskFields) ? maskFields : [];
     }
 
     @Query()
@@ -63,6 +67,9 @@ export class DataHubErrorAdminResolver {
         @Args() args: { errorId: ID },
     ): Promise<DataHubRecordRetryAudit[]> {
         const rows = await this.retryAudits.listByError(ctx, args.errorId);
+        if (rows.length === 0) return rows;
+
+        // Pre-load mask fields once for all rows since they share the same error/run/pipeline
         const maskFields = await this.getMaskFieldsForError(ctx, args.errorId);
         if (maskFields.length) {
             return rows.map(r => ({
@@ -80,16 +87,53 @@ export class DataHubErrorAdminResolver {
             const err = await this.recordErrors.getById(ctx, errorId);
             if (!err) return [];
             return this.getMaskFieldsForRun(ctx, err.runId ?? err.run?.id);
-        } catch {
-            // Failed to retrieve error record - return empty mask fields
+        } catch (error) {
+            logger.debug(`Failed to retrieve error record ${errorId} for mask fields lookup`, { error });
             return [];
         }
     }
 
     @Query()
     @Allow(ViewDataHubQuarantinePermission.Permission)
-    dataHubDeadLetters(@Ctx() ctx: RequestContext): Promise<DataHubRecordError[]> {
-        return this.recordErrors.listDeadLetters(ctx);
+    async dataHubDeadLetters(@Ctx() ctx: RequestContext): Promise<DataHubRecordError[]> {
+        const items = await this.recordErrors.listDeadLetters(ctx);
+        if (items.length === 0) return items;
+
+        // Pre-load pipeline settings for all unique pipeline IDs to avoid N+1
+        const uniqueRunIds = [...new Set(items.map(it => it.runId ?? it.run?.id).filter(Boolean))];
+        const maskFieldsMap = await this.getMaskFieldsMapForRuns(ctx, uniqueRunIds);
+
+        return items.map(it => {
+            const runId = it.runId ?? it.run?.id;
+            const maskFields = runId ? maskFieldsMap.get(runId) ?? [] : [];
+            if (maskFields.length) {
+                return { ...it, payload: this.maskPayload(it.payload, maskFields) };
+            }
+            return it;
+        });
+    }
+
+    private async getMaskFieldsMapForRuns(ctx: RequestContext, runIds: ID[]): Promise<Map<ID, string[]>> {
+        const map = new Map<ID, string[]>();
+        if (runIds.length === 0) return map;
+
+        try {
+            const runRepo = this.connection.getRepository(ctx, PipelineRun);
+            const runs = await runRepo.find({
+                where: runIds.map(id => ({ id })),
+                relations: { pipeline: true },
+            });
+
+            for (const run of runs) {
+                const definition = run?.pipeline?.definition as PipelineDefinitionWithSecurity | undefined;
+                const maskFields = this.extractMaskFields(definition);
+                map.set(run.id, maskFields);
+            }
+        } catch (error) {
+            logger.debug(`Failed to batch-retrieve mask fields for runs`, { error });
+        }
+
+        return map;
     }
 
     @Mutation()

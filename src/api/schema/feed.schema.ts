@@ -2,7 +2,10 @@ export const feedSchema = `
     """
     Feeds API - Export feeds for Google Shopping, Facebook, etc.
     """
-    type DataHubFeed {
+    type DataHubFeed implements Node {
+        id: ID!
+        createdAt: DateTime!
+        updatedAt: DateTime!
         code: String!
         name: String!
         format: DataHubFeedFormat!

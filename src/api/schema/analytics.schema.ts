@@ -1,6 +1,6 @@
 export const analyticsSchema = `
     """
-    Analytics API - Comprehensive stats and metrics
+    Analytics API - Stats and metrics
     """
     type DataHubAnalyticsOverview {
         totalPipelines: Int!

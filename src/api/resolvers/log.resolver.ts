@@ -3,7 +3,7 @@ import { Allow, Ctx, ListQueryOptions, RequestContext } from '@vendure/core';
 import { PipelineLogService } from '../../services';
 import { PipelineLog } from '../../entities/pipeline';
 import { ViewDataHubRunsPermission } from '../../permissions';
-import { DEFAULTS } from '../../constants/index';
+import { PAGINATION } from '../../constants/index';
 
 @Resolver()
 export class DataHubLogAdminResolver {
@@ -33,6 +33,6 @@ export class DataHubLogAdminResolver {
     @Query()
     @Allow(ViewDataHubRunsPermission.Permission)
     async dataHubRecentLogs(@Ctx() ctx: RequestContext, @Args() args: { limit?: number }) {
-        return this.logService.getRecent(ctx, args.limit ?? DEFAULTS.RECENT_LOGS_LIMIT);
+        return this.logService.getRecent(ctx, args.limit ?? PAGINATION.RECENT_LOGS_LIMIT);
     }
 }

@@ -441,7 +441,7 @@ export const sandboxSchema = `
 export const sandboxQueries = `
     extend type Query {
         """
-        Execute a comprehensive sandbox/dry run for a pipeline
+        Execute a sandbox/dry run for a pipeline
         Returns detailed step-by-step results with record samples and field diffs
         """
         dataHubSandbox(pipelineId: ID!, options: DataHubSandboxOptions): DataHubSandboxResult!

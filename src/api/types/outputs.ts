@@ -6,25 +6,6 @@
  */
 
 import { ID } from '@vendure/core';
-import type { JsonValue, JsonObject } from '../../types/index';
-
-// GENERIC OUTPUTS
-
-/**
- * Standard success response
- */
-export interface SuccessResponse {
-    success: boolean;
-    message?: string;
-}
-
-/**
- * Standard deletion response (mirrors Vendure's DeletionResponse)
- */
-export interface DeletionResponseOutput {
-    result: 'DELETED' | 'NOT_DELETED';
-    message?: string;
-}
 
 // PIPELINE OUTPUTS
 
@@ -34,15 +15,6 @@ export interface DeletionResponseOutput {
 export interface PipelineValidationResult {
     isValid: boolean;
     errors: string[];
-}
-
-/**
- * Pipeline run result
- */
-export interface PipelineRunResult {
-    runId: ID;
-    status: string;
-    startedAt: Date;
 }
 
 // ANALYTICS OUTPUTS
@@ -57,19 +29,6 @@ export interface AnalyticsOverview {
     successfulRuns: number;
     failedRuns: number;
     averageDuration: number;
-}
-
-/**
- * Pipeline performance metrics
- */
-export interface PipelinePerformanceMetrics {
-    pipelineId: ID;
-    pipelineCode: string;
-    totalRuns: number;
-    successRate: number;
-    averageDuration: number;
-    recordsProcessed: number;
-    lastRunAt?: Date;
 }
 
 /**
@@ -117,19 +76,6 @@ export interface QueueStats {
 }
 
 // WEBHOOK OUTPUTS
-
-/**
- * Webhook delivery status
- */
-export interface WebhookDeliveryOutput {
-    deliveryId: string;
-    webhookId: string;
-    status: 'PENDING' | 'DELIVERED' | 'FAILED' | 'RETRYING' | 'DEAD_LETTER';
-    attempts: number;
-    lastAttemptAt?: Date;
-    responseStatus?: number;
-    error?: string;
-}
 
 /**
  * Webhook stats
@@ -240,43 +186,3 @@ export interface ExtractorsByCategoryOutput {
     extractors: ExtractorOutput[];
 }
 
-// FILE STORAGE OUTPUTS
-
-/**
- * File response
- */
-export interface FileResponse {
-    id: string;
-    originalName: string;
-    mimeType: string;
-    size: number;
-    hash: string;
-    uploadedAt: string;
-    expiresAt?: string;
-    downloadUrl: string;
-    previewUrl: string;
-}
-
-/**
- * File preview response
- */
-export interface FilePreviewResponse {
-    success: boolean;
-    fileId: string;
-    originalName: string;
-    format: string;
-    fields: Array<{ name: string; type: string; sample?: JsonValue }>;
-    sampleData: JsonObject[];
-    totalRows: number;
-    warnings: string[];
-}
-
-/**
- * Storage stats
- */
-export interface StorageStats {
-    totalFiles: number;
-    totalSize: number;
-    usedSpace: number;
-    availableSpace: number;
-}

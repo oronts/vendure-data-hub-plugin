@@ -3,7 +3,10 @@ import { Allow, RequestContext, Ctx, Transaction, TransactionalConnection } from
 import { ViewDataHubRunsPermission, DataHubPipelinePermission } from '../../permissions';
 import { PipelineRun, Pipeline } from '../../entities/pipeline';
 import { MessageConsumerService } from '../../services/events/message-consumer.service';
-import { RunStatus, SortOrder } from '../../constants/index';
+import { RunStatus, SortOrder, LOGGER_CONTEXTS } from '../../constants/index';
+import { DataHubLogger } from '../../services/logger';
+
+const logger = new DataHubLogger(LOGGER_CONTEXTS.QUEUE_RESOLVER);
 
 interface QueueStats {
     pending: number;
@@ -61,10 +64,11 @@ export class DataHubQueueAdminResolver {
         // Transform aggregated stats into the expected format
         const statsMap = new Map<string, { pending: number; running: number }>();
         for (const row of pipelineStats) {
-            if (!statsMap.has(row.code)) {
-                statsMap.set(row.code, { pending: 0, running: 0 });
+            let entry = statsMap.get(row.code);
+            if (!entry) {
+                entry = { pending: 0, running: 0 };
+                statsMap.set(row.code, entry);
             }
-            const entry = statsMap.get(row.code)!;
             if (row.status === RunStatus.PENDING) {
                 entry.pending = parseInt(row.count, 10);
             } else if (row.status === RunStatus.RUNNING) {
@@ -117,8 +121,8 @@ export class DataHubQueueAdminResolver {
         try {
             await this.messageConsumer.startConsumerByCode(args.pipelineCode);
             return true;
-        } catch {
-            // Consumer start failed - return false to indicate failure
+        } catch (error) {
+            logger.debug(`Consumer start failed for pipeline ${args.pipelineCode}`, { error });
             return false;
         }
     }
@@ -133,8 +137,8 @@ export class DataHubQueueAdminResolver {
         try {
             await this.messageConsumer.stopConsumerByCode(args.pipelineCode);
             return true;
-        } catch {
-            // Consumer stop failed - return false to indicate failure
+        } catch (error) {
+            logger.debug(`Consumer stop failed for pipeline ${args.pipelineCode}`, { error });
             return false;
         }
     }

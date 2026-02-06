@@ -29,6 +29,8 @@ interface SettingsGraphQLInput {
     logPersistenceLevel?: string;
 }
 
+const MAX_RETENTION_DAYS = 3650; // 10 years maximum
+
 @Resolver()
 export class DataHubSettingsAdminResolver {
     constructor(
@@ -54,13 +56,19 @@ export class DataHubSettingsAdminResolver {
     async updateDataHubSettings(@Args('input') input: SettingsGraphQLInput) {
         const normalized: DataHubSettingsInput = {};
         if (input.retentionDaysRuns !== undefined) {
-            normalized.retentionDaysRuns = input.retentionDaysRuns == null ? null : Math.max(0, Number(input.retentionDaysRuns));
+            normalized.retentionDaysRuns = input.retentionDaysRuns == null
+                ? null
+                : Math.min(MAX_RETENTION_DAYS, Math.max(0, Number(input.retentionDaysRuns)));
         }
         if (input.retentionDaysErrors !== undefined) {
-            normalized.retentionDaysErrors = input.retentionDaysErrors == null ? null : Math.max(0, Number(input.retentionDaysErrors));
+            normalized.retentionDaysErrors = input.retentionDaysErrors == null
+                ? null
+                : Math.min(MAX_RETENTION_DAYS, Math.max(0, Number(input.retentionDaysErrors)));
         }
         if (input.retentionDaysLogs !== undefined) {
-            normalized.retentionDaysLogs = input.retentionDaysLogs == null ? null : Math.max(0, Number(input.retentionDaysLogs));
+            normalized.retentionDaysLogs = input.retentionDaysLogs == null
+                ? null
+                : Math.min(MAX_RETENTION_DAYS, Math.max(0, Number(input.retentionDaysLogs)));
         }
         if (input.logPersistenceLevel !== undefined) {
             const level = input.logPersistenceLevel as LogPersistenceLevel;

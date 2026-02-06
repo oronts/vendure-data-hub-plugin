@@ -48,17 +48,17 @@ export class DataHubPipelineAdminResolver {
     @Query()
     @Allow(DataHubPipelinePermission.Read)
     async dataHubPipelineDependencies(@Ctx() ctx: RequestContext, @Args() args: { id: ID }): Promise<Pipeline[]> {
-        const p = await this.pipelineService.findOne(ctx, args.id);
-        if (!p?.definition?.steps) return [];
-        return this.pipelineService.findByCodes(ctx, p.definition.dependsOn ?? []);
+        const pipeline = await this.pipelineService.findOne(ctx, args.id);
+        if (!pipeline?.definition?.steps) return [];
+        return this.pipelineService.findByCodes(ctx, pipeline.definition.dependsOn ?? []);
     }
 
     @Query()
     @Allow(DataHubPipelinePermission.Read)
     async dataHubPipelineDependents(@Ctx() ctx: RequestContext, @Args() args: { id: ID }): Promise<Pipeline[]> {
-        const p = await this.pipelineService.findOne(ctx, args.id);
-        if (!p) return [];
-        return this.pipelineService.findDependents(ctx, p.code);
+        const pipeline = await this.pipelineService.findOne(ctx, args.id);
+        if (!pipeline) return [];
+        return this.pipelineService.findDependents(ctx, pipeline.code);
     }
 
     @Query()

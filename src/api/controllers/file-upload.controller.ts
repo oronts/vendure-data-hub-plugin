@@ -1,7 +1,7 @@
 /**
  * DataHub File Upload Controller
  *
- * Handles file uploads for DataHub import operations.
+ * File uploads for DataHub import operations.
  * Supports multipart form-data and base64 uploads.
  *
  * Endpoints:
@@ -26,11 +26,11 @@ import {
     RequestContext,
     Allow,
 } from '@vendure/core';
-import { FileStorageService, StoredFile } from '../../services';
+import { FileStorageService } from '../../services';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { ManageDataHubFilesPermission, ReadDataHubFilesPermission } from '../../permissions';
-import { DEFAULTS, LOGGER_CONTEXTS, FILE_STORAGE } from '../../constants/index';
-import { detectFormat, isValidFileId, DATAHUB_FILES_PATH } from './file-upload.utils';
+import { PAGINATION, LOGGER_CONTEXTS, FILE_STORAGE } from '../../constants/index';
+import { detectFormat, isValidFileId, formatFileResponse, detectMimeType } from './file-upload.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 
 /** Multer configuration for file uploads */
@@ -123,13 +123,13 @@ export class DataHubFileUploadController {
         @Query('mimeType') mimeType?: string,
     ) {
         const result = await this.fileStorage.listFiles({
-            limit: limit ? parseInt(limit, 10) : DEFAULTS.LIST_PAGE_SIZE,
+            limit: limit ? parseInt(limit, 10) : PAGINATION.LIST_PAGE_SIZE,
             offset: offset ? parseInt(offset, 10) : 0,
             filter: mimeType ? { mimeType } : undefined,
         });
 
         return {
-            items: result.files.map(f => this.formatFileResponse(f)),
+            items: result.files.map(f => formatFileResponse(f)),
             totalItems: result.totalItems,
         };
     }
@@ -161,7 +161,7 @@ export class DataHubFileUploadController {
 
         return res.json({
             success: true,
-            file: this.formatFileResponse(file),
+            file: formatFileResponse(file),
         });
     }
 
@@ -250,7 +250,7 @@ export class DataHubFileUploadController {
             // Use file parser to analyze the file
             const preview = await this.fileParser.preview(content, {
                 format,
-            }, rows ? parseInt(rows, 10) : DEFAULTS.FILE_PREVIEW_ROWS);
+            }, rows ? parseInt(rows, 10) : PAGINATION.FILE_PREVIEW_ROWS);
 
             return res.json({
                 success: true,
@@ -367,19 +367,19 @@ export class DataHubFileUploadController {
                         ctx,
                         file.buffer,
                         file.originalname,
-                        file.mimetype || this.detectMimeType(file.originalname),
-                        { expiresInMinutes: DEFAULTS.FILE_EXPIRY_MINUTES },
+                        file.mimetype || detectMimeType(file.originalname),
+                        { expiresInMinutes: FILE_STORAGE.EXPIRY_MINUTES },
                     );
 
-                    if (result.success) {
+                    if (result.success && result.file) {
                         res.status(HttpStatus.CREATED).json({
                             success: true,
-                            file: this.formatFileResponse(result.file!),
+                            file: formatFileResponse(result.file),
                         });
                     } else {
                         res.status(HttpStatus.BAD_REQUEST).json({
                             success: false,
-                            error: result.error,
+                            error: result.error ?? 'Upload failed',
                         });
                     }
                     resolve();
@@ -444,19 +444,19 @@ export class DataHubFileUploadController {
                         ctx,
                         body.content,
                         body.filename,
-                        body.mimeType || this.detectMimeType(body.filename),
-                        { expiresInMinutes: body.expiresInMinutes || DEFAULTS.FILE_EXPIRY_MINUTES },
+                        body.mimeType || detectMimeType(body.filename),
+                        { expiresInMinutes: body.expiresInMinutes || FILE_STORAGE.EXPIRY_MINUTES },
                     );
 
-                    if (result.success) {
+                    if (result.success && result.file) {
                         res.status(HttpStatus.CREATED).json({
                             success: true,
-                            file: this.formatFileResponse(result.file!),
+                            file: formatFileResponse(result.file),
                         });
                     } else {
                         res.status(HttpStatus.BAD_REQUEST).json({
                             success: false,
-                            error: result.error,
+                            error: result.error ?? 'Upload failed',
                         });
                     }
                     resolve();
@@ -470,33 +470,6 @@ export class DataHubFileUploadController {
                 }
             });
         });
-    }
-
-    private formatFileResponse(file: StoredFile) {
-        return {
-            id: file.id,
-            originalName: file.originalName,
-            mimeType: file.mimeType,
-            size: file.size,
-            hash: file.hash,
-            uploadedAt: file.uploadedAt.toISOString(),
-            expiresAt: file.expiresAt?.toISOString(),
-            downloadUrl: `${DATAHUB_FILES_PATH}/${file.id}/download`,
-            previewUrl: `${DATAHUB_FILES_PATH}/${file.id}/preview`,
-        };
-    }
-
-    private detectMimeType(filename: string): string {
-        const ext = filename.toLowerCase().split('.').pop();
-        const mimeTypes: Record<string, string> = {
-            csv: 'text/csv',
-            json: 'application/json',
-            xml: 'application/xml',
-            xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            xls: 'application/vnd.ms-excel',
-            txt: 'text/plain',
-        };
-        return mimeTypes[ext || ''] || 'application/octet-stream';
     }
 
 }

@@ -1,6 +1,6 @@
 export const versioningSchema = `
     """
-    Enhanced pipeline revision with versioning metadata
+    Pipeline revision with author, commit message, and change tracking
     """
     type DataHubPipelineRevisionExtended implements Node {
         id: ID!

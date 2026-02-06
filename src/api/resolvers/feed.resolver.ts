@@ -2,8 +2,11 @@ import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Ctx, RequestContext, Allow, Transaction } from '@vendure/core';
 import { FeedGeneratorService, FeedConfig } from '../../feeds/feed-generator.service';
 import { ManageDataHubFeedsPermission } from '../../permissions';
-import { DEFAULTS, FEED_FORMATS } from '../../constants/index';
+import { PAGINATION, FEED_FORMATS, LOGGER_CONTEXTS } from '../../constants/index';
 import type { FeedFormatInfo } from '../../constants/index';
+import { DataHubLogger } from '../../services/logger';
+
+const logger = new DataHubLogger(LOGGER_CONTEXTS.FEED_RESOLVER);
 
 /** Result of feed generation operation */
 interface FeedGenerationResult {
@@ -68,6 +71,7 @@ export class DataHubFeedAdminResolver {
                 warnings: result.warnings,
             };
         } catch (error) {
+            logger.warn('Feed generation failed', { feedCode, error });
             return {
                 success: false,
                 itemCount: 0,
@@ -84,7 +88,7 @@ export class DataHubFeedAdminResolver {
     async previewDataHubFeed(
         @Ctx() ctx: RequestContext,
         @Args('feedCode') feedCode: string,
-        @Args('limit') limit: number = DEFAULTS.FEED_PREVIEW_LIMIT,
+        @Args('limit') limit: number = PAGINATION.FEED_PREVIEW_LIMIT,
     ): Promise<FeedPreviewResult> {
         const result = await this.feedGenerator.generateFeed(ctx, feedCode);
         let previewContent = typeof result.content === 'string'

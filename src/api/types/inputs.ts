@@ -6,7 +6,7 @@
  */
 
 import { ID } from '@vendure/core';
-import { JsonObject, JsonValue, PipelineDefinition } from '../../types/index';
+import { JsonValue, PipelineDefinition } from '../../types/index';
 import { VisualPipelineDefinition } from '../../services/pipeline/pipeline-format.service';
 
 // CHECKPOINT TYPES
@@ -67,87 +67,6 @@ export interface UpdatePipelineInput {
     tags?: string[];
 }
 
-// SCHEMA INPUTS
-
-/**
- * Input for creating a new schema
- */
-export interface CreateSchemaInput {
-    code: string;
-    name: string;
-    version?: number;
-    fields: Record<string, SchemaFieldInput>;
-}
-
-/**
- * Input for updating an existing schema
- */
-export interface UpdateSchemaInput {
-    id: ID;
-    code?: string;
-    name?: string;
-    version?: number;
-    fields?: Record<string, SchemaFieldInput>;
-}
-
-/**
- * Schema field input for GraphQL mutations
- */
-export interface SchemaFieldInput {
-    type: 'string' | 'number' | 'boolean' | 'array' | 'object';
-    required?: boolean;
-    min?: number;
-    max?: number;
-    minLength?: number;
-    maxLength?: number;
-    pattern?: string;
-    enum?: JsonValue[];
-}
-
-// SECRET INPUTS
-
-/**
- * Input for creating a new secret
- */
-export interface CreateSecretInput {
-    code: string;
-    provider?: string;
-    value?: string;
-    metadata?: JsonObject;
-}
-
-/**
- * Input for updating an existing secret
- */
-export interface UpdateSecretInput {
-    id: ID;
-    code?: string;
-    provider?: string;
-    value?: string;
-    metadata?: JsonObject;
-}
-
-// CONNECTION INPUTS
-
-/**
- * Input for creating a new connection
- */
-export interface CreateConnectionInput {
-    code: string;
-    type?: string;
-    config?: JsonObject;
-}
-
-/**
- * Input for updating an existing connection
- */
-export interface UpdateConnectionInput {
-    id: ID;
-    code?: string;
-    type?: string;
-    config?: JsonObject;
-}
-
 // SETTINGS INPUTS
 
 /**
@@ -176,42 +95,3 @@ export interface AutoMapperConfigInput {
     pipelineId?: ID;
 }
 
-// FEED INPUTS
-
-/**
- * Input for registering a new feed
- */
-export interface RegisterFeedInput {
-    code: string;
-    name: string;
-    format: 'google_shopping' | 'facebook_catalog' | 'csv' | 'json' | 'xml';
-    config?: JsonObject;
-}
-
-// EXPORT DESTINATION INPUTS
-
-/**
- * Input for registering an export destination
- */
-export interface RegisterExportDestinationInput {
-    id: string;
-    type: 's3' | 'sftp' | 'ftp' | 'local' | 'http';
-    name?: string;
-    // S3 options
-    bucket?: string;
-    region?: string;
-    accessKeyId?: string;
-    secretAccessKey?: string;
-    // SFTP/FTP options
-    host?: string;
-    port?: number;
-    username?: string;
-    password?: string;
-    privateKey?: string;
-    remotePath?: string;
-    // HTTP options
-    url?: string;
-    headers?: Record<string, string>;
-    // Local options
-    path?: string;
-}

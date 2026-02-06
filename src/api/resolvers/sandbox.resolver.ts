@@ -42,6 +42,7 @@ interface SandboxComparisonResult {
 }
 
 const DEFAULT_MAX_RECORDS = 100;
+const MAX_COMPARISON_RECORDS = 10000;
 
 @Resolver()
 export class DataHubSandboxResolver {
@@ -90,9 +91,15 @@ export class DataHubSandboxResolver {
             throw new Error(RESOLVER_ERROR_MESSAGES.REVISION_NOT_FOUND);
         }
 
+        // Add a reasonable limit check before comparison
+        const options = {
+            ...args.options,
+            maxRecords: Math.min(args.options?.maxRecords ?? MAX_COMPARISON_RECORDS, MAX_COMPARISON_RECORDS),
+        };
+
         const [beforeResult, afterResult] = await Promise.all([
-            this.sandboxService.executeWithDefinition(ctx, fromRevision.definition, args.options),
-            this.sandboxService.executeWithDefinition(ctx, toRevision.definition, args.options),
+            this.sandboxService.executeWithDefinition(ctx, fromRevision.definition, options),
+            this.sandboxService.executeWithDefinition(ctx, toRevision.definition, options),
         ]);
 
         return this.compareResults(beforeResult, afterResult);

@@ -42,9 +42,9 @@ export class DataHubSecretAdminResolver {
     @Query()
     @Allow(DataHubSecretPermission.Read)
     async dataHubSecret(@Ctx() ctx: RequestContext, @Args() args: { id: ID }): Promise<MaskedDataHubSecret | null> {
-        const s = await this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { id: args.id } });
-        if (!s) return null;
-        return this.maskSecretValue(s);
+        const secret = await this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { id: args.id } });
+        if (!secret) return null;
+        return this.maskSecretValue(secret);
     }
 
     private maskSecretValue(s: DataHubSecret): MaskedDataHubSecret {
