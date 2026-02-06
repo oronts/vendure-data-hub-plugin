@@ -11,3 +11,4 @@ export * from './environment';
 export * from './encryption.utils';
 export * from './value-checks.utils';
 export * from './retry.utils';
+export * from './error.utils';

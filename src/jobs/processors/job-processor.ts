@@ -15,6 +15,7 @@ import {
     DEFAULT_RETRY_CONFIG,
     isRetryableError as isRetryableErrorBase,
 } from '../../utils/retry.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.JOB_PROCESSOR);
 
@@ -99,7 +100,7 @@ export function withJobProcessing<T, R>(
             return createSuccessResult(durationMs);
         } catch (error) {
             const durationMs = Date.now() - startTime;
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorMessage = getErrorMessage(error);
 
             logger.error(`Job failed: ${name}`, error instanceof Error ? error : undefined, { durationMs });
 

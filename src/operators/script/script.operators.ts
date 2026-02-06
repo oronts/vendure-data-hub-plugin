@@ -18,6 +18,7 @@ import {
     createCodeSandbox,
     CodeSecurityConfig,
 } from '../../utils/code-security.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 import { SafeEvaluatorConfig } from '../../runtime/sandbox';
 // Import directly from defaults to avoid circular dependency with constants/index.ts
 // which imports ../operators -> this file
@@ -167,7 +168,7 @@ export function scriptOperator(
     try {
         validateUserCode(code);
     } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = getErrorMessage(error);
         return {
             records: [...records],
             errors: [{ message: `Code validation failed: ${errorMsg}` }],
@@ -239,7 +240,7 @@ async function executeBatchScript(
 
         return { records: sanitizedResult };
     } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = getErrorMessage(error);
         if (failOnError) {
             throw new Error(`Script execution failed: ${errorMsg}`);
         }
@@ -316,7 +317,7 @@ async function executeSingleRecordScript(
             const sanitizedResult = sanitizeObject(result as JsonObject);
             results.push(sanitizedResult);
         } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
+            const errorMsg = getErrorMessage(error);
             if (failOnError) {
                 throw new Error(`Script execution failed at record ${i}: ${errorMsg}`);
             }

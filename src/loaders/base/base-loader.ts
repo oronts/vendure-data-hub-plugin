@@ -21,6 +21,7 @@ import {
 import { TARGET_OPERATION, OUTCOME_TYPE, LoaderOutcomeType } from '../../constants/enums';
 import { DataHubLogger } from '../../services/logger';
 import { isRecoverableError } from '../shared-helpers';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Metadata configuration for a loader
@@ -223,7 +224,7 @@ export abstract class BaseEntityLoader<
         result.failed++;
         result.errors.push({
             record,
-            message: error instanceof Error ? error.message : String(error),
+            message: getErrorMessage(error),
             recoverable: isRecoverableError(error),
         });
         this.logger.error(

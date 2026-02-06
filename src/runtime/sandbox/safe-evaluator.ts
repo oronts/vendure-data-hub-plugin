@@ -15,6 +15,7 @@ import {
     CodeSecurityConfig,
     DEFAULT_CODE_SECURITY_CONFIG,
 } from '../../utils/code-security.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 // Import directly from defaults to avoid circular dependency with constants/index.ts
 // which imports ../operators -> script.operators.ts -> this file via sandbox/index.ts
 import { SAFE_EVALUATOR } from '../../constants/defaults';
@@ -254,7 +255,7 @@ export class SafeEvaluator {
         } catch (error) {
             return {
                 success: false,
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
                 executionTimeMs: Date.now() - startTime,
             };
         }
@@ -299,7 +300,7 @@ export class SafeEvaluator {
         } catch (error) {
             return {
                 success: false,
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
                 executionTimeMs: Date.now() - startTime,
             };
         }
@@ -315,7 +316,7 @@ export class SafeEvaluator {
         } catch (error) {
             return {
                 valid: false,
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
             };
         }
     }
@@ -451,7 +452,7 @@ export class SafeEvaluator {
             return { fn, params: allParams };
         } catch (error) {
             throw new Error(
-                `Failed to compile expression: ${error instanceof Error ? error.message : String(error)}`,
+                `Failed to compile expression: ${getErrorMessage(error)}`,
             );
         }
     }
