@@ -13,21 +13,37 @@ import { TARGET_OPERATION, ValidationErrorCode } from '../../constants/enums';
 import { isValidEmail } from '../../utils/input-validation.utils';
 
 /**
- * Validation error structure
+ * Loader-specific validation error structure.
+ *
+ * This is a simplified version of the shared ValidationError type,
+ * optimized for entity loader validation use cases where field and
+ * message are always required but rule/severity/context are not needed.
+ *
+ * @see shared/types/validation.types.ts for the canonical ValidationError type
  */
-export interface ValidationError {
+export interface LoaderValidationError {
     field: string;
     message: string;
     code?: string;
 }
 
 /**
- * Validation warning structure
+ * @deprecated Use LoaderValidationError instead. This alias is provided for backward compatibility.
  */
-export interface ValidationWarning {
+export type ValidationError = LoaderValidationError;
+
+/**
+ * Loader-specific validation warning structure.
+ */
+export interface LoaderValidationWarning {
     field: string;
     message: string;
 }
+
+/**
+ * @deprecated Use LoaderValidationWarning instead. This alias is provided for backward compatibility.
+ */
+export type ValidationWarning = LoaderValidationWarning;
 
 /**
  * Fluent builder for constructing validation results.
@@ -43,8 +59,8 @@ export interface ValidationWarning {
  * ```
  */
 export class ValidationBuilder {
-    private errors: ValidationError[] = [];
-    private warnings: ValidationWarning[] = [];
+    private errors: LoaderValidationError[] = [];
+    private warnings: LoaderValidationWarning[] = [];
 
     /**
      * Add an error
@@ -182,7 +198,7 @@ export class ValidationBuilder {
     validateArrayItems<T>(
         field: string,
         items: T[] | undefined,
-        validator: (item: T, index: number) => ValidationError[],
+        validator: (item: T, index: number) => LoaderValidationError[],
     ): this {
         if (!items || !Array.isArray(items)) {
             return this;
@@ -221,7 +237,7 @@ export class ValidationBuilder {
     /**
      * Merge errors from another source
      */
-    mergeErrors(errors: ValidationError[]): this {
+    mergeErrors(errors: LoaderValidationError[]): this {
         this.errors.push(...errors);
         return this;
     }
@@ -229,7 +245,7 @@ export class ValidationBuilder {
     /**
      * Merge warnings from another source
      */
-    mergeWarnings(warnings: ValidationWarning[]): this {
+    mergeWarnings(warnings: LoaderValidationWarning[]): this {
         this.warnings.push(...warnings);
         return this;
     }
@@ -237,7 +253,7 @@ export class ValidationBuilder {
     /**
      * Get current errors (useful for conditional logic)
      */
-    getErrors(): ValidationError[] {
+    getErrors(): LoaderValidationError[] {
         return [...this.errors];
     }
 
@@ -279,8 +295,8 @@ export { isValidEmail };
  * Factory function to create a validation result directly
  */
 export function createValidationResult(
-    errors: ValidationError[] = [],
-    warnings: ValidationWarning[] = [],
+    errors: LoaderValidationError[] = [],
+    warnings: LoaderValidationWarning[] = [],
 ): EntityValidationResult {
     return {
         valid: errors.length === 0,

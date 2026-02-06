@@ -107,10 +107,16 @@ export interface LoadResult {
 // VALIDATION RESULTS
 
 /**
- * Single validation error
+ * SDK-specific validation error for adapter result types.
+ *
+ * This type is used by validator adapters and has a shape optimized for
+ * validation result reporting. Field is optional because some validation
+ * errors apply to the entire record rather than a specific field.
+ *
+ * @see shared/types/validation.types.ts for the canonical ValidationError type
  */
-export interface ValidationError {
-    /** Field that failed validation */
+export interface SdkValidationError {
+    /** Field that failed validation (optional for record-level errors) */
     readonly field?: string;
     /** Validation rule that failed */
     readonly rule: string;
@@ -121,13 +127,18 @@ export interface ValidationError {
 }
 
 /**
+ * @deprecated Use SdkValidationError instead. This alias is provided for backward compatibility.
+ */
+export type ValidationError = SdkValidationError;
+
+/**
  * Record that failed validation
  */
 export interface InvalidRecord {
     /** The invalid record */
     readonly record: JsonObject;
     /** Validation errors for this record */
-    readonly errors: readonly ValidationError[];
+    readonly errors: readonly SdkValidationError[];
 }
 
 /**

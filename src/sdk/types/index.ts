@@ -89,6 +89,8 @@ export {
     OperatorResult,
     LoadError,
     LoadResult,
+    SdkValidationError,
+    // Backward compatibility alias (deprecated)
     ValidationError,
     InvalidRecord,
     ValidationResult,

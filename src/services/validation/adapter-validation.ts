@@ -9,6 +9,10 @@ import { JsonValue, PipelineDefinition, StepType } from '../../types/index';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { AdapterDefinition, StepConfigSchema, StepConfigSchemaField, SelectOption } from '../../sdk/types';
 import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
+import { AdapterType } from '../../../shared/types';
+
+// Re-export AdapterType for backward compatibility
+export type { AdapterType } from '../../../shared/types';
 
 // ============================================================================
 // Type Definitions
@@ -23,11 +27,6 @@ export interface StepConfig {
     variables?: Record<string, JsonValue>;
     [key: string]: unknown;
 }
-
-/**
- * Adapter type mapping for step types
- */
-export type AdapterType = 'extractor' | 'operator' | 'loader' | 'exporter' | 'feed' | 'enricher' | 'sink';
 
 // ============================================================================
 // Type Guards

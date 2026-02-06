@@ -22,24 +22,15 @@ import {
     OperatorResult,
 } from './result-types';
 import { OperatorHelpers } from './transform-types';
+import { ExportFormatType } from '../../constants/enums';
 import {
-    ExportFormatType,
-    AdapterType as AdapterTypeEnum,
-    AdapterCategory as AdapterCategoryEnum,
-    TriggerType as TriggerTypeEnum,
-} from '../../constants/enums';
+    AdapterType,
+    AdapterCategory,
+    TriggerType,
+} from '../../../shared/types';
 
-/**
- * Primary adapter type classification
- * @see AdapterType enum in constants/enums.ts for canonical definition
- */
-export type AdapterType = `${AdapterTypeEnum}`;
-
-/**
- * Adapter category for UI organization
- * @see AdapterCategory enum in constants/enums.ts for canonical definition
- */
-export type AdapterCategory = `${AdapterCategoryEnum}`;
+// Re-export from shared for backward compatibility
+export type { AdapterType, AdapterCategory, TriggerType } from '../../../shared/types';
 
 // BASE ADAPTER INTERFACE
 
@@ -604,12 +595,7 @@ export interface SinkAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> 
 }
 
 // TRIGGER ADAPTER
-
-/**
- * Trigger types that initiate pipelines
- * @see TriggerType enum in constants/enums.ts for canonical definition
- */
-export type TriggerType = `${TriggerTypeEnum}`;
+// TriggerType is imported from shared/types at the top of this file
 
 /**
  * Context provided to trigger adapters
