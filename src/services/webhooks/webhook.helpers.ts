@@ -7,6 +7,7 @@
 import * as crypto from 'crypto';
 import { RetryConfig, WebhookConfig, WebhookDelivery, WebhookDeliveryStatus, WebhookStats, WebhookPayload } from './webhook.types';
 import { WEBHOOK, HTTP_HEADERS } from '../../constants/index';
+import { calculateBackoff as calculateBackoffShared } from '../../utils/retry.utils';
 
 /**
  * Generate unique delivery ID
@@ -41,12 +42,16 @@ export function buildHeaders(
 
 /**
  * Calculate exponential backoff delay with jitter
+ * Delegates to shared retry utility for consistency across the codebase.
  */
 export function calculateBackoff(attempt: number, config: RetryConfig): number {
-    const delay = config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt - 1);
-    // Add jitter (0-10% random variation)
-    const jitter = delay * (Math.random() * 0.1);
-    return Math.min(delay + jitter, config.maxDelayMs);
+    return calculateBackoffShared(attempt, {
+        maxAttempts: config.maxAttempts,
+        initialDelayMs: config.initialDelayMs,
+        maxDelayMs: config.maxDelayMs,
+        backoffMultiplier: config.backoffMultiplier,
+        jitterFactor: 0.1,
+    });
 }
 
 /**
