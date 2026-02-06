@@ -23,6 +23,7 @@ import {
     ENV_VAR_REF_PATTERN,
     isValidEmail as isValidEmailFromPatterns,
 } from './patterns';
+import { CONFIDENCE_THRESHOLDS } from '../../shared/constants';
 
 export const VALIDATION_PATTERNS = {
     /** Email address pattern - from patterns.ts */
@@ -180,10 +181,8 @@ export function isValidSlug(value: string): boolean {
     return VALIDATION_PATTERNS.SLUG.test(value);
 }
 
-export const CONFIDENCE_THRESHOLDS = {
-    HIGH: 70,
-    MEDIUM: 40,
-} as const;
+// Re-export from shared constants (single source of truth) - imported at top of file
+export { CONFIDENCE_THRESHOLDS };
 
 /**
  * Match confidence type

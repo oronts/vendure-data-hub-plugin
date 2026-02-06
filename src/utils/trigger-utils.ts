@@ -17,11 +17,8 @@
  * - manual: Pipeline runs started via API
  */
 
-import { PipelineDefinition, PipelineStepDefinition } from '../../shared/types';
+import { PipelineDefinition, PipelineStepDefinition, TriggerType } from '../../shared/types';
 import { StepType } from '../constants/enums';
-
-/** Trigger type as configured in step.config.type */
-export type TriggerType = 'manual' | 'schedule' | 'webhook' | 'event' | 'file' | 'message';
 
 /** Parsed trigger config (type-safe subset) */
 export interface ParsedTriggerConfig {

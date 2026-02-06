@@ -6,6 +6,7 @@
  */
 
 import { JsonValue, JsonObject } from './json.types';
+import { HmacAlgorithm } from './trigger.types';
 
 /**
  * Comparison operators for conditions and routing
@@ -173,8 +174,11 @@ export interface ConversionHelpers {
     toDate(value: JsonValue): Date | null;
 }
 
-/** HMAC algorithm types for cryptographic operations */
-export type HmacAlgorithmType = 'SHA256' | 'SHA512';
+/**
+ * HMAC algorithm type alias for backward compatibility.
+ * @deprecated Use HmacAlgorithm from trigger.types.ts instead. HmacAlgorithm includes SHA1.
+ */
+export type HmacAlgorithmType = HmacAlgorithm;
 
 /**
  * Helper functions for cryptographic operations
@@ -185,7 +189,7 @@ export interface CryptoHelpers {
     /** Compute SHA-256 hash of a string */
     sha256(value: string): string;
     /** Compute HMAC signature */
-    hmac(value: string, key: string, algorithm?: HmacAlgorithmType): string;
+    hmac(value: string, key: string, algorithm?: HmacAlgorithm): string;
     /** Generate a new UUID v4 */
     uuid(): string;
 }
