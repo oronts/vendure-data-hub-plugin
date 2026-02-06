@@ -106,6 +106,10 @@ function PipelineDetailPage({ route }: { route: AnyRoute }) {
         setIssuesOpen(true);
     }, [setValidation]);
 
+    const handleStatusChange = React.useCallback(() => {
+        window.location.reload();
+    }, []);
+
     // Scroll to runs section if hash is #runs
     React.useEffect(() => {
         if (typeof window !== 'undefined' && window.location.hash === '#runs') {
@@ -148,6 +152,7 @@ function PipelineDetailPage({ route }: { route: AnyRoute }) {
                             onOpenDryRun={() => setDryRunOpen(true)}
                             onOpenHistory={() => setHistoryOpen(true)}
                             onValidationFailed={handleValidationFailed}
+                            onStatusChange={handleStatusChange}
                         />
                     </PageActionBarRight>
                 </PageActionBar>
@@ -167,6 +172,7 @@ function PipelineDetailPage({ route }: { route: AnyRoute }) {
                                     <ReviewActionsPanel
                                         entityId={entity?.id}
                                         status={pipelineEntity?.status}
+                                        onStatusChange={handleStatusChange}
                                     />
                                 </div>
                             </PermissionGuard>

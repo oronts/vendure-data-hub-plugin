@@ -36,6 +36,7 @@ export interface PipelineActionButtonsProps {
     onOpenDryRun: () => void;
     onOpenHistory: () => void;
     onValidationFailed: (issues: ValidationIssue[]) => void;
+    onStatusChange?: () => void;
 }
 
 export function PipelineActionButtons({
@@ -47,6 +48,7 @@ export function PipelineActionButtons({
     onOpenDryRun,
     onOpenHistory,
     onValidationFailed,
+    onStatusChange,
 }: Readonly<PipelineActionButtonsProps>) {
     const [isRunning, setIsRunning] = React.useState(false);
     const [isPublishing, setIsPublishing] = React.useState(false);
@@ -102,6 +104,7 @@ export function PipelineActionButtons({
             toast.success(TOAST_PIPELINE.PUBLISHED, {
                 description: 'Pipeline is now live',
             });
+            onStatusChange?.();
         } catch (err) {
             toast.error(TOAST_PIPELINE.PUBLISH_ERROR, {
                 description: err instanceof Error ? err.message : 'Unknown error',
