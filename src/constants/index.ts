@@ -246,3 +246,10 @@ export { RESOLVER_ERROR_MESSAGES } from './resolver-errors';
 export { TABLE_NAMES, TABLE_PREFIX } from './table-names';
 export type { TableName } from './table-names';
 
+export {
+    SQL_IDENTIFIER_MAX_LENGTH,
+    SQL_CHECK_MAX_LENGTH,
+    SQL_PATTERNS,
+    SQL_WHITELISTS,
+} from './sql';
+

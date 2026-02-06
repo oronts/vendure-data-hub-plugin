@@ -10,11 +10,12 @@
  * not as a replacement. Always use parameterized queries for user input.
  */
 
-/** Maximum allowed identifier length (most DBs support at least 128) */
-const MAX_IDENTIFIER_LENGTH = 128;
-
-const VALID_COLUMN_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-const VALID_TABLE_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$/;
+import {
+    SQL_IDENTIFIER_MAX_LENGTH,
+    SQL_CHECK_MAX_LENGTH,
+    SQL_PATTERNS,
+    SQL_WHITELISTS,
+} from '../constants/sql';
 
 /**
  * Validates a column name for SQL safety.
@@ -31,11 +32,11 @@ export function validateColumnName(
         throw new Error('Column name is required');
     }
 
-    if (column.length > MAX_IDENTIFIER_LENGTH) {
-        throw new Error(`Column name exceeds maximum length of ${MAX_IDENTIFIER_LENGTH} characters`);
+    if (column.length > SQL_IDENTIFIER_MAX_LENGTH) {
+        throw new Error(`Column name exceeds maximum length of ${SQL_IDENTIFIER_MAX_LENGTH} characters`);
     }
 
-    if (!VALID_COLUMN_PATTERN.test(column)) {
+    if (!SQL_PATTERNS.COLUMN.test(column)) {
         throw new Error(`Invalid column name: "${column}". Column names must start with letter or underscore and contain only letters, numbers, and underscores.`);
     }
 
@@ -57,11 +58,11 @@ export function validateTableName(table: string | undefined): void {
     }
 
     // Check total length (schema.table could be up to 2x + 1)
-    if (table.length > (MAX_IDENTIFIER_LENGTH * 2 + 1)) {
+    if (table.length > (SQL_IDENTIFIER_MAX_LENGTH * 2 + 1)) {
         throw new Error(`Table name exceeds maximum allowed length`);
     }
 
-    if (!VALID_TABLE_PATTERN.test(table)) {
+    if (!SQL_PATTERNS.TABLE.test(table)) {
         throw new Error(`Invalid table name: "${table}"`);
     }
 }
@@ -100,12 +101,6 @@ export function validateLimitOffset(
 }
 
 /**
- * Maximum string length to check for SQL injection patterns.
- * Prevents ReDoS attacks on very long strings.
- */
-const MAX_SQL_CHECK_LENGTH = 10_000;
-
-/**
  * Check if a string contains potential SQL injection patterns.
  * Note: This is a heuristic check and should be used alongside parameterized queries.
  *
@@ -114,7 +109,7 @@ const MAX_SQL_CHECK_LENGTH = 10_000;
  */
 export function containsSqlInjection(str: string): boolean {
     // Truncate very long strings to prevent ReDoS
-    const checkStr = str.length > MAX_SQL_CHECK_LENGTH ? str.slice(0, MAX_SQL_CHECK_LENGTH) : str;
+    const checkStr = str.length > SQL_CHECK_MAX_LENGTH ? str.slice(0, SQL_CHECK_MAX_LENGTH) : str;
 
     // Use simpler patterns that are less susceptible to ReDoS
     // Pattern 1: Statement terminator followed by DDL/DML commands
@@ -147,12 +142,8 @@ export function containsSqlInjection(str: string): boolean {
     return false;
 }
 
-export const COMMON_WHITELISTS = {
-    ID_COLUMNS: new Set(['id', 'ID', '_id', 'Id']),
-    TIMESTAMP_COLUMNS: new Set(['created_at', 'updated_at', 'deleted_at', 'createdAt', 'updatedAt', 'deletedAt']),
-    COMMON_COLUMNS: new Set([
-        'id', 'name', 'code', 'type', 'status', 'enabled',
-        'created_at', 'updated_at', 'deleted_at',
-        'createdAt', 'updatedAt', 'deletedAt',
-    ]),
-};
+/**
+ * Common column whitelists for SQL security validation.
+ * Re-exported from constants for backward compatibility.
+ */
+export const COMMON_WHITELISTS = SQL_WHITELISTS;
