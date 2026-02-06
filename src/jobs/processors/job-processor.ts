@@ -4,10 +4,16 @@
  * Common utilities for job processing, error handling, and logging.
  */
 
-import { LOGGER_CONTEXTS, HTTP, WEBHOOK, TIME_UNITS } from '../../constants/index';
+import { LOGGER_CONTEXTS, HTTP, TIME_UNITS } from '../../constants/index';
 import { JobResult, JobContext } from '../types';
-import { sleep } from '../../runtime/utils';
 import { DataHubLogger } from '../../services/logger';
+import {
+    executeWithRetry as executeWithRetryShared,
+    calculateBackoff,
+    createRetryConfig,
+    sleep,
+    DEFAULT_RETRY_CONFIG,
+} from '../../utils/retry.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.JOB_PROCESSOR);
 
@@ -103,6 +109,7 @@ export function withJobProcessing<T, R>(
 
 /**
  * Retry a function with exponential backoff
+ * Delegates to shared executeWithRetry utility.
  *
  * @param fn - Function to retry
  * @param options - Retry options
@@ -122,43 +129,32 @@ export async function withRetry<T>(
         maxAttempts = HTTP.MAX_RETRIES,
         baseDelayMs = HTTP.RETRY_DELAY_MS,
         maxDelayMs = HTTP.RETRY_MAX_DELAY_MS,
-        backoffMultiplier = WEBHOOK.BACKOFF_MULTIPLIER,
+        backoffMultiplier = DEFAULT_RETRY_CONFIG.backoffMultiplier,
         onRetry,
     } = options;
 
-    let lastError: Error | undefined;
+    const config = createRetryConfig({
+        maxAttempts,
+        initialDelayMs: baseDelayMs,
+        maxDelayMs,
+        backoffMultiplier,
+    });
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-            return await fn();
-        } catch (error) {
-            lastError = error instanceof Error ? error : new Error(String(error));
-
-            if (attempt === maxAttempts) {
-                break;
-            }
-
-            // Calculate delay with exponential backoff
-            const delay = Math.min(
-                baseDelayMs * Math.pow(backoffMultiplier, attempt - 1),
-                maxDelayMs,
-            );
-
-            onRetry?.(attempt, lastError);
-
-            logger.debug(`Retrying in ${delay}ms`, { attempt, maxAttempts, delayMs: delay });
-
-            await sleep(delay);
-        }
-    }
-
-    throw lastError ?? new Error('Retry failed with unknown error');
+    return executeWithRetryShared(fn, {
+        config,
+        onRetry: onRetry ? (attempt, error) => onRetry(attempt, error) : undefined,
+        logger: {
+            warn: (msg, meta) => logger.warn(msg, meta),
+            debug: (msg, meta) => logger.debug(msg, meta),
+        },
+    });
 }
 
 export { sleep };
 
 /**
  * Calculate exponential backoff delay
+ * Delegates to shared calculateBackoff utility.
  *
  * @param attempt - Current attempt number (1-based)
  * @param baseDelayMs - Base delay in milliseconds
@@ -170,10 +166,15 @@ export function calculateBackoffDelay(
     attempt: number,
     baseDelayMs: number = HTTP.RETRY_DELAY_MS,
     maxDelayMs: number = HTTP.RETRY_MAX_DELAY_MS,
-    multiplier: number = WEBHOOK.BACKOFF_MULTIPLIER,
+    multiplier: number = DEFAULT_RETRY_CONFIG.backoffMultiplier,
 ): number {
-    const delay = baseDelayMs * Math.pow(multiplier, attempt - 1);
-    return Math.min(delay, maxDelayMs);
+    return calculateBackoff(attempt, {
+        maxAttempts: 1, // Not used in calculation
+        initialDelayMs: baseDelayMs,
+        maxDelayMs,
+        backoffMultiplier: multiplier,
+        jitterFactor: 0, // Deterministic for this function
+    });
 }
 
 /**
