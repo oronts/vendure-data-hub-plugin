@@ -100,6 +100,16 @@ export interface PaginationConfig {
 
 // CONNECTION CONFIG
 
+/**
+ * Connection configuration for extractor inputs.
+ *
+ * This is the canonical connection format used in extractor configurations
+ * and pipeline definitions. It uses UPPER_CASE type literals for JSON serialization.
+ *
+ * Related ConnectionConfig types:
+ * - src/sdk/types/connection-types.ts ConnectionConfig - SDK format with `code` and lowercase types
+ * - src/utils/url-helpers.ts UrlConnectionConfig - Minimal interface for URL building
+ */
 export interface ConnectionConfig {
     type: 'HTTP' | 'FTP' | 'SFTP' | 'S3' | 'DATABASE';
     baseUrl?: string;

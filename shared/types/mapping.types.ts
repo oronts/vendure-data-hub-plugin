@@ -1,8 +1,7 @@
 /**
  * Field Mapping Types
  *
- * This module defines types for field mapping, transformation,
- * and data conversion operations.
+ * Types for field mapping, transformation, and data conversion operations.
  */
 
 import { JsonValue } from './json.types';

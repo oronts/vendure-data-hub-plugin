@@ -1,8 +1,7 @@
 /**
  * Trigger Types
  *
- * This module defines types for pipeline triggers.
- * Trigger types use lowercase as per naming conventions.
+ * Types for pipeline triggers. Trigger types use lowercase as per naming conventions.
  */
 
 import { JsonValue, JsonObject } from './json.types';
@@ -10,7 +9,9 @@ import { JsonValue, JsonObject } from './json.types';
 /**
  * Types of triggers that can start a pipeline execution
  *
- * Uses lowercase as per naming convention for trigger types
+ * Uses lowercase as per naming convention for trigger types.
+ * NOTE: This type alias must match the TriggerType enum values in
+ * src/constants/enums.ts. Keep in sync when modifying either.
  */
 export type TriggerType =
     | 'manual'

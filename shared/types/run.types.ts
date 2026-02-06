@@ -1,8 +1,7 @@
 /**
  * Run Types
  *
- * This module defines types for pipeline run execution, status tracking,
- * and progress monitoring.
+ * Types for pipeline run execution, status tracking, and progress monitoring.
  */
 
 import { JsonObject } from './json.types';

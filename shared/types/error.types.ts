@@ -1,11 +1,16 @@
 /**
  * Error Types
  *
- * This module defines error types for pipeline processing including
- * severity levels, error stages, and structured error information.
+ * Error types for pipeline processing including severity levels, error stages,
+ * and structured error information.
  */
 
-/** Severity level of an error */
+/**
+ * Severity level of an error
+ *
+ * NOTE: This type alias must match the ErrorSeverity enum values in
+ * src/constants/error-codes.ts. Keep in sync when modifying either.
+ */
 export type ErrorSeverity = 'FATAL' | 'ERROR' | 'WARNING' | 'INFO';
 
 /**
@@ -140,15 +145,6 @@ export function isRetriableError(code: string): boolean {
     return retriableCodes.includes(code as typeof retriableCodes[number]);
 }
 
-/**
- * Get error severity for a shared error code
- * Note: For pipeline-specific error codes, use src/constants/error-codes.ts
- */
-export function getErrorSeverity(code: string): ErrorSeverity {
-    const fatalCodes = [ERROR_CODES.INTERNAL_ERROR, ERROR_CODES.OUT_OF_MEMORY];
-    const warningCodes = [ERROR_CODES.RATE_LIMITED];
-
-    if (fatalCodes.includes(code as typeof fatalCodes[number])) return 'FATAL';
-    if (warningCodes.includes(code as typeof warningCodes[number])) return 'WARNING';
-    return 'ERROR';
-}
+// NOTE: getErrorSeverity() is intentionally NOT exported from shared/types.
+// Use the authoritative implementation from src/constants/error-codes.ts instead.
+// That version handles both shared and pipeline-specific error codes.

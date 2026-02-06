@@ -56,7 +56,9 @@ export type {
     RecordError,
     PipelineStepError,
 } from './error.types';
-export { ERROR_CODES, isRetriableError, getErrorSeverity } from './error.types';
+export { ERROR_CODES, isRetriableError } from './error.types';
+// NOTE: getErrorSeverity is intentionally NOT exported from shared/types.
+// Import from src/constants/error-codes instead (authoritative implementation).
 
 export type {
     TransformationType,

@@ -1,8 +1,8 @@
 /**
  * Schema Types - Combined schema validation, field, and definition types
  *
- * This module contains the enhanced schema type system for defining
- * complex data structures with validation, transformations, and UI hints.
+ * Typed schema system for defining complex data structures with validation,
+ * transformations, and UI hints.
  */
 
 // ============================================================================

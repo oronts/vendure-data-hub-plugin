@@ -1,7 +1,7 @@
 /**
  * Adapter Types
  *
- * This module defines types for pipeline adapters (extractors, operators, loaders, etc.)
+ * Types for pipeline adapters (extractors, operators, loaders, etc.)
  */
 
 import { JsonValue } from './json.types';

@@ -1,7 +1,7 @@
 /**
  * Operator Types
  *
- * This module defines types for transform operators in pipeline processing.
+ * Types for transform operators in pipeline processing.
  * Operators use camelCase as per naming conventions for comparison operators.
  */
 
@@ -91,7 +91,7 @@ export interface FieldPathConfig extends BaseOperatorConfig {
 
 /**
  * Function signature for operators that process one record at a time
- * @returns The transformed record, or null to drop the record
+ * @returns Transformed record, or null to drop the record
  */
 export type SingleRecordOperatorFn<TConfig = JsonObject> = (
     record: JsonObject,

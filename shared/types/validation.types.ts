@@ -2,16 +2,25 @@
  * Validation Types
  *
  * This is the SINGLE SOURCE OF TRUTH for validation types, error codes, and error messages
- * shared between frontend and backend.
+ * shared between frontend (dashboard) and backend (src).
  *
- * Note: This file must be self-contained (no imports from src/) to support both
- * backend and dashboard TypeScript configurations.
+ * Architecture Note:
+ * This file is intentionally self-contained with no external imports. The shared/ directory
+ * operates independently from src/ to ensure compatibility with both backend (tsconfig.build.json)
+ * and dashboard (tsconfig.dashboard.json) TypeScript configurations.
+ *
+ * - For backend-specific validation patterns and utilities, see: src/constants/patterns.ts
+ * - For shared validation utilities (functions), see: shared/utils/validation.ts
+ * - This file provides only types, constants, and inline pattern definitions
  */
 
 /**
  * Canonical email validation regex.
  * Simple pattern: [localpart]@[domain].[tld]
- * Defined inline to avoid import from src/ which breaks dashboard compilation.
+ *
+ * Defined inline here as this file must remain self-contained (no external imports).
+ * This same pattern is also available as EMAIL_PATTERN in src/constants/patterns.ts
+ * and shared/utils/validation.ts for use in their respective contexts.
  */
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -329,19 +338,35 @@ export interface ValidationConfig {
 // ============================================================================
 
 /**
- * Basic validation patterns for shared API contract.
- * For comprehensive validation patterns with helper functions, see src/constants/validation.ts
+ * Basic validation patterns for shared API contract between frontend and backend.
+ *
+ * These patterns are defined inline to keep this file self-contained and importable
+ * by both dashboard and backend code without circular dependencies.
+ *
+ * Architecture:
+ * - This file (shared/types/validation.types.ts): Basic patterns as inline regex for shared types
+ * - shared/utils/validation.ts: Shared validation functions using these patterns
+ * - src/constants/patterns.ts: Backend-specific patterns
+ * - src/constants/validation.ts: Backend validation utilities that re-export from shared
  */
 export const VALIDATION_PATTERNS = {
-    /** Email pattern - uses canonical EMAIL_REGEX from utils */
+    /** Email pattern - canonical format [localpart]@[domain].[tld] */
     EMAIL: EMAIL_REGEX,
+    /** URL pattern - HTTP/HTTPS only */
     URL: /^https?:\/\/[^\s/$.?#].[^\s]*$/i,
+    /** UUID v4 pattern */
     UUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    /** Slug pattern - lowercase alphanumeric with dashes */
     SLUG: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+    /** ISO date/datetime pattern */
     DATE_ISO: /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?(Z|[+-]\d{2}:\d{2})?)?$/,
+    /** Numeric pattern - integers and floats */
     NUMERIC: /^-?\d+(\.\d+)?$/,
+    /** Alphanumeric pattern */
     ALPHANUMERIC: /^[a-zA-Z0-9]+$/,
+    /** Code pattern - lowercase alphanumeric with dashes/underscores */
     CODE: /^[a-z][a-z0-9_-]*$/,
+    /** SKU pattern - alphanumeric with dashes/underscores */
     SKU: /^[A-Z0-9][A-Z0-9_-]*$/i,
 } as const;
 

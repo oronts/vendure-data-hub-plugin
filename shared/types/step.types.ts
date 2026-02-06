@@ -1,13 +1,24 @@
 /**
  * Step Types
  *
- * This module defines types for pipeline steps including step definitions,
- * execution results, and routing configuration.
+ * Types for pipeline steps including step definitions, execution results,
+ * and routing configuration.
  */
 
 import { JsonObject, JsonValue } from './json.types';
 
-/** Type of pipeline step */
+/**
+ * Type of pipeline step.
+ *
+ * This is a string literal union type (not an enum) intentionally.
+ * The shared/types module uses string literals for type-safe JSON compatibility,
+ * allowing pipeline definitions to be serialized/deserialized without enum value issues.
+ *
+ * The backend uses the StepType enum from src/constants/enums.ts for runtime operations.
+ * Both define the same values, ensuring type compatibility at the boundary.
+ *
+ * @see src/constants/enums.ts StepType enum for the backend runtime version
+ */
 export type StepType =
     | 'TRIGGER'
     | 'EXTRACT'

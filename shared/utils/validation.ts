@@ -170,17 +170,6 @@ export function isValidSlug(slug: string): boolean {
 }
 
 /**
- * Validate code/identifier format.
- *
- * @param code - The code to validate
- * @returns true if the code format is valid
- */
-export function isValidCode(code: string): boolean {
-    if (isEmpty(code)) return false;
-    return CODE_PATTERN.test(code);
-}
-
-/**
  * Validate pipeline code format.
  *
  * @param code - The pipeline code to validate
@@ -317,74 +306,3 @@ function isValidCronRange(range: string, min: number, max: number): boolean {
     return !isNaN(start) && !isNaN(end) && start >= min && end <= max && start <= end;
 }
 
-// ============================================================================
-// NUMBER VALIDATION
-// ============================================================================
-
-/**
- * Parse and validate an integer value.
- *
- * @param value - The value to validate
- * @param options - Validation options
- * @returns The validated integer
- * @throws Error if validation fails
- */
-export function validateInteger(
-    value: number | string | undefined | null,
-    options?: { min?: number; max?: number; fieldName?: string },
-): number {
-    const fieldName = options?.fieldName ?? 'Value';
-
-    if (isNil(value)) {
-        throw new Error(`${fieldName} is required`);
-    }
-
-    const num = typeof value === 'string' ? parseInt(value, 10) : value;
-
-    if (isNaN(num) || !Number.isInteger(num)) {
-        throw new Error(`${fieldName} must be a valid integer`);
-    }
-
-    const min = options?.min ?? Number.MIN_SAFE_INTEGER;
-    const max = options?.max ?? Number.MAX_SAFE_INTEGER;
-
-    if (num < min || num > max) {
-        throw new Error(`${fieldName} must be between ${min} and ${max}`);
-    }
-
-    return num;
-}
-
-/**
- * Parse and validate a float value.
- *
- * @param value - The value to validate
- * @param options - Validation options
- * @returns The validated float
- * @throws Error if validation fails
- */
-export function validateFloat(
-    value: number | string | undefined | null,
-    options?: { min?: number; max?: number; fieldName?: string },
-): number {
-    const fieldName = options?.fieldName ?? 'Value';
-
-    if (isNil(value)) {
-        throw new Error(`${fieldName} is required`);
-    }
-
-    const num = typeof value === 'string' ? parseFloat(value) : value;
-
-    if (isNaN(num) || !isFinite(num)) {
-        throw new Error(`${fieldName} must be a valid number`);
-    }
-
-    const min = options?.min ?? -Infinity;
-    const max = options?.max ?? Infinity;
-
-    if (num < min || num > max) {
-        throw new Error(`${fieldName} must be between ${min} and ${max}`);
-    }
-
-    return num;
-}

@@ -1,8 +1,8 @@
 /**
  * Filter Types
  *
- * This module defines types for filtering records in pipeline processing.
- * Operators use camelCase as per naming conventions for comparison operators.
+ * Types for filtering records in pipeline processing. Operators use camelCase
+ * as per naming conventions for comparison operators.
  */
 
 /**

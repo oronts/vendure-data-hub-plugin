@@ -1,8 +1,8 @@
 /**
  * Execution Types
  *
- * This module defines types for pipeline execution results, metrics,
- * and error handling during load, export, and sink operations.
+ * Types for pipeline execution results, metrics, and error handling during
+ * load, export, and sink operations.
  */
 
 import { JsonObject, JsonValue } from './json.types';
@@ -31,7 +31,7 @@ export interface PipelineRunMetrics {
 }
 
 /**
- * Flexible pipeline metrics that can be updated during runtime.
+ * Pipeline metrics that can be updated during runtime.
  * Supports additional custom metric keys beyond the standard ones.
  */
 export interface PipelineMetrics {

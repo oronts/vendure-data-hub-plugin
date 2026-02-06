@@ -1,8 +1,8 @@
 /**
  * Transform Types
  *
- * This module defines types for data transformation operations
- * including mapping, filtering, aggregation, and sorting.
+ * Types for data transformation operations including mapping, filtering,
+ * aggregation, and sorting.
  */
 
 /** Type of transformation operation */
