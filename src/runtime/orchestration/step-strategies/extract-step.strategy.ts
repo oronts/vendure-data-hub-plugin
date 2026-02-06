@@ -23,7 +23,9 @@ export class ExtractStepStrategy implements StepStrategy {
         const t0 = Date.now();
 
         await this.logStepStart(context);
-        const _afterBeforeHook = await this.runBeforeHook(context, records);
+        // EXTRACT is a source step with no input records to modify.
+        // Hook runs for side effects only (logging, metrics, authorization checks).
+        await this.runBeforeHook(context, records);
 
         const out = await this.executeExtract(context);
         const durationMs = Date.now() - t0;
