@@ -4,7 +4,7 @@
  * Utilities for calculating analytics metrics.
  */
 
-import { DEFAULTS } from '../../constants/index';
+import { TRUNCATION } from '../../constants/index';
 
 /**
  * Calculate percentile from sorted values
@@ -24,7 +24,7 @@ export function normalizeErrorMessage(message: string): string {
         .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, 'ID') // UUIDs
         .replace(/\b\d{10,}\b/g, 'ID') // Long numbers
         .replace(/"[^"]*"/g, '"..."') // Quoted strings
-        .slice(0, DEFAULTS.ERROR_MESSAGE_MAX_LENGTH);
+        .slice(0, TRUNCATION.ERROR_MESSAGE_MAX_LENGTH);
 }
 
 /**

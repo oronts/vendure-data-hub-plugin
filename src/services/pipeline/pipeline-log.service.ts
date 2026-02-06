@@ -3,17 +3,15 @@ import { ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, 
 import { PipelineLog } from '../../entities/pipeline';
 import { LogLevel, SortOrder } from '../../constants/enums';
 import { Between, ILike, In, LessThan, MoreThan, Repository } from 'typeorm';
-import { DEFAULTS } from '../../constants/index';
+import { PAGINATION } from '../../constants/index';
+import type { JsonObject } from '../../types/index';
 
-// LogEntry uses 'any' for context/metadata to allow flexible logging data
-// that gets serialized to JSON. This is intentional for logging flexibility.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface LogEntry {
     level: LogLevel;
     message: string;
     stepKey?: string;
-    context?: Record<string, any>;
-    metadata?: Record<string, any>;
+    context?: JsonObject;
+    metadata?: JsonObject;
     pipelineId?: ID;
     runId?: ID;
     durationMs?: number;
@@ -133,7 +131,7 @@ export class PipelineLogService {
             where,
             order: { createdAt: SortOrder.DESC },
             skip: options.skip ?? 0,
-            take: options.take ?? DEFAULTS.EVENTS_LIMIT,
+            take: options.take ?? PAGINATION.EVENTS_LIMIT,
             relations: ['pipeline', 'run'],
         });
 
@@ -277,7 +275,7 @@ export class PipelineLogService {
     /**
      * Get recent logs
      */
-    async getRecent(ctx: RequestContext, limit: number = DEFAULTS.RECENT_LOGS_LIMIT): Promise<PipelineLog[]> {
+    async getRecent(ctx: RequestContext, limit: number = PAGINATION.RECENT_LOGS_LIMIT): Promise<PipelineLog[]> {
         const repo = this.connection.getRepository(ctx, PipelineLog);
         return repo.find({
             order: { createdAt: SortOrder.DESC },

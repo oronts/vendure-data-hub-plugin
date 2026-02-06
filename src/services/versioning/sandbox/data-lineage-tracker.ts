@@ -1,5 +1,5 @@
 import { RecordLineage, RecordState, SandboxOptions } from '../sandbox.service';
-import { LineageOutcome, RecordProcessingState } from '../../../constants/enums';
+import { LineageOutcome } from '../../../constants/enums';
 
 /**
  * Helper for tracking data lineage through pipeline execution

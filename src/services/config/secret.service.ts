@@ -14,7 +14,7 @@ import {
 } from '../../utils/encryption.utils';
 
 /**
- * SecretService handles secure storage and resolution of secrets for DataHub pipelines.
+ * Secure storage and resolution of secrets for DataHub pipelines.
  *
  * Supports multiple providers:
  * - `inline`: Value stored directly in database (encrypted at rest when DATAHUB_MASTER_KEY is set)
@@ -264,7 +264,7 @@ export class SecretService implements OnModuleInit {
 
     /**
      * Decrypt a secret value.
-     * Handles both encrypted and unencrypted values for backward compatibility.
+     * Accepts both encrypted and unencrypted values for backward compatibility.
      */
     private decryptValue(value: string | null): string | null {
         if (value === null) {

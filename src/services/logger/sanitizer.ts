@@ -66,7 +66,7 @@ const PHONE_PATTERNS = [
 export interface SanitizeOptions {
     /** Maximum recursion depth (default: 10) */
     maxDepth?: number;
-    /** Custom fields to redact (in addition to defaults) */
+    /** Custom fields to redact (besides defaults) */
     additionalSensitiveFields?: string[];
     /** Whether to mask emails (default: true) */
     maskEmails?: boolean;
@@ -163,7 +163,7 @@ function sanitizeValue(
  * - Redacts fields with sensitive names (password, token, apiKey, etc.)
  * - Masks email addresses (shows first 2 chars + *** + domain)
  * - Masks phone numbers (shows last 4 digits only)
- * - Handles nested objects and arrays
+ * - Traverses nested objects and arrays
  * - Prevents infinite recursion with depth limit
  *
  * @param obj - Object to sanitize
@@ -250,7 +250,7 @@ function sanitizeRecursive(
 }
 
 /**
- * Sanitize a record specifically (convenience wrapper)
+ * Sanitize a record (convenience wrapper)
  */
 export function sanitizeRecord(
     record: Record<string, unknown>,

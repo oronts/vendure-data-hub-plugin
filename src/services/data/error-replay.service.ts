@@ -6,10 +6,8 @@ import type { PipelineDefinition, JsonObject } from '../../types';
 /**
  * Service facade for error replay functionality.
  *
- * This service provides an abstraction layer between the API resolvers
- * and the runtime layer, following the architecture: api/ -> services/ -> runtime/
- *
- * Resolvers should use this service instead of directly accessing AdapterRuntimeService.
+ * Abstraction layer between API resolvers and runtime (api/ -> services/ -> runtime/).
+ * Resolvers should use this instead of directly accessing AdapterRuntimeService.
  */
 @Injectable()
 export class ErrorReplayService {
@@ -22,7 +20,7 @@ export class ErrorReplayService {
      * @param definition - The pipeline definition
      * @param stepKey - The step key where the error occurred
      * @param payload - The record payload to replay
-     * @returns The result of the replay operation
+     * @returns Result of the replay operation
      */
     async replayRecord(
         ctx: RequestContext,
@@ -48,7 +46,7 @@ export class ErrorReplayService {
      * @param definition - The pipeline definition
      * @param stepKey - The step key where the errors occurred
      * @param payloads - The record payloads to replay
-     * @returns The result of the replay operation
+     * @returns Result of the replay operation
      */
     async replayRecords(
         ctx: RequestContext,

@@ -1,7 +1,7 @@
 /**
  * S3 Destination Handler
  *
- * Handles delivery to S3 and S3-compatible storage (MinIO, etc.)
+ * Delivery to S3 and S3-compatible storage (MinIO, etc.)
  */
 
 import * as crypto from 'crypto';

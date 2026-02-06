@@ -56,11 +56,8 @@ export interface ExtractPreviewOptions {
 /**
  * StepTestService - Service layer for testing individual pipeline steps
  *
- * This service provides methods for previewing and simulating pipeline step
- * execution without running the full pipeline. It acts as an intermediary
- * between the API layer (resolvers) and the runtime layer (executors).
- *
- * Architecture: api/ -> services/ -> runtime/
+ * Previews and simulates pipeline step execution without running the full pipeline.
+ * Intermediary between API resolvers and runtime executors (api/ -> services/ -> runtime/).
  */
 @Injectable()
 export class StepTestService {

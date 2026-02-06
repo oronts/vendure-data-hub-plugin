@@ -1,7 +1,7 @@
 /**
  * Local Destination Handler
  *
- * Handles delivery to local filesystem.
+ * Delivery to local filesystem.
  */
 
 import * as fs from 'fs';

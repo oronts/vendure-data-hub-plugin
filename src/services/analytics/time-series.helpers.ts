@@ -63,7 +63,7 @@ export function calculateTimeSeries(timestamps: Date[], timeRange: TimeRange): T
     for (const ts of timestamps) {
         const bucketTime = Math.floor(ts.getTime() / bucketMs) * bucketMs;
         if (buckets.has(bucketTime)) {
-            buckets.set(bucketTime, buckets.get(bucketTime)! + 1);
+            buckets.set(bucketTime, (buckets.get(bucketTime) ?? 0) + 1);
         }
     }
 
@@ -104,8 +104,8 @@ export function calculateThroughputTimeSeries(
     // Aggregate into buckets
     for (const point of points) {
         const bucketTime = Math.floor(point.timestamp.getTime() / bucketMs) * bucketMs;
-        if (buckets.has(bucketTime)) {
-            const bucket = buckets.get(bucketTime)!;
+        const bucket = buckets.get(bucketTime);
+        if (bucket) {
             bucket.records += point.records;
             bucket.durationMs += point.durationMs;
         }

@@ -1,7 +1,7 @@
 /**
  * Email Destination Handler
  *
- * Handles delivery via email attachment using nodemailer.
+ * Delivery via email attachment using nodemailer.
  */
 
 import * as fs from 'fs/promises';
@@ -26,15 +26,6 @@ function escapeHtml(text: string): string {
     };
     return text.replace(/[&<>"']/g, char => htmlEscapes[char]);
 }
-
-/**
- * Default SMTP configuration for common providers
- */
-const SMTP_PRESETS: Record<string, { host: string; port: number; secure: boolean }> = {
-    gmail: { host: 'smtp.gmail.com', port: 587, secure: false },
-    outlook: { host: 'smtp.office365.com', port: 587, secure: false },
-    sendgrid: { host: 'smtp.sendgrid.net', port: 587, secure: false },
-};
 
 /**
  * Deliver content via email attachment
@@ -113,53 +104,6 @@ export async function deliverToEmail(
     }
 }
 
-/**
- * Test email configuration
- */
-export async function testEmailConnection(config: EmailDestinationConfig): Promise<{
-    success: boolean;
-    message?: string;
-    latencyMs?: number;
-}> {
-    if (!config.smtp) {
-        return { success: false, message: 'SMTP configuration not provided' };
-    }
-
-    const start = Date.now();
-
-    try {
-        const transporter = nodemailer.createTransport({
-            host: config.smtp.host,
-            port: config.smtp.port,
-            secure: config.smtp.secure ?? (config.smtp.port === 465),
-            auth: config.smtp.auth ? {
-                user: config.smtp.auth.user,
-                pass: config.smtp.auth.pass,
-            } : undefined,
-        });
-
-        await transporter.verify();
-
-        return {
-            success: true,
-            message: `SMTP connection verified (${config.smtp.host}:${config.smtp.port})`,
-            latencyMs: Date.now() - start,
-        };
-    } catch (error) {
-        return {
-            success: false,
-            message: error instanceof Error ? error.message : 'Connection verification failed',
-            latencyMs: Date.now() - start,
-        };
-    }
-}
-
-/**
- * Get SMTP preset configuration
- */
-export function getSMTPPreset(provider: keyof typeof SMTP_PRESETS): typeof SMTP_PRESETS[string] | undefined {
-    return SMTP_PRESETS[provider];
-}
 
 /**
  * Get MIME type from filename

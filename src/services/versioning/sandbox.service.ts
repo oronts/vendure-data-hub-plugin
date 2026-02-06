@@ -180,7 +180,7 @@ const DEFAULT_SANDBOX_OPTIONS: Required<SandboxOptions> = {
 
 /**
  * Service for sandbox execution and impact preview.
- * Orchestrates helpers for step execution, lineage tracking, and load simulation.
+ * Runs pipeline steps in sandbox mode with lineage tracking.
  */
 @Injectable()
 export class SandboxService {
@@ -197,7 +197,7 @@ export class SandboxService {
     }
 
     /**
-     * Execute a comprehensive sandbox run
+     * Execute a full sandbox run
      */
     async execute(ctx: RequestContext, pipelineId: ID, options: SandboxOptions = {}): Promise<SandboxResult> {
         const pipeline = await this.connection.getRepository(ctx, Pipeline).findOne({ where: { id: pipelineId } });
@@ -220,7 +220,8 @@ export class SandboxService {
 
         try {
             const startIdx = this.findStartStepIndex(definition, opts);
-            records = await this.processSteps(ctx, definition, startIdx, records, opts, lineageTracker, result, startTime);
+            // Records are tracked through result.steps, the return value is just for internal chaining
+            await this.processSteps(ctx, definition, startIdx, records, opts, lineageTracker, result, startTime);
             this.finalizeResult(result, opts, lineageTracker);
         } catch (error) {
             this.handleExecutionError(result, error);

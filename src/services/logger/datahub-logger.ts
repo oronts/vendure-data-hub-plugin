@@ -107,8 +107,8 @@ export class DataHubLogger {
     debug(message: string, metadata?: LogMetadata): void {
         try {
             this.nestLogger.debug(this.formatMessage(message, metadata));
-        } catch {
-            // Never throw from logging
+        } catch (e) {
+            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ }
         }
     }
 
@@ -118,8 +118,8 @@ export class DataHubLogger {
     info(message: string, metadata?: LogMetadata): void {
         try {
             this.nestLogger.log(this.formatMessage(message, metadata));
-        } catch {
-            // Never throw from logging
+        } catch (e) {
+            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ }
         }
     }
 
@@ -136,13 +136,13 @@ export class DataHubLogger {
     warn(message: string, metadata?: LogMetadata): void {
         try {
             this.nestLogger.warn(this.formatMessage(message, metadata));
-        } catch {
-            // Never throw from logging
+        } catch (e) {
+            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ }
         }
     }
 
     /**
-     * Error level logging with enhanced error tracking
+     * Error level logging with cause extraction, categorization, and span recording
      */
     error(message: string, error?: Error, metadata?: LogMetadata): void {
         try {
@@ -175,8 +175,8 @@ export class DataHubLogger {
                     category: errorDetails?.category ?? 'unknown',
                 });
             }
-        } catch {
-            // Never throw from logging
+        } catch (e) {
+            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ }
         }
     }
 

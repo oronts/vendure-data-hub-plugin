@@ -1,10 +1,10 @@
 /**
  * HTTP Destination Handler
  *
- * Handles delivery to HTTP/HTTPS endpoints.
+ * Delivery to HTTP/HTTPS endpoints.
  */
 
-import { DEFAULTS, AuthType, HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES } from '../../constants/index';
+import { AuthType, HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES, TRUNCATION } from '../../constants/index';
 import { HTTPDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 
@@ -79,7 +79,7 @@ export async function deliverToHTTP(
             location: config.url,
             metadata: {
                 responseStatus: response.status,
-                responseBody: responseBody.slice(0, DEFAULTS.RESPONSE_BODY_MAX_LENGTH),
+                responseBody: responseBody.slice(0, TRUNCATION.RESPONSE_BODY_MAX_LENGTH),
             },
         };
     } catch (error) {

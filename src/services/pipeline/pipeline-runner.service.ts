@@ -75,8 +75,7 @@ export class PipelineRunnerService {
     }
 
     /**
-     * Main execution orchestrator - coordinates pipeline execution phases.
-     * Delegates to helper methods for setup, step execution, and completion/failure handling.
+     * Runs pipeline execution phases: setup, steps, and completion.
      */
     async execute(runId: ID): Promise<void> {
         const prepareResult = await this.prepareExecution(runId);
@@ -225,7 +224,7 @@ export class PipelineRunnerService {
     }
 
     /**
-     * Handles successful pipeline completion: updates run status, persists logs, and ends span.
+     * Updates run status to completed, persists logs, and ends the span.
      */
     private async handleCompletion(execCtx: ExecutionContext, metrics: PipelineMetrics): Promise<void> {
         const { ctx, run, runId, runRepo, runLogger, pipelineSpan } = execCtx;
@@ -241,7 +240,7 @@ export class PipelineRunnerService {
             durationMs: metrics.durationMs,
             recordsProcessed: metrics.totalRecords,
             recordsFailed: metrics.failed,
-            metadata: metrics,
+            metadata: metrics as JsonObject,
         });
 
         runLogger.logPipelineComplete(run.pipeline.code, {
@@ -258,7 +257,7 @@ export class PipelineRunnerService {
     }
 
     /**
-     * Handles pipeline failure: updates run status with error, persists error logs, and ends span.
+     * Updates run status to failed, persists error logs, and ends the span.
      */
     private async handleFailure(execCtx: ExecutionContext, e: unknown): Promise<void> {
         const { ctx, run, runId, runRepo, runLogger, pipelineSpan, startTime } = execCtx;

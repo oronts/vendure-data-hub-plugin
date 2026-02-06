@@ -1,5 +1,4 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { TransactionalConnection } from '@vendure/core';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 
@@ -39,7 +38,6 @@ export class ExportDestinationService implements OnModuleInit {
     private destinations: Map<string, DestinationConfig> = new Map();
 
     constructor(
-        private connection: TransactionalConnection,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.EXPORT_DESTINATION);

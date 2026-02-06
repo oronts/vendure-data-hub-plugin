@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Inject } from '@nestjs/common';
 import { RequestContextService, TransactionalConnection } from '@vendure/core';
-import { DATAHUB_PLUGIN_OPTIONS, DEFAULTS, TIME, LOGGER_CONTEXTS } from '../../constants/index';
+import { DATAHUB_PLUGIN_OPTIONS, TIME, LOGGER_CONTEXTS, SCHEDULER, RETENTION } from '../../constants/index';
 import { DataHubPluginOptions } from '../../types/index';
 import { PipelineRun } from '../../entities/pipeline';
 import { DataHubRecordError } from '../../entities/data';
@@ -24,13 +24,13 @@ export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
 
     async onModuleInit(): Promise<void> {
         this.logger.info('Retention service initialized', {
-            purgeIntervalMs: DEFAULTS.RETENTION_PURGE_INTERVAL_MS,
+            purgeIntervalMs: SCHEDULER.RETENTION_PURGE_INTERVAL_MS,
         });
 
         // Run daily
         this.handle = setInterval(() => this.purge().catch(err => {
             this.logger.error('Scheduled retention purge failed', err instanceof Error ? err : new Error(String(err)));
-        }), DEFAULTS.RETENTION_PURGE_INTERVAL_MS);
+        }), SCHEDULER.RETENTION_PURGE_INTERVAL_MS);
 
         // Also run once at startup
         this.logger.debug('Running initial retention purge on startup');
@@ -53,7 +53,7 @@ export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
         const startTime = Date.now();
         const db = await this.settings.get();
         const daysRuns = Number((db.retentionDaysRuns ?? this.options.retentionDaysRuns) ?? 0);
-        const daysErrors = Number((db.retentionDaysErrors ?? this.options.retentionDaysErrors) ?? DEFAULTS.RETENTION_DAYS_RUNS);
+        const daysErrors = Number((db.retentionDaysErrors ?? this.options.retentionDaysErrors) ?? RETENTION.RUNS_DAYS);
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
         const now = new Date();
 

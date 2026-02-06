@@ -35,7 +35,7 @@ export interface LockResult {
 /**
  * Distributed Locking Service
  *
- * Provides distributed locking for horizontal scaling with automatic fallback:
+ * Distributed locking for horizontal scaling with automatic fallback:
  * 1. Redis (when available) - Best for multi-instance deployments
  * 2. PostgreSQL table locks - Works with any PostgreSQL setup
  * 3. In-memory locks - Fallback for single-instance deployments
@@ -132,12 +132,12 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
     /** Execute a function with a lock */
     async withLock<T>(key: string, fn: () => Promise<T>, options: LockOptions = {}): Promise<T> {
         const result = await this.acquire(key, options);
-        if (!result.acquired) throw new LockAcquisitionError(key, result.currentOwner);
+        if (!result.acquired || !result.token) throw new LockAcquisitionError(key, result.currentOwner);
 
         try {
             return await fn();
         } finally {
-            await this.release(key, result.token!);
+            await this.release(key, result.token);
         }
     }
 

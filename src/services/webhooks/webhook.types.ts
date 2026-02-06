@@ -4,7 +4,7 @@
  * Type definitions for webhook delivery and retry management.
  */
 
-import { DEFAULTS } from '../../constants/index';
+import { WEBHOOK } from '../../constants/index';
 
 /**
  * Webhook delivery status
@@ -85,8 +85,8 @@ export interface WebhookStats {
  * Default retry configuration
  */
 export const DEFAULT_RETRY_CONFIG: RetryConfig = {
-    maxAttempts: DEFAULTS.WEBHOOK_MAX_ATTEMPTS,
-    initialDelayMs: DEFAULTS.WEBHOOK_INITIAL_DELAY_MS,
-    maxDelayMs: DEFAULTS.WEBHOOK_MAX_DELAY_MS,
-    backoffMultiplier: DEFAULTS.WEBHOOK_BACKOFF_MULTIPLIER,
+    maxAttempts: WEBHOOK.MAX_ATTEMPTS,
+    initialDelayMs: WEBHOOK.INITIAL_DELAY_MS,
+    maxDelayMs: WEBHOOK.MAX_DELAY_MS,
+    backoffMultiplier: WEBHOOK.BACKOFF_MULTIPLIER,
 };

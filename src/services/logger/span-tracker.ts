@@ -1,7 +1,7 @@
 /**
  * DataHub Logger Span Tracking
  *
- * Provides span tracking for trace context management.
+ * Span tracking for trace context management.
  * Compatible with OpenTelemetry patterns for future instrumentation.
  */
 
@@ -122,8 +122,8 @@ export class SpanTracker {
 }
 
 /**
- * SpanContext - Manages the lifecycle of a single span
- * Provides a fluent interface for adding events and ending the span
+ * SpanContext - Manages the lifecycle of a single span.
+ * Fluent interface for adding events and ending the span.
  */
 export class SpanContext {
     constructor(

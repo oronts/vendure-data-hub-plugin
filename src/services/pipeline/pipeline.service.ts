@@ -447,7 +447,7 @@ export class PipelineService {
     }
 
     private async assertCapabilitiesAllowed(ctx: RequestContext, definition: PipelineDefinition): Promise<void> {
-        const requires: string[] = Array.isArray(definition?.capabilities?.requires) ? (definition.capabilities!.requires as string[]) : [];
+        const requires: string[] = Array.isArray(definition?.capabilities?.requires) ? (definition.capabilities.requires as string[]) : [];
         if (!requires.length) return;
 
         const userPermissions = ctx.session?.user?.channelPermissions?.flatMap(cp => cp.permissions) ?? [];

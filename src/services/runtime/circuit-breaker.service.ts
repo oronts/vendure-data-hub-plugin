@@ -53,17 +53,18 @@ export class CircuitBreakerService implements OnModuleDestroy {
 
     private getCircuit(key: string): CircuitStats {
         const now = Date.now();
-        if (!this.circuits.has(key)) {
-            this.circuits.set(key, {
+        let circuit = this.circuits.get(key);
+        if (!circuit) {
+            circuit = {
                 state: CircuitState.CLOSED,
                 failures: 0,
                 successes: 0,
                 lastFailureTime: 0,
                 lastAccessTime: now,
                 failureTimestamps: [],
-            });
+            };
+            this.circuits.set(key, circuit);
         }
-        const circuit = this.circuits.get(key)!;
         circuit.lastAccessTime = now;
         return circuit;
     }

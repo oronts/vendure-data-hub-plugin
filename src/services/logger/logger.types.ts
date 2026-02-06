@@ -154,7 +154,7 @@ export interface Histogram {
 }
 
 /**
- * Error details for enhanced error tracking
+ * Error details with cause chain, stack traces, and categorization
  */
 export interface ErrorDetails {
     message: string;

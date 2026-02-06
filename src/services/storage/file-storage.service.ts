@@ -1,12 +1,11 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import {
-    TransactionalConnection,
     RequestContext,
     ConfigService,
 } from '@vendure/core';
 import * as crypto from 'crypto';
 import * as path from 'path';
-import { DEFAULTS, LOGGER_CONTEXTS } from '../../constants/index';
+import { LOGGER_CONTEXTS, FILE_STORAGE, SCHEDULER } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { StorageBackend } from './storage-backend.interface';
 import { createStorageBackendFromEnv } from './storage-backend.factory';
@@ -36,7 +35,7 @@ export interface StorageOptions {
     metadata?: Record<string, unknown>;
 }
 
-const DEFAULT_MAX_FILE_SIZE = DEFAULTS.MAX_FILE_SIZE_BYTES;
+const DEFAULT_MAX_FILE_SIZE = FILE_STORAGE.MAX_FILE_SIZE_BYTES;
 const DEFAULT_ALLOWED_TYPES = [
     'text/csv',
     'text/plain',
@@ -55,7 +54,6 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
     private cleanupHandle: ReturnType<typeof setInterval> | null = null;
 
     constructor(
-        private connection: TransactionalConnection,
         private configService: ConfigService,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -77,7 +75,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
 
         this.logger.info('FileStorageService initialized', {
             backendType: this.backend.type,
-            cleanupIntervalMs: DEFAULTS.FILE_CLEANUP_INTERVAL_MS,
+            cleanupIntervalMs: SCHEDULER.FILE_CLEANUP_INTERVAL_MS,
         });
     }
 
@@ -276,7 +274,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
     private startCleanupJob() {
         this.cleanupHandle = setInterval(() => {
             this.cleanupExpiredFiles();
-        }, DEFAULTS.FILE_CLEANUP_INTERVAL_MS);
+        }, SCHEDULER.FILE_CLEANUP_INTERVAL_MS);
     }
 
     private async cleanupExpiredFiles() {

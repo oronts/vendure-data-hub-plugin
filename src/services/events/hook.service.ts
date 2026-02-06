@@ -17,7 +17,7 @@ import { ModuleRef } from '@nestjs/core';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { WebhookRetryService, WebhookConfig } from '../webhooks/webhook-retry.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { DEFAULTS, LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES } from '../../constants/index';
+import { LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK, TRUNCATION } from '../../constants/index';
 import { HookActionType } from '../../constants/enums';
 import { validateUserCode } from '../../utils/code-security.utils';
 
@@ -266,14 +266,14 @@ export class HookService implements OnModuleInit {
         validateUserCode(action.code);
 
         // Build function - records and context are available in scope via sandboxGlobals
-        const fnBody = `
+        const functionBody = `
             "use strict";
             return (async function() {
                 ${action.code}
             })();
         `;
 
-        const fn = new Function(...Object.keys(sandboxGlobals), fnBody);
+        const fn = new Function(...Object.keys(sandboxGlobals), functionBody);
 
         // Execute with timeout
         const result = await Promise.race([
@@ -345,10 +345,10 @@ export class HookService implements OnModuleInit {
                     secret: webhookAction.secret,
                     signatureHeader: webhookAction.signatureHeader,
                     retryConfig: webhookAction.retryConfig || {
-                        maxAttempts: DEFAULTS.WEBHOOK_MAX_ATTEMPTS,
-                        initialDelayMs: DEFAULTS.WEBHOOK_INITIAL_DELAY_MS,
-                        maxDelayMs: DEFAULTS.WEBHOOK_HOOK_MAX_DELAY_MS,
-                        backoffMultiplier: DEFAULTS.WEBHOOK_BACKOFF_MULTIPLIER,
+                        maxAttempts: WEBHOOK.MAX_ATTEMPTS,
+                        initialDelayMs: WEBHOOK.INITIAL_DELAY_MS,
+                        maxDelayMs: WEBHOOK.HOOK_MAX_DELAY_MS,
+                        backoffMultiplier: WEBHOOK.BACKOFF_MULTIPLIER,
                     },
                     enabled: true,
                 };
@@ -371,7 +371,7 @@ export class HookService implements OnModuleInit {
      * Generate a consistent webhook ID for registration
      */
     private getWebhookId(url: string, action: import('../../types').WebhookHookAction): string {
-        const hash = Buffer.from(url).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, DEFAULTS.WEBHOOK_ID_HASH_LENGTH);
+        const hash = Buffer.from(url).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, TRUNCATION.WEBHOOK_ID_HASH_LENGTH);
         return `hook_${hash}`;
     }
 

@@ -63,7 +63,7 @@ interface ActiveConsumer {
  * - Starts consumers based on autoStart configuration
  * - Polls queues at configured intervals
  * - Processes messages by triggering pipeline runs
- * - Handles acknowledgments, retries, and dead-letter routing
+ * - Manages acknowledgments, retries, and dead-letter routing
  */
 @Injectable()
 export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
@@ -115,7 +115,7 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
             this.refreshTimer = undefined;
         }
 
-        for (const [key, consumer] of this.consumers.entries()) {
+        for (const key of this.consumers.keys()) {
             await this.stopConsumer(key);
         }
         this.consumers.clear();
@@ -343,12 +343,12 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
         if (!this.distributedLock || !consumer.lockToken) return;
 
         consumer.lockRefreshTimer = setInterval(async () => {
-            if (!consumer.running || this.isDestroying || !consumer.lockToken) {
+            if (!consumer.running || this.isDestroying || !consumer.lockToken || !this.distributedLock) {
                 return;
             }
 
             try {
-                const extended = await this.distributedLock!.extend(
+                const extended = await this.distributedLock.extend(
                     lockKey,
                     consumer.lockToken,
                     DISTRIBUTED_LOCK.MESSAGE_CONSUMER_LOCK_TTL_MS,

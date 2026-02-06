@@ -58,8 +58,8 @@ export class DomainEventsService {
     }
 
     list(limit = 50): BufferedEvent[] {
-        const n = Math.max(1, Math.min(limit || 50, this.max));
-        return this.buffer.slice(-n).reverse();
+        const limitClamped = Math.max(1, Math.min(limit || 50, this.max));
+        return this.buffer.slice(-limitClamped).reverse();
     }
 
     clear(): void {

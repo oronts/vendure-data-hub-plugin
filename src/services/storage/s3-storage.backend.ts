@@ -100,7 +100,7 @@ export class S3StorageBackend implements StorageBackend {
             await this.client.send(command);
             return true;
         } catch {
-            // S3 delete failed - return false to indicate failure
+            // S3 delete failed (object may not exist or access denied) - return false
             return false;
         }
     }
@@ -115,7 +115,7 @@ export class S3StorageBackend implements StorageBackend {
             await this.client.send(command);
             return true;
         } catch {
-            // S3 HeadObject failed - object does not exist or access denied
+            // S3 HeadObject returns 404 for non-existent objects - this is expected behavior
             return false;
         }
     }
@@ -166,7 +166,7 @@ export class S3StorageBackend implements StorageBackend {
 
             return url;
         } catch {
-            // Signed URL generation failed - return null as fallback
+            // Signed URL generation can fail if object doesn't exist or credentials are invalid
             return null;
         }
     }

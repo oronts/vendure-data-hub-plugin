@@ -4,7 +4,7 @@ import {
     JobQueue,
     JobQueueService,
 } from '@vendure/core';
-import { DEFAULTS, LOGGER_CONTEXTS, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK_QUEUE } from '../../constants/index';
+import { LOGGER_CONTEXTS, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK_QUEUE, WEBHOOK } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 
@@ -79,7 +79,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         this.startRetryProcessor();
 
         this.logger.info('WebhookRetryService initialized', {
-            retryCheckIntervalMs: DEFAULTS.WEBHOOK_RETRY_CHECK_INTERVAL_MS,
+            retryCheckIntervalMs: WEBHOOK.RETRY_CHECK_INTERVAL_MS,
         });
     }
 
@@ -166,7 +166,6 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
     }
 
     private evictOldDeliveries(): void {
-        const now = Date.now();
         const delivered: string[] = [];
         const deadLetter: string[] = [];
 
@@ -312,7 +311,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                     this.deliveryQueue.delete(id);
                 }
             }
-        }, DEFAULTS.WEBHOOK_RETRY_CHECK_INTERVAL_MS);
+        }, WEBHOOK.RETRY_CHECK_INTERVAL_MS);
     }
 
     getDeliveries(options?: {

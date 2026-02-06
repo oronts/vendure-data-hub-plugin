@@ -18,9 +18,7 @@ import { DataHubRegistryService } from '../../sdk/registry.service';
 import { AdapterDefinition, StepConfigSchema, StepConfigSchemaField, SelectOption } from '../../sdk/types';
 import { validatePipelineDefinition } from '../../validation/pipeline-definition.validator';
 import { PipelineDefinitionError, PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
-import { getErrorMessage, DataHubLogger } from '../logger';
-
-const logger = new DataHubLogger(LOGGER_CONTEXTS.DEFINITION_VALIDATION_SERVICE);
+import { getErrorMessage, DataHubLogger, DataHubLoggerFactory } from '../logger';
 
 // ============================================================================
 // Type Definitions for Validation
@@ -33,18 +31,6 @@ interface TriggerStepConfig extends TriggerConfig {
     message?: MessageTriggerConfig & {
         queue?: string;
     };
-}
-
-/**
- * Adapter field definition with options
- */
-interface AdapterFieldDefinition {
-    key: string;
-    type: string;
-    required?: boolean;
-    options?: readonly SelectOption[];
-    label?: string;
-    description?: string;
 }
 
 /**
@@ -236,10 +222,15 @@ export interface DefinitionValidationResult {
 
 @Injectable()
 export class DefinitionValidationService {
+    private readonly logger: DataHubLogger;
+
     constructor(
         private registry: DataHubRegistryService,
         private connection: TransactionalConnection,
-    ) {}
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.DEFINITION_VALIDATION_SERVICE);
+    }
 
     validateSync(definition: PipelineDefinition, options: ValidationOptions = {}): DefinitionValidationResult {
         const level = options.level ?? ValidationLevel.SEMANTIC;
@@ -313,7 +304,7 @@ export class DefinitionValidationService {
                         }
                     }
                 } catch (e: unknown) {
-                    logger.warn('Failed to validate pipeline dependencies', { error: getErrorMessage(e) });
+                    this.logger.warn('Failed to validate pipeline dependencies', { error: getErrorMessage(e) });
                     result.warnings.push({
                         message: 'Could not verify pipeline dependencies',
                         errorCode: 'depends-on-check-failed',
@@ -356,8 +347,8 @@ export class DefinitionValidationService {
         const triggerType = getTriggerType(cfg);
 
         if (triggerType === 'message') {
-            const msgCfg = isMessageTriggerConfig(cfg.message) ? cfg.message : undefined;
-            const queueType = getQueueType(msgCfg);
+            const messageConfig = isMessageTriggerConfig(cfg.message) ? cfg.message : undefined;
+            const queueType = getQueueType(messageConfig);
             const queueTypeLower = queueType?.toLowerCase();
 
             // All supported queue types
@@ -383,7 +374,7 @@ export class DefinitionValidationService {
                 });
             } else {
                 // Validate required fields based on queue type
-                if (!msgCfg?.connectionCode && queueTypeLower !== QueueType.INTERNAL) {
+                if (!messageConfig?.connectionCode && queueTypeLower !== QueueType.INTERNAL) {
                     issues.push({
                         message: `Step "${triggerStep.key}": ${queueType} message trigger requires connectionCode`,
                         stepKey: triggerStep.key,
@@ -391,7 +382,7 @@ export class DefinitionValidationService {
                     });
                 }
                 // Check for queueName or queue
-                const queueName = msgCfg?.queueName ?? msgCfg?.queue;
+                const queueName = messageConfig?.queueName ?? messageConfig?.queue;
                 if (!queueName) {
                     issues.push({
                         message: `Step "${triggerStep.key}": ${queueType} message trigger requires queue name`,
@@ -423,9 +414,9 @@ export class DefinitionValidationService {
 
             // ENRICH steps can use built-in config without an adapter
             if (type === 'ENRICH') {
-                const enrichCfg = cfg as { adapterCode?: string; defaults?: unknown; set?: unknown; computed?: unknown; sourceType?: string };
-                const hasBuiltInConfig = enrichCfg.defaults || enrichCfg.set || enrichCfg.computed || enrichCfg.sourceType;
-                if (!enrichCfg.adapterCode && hasBuiltInConfig) {
+                const enrichConfig = cfg as { adapterCode?: string; defaults?: unknown; set?: unknown; computed?: unknown; sourceType?: string };
+                const hasBuiltInConfig = enrichConfig.defaults || enrichConfig.set || enrichConfig.computed || enrichConfig.sourceType;
+                if (!enrichConfig.adapterCode && hasBuiltInConfig) {
                     // Skip adapter validation - using built-in enrichment
                     continue;
                 }
@@ -506,11 +497,11 @@ export class DefinitionValidationService {
         }
 
         for (const field of adapter.schema.fields) {
-            const v = cfg[field.key] as JsonValue | undefined;
-            this.validateRequiredFields(stepKey, field, v, issues);
-            if (v !== undefined && v !== null) {
-                this.validateFieldTypes(stepKey, field, v, issues);
-                this.validateFieldMappings(stepKey, field, v, issues);
+            const fieldValue = cfg[field.key] as JsonValue | undefined;
+            this.validateRequiredFields(stepKey, field, fieldValue, issues);
+            if (fieldValue !== undefined && fieldValue !== null) {
+                this.validateFieldTypes(stepKey, field, fieldValue, issues);
+                this.validateFieldMappings(stepKey, field, fieldValue, issues);
             }
         }
     }
@@ -537,7 +528,7 @@ export class DefinitionValidationService {
         value: JsonValue,
         issues: PipelineDefinitionIssue[],
     ): void {
-        const t = String(field.type).toLowerCase();
+        const fieldType = String(field.type).toLowerCase();
         const typeValidators: Record<string, () => boolean> = {
             string: () => typeof value === 'string',
             number: () => typeof value === 'number',
@@ -545,10 +536,10 @@ export class DefinitionValidationService {
             json: () => typeof value === 'object',
         };
 
-        const validator = typeValidators[t];
+        const validator = typeValidators[fieldType];
         if (validator && !validator()) {
             issues.push({
-                message: `Step "${stepKey}": field "${field.key}" must be ${t === 'json' ? 'JSON' : t}`,
+                message: `Step "${stepKey}": field "${field.key}" must be ${fieldType === 'json' ? 'JSON' : fieldType}`,
                 stepKey,
                 field: field.key,
                 errorCode: 'invalid-field-type',
@@ -562,8 +553,8 @@ export class DefinitionValidationService {
         value: JsonValue,
         issues: PipelineDefinitionIssue[],
     ): void {
-        const t = String(field.type).toLowerCase();
-        if (t !== 'select') {
+        const fieldType = String(field.type).toLowerCase();
+        if (fieldType !== 'select') {
             return;
         }
 

@@ -1,7 +1,7 @@
 /**
  * Analytics Service
  *
- * Provides analytics and metrics for pipeline runs and performance monitoring.
+ * Analytics and metrics for pipeline runs and performance monitoring.
  */
 
 import { Injectable, OnModuleInit } from '@nestjs/common';
@@ -14,7 +14,7 @@ import { MoreThan, In, FindOptionsWhere } from 'typeorm';
 import { PipelineRun, Pipeline } from '../../entities/pipeline';
 import { DataHubRecordError } from '../../entities/data';
 import { RunStatus, PipelineMetrics } from '../../types/index';
-import { DEFAULTS, TIME, LOGGER_CONTEXTS, SortOrder } from '../../constants/index';
+import { PAGINATION, TIME, LOGGER_CONTEXTS, SortOrder } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 
 import {
@@ -346,7 +346,7 @@ export class AnalyticsService implements OnModuleInit {
             return pipeline ? [pipeline] : [];
         }
         return this.connection.rawConnection.getRepository(Pipeline).find({
-            take: limit || DEFAULTS.LIST_PAGE_SIZE,
+            take: limit || PAGINATION.LIST_PAGE_SIZE,
         });
     }
 
@@ -418,7 +418,7 @@ export class AnalyticsService implements OnModuleInit {
         // Get top errors and calculate trend
         const topErrors = getTopErrors(
             errors.map(e => ({ message: e.message, createdAt: e.createdAt })),
-            DEFAULTS.TOP_ERRORS_LIMIT,
+            PAGINATION.TOP_ERRORS_LIMIT,
         );
         const errorTrend = calculateTimeSeries(errors.map(e => e.createdAt), timeRange);
 
@@ -597,7 +597,7 @@ export class AnalyticsService implements OnModuleInit {
             where: whereClause,
             relations: ['pipeline'],
             order: { createdAt: SortOrder.DESC },
-            take: options?.limit || DEFAULTS.LIST_PAGE_SIZE,
+            take: options?.limit || PAGINATION.LIST_PAGE_SIZE,
             skip: options?.offset || 0,
         });
 

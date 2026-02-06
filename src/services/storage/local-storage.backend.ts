@@ -113,7 +113,8 @@ export class LocalStorageBackend implements StorageBackend {
                 }
             }
         } catch {
-            // Silently handle errors during directory walk
+            // Errors during directory walk are expected when files/directories are
+            // deleted or permissions change during traversal - skip and continue
         }
     }
 }

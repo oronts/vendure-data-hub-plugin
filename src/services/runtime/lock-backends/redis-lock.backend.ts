@@ -5,7 +5,7 @@ import { DISTRIBUTED_LOCK } from '../../../constants/index';
 /**
  * Redis client interface for lock operations
  *
- * This interface defines the subset of Redis methods used by the lock backend.
+ * Subset of Redis methods used by the lock backend.
  * Using an interface instead of `any` provides type safety while remaining
  * compatible with the dynamically imported ioredis module.
  */
