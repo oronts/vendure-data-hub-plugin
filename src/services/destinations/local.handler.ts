@@ -26,7 +26,7 @@ export async function deliverToLocal(
     config: LocalDestinationConfig,
     content: Buffer,
     filename: string,
-    options?: DeliveryOptions,
+    _options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
     // Validate and resolve the target path securely
     const targetPath = getSecureTargetPath(config.directory, filename);

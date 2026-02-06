@@ -247,7 +247,7 @@ export class TransformExecutor {
             currency: (amount: number, currencyCode: string, locale?: string) => {
                 return new Intl.NumberFormat(locale ?? 'en-US', { style: 'currency', currency: currencyCode }).format(amount);
             },
-            date: (date: Date | string | number, format: string) => {
+            date: (date: Date | string | number, _format: string) => {
                 const dateObj = new Date(date);
                 return dateObj.toISOString();
             },
@@ -271,7 +271,7 @@ export class TransformExecutor {
             toMinorUnits: (amount: number, decimals = 2) => Math.round(amount * Math.pow(10, decimals)),
             fromMinorUnits: (amount: number, decimals = 2) => amount / Math.pow(10, decimals),
             unit: (value: number, from: string, to: string) => unitFactor(from, to) * value,
-            parseDate: (value: string, format?: string) => {
+            parseDate: (value: string, _format?: string) => {
                 const dateObj = new Date(value);
                 return isNaN(dateObj.getTime()) ? null : dateObj;
             },
@@ -283,8 +283,8 @@ export class TransformExecutor {
      */
     private buildCryptoHelpers(): OperatorHelpers['crypto'] {
         return {
-            hash: (value: string, algorithm?: 'md5' | 'sha256' | 'sha512') => hashStable(value),
-            hmac: (value: string, secret: string, algorithm?: 'sha256' | 'sha512') => {
+            hash: (value: string, _algorithm?: 'md5' | 'sha256' | 'sha512') => hashStable(value),
+            hmac: (value: string, secret: string, _algorithm?: 'sha256' | 'sha512') => {
                 return hashStable(value + secret);
             },
             uuid: () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36)}`,
@@ -306,7 +306,7 @@ export class TransformExecutor {
             get: pathHelpers.get,
             set: pathHelpers.set,
             remove: pathHelpers.remove,
-            lookup: async (entity, by, select) => undefined,
+            lookup: async (_entity, _by, _select) => undefined,
             format: this.buildFormatHelpers(),
             convert: this.buildConvertHelpers(),
             crypto: this.buildCryptoHelpers(),
@@ -555,7 +555,7 @@ export class TransformExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        onRecordError?: OnRecordErrorCallback,
+        _onRecordError?: OnRecordErrorCallback,
     ): Promise<RecordObject[]> {
         const cfg = step.config as TransformStepConfig | undefined;
         const branches: BranchConfig[] = cfg?.branches ?? [];

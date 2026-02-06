@@ -191,15 +191,15 @@ export class RabbitMQAdapter implements QueueAdapter {
     }
 
     async ack(
-        connectionConfig: QueueConnectionConfig,
-        deliveryTag: string,
+        _connectionConfig: QueueConnectionConfig,
+        _deliveryTag: string,
     ): Promise<void> {
     }
 
     async nack(
-        connectionConfig: QueueConnectionConfig,
-        deliveryTag: string,
-        requeue: boolean,
+        _connectionConfig: QueueConnectionConfig,
+        _deliveryTag: string,
+        _requeue: boolean,
     ): Promise<void> {
     }
 

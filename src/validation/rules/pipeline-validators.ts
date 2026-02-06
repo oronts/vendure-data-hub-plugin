@@ -389,7 +389,7 @@ export function validateHooks(hooks?: JsonObject): PipelineValidationResult {
 
     const validHookStages = Object.values(HookStage) as string[];
 
-    for (const [stage, _config] of Object.entries(hooks)) {
+    for (const [stage] of Object.entries(hooks)) {
         if (!validHookStages.includes(stage)) {
             warnings.push(createWarning(`hooks.${stage}`, `Unknown hook stage: ${stage}`));
         }

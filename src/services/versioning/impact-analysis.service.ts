@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import {
-    PipelineDefinition,
     PipelineMetrics,
     DEFAULT_IMPACT_ANALYSIS_OPTIONS,
     DurationEstimate,

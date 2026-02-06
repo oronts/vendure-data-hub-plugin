@@ -110,7 +110,7 @@ export class VendureExtractHandler implements ExtractHandler {
         return [];
     }
 
-    private validateRelations(relations: string[], entityType: string): string | null {
+    private validateRelations(relations: string[], _entityType: string): string | null {
         const tooDeepRelations = relations.filter(r => (r.match(/\./g) || []).length > 1);
         if (tooDeepRelations.length > 0) {
             return `Relations with 3+ levels are not supported: ${tooDeepRelations.join(', ')}. ` +

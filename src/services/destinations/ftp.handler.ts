@@ -27,7 +27,7 @@ export async function deliverToSFTP(
     config: SFTPDestinationConfig,
     content: Buffer,
     filename: string,
-    options?: DeliveryOptions,
+    _options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
     const remotePath = `${config.remotePath}/${filename}`.replace(/\/+/g, '/');
     const port = config.port || PORTS.SFTP;
@@ -90,7 +90,7 @@ export async function deliverToFTP(
     config: FTPDestinationConfig,
     content: Buffer,
     filename: string,
-    options?: DeliveryOptions,
+    _options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
     const remotePath = `${config.remotePath}/${filename}`.replace(/\/+/g, '/');
     const port = config.port || PORTS.FTP;

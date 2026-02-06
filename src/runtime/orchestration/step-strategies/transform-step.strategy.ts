@@ -361,7 +361,7 @@ export class RouteStepStrategy implements StepStrategy {
         recordsIn: number,
         recordsOut: number,
         durationMs: number,
-        branches: string[],
+        _branches: string[],
     ): Promise<void> {
         const { ctx, step, stepLog } = context;
         if (stepLog?.onStepComplete) {

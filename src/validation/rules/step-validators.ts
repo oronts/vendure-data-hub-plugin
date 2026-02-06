@@ -680,7 +680,7 @@ export function validateStep(step: StepDefinition): StepValidationResult {
     const concurrencyResult = validateStepConcurrency(step.concurrency);
 
     // Combine base validations
-    let result = combineResults(keyResult, typeResult, concurrencyResult);
+    const result = combineResults(keyResult, typeResult, concurrencyResult);
 
     // Early return if base validation fails
     if (!result.valid) {

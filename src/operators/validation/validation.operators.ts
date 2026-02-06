@@ -42,7 +42,7 @@ export const VALIDATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
 export function validateRequiredOperator(
     records: readonly JsonObject[],
     config: ValidateRequiredOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.fields || !Array.isArray(config.fields)) {
         return { records: [...records] };
@@ -63,7 +63,7 @@ export function validateRequiredOperator(
 export function validateFormatOperator(
     records: readonly JsonObject[],
     config: ValidateFormatOperatorConfig,
-    helpers: OperatorHelpers,
+    _helpers: OperatorHelpers,
 ): OperatorResult {
     if (!config.field || !config.pattern) {
         return { records: [...records] };

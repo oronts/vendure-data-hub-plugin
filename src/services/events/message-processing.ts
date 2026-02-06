@@ -5,7 +5,6 @@ import { AckMode } from '../../constants/index';
 import { DataHubLogger } from '../logger';
 import { queueAdapterRegistry, QueueConnectionConfig, QueueAdapter } from '../../sdk/adapters/queue';
 import { ActiveConsumer } from './consumer-lifecycle';
-import { MessageConsumerConfig } from './consumer-discovery';
 
 /**
  * Message Processing Module

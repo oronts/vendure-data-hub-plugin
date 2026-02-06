@@ -298,7 +298,7 @@ export class RiskAssessmentService {
     private interpolateMessage(
         template: string,
         impact: ImpactAnalysis,
-        context: RiskContext,
+        _context: RiskContext,
     ): string {
         return template
             .replace('{count}', String(impact.summary.totalRecordsToProcess))
@@ -315,7 +315,7 @@ export class RiskAssessmentService {
     private generateDetails(
         ruleId: string,
         impact: ImpactAnalysis,
-        context: RiskContext,
+        _context: RiskContext,
     ): string {
         switch (ruleId) {
             case 'high-record-count':

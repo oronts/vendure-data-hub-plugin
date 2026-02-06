@@ -15,7 +15,7 @@ import {
     SandboxLoadResultType,
 } from '../../constants/enums';
 import { getAdapterCode } from '../../types/step-configs';
-import { detectFieldChanges, trackFieldChanges } from './field-detection';
+import { trackFieldChanges } from './field-detection';
 
 /**
  * Internal collector type for aggregating entity impacts during analysis

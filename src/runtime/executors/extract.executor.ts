@@ -174,7 +174,7 @@ export class ExtractExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         executorCtx: ExecutorContext,
-        cfg: JsonObject,
+        _cfg: JsonObject,
     ): ExtractContext {
         return {
             ctx,

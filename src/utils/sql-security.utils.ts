@@ -14,7 +14,6 @@ import {
     SQL_IDENTIFIER_MAX_LENGTH,
     SQL_CHECK_MAX_LENGTH,
     SQL_PATTERNS,
-    SQL_WHITELISTS,
 } from '../constants/sql';
 
 /**

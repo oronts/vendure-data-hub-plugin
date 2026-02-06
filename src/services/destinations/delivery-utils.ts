@@ -67,7 +67,7 @@ export async function executeDelivery<TConfig extends { id: string }>(
     content: Buffer,
     filename: string,
     deliveryFn: () => Promise<DeliveryResult>,
-    options?: DeliveryOptions,
+    _options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
     try {
         return await deliveryFn();

@@ -13,7 +13,7 @@ import {
 import { MoreThan, In, FindOptionsWhere } from 'typeorm';
 import { PipelineRun, Pipeline } from '../../entities/pipeline';
 import { DataHubRecordError } from '../../entities/data';
-import { RunStatus, PipelineMetrics } from '../../types/index';
+import { RunStatus } from '../../types/index';
 import { PAGINATION, TIME, LOGGER_CONTEXTS, SortOrder } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 
@@ -82,7 +82,7 @@ export class AnalyticsService implements OnModuleInit {
     }
 
     /** Get analytics overview */
-    async getOverview(ctx: RequestContext): Promise<AnalyticsOverview> {
+    async getOverview(_ctx: RequestContext): Promise<AnalyticsOverview> {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
 
@@ -339,7 +339,7 @@ export class AnalyticsService implements OnModuleInit {
     }
 
     /** Get real-time stats (for dashboard polling) */
-    async getRealTimeStats(ctx: RequestContext): Promise<RealTimeStats> {
+    async getRealTimeStats(_ctx: RequestContext): Promise<RealTimeStats> {
         const oneMinuteAgo = new Date(Date.now() - TIME.ONE_MINUTE_MS);
         const fiveMinutesAgo = new Date(Date.now() - TIME.FIVE_MINUTES_MS);
 

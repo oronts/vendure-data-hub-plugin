@@ -17,7 +17,7 @@ export class CheckpointService {
         const repo = this.connection.getRepository(ctx, DataHubCheckpoint);
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, pipelineId);
 
-        let cp = await this.getByPipeline(ctx, pipelineId);
+        const cp = await this.getByPipeline(ctx, pipelineId);
         if (cp) {
             cp.data = data;
             return repo.save(cp);

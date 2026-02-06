@@ -370,7 +370,7 @@ export class HookService implements OnModuleInit {
     /**
      * Generate a consistent webhook ID for registration
      */
-    private getWebhookId(url: string, action: import('../../types').WebhookHookAction): string {
+    private getWebhookId(url: string, _action: import('../../types').WebhookHookAction): string {
         const hash = Buffer.from(url).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, TRUNCATION.WEBHOOK_ID_HASH_LENGTH);
         return `hook_${hash}`;
     }

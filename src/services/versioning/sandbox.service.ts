@@ -216,7 +216,7 @@ export class SandboxService {
         const result = this.createInitialResult();
         const lineageTracker = new DataLineageTracker(opts);
 
-        let records: Record<string, unknown>[] = opts.seedData.length > 0 ? [...opts.seedData] : [];
+        const records: Record<string, unknown>[] = opts.seedData.length > 0 ? [...opts.seedData] : [];
 
         try {
             const startIdx = this.findStartStepIndex(definition, opts);

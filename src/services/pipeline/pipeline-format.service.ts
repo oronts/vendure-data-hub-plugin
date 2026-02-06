@@ -294,7 +294,8 @@ export class PipelineFormatService {
 
         const adapterCode = data.adapterCode || (data.config?.adapterCode as string) || '';
         const existingConfig = (data.config ?? {}) as Record<string, unknown>;
-        const { adapterCode: _unused, ...restConfig } = existingConfig;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { adapterCode: _, ...restConfig } = existingConfig;
 
         return {
             key: node.id ?? `step-${index}`,
