@@ -7,118 +7,53 @@ import {
     StockLocation,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import { StockLocationInput, STOCK_LOCATION_LOADER_METADATA } from './types';
-import { isRecoverableError, shouldUpdateField } from './helpers';
+import { shouldUpdateField } from '../shared-helpers';
 
+/**
+ * StockLocationLoader - Refactored to extend BaseEntityLoader
+ *
+ * This eliminates ~60 lines of duplicate load() method code that was
+ * copy-pasted across all loaders. The base class handles:
+ * - Result initialization
+ * - Validation loop
+ * - Duplicate detection
+ * - CREATE/UPDATE/UPSERT operation logic
+ * - Dry run mode
+ * - Error handling
+ */
 @Injectable()
-export class StockLocationLoader implements EntityLoader<StockLocationInput> {
-    private readonly logger: DataHubLogger;
-
-    readonly entityType = STOCK_LOCATION_LOADER_METADATA.entityType;
-    readonly name = STOCK_LOCATION_LOADER_METADATA.name;
-    readonly description = STOCK_LOCATION_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...STOCK_LOCATION_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...STOCK_LOCATION_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...STOCK_LOCATION_LOADER_METADATA.requiredFields];
+export class StockLocationLoader extends BaseEntityLoader<StockLocationInput, StockLocation> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = STOCK_LOCATION_LOADER_METADATA;
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private stockLocationService: StockLocationService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.STOCK_LOCATION_LOADER);
     }
 
-    async load(context: LoaderContext, records: StockLocationInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Stock location "${record.name}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updateStockLocation(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createStockLocation(context, record);
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load stock location`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: StockLocationInput): string {
+        return `Stock location "${record.name}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: StockLocationInput,
-    ): Promise<{ id: ID; entity: StockLocation } | null> {
+    ): Promise<ExistingEntityLookupResult<StockLocation> | null> {
         // Primary lookup: by name
         if (record.name && lookupFields.includes('name')) {
             const locations = await this.stockLocationService.findAll(ctx, {
@@ -191,7 +126,7 @@ export class StockLocationLoader implements EntityLoader<StockLocationInput> {
         };
     }
 
-    private async createStockLocation(context: LoaderContext, record: StockLocationInput): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: StockLocationInput): Promise<ID | null> {
         const { ctx } = context;
 
         const location = await this.stockLocationService.create(ctx, {
@@ -204,7 +139,7 @@ export class StockLocationLoader implements EntityLoader<StockLocationInput> {
         return location.id;
     }
 
-    private async updateStockLocation(context: LoaderContext, locationId: ID, record: StockLocationInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, locationId: ID, record: StockLocationInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: locationId };

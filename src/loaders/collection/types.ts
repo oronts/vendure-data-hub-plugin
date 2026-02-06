@@ -1,4 +1,3 @@
-import { ID, Collection } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
@@ -38,11 +37,6 @@ export interface CollectionInput extends InputRecord {
 export interface ConfigurableOperationInput {
     code: string;
     arguments: Array<{ name: string; value: string }>;
-}
-
-export interface ExistingEntityResult {
-    id: ID;
-    entity: Collection;
 }
 
 export const COLLECTION_LOADER_METADATA = {

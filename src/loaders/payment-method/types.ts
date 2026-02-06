@@ -1,4 +1,3 @@
-import { ID, PaymentMethod } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
@@ -40,11 +39,6 @@ export interface PaymentMethodInput extends InputRecord {
 
     /** Custom field values */
     customFields?: Record<string, unknown>;
-}
-
-export interface ExistingEntityResult {
-    id: ID;
-    entity: PaymentMethod;
 }
 
 export const PAYMENT_METHOD_LOADER_METADATA = {

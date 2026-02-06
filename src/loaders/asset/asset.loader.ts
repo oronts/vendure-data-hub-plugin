@@ -1,24 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import {
     ID,
+    Asset,
     RequestContext,
     TransactionalConnection,
     AssetService,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     AssetInput,
-    ExistingEntityResult,
     ASSET_LOADER_METADATA,
 } from './types';
 import {
@@ -26,123 +25,48 @@ import {
     extractFilenameFromUrl,
     getMimeType,
     createReadStreamFromBuffer,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 
+/**
+ * AssetLoader - Refactored to extend BaseEntityLoader
+ *
+ * This eliminates ~60 lines of duplicate load() method code that was
+ * copy-pasted across all loaders. The base class handles:
+ * - Result initialization
+ * - Validation loop
+ * - Duplicate detection
+ * - CREATE/UPDATE/UPSERT operation logic
+ * - Dry run mode
+ * - Error handling
+ *
+ * Note: createEntity returns null when asset download fails,
+ * which the base class handles by recording the failure.
+ */
 @Injectable()
-export class AssetLoader implements EntityLoader<AssetInput> {
-    private readonly logger: DataHubLogger;
-
-    readonly entityType = ASSET_LOADER_METADATA.entityType;
-    readonly name = ASSET_LOADER_METADATA.name;
-    readonly description = ASSET_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...ASSET_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...ASSET_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...ASSET_LOADER_METADATA.requiredFields];
+export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = ASSET_LOADER_METADATA;
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private assetService: AssetService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.ASSET_LOADER);
     }
 
-    async load(context: LoaderContext, records: AssetInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const assetName = record.name || extractFilenameFromUrl(record.sourceUrl);
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, { ...record, name: assetName });
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Asset with name "${assetName}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updateAsset(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createAsset(context, record, assetName);
-                        if (newId) {
-                            result.affectedIds.push(newId);
-                            result.created++;
-                        } else {
-                            result.failed++;
-                            result.errors.push({
-                                record,
-                                message: 'Failed to download and create asset',
-                                recoverable: true,
-                            });
-                            continue;
-                        }
-                    } else {
-                        result.created++;
-                    }
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load asset`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: AssetInput): string {
+        const assetName = record.name || extractFilenameFromUrl(record.sourceUrl);
+        return `Asset with name "${assetName}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: AssetInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<Asset> | null> {
         // Primary lookup: by name
         if (record.name && lookupFields.includes('name')) {
             const assets = await this.assetService.findAll(ctx, {
@@ -258,8 +182,9 @@ export class AssetLoader implements EntityLoader<AssetInput> {
         };
     }
 
-    private async createAsset(context: LoaderContext, record: AssetInput, assetName: string): Promise<ID | null> {
+    protected async createEntity(context: LoaderContext, record: AssetInput): Promise<ID | null> {
         const { ctx } = context;
+        const assetName = record.name || extractFilenameFromUrl(record.sourceUrl);
 
         try {
             const fileData = await downloadFile(record.sourceUrl);
@@ -303,7 +228,7 @@ export class AssetLoader implements EntityLoader<AssetInput> {
         }
     }
 
-    private async updateAsset(context: LoaderContext, assetId: ID, record: AssetInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, assetId: ID, record: AssetInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: assetId };

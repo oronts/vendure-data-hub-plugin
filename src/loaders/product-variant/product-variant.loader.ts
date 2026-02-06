@@ -17,138 +17,69 @@ import {
 } from '@vendure/core';
 import { GlobalFlag } from '@vendure/common/lib/generated-types';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     ProductVariantInput,
-    ExistingEntityResult,
     PRODUCT_VARIANT_LOADER_METADATA,
     DEFAULT_PRODUCT_NAME,
 } from './types';
 import {
     resolveFacetValueIds,
     slugify,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 
+/**
+ * ProductVariantLoader - Refactored to extend BaseEntityLoader
+ *
+ * This eliminates ~60 lines of duplicate load() method code that was
+ * copy-pasted across all loaders. The base class handles:
+ * - Result initialization
+ * - Validation loop
+ * - Duplicate detection
+ * - CREATE/UPDATE/UPSERT operation logic
+ * - Dry run mode
+ * - Error handling
+ */
 @Injectable()
-export class ProductVariantLoader implements EntityLoader<ProductVariantInput> {
-    private readonly logger: DataHubLogger;
-
-    readonly entityType = PRODUCT_VARIANT_LOADER_METADATA.entityType;
-    readonly name = PRODUCT_VARIANT_LOADER_METADATA.name;
-    readonly description = PRODUCT_VARIANT_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...PRODUCT_VARIANT_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...PRODUCT_VARIANT_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...PRODUCT_VARIANT_LOADER_METADATA.requiredFields];
+export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, ProductVariant> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = PRODUCT_VARIANT_LOADER_METADATA;
 
     constructor(
         private connection: TransactionalConnection,
         private variantService: ProductVariantService,
         private productService: ProductService,
         private facetValueService: FacetValueService,
-        private _assetService: AssetService,
-        private _channelService: ChannelService,
+        private assetService: AssetService,
+        private channelService: ChannelService,
         private taxCategoryService: TaxCategoryService,
-        private _optionService: ProductOptionService,
+        private optionService: ProductOptionService,
         private stockMovementService: StockMovementService,
         private stockLevelService: StockLevelService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PRODUCT_VARIANT_LOADER);
     }
 
-    async load(context: LoaderContext, records: ProductVariantInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Variant with SKU "${record.sku}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    // UPDATE or UPSERT
-                    if (!context.dryRun) {
-                        await this.updateVariant(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    // CREATE or UPSERT
-                    if (!context.dryRun) {
-                        const newId = await this.createVariant(context, record);
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load variant`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: ProductVariantInput): string {
+        return `Variant with SKU "${record.sku}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: ProductVariantInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<ProductVariant> | null> {
         // Primary lookup: by SKU
         if (record.sku && lookupFields.includes('sku')) {
             const variants = await this.connection
@@ -325,7 +256,7 @@ export class ProductVariantLoader implements EntityLoader<ProductVariantInput> {
         };
     }
 
-    private async createVariant(context: LoaderContext, record: ProductVariantInput): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: ProductVariantInput): Promise<ID | null> {
         const { ctx } = context;
 
         const product = await this.findOrCreateProduct(ctx, record);
@@ -370,7 +301,7 @@ export class ProductVariantLoader implements EntityLoader<ProductVariantInput> {
         return createdVariant.id;
     }
 
-    private async updateVariant(context: LoaderContext, variantId: ID, record: ProductVariantInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, variantId: ID, record: ProductVariantInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: variantId };

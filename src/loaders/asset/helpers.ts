@@ -3,7 +3,7 @@ import * as http from 'http';
 import * as path from 'path';
 import { Readable } from 'stream';
 import { MIME_TYPES } from './types';
-import { DEFAULTS, HTTP_STATUS } from '../../constants/index';
+import { HTTP, HTTP_STATUS } from '../../constants/index';
 
 export { shouldUpdateField, isRecoverableError } from '../shared-helpers';
 
@@ -28,7 +28,7 @@ export async function downloadFile(url: string): Promise<Buffer | null> {
 
     return new Promise((resolve) => {
         const protocol = url.startsWith('https') ? https : http;
-        const request = protocol.get(url, { timeout: DEFAULTS.HTTP_TIMEOUT_MS }, (response) => {
+        const request = protocol.get(url, { timeout: HTTP.TIMEOUT_MS }, (response) => {
             if (response.statusCode === HTTP_STATUS.MOVED_PERMANENTLY || response.statusCode === HTTP_STATUS.FOUND) {
                 const redirectUrl = response.headers.location;
                 if (redirectUrl) {

@@ -20,7 +20,7 @@ import {
     FacetInput,
     FACET_LOADER_METADATA,
 } from './types';
-import { shouldUpdateField } from './helpers';
+import { shouldUpdateField } from '../shared-helpers';
 
 /**
  * FacetLoader - Refactored to extend BaseEntityLoader
@@ -40,7 +40,7 @@ export class FacetLoader extends BaseEntityLoader<FacetInput, Facet> {
     protected readonly metadata: LoaderMetadata = FACET_LOADER_METADATA;
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private facetService: FacetService,
         loggerFactory: DataHubLoggerFactory,
     ) {

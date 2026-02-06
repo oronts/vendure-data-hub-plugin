@@ -1,4 +1,3 @@
-import { ID, TaxRate } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
@@ -33,11 +32,6 @@ export interface TaxRateInput extends InputRecord {
 
     /** Custom field values */
     customFields?: Record<string, unknown>;
-}
-
-export interface ExistingEntityResult {
-    id: ID;
-    entity: TaxRate;
 }
 
 export const TAX_RATE_LOADER_METADATA = {

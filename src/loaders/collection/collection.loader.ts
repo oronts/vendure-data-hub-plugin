@@ -1,26 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import {
     ID,
+    Collection,
     RequestContext,
     TransactionalConnection,
     CollectionService,
     AssetService,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     CollectionInput,
     ConfigurableOperationInput,
-    ExistingEntityResult,
     COLLECTION_LOADER_METADATA,
 } from './types';
 import {
@@ -29,112 +28,54 @@ import {
     resolveParentId,
     buildFilterOperation,
     slugify,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 
+/**
+ * CollectionLoader - Refactored to extend BaseEntityLoader
+ *
+ * This eliminates ~60 lines of duplicate load() method code that was
+ * copy-pasted across all loaders. The base class handles:
+ * - Result initialization
+ * - Validation loop
+ * - Duplicate detection
+ * - CREATE/UPDATE/UPSERT operation logic
+ * - Dry run mode
+ * - Error handling
+ *
+ * Note: Uses preprocessRecords() to sort by hierarchy before processing.
+ */
 @Injectable()
-export class CollectionLoader implements EntityLoader<CollectionInput> {
-    private readonly logger: DataHubLogger;
-
-    readonly entityType = COLLECTION_LOADER_METADATA.entityType;
-    readonly name = COLLECTION_LOADER_METADATA.name;
-    readonly description = COLLECTION_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...COLLECTION_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...COLLECTION_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...COLLECTION_LOADER_METADATA.requiredFields];
+export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collection> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = COLLECTION_LOADER_METADATA;
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private collectionService: CollectionService,
-        private _assetService: AssetService,
+        private assetService: AssetService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.COLLECTION_LOADER);
     }
 
-    async load(context: LoaderContext, records: CollectionInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
+    /**
+     * Sort collections by hierarchy depth so parents are created before children
+     */
+    protected preprocessRecords(records: CollectionInput[]): CollectionInput[] {
+        return sortByHierarchy(records);
+    }
 
-        const sortedRecords = sortByHierarchy(records);
-
-        for (const record of sortedRecords) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Collection with slug "${record.slug}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updateCollection(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createCollection(context, record);
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load collection`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: CollectionInput): string {
+        return `Collection with slug "${record.slug}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: CollectionInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<Collection> | null> {
         // Primary lookup: by slug
         if (record.slug && lookupFields.includes('slug')) {
             const collections = await this.collectionService.findAll(ctx, {
@@ -283,7 +224,7 @@ export class CollectionLoader implements EntityLoader<CollectionInput> {
         };
     }
 
-    private async createCollection(context: LoaderContext, record: CollectionInput): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: CollectionInput): Promise<ID | null> {
         const { ctx } = context;
 
         const slug = record.slug || slugify(record.name);
@@ -327,7 +268,7 @@ export class CollectionLoader implements EntityLoader<CollectionInput> {
         return collection.id;
     }
 
-    private async updateCollection(context: LoaderContext, collectionId: ID, record: CollectionInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, collectionId: ID, record: CollectionInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: collectionId };

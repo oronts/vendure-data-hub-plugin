@@ -1,131 +1,65 @@
 import { Injectable } from '@nestjs/common';
 import {
     ID,
+    ShippingMethod,
     RequestContext,
     TransactionalConnection,
     ShippingMethodService,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     ShippingMethodInput,
-    ExistingEntityResult,
     SHIPPING_METHOD_LOADER_METADATA,
 } from './types';
 import {
     buildConfigurableOperation,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 
+/**
+ * ShippingMethodLoader - Refactored to extend BaseEntityLoader
+ *
+ * This eliminates ~60 lines of duplicate load() method code that was
+ * copy-pasted across all loaders. The base class handles:
+ * - Result initialization
+ * - Validation loop
+ * - Duplicate detection
+ * - CREATE/UPDATE/UPSERT operation logic
+ * - Dry run mode
+ * - Error handling
+ */
 @Injectable()
-export class ShippingMethodLoader implements EntityLoader<ShippingMethodInput> {
-    private readonly logger: DataHubLogger;
-
-    readonly entityType = SHIPPING_METHOD_LOADER_METADATA.entityType;
-    readonly name = SHIPPING_METHOD_LOADER_METADATA.name;
-    readonly description = SHIPPING_METHOD_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...SHIPPING_METHOD_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...SHIPPING_METHOD_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...SHIPPING_METHOD_LOADER_METADATA.requiredFields];
+export class ShippingMethodLoader extends BaseEntityLoader<ShippingMethodInput, ShippingMethod> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = SHIPPING_METHOD_LOADER_METADATA;
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private shippingMethodService: ShippingMethodService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.SHIPPING_METHOD_LOADER);
     }
 
-    async load(context: LoaderContext, records: ShippingMethodInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Shipping method with code "${record.code}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updateShippingMethod(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createShippingMethod(context, record);
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load shipping method`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: ShippingMethodInput): string {
+        return `Shipping method with code "${record.code}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: ShippingMethodInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<ShippingMethod> | null> {
         // Primary lookup: by code
         if (record.code && lookupFields.includes('code')) {
             const methods = await this.shippingMethodService.findAll(ctx, {
@@ -266,7 +200,7 @@ export class ShippingMethodLoader implements EntityLoader<ShippingMethodInput> {
         };
     }
 
-    private async createShippingMethod(context: LoaderContext, record: ShippingMethodInput): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: ShippingMethodInput): Promise<ID | null> {
         const { ctx } = context;
 
         const calculator = buildConfigurableOperation(record.calculator);
@@ -295,7 +229,7 @@ export class ShippingMethodLoader implements EntityLoader<ShippingMethodInput> {
         return method.id;
     }
 
-    private async updateShippingMethod(context: LoaderContext, methodId: ID, record: ShippingMethodInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, methodId: ID, record: ShippingMethodInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: methodId };

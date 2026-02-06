@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
     ID,
+    Customer,
     RequestContext,
     TransactionalConnection,
     CustomerService,
@@ -8,132 +9,63 @@ import {
     CountryService,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     CustomerInput,
-    ExistingEntityResult,
     CUSTOMER_LOADER_METADATA,
 } from './types';
 import {
     isValidEmail,
     assignCustomerGroups,
     createAddresses,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 
+/**
+ * CustomerLoader - Refactored to extend BaseEntityLoader
+ *
+ * This eliminates ~60 lines of duplicate load() method code that was
+ * copy-pasted across all loaders. The base class handles:
+ * - Result initialization
+ * - Validation loop
+ * - Duplicate detection
+ * - CREATE/UPDATE/UPSERT operation logic
+ * - Dry run mode
+ * - Error handling
+ */
 @Injectable()
-export class CustomerLoader implements EntityLoader<CustomerInput> {
-    private readonly logger: DataHubLogger;
-
-    readonly entityType = CUSTOMER_LOADER_METADATA.entityType;
-    readonly name = CUSTOMER_LOADER_METADATA.name;
-    readonly description = CUSTOMER_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...CUSTOMER_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...CUSTOMER_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...CUSTOMER_LOADER_METADATA.requiredFields];
+export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = CUSTOMER_LOADER_METADATA;
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private customerService: CustomerService,
         private customerGroupService: CustomerGroupService,
         private countryService: CountryService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.CUSTOMER_LOADER);
     }
 
-    async load(context: LoaderContext, records: CustomerInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Customer with email "${record.emailAddress}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    // UPDATE or UPSERT
-                    if (!context.dryRun) {
-                        await this.updateCustomer(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    // CREATE or UPSERT
-                    if (!context.dryRun) {
-                        const newId = await this.createCustomer(context, record);
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load customer`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: CustomerInput): string {
+        return `Customer with email "${record.emailAddress}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: CustomerInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<Customer> | null> {
         // Primary lookup: by email
         if (record.emailAddress && lookupFields.includes('emailAddress')) {
             const customers = await this.customerService.findAll(ctx, {
@@ -278,7 +210,7 @@ export class CustomerLoader implements EntityLoader<CustomerInput> {
         };
     }
 
-    private async createCustomer(context: LoaderContext, record: CustomerInput): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: CustomerInput): Promise<ID | null> {
         const { ctx } = context;
 
         const result = await this.customerService.create(ctx, {
@@ -308,7 +240,7 @@ export class CustomerLoader implements EntityLoader<CustomerInput> {
         return customer.id;
     }
 
-    private async updateCustomer(context: LoaderContext, customerId: ID, record: CustomerInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, customerId: ID, record: CustomerInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: customerId };

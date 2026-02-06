@@ -16,7 +16,7 @@ export async function resolveFacetId(
 
     // Check cache
     if (record.facetCode && cache.has(record.facetCode)) {
-        return cache.get(record.facetCode)!;
+        return cache.get(record.facetCode) ?? null;
     }
 
     // Look up by code

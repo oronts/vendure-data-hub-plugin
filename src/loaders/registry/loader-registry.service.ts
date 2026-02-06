@@ -176,29 +176,33 @@ export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
 
         for (const [category, types] of Object.entries(categories)) {
             result[category] = types
-                .filter(type => this.has(type))
                 .map(type => {
-                    const loader = this.get(type)!;
+                    const loader = this.get(type);
+                    if (!loader) return null;
                     return {
                         entityType: type,
                         name: loader.name,
                         description: loader.description,
                     };
-                });
+                })
+                .filter((item): item is NonNullable<typeof item> => item !== null);
         }
 
         // Add any uncategorized loaders to "Other"
         const categorizedTypes = Object.values(categories).flat();
         const uncategorized = this.getRegisteredTypes().filter(type => !categorizedTypes.includes(type));
         if (uncategorized.length > 0) {
-            result['Other'] = uncategorized.map(type => {
-                const loader = this.get(type)!;
-                return {
-                    entityType: type,
-                    name: loader.name,
-                    description: loader.description,
-                };
-            });
+            result['Other'] = uncategorized
+                .map(type => {
+                    const loader = this.get(type);
+                    if (!loader) return null;
+                    return {
+                        entityType: type,
+                        name: loader.name,
+                        description: loader.description,
+                    };
+                })
+                .filter((item): item is NonNullable<typeof item> => item !== null);
         }
 
         return result;

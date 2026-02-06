@@ -1,134 +1,68 @@
 import { Injectable } from '@nestjs/common';
 import {
     ID,
+    CustomerGroup,
     RequestContext,
     TransactionalConnection,
     CustomerGroupService,
     CustomerService,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     CustomerGroupInput,
-    ExistingEntityResult,
     CUSTOMER_GROUP_LOADER_METADATA,
 } from './types';
 import {
     addCustomersToGroup,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 import { isValidEmail } from '../../utils/input-validation.utils';
 
+/**
+ * CustomerGroupLoader - Refactored to extend BaseEntityLoader
+ *
+ * This eliminates ~60 lines of duplicate load() method code that was
+ * copy-pasted across all loaders. The base class handles:
+ * - Result initialization
+ * - Validation loop
+ * - Duplicate detection
+ * - CREATE/UPDATE/UPSERT operation logic
+ * - Dry run mode
+ * - Error handling
+ */
 @Injectable()
-export class CustomerGroupLoader implements EntityLoader<CustomerGroupInput> {
-    private readonly logger: DataHubLogger;
-
-    readonly entityType = CUSTOMER_GROUP_LOADER_METADATA.entityType;
-    readonly name = CUSTOMER_GROUP_LOADER_METADATA.name;
-    readonly description = CUSTOMER_GROUP_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...CUSTOMER_GROUP_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...CUSTOMER_GROUP_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...CUSTOMER_GROUP_LOADER_METADATA.requiredFields];
+export class CustomerGroupLoader extends BaseEntityLoader<CustomerGroupInput, CustomerGroup> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = CUSTOMER_GROUP_LOADER_METADATA;
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private customerGroupService: CustomerGroupService,
         private customerService: CustomerService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.CUSTOMER_GROUP_LOADER);
     }
 
-    async load(context: LoaderContext, records: CustomerGroupInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Customer group "${record.name}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updateCustomerGroup(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createCustomerGroup(context, record);
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load customer group`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: CustomerGroupInput): string {
+        return `Customer group "${record.name}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: CustomerGroupInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<CustomerGroup> | null> {
         // Primary lookup: by name
         if (record.name && lookupFields.includes('name')) {
             const groups = await this.customerGroupService.findAll(ctx, {
@@ -213,7 +147,7 @@ export class CustomerGroupLoader implements EntityLoader<CustomerGroupInput> {
         };
     }
 
-    private async createCustomerGroup(context: LoaderContext, record: CustomerGroupInput): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: CustomerGroupInput): Promise<ID | null> {
         const { ctx } = context;
 
         const group = await this.customerGroupService.create(ctx, {
@@ -236,7 +170,7 @@ export class CustomerGroupLoader implements EntityLoader<CustomerGroupInput> {
         return group.id;
     }
 
-    private async updateCustomerGroup(context: LoaderContext, groupId: ID, record: CustomerGroupInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, groupId: ID, record: CustomerGroupInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: groupId };

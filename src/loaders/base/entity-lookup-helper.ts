@@ -1,7 +1,7 @@
 /**
  * Entity Lookup Helper
  *
- * Provides common entity lookup patterns used across all loaders.
+ * Common entity lookup patterns used across all loaders.
  * Consolidates the duplicate findExisting() logic.
  *
  * @module loaders/base
@@ -129,36 +129,4 @@ export function createLookupHelper<TService, TEntity, TInput>(
     service: TService,
 ): EntityLookupHelper<TService, TEntity, TInput> {
     return new EntityLookupHelper<TService, TEntity, TInput>(service);
-}
-
-/**
- * Common lookup helper for services with standard findAll/findOne methods
- */
-export function createStandardLookupHelper<
-    TService extends {
-        findAll: (ctx: RequestContext, options: unknown) => Promise<{ totalItems: number; items: Array<{ id: ID }> }>;
-        findOne: (ctx: RequestContext, id: ID) => Promise<unknown | null | undefined>;
-    },
-    TEntity,
-    TInput,
->(
-    service: TService,
-    primaryField: string,
-    filterField?: string,
-): EntityLookupHelper<TService, TEntity, TInput> {
-    const helper = new EntityLookupHelper<TService, TEntity, TInput>(service);
-
-    // Add primary lookup by filter
-    helper.addFilterStrategy(
-        primaryField,
-        filterField || primaryField,
-        (ctx, svc, options) => svc.findAll(ctx, options) as Promise<{ totalItems: number; items: Array<{ id: ID } & Partial<TEntity>> }>,
-    );
-
-    // Add ID lookup
-    helper.addIdStrategy(
-        (ctx, svc, id) => svc.findOne(ctx, id) as Promise<TEntity | null | undefined>,
-    );
-
-    return helper;
 }

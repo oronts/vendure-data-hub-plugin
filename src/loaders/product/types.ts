@@ -1,4 +1,3 @@
-import { ID, Product } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
@@ -20,11 +19,6 @@ export interface ProductInput extends InputRecord {
     featuredAssetUrl?: string;
     /** Custom field values */
     customFields?: Record<string, unknown>;
-}
-
-export interface ExistingEntityResult {
-    id: ID;
-    entity: Product;
 }
 
 export const PRODUCT_LOADER_METADATA = {

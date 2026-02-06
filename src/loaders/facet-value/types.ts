@@ -1,4 +1,3 @@
-import { ID, FacetValue } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
@@ -14,11 +13,6 @@ export interface FacetValueInput extends InputRecord {
     facetId?: string | number;
     /** Custom field values */
     customFields?: Record<string, unknown>;
-}
-
-export interface ExistingEntityResult {
-    id: ID;
-    entity: FacetValue;
 }
 
 export const FACET_VALUE_LOADER_METADATA = {

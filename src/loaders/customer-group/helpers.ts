@@ -6,7 +6,7 @@ export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
 /**
  * Adds customers to a group by their email addresses.
  *
- * Note: This function queries customers individually by email because Vendure's
+ * Note: Queries customers individually by email because Vendure's
  * CustomerService.findAll filter doesn't support 'in' operator for multiple emails.
  * For large batches, consider chunking the emails to reduce database load.
  *

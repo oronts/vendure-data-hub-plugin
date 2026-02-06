@@ -1,7 +1,7 @@
 /**
  * Validation Builder Utility
  *
- * Provides a fluent API for building validation results,
+ * Fluent API for building validation results,
  * consolidating the duplicate validation pattern across all loaders.
  *
  * @module loaders/base

@@ -1,4 +1,3 @@
-import { ID, ProductVariant } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
@@ -30,11 +29,6 @@ export interface ProductVariantInput extends InputRecord {
     assetUrls?: string[];
     /** Custom field values */
     customFields?: Record<string, unknown>;
-}
-
-export interface ExistingEntityResult {
-    id: ID;
-    entity: ProductVariant;
 }
 
 /**

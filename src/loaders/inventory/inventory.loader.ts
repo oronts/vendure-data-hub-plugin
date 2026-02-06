@@ -7,116 +7,69 @@ import {
     StockLocationService,
     StockLevelService,
     StockMovementService,
+    ProductVariant,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import { InventoryInput, INVENTORY_LOADER_METADATA } from './types';
-import { findVariantBySku, resolveStockLocationId, isRecoverableError } from './helpers';
+import { findVariantBySku, resolveStockLocationId } from './helpers';
 
+/**
+ * Inventory Loader - Refactored to extend BaseEntityLoader
+ *
+ * Updates stock levels for product variants by SKU.
+ *
+ * Note: This loader only supports UPDATE and UPSERT operations.
+ * It cannot CREATE variants - if a variant doesn't exist by SKU,
+ * the record will fail (UPSERT) or be skipped (UPDATE).
+ */
 @Injectable()
-export class InventoryLoader implements EntityLoader<InventoryInput> {
-    private readonly logger: DataHubLogger;
+export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVariant> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = INVENTORY_LOADER_METADATA;
 
-    readonly entityType = INVENTORY_LOADER_METADATA.entityType;
-    readonly name = INVENTORY_LOADER_METADATA.name;
-    readonly description = INVENTORY_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...INVENTORY_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...INVENTORY_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...INVENTORY_LOADER_METADATA.requiredFields];
+    // Cache for resolved stock location IDs
+    private locationCache = new Map<string, ID>();
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private productVariantService: ProductVariantService,
         private stockLocationService: StockLocationService,
         private stockLevelService: StockLevelService,
         private stockMovementService: StockMovementService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.INVENTORY_LOADER);
     }
 
-    async load(context: LoaderContext, records: InventoryInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        const locationCache = new Map<string, ID>();
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const variant = await findVariantBySku(this.productVariantService, context.ctx, record.sku);
-                if (!variant) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: `Product variant with SKU "${record.sku}" not found`,
-                        code: 'NOT_FOUND',
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const stockLocationId = await resolveStockLocationId(
-                    this.stockLocationService,
-                    context.ctx,
-                    record,
-                    locationCache,
-                );
-
-                if (!context.dryRun) {
-                    await this.updateStockLevel(context.ctx, variant.id, record.stockOnHand, stockLocationId, record.reason);
-                }
-
-                result.updated++;
-                result.succeeded++;
-                result.affectedIds.push(variant.id);
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to update inventory`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: InventoryInput): string {
+        // This shouldn't be called since we only support UPDATE/UPSERT, not CREATE
+        return `Inventory record for SKU "${record.sku}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         _lookupFields: string[],
         record: InventoryInput,
-    ): Promise<{ id: ID; entity: unknown } | null> {
+    ): Promise<ExistingEntityLookupResult<ProductVariant> | null> {
         const variant = await findVariantBySku(this.productVariantService, ctx, record.sku);
-        return variant ? { id: variant.id, entity: variant } : null;
+        if (variant) {
+            // We need to get the full variant to satisfy the type
+            const fullVariant = await this.productVariantService.findOne(ctx, variant.id);
+            if (fullVariant) {
+                return { id: variant.id, entity: fullVariant };
+            }
+        }
+        return null;
     }
 
     async validate(
@@ -189,13 +142,25 @@ export class InventoryLoader implements EntityLoader<InventoryInput> {
         };
     }
 
-    private async updateStockLevel(
-        ctx: RequestContext,
-        variantId: ID,
-        newStockLevel: number,
-        stockLocationId?: ID,
-        _reason?: string,
-    ): Promise<void> {
+    /**
+     * This loader cannot create variants - only update stock levels.
+     * If UPSERT operation is used and variant doesn't exist, this will fail.
+     */
+    protected async createEntity(_context: LoaderContext, record: InventoryInput): Promise<ID | null> {
+        this.logger.warn(`Cannot create inventory for non-existent SKU "${record.sku}". Variant must exist first.`);
+        return null;
+    }
+
+    protected async updateEntity(context: LoaderContext, variantId: ID, record: InventoryInput): Promise<void> {
+        const { ctx } = context;
+
+        const stockLocationId = await resolveStockLocationId(
+            this.stockLocationService,
+            ctx,
+            record,
+            this.locationCache,
+        );
+
         const locations = await this.stockLocationService.findAll(ctx, {});
         const targetLocationId = stockLocationId || (locations.totalItems > 0 ? locations.items[0].id : undefined);
 
@@ -206,8 +171,9 @@ export class InventoryLoader implements EntityLoader<InventoryInput> {
         await this.stockMovementService.adjustProductVariantStock(
             ctx,
             variantId,
-            [{ stockLocationId: targetLocationId, stockOnHand: newStockLevel }],
+            [{ stockLocationId: targetLocationId, stockOnHand: record.stockOnHand }],
         );
-        this.logger.log(`Stock level set for variant ${variantId} to ${newStockLevel} at location ${targetLocationId}`);
+
+        this.logger.log(`Stock level set for variant ${variantId} to ${record.stockOnHand} at location ${targetLocationId}`);
     }
 }

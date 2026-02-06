@@ -1,4 +1,3 @@
-import { ID, Promotion } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
@@ -45,11 +44,6 @@ export interface PromotionInput extends InputRecord {
 export interface ConfigurableOperationInput {
     code: string;
     arguments: Array<{ name: string; value: string }>;
-}
-
-export interface ExistingEntityResult {
-    id: ID;
-    entity: Promotion;
 }
 
 export const PROMOTION_LOADER_METADATA = {

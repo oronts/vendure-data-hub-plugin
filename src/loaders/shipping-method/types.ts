@@ -1,4 +1,3 @@
-import { ID, ShippingMethod } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
@@ -37,11 +36,6 @@ export interface ShippingMethodInput extends InputRecord {
 export interface ConfigurableOperationInput {
     code: string;
     arguments: Array<{ name: string; value: string }>;
-}
-
-export interface ExistingEntityResult {
-    id: ID;
-    entity: ShippingMethod;
 }
 
 export const SHIPPING_METHOD_LOADER_METADATA = {

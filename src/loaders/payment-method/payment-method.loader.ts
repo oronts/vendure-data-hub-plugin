@@ -1,39 +1,45 @@
 import { Injectable } from '@nestjs/common';
 import {
     ID,
+    PaymentMethod,
     RequestContext,
     TransactionalConnection,
     PaymentMethodService,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     PaymentMethodInput,
-    ExistingEntityResult,
     PAYMENT_METHOD_LOADER_METADATA,
 } from './types';
 import {
     buildConfigurableOperation,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 
 /**
- * Payment Method Loader
+ * PaymentMethodLoader - Refactored to extend BaseEntityLoader
  *
  * Imports payment methods into Vendure with support for:
  * - Payment handlers (e.g., stripe, paypal, manual)
  * - Eligibility checkers (optional conditions)
  * - Translations for name and description
+ *
+ * The base class handles:
+ * - Result initialization
+ * - Validation loop
+ * - Duplicate detection
+ * - CREATE/UPDATE/UPSERT operation logic
+ * - Dry run mode
+ * - Error handling
  *
  * @example
  * ```typescript
@@ -50,104 +56,28 @@ import {
  * ```
  */
 @Injectable()
-export class PaymentMethodLoader implements EntityLoader<PaymentMethodInput> {
-    private readonly logger: DataHubLogger;
-
-    readonly entityType = PAYMENT_METHOD_LOADER_METADATA.entityType;
-    readonly name = PAYMENT_METHOD_LOADER_METADATA.name;
-    readonly description = PAYMENT_METHOD_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...PAYMENT_METHOD_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...PAYMENT_METHOD_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...PAYMENT_METHOD_LOADER_METADATA.requiredFields];
+export class PaymentMethodLoader extends BaseEntityLoader<PaymentMethodInput, PaymentMethod> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = PAYMENT_METHOD_LOADER_METADATA;
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private paymentMethodService: PaymentMethodService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PAYMENT_METHOD_LOADER);
     }
 
-    async load(context: LoaderContext, records: PaymentMethodInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Payment method with code "${record.code}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updatePaymentMethod(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createPaymentMethod(context, record);
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load payment method`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: PaymentMethodInput): string {
+        return `Payment method with code "${record.code}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: PaymentMethodInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<PaymentMethod> | null> {
         // Primary lookup: by code
         if (record.code && lookupFields.includes('code')) {
             const methods = await this.paymentMethodService.findAll(ctx, {
@@ -286,7 +216,7 @@ export class PaymentMethodLoader implements EntityLoader<PaymentMethodInput> {
         };
     }
 
-    private async createPaymentMethod(context: LoaderContext, record: PaymentMethodInput): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: PaymentMethodInput): Promise<ID | null> {
         const { ctx } = context;
 
         const handler = buildConfigurableOperation(record.handler);
@@ -315,7 +245,7 @@ export class PaymentMethodLoader implements EntityLoader<PaymentMethodInput> {
         return method.id;
     }
 
-    private async updatePaymentMethod(context: LoaderContext, methodId: ID, record: PaymentMethodInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, methodId: ID, record: PaymentMethodInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: methodId };

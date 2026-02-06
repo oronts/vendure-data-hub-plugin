@@ -7,21 +7,20 @@ import {
     CustomerService,
     ProductVariantService,
     ShippingMethodService,
+    Order,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     OrderInput,
-    ExistingEntityResult,
     ORDER_LOADER_METADATA,
 } from './types';
 import {
@@ -29,125 +28,42 @@ import {
     findCustomerByEmail,
     findVariantBySku,
     findShippingMethodByCode,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 import { isValidEmail } from '../../utils/input-validation.utils';
 
+/**
+ * OrderLoader - Refactored to extend BaseEntityLoader
+ *
+ * Imports orders for system migrations (not for normal order processing).
+ * Orders should normally go through the standard checkout flow.
+ */
 @Injectable()
-export class OrderLoader implements EntityLoader<OrderInput> {
-    private readonly logger: DataHubLogger;
-
-    readonly entityType = ORDER_LOADER_METADATA.entityType;
-    readonly name = ORDER_LOADER_METADATA.name;
-    readonly description = ORDER_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...ORDER_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...ORDER_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...ORDER_LOADER_METADATA.requiredFields];
+export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = ORDER_LOADER_METADATA;
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private orderService: OrderService,
         private customerService: CustomerService,
         private productVariantService: ProductVariantService,
         private shippingMethodService: ShippingMethodService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.ORDER_LOADER);
     }
 
-    async load(context: LoaderContext, records: OrderInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = record.code ? await this.findExisting(context.ctx, context.lookupFields, record) : null;
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Order with code "${record.code}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updateOrder(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createOrder(context, record);
-                        if (newId) {
-                            result.affectedIds.push(newId);
-                            result.created++;
-                        } else {
-                            result.failed++;
-                            result.errors.push({
-                                record,
-                                message: 'Failed to create order',
-                                recoverable: false,
-                            });
-                            continue;
-                        }
-                    } else {
-                        result.created++;
-                    }
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load order`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: OrderInput): string {
+        return `Order with code "${record.code}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: OrderInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<Order> | null> {
         // Primary lookup: by code
         if (record.code && lookupFields.includes('code')) {
             const order = await this.orderService.findOneByCode(ctx, record.code);
@@ -310,7 +226,7 @@ export class OrderLoader implements EntityLoader<OrderInput> {
         };
     }
 
-    private async createOrder(context: LoaderContext, record: OrderInput): Promise<ID | null> {
+    protected async createEntity(context: LoaderContext, record: OrderInput): Promise<ID | null> {
         const { ctx } = context;
 
         try {
@@ -323,7 +239,7 @@ export class OrderLoader implements EntityLoader<OrderInput> {
             const order = await this.orderService.create(ctx, customer.id);
 
             for (const line of record.lines) {
-                const variant = await findVariantBySku(ctx, this.productVariantService, line.sku);
+                const variant = await findVariantBySku(this.productVariantService, ctx, line.sku);
                 if (!variant) {
                     this.logger.warn(`Variant with SKU "${line.sku}" not found, skipping line`);
                     continue;
@@ -362,7 +278,7 @@ export class OrderLoader implements EntityLoader<OrderInput> {
         }
     }
 
-    private async updateOrder(context: LoaderContext, orderId: ID, record: OrderInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, orderId: ID, record: OrderInput): Promise<void> {
         const { ctx, options } = context;
 
         if (record.shippingAddress && shouldUpdateField('shippingAddress', options.updateOnlyFields)) {

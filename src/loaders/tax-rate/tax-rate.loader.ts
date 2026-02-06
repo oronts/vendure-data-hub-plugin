@@ -9,30 +9,27 @@ import {
     TaxRate,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     TaxRateInput,
-    ExistingEntityResult,
     TAX_RATE_LOADER_METADATA,
 } from './types';
 import {
     resolveTaxCategoryId,
     resolveZoneId,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 
 /**
- * Tax Rate Loader
+ * Tax Rate Loader - Refactored to extend BaseEntityLoader
  *
  * Imports tax rates into Vendure with automatic resolution of:
  * - Tax categories by code/name
@@ -52,145 +49,33 @@ import {
  * ```
  */
 @Injectable()
-export class TaxRateLoader implements EntityLoader<TaxRateInput> {
-    private readonly logger: DataHubLogger;
+export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = TAX_RATE_LOADER_METADATA;
 
-    readonly entityType = TAX_RATE_LOADER_METADATA.entityType;
-    readonly name = TAX_RATE_LOADER_METADATA.name;
-    readonly description = TAX_RATE_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...TAX_RATE_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...TAX_RATE_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...TAX_RATE_LOADER_METADATA.requiredFields];
+    // Cache for resolved IDs to avoid repeated lookups
+    private resolverCache = new Map<string, ID>();
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private taxRateService: TaxRateService,
         private taxCategoryService: TaxCategoryService,
         private zoneService: ZoneService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.TAX_RATE_LOADER);
     }
 
-    async load(context: LoaderContext, records: TaxRateInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        // Cache for resolved IDs to avoid repeated lookups
-        const resolverCache = new Map<string, ID>();
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                // Resolve tax category ID
-                const taxCategoryId = await resolveTaxCategoryId(
-                    context.ctx,
-                    this.taxCategoryService,
-                    record,
-                    resolverCache,
-                );
-                if (!taxCategoryId) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: `Tax category "${record.taxCategoryCode}" not found`,
-                        code: 'TAX_CATEGORY_NOT_FOUND',
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                // Resolve zone ID
-                const zoneId = await resolveZoneId(
-                    context.ctx,
-                    this.zoneService,
-                    record,
-                    resolverCache,
-                );
-                if (!zoneId) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: `Zone "${record.zoneCode}" not found`,
-                        code: 'ZONE_NOT_FOUND',
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Tax rate "${record.name}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updateTaxRate(context, existing.id, record, taxCategoryId, zoneId);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createTaxRate(context, record, taxCategoryId, zoneId);
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load tax rate`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: TaxRateInput): string {
+        return `Tax rate "${record.name}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: TaxRateInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<TaxRate> | null> {
         // Primary lookup: by name (within same category and zone if possible)
         if (record.name && lookupFields.includes('name')) {
             const taxRates = await this.taxRateService.findAll(ctx);
@@ -212,7 +97,7 @@ export class TaxRateLoader implements EntityLoader<TaxRateInput> {
     }
 
     async validate(
-        _ctx: RequestContext,
+        ctx: RequestContext,
         record: TaxRateInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
@@ -240,6 +125,21 @@ export class TaxRateLoader implements EntityLoader<TaxRateInput> {
                     message: 'Tax category code or ID is required',
                     code: 'REQUIRED',
                 });
+            } else {
+                // Validate that the tax category exists
+                const taxCategoryId = await resolveTaxCategoryId(
+                    ctx,
+                    this.taxCategoryService,
+                    record,
+                    this.resolverCache,
+                );
+                if (!taxCategoryId) {
+                    errors.push({
+                        field: 'taxCategoryCode',
+                        message: `Tax category "${record.taxCategoryCode}" not found`,
+                        code: 'TAX_CATEGORY_NOT_FOUND',
+                    });
+                }
             }
 
             if (!record.zoneCode && !record.zoneId) {
@@ -248,6 +148,21 @@ export class TaxRateLoader implements EntityLoader<TaxRateInput> {
                     message: 'Zone code or ID is required',
                     code: 'REQUIRED',
                 });
+            } else {
+                // Validate that the zone exists
+                const zoneId = await resolveZoneId(
+                    ctx,
+                    this.zoneService,
+                    record,
+                    this.resolverCache,
+                );
+                if (!zoneId) {
+                    errors.push({
+                        field: 'zoneCode',
+                        message: `Zone "${record.zoneCode}" not found`,
+                        code: 'ZONE_NOT_FOUND',
+                    });
+                }
             }
         }
 
@@ -328,13 +243,32 @@ export class TaxRateLoader implements EntityLoader<TaxRateInput> {
         };
     }
 
-    private async createTaxRate(
-        context: LoaderContext,
-        record: TaxRateInput,
-        taxCategoryId: ID,
-        zoneId: ID,
-    ): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: TaxRateInput): Promise<ID | null> {
         const { ctx } = context;
+
+        // Resolve tax category ID
+        const taxCategoryId = await resolveTaxCategoryId(
+            ctx,
+            this.taxCategoryService,
+            record,
+            this.resolverCache,
+        );
+        if (!taxCategoryId) {
+            this.logger.error(`Tax category "${record.taxCategoryCode}" not found during create`);
+            return null;
+        }
+
+        // Resolve zone ID
+        const zoneId = await resolveZoneId(
+            ctx,
+            this.zoneService,
+            record,
+            this.resolverCache,
+        );
+        if (!zoneId) {
+            this.logger.error(`Zone "${record.zoneCode}" not found during create`);
+            return null;
+        }
 
         const taxRate = await this.taxRateService.create(ctx, {
             name: record.name,
@@ -349,14 +283,30 @@ export class TaxRateLoader implements EntityLoader<TaxRateInput> {
         return taxRate.id;
     }
 
-    private async updateTaxRate(
-        context: LoaderContext,
-        taxRateId: ID,
-        record: TaxRateInput,
-        taxCategoryId: ID,
-        zoneId: ID,
-    ): Promise<void> {
+    protected async updateEntity(context: LoaderContext, taxRateId: ID, record: TaxRateInput): Promise<void> {
         const { ctx, options } = context;
+
+        // Resolve tax category ID if needed
+        let taxCategoryId: ID | undefined;
+        if ((record.taxCategoryCode || record.taxCategoryId) && shouldUpdateField('taxCategoryId', options.updateOnlyFields)) {
+            taxCategoryId = await resolveTaxCategoryId(
+                ctx,
+                this.taxCategoryService,
+                record,
+                this.resolverCache,
+            ) || undefined;
+        }
+
+        // Resolve zone ID if needed
+        let zoneId: ID | undefined;
+        if ((record.zoneCode || record.zoneId) && shouldUpdateField('zoneId', options.updateOnlyFields)) {
+            zoneId = await resolveZoneId(
+                ctx,
+                this.zoneService,
+                record,
+                this.resolverCache,
+            ) || undefined;
+        }
 
         const updateInput: Record<string, unknown> = { id: taxRateId };
 
@@ -369,10 +319,10 @@ export class TaxRateLoader implements EntityLoader<TaxRateInput> {
         if (record.enabled !== undefined && shouldUpdateField('enabled', options.updateOnlyFields)) {
             updateInput.enabled = record.enabled;
         }
-        if (shouldUpdateField('taxCategoryId', options.updateOnlyFields)) {
+        if (taxCategoryId) {
             updateInput.categoryId = taxCategoryId;
         }
-        if (shouldUpdateField('zoneId', options.updateOnlyFields)) {
+        if (zoneId) {
             updateInput.zoneId = zoneId;
         }
         if (record.customFields !== undefined && shouldUpdateField('customFields', options.updateOnlyFields)) {

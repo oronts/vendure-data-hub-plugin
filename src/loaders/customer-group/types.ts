@@ -1,4 +1,3 @@
-import { ID, CustomerGroup } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
@@ -10,11 +9,6 @@ export interface CustomerGroupInput extends InputRecord {
     customerEmails?: string[];
     /** Custom field values */
     customFields?: Record<string, unknown>;
-}
-
-export interface ExistingEntityResult {
-    id: ID;
-    entity: CustomerGroup;
 }
 
 export const CUSTOMER_GROUP_LOADER_METADATA = {

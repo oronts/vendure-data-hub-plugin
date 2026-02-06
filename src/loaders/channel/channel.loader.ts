@@ -7,21 +7,20 @@ import {
     ZoneService,
     CurrencyCode,
     LanguageCode,
+    Channel,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     ChannelInput,
-    ExistingEntityResult,
     CHANNEL_LOADER_METADATA,
 } from './types';
 import {
@@ -31,12 +30,11 @@ import {
     parseCurrencyCodes,
     parseLanguageCodes,
     generateChannelToken,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 
 /**
- * Channel Loader
+ * Channel Loader - Refactored to extend BaseEntityLoader
  *
  * Imports channels into Vendure with support for:
  * - Multiple currencies and languages
@@ -60,165 +58,32 @@ import {
  * ```
  */
 @Injectable()
-export class ChannelLoader implements EntityLoader<ChannelInput> {
-    private readonly logger: DataHubLogger;
+export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = CHANNEL_LOADER_METADATA;
 
-    readonly entityType = CHANNEL_LOADER_METADATA.entityType;
-    readonly name = CHANNEL_LOADER_METADATA.name;
-    readonly description = CHANNEL_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...CHANNEL_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...CHANNEL_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...CHANNEL_LOADER_METADATA.requiredFields];
+    // Cache for resolved zone IDs to avoid repeated lookups
+    private zoneCache = new Map<string, ID>();
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private channelService: ChannelService,
         private zoneService: ZoneService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.CHANNEL_LOADER);
     }
 
-    async load(context: LoaderContext, records: ChannelInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        // Cache for resolved zone IDs
-        const zoneCache = new Map<string, ID>();
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                // Resolve tax zone if specified
-                let defaultTaxZoneId: ID | undefined;
-                if (record.defaultTaxZoneCode || record.defaultTaxZoneId) {
-                    const taxZoneId = await resolveZoneId(
-                        context.ctx,
-                        this.zoneService,
-                        record.defaultTaxZoneCode,
-                        record.defaultTaxZoneId,
-                        zoneCache,
-                    );
-                    if (!taxZoneId) {
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Default tax zone "${record.defaultTaxZoneCode}" not found`,
-                            code: 'TAX_ZONE_NOT_FOUND',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-                    defaultTaxZoneId = taxZoneId;
-                }
-
-                // Resolve shipping zone if specified
-                let defaultShippingZoneId: ID | undefined;
-                if (record.defaultShippingZoneCode || record.defaultShippingZoneId) {
-                    const shippingZoneId = await resolveZoneId(
-                        context.ctx,
-                        this.zoneService,
-                        record.defaultShippingZoneCode,
-                        record.defaultShippingZoneId,
-                        zoneCache,
-                    );
-                    if (!shippingZoneId) {
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Default shipping zone "${record.defaultShippingZoneCode}" not found`,
-                            code: 'SHIPPING_ZONE_NOT_FOUND',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-                    defaultShippingZoneId = shippingZoneId;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Channel with code "${record.code}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updateChannel(
-                            context,
-                            existing.id,
-                            record,
-                            defaultTaxZoneId,
-                            defaultShippingZoneId,
-                        );
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createChannel(
-                            context,
-                            record,
-                            defaultTaxZoneId,
-                            defaultShippingZoneId,
-                        );
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load channel`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: ChannelInput): string {
+        return `Channel with code "${record.code}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: ChannelInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<Channel> | null> {
         // Primary lookup: by code
         if (record.code && lookupFields.includes('code')) {
             // ChannelService.findAll returns Channel[] directly
@@ -253,7 +118,7 @@ export class ChannelLoader implements EntityLoader<ChannelInput> {
     }
 
     async validate(
-        _ctx: RequestContext,
+        ctx: RequestContext,
         record: ChannelInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
@@ -326,6 +191,41 @@ export class ChannelLoader implements EntityLoader<ChannelInput> {
                             message: `Invalid currency code: ${code}`,
                         });
                     }
+                }
+            }
+
+            // Validate zone references exist
+            if (record.defaultTaxZoneCode || record.defaultTaxZoneId) {
+                const taxZoneId = await resolveZoneId(
+                    ctx,
+                    this.zoneService,
+                    record.defaultTaxZoneCode,
+                    record.defaultTaxZoneId,
+                    this.zoneCache,
+                );
+                if (!taxZoneId) {
+                    errors.push({
+                        field: 'defaultTaxZoneCode',
+                        message: `Default tax zone "${record.defaultTaxZoneCode}" not found`,
+                        code: 'TAX_ZONE_NOT_FOUND',
+                    });
+                }
+            }
+
+            if (record.defaultShippingZoneCode || record.defaultShippingZoneId) {
+                const shippingZoneId = await resolveZoneId(
+                    ctx,
+                    this.zoneService,
+                    record.defaultShippingZoneCode,
+                    record.defaultShippingZoneId,
+                    this.zoneCache,
+                );
+                if (!shippingZoneId) {
+                    errors.push({
+                        field: 'defaultShippingZoneCode',
+                        message: `Default shipping zone "${record.defaultShippingZoneCode}" not found`,
+                        code: 'SHIPPING_ZONE_NOT_FOUND',
+                    });
                 }
             }
         }
@@ -428,13 +328,41 @@ export class ChannelLoader implements EntityLoader<ChannelInput> {
         };
     }
 
-    private async createChannel(
-        context: LoaderContext,
-        record: ChannelInput,
-        defaultTaxZoneId?: ID,
-        defaultShippingZoneId?: ID,
-    ): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: ChannelInput): Promise<ID | null> {
         const { ctx } = context;
+
+        // Resolve zone IDs
+        let defaultTaxZoneId: ID | undefined;
+        if (record.defaultTaxZoneCode || record.defaultTaxZoneId) {
+            const taxZoneId = await resolveZoneId(
+                ctx,
+                this.zoneService,
+                record.defaultTaxZoneCode,
+                record.defaultTaxZoneId,
+                this.zoneCache,
+            );
+            if (!taxZoneId) {
+                this.logger.error(`Default tax zone "${record.defaultTaxZoneCode}" not found during create`);
+                return null;
+            }
+            defaultTaxZoneId = taxZoneId;
+        }
+
+        let defaultShippingZoneId: ID | undefined;
+        if (record.defaultShippingZoneCode || record.defaultShippingZoneId) {
+            const shippingZoneId = await resolveZoneId(
+                ctx,
+                this.zoneService,
+                record.defaultShippingZoneCode,
+                record.defaultShippingZoneId,
+                this.zoneCache,
+            );
+            if (!shippingZoneId) {
+                this.logger.error(`Default shipping zone "${record.defaultShippingZoneCode}" not found during create`);
+                return null;
+            }
+            defaultShippingZoneId = shippingZoneId;
+        }
 
         const defaultLanguageCode = parseLanguageCode(record.defaultLanguageCode) as LanguageCode;
         const defaultCurrencyCode = parseCurrencyCode(record.defaultCurrencyCode) as CurrencyCode;
@@ -488,14 +416,31 @@ export class ChannelLoader implements EntityLoader<ChannelInput> {
         return channel.id;
     }
 
-    private async updateChannel(
-        context: LoaderContext,
-        channelId: ID,
-        record: ChannelInput,
-        defaultTaxZoneId?: ID,
-        defaultShippingZoneId?: ID,
-    ): Promise<void> {
+    protected async updateEntity(context: LoaderContext, channelId: ID, record: ChannelInput): Promise<void> {
         const { ctx, options } = context;
+
+        // Resolve zone IDs if needed
+        let defaultTaxZoneId: ID | undefined;
+        if ((record.defaultTaxZoneCode || record.defaultTaxZoneId) && shouldUpdateField('defaultTaxZoneId', options.updateOnlyFields)) {
+            defaultTaxZoneId = await resolveZoneId(
+                ctx,
+                this.zoneService,
+                record.defaultTaxZoneCode,
+                record.defaultTaxZoneId,
+                this.zoneCache,
+            ) || undefined;
+        }
+
+        let defaultShippingZoneId: ID | undefined;
+        if ((record.defaultShippingZoneCode || record.defaultShippingZoneId) && shouldUpdateField('defaultShippingZoneId', options.updateOnlyFields)) {
+            defaultShippingZoneId = await resolveZoneId(
+                ctx,
+                this.zoneService,
+                record.defaultShippingZoneCode,
+                record.defaultShippingZoneId,
+                this.zoneCache,
+            ) || undefined;
+        }
 
         const updateInput: Record<string, unknown> = { id: channelId };
 
@@ -523,11 +468,11 @@ export class ChannelLoader implements EntityLoader<ChannelInput> {
             updateInput.pricesIncludeTax = record.pricesIncludeTax;
         }
 
-        if (defaultTaxZoneId && shouldUpdateField('defaultTaxZoneId', options.updateOnlyFields)) {
+        if (defaultTaxZoneId) {
             updateInput.defaultTaxZoneId = defaultTaxZoneId;
         }
 
-        if (defaultShippingZoneId && shouldUpdateField('defaultShippingZoneId', options.updateOnlyFields)) {
+        if (defaultShippingZoneId) {
             updateInput.defaultShippingZoneId = defaultShippingZoneId;
         }
 

@@ -1,4 +1,3 @@
-import { ID, Order } from '@vendure/core';
 import { InputRecord } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
@@ -47,11 +46,6 @@ export interface OrderInput extends InputRecord {
     customFields?: Record<string, unknown>;
     /** Additional metadata from source system */
     metadata?: Record<string, unknown>;
-}
-
-export interface ExistingEntityResult {
-    id: ID;
-    entity: Order;
 }
 
 export const ORDER_LOADER_METADATA = {

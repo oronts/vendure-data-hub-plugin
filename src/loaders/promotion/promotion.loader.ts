@@ -1,132 +1,66 @@
 import { Injectable } from '@nestjs/common';
 import {
     ID,
+    Promotion,
     RequestContext,
     TransactionalConnection,
     PromotionService,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     PromotionInput,
-    ExistingEntityResult,
     PROMOTION_LOADER_METADATA,
     DEFAULT_PROMOTION_ACTION,
 } from './types';
 import {
     buildConfigurableOperations,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 
+/**
+ * PromotionLoader - Refactored to extend BaseEntityLoader
+ *
+ * This eliminates ~60 lines of duplicate load() method code that was
+ * copy-pasted across all loaders. The base class handles:
+ * - Result initialization
+ * - Validation loop
+ * - Duplicate detection
+ * - CREATE/UPDATE/UPSERT operation logic
+ * - Dry run mode
+ * - Error handling
+ */
 @Injectable()
-export class PromotionLoader implements EntityLoader<PromotionInput> {
-    private readonly logger: DataHubLogger;
-
-    readonly entityType = PROMOTION_LOADER_METADATA.entityType;
-    readonly name = PROMOTION_LOADER_METADATA.name;
-    readonly description = PROMOTION_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...PROMOTION_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...PROMOTION_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...PROMOTION_LOADER_METADATA.requiredFields];
+export class PromotionLoader extends BaseEntityLoader<PromotionInput, Promotion> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = PROMOTION_LOADER_METADATA;
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private promotionService: PromotionService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PROMOTION_LOADER);
     }
 
-    async load(context: LoaderContext, records: PromotionInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Promotion with coupon code "${record.couponCode}" already exists`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updatePromotion(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createPromotion(context, record);
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load promotion`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: PromotionInput): string {
+        return `Promotion with coupon code "${record.couponCode}" already exists`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: PromotionInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<Promotion> | null> {
         // Primary lookup: by coupon code
         if (record.couponCode && lookupFields.includes('couponCode')) {
             const promotions = await this.promotionService.findAll(ctx, {
@@ -305,7 +239,7 @@ export class PromotionLoader implements EntityLoader<PromotionInput> {
         };
     }
 
-    private async createPromotion(context: LoaderContext, record: PromotionInput): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: PromotionInput): Promise<ID | null> {
         const { ctx } = context;
 
         const conditions = buildConfigurableOperations(record.conditions ?? []);
@@ -343,7 +277,7 @@ export class PromotionLoader implements EntityLoader<PromotionInput> {
         return promotion.id;
     }
 
-    private async updatePromotion(context: LoaderContext, promotionId: ID, record: PromotionInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, promotionId: ID, record: PromotionInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: promotionId };

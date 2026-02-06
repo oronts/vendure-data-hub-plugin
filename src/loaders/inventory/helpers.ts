@@ -1,23 +1,7 @@
-import { ID, RequestContext, ProductVariantService, StockLocationService } from '@vendure/core';
+import { ID, RequestContext, StockLocationService } from '@vendure/core';
 import { InventoryInput } from './types';
 
-export { isRecoverableError } from '../shared-helpers';
-
-export async function findVariantBySku(
-    productVariantService: ProductVariantService,
-    ctx: RequestContext,
-    sku: string,
-): Promise<{ id: ID } | null> {
-    const variants = await productVariantService.findAll(ctx, {
-        filter: { sku: { eq: sku } },
-    });
-
-    if (variants.totalItems === 0) {
-        return null;
-    }
-
-    return { id: variants.items[0].id };
-}
+export { isRecoverableError, findVariantBySku } from '../shared-helpers';
 
 export async function resolveStockLocationId(
     stockLocationService: StockLocationService,

@@ -8,142 +8,59 @@ import {
     FacetValue,
 } from '@vendure/core';
 import {
-    EntityLoader,
     LoaderContext,
-    EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
+    TargetOperation,
 } from '../../types/index';
-import { TargetOperation } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
+import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
 import {
     FacetValueInput,
-    ExistingEntityResult,
     FACET_VALUE_LOADER_METADATA,
 } from './types';
 import {
     resolveFacetId,
     resolveFacetIdFromCode,
-    isRecoverableError,
     shouldUpdateField,
 } from './helpers';
 
+/**
+ * FacetValueLoader - Refactored to extend BaseEntityLoader
+ *
+ * Imports facet values (attribute options) with parent facet resolution.
+ * Note: This loader resolves facetId inside createEntity/updateEntity
+ * to maintain the base class pattern while supporting parent resolution.
+ */
 @Injectable()
-export class FacetValueLoader implements EntityLoader<FacetValueInput> {
-    private readonly logger: DataHubLogger;
+export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetValue> {
+    protected readonly logger: DataHubLogger;
+    protected readonly metadata: LoaderMetadata = FACET_VALUE_LOADER_METADATA;
 
-    readonly entityType = FACET_VALUE_LOADER_METADATA.entityType;
-    readonly name = FACET_VALUE_LOADER_METADATA.name;
-    readonly description = FACET_VALUE_LOADER_METADATA.description;
-    readonly supportedOperations: TargetOperation[] = [...FACET_VALUE_LOADER_METADATA.supportedOperations];
-    readonly lookupFields = [...FACET_VALUE_LOADER_METADATA.lookupFields];
-    readonly requiredFields = [...FACET_VALUE_LOADER_METADATA.requiredFields];
+    // Cache for resolved facet IDs to avoid repeated lookups
+    private facetCache = new Map<string, ID>();
 
     constructor(
-        private _connection: TransactionalConnection,
+        private connection: TransactionalConnection,
         private facetValueService: FacetValueService,
         private facetService: FacetService,
         loggerFactory: DataHubLoggerFactory,
     ) {
+        super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FACET_VALUE_LOADER);
     }
 
-    async load(context: LoaderContext, records: FacetValueInput[]): Promise<EntityLoadResult> {
-        const result: EntityLoadResult = {
-            succeeded: 0,
-            failed: 0,
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            affectedIds: [],
-        };
-
-        const facetCache = new Map<string, ID>();
-
-        for (const record of records) {
-            try {
-                const validation = await this.validate(context.ctx, record, context.operation);
-                if (!validation.valid) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: validation.errors.map(e => e.message).join('; '),
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const facetId = await resolveFacetId(context.ctx, this.facetService, record, facetCache);
-                if (!facetId) {
-                    result.failed++;
-                    result.errors.push({
-                        record,
-                        message: `Parent facet "${record.facetCode}" not found`,
-                        code: 'PARENT_NOT_FOUND',
-                        recoverable: false,
-                    });
-                    continue;
-                }
-
-                const existing = await this.findExisting(context.ctx, context.lookupFields, record);
-
-                if (existing) {
-                    if (context.operation === TARGET_OPERATION.CREATE) {
-                        if (context.options.skipDuplicates) {
-                            result.skipped++;
-                            continue;
-                        }
-                        result.failed++;
-                        result.errors.push({
-                            record,
-                            message: `Facet value with code "${record.code}" already exists in facet "${record.facetCode}"`,
-                            code: 'DUPLICATE',
-                            recoverable: false,
-                        });
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        await this.updateFacetValue(context, existing.id, record);
-                    }
-                    result.updated++;
-                    result.affectedIds.push(existing.id);
-                } else {
-                    if (context.operation === TARGET_OPERATION.UPDATE) {
-                        result.skipped++;
-                        continue;
-                    }
-
-                    if (!context.dryRun) {
-                        const newId = await this.createFacetValue(context, record, facetId);
-                        result.affectedIds.push(newId);
-                    }
-                    result.created++;
-                }
-
-                result.succeeded++;
-            } catch (error) {
-                result.failed++;
-                result.errors.push({
-                    record,
-                    message: error instanceof Error ? error.message : String(error),
-                    recoverable: isRecoverableError(error),
-                });
-                this.logger.error(`Failed to load facet value`, error instanceof Error ? error : undefined);
-            }
-        }
-
-        return result;
+    protected getDuplicateErrorMessage(record: FacetValueInput): string {
+        return `Facet value with code "${record.code}" already exists in facet "${record.facetCode}"`;
     }
 
     async findExisting(
         ctx: RequestContext,
         lookupFields: string[],
         record: FacetValueInput,
-    ): Promise<ExistingEntityResult | null> {
+    ): Promise<ExistingEntityLookupResult<FacetValue> | null> {
         // Primary lookup: by code - need to search through facet values of the parent facet
         if (record.code && lookupFields.includes('code')) {
             const facetId = record.facetId || await resolveFacetIdFromCode(ctx, this.facetService, record.facetCode);
@@ -168,7 +85,7 @@ export class FacetValueLoader implements EntityLoader<FacetValueInput> {
     }
 
     async validate(
-        _ctx: RequestContext,
+        ctx: RequestContext,
         record: FacetValueInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
@@ -190,6 +107,18 @@ export class FacetValueLoader implements EntityLoader<FacetValueInput> {
             }
             if (!record.facetCode && !record.facetId) {
                 errors.push({ field: 'facetCode', message: 'Parent facet code or ID is required', code: 'REQUIRED' });
+            }
+
+            // Validate that the parent facet exists
+            if (record.facetCode || record.facetId) {
+                const facetId = await resolveFacetId(ctx, this.facetService, record, this.facetCache);
+                if (!facetId) {
+                    errors.push({
+                        field: 'facetCode',
+                        message: `Parent facet "${record.facetCode}" not found`,
+                        code: 'PARENT_NOT_FOUND'
+                    });
+                }
             }
         }
 
@@ -249,8 +178,15 @@ export class FacetValueLoader implements EntityLoader<FacetValueInput> {
         };
     }
 
-    private async createFacetValue(context: LoaderContext, record: FacetValueInput, facetId: ID): Promise<ID> {
+    protected async createEntity(context: LoaderContext, record: FacetValueInput): Promise<ID | null> {
         const { ctx } = context;
+
+        const facetId = await resolveFacetId(ctx, this.facetService, record, this.facetCache);
+        if (!facetId) {
+            // This shouldn't happen if validation passed, but handle defensively
+            this.logger.error(`Parent facet "${record.facetCode}" not found during create`);
+            return null;
+        }
 
         const facet = await this.facetService.findOne(ctx, facetId);
         if (!facet) {
@@ -272,7 +208,7 @@ export class FacetValueLoader implements EntityLoader<FacetValueInput> {
         return facetValue.id;
     }
 
-    private async updateFacetValue(context: LoaderContext, facetValueId: ID, record: FacetValueInput): Promise<void> {
+    protected async updateEntity(context: LoaderContext, facetValueId: ID, record: FacetValueInput): Promise<void> {
         const { ctx, options } = context;
 
         const updateInput: Record<string, unknown> = { id: facetValueId };

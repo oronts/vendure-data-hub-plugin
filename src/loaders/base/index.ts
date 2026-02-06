@@ -1,7 +1,7 @@
 /**
  * Base Loader Module
  *
- * Provides abstract base classes and utilities for building entity loaders.
+ * Abstract base classes and utilities for building entity loaders.
  *
  * @module loaders/base
  */

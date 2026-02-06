@@ -1,7 +1,7 @@
-import { ID, RequestContext, CustomerService, ProductVariantService, ShippingMethodService } from '@vendure/core';
+import { ID, RequestContext, CustomerService, ShippingMethodService } from '@vendure/core';
 import { OrderAddressInput } from './types';
 
-export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
+export { isRecoverableError, shouldUpdateField, findVariantBySku } from '../shared-helpers';
 
 export function validateAddress(
     address: OrderAddressInput,
@@ -34,17 +34,6 @@ export async function findCustomerByEmail(
         filter: { emailAddress: { eq: email } },
     });
     return customers.totalItems > 0 ? { id: customers.items[0].id } : null;
-}
-
-export async function findVariantBySku(
-    ctx: RequestContext,
-    productVariantService: ProductVariantService,
-    sku: string,
-): Promise<{ id: ID } | null> {
-    const variants = await productVariantService.findAll(ctx, {
-        filter: { sku: { eq: sku } },
-    });
-    return variants.totalItems > 0 ? { id: variants.items[0].id } : null;
 }
 
 export async function findShippingMethodByCode(

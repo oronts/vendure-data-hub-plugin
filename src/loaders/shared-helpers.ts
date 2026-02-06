@@ -6,14 +6,105 @@
  * @module loaders
  */
 
-import { ID, RequestContext, FacetValueService } from '@vendure/core';
+import { ID, RequestContext, FacetValueService, ProductVariantService } from '@vendure/core';
 import { slugify as canonicalSlugify } from '../operators/helpers';
 import { isValidEmail } from '../utils/input-validation.utils';
 import { DataHubLogger } from '../services/logger';
+import { RecordObject } from '../runtime/executor-types';
+import { JsonValue } from '../types/index';
 
 export const slugify = canonicalSlugify;
 
 export { isValidEmail };
+
+// =============================================================================
+// Record Field Accessors
+// =============================================================================
+
+/**
+ * Type guard to safely get a string value from a record.
+ * Converts numbers and booleans to strings.
+ *
+ * @param record - The record object to extract the value from
+ * @param key - The field name to extract
+ * @returns String value or undefined if not present/convertible
+ */
+export function getStringValue(record: RecordObject, key: string): string | undefined {
+    const value = record[key];
+    if (typeof value === 'string') {
+        return value || undefined;
+    }
+    if (value !== null && value !== undefined) {
+        return String(value) || undefined;
+    }
+    return undefined;
+}
+
+/**
+ * Type guard to safely get a number value from a record.
+ * Parses string numbers.
+ *
+ * @param record - The record object to extract the value from
+ * @param key - The field name to extract
+ * @returns Number value or undefined if not present/convertible
+ */
+export function getNumberValue(record: RecordObject, key: string): number | undefined {
+    const value = record[key];
+    if (typeof value === 'number') {
+        return value;
+    }
+    if (typeof value === 'string') {
+        const num = Number(value);
+        return Number.isNaN(num) ? undefined : num;
+    }
+    return undefined;
+}
+
+/**
+ * Type guard to safely get an object value from a record.
+ * Excludes arrays.
+ *
+ * @param record - The record object to extract the value from
+ * @param key - The field name to extract
+ * @returns Object value or undefined if not an object
+ */
+export function getObjectValue(record: RecordObject, key: string): Record<string, JsonValue> | undefined {
+    const value = record[key];
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value as Record<string, JsonValue>;
+    }
+    return undefined;
+}
+
+/**
+ * Safely get an ID value from a record (string or number).
+ *
+ * @param record - The record object to extract the value from
+ * @param key - The field name to extract
+ * @returns ID value or undefined if not present/valid
+ */
+export function getIdValue(record: RecordObject, key: string): ID | undefined {
+    const value = record[key];
+    if (typeof value === 'string' || typeof value === 'number') {
+        return value;
+    }
+    return undefined;
+}
+
+/**
+ * Safely extract an array value from a record by field name.
+ *
+ * @param record - The record object to extract the value from
+ * @param key - The field name to extract
+ * @returns Array value or undefined if not an array
+ */
+export function getArrayValue<T>(record: RecordObject, key: string): T[] | undefined {
+    const value = record[key];
+    if (!value || !Array.isArray(value)) {
+        return undefined;
+    }
+    return value as T[];
+}
 
 /**
  * Determines if an error is recoverable (can be retried).
@@ -76,6 +167,27 @@ export function buildConfigurableOperations(
     inputs: ConfigurableOperationInput[],
 ): Array<{ code: string; arguments: Array<{ name: string; value: string }> }> {
     return inputs.map(input => buildConfigurableOperation(input));
+}
+
+/**
+ * Find a product variant by SKU.
+ * Returns a minimal object with just the ID for efficiency.
+ *
+ * @param productVariantService - The Vendure ProductVariantService
+ * @param ctx - The request context
+ * @param sku - The SKU to search for
+ * @returns Object with variant ID if found, null otherwise
+ */
+export async function findVariantBySku(
+    productVariantService: ProductVariantService,
+    ctx: RequestContext,
+    sku: string,
+): Promise<{ id: ID } | null> {
+    const result = await productVariantService.findAll(ctx, {
+        filter: { sku: { eq: sku } },
+        take: 1,
+    });
+    return result.items[0] ? { id: result.items[0].id } : null;
 }
 
 /**

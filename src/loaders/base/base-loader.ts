@@ -1,7 +1,7 @@
 /**
  * Base Loader Abstract Class
  *
- * Provides common functionality for all entity loaders to eliminate
+ * Common functionality for all entity loaders to eliminate
  * duplicate code patterns across loader implementations.
  *
  * @module loaders/base

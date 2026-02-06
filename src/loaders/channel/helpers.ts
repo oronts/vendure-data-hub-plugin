@@ -23,7 +23,7 @@ export async function resolveZoneId(
 
     // Check cache
     if (cache?.has(`zone:${zoneCode}`)) {
-        return cache.get(`zone:${zoneCode}`)!;
+        return cache.get(`zone:${zoneCode}`) ?? null;
     }
 
     // Look up by code/name
