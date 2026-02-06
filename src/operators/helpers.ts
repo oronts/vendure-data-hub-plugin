@@ -66,9 +66,6 @@ export function compare(
     }
 }
 
-// evaluateConditions has been consolidated into operators/logic/helpers.ts
-// which uses the OperatorCondition type with 'operator' field (not 'cmp').
-// Re-export for backwards compatibility if needed.
 export { evaluateConditions } from './logic/helpers';
 
 export function slugify(text: string, separator = '-'): string {

@@ -78,7 +78,6 @@ export function navigatePath(data: unknown, path: string): unknown {
     return current;
 }
 
-// Re-export extractFields for backward compatibility
 export { extractFields } from '../helpers/field-extraction';
 
 /**
@@ -327,7 +326,6 @@ export function generateJsonLines(records: Record<string, unknown>[]): string {
     return records.map(r => JSON.stringify(r)).join('\n');
 }
 
-// Re-export getNestedValue from canonical location for backward compatibility
 export { getNestedValue } from '../../utils/object-path.utils';
 
 /**

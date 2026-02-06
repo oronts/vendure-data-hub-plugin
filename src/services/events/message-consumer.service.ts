@@ -9,7 +9,6 @@ import { ConsumerDiscovery, MessageConsumerConfig, getConsumerKey } from './cons
 import { ConsumerLifecycle, ActiveConsumer } from './consumer-lifecycle';
 import { MessageProcessing } from './message-processing';
 
-// Re-export types for backwards compatibility
 export type { MessageConsumerConfig } from './consumer-discovery';
 export type { ActiveConsumer } from './consumer-lifecycle';
 

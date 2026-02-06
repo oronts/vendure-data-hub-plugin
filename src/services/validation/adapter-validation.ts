@@ -11,7 +11,6 @@ import { AdapterDefinition, StepConfigSchema, StepConfigSchemaField, SelectOptio
 import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
 import { AdapterType } from '../../../shared/types';
 
-// Re-export AdapterType for backward compatibility
 export type { AdapterType } from '../../../shared/types';
 
 // ============================================================================

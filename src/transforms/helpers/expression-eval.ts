@@ -8,7 +8,6 @@
 import { JsonValue, JsonObject } from '../../types/index';
 import { getNestedValue as getNestedValueUtil } from '../../utils/object-path.utils';
 
-// Re-export for backward compatibility (other modules import getNestedValue from here)
 export { getNestedValue } from '../../utils/object-path.utils';
 
 // EXPRESSION PATTERNS - extracted for reusability and testability
