@@ -176,22 +176,22 @@ export function applyToNumber(
     const value = getNestedValue(record, source);
     const targetPath = target || source;
 
-    let numValue: number | null = null;
+    let parsedNumber: number | null = null;
 
     if (typeof value === 'number') {
-        numValue = value;
+        parsedNumber = value;
     } else if (typeof value === 'string') {
         const parsed = parseFloat(value);
-        numValue = isNaN(parsed) ? null : parsed;
+        parsedNumber = isNaN(parsed) ? null : parsed;
     } else if (typeof value === 'boolean') {
-        numValue = value ? 1 : 0;
+        parsedNumber = value ? 1 : 0;
     }
 
-    if (numValue === null && defaultValue !== undefined) {
-        numValue = defaultValue;
+    if (parsedNumber === null && defaultValue !== undefined) {
+        parsedNumber = defaultValue;
     }
 
-    setNestedValue(result, targetPath, numValue);
+    setNestedValue(result, targetPath, parsedNumber);
     return result;
 }
 
@@ -204,14 +204,14 @@ export function applyToString(
     const value = getNestedValue(record, source);
     const targetPath = target || source;
 
-    const strValue = value !== null && value !== undefined ? String(value) : '';
-    setNestedValue(result, targetPath, strValue);
+    const stringValue = value !== null && value !== undefined ? String(value) : '';
+    setNestedValue(result, targetPath, stringValue);
     return result;
 }
 
 /**
  * Parse a string to a number with locale-aware handling.
- * Handles different decimal and thousand separators based on locale.
+ * Supports different decimal and thousand separators based on locale.
  */
 export function applyParseNumber(
     record: JsonObject,
@@ -224,10 +224,10 @@ export function applyParseNumber(
     const value = getNestedValue(record, source);
     const targetPath = target || source;
 
-    let numValue: number | null = null;
+    let parsedNumber: number | null = null;
 
     if (typeof value === 'number') {
-        numValue = value;
+        parsedNumber = value;
     } else if (typeof value === 'string') {
         let cleanedValue = value.trim();
 
@@ -248,14 +248,14 @@ export function applyParseNumber(
         }
 
         const parsed = parseFloat(cleanedValue);
-        numValue = isNaN(parsed) ? null : parsed;
+        parsedNumber = isNaN(parsed) ? null : parsed;
     }
 
-    if (numValue === null && defaultValue !== undefined) {
-        numValue = defaultValue;
+    if (parsedNumber === null && defaultValue !== undefined) {
+        parsedNumber = defaultValue;
     }
 
-    setNestedValue(result, targetPath, numValue);
+    setNestedValue(result, targetPath, parsedNumber);
     return result;
 }
 

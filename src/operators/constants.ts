@@ -13,8 +13,6 @@ export const VALIDATION_RULE = {
     CUSTOM: 'custom',
 } as const;
 
-export type ValidationRuleValue = typeof VALIDATION_RULE[keyof typeof VALIDATION_RULE];
-
 export const ROUNDING_MODES = [
     { value: 'round', label: 'Round (nearest)' },
     { value: 'floor', label: 'Floor (down)' },

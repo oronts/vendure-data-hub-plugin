@@ -1,109 +1,55 @@
 /**
  * Operator Factory
  *
- * Factory function to create simple data operators with reduced boilerplate.
- * This eliminates the duplicate pattern found in set, copy, rename, remove operators.
- *
- * Each of those operators had the same structure:
- * 1. Check if config is valid
- * 2. Map over records calling a helper function
- * 3. Return { records: results }
- *
- * @module operators/data
+ * Provides factory functions to reduce boilerplate when creating record-based operators.
+ * This eliminates the duplicated wrapper pattern seen in set, copy, rename, map, and remove operators.
  */
 
-import { JsonObject, OperatorHelpers, OperatorResult, BaseOperatorConfig, AdapterDefinition } from '../types';
+import { JsonObject, OperatorHelpers, OperatorResult } from '../types';
 
 /**
- * Type for a single-record transformation function
- */
-export type RecordTransformFn<TConfig extends BaseOperatorConfig> = (
-    record: JsonObject,
-    config: TConfig,
-) => JsonObject;
-
-/**
- * Type for config validation function
- */
-export type ConfigValidatorFn<TConfig extends BaseOperatorConfig> = (
-    config: TConfig,
-) => boolean;
-
-/**
- * Creates a batch operator from a single-record transformation function.
- * This eliminates the repetitive pattern in simple data operators.
+ * Creates a record operator that applies a transform function to each record.
  *
- * @param transformFn - Function to transform a single record
- * @param isConfigValid - Optional function to validate config (default: always true)
- * @returns Batch operator function
- *
- * @example
- * // Before (duplicate pattern in each operator):
- * export function setOperator(
+ * This factory eliminates the common pattern:
+ * ```typescript
+ * export function someOperator(
  *     records: readonly JsonObject[],
- *     config: SetOperatorConfig,
+ *     config: SomeConfig,
  *     _helpers: OperatorHelpers,
  * ): OperatorResult {
- *     const results = records.map(record => applySetOperator(record, config));
+ *     const results = records.map(record => applySomeOperator(record, config));
  *     return { records: results };
  * }
+ * ```
  *
- * // After (using factory):
- * export const setOperator = createSimpleOperator(
- *     applySetOperator,
- *     (config) => !!config.path,
- * );
+ * Usage:
+ * ```typescript
+ * export const someOperator = createRecordOperator(applySomeOperator);
+ * ```
+ *
+ * @param applyFn - Function that transforms a single record given the config
+ * @returns An operator function that applies the transform to all records
  */
-export function createSimpleOperator<TConfig extends BaseOperatorConfig>(
-    transformFn: RecordTransformFn<TConfig>,
-    isConfigValid?: ConfigValidatorFn<TConfig>,
+export function createRecordOperator<TConfig>(
+    applyFn: (record: JsonObject, config: TConfig) => JsonObject,
 ): (records: readonly JsonObject[], config: TConfig, helpers: OperatorHelpers) => OperatorResult {
-    return (
-        records: readonly JsonObject[],
-        config: TConfig,
-        _helpers: OperatorHelpers,
-    ): OperatorResult => {
-        // Skip transformation if config is invalid
-        if (isConfigValid && !isConfigValid(config)) {
-            return { records: [...records] };
-        }
-
-        const results = records.map(record => transformFn(record, config));
-        return { records: results };
-    };
+    return (records, config, _helpers) => ({
+        records: records.map(record => applyFn(record, config)),
+    });
 }
 
 /**
- * Configuration for creating an operator definition
- */
-export interface OperatorDefinitionConfig {
-    code: string;
-    description: string;
-    pure?: boolean;
-    fields: Array<{
-        key: string;
-        label: string;
-        type: 'string' | 'json' | 'boolean' | 'number';
-        required?: boolean;
-        description?: string;
-    }>;
-}
-
-/**
- * Creates an adapter definition for a data operator.
- * Reduces boilerplate for operator metadata.
+ * Creates a record operator with access to helpers (e.g., for logging or context).
  *
- * @param config - Operator definition configuration
- * @returns AdapterDefinition object
+ * Use this when the single-record transform needs access to operator helpers.
+ *
+ * @param applyFn - Function that transforms a single record given the config and helpers
+ * @returns An operator function that applies the transform to all records
  */
-export function createOperatorDefinition(config: OperatorDefinitionConfig): AdapterDefinition {
-    return {
-        type: 'operator',
-        code: config.code,
-        description: config.description,
-        pure: config.pure ?? true,
-        schema: {
-            fields: config.fields,
-        },
-    };
+export function createRecordOperatorWithHelpers<TConfig>(
+    applyFn: (record: JsonObject, config: TConfig, helpers: OperatorHelpers) => JsonObject,
+): (records: readonly JsonObject[], config: TConfig, helpers: OperatorHelpers) => OperatorResult {
+    return (records, config, helpers) => ({
+        records: records.map(record => applyFn(record, config, helpers)),
+    });
 }

@@ -17,9 +17,8 @@ import {
     validateUserCode,
     createCodeSandbox,
     CodeSecurityConfig,
-    DEFAULT_CODE_SECURITY_CONFIG,
 } from '../../utils/code-security.utils';
-import { SafeEvaluator, SafeEvaluatorConfig } from '../../runtime/sandbox';
+import { SafeEvaluatorConfig } from '../../runtime/sandbox';
 // Import directly from defaults to avoid circular dependency with constants/index.ts
 // which imports ../operators -> this file
 import { SAFE_EVALUATOR } from '../../constants/defaults';
@@ -31,7 +30,6 @@ const DEFAULT_TIMEOUT = SAFE_EVALUATOR.DEFAULT_TIMEOUT_MS;
  * Can be modified at runtime to disable script execution
  */
 let scriptOperatorsEnabled = true;
-let evaluatorInstance: SafeEvaluator | null = null;
 
 /**
  * Configure script operators
@@ -44,16 +42,6 @@ export function configureScriptOperators(config: {
     if (config.enabled !== undefined) {
         scriptOperatorsEnabled = config.enabled;
     }
-
-    // Recreate evaluator with new config
-    evaluatorInstance = new SafeEvaluator({
-        scriptOperatorsEnabled,
-        ...config.evaluator,
-        security: {
-            ...DEFAULT_CODE_SECURITY_CONFIG,
-            ...config.security,
-        },
-    });
 }
 
 /**
@@ -68,7 +56,6 @@ export function isScriptOperatorsEnabled(): boolean {
  */
 export function disableScriptOperators(): void {
     scriptOperatorsEnabled = false;
-    evaluatorInstance = null;
 }
 
 /**
@@ -76,7 +63,6 @@ export function disableScriptOperators(): void {
  */
 export function enableScriptOperators(): void {
     scriptOperatorsEnabled = true;
-    evaluatorInstance = null;
 }
 
 /**
@@ -137,12 +123,22 @@ async function executeWithTimeout<T>(
     fn: () => Promise<T> | T,
     timeout: number,
 ): Promise<T> {
-    return Promise.race([
-        Promise.resolve(fn()),
-        new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`Script timeout after ${timeout}ms`)), timeout),
-        ),
-    ]);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            Promise.resolve(fn()),
+            new Promise<never>((_, reject) => {
+                timeoutId = setTimeout(
+                    () => reject(new Error(`Script timeout after ${timeout}ms`)),
+                    timeout,
+                );
+            }),
+        ]);
+    } finally {
+        if (timeoutId !== undefined) {
+            clearTimeout(timeoutId);
+        }
+    }
 }
 
 /**
@@ -167,7 +163,7 @@ export function scriptOperator(
         return { records: [...records], errors: [{ message: 'Script code is required' }] };
     }
 
-    // Validate user code before execution using enhanced security
+    // Validate user code before execution using security rules
     try {
         validateUserCode(code);
     } catch (error) {
@@ -210,7 +206,7 @@ async function executeBatchScript(
 
     // Create a safe function body that wraps the user code
     // The user code is expected to be an expression or use 'return'
-    const fnBody = `
+    const functionBody = `
         "use strict";
         return (async function(__records__, __context__) {
             const records = __records__;
@@ -226,7 +222,7 @@ async function executeBatchScript(
             ...sandboxKeys,
             '__records__',
             '__context__',
-            fnBody,
+            functionBody,
         );
 
         const result = await executeWithTimeout(
@@ -273,7 +269,7 @@ async function executeSingleRecordScript(
     const sandboxValues = Object.values(sandboxGlobals);
 
     // Create a safe function body
-    const fnBody = `
+    const functionBody = `
         "use strict";
         return (async function(__record__, __index__, __context__) {
             const record = __record__;
@@ -290,7 +286,7 @@ async function executeSingleRecordScript(
         '__record__',
         '__index__',
         '__context__',
-        fnBody,
+        functionBody,
     );
 
     for (let i = 0; i < records.length; i++) {

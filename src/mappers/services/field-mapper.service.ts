@@ -139,22 +139,28 @@ export class FieldMapperService {
                 return applyTemplateTransform(value, config.template ?? '', record, this.getNestedValue.bind(this));
 
             case 'lookup':
-                return this.applyLookupTransform(value, config.lookup!);
+                if (!config.lookup) return value;
+                return this.applyLookupTransform(value, config.lookup);
 
             case 'convert':
-                return applyConvertTransform(value, config.convert!);
+                if (!config.convert) return value;
+                return applyConvertTransform(value, config.convert);
 
             case 'split':
-                return applySplitTransform(value, config.split!);
+                if (!config.split) return value;
+                return applySplitTransform(value, config.split);
 
             case 'join':
-                return applyJoinTransform(value, config.join!, record, this.getNestedValue.bind(this));
+                if (!config.join) return value;
+                return applyJoinTransform(value, config.join, record, this.getNestedValue.bind(this));
 
             case 'map':
-                return applyMapTransform(value, config.map!);
+                if (!config.map) return value;
+                return applyMapTransform(value, config.map);
 
             case 'date':
-                return applyDateTransform(value, config.date!);
+                if (!config.date) return value;
+                return applyDateTransform(value, config.date);
 
             case 'trim':
                 return applyTrimTransform(value);
@@ -166,25 +172,32 @@ export class FieldMapperService {
                 return applyUppercaseTransform(value);
 
             case 'replace':
-                return applyReplaceTransform(value, config.replace!);
+                if (!config.replace) return value;
+                return applyReplaceTransform(value, config.replace);
 
             case 'extract':
-                return applyExtractTransform(value, config.extract!);
+                if (!config.extract) return value;
+                return applyExtractTransform(value, config.extract);
 
             case 'default':
-                return applyDefaultTransform(value, config.default!, isEmpty);
+                if (!config.default) return value;
+                return applyDefaultTransform(value, config.default, isEmpty);
 
             case 'concat':
-                return applyConcatTransform(value, config.concat!, record, this.getNestedValue.bind(this));
+                if (!config.concat) return value;
+                return applyConcatTransform(value, config.concat, record, this.getNestedValue.bind(this));
 
             case 'math':
-                return applyMathTransform(value, config.math!);
+                if (!config.math) return value;
+                return applyMathTransform(value, config.math);
 
             case 'conditional':
-                return applyConditionalTransform(value, config.conditional!, record, this.getNestedValue.bind(this));
+                if (!config.conditional) return value;
+                return applyConditionalTransform(value, config.conditional, record, this.getNestedValue.bind(this));
 
             case 'custom':
-                return applyCustomTransform(value, config.custom!, record);
+                if (!config.custom) return value;
+                return applyCustomTransform(value, config.custom, record);
 
             default:
                 return value;

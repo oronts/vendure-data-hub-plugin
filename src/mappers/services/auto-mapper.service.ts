@@ -198,7 +198,8 @@ export class AutoMapperService {
 
         for (const record of records) {
             for (const field of allFields) {
-                const stats = fieldStats.get(field)!;
+                const stats = fieldStats.get(field);
+                if (!stats) continue;
                 const value = record?.[field];
 
                 if (value === null || value === undefined || value === '') {

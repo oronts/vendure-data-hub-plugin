@@ -82,9 +82,9 @@ export function applyJoinTransform(
 
     if (config.fields?.length) {
         for (const field of config.fields) {
-            const v = getNestedValue(record, field);
-            if (v !== null && v !== undefined) {
-                values.push(v);
+            const fieldValue = getNestedValue(record, field);
+            if (fieldValue !== null && fieldValue !== undefined) {
+                values.push(fieldValue);
             }
         }
     }

@@ -115,9 +115,9 @@ export function applyConcat(
     separator = '',
 ): JsonObject {
     const result = deepClone(record);
-    const values = sources.map(s => {
-        const v = getNestedValue(result, s);
-        return v != null ? String(v) : '';
+    const values = sources.map(segment => {
+        const nestedValue = getNestedValue(result, segment);
+        return nestedValue != null ? String(nestedValue) : '';
     });
 
     const concatenated = values.filter(v => v !== '').join(separator);

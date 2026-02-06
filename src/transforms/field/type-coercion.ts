@@ -2,7 +2,7 @@
  * Type Coercion Transforms
  *
  * Transform operations for converting between types.
- * Provides safe type conversion with proper null handling.
+ * Safe type conversion with proper null handling.
  */
 
 import { JsonValue } from '../../types/index';
@@ -10,8 +10,8 @@ import { JsonValue } from '../../types/index';
 // TYPE CONVERSION TRANSFORMS
 
 /**
- * Apply to string transform
- * Handles null/undefined gracefully, converts objects to JSON
+ * Apply to string transform.
+ * Returns null for null/undefined inputs; converts objects to JSON.
  */
 export function applyToString(value: JsonValue): JsonValue {
     if (value === null || value === undefined) return null;
@@ -61,8 +61,13 @@ export function applyToArray(value: JsonValue): JsonValue {
 export function applyToJson(value: JsonValue): JsonValue {
     try {
         return JSON.stringify(value);
-    } catch {
+    } catch (error) {
         // JSON stringify failed (circular reference etc.) - return null
+        // Debug log for troubleshooting stringify failures (e.g., circular references)
+        console.debug('[TypeCoercion] JSON stringify failed', {
+            error: error instanceof Error ? error.message : String(error),
+            valueType: typeof value,
+        });
         return null;
     }
 }

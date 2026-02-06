@@ -16,7 +16,6 @@ import {
     FacetValue,
     Asset,
     CustomerGroup,
-    VendureEntity,
 } from '@vendure/core';
 import { TransformConfig, VendureEntityType } from '../../types/index';
 import { JsonValue } from '../../types/index';
@@ -82,7 +81,7 @@ const LOOKUP_DEFAULTS = {
  * Get Vendure entity class from type string
  *
  * @param entityType - The entity type string
- * @returns The entity class or null if not supported
+ * @returns Entity class or null if not supported
  */
 export function getEntityClass(entityType: VendureEntityType): SupportedEntityClass | null {
     return ENTITY_CLASS_MAP[entityType] ?? null;
@@ -100,7 +99,7 @@ export function getEntityClass(entityType: VendureEntityType): SupportedEntityCl
  * @param fromField - The field to search by (defaults to 'code')
  * @param toField - The field to return (defaults to 'id')
  * @param connection - The database connection
- * @returns The found field value or null
+ * @returns Found field value or null
  */
 export async function vendureEntityLookup(
     ctx: RequestContext,
@@ -149,7 +148,7 @@ export async function vendureEntityLookup(
  * @param value - The value to look up
  * @param config - The transform configuration
  * @param connection - The database connection
- * @returns The looked up value or the original value
+ * @returns Looked up value or the original value
  */
 export async function performLookup(
     ctx: RequestContext,
@@ -189,7 +188,7 @@ export async function performLookup(
  *
  * @param value - The value to map
  * @param config - The transform configuration containing the value map
- * @returns The mapped value, default value, or original value
+ * @returns Mapped value, default value, or original value
  */
 export function applyMap(value: JsonValue, config: TransformConfig): JsonValue {
     // Guard: return original value if no mapping or null value

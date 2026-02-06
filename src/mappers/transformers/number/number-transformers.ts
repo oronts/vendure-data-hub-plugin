@@ -21,8 +21,8 @@ export const toMinorUnitsCanonical = applyToCentsCanonical;
 export const fromMinorUnitsCanonical = applyFromCentsCanonical;
 
 /**
- * Apply math transform
- * Handles lowercase operations from mapper's TransformConfig
+ * Apply math transform.
+ * Accepts lowercase operations from mapper's TransformConfig
  * and uses canonical functions where applicable.
  */
 export function applyMathTransform(

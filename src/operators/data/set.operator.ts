@@ -1,6 +1,7 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject } from '../types';
 import { SetOperatorConfig } from './types';
 import { applySet } from './helpers';
+import { createRecordOperator } from './operator-factory';
 
 export const SET_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'operator',
@@ -37,11 +38,8 @@ export function applySetOperator(
     return applySet(record, config.path, config.value);
 }
 
-export function setOperator(
-    records: readonly JsonObject[],
-    config: SetOperatorConfig,
-    _helpers: OperatorHelpers,
-): OperatorResult {
-    const results = records.map(record => applySetOperator(record, config));
-    return { records: results };
-}
+/**
+ * Operator that sets a static value at a specified path on each record.
+ * Uses the createRecordOperator factory to reduce boilerplate.
+ */
+export const setOperator = createRecordOperator(applySetOperator);

@@ -2,7 +2,7 @@
  * Field Transforms
  *
  * Individual field-level transform operations.
- * Handles string, number, date, boolean, and array transformations.
+ * String, number, date, boolean, and array transformations.
  */
 
 // String transforms

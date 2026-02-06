@@ -4,11 +4,9 @@
 
 import { JsonValue } from '../../types/index';
 import { TransformConfig } from './transform-config.types';
+import { MatchConfidence } from '../../constants/validation';
 
-/**
- * Confidence level for auto-mapping suggestions
- */
-export type MatchConfidence = 'high' | 'medium' | 'low';
+export type { MatchConfidence };
 
 /**
  * Auto-mapping suggestion
