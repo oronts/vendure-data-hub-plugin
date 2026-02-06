@@ -12,6 +12,83 @@ import {
 import { JsonObject } from '../../../src/types';
 import { priceToCents } from '../utils/security.utils';
 
+// ============================================================================
+// Type Guards
+// ============================================================================
+
+/**
+ * Type guard to check if a value is a PimcoreLocalizedField (object with string language codes as keys)
+ */
+export function isLocalizedField(value: unknown): value is PimcoreLocalizedField {
+    if (value === null || value === undefined) {
+        return false;
+    }
+    if (typeof value !== 'object') {
+        return false;
+    }
+    // Check that it's a plain object (not an array)
+    if (Array.isArray(value)) {
+        return false;
+    }
+    // Check that all values are either strings or null (as per PimcoreLocalizedField interface)
+    for (const val of Object.values(value)) {
+        if (val !== null && typeof val !== 'string') {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Type guard to check if a value is either a string or a PimcoreLocalizedField
+ */
+export function isStringOrLocalized(value: unknown): value is string | PimcoreLocalizedField {
+    if (typeof value === 'string') {
+        return true;
+    }
+    return isLocalizedField(value);
+}
+
+/**
+ * Safely coerce a value to string | PimcoreLocalizedField, returning undefined if invalid
+ */
+function toStringOrLocalized(value: unknown): string | PimcoreLocalizedField | undefined {
+    if (isStringOrLocalized(value)) {
+        return value;
+    }
+    return undefined;
+}
+
+/**
+ * Type guard to check if a value is a parent reference object with an id property
+ */
+function isParentReference(value: unknown): value is { id: string | number } {
+    if (value === null || value === undefined) {
+        return false;
+    }
+    if (typeof value !== 'object' || Array.isArray(value)) {
+        return false;
+    }
+    const obj = value as Record<string, unknown>;
+    return typeof obj.id === 'string' || typeof obj.id === 'number';
+}
+
+/**
+ * Type guard to check if a value is an array of asset references with id properties
+ */
+function isAssetReferenceArray(value: unknown): value is Array<{ id: string | number }> {
+    if (!Array.isArray(value)) {
+        return false;
+    }
+    return value.every(item => {
+        if (item === null || item === undefined || typeof item !== 'object') {
+            return false;
+        }
+        const obj = item as Record<string, unknown>;
+        return typeof obj.id === 'string' || typeof obj.id === 'number';
+    });
+}
+
 const DEFAULT_PRODUCT_MAPPING = {
     skuField: 'sku',
     nameField: 'name',
@@ -45,11 +122,16 @@ export function extractLocalizedValue(
     if (!field) return '';
     if (typeof field === 'string') return field;
 
-    if (field[language]) return field[language] as string;
-    if (field[fallbackLanguage]) return field[fallbackLanguage] as string;
+    // field is now narrowed to PimcoreLocalizedField
+    const langValue = field[language];
+    if (langValue) return langValue;
 
-    const values = Object.values(field).filter(v => v != null);
-    return (values[0] as string) ?? '';
+    const fallbackValue = field[fallbackLanguage];
+    if (fallbackValue) return fallbackValue;
+
+    // Return first non-null value, or empty string
+    const values = Object.values(field).filter((v): v is string => v != null);
+    return values[0] ?? '';
 }
 
 export function buildTranslations<T extends Record<string, unknown>>(
@@ -105,15 +187,18 @@ export function transformProduct(
         pimcoreProduct.id
     );
 
-    const nameField = getField(pimcoreProduct, mapping_.nameField);
-    const name = extractLocalizedValue(nameField as string | PimcoreLocalizedField, defaultLanguage);
+    const rawNameField = getField(pimcoreProduct, mapping_.nameField);
+    const nameField = toStringOrLocalized(rawNameField);
+    const name = extractLocalizedValue(nameField, defaultLanguage);
 
-    const slugField = getField(pimcoreProduct, mapping_.slugField) ?? getField(pimcoreProduct, 'urlKey');
-    let slug = extractLocalizedValue(slugField as string | PimcoreLocalizedField, defaultLanguage);
+    const rawSlugField = getField(pimcoreProduct, mapping_.slugField) ?? getField(pimcoreProduct, 'urlKey');
+    const slugField = toStringOrLocalized(rawSlugField);
+    let slug = extractLocalizedValue(slugField, defaultLanguage);
     if (!slug) slug = generateSlug(name || sku);
 
-    const descField = getField(pimcoreProduct, mapping_.descriptionField);
-    const description = extractLocalizedValue(descField as string | PimcoreLocalizedField, defaultLanguage);
+    const rawDescField = getField(pimcoreProduct, mapping_.descriptionField);
+    const descField = toStringOrLocalized(rawDescField);
+    const description = extractLocalizedValue(descField, defaultLanguage);
 
     const enabledField = getField(pimcoreProduct, mapping_.enabledField);
     const enabled = enabledField !== false && enabledField !== 'false' && enabledField !== 0;
@@ -128,15 +213,15 @@ export function transformProduct(
 
     if (languages.length > 1) {
         result.translations = buildTranslations(
-            { name: nameField as string | PimcoreLocalizedField, slug: slugField as string | PimcoreLocalizedField, description: descField as string | PimcoreLocalizedField },
+            { name: nameField, slug: slugField, description: descField },
             ['name', 'slug', 'description'],
             languages,
         );
     }
 
-    const assets = getField(pimcoreProduct, mapping_.assetsField) as Array<{ id: string | number }> | undefined;
-    if (assets?.length) {
-        result.assetIds = assets.map(a => `pimcore:asset:${a.id}`);
+    const rawAssets = getField(pimcoreProduct, mapping_.assetsField);
+    if (isAssetReferenceArray(rawAssets) && rawAssets.length > 0) {
+        result.assetIds = rawAssets.map(a => `pimcore:asset:${a.id}`);
         result.featuredAssetId = result.assetIds[0];
     }
 
@@ -166,12 +251,14 @@ export function transformVariant(
         `${parentSku}-${pimcoreVariant.key ?? pimcoreVariant.id}`
     );
 
-    const nameField = getField(pimcoreVariant, mapping_.nameField);
-    const name = extractLocalizedValue(nameField as string | PimcoreLocalizedField, defaultLanguage) || sku;
+    const rawNameField = getField(pimcoreVariant, mapping_.nameField);
+    const nameField = toStringOrLocalized(rawNameField);
+    const name = extractLocalizedValue(nameField, defaultLanguage) || sku;
 
-    const rawPrice = getField(pimcoreVariant, 'price') as number | string | undefined;
-    const price = priceToCents(rawPrice);
-    const stockQuantity = getField(pimcoreVariant, 'stockQuantity') as number | undefined;
+    const rawPrice = getField(pimcoreVariant, 'price');
+    const price = priceToCents(typeof rawPrice === 'number' || typeof rawPrice === 'string' ? rawPrice : undefined);
+    const rawStockQuantity = getField(pimcoreVariant, 'stockQuantity');
+    const stockQuantity = typeof rawStockQuantity === 'number' ? rawStockQuantity : undefined;
 
     const result: VendureVariantInput = {
         externalId: `pimcore:variant:${pimcoreVariant.id}`,
@@ -189,7 +276,7 @@ export function transformVariant(
     }
 
     if (languages.length > 1) {
-        result.translations = buildTranslations({ name: nameField as string | PimcoreLocalizedField }, ['name'], languages);
+        result.translations = buildTranslations({ name: nameField }, ['name'], languages);
     }
 
     return result;
@@ -203,20 +290,25 @@ export function transformCategory(
 ): VendureCategoryInput {
     const mapping_ = { ...DEFAULT_CATEGORY_MAPPING, ...mapping };
 
-    const nameField = getField(pimcoreCategory, mapping_.nameField);
-    const name = extractLocalizedValue(nameField as string | PimcoreLocalizedField, defaultLanguage) ||
+    const rawNameField = getField(pimcoreCategory, mapping_.nameField);
+    const nameField = toStringOrLocalized(rawNameField);
+    const name = extractLocalizedValue(nameField, defaultLanguage) ||
         pimcoreCategory.key || String(pimcoreCategory.id);
 
-    const slugField = getField(pimcoreCategory, mapping_.slugField);
-    let slug = extractLocalizedValue(slugField as string | PimcoreLocalizedField, defaultLanguage);
+    const rawSlugField = getField(pimcoreCategory, mapping_.slugField);
+    const slugField = toStringOrLocalized(rawSlugField);
+    let slug = extractLocalizedValue(slugField, defaultLanguage);
     if (!slug) slug = generateSlug(name);
 
-    const descField = getField(pimcoreCategory, mapping_.descriptionField);
-    const description = extractLocalizedValue(descField as string | PimcoreLocalizedField, defaultLanguage);
+    const rawDescField = getField(pimcoreCategory, mapping_.descriptionField);
+    const descField = toStringOrLocalized(rawDescField);
+    const description = extractLocalizedValue(descField, defaultLanguage);
 
-    const parent = getField(pimcoreCategory, mapping_.parentField) as { id: string | number } | undefined;
+    const rawParent = getField(pimcoreCategory, mapping_.parentField);
+    const parent = isParentReference(rawParent) ? rawParent : undefined;
     const parentExternalId = parent?.id ? `pimcore:category:${parent.id}` : undefined;
-    const position = getField(pimcoreCategory, mapping_.positionField) as number | undefined;
+    const rawPosition = getField(pimcoreCategory, mapping_.positionField);
+    const position = typeof rawPosition === 'number' ? rawPosition : undefined;
 
     const result: VendureCategoryInput = {
         externalId: `pimcore:category:${pimcoreCategory.id}`,
@@ -230,7 +322,7 @@ export function transformCategory(
 
     if (languages.length > 1) {
         result.translations = buildTranslations(
-            { name: nameField as string | PimcoreLocalizedField, slug: slugField as string | PimcoreLocalizedField, description: descField as string | PimcoreLocalizedField },
+            { name: nameField, slug: slugField, description: descField },
             ['name', 'slug', 'description'],
             languages,
         );
@@ -250,12 +342,14 @@ export function transformAsset(
 ): JsonObject {
     const mapping_ = { ...DEFAULT_ASSET_MAPPING, ...mapping };
 
-    let url = getField(pimcoreAsset, mapping_.urlField) as string | undefined;
+    const rawUrl = getField(pimcoreAsset, mapping_.urlField);
+    let url = typeof rawUrl === 'string' ? rawUrl : undefined;
     if (url && baseUrl && !url.startsWith('http')) {
         url = `${baseUrl.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`;
     }
 
-    const alt = getField(pimcoreAsset, mapping_.altField) as string | undefined;
+    const rawAlt = getField(pimcoreAsset, mapping_.altField);
+    const alt = typeof rawAlt === 'string' ? rawAlt : undefined;
     let metaAlt: string | undefined;
     if (pimcoreAsset.metadata) {
         const altMeta = pimcoreAsset.metadata.find(m => m.name === 'alt' || m.name === 'title');
@@ -288,6 +382,8 @@ function getField(obj: Record<string, unknown>, path: string): unknown {
 }
 
 export default {
+    isLocalizedField,
+    isStringOrLocalized,
     extractLocalizedValue,
     buildTranslations,
     generateSlug,
