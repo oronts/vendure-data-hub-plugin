@@ -285,12 +285,8 @@ export function chunk<T>(arr: T[], size: number): T[][] {
     return out;
 }
 
-/**
- * Returns a promise that resolves after the specified number of milliseconds
- */
-export function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
+// Re-export sleep from canonical location for backwards compatibility
+export { sleep } from '../utils/retry.utils';
 
 /**
  * Creates a deep clone of an object.

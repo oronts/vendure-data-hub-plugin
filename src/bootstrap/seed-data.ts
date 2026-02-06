@@ -14,6 +14,7 @@ import { DataHubSecret } from '../entities/config/secret.entity';
 import { DataHubConnection } from '../entities/config/connection.entity';
 import { SecretProvider, ConnectionType } from '../constants/enums';
 import { getErrorMessage, DataHubLogger } from '../services/logger';
+import { sleep } from '../utils/retry.utils';
 import type { JsonObject, JsonValue } from '../../shared/types/json.types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -63,7 +64,7 @@ export class ConfigSyncService implements OnApplicationBootstrap {
                         error: errorMessage,
                         nextAttemptIn: RETRY_DELAY_MS,
                     });
-                    await this.delay(RETRY_DELAY_MS);
+                    await sleep(RETRY_DELAY_MS);
                 }
             }
         }
@@ -118,13 +119,6 @@ export class ConfigSyncService implements OnApplicationBootstrap {
         if (totalFailed > 0) {
             logger.warn('Some configurations failed to sync', { totalFailed, results });
         }
-    }
-
-    /**
-     * Delay helper for retry logic
-     */
-    private delay(ms: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     private async loadConfigFile(configPath: string): Promise<Partial<DataHubPluginOptions>> {

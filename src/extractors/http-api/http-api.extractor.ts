@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { HttpMethod, PaginationType, TIME_UNITS, HTTP, WEBHOOK } from '../../constants/index';
 import { getErrorMessage } from '../../utils/error.utils';
+import { sleep } from '../../utils/retry.utils';
 import {
     DataExtractor,
     ExtractorContext,
@@ -376,7 +377,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
                     error: lastError.message,
                 });
 
-                await this.sleep(delay);
+                await sleep(delay);
             }
         }
 
@@ -405,10 +406,6 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
 
     private async rateLimitDelay(requestsPerSecond: number): Promise<void> {
         const delayMs = TIME_UNITS.SECOND / requestsPerSecond;
-        await this.sleep(delayMs);
-    }
-
-    private sleep(ms: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        await sleep(delayMs);
     }
 }

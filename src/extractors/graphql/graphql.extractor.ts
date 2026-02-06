@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { HTTP, WEBHOOK, GraphQLPaginationType } from '../../constants/index';
 import { getErrorMessage } from '../../utils/error.utils';
+import { sleep } from '../../utils/retry.utils';
 import {
     DataExtractor,
     ExtractorContext,
@@ -544,14 +545,10 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                     error: lastError.message,
                 });
 
-                await this.sleep(delay);
+                await sleep(delay);
             }
         }
 
         throw lastError || new Error('Request failed');
-    }
-
-    private sleep(ms: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }

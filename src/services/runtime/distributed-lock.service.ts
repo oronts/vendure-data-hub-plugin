@@ -3,6 +3,7 @@ import { TransactionalConnection } from '@vendure/core';
 import { DataHubLoggerFactory, DataHubLogger } from '../logger';
 import { LockBackend, LockState, MemoryLockEntry, LockBackendFactory } from './lock-backends';
 import { DISTRIBUTED_LOCK } from '../../constants/index';
+import { sleep } from '../../utils/retry.utils';
 
 /**
  * Lock configuration options
@@ -103,7 +104,7 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
             if (!waitForLock || Date.now() - startTime >= waitTimeoutMs) {
                 shouldContinue = false;
             } else {
-                await this.sleep(retryIntervalMs);
+                await sleep(retryIntervalMs);
             }
         }
 
@@ -172,10 +173,6 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
     private async createFailedResult(key: string): Promise<LockResult> {
         const lockInfo = await this.backend.isLocked(key);
         return { acquired: false, currentOwner: lockInfo.owner, expiresAt: lockInfo.expiresAt };
-    }
-
-    private sleep(ms: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, ms));
     }
 }
 

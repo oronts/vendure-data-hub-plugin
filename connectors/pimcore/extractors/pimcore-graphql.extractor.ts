@@ -1,5 +1,6 @@
 import { ExtractorAdapter, ExtractContext, RecordEnvelope } from '../../../src/sdk/types';
 import { JsonObject } from '../../../src/types';
+import { sleep } from '../../../src/utils/retry.utils';
 import { PimcoreObjectListing } from '../types';
 
 const DEFAULTS = {
@@ -338,10 +339,6 @@ function sanitizeUrl(endpoint: string): string {
     } catch {
         return '[invalid]';
     }
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 export default pimcoreGraphQLExtractor;
