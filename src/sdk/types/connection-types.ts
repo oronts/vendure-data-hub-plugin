@@ -44,7 +44,15 @@ export interface ConnectionAuth {
 }
 
 /**
- * External connection configuration
+ * External connection configuration for SDK use.
+ *
+ * SDK connection management interface that includes
+ * the `code` field for identifying stored connections. It uses immutable
+ * (readonly) properties for SDK safety.
+ *
+ * Related ConnectionConfig types:
+ * - shared/types/extractor.types.ts ConnectionConfig - Extractor input format (no code, mutable)
+ * - src/utils/url-helpers.ts UrlConnectionConfig - Minimal interface for URL building
  */
 export interface ConnectionConfig {
     /** Unique connection identifier */
@@ -72,7 +80,7 @@ export interface ConnectionResolver {
     /**
      * Get a connection configuration by code
      * @param code The connection identifier
-     * @returns The connection config or undefined if not found
+     * @returns Connection config or undefined if not found
      */
     get(code: string): Promise<ConnectionConfig | undefined>;
 

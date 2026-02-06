@@ -10,7 +10,6 @@ export {
     FilterConfig,
     FieldMapping,
     FieldTransform,
-    FieldTransformType,
     MappingConfig,
     AggregationFunction,
     AggregationConfig,
@@ -76,18 +75,3 @@ export interface OperatorHelpers {
     crypto: CryptoHelpers;
 }
 
-export type SDKFieldTransform =
-    | { type: 'uppercase' }
-    | { type: 'lowercase' }
-    | { type: 'trim' }
-    | { type: 'split'; delimiter: string }
-    | { type: 'join'; delimiter: string }
-    | { type: 'replace'; pattern: string; replacement: string }
-    | { type: 'template'; template: string }
-    | { type: 'toNumber' }
-    | { type: 'toString' }
-    | { type: 'toBoolean' }
-    | { type: 'toDate'; format?: string }
-    | { type: 'toArray' }
-    | { type: 'parseJson' }
-    | { type: 'custom'; code: string };

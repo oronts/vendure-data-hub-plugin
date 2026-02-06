@@ -1,9 +1,8 @@
 /**
  * SDK DSL Constants
  *
- * This module defines all constant values used by the SDK DSL builders.
- * Using these constants ensures type safety and prevents typos in operator
- * and action type strings.
+ * Constant values for SDK DSL builders. Ensures type safety and prevents
+ * typos in operator and action type strings.
  *
  * @module sdk/constants
  */

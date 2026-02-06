@@ -220,7 +220,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
                 }
 
                 // XADD with auto-generated ID
-                const streamId = await client.xadd(streamKey, '*', ...fields);
+                await client.xadd(streamKey, '*', ...fields);
 
                 results.push({
                     success: true,

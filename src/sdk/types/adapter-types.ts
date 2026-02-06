@@ -1,9 +1,8 @@
 /**
  * Adapter Types - SDK types for adapter definitions and configurations
  *
- * Adapters are the building blocks of data pipelines. This module defines
- * the base adapter interface and all specific adapter types (extractors,
- * operators, loaders, validators, enrichers, exporters, feeds, sinks).
+ * Base adapter interface and specific adapter types: extractors, operators,
+ * loaders, validators, enrichers, exporters, feeds, and sinks.
  *
  * @module sdk/types/adapter-types
  */

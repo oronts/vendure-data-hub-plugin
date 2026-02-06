@@ -200,7 +200,7 @@ async function getClient(config: SqsConnectionConfig): Promise<SQSClient> {
 export class SqsAdapter implements QueueAdapter {
     readonly code = 'sqs';
     readonly name = 'AWS SQS';
-    readonly description = 'Amazon Simple Queue Service for scalable message queuing';
+    readonly description = 'AWS Simple Queue Service adapter';
 
     async publish(
         connectionConfig: QueueConnectionConfig,

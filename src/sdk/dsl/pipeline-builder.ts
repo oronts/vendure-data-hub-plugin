@@ -1,7 +1,7 @@
 /**
  * Pipeline Builder
  *
- * Provides a fluent API for constructing pipeline definitions programmatically.
+ * Fluent API for constructing pipeline definitions programmatically.
  * The builder pattern ensures type-safe pipeline construction with proper
  * chaining support.
  *
@@ -201,7 +201,7 @@ export interface PipelineBuilder {
 
     /**
      * Build and return the final pipeline definition.
-     * @returns The complete pipeline definition
+     * @returns Complete pipeline definition
      */
     build(): PipelineDefinition;
 }
@@ -450,7 +450,7 @@ export function createPipeline(): PipelineBuilder {
  * Useful when you want to define pipelines without using the builder pattern.
  *
  * @param definition - The pipeline definition object
- * @returns The same definition with proper typing
+ * @returns Same definition with proper typing
  *
  * @example
  * ```typescript

@@ -1,7 +1,7 @@
 /**
  * Transform/Operator Builders
  *
- * Provides fluent builder functions for creating operator configurations
+ * Fluent builder functions for creating operator configurations
  * used in pipeline transform steps. All operators use constants from
  * `../constants.ts` for type safety.
  *

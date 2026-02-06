@@ -1,7 +1,7 @@
 /**
  * Route Condition Builders
  *
- * Provides fluent builder functions for creating route conditions
+ * Fluent builder functions for creating route conditions
  * used in pipeline route steps and operator filters. All conditions
  * use constants from `../constants.ts` for type safety.
  *

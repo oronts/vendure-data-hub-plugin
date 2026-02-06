@@ -1,7 +1,7 @@
 /**
  * Context, Throughput, and Capability Builders
  *
- * Provides fluent builder functions for creating pipeline context,
+ * Fluent builder functions for creating pipeline context,
  * throughput settings, capability definitions, and hook actions.
  *
  * @module sdk/dsl/context-builder
