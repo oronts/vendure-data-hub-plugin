@@ -1,11 +1,18 @@
 /**
  * Rate Limit Decorator
- * 
+ *
  * NestJS decorator for rate limiting API endpoints.
  * Uses RateLimitService to enforce limits per IP and per resource.
+ *
+ * IMPORTANT: This decorator uses a service holder pattern to access the RateLimitService
+ * from NestJS DI. The service is registered during module initialization via
+ * RateLimitServiceHolder.setService().
+ *
+ * For new implementations, prefer using RateLimitGuard with @UseGuards() which has
+ * native DI support through constructor injection.
  */
 
-import { ExecutionContext, HttpException, HttpStatus } from '@nestjs/common';
+import { HttpException, HttpStatus, Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { RateLimitService } from '../services/rate-limit';
 import { INTERNAL_TIMINGS } from '../constants/defaults';
 
@@ -32,42 +39,87 @@ export interface RateLimitOptions {
     statusCode?: HttpStatus;
 }
 
-function getRateLimitService(context: ExecutionContext): RateLimitService {
-    const contextWithService = context as ExecutionContext & { rateLimitService?: RateLimitService };
-    // RateLimitService requires a DataHubLoggerFactory - use a minimal fallback if not available
-    if (contextWithService.rateLimitService) {
-        return contextWithService.rateLimitService;
+/**
+ * Service holder that provides access to RateLimitService for the decorator.
+ * This is injected by NestJS and registers itself during module initialization.
+ *
+ * This pattern allows decorators (which cannot use constructor injection) to
+ * access DI-managed services.
+ */
+@Injectable()
+export class RateLimitServiceHolder implements OnModuleInit {
+    private static instance: RateLimitService | null = null;
+
+    constructor(
+        @Inject(RateLimitService)
+        private readonly rateLimitService: RateLimitService,
+    ) {}
+
+    onModuleInit(): void {
+        RateLimitServiceHolder.instance = this.rateLimitService;
     }
-    // Create a minimal logger factory for fallback
-    const minimalLoggerFactory = {
-        createLogger: () => ({
-            info: () => {},
-            warn: () => {},
-            error: () => {},
-            debug: () => {},
-        }),
-    } as unknown as import('../services/logger').DataHubLoggerFactory;
-    return new RateLimitService(minimalLoggerFactory);
+
+    /**
+     * Get the RateLimitService instance from the DI container.
+     * Returns null if the module has not been initialized yet.
+     */
+    static getService(): RateLimitService | null {
+        return RateLimitServiceHolder.instance;
+    }
+
+    /**
+     * Reset the service holder (useful for testing).
+     * @internal
+     */
+    static reset(): void {
+        RateLimitServiceHolder.instance = null;
+    }
 }
 
 /**
  * Rate Limit Decorator Factory
+ *
+ * This decorator uses RateLimitServiceHolder to access the RateLimitService from the
+ * NestJS DI container. The service is automatically registered during module initialization.
+ *
+ * For new implementations, consider using RateLimitGuard with @UseGuards() which provides
+ * more features (rate limit headers, Reflector-based options).
+ *
+ * @example
+ * // Using this decorator directly:
+ * @RateLimit({ maxRequests: 100, windowMs: 60000 })
+ * async myEndpoint(ctx: RequestContext) { ... }
+ *
+ * @example
+ * // Alternative using guard (recommended for REST endpoints):
+ * @UseGuards(RateLimitGuard)
+ * @RateLimitMeta({ maxRequests: 100, windowMs: 60000 })
+ * async myEndpoint() { ... }
  */
 export function RateLimit(options: RateLimitOptions = {}): MethodDecorator {
     return (_target: object, _propertyKey: string | symbol, descriptor: PropertyDescriptor) => {
         const originalMethod = descriptor.value as (...args: unknown[]) => Promise<unknown>;
 
-        descriptor.value = async function(this: unknown, ...args: unknown[]) {
-            const context = args[args.length - 1] as ExecutionContext;
-            const request = context.switchToHttp().getRequest() as {
-                ip?: string;
-                connection?: { remoteAddress?: string };
-                params?: { code?: string; id?: string };
-            };
+        descriptor.value = async function (this: unknown, ...args: unknown[]) {
+            // Extract request information from arguments
+            // Support both REST (request object) and GraphQL (context with req) patterns
+            const request = extractRequest(args);
 
-            const ip = request.ip || request.connection?.remoteAddress || 'unknown';
-            const pipelineCode = request.params?.code || request.params?.id;
-            const rateLimitService = getRateLimitService(context);
+            const ip = request?.ip || request?.connection?.remoteAddress || 'unknown';
+            const pipelineCode = request?.params?.code || request?.params?.id;
+
+            // Get the service from the holder (properly injected via DI)
+            const rateLimitService = RateLimitServiceHolder.getService();
+
+            // If service is not available, the module hasn't been initialized yet
+            if (!rateLimitService) {
+                console.warn(
+                    '[RateLimit] RateLimitService not available. ' +
+                        'Ensure RateLimitServiceHolder is registered as a provider in your module. ' +
+                        'Rate limiting will be skipped for this request.',
+                );
+                return originalMethod.apply(this, args);
+            }
 
             const result = rateLimitService.isRateLimited(
                 {
@@ -91,4 +143,47 @@ export function RateLimit(options: RateLimitOptions = {}): MethodDecorator {
 
         return descriptor;
     };
+}
+
+/**
+ * Extract the HTTP request object from method arguments.
+ * Supports both REST controllers and GraphQL resolvers.
+ */
+function extractRequest(args: unknown[]): RequestLike | null {
+    for (const arg of args) {
+        // Direct request object (REST controller)
+        if (isRequestLike(arg)) {
+            return arg;
+        }
+
+        // GraphQL context or Vendure RequestContext (both have req property)
+        if (arg && typeof arg === 'object' && 'req' in arg) {
+            const ctx = arg as { req: unknown };
+            if (isRequestLike(ctx.req)) {
+                return ctx.req;
+            }
+        }
+    }
+
+    return null;
+}
+
+interface RequestLike {
+    ip?: string;
+    connection?: { remoteAddress?: string };
+    params?: { code?: string; id?: string };
+}
+
+function isRequestLike(obj: unknown): obj is RequestLike {
+    if (!obj || typeof obj !== 'object') {
+        return false;
+    }
+    // Check for common request properties
+    const candidate = obj as Record<string, unknown>;
+    return (
+        'ip' in candidate ||
+        'connection' in candidate ||
+        'headers' in candidate ||
+        'method' in candidate
+    );
 }

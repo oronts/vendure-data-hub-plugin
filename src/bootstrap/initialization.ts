@@ -13,6 +13,7 @@ import { FeedGeneratorService } from '../feeds/feed-generator.service';
 import { DataHubLogger, DataHubLoggerFactory, getErrorMessage } from '../services/logger';
 import { getBuiltinOperatorRuntimes } from '../operators/operator-runtime-registry';
 import { configureScriptOperators } from '../operators/script';
+import { BUILT_IN_ENRICHERS } from '../enrichers';
 
 function isDataHubAdapter(value: unknown): value is DataHubAdapter {
     if (value == null || typeof value !== 'object') {
@@ -23,8 +24,7 @@ function isDataHubAdapter(value: unknown): value is DataHubAdapter {
 }
 
 /**
- * AdapterBootstrapService registers built-in adapters on module initialization.
- * This ensures all default adapters are available when the plugin starts.
+ * Registers built-in adapters on module initialization.
  */
 @Injectable()
 export class AdapterBootstrapService implements OnModuleInit {
@@ -80,6 +80,20 @@ export class AdapterBootstrapService implements OnModuleInit {
                         // Ignore duplicates between reloads
                         this.logger.debug('Skipped operator runtime registration (likely duplicate)', {
                             operatorCode: operatorRuntime.code,
+                        });
+                    }
+                }
+
+                // Register built-in enricher runtimes
+                this.logger.debug('Registering built-in enricher runtimes', {
+                    enricherCount: BUILT_IN_ENRICHERS.length,
+                });
+                for (const enricher of BUILT_IN_ENRICHERS) {
+                    try {
+                        this.registry.registerRuntime(enricher);
+                    } catch (err) {
+                        this.logger.debug('Skipped enricher runtime registration (likely duplicate)', {
+                            enricherCode: enricher.code,
                         });
                     }
                 }

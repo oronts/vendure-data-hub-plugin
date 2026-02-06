@@ -14,6 +14,7 @@ import { DataHubSecret } from '../entities/config/secret.entity';
 import { DataHubConnection } from '../entities/config/connection.entity';
 import { SecretProvider, ConnectionType } from '../constants/enums';
 import { getErrorMessage, DataHubLogger } from '../services/logger';
+import type { JsonObject, JsonValue } from '../../shared/types/json.types';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
@@ -27,7 +28,7 @@ const RETRY_DELAY_MS = HTTP.RETRY_DELAY_MS;
 
 /**
  * ConfigSyncService syncs code-first configurations to the database on startup.
- * Enables defining pipelines, secrets, and connections in code or config files
+ * Define pipelines, secrets, and connections in code or config files
  * instead of via the UI.
  */
 @Injectable()
@@ -325,8 +326,8 @@ export class ConfigSyncService implements OnApplicationBootstrap {
     /**
      * Resolve ${ENV_VAR} patterns in settings object
      */
-    private resolveEnvVars(obj: Record<string, any>): Record<string, any> {
-        const result: Record<string, any> = {};
+    private resolveEnvVars(obj: Record<string, unknown>): JsonObject {
+        const result: Record<string, JsonValue> = {};
         for (const [key, value] of Object.entries(obj)) {
             if (typeof value === 'string') {
                 // Replace ${VAR_NAME} with environment variable value
@@ -334,9 +335,10 @@ export class ConfigSyncService implements OnApplicationBootstrap {
                     return process.env[varName] ?? '';
                 });
             } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                result[key] = this.resolveEnvVars(value);
+                result[key] = this.resolveEnvVars(value as Record<string, unknown>);
             } else {
-                result[key] = value;
+                // Cast to JsonValue - assumes input is already JSON-compatible
+                result[key] = value as JsonValue;
             }
         }
         return result;

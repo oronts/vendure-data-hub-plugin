@@ -152,7 +152,7 @@ export function parseCsv(
         // Auto-detect delimiter if not specified
         const delimiter = options.delimiter || detectDelimiter(cleanContent);
 
-        // Use PapaParse for robust parsing
+        // Use PapaParse for CSV parsing
         const result = Papa.parse(cleanContent, {
             delimiter: delimiter || '',
             header: options.header !== false,

@@ -8,6 +8,7 @@
 import { ParseResult, ParseError, XmlParseOptions } from '../types';
 import { FileFormat } from '../../constants/enums';
 import { XML_PARSER } from '../../constants';
+import { extractFields } from '../helpers/field-extraction';
 
 /**
  * Default tag names to search for records (from centralized constants)
@@ -176,23 +177,6 @@ function parseRecordPath(recordPath?: string): readonly string[] {
         .filter(Boolean);
 }
 
-/**
- * Extract all unique fields from records
- *
- * @param records - Records to analyze
- * @returns Array of field names
- */
-function extractFields(records: Record<string, unknown>[]): string[] {
-    const fieldSet = new Set<string>();
-
-    for (const record of records) {
-        for (const key of Object.keys(record)) {
-            fieldSet.add(key);
-        }
-    }
-
-    return Array.from(fieldSet);
-}
 
 /**
  * Parse XML content

@@ -10,7 +10,7 @@ import {
     SourceError,
     DataSource,
 } from '../types';
-import { DEFAULTS, GraphQLPaginationStyle } from '../../constants/index';
+import { PAGINATION, GraphQLPaginationStyle } from '../../constants/index';
 import { navigatePath } from '../../parsers/formats/json.parser';
 import { buildAuthHeaders } from '../shared';
 
@@ -28,8 +28,8 @@ export class GraphqlApiSource implements DataSource<GraphqlApiSourceConfig> {
         let pageCount = 0;
         let cursor: string | undefined;
 
-        const maxPages = config.pagination?.maxPages ?? DEFAULTS.MAX_GRAPHQL_PAGES;
-        const pageSize = config.pagination?.pageSize ?? DEFAULTS.PAGE_SIZE;
+        const maxPages = config.pagination?.maxPages ?? PAGINATION.MAX_GRAPHQL_PAGES;
+        const pageSize = config.pagination?.pageSize ?? PAGINATION.PAGE_SIZE;
 
         while (hasMore && pageCount < maxPages) {
             try {

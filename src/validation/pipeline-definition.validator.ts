@@ -171,47 +171,47 @@ function validateEdges(
     errors: PipelineDefinitionIssue[],
 ): void {
     for (let i = 0; i < edges.length; i++) {
-        const e = edges[i];
-        if (!e || typeof e !== 'object') {
+        const edge = edges[i];
+        if (!edge || typeof edge !== 'object') {
             errors.push(createIssue('Invalid edge entry', PIPELINE_VALIDATION_ERROR.INVALID_EDGE, undefined, `edges[${i}]`));
             continue;
         }
 
-        if (!e.from || !e.to) {
+        if (!edge.from || !edge.to) {
             errors.push(createIssue('Edge missing from/to', PIPELINE_VALIDATION_ERROR.EDGE_MISSING_NODES, undefined, `edges[${i}]`));
             continue;
         }
 
-        if (!stepByKey.has(e.from)) {
-            errors.push(createIssue(`Edge from unknown step "${e.from}"`, PIPELINE_VALIDATION_ERROR.EDGE_UNKNOWN_SOURCE, e.from, `edges[${i}].from`));
+        if (!stepByKey.has(edge.from)) {
+            errors.push(createIssue(`Edge from unknown step "${edge.from}"`, PIPELINE_VALIDATION_ERROR.EDGE_UNKNOWN_SOURCE, edge.from, `edges[${i}].from`));
         }
 
-        if (!stepByKey.has(e.to)) {
-            errors.push(createIssue(`Edge to unknown step "${e.to}"`, PIPELINE_VALIDATION_ERROR.EDGE_UNKNOWN_TARGET, e.to, `edges[${i}].to`));
+        if (!stepByKey.has(edge.to)) {
+            errors.push(createIssue(`Edge to unknown step "${edge.to}"`, PIPELINE_VALIDATION_ERROR.EDGE_UNKNOWN_TARGET, edge.to, `edges[${i}].to`));
         }
 
-        if (e.from === e.to) {
-            errors.push(createIssue(`Edge cannot point to itself: "${e.from}"`, PIPELINE_VALIDATION_ERROR.EDGE_SELF_LOOP, e.from, `edges[${i}]`));
+        if (edge.from === edge.to) {
+            errors.push(createIssue(`Edge cannot point to itself: "${edge.from}"`, PIPELINE_VALIDATION_ERROR.EDGE_SELF_LOOP, edge.from, `edges[${i}]`));
         }
 
         // Validate branch references
-        if (e.branch) {
-            const fromStep = stepByKey.get(e.from);
+        if (edge.branch) {
+            const fromStep = stepByKey.get(edge.from);
             if (!fromStep || fromStep.type !== StepType.ROUTE) {
                 errors.push(createIssue(
-                    `Edge from "${e.from}" specifies branch but source is not a ROUTE step`,
+                    `Edge from "${edge.from}" specifies branch but source is not a ROUTE step`,
                     PIPELINE_VALIDATION_ERROR.EDGE_BRANCH_NON_ROUTE,
-                    e.from,
+                    edge.from,
                     `edges[${i}].branch`,
                 ));
             } else {
                 const branches = ((fromStep.config as JsonObject)?.branches ?? []) as Array<{ name: string }>;
                 const names = new Set<string>(branches.map(b => String(b?.name ?? '')));
-                if (!names.has(e.branch)) {
+                if (!names.has(edge.branch)) {
                     errors.push(createIssue(
-                        `Edge from "${e.from}" references unknown branch "${e.branch}"`,
+                        `Edge from "${edge.from}" references unknown branch "${edge.branch}"`,
                         PIPELINE_VALIDATION_ERROR.EDGE_UNKNOWN_BRANCH,
-                        e.from,
+                        edge.from,
                         `edges[${i}].branch`,
                     ));
                 }
@@ -228,34 +228,34 @@ function validateRouteSteps(
     errors: PipelineDefinitionIssue[],
 ): void {
     for (let i = 0; i < steps.length; i++) {
-        const s = steps[i];
-        if (s.type === StepType.ROUTE) {
-            const branches = ((s.config as JsonObject)?.branches ?? []) as Array<{ name: string }>;
+        const step = steps[i];
+        if (step.type === StepType.ROUTE) {
+            const branches = ((step.config as JsonObject)?.branches ?? []) as Array<{ name: string }>;
 
             if (!Array.isArray(branches) || branches.length === 0) {
                 errors.push(createIssue(
-                    `Step "${s.key}": ROUTE requires non-empty branches[]`,
+                    `Step "${step.key}": ROUTE requires non-empty branches[]`,
                     PIPELINE_VALIDATION_ERROR.ROUTE_MISSING_BRANCHES,
-                    s.key,
+                    step.key,
                     `steps[${i}].config.branches`,
                 ));
             } else {
                 const seen = new Set<string>();
                 for (let j = 0; j < branches.length; j++) {
-                    const b = branches[j] as { name?: string } | undefined;
-                    const name = String(b?.name ?? '');
+                    const branch = branches[j] as { name?: string } | undefined;
+                    const name = String(branch?.name ?? '');
                     if (!name) {
                         errors.push(createIssue(
-                            `Step "${s.key}": ROUTE branch missing name`,
+                            `Step "${step.key}": ROUTE branch missing name`,
                             PIPELINE_VALIDATION_ERROR.ROUTE_BRANCH_MISSING_NAME,
-                            s.key,
+                            step.key,
                             `steps[${i}].config.branches[${j}].name`,
                         ));
                     } else if (seen.has(name)) {
                         errors.push(createIssue(
-                            `Step "${s.key}": duplicate branch name "${name}"`,
+                            `Step "${step.key}": duplicate branch name "${name}"`,
                             PIPELINE_VALIDATION_ERROR.ROUTE_BRANCH_DUPLICATE,
-                            s.key,
+                            step.key,
                             `steps[${i}].config.branches[${j}].name`,
                         ));
                     }
@@ -346,9 +346,10 @@ function validateTopology(
     const indegCopy = new Map(indeg);
 
     while (queue.length > 0) {
-        const u = queue.shift()!;
-        visited.push(u);
-        for (const v of adj.get(u) ?? []) {
+        const node = queue.shift();
+        if (node === undefined) break;
+        visited.push(node);
+        for (const v of adj.get(node) ?? []) {
             indegCopy.set(v, (indegCopy.get(v) ?? 0) - 1);
             if ((indegCopy.get(v) ?? 0) === 0) {
                 queue.push(v);
@@ -372,10 +373,11 @@ function validateTopology(
         const stack = [roots[0]];
 
         while (stack.length > 0) {
-            const u = stack.pop()!;
-            if (reachable.has(u)) continue;
-            reachable.add(u);
-            for (const v of adj.get(u) ?? []) {
+            const node = stack.pop();
+            if (node === undefined) break;
+            if (reachable.has(node)) continue;
+            reachable.add(node);
+            for (const v of adj.get(node) ?? []) {
                 stack.push(v);
             }
         }

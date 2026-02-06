@@ -1,7 +1,7 @@
 /**
  * Field-Level Validators
  *
- * Provides validation functions for individual field values.
+ * Validation functions for individual field values.
  * Uses constants from ../constants for patterns and limits.
  */
 
@@ -172,215 +172,6 @@ export function validateSlug(
     return validateStringLength(value, 1, maxLength);
 }
 
-/**
- * Validates a SKU
- */
-export function validateSku(value: string): FieldValidationResult {
-    const patternResult = validatePattern(value, VALIDATION_PATTERNS.SKU, 'SKU');
-    if (!patternResult.valid) {
-        return patternResult;
-    }
-
-    return validateStringLength(value, FIELD_LIMITS.SKU_MIN, FIELD_LIMITS.SKU_MAX);
-}
-
-/**
- * Validates an ISO date string
- */
-export function validateIsoDate(value: string): FieldValidationResult {
-    if (typeof value !== 'string') {
-        return {
-            valid: false,
-            error: ERROR_MESSAGES.INVALID_STRING,
-            errorCode: LoaderErrorCode.INVALID_FIELD_TYPE,
-        };
-    }
-
-    const isDateFormat = VALIDATION_PATTERNS.ISO_DATE.test(value);
-    const isDateTimeFormat = VALIDATION_PATTERNS.ISO_DATETIME.test(value);
-
-    if (!isDateFormat && !isDateTimeFormat) {
-        return {
-            valid: false,
-            error: ERROR_MESSAGES.INVALID_DATE,
-            errorCode: LoaderErrorCode.VALIDATION_FAILED,
-        };
-    }
-
-    const date = new Date(value);
-    if (isNaN(date.getTime())) {
-        return {
-            valid: false,
-            error: ERROR_MESSAGES.INVALID_DATE,
-            errorCode: LoaderErrorCode.VALIDATION_FAILED,
-        };
-    }
-
-    return { valid: true, value };
-}
-
-/**
- * Validates a currency code (ISO 4217)
- */
-export function validateCurrencyCode(value: string): FieldValidationResult {
-    return validatePattern(value, VALIDATION_PATTERNS.CURRENCY_CODE, 'currency code');
-}
-
-/**
- * Validates a country code (ISO 3166-1 alpha-2)
- */
-export function validateCountryCode(value: string): FieldValidationResult {
-    return validatePattern(value, VALIDATION_PATTERNS.COUNTRY_CODE, 'country code');
-}
-
-/**
- * Validates a language code (ISO 639-1)
- */
-export function validateLanguageCode(value: string): FieldValidationResult {
-    return validatePattern(value, VALIDATION_PATTERNS.LANGUAGE_CODE, 'language code');
-}
-
-/**
- * Validates a phone number
- */
-export function validatePhone(value: string): FieldValidationResult {
-    return validatePattern(value, VALIDATION_PATTERNS.PHONE, 'phone number');
-}
-
-/**
- * Validates a postal/ZIP code
- */
-export function validatePostalCode(value: string): FieldValidationResult {
-    return validatePattern(value, VALIDATION_PATTERNS.POSTAL_CODE, 'postal code');
-}
-
-/**
- * Validates a barcode (EAN/UPC)
- */
-export function validateBarcode(value: string): FieldValidationResult {
-    return validatePattern(value, VALIDATION_PATTERNS.BARCODE, 'barcode');
-}
-
-/**
- * Validates a JSON path expression
- */
-export function validateJsonPath(value: string): FieldValidationResult {
-    return validatePattern(value, VALIDATION_PATTERNS.JSON_PATH, 'JSON path');
-}
-
-/**
- * Validates an SQL identifier
- */
-export function validateSqlIdentifier(value: string): FieldValidationResult {
-    return validatePattern(value, VALIDATION_PATTERNS.SQL_IDENTIFIER, 'SQL identifier');
-}
-
-/**
- * Validates a secret reference
- */
-export function validateSecretRef(value: string): FieldValidationResult {
-    return validatePattern(value, VALIDATION_PATTERNS.SECRET_REF, 'secret reference');
-}
-
-/**
- * Validates an environment variable reference
- */
-export function validateEnvVarRef(value: string): FieldValidationResult {
-    return validatePattern(value, VALIDATION_PATTERNS.ENV_VAR_REF, 'environment variable');
-}
-
-// COMPOSITE VALIDATORS
-
-/**
- * Validates a price value (non-negative integer for minor units)
- */
-export function validatePrice(value: number): FieldValidationResult {
-    if (!Number.isInteger(value)) {
-        return {
-            valid: false,
-            error: ERROR_MESSAGES.INVALID_INTEGER,
-            errorCode: LoaderErrorCode.INVALID_FIELD_TYPE,
-        };
-    }
-
-    return validateNumericRange(value, FIELD_LIMITS.PRICE_MIN, FIELD_LIMITS.PRICE_MAX);
-}
-
-/**
- * Validates a quantity value (non-negative integer)
- */
-export function validateQuantity(value: number): FieldValidationResult {
-    if (!Number.isInteger(value)) {
-        return {
-            valid: false,
-            error: ERROR_MESSAGES.INVALID_INTEGER,
-            errorCode: LoaderErrorCode.INVALID_FIELD_TYPE,
-        };
-    }
-
-    return validateNumericRange(value, FIELD_LIMITS.QUANTITY_MIN, FIELD_LIMITS.QUANTITY_MAX);
-}
-
-/**
- * Validates a percentage value (0-100)
- */
-export function validatePercentage(value: number): FieldValidationResult {
-    return validateNumericRange(value, FIELD_LIMITS.PERCENTAGE_MIN, FIELD_LIMITS.PERCENTAGE_MAX);
-}
-
-/**
- * Validates array length constraints
- */
-export function validateArrayLength(
-    value: unknown[],
-    maxLength: number,
-    minLength: number = 0,
-): FieldValidationResult {
-    if (!Array.isArray(value)) {
-        return {
-            valid: false,
-            error: ERROR_MESSAGES.INVALID_ARRAY,
-            errorCode: LoaderErrorCode.INVALID_FIELD_TYPE,
-        };
-    }
-
-    if (value.length < minLength) {
-        return {
-            valid: false,
-            error: ERROR_MESSAGES.TOO_SHORT(minLength),
-            errorCode: LoaderErrorCode.VALIDATION_FAILED,
-        };
-    }
-
-    if (value.length > maxLength) {
-        return {
-            valid: false,
-            error: ERROR_MESSAGES.TOO_LARGE(maxLength),
-            errorCode: LoaderErrorCode.VALIDATION_FAILED,
-        };
-    }
-
-    return { valid: true, value };
-}
-
-/**
- * Validates that a value is one of the allowed enum values
- */
-export function validateEnum(
-    value: string,
-    allowedValues: readonly string[],
-): FieldValidationResult {
-    if (!allowedValues.includes(value)) {
-        return {
-            valid: false,
-            error: ERROR_MESSAGES.NOT_IN_ENUM([...allowedValues]),
-            errorCode: LoaderErrorCode.VALIDATION_FAILED,
-        };
-    }
-
-    return { valid: true, value };
-}
-
 // GENERIC FIELD VALIDATOR
 
 /**
@@ -463,9 +254,9 @@ export function validateField(
 
     // Handle coercion
     if (coerce && typeof value === 'string') {
-        const numValue = parseFloat(value);
-        if (!isNaN(numValue)) {
-            return validateField(numValue, { ...options, coerce: false });
+        const parsedValue = parseFloat(value);
+        if (!isNaN(parsedValue)) {
+            return validateField(parsedValue, { ...options, coerce: false });
         }
     }
 

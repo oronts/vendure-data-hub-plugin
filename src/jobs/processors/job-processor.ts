@@ -4,7 +4,7 @@
  * Common utilities for job processing, error handling, and logging.
  */
 
-import { LOGGER_CONTEXTS, DEFAULTS, HTTP, TIME_UNITS } from '../../constants/index';
+import { LOGGER_CONTEXTS, HTTP, WEBHOOK, TIME_UNITS } from '../../constants/index';
 import { JobResult, JobContext } from '../types';
 import { sleep } from '../../runtime/utils';
 import { DataHubLogger } from '../../services/logger';
@@ -21,7 +21,7 @@ const logger = new DataHubLogger(LOGGER_CONTEXTS.JOB_PROCESSOR);
 export function createJobContext(
     jobId: string,
     attempt: number = 1,
-    maxAttempts: number = DEFAULTS.MAX_RETRIES,
+    maxAttempts: number = HTTP.MAX_RETRIES,
 ): JobContext {
     return {
         jobId,
@@ -119,10 +119,10 @@ export async function withRetry<T>(
     } = {},
 ): Promise<T> {
     const {
-        maxAttempts = DEFAULTS.MAX_RETRIES,
+        maxAttempts = HTTP.MAX_RETRIES,
         baseDelayMs = HTTP.RETRY_DELAY_MS,
         maxDelayMs = HTTP.RETRY_MAX_DELAY_MS,
-        backoffMultiplier = DEFAULTS.WEBHOOK_BACKOFF_MULTIPLIER,
+        backoffMultiplier = WEBHOOK.BACKOFF_MULTIPLIER,
         onRetry,
     } = options;
 
@@ -170,7 +170,7 @@ export function calculateBackoffDelay(
     attempt: number,
     baseDelayMs: number = HTTP.RETRY_DELAY_MS,
     maxDelayMs: number = HTTP.RETRY_MAX_DELAY_MS,
-    multiplier: number = DEFAULTS.WEBHOOK_BACKOFF_MULTIPLIER,
+    multiplier: number = WEBHOOK.BACKOFF_MULTIPLIER,
 ): number {
     const delay = baseDelayMs * Math.pow(multiplier, attempt - 1);
     return Math.min(delay, maxDelayMs);

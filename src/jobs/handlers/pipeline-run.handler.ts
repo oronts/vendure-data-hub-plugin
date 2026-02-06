@@ -1,14 +1,14 @@
 /**
  * Pipeline Run Job Handler
  *
- * Handles async pipeline run execution via Vendure's job queue system.
+ * Async pipeline run execution via Vendure's job queue system.
  * Includes retry logic configuration and proper error categorization.
  */
 
 import { Injectable, OnModuleInit, OnModuleDestroy, forwardRef, Inject } from '@nestjs/common';
 import { ID, JobQueue, JobQueueService, EventBus } from '@vendure/core';
 import { Subscription } from 'rxjs';
-import { QUEUE_NAMES, LOGGER_CONTEXTS, DEFAULTS } from '../../constants/index';
+import { QUEUE_NAMES, LOGGER_CONTEXTS, HTTP } from '../../constants/index';
 import { PipelineRunnerService } from '../../services/pipeline/pipeline-runner.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { PipelineRunJobData, JobOptions } from '../types';
@@ -20,9 +20,9 @@ import { isRetryableError } from '../processors/job-processor';
  */
 const PIPELINE_JOB_DEFAULTS = {
     /** Default number of retries for failed jobs */
-    RETRIES: DEFAULTS.MAX_RETRIES,
+    RETRIES: HTTP.MAX_RETRIES,
     /** Default backoff delay in milliseconds */
-    BACKOFF_DELAY_MS: DEFAULTS.RETRY_DELAY_MS,
+    BACKOFF_DELAY_MS: HTTP.RETRY_DELAY_MS,
 } as const;
 
 /**

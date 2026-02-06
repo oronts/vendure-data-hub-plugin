@@ -1,7 +1,7 @@
 /**
  * Step Configuration Validators
  *
- * Provides validation functions for pipeline step configurations.
+ * Validation functions for pipeline step configurations.
  * Validates step-specific settings, adapter configurations, and connections.
  */
 
@@ -169,8 +169,8 @@ export function validateTimezone(timezone: string | undefined): StepValidationRe
 }
 
 /**
- * Validates TRIGGER step configuration
- * Handles all trigger types defined in TriggerType enum:
+ * Validates TRIGGER step configuration.
+ * Supported trigger types:
  * - MANUAL: No additional configuration required
  * - SCHEDULE: Requires cron expression or intervalSec
  * - WEBHOOK: Validates webhook path and authentication

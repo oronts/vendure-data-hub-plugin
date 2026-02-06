@@ -11,7 +11,7 @@ import {
     DataSource,
 } from '../types';
 import { FileParserService } from '../../parsers';
-import { DEFAULTS } from '../../constants/index';
+import { HTTP } from '../../constants/index';
 import { buildAuthHeaders } from '../shared';
 
 /**
@@ -26,7 +26,7 @@ export class RemoteFileSource implements DataSource<RemoteFileSourceConfig> {
     async fetch(config: RemoteFileSourceConfig): Promise<SourceResult> {
         try {
             const headers = buildAuthHeaders(config.headers, config.auth, {});
-            const timeout = config.timeout ?? DEFAULTS.HTTP_TIMEOUT_MS;
+            const timeout = config.timeout ?? HTTP.TIMEOUT_MS;
 
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -158,7 +158,7 @@ export class RemoteFileSource implements DataSource<RemoteFileSourceConfig> {
      * Check if HTTP status code indicates retryable error
      */
     private isRetryableStatus(status: number): boolean {
-        return DEFAULTS.RETRYABLE_STATUS_CODES.includes(status);
+        return HTTP.RETRYABLE_STATUS_CODES.includes(status);
     }
 }
 

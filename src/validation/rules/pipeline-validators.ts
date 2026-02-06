@@ -1,7 +1,7 @@
 /**
  * Pipeline-Level Validators
  *
- * Provides validation functions for complete pipeline definitions.
+ * Validation functions for complete pipeline definitions.
  * Validates pipeline structure, graph topology, and cross-step dependencies.
  */
 
@@ -41,17 +41,17 @@ export function validatePipelineVersion(version: number | string): PipelineValid
     const errors: PipelineValidationError[] = [];
     const warnings: PipelineValidationWarning[] = [];
 
-    let numVersion = version;
+    let parsedVersion = version;
     if (typeof version === 'string') {
-        numVersion = parseInt(version, 10);
-        if (isNaN(numVersion)) {
+        parsedVersion = parseInt(version, 10);
+        if (isNaN(parsedVersion)) {
             errors.push(createError('version', 'Pipeline version must be a number', PipelineErrorCode.INVALID_DEFINITION));
             return { valid: false, errors, warnings };
         }
         warnings.push(createWarning('version', 'Version should be a number, not a string'));
     }
 
-    if (typeof numVersion !== 'number' || numVersion < 1) {
+    if (typeof parsedVersion !== 'number' || parsedVersion < 1) {
         errors.push(createError('version', 'Pipeline version must be a positive number', PipelineErrorCode.INVALID_DEFINITION));
     }
 
@@ -191,12 +191,13 @@ export function validateTopology(
         const indegCopy = new Map(indeg);
 
         while (queue.length > 0) {
-            const u = queue.shift()!;
-            visited.push(u);
-            for (const v of adj.get(u) ?? []) {
-                indegCopy.set(v, (indegCopy.get(v) ?? 0) - 1);
-                if ((indegCopy.get(v) ?? 0) === 0) {
-                    queue.push(v);
+            const node = queue.shift();
+            if (node === undefined) break;
+            visited.push(node);
+            for (const neighbor of adj.get(node) ?? []) {
+                indegCopy.set(neighbor, (indegCopy.get(neighbor) ?? 0) - 1);
+                if ((indegCopy.get(neighbor) ?? 0) === 0) {
+                    queue.push(neighbor);
                 }
             }
         }
@@ -217,11 +218,12 @@ export function validateTopology(
             const reachable = new Set<string>();
             const stack = [roots[0]];
             while (stack.length > 0) {
-                const u = stack.pop()!;
-                if (reachable.has(u)) continue;
-                reachable.add(u);
-                for (const v of adj.get(u) ?? []) {
-                    stack.push(v);
+                const node = stack.pop();
+                if (node === undefined) break;
+                if (reachable.has(node)) continue;
+                reachable.add(node);
+                for (const neighbor of adj.get(node) ?? []) {
+                    stack.push(neighbor);
                 }
             }
 
@@ -250,8 +252,11 @@ export function validateTopology(
             const bfsQueue: Array<{ key: string; depth: number }> = [{ key: roots[0], depth: 0 }];
 
             while (bfsQueue.length > 0) {
-                const { key, depth } = bfsQueue.shift()!;
-                if (depths.has(key) && depths.get(key)! >= depth) continue;
+                const item = bfsQueue.shift();
+                if (!item) break;
+                const { key, depth } = item;
+                const existingDepth = depths.get(key);
+                if (existingDepth !== undefined && existingDepth >= depth) continue;
                 depths.set(key, depth);
                 maxDepth = Math.max(maxDepth, depth);
                 for (const v of adj.get(key) ?? []) {
@@ -302,7 +307,7 @@ export function validateTopology(
 
 /**
  * Validates ROUTE step configurations for consistency at the pipeline level.
- * Delegates to validateRouteConfig from step-validators to avoid duplication.
+ * Calls validateRouteConfig for shared validation logic.
  */
 export function validateRouteSteps(steps: StepDefinition[]): PipelineValidationResult {
     const errors: PipelineValidationError[] = [];
@@ -384,7 +389,7 @@ export function validateHooks(hooks?: JsonObject): PipelineValidationResult {
 
     const validHookStages = Object.values(HookStage) as string[];
 
-    for (const [stage, config] of Object.entries(hooks)) {
+    for (const [stage, _config] of Object.entries(hooks)) {
         if (!validHookStages.includes(stage)) {
             warnings.push(createWarning(`hooks.${stage}`, `Unknown hook stage: ${stage}`));
         }
@@ -467,13 +472,3 @@ export function validatePipelineDefinition(definition: PipelineDefinitionInput):
     };
 }
 
-/**
- * Validates and throws if invalid (for convenience)
- */
-export function assertValidPipelineDefinition(definition: PipelineDefinitionInput): void {
-    const result = validatePipelineDefinition(definition);
-    if (!result.valid) {
-        const errorMessages = result.errors.map(e => e.message);
-        throw new Error(errorMessages.join('\n'));
-    }
-}

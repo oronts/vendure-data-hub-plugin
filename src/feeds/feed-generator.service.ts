@@ -2,7 +2,7 @@
  * Feed Generator Service
  *
  * NestJS service for managing and generating product feeds.
- * Delegates feed generation to specialized generators.
+ * Routes feed generation to specialized generators.
  */
 
 import { Injectable, OnModuleInit } from '@nestjs/common';

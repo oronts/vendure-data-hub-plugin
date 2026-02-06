@@ -187,11 +187,13 @@ export async function generateXMLFeed(
     });
 
     // Build feed structure
+    const itemElement = opts.itemElement ?? 'product';
+    const rootElement = opts.rootElement ?? 'feed';
     const feedContent: XMLFeedContent = {
         '@_generated': new Date().toISOString(),
         title: config.name,
         link: baseUrl,
-        [opts.itemElement!]: items,
+        [itemElement]: items,
     };
 
     // Add namespace if specified
@@ -208,7 +210,7 @@ export async function generateXMLFeed(
     }
 
     // Add root element with content
-    feed[opts.rootElement!] = feedContent;
+    feed[rootElement] = feedContent;
 
     return builder.build(feed);
 }

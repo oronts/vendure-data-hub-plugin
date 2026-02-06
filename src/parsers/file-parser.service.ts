@@ -2,7 +2,7 @@
  * DataHub File Parser Service
  *
  * Unified service for parsing various file formats (CSV, JSON, XML, Excel).
- * Delegates to format-specific parsers for actual parsing logic.
+ * Routes to CSV, JSON, XML, or Excel parsers based on format.
  */
 
 import { Injectable } from '@nestjs/common';
@@ -188,7 +188,8 @@ export class FileParserService {
 
         for (const record of records) {
             for (const field of fieldNames) {
-                const stats = fieldStats.get(field)!;
+                const stats = fieldStats.get(field);
+                if (!stats) continue;
                 const value = record[field];
 
                 if (value === null || value === undefined || value === '') {
@@ -209,7 +210,17 @@ export class FileParserService {
         }
 
         return fieldNames.map(field => {
-            const stats = fieldStats.get(field)!;
+            const stats = fieldStats.get(field);
+            if (!stats) {
+                return {
+                    key: field,
+                    label: this.humanizeFieldName(field),
+                    type: 'string' as FieldType,
+                    sampleValues: [],
+                    nullCount: 0,
+                    uniqueCount: 0,
+                };
+            }
             const types = Array.from(stats.types);
 
             let type: FieldType = 'string';

@@ -1,7 +1,7 @@
 /**
  * Cron Expression Processor
  *
- * Provides cron expression parsing and matching functionality.
+ * Cron expression parsing and matching functionality.
  * Supports:
  * - Standard 5-field cron format (minute hour day-of-month month day-of-week)
  * - Wildcards, step values, ranges, lists

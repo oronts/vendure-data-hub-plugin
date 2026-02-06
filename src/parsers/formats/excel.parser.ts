@@ -7,26 +7,8 @@
 
 import { ParseResult, ParseError, XlsxParseOptions } from '../types';
 import { FileFormat } from '../../constants/enums';
+import { extractFields } from '../helpers/field-extraction';
 
-/**
- * Extract unique fields from records
- *
- * @param records - Records to analyze
- * @returns Array of field names
- */
-function extractFields(records: Record<string, unknown>[]): string[] {
-    const fieldSet = new Set<string>();
-
-    for (const record of records) {
-        if (record && typeof record === 'object') {
-            for (const key of Object.keys(record)) {
-                fieldSet.add(key);
-            }
-        }
-    }
-
-    return Array.from(fieldSet);
-}
 
 /**
  * Parse Excel content (XLSX)
@@ -150,7 +132,8 @@ export async function getSheetNames(content: Buffer): Promise<string[]> {
         const workbook = XLSX.read(content, { type: 'buffer' });
         return workbook.SheetNames;
     } catch {
-        // Excel parsing failed - return empty array as fallback
+        // Excel parsing failed (corrupt file or unsupported format) - return empty array
+        // to allow graceful degradation in UI sheet selection
         return [];
     }
 }
@@ -183,7 +166,8 @@ export async function getSheetDimensions(
             range: sheet['!ref'],
         };
     } catch {
-        // Excel parsing failed - return null as fallback
+        // Excel parsing failed (corrupt file or unsupported format) - return null
+        // to indicate dimensions are unavailable for preview purposes
         return null;
     }
 }
@@ -260,12 +244,12 @@ export function parseCellRef(ref: string): { row: number; col: number } | null {
  */
 export function toCellRef(row: number, col: number): string {
     let colStr = '';
-    let c = col + 1;
+    let colIndex = col + 1;
 
-    while (c > 0) {
-        const mod = (c - 1) % 26;
+    while (colIndex > 0) {
+        const mod = (colIndex - 1) % 26;
         colStr = String.fromCharCode(65 + mod) + colStr;
-        c = Math.floor((c - 1) / 26);
+        colIndex = Math.floor((colIndex - 1) / 26);
     }
 
     return `${colStr}${row + 1}`;

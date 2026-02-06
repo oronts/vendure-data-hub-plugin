@@ -641,7 +641,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
 
     /**
      * Get scheduler health metrics
-     * Returns comprehensive status information for monitoring
+     * Returns status information for monitoring
      */
     getHealthMetrics(): {
         activeTimers: number;

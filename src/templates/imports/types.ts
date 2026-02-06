@@ -6,6 +6,7 @@
  */
 
 import { UnifiedPipelineDefinition } from '../../types/index';
+import type { JsonObject } from '../../../shared/types/json.types';
 
 export type { UnifiedPipelineDefinition } from '../../types/index';
 
@@ -38,7 +39,7 @@ export interface ImportTemplate {
     estimatedTime: string;
     requiredFields: string[];
     optionalFields: string[];
-    sampleData?: Record<string, any>[];
+    sampleData?: JsonObject[];
     definition: Partial<UnifiedPipelineDefinition>;
 }
 

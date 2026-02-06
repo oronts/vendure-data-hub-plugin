@@ -41,6 +41,7 @@ import {
     MessageConsumerService,
     StepTestService,
 } from './services';
+import { RateLimitServiceHolder } from './decorators';
 import { DATAHUB_PERMISSION_DEFINITIONS } from './permissions';
 import { DataHubRunQueueHandler, DataHubScheduleHandler } from './jobs';
 import { DataHubRegistryService } from './sdk/registry.service';
@@ -121,7 +122,7 @@ import {
 } from './runtime/executors/loaders';
 
 /**
- * Data Hub Plugin - A comprehensive ETL (Extract, Transform, Load) data integration plugin for Vendure.
+ * Data Hub Plugin - ETL (Extract, Transform, Load) data integration plugin for Vendure.
  *
  * Build data pipelines to import products, sync inventory, generate product feeds,
  * index to search engines, and integrate with external systems.
@@ -227,6 +228,7 @@ import {
         ExecutionLogger,
         // Rate Limiting Service
         RateLimitService,
+        RateLimitServiceHolder,
         // Extractor Services
         ExtractorRegistryService,
         HttpApiExtractor,
@@ -236,7 +238,7 @@ import {
         FtpExtractor,
         S3Extractor,
         DatabaseExtractor,
-        // Comprehensive DataHub services
+        // DataHub services
         FileStorageService,
         WebhookRetryService,
         ExportDestinationService,
@@ -337,7 +339,7 @@ export class DataHubPlugin {
      * ```
      *
      * @param options - Plugin configuration options
-     * @returns The configured DataHubPlugin class
+     * @returns Configured DataHubPlugin class
      */
     static init(options: DataHubPluginOptions = { enabled: true }): Type<DataHubPlugin> {
         this.options = options;

@@ -11,7 +11,7 @@ import {
     DataSource,
     PaginationConfig,
 } from '../types';
-import { DEFAULTS, RestPaginationStrategy } from '../../constants/index';
+import { PAGINATION, HTTP, RestPaginationStrategy } from '../../constants/index';
 import { navigatePath } from '../../parsers/formats/json.parser';
 import { buildAuthHeaders } from '../shared';
 
@@ -30,8 +30,8 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
         let cursor: string | undefined;
         let offset = 0;
 
-        const maxPages = config.pagination?.maxPages ?? DEFAULTS.MAX_PAGES;
-        const pageSize = config.pagination?.pageSize ?? DEFAULTS.PAGE_SIZE;
+        const maxPages = config.pagination?.maxPages ?? PAGINATION.MAX_PAGES;
+        const pageSize = config.pagination?.pageSize ?? PAGINATION.PAGE_SIZE;
 
         while (hasMore && pageCount < maxPages) {
             try {
@@ -60,6 +60,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
                     config.pagination,
                     records.length,
                     pageSize,
+                    pageCount,
                 );
 
                 hasMore = paginationResult.hasMore;
@@ -185,7 +186,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
      */
     private async makeRequest(url: string, config: RestApiSourceConfig): Promise<Response> {
         const headers = buildAuthHeaders(config.headers, config.auth);
-        const timeout = config.timeout ?? DEFAULTS.HTTP_TIMEOUT_MS;
+        const timeout = config.timeout ?? HTTP.TIMEOUT_MS;
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -230,6 +231,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
         config?: PaginationConfig,
         recordCount?: number,
         pageSize?: number,
+        pageCount?: number,
     ): { hasMore: boolean; cursor?: string; offset?: number } {
         if (!config) {
             return { hasMore: false };
@@ -244,7 +246,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
                     return { hasMore: currentOffset < total };
                 }
                 // Assume no more if we got fewer records than page size
-                return { hasMore: (recordCount ?? 0) >= (pageSize ?? DEFAULTS.PAGE_SIZE) };
+                return { hasMore: (recordCount ?? 0) >= (pageSize ?? PAGINATION.PAGE_SIZE) };
             }
 
             case RestPaginationStrategy.CURSOR: {
@@ -259,11 +261,12 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
 
             case RestPaginationStrategy.PAGE: {
                 const totalPagesPath = config.page?.totalPagesPath;
-                if (totalPagesPath) {
+                if (totalPagesPath && pageCount !== undefined) {
                     const totalPages = navigatePath(data, totalPagesPath) as number;
-                    return { hasMore: false };
+                    // pageCount is 0-indexed, so we compare (pageCount + 1) < totalPages
+                    return { hasMore: pageCount + 1 < totalPages };
                 }
-                return { hasMore: (recordCount ?? 0) >= (pageSize ?? DEFAULTS.PAGE_SIZE) };
+                return { hasMore: (recordCount ?? 0) >= (pageSize ?? PAGINATION.PAGE_SIZE) };
             }
 
             case RestPaginationStrategy.LINK: {
@@ -284,7 +287,7 @@ export class RestApiSource implements DataSource<RestApiSourceConfig> {
      * Check if HTTP status is retryable
      */
     private isRetryableStatus(status: number): boolean {
-        return DEFAULTS.RETRYABLE_STATUS_CODES.includes(status);
+        return HTTP.RETRYABLE_STATUS_CODES.includes(status);
     }
 }
 
