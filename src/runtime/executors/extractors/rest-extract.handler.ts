@@ -18,7 +18,8 @@ import { RecordObject, ExecutorContext } from '../../executor-types';
 import { SecretService } from '../../../services/config/secret.service';
 import { ConnectionService } from '../../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { getPath, sleep } from '../../utils';
+import { getPath } from '../../utils';
+import { sleep, calculateBackoff, RetryConfig as SharedRetryConfig } from '../../../utils/retry.utils';
 import { PAGINATION, RATE_LIMIT, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
 import { ConnectionAuthType } from '../../../sdk/types/connection-types';
 import {
@@ -71,12 +72,28 @@ interface RawHttpConnectionConfig {
     auth?: Record<string, unknown>;
 }
 
-interface RetryConfig {
+/**
+ * Local retry config extending shared config with timeout
+ */
+interface ExtractRetryConfig {
     retries: number;
     retryDelay: number;
     maxRetryDelay: number;
     backoffMultiplier: number;
     timeoutMs: number;
+}
+
+/**
+ * Convert local config to shared RetryConfig format
+ */
+function toSharedRetryConfig(config: ExtractRetryConfig): SharedRetryConfig {
+    return {
+        maxAttempts: config.retries + 1,
+        initialDelayMs: config.retryDelay,
+        maxDelayMs: config.maxRetryDelay,
+        backoffMultiplier: config.backoffMultiplier,
+        jitterFactor: 0.1,
+    };
 }
 
 @Injectable()
@@ -177,7 +194,7 @@ export class RestExtractHandler implements ExtractHandler {
         return merged;
     }
 
-    private buildRetryConfig(cfg: RestExtractConfig, errorHandling?: ErrorHandlingConfig): RetryConfig {
+    private buildRetryConfig(cfg: RestExtractConfig, errorHandling?: ErrorHandlingConfig): ExtractRetryConfig {
         return {
             retries: Math.max(0, Number(cfg.retries ?? errorHandling?.maxRetries ?? 0)),
             retryDelay: Math.max(0, Number(cfg.retryDelayMs ?? errorHandling?.retryDelayMs ?? 0)),
@@ -197,7 +214,7 @@ export class RestExtractHandler implements ExtractHandler {
         endpoint: string;
         method: string;
         baseHeaders: Record<string, string>;
-        retryConfig: RetryConfig;
+        retryConfig: ExtractRetryConfig;
     }): Promise<RecordObject[]> {
         const { ctx, step, executorCtx, onRecordError, cfg, connectionConfig, endpoint, method, baseHeaders, retryConfig } = params;
 
@@ -284,7 +301,7 @@ export class RestExtractHandler implements ExtractHandler {
         url: string;
         method: string;
         baseHeaders: Record<string, string>;
-        retryConfig: RetryConfig;
+        retryConfig: ExtractRetryConfig;
         adaptiveDelay: number;
         fetchImpl: typeof fetch;
     }): Promise<{ success: boolean; data?: JsonValue; status?: number; adaptiveDelay: number }> {
@@ -359,11 +376,9 @@ export class RestExtractHandler implements ExtractHandler {
         }
     }
 
-    private async waitBeforeRetry(attempt: number, retryConfig: RetryConfig, adaptiveDelay: number): Promise<void> {
-        const expDelay = Math.min(
-            retryConfig.retryDelay * Math.pow(retryConfig.backoffMultiplier, attempt),
-            retryConfig.maxRetryDelay,
-        );
+    private async waitBeforeRetry(attempt: number, retryConfig: ExtractRetryConfig, adaptiveDelay: number): Promise<void> {
+        const sharedConfig = toSharedRetryConfig(retryConfig);
+        const expDelay = calculateBackoff(attempt + 1, sharedConfig);
         await sleep(Math.max(expDelay, adaptiveDelay));
     }
 
