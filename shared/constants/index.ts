@@ -92,3 +92,16 @@ export const RETENTION = {
     /** Minimum retention days */
     MIN_DAYS: 1,
 } as const;
+
+/**
+ * UI-related timeouts
+ * Used by both dashboard and backend for consistent UI behavior
+ */
+export const UI_TIMEOUTS = {
+    /** Feedback duration for copy actions */
+    COPY_FEEDBACK_MS: 2000,
+    /** Debounce delay for search inputs */
+    SEARCH_DEBOUNCE_MS: 300,
+    /** Toast notification duration */
+    TOAST_DURATION_MS: 5000,
+} as const;

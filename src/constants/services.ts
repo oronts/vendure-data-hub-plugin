@@ -1,8 +1,8 @@
-export const SEARCH_SERVICE_PORTS = {
-    MEILISEARCH: 7700,
-    ELASTICSEARCH: 9200,
-    TYPESENSE: 8108,
-} as const;
+/**
+ * Search service ports - imported from shared constants
+ */
+import { SEARCH_SERVICE_PORTS } from '../../shared/constants';
+export { SEARCH_SERVICE_PORTS };
 
 /**
  * Environment variable names for search service URLs

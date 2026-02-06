@@ -16,19 +16,8 @@ export {
     HTTP,
     BATCH,
     RETENTION,
+    UI_TIMEOUTS,
 } from '../../shared/constants';
-
-/**
- * UI-related timeouts (dashboard-specific)
- */
-export const UI_TIMEOUTS = {
-    /** Feedback duration for copy actions */
-    COPY_FEEDBACK_MS: 2000,
-    /** Debounce delay for search inputs */
-    SEARCH_DEBOUNCE_MS: 300,
-    /** Toast notification duration */
-    TOAST_DURATION_MS: 5000,
-} as const;
 
 /**
  * Match confidence type and conversion function - re-exported from src/constants
