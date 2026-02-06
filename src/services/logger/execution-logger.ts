@@ -12,6 +12,7 @@ import { PipelineLogService } from '../pipeline/pipeline-log.service';
 import { DataHubSettingsService } from '../config/settings.service';
 import { DataHubLogger, DataHubLoggerFactory } from './datahub-logger';
 import { sanitizeRecord, sanitizeForLog } from './sanitizer';
+import type { JsonObject, JsonValue } from '../../types/index';
 
 /** Log event types for categorization */
 export type LogEventType =
@@ -27,8 +28,6 @@ export type LogEventType =
     | 'load.target'
     | 'debug';
 
-// LogEventOptions uses 'any' for context/metadata to allow flexible logging data
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 /** Options for logging an event */
 export interface LogEventOptions {
     pipelineId?: ID;
@@ -39,8 +38,8 @@ export interface LogEventOptions {
     recordsFailed?: number;
     recordsIn?: number;
     recordsOut?: number;
-    context?: Record<string, any>;
-    metadata?: Record<string, any>;
+    context?: JsonObject;
+    metadata?: JsonObject;
 }
 
 /** Source/target mapping info for debugging */
@@ -48,8 +47,8 @@ export interface FieldMappingInfo {
     sourceField: string;
     targetField: string;
     transformType?: string;
-    sampleSourceValue?: unknown;
-    sampleTargetValue?: unknown;
+    sampleSourceValue?: JsonValue;
+    sampleTargetValue?: JsonValue;
 }
 
 /** Step execution info for detailed logging */
@@ -62,7 +61,7 @@ export interface StepExecutionInfo {
     succeeded: number;
     failed: number;
     durationMs: number;
-    sampleRecord?: Record<string, unknown>;
+    sampleRecord?: JsonObject;
     fieldMappings?: FieldMappingInfo[];
 }
 
@@ -101,7 +100,7 @@ export class ExecutionLogger {
     private readonly consoleLogger: DataHubLogger;
     private cachedLevel: LogPersistenceLevel | null = null;
     private cacheTime = 0;
-    private readonly CACHE_TTL_MS = CACHE.SETTINGS_TTL_MS;
+    private readonly cacheTtlMs = CACHE.SETTINGS_TTL_MS;
 
     constructor(
         private pipelineLogService: PipelineLogService,
@@ -116,7 +115,7 @@ export class ExecutionLogger {
      */
     private async getPersistenceLevel(): Promise<LogPersistenceLevel> {
         const now = Date.now();
-        if (this.cachedLevel && now - this.cacheTime < this.CACHE_TTL_MS) {
+        if (this.cachedLevel && now - this.cacheTime < this.cacheTtlMs) {
             return this.cachedLevel;
         }
         this.cachedLevel = await this.settingsService.getLogPersistenceLevel();
@@ -216,7 +215,7 @@ export class ExecutionLogger {
                 runId: options.runId,
                 durationMs: options.durationMs,
                 context: { pipelineCode, error: error.message, ...options.context },
-                metadata: { stack: error.stack, ...options.metadata },
+                metadata: { stack: error.stack ?? null, ...options.metadata },
             });
         }
     }
@@ -313,7 +312,7 @@ export class ExecutionLogger {
                 stepKey,
                 durationMs: options.durationMs,
                 context: { stepType, error: error.message, ...options.context },
-                metadata: { stack: error.stack, ...options.metadata },
+                metadata: { stack: error.stack ?? null, ...options.metadata },
             });
         }
     }
@@ -345,7 +344,7 @@ export class ExecutionLogger {
                 runId: options.runId,
                 stepKey,
                 context: { error: errorMessage, ...options.context },
-                metadata: sanitizeRecord(payload),
+                metadata: sanitizeRecord(payload) as JsonObject,
             });
         }
     }
@@ -368,8 +367,8 @@ export class ExecutionLogger {
                 pipelineId: options.pipelineId,
                 runId: options.runId,
                 stepKey: options.stepKey,
-                context: options.context ? sanitizeForLog(options.context) as Record<string, any> : undefined,
-                metadata: options.metadata ? sanitizeForLog(options.metadata) as Record<string, any> : undefined,
+                context: options.context ? sanitizeForLog(options.context) as JsonObject : undefined,
+                metadata: options.metadata ? sanitizeForLog(options.metadata) as JsonObject : undefined,
             });
         }
     }
@@ -411,14 +410,14 @@ export class ExecutionLogger {
                 recordsFailed: info.failed,
                 context: {
                     stepType: info.stepType,
-                    adapterCode: info.adapterCode,
+                    adapterCode: info.adapterCode ?? null,
                     recordsOut: info.recordsOut,
                     succeeded: info.succeeded,
                     throughput,
                 },
                 metadata: level === LogPersistenceLevel.DEBUG ? {
-                    sampleRecord: info.sampleRecord ? this.truncateSample(info.sampleRecord) : undefined,
-                    fieldMappings: info.fieldMappings,
+                    sampleRecord: info.sampleRecord ? this.truncateSample(info.sampleRecord) : null,
+                    fieldMappings: info.fieldMappings as unknown as JsonValue ?? null,
                 } : undefined,
             });
         }
@@ -462,7 +461,7 @@ export class ExecutionLogger {
                 },
                 metadata: {
                     fields: fieldNames,
-                    sampleRecords,
+                    sampleRecords: sampleRecords as JsonValue,
                 },
             });
         }
@@ -506,7 +505,7 @@ export class ExecutionLogger {
                 },
                 metadata: {
                     fields: fieldNames,
-                    sampleRecords,
+                    sampleRecords: sampleRecords as JsonValue,
                 },
             });
         }
@@ -579,7 +578,7 @@ export class ExecutionLogger {
                 metadata: {
                     inputFields,
                     outputFields,
-                    mappings: mappings.slice(0, 50), // Limit to 50 mappings
+                    mappings: mappings.slice(0, 50) as unknown as JsonValue, // Limit to 50 mappings
                 },
             });
         }
@@ -627,11 +626,11 @@ export class ExecutionLogger {
      * Truncate and sanitize a sample record for safe logging.
      * Removes sensitive fields and masks PII (emails, phone numbers).
      */
-    private truncateSample(record: Record<string, unknown>): Record<string, unknown> {
+    private truncateSample(record: Record<string, unknown>): JsonObject {
         // First sanitize to remove/mask sensitive data
         const sanitized = sanitizeRecord(record);
         // Then truncate long values
-        const result: Record<string, unknown> = {};
+        const result: JsonObject = {};
         for (const [key, value] of Object.entries(sanitized)) {
             result[key] = this.truncateValue(value);
         }
@@ -641,12 +640,16 @@ export class ExecutionLogger {
     /**
      * Truncate a value for safe logging
      */
-    private truncateValue(value: unknown): unknown {
-        if (value === null || value === undefined) return value;
+    private truncateValue(value: unknown): JsonValue {
+        if (value === null) return null;
+        if (value === undefined) return null;
         if (typeof value === 'string') {
             return value.length > TRUNCATION.MAX_FIELD_VALUE_LENGTH
                 ? value.substring(0, TRUNCATION.MAX_FIELD_VALUE_LENGTH) + '...'
                 : value;
+        }
+        if (typeof value === 'number' || typeof value === 'boolean') {
+            return value;
         }
         if (typeof value === 'object') {
             try {
@@ -654,13 +657,13 @@ export class ExecutionLogger {
                 if (str.length > TRUNCATION.MAX_FIELD_VALUE_LENGTH) {
                     return str.substring(0, TRUNCATION.MAX_FIELD_VALUE_LENGTH) + '...';
                 }
-                return value;
+                return value as JsonValue;
             } catch {
                 // JSON stringify failed (circular reference etc.) - return placeholder
                 return '[Object]';
             }
         }
-        return value;
+        return String(value);
     }
 
     /**

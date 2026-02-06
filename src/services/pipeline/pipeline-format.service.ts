@@ -1,9 +1,8 @@
 /**
  * Pipeline Format Service
  *
- * Handles conversion between canonical (step-based) and visual (nodes/edges) pipeline formats.
- * This service centralizes format conversion logic in the backend to ensure consistency
- * and remove business logic from the frontend.
+ * Converts between canonical (step-based) and visual (nodes/edges) pipeline formats.
+ * Centralizes format conversion logic in the backend for consistency.
  */
 
 import { Injectable } from '@nestjs/common';
@@ -73,14 +72,14 @@ export class PipelineFormatService {
     /**
      * Default node spacing for visual layout
      */
-    private readonly DEFAULT_NODE_SPACING_X = 240;
-    private readonly DEFAULT_NODE_SPACING_Y = 120;
-    private readonly DEFAULT_START_X = 120;
-    private readonly DEFAULT_START_Y = 120;
+    private readonly defaultNodeSpacingX = 240;
+    private readonly defaultNodeSpacingY = 120;
+    private readonly defaultStartX = 120;
+    private readonly defaultStartY = 120;
 
     /**
      * Lookup map from StepType to visual node category
-     * Provides extensibility - add new step types here without modifying control flow
+     * Extensibility point - add new step types here without modifying control flow
      * Note: StepType enum values are uppercase strings, so we only need one entry per type
      * Each StepType maps to its own category for lossless round-trip conversion
      */
@@ -99,7 +98,7 @@ export class PipelineFormatService {
 
     /**
      * Lookup map from visual node category to StepType
-     * Provides extensibility - add new categories here without modifying control flow
+     * Extensibility point - add new categories here without modifying control flow
      * Bidirectional mapping for lossless round-trip conversion
      */
     private static readonly CATEGORY_TO_STEP_TYPE: Record<string, StepType> = {
@@ -222,8 +221,8 @@ export class PipelineFormatService {
                 id,
                 type: nodeType,
                 position: {
-                    x: this.DEFAULT_START_X + index * this.DEFAULT_NODE_SPACING_X,
-                    y: this.DEFAULT_START_Y,
+                    x: this.defaultStartX + index * this.defaultNodeSpacingX,
+                    y: this.defaultStartY,
                 },
                 data: {
                     label,
