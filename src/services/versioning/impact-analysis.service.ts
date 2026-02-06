@@ -31,7 +31,7 @@ import {
     ImpactFieldChangeType,
     SandboxLoadResultType,
 } from '../../constants/enums';
-import { getAdapterCode } from '../../utils/step-utils';
+import { getAdapterCode } from '../../types/step-configs';
 
 interface EntityBreakdownCollector {
     [entityType: string]: {
@@ -283,7 +283,7 @@ export class ImpactAnalysisService {
         const entityTypes = new Set<string>();
 
         for (const step of loadSteps) {
-            const adapterCode = getAdapterCode(step) ?? 'unknown';
+            const adapterCode = getAdapterCode(step) || 'unknown';
             const entityType = this.inferEntityType(adapterCode);
             entityTypes.add(entityType);
         }
@@ -338,18 +338,19 @@ export class ImpactAnalysisService {
         for (const sample of sampleRecords) {
             const recordId = this.extractRecordId(sample.after) || `sample-${flows.size}`;
 
-            if (!flows.has(recordId)) {
-                flows.set(recordId, {
+            let flow = flows.get(recordId);
+            if (!flow) {
+                flow = {
                     recordId,
                     sourceData: sample.before,
                     steps: [],
                     finalData: null,
                     outcome: FlowOutcome.SUCCESS,
-                });
+                };
+                flows.set(recordId, flow);
             }
 
-            const flow = flows.get(recordId)!;
-            const step = this.findStepByKey(definition, sample.step);
+            const step = this.findStep(definition, sample.step);
 
             flow.steps.push({
                 stepKey: sample.step,
@@ -439,8 +440,8 @@ export class ImpactAnalysisService {
         const durations = recentRuns
             .filter(r => r.metrics?.durationMs != null && r.metrics?.processed != null)
             .map(r => {
-                const durationMs = r.metrics!.durationMs ?? 0;
-                const processed = r.metrics!.processed ?? 1;
+                const durationMs = r.metrics?.durationMs ?? 0;
+                const processed = r.metrics?.processed ?? 1;
                 return {
                     durationMs,
                     processed,
@@ -565,17 +566,18 @@ export class ImpactAnalysisService {
         before: unknown,
         after: unknown,
     ): void {
-        if (!map.has(field)) {
-            map.set(field, {
+        let change = map.get(field);
+        if (!change) {
+            change = {
                 field,
                 changeType,
                 affectedCount: 0,
                 sampleBefore: [],
                 sampleAfter: [],
-            });
+            };
+            map.set(field, change);
         }
 
-        const change = map.get(field)!;
         change.affectedCount++;
         if (change.sampleBefore.length < IMPACT_ANALYSIS.MAX_SAMPLE_FIELD_VALUES) {
             change.sampleBefore.push(before);
@@ -589,8 +591,8 @@ export class ImpactAnalysisService {
     ): void {
         const changes = this.detectFieldChanges([{ step: '', ...sample }]);
         for (const change of changes) {
-            if (fieldChanges.has(change.field)) {
-                const existing = fieldChanges.get(change.field)!;
+            const existing = fieldChanges.get(change.field);
+            if (existing) {
                 existing.affectedCount += change.affectedCount;
             } else {
                 fieldChanges.set(change.field, change);
@@ -669,9 +671,5 @@ export class ImpactAnalysisService {
 
     private findStep(definition: PipelineDefinition, stepKey: string): PipelineDefinition['steps'][number] | null {
         return (definition.steps || []).find(s => s.key === stepKey) || null;
-    }
-
-    private findStepByKey(definition: PipelineDefinition, stepKey: string): PipelineDefinition['steps'][number] | null {
-        return this.findStep(definition, stepKey);
     }
 }

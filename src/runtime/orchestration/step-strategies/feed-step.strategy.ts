@@ -1,7 +1,7 @@
 /**
  * Feed Step Strategy
  *
- * Handles FEED step execution in linear pipelines.
+ * FEED step execution in linear pipelines.
  */
 
 import { FeedExecutor } from '../../executors';
@@ -11,14 +11,14 @@ import {
     StepStrategyResult,
     createStepDetail,
 } from './step-strategy.interface';
-import { getAdapterCode } from '../../../utils/step-utils';
+import { getAdapterCode } from '../../../types/step-configs';
 
 export class FeedStepStrategy implements StepStrategy {
     constructor(private readonly feedExecutor: FeedExecutor) {}
 
     async execute(context: StepExecutionContext): Promise<StepStrategyResult> {
         const { step, records } = context;
-        const adapterCode = getAdapterCode(step) ?? '';
+        const adapterCode = getAdapterCode(step);
         const recordsIn = records.length;
         const t0 = Date.now();
 

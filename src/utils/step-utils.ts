@@ -8,24 +8,10 @@ function isConfigObject(config: unknown): config is Record<string, unknown> {
 }
 
 /**
- * Safely extract adapter code from a step configuration
- *
- * @param step - Pipeline step definition
- * @returns The adapter code if present and valid, undefined otherwise
- */
-export function getAdapterCode(step: PipelineStepDefinition): string | undefined {
-    if (!step || !isConfigObject(step.config)) {
-        return undefined;
-    }
-    const { adapterCode } = step.config;
-    return typeof adapterCode === 'string' ? adapterCode : undefined;
-}
-
-/**
  * Safely extract strategy from a step configuration
  *
  * @param step - Pipeline step definition
- * @returns The strategy if present and valid, undefined otherwise
+ * @returns Strategy if present and valid, undefined otherwise
  */
 export function getStepStrategy(step: PipelineStepDefinition): string | undefined {
     if (!step || !isConfigObject(step.config)) {

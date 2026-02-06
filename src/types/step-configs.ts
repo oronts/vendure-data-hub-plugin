@@ -5,11 +5,10 @@
  * unsafe `(step.config as any)` patterns throughout the codebase.
  */
 
-import type { JsonObject, JsonValue } from '../../shared/types';
+import type { JsonValue } from '../../shared/types';
 import type { PipelineStepDefinition } from '../../shared/types';
 import type {
     TypedExtractorConfig,
-    TypedOperatorConfig,
     TypedLoaderConfig,
     TypedExporterConfig,
     TypedFeedConfig,
@@ -106,15 +105,15 @@ export function isTransformStepConfig(config: unknown): config is TransformStepC
     }
     // Transform configs may or may not have adapterCode
     // They should have at least one transform-related property
-    const c = config as Record<string, unknown>;
+    const cfg = config as Record<string, unknown>;
     return (
-        'adapterCode' in c ||
-        'operators' in c ||
-        'branches' in c ||
-        'mapping' in c ||
-        'templates' in c ||
-        'expression' in c ||
-        'condition' in c
+        'adapterCode' in cfg ||
+        'operators' in cfg ||
+        'branches' in cfg ||
+        'mapping' in cfg ||
+        'templates' in cfg ||
+        'expression' in cfg ||
+        'condition' in cfg
     );
 }
 
@@ -136,8 +135,8 @@ export function isValidateStepConfig(config: unknown): config is ValidateStepCon
     if (typeof config !== 'object' || config === null) {
         return false;
     }
-    const c = config as Record<string, unknown>;
-    return 'schemaCode' in c || 'adapterCode' in c;
+    const cfg = config as Record<string, unknown>;
+    return 'schemaCode' in cfg || 'adapterCode' in cfg;
 }
 
 // ============================================================================
@@ -166,12 +165,12 @@ export function isEnrichStepConfig(config: unknown): config is EnrichStepConfig 
     if (typeof config !== 'object' || config === null) {
         return false;
     }
-    const c = config as Record<string, unknown>;
+    const cfg = config as Record<string, unknown>;
     return (
-        'adapterCode' in c ||
-        'defaults' in c ||
-        'computed' in c ||
-        'sourceType' in c
+        'adapterCode' in cfg ||
+        'defaults' in cfg ||
+        'computed' in cfg ||
+        'sourceType' in cfg
     );
 }
 
@@ -194,8 +193,8 @@ export function isRouteStepConfig(config: unknown): config is RouteStepConfigDef
     if (typeof config !== 'object' || config === null) {
         return false;
     }
-    const c = config as Record<string, unknown>;
-    return 'branches' in c && Array.isArray(c.branches);
+    const cfg = config as Record<string, unknown>;
+    return 'branches' in cfg && Array.isArray(cfg.branches);
 }
 
 // ============================================================================
@@ -299,7 +298,7 @@ export type StepConfig =
  *
  * @param step - The pipeline step definition
  * @param guard - Type guard function for the expected config type
- * @returns The typed config or undefined if validation fails
+ * @returns Typed config or undefined if validation fails
  *
  * @example
  * const config = getStepConfig(step, isExtractStepConfig);
@@ -321,7 +320,7 @@ export function getStepConfig<T>(
  * Get the adapter code from a step configuration safely
  *
  * @param step - The pipeline step definition
- * @returns The adapter code string or empty string if not found
+ * @returns Adapter code string or empty string if not found
  */
 export function getAdapterCode(step: PipelineStepDefinition): string {
     if (hasAdapterCode(step.config)) {
@@ -336,7 +335,7 @@ export function getAdapterCode(step: PipelineStepDefinition): string {
  * @param step - The pipeline step definition
  * @param guard - Type guard function for the expected config type
  * @param stepType - Step type name for error message
- * @returns The typed config
+ * @returns Typed config
  * @throws Error if config doesn't match expected type
  */
 export function assertStepConfig<T>(

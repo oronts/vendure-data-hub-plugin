@@ -1,7 +1,8 @@
 import { RequestContext } from '@vendure/core';
 import { PipelineStepDefinition } from '../../../types/index';
 import { VendureEntityType, SandboxLoadResultType } from '../../../constants/enums';
-import { getAdapterCode, getStepStrategy } from '../../../utils/step-utils';
+import { getAdapterCode } from '../../../types/step-configs';
+import { getStepStrategy } from '../../../utils/step-utils';
 import { FieldDiff, LoadOperationPreview, LoadOperationDetail, SandboxOptions } from '../sandbox.service';
 
 /**
@@ -17,7 +18,7 @@ export class LoadOperationSimulator {
         records: Record<string, unknown>[],
         opts: Required<SandboxOptions>,
     ): Promise<LoadOperationPreview> {
-        const adapterCode = getAdapterCode(step) ?? 'unknown';
+        const adapterCode = getAdapterCode(step) || 'unknown';
         const entityType = this.inferEntityType(adapterCode);
         const preview = this.createEmptyPreview(entityType, adapterCode);
 
