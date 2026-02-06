@@ -1,21 +1,18 @@
 import * as React from 'react';
-import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
+import { Label } from '@vendure/dashboard';
+import type { AdapterSchemaField, SchemaFieldType, SchemaFormRendererProps } from '../../../types';
 import {
-    Input,
-    Label,
-    Switch,
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-    Textarea,
-    Button,
-} from '@vendure/dashboard';
-import { Upload, CheckCircle2, X, RefreshCw } from 'lucide-react';
-import type { AdapterSchema, AdapterSchemaField, SchemaFieldType, SchemaFormRendererProps } from '../../../types';
-import { DEBOUNCE_DELAYS, DATAHUB_API_UPLOAD, DATAHUB_API_FILE_PREVIEW } from '../../../constants';
-import { formatFileSize } from '../../../utils';
+    StringField,
+    NumberField,
+    BooleanField,
+    SelectField,
+    ReferenceField,
+    JsonField,
+    TextareaField,
+    FileUploadField,
+    FieldWrapper,
+} from './fields';
 
 function evaluateDependency(
     dependsOn: AdapterSchemaField['dependsOn'] | undefined,
@@ -45,488 +42,6 @@ function normalizeFieldType(type: SchemaFieldType): string {
     return type.toLowerCase();
 }
 
-interface FieldWrapperProps {
-    field: AdapterSchemaField;
-    compact?: boolean;
-    error?: string;
-    children: React.ReactNode;
-}
-
-function FieldWrapper({ field, compact, error, children }: FieldWrapperProps) {
-    return (
-        <div className={compact ? 'space-y-1' : 'space-y-2'}>
-            <div className="flex items-center gap-1">
-                <Label htmlFor={field.key} className={compact ? 'text-xs font-medium' : 'text-sm font-medium'}>
-                    {field.label || field.key}
-                    {field.required && <span className="text-destructive ml-0.5">*</span>}
-                </Label>
-            </div>
-            {children}
-            {field.description && !compact && (
-                <p className="text-xs text-muted-foreground">{field.description}</p>
-            )}
-            {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
-    );
-}
-
-interface StringFieldProps {
-    field: AdapterSchemaField;
-    value: string;
-    onChange: (value: string) => void;
-    compact?: boolean;
-    disabled?: boolean;
-}
-
-function StringField({ field, value, onChange, compact, disabled }: StringFieldProps) {
-    const fieldType = normalizeFieldType(field.type);
-    const inputType = fieldType === 'password' ? 'password' :
-                      fieldType === 'email' ? 'email' :
-                      fieldType === 'url' ? 'url' : 'text';
-
-    const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        onChange(e.target.value);
-    }, [onChange]);
-
-    return (
-        <Input
-            id={field.key}
-            type={inputType}
-            value={value ?? field.default ?? ''}
-            onChange={handleChange}
-            placeholder={field.placeholder}
-            disabled={disabled}
-            className={compact ? 'h-8 text-sm' : ''}
-        />
-    );
-}
-
-interface NumberFieldProps {
-    field: AdapterSchemaField;
-    value: number | undefined;
-    onChange: (value: number | undefined) => void;
-    compact?: boolean;
-    disabled?: boolean;
-}
-
-function NumberField({ field, value, onChange, compact, disabled }: NumberFieldProps) {
-    const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = e.target.value;
-        onChange(val === '' ? undefined : Number(val));
-    }, [onChange]);
-
-    return (
-        <Input
-            id={field.key}
-            type="number"
-            value={value ?? field.default ?? ''}
-            onChange={handleChange}
-            placeholder={field.placeholder}
-            disabled={disabled}
-            min={field.validation?.min}
-            max={field.validation?.max}
-            className={compact ? 'h-8 text-sm' : ''}
-        />
-    );
-}
-
-interface BooleanFieldProps {
-    field: AdapterSchemaField;
-    value: boolean;
-    onChange: (value: boolean) => void;
-    disabled?: boolean;
-}
-
-function BooleanField({ field, value, onChange, disabled }: BooleanFieldProps) {
-    return (
-        <div className="flex items-center gap-2">
-            <Switch
-                id={field.key}
-                checked={value ?? (field.default as boolean) ?? false}
-                onCheckedChange={onChange}
-                disabled={disabled}
-            />
-            {field.description && (
-                <span className="text-xs text-muted-foreground">{field.description}</span>
-            )}
-        </div>
-    );
-}
-
-interface SelectFieldProps {
-    field: AdapterSchemaField;
-    value: string;
-    onChange: (value: string) => void;
-    compact?: boolean;
-    disabled?: boolean;
-}
-
-function SelectField({ field, value, onChange, compact, disabled }: SelectFieldProps) {
-    return (
-        <Select value={value ?? (field.default as string) ?? ''} onValueChange={onChange} disabled={disabled}>
-            <SelectTrigger className={compact ? 'h-8 text-sm' : ''}>
-                <SelectValue placeholder={field.placeholder ?? `Select ${field.label || field.key}`} />
-            </SelectTrigger>
-            <SelectContent>
-                {field.options?.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                    </SelectItem>
-                ))}
-            </SelectContent>
-        </Select>
-    );
-}
-
-interface ReferenceFieldProps {
-    field: AdapterSchemaField;
-    value: string;
-    onChange: (value: string) => void;
-    options: string[];
-    placeholder: string;
-    compact?: boolean;
-    disabled?: boolean;
-}
-
-function ReferenceField({ field, value, onChange, options, placeholder, compact, disabled }: ReferenceFieldProps) {
-    return (
-        <Select value={value ?? ''} onValueChange={onChange} disabled={disabled}>
-            <SelectTrigger className={compact ? 'h-8 text-sm' : ''}>
-                <SelectValue placeholder={placeholder} />
-            </SelectTrigger>
-            <SelectContent>
-                {options.length === 0 ? (
-                    <SelectItem value="" disabled>
-                        No options available
-                    </SelectItem>
-                ) : (
-                    options.map((code) => (
-                        <SelectItem key={code} value={code}>
-                            {code}
-                        </SelectItem>
-                    ))
-                )}
-            </SelectContent>
-        </Select>
-    );
-}
-
-interface TextareaFieldProps {
-    field: AdapterSchemaField;
-    value: string;
-    onChange: (value: string) => void;
-    compact?: boolean;
-    disabled?: boolean;
-    isCode?: boolean;
-}
-
-function TextareaField({ field, value, onChange, compact, disabled, isCode = false }: TextareaFieldProps) {
-    const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        onChange(e.target.value);
-    }, [onChange]);
-
-    return (
-        <Textarea
-            id={field.key}
-            value={value ?? field.default ?? ''}
-            onChange={handleChange}
-            placeholder={field.placeholder}
-            disabled={disabled}
-            rows={compact ? 2 : 5}
-            className={isCode ? 'font-mono text-sm' : (compact ? 'text-sm' : '')}
-        />
-    );
-}
-
-interface FileUploadFieldProps {
-    field: AdapterSchemaField;
-    value: string | undefined;
-    onChange: (value: string | undefined) => void;
-    compact?: boolean;
-    disabled?: boolean;
-}
-
-function FileUploadField({ field, value, onChange, compact, disabled }: FileUploadFieldProps) {
-    const [selectedFile, setSelectedFile] = useState<File | null>(null);
-    const [uploading, setUploading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    const handleFileSelect = useCallback(async (file: File) => {
-        setSelectedFile(file);
-        setError(null);
-        setUploading(true);
-
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const uploadResponse = await fetch(DATAHUB_API_UPLOAD, {
-                method: 'POST',
-                body: formData,
-                credentials: 'include',
-            });
-
-            if (!uploadResponse.ok) {
-                const errorData = await uploadResponse.json().catch(() => ({}));
-                throw new Error(errorData.error || `Upload failed: ${uploadResponse.status}`);
-            }
-
-            const uploadResult = await uploadResponse.json();
-
-            if (!uploadResult.success || !uploadResult.file) {
-                throw new Error(uploadResult.error || 'Upload failed');
-            }
-
-            const fileId = uploadResult.file.id;
-            setUploadedFileName(uploadResult.file.originalName || file.name);
-            onChange(fileId);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Upload failed');
-            setSelectedFile(null);
-        } finally {
-            setUploading(false);
-        }
-    }, [onChange]);
-
-    const handleClear = useCallback(() => {
-        setSelectedFile(null);
-        setUploadedFileName(null);
-        setError(null);
-        onChange(undefined);
-        if (inputRef.current) {
-            inputRef.current.value = '';
-        }
-    }, [onChange]);
-
-    const handleDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        const file = e.dataTransfer.files[0];
-        if (file && !disabled) handleFileSelect(file);
-    }, [disabled, handleFileSelect]);
-
-    const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) handleFileSelect(file);
-    }, [handleFileSelect]);
-
-    const handleDragOver = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-    }, []);
-
-    const hasFile = !!value || !!uploadedFileName;
-    const displayName = uploadedFileName || (value ? `File ID: ${value}` : null);
-    const padding = compact ? 'p-3' : 'p-4';
-
-    const handleDropzoneClick = useCallback(() => {
-        if (!value && !uploadedFileName && !disabled) inputRef.current?.click();
-    }, [disabled, value, uploadedFileName]);
-
-    const handleDropzoneKeyDown = useCallback((e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            if (!value && !uploadedFileName && !disabled) inputRef.current?.click();
-        }
-    }, [disabled, value, uploadedFileName]);
-
-    const handleRemoveClick = useCallback((e: React.MouseEvent) => {
-        e.stopPropagation();
-        handleClear();
-    }, [handleClear]);
-
-    return (
-        <div className="space-y-2">
-            <div
-                className={`border-2 border-dashed rounded-lg ${padding} text-center transition-colors ${
-                    hasFile
-                        ? 'border-green-500 bg-green-50 dark:bg-green-950/20'
-                        : 'border-muted-foreground/25 hover:border-primary/50 cursor-pointer'
-                } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                onClick={handleDropzoneClick}
-                onKeyDown={handleDropzoneKeyDown}
-                role="button"
-                tabIndex={disabled ? -1 : 0}
-                aria-label="Upload file"
-                aria-disabled={disabled}
-            >
-                <input
-                    ref={inputRef}
-                    type="file"
-                    accept=".csv,.json,.xlsx,.xls,.xml"
-                    onChange={handleInputChange}
-                    className="hidden"
-                    disabled={disabled}
-                />
-
-                {uploading ? (
-                    <div className="flex flex-col items-center gap-2">
-                        <RefreshCw className="w-6 h-6 text-primary animate-spin" />
-                        <p className="text-sm">Uploading...</p>
-                    </div>
-                ) : hasFile ? (
-                    <div className="flex flex-col items-center gap-2">
-                        <CheckCircle2 className="w-6 h-6 text-green-500" />
-                        <p className="text-sm font-medium truncate max-w-full">{displayName}</p>
-                        {selectedFile && (
-                            <p className="text-xs text-muted-foreground">
-                                {formatFileSize(selectedFile.size)}
-                            </p>
-                        )}
-                        {!disabled && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="mt-1 h-7 text-xs"
-                                onClick={handleRemoveClick}
-                            >
-                                <X className="w-3 h-3 mr-1" />
-                                Remove
-                            </Button>
-                        )}
-                    </div>
-                ) : (
-                    <div className="flex flex-col items-center gap-2">
-                        <Upload className="w-6 h-6 text-muted-foreground" />
-                        <p className="text-sm">Drop file or click to browse</p>
-                        <p className="text-xs text-muted-foreground">CSV, JSON, Excel, XML</p>
-                    </div>
-                )}
-            </div>
-            {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
-    );
-}
-
-interface JsonFieldProps {
-    field: AdapterSchemaField;
-    value: unknown;
-    onChange: (value: unknown) => void;
-    compact?: boolean;
-    disabled?: boolean;
-}
-
-function JsonField({ field, value, onChange, compact, disabled }: JsonFieldProps) {
-    const [text, setText] = useState(() => {
-        try {
-            return value ? JSON.stringify(value, null, 2) : '';
-        } catch {
-            return '';
-        }
-    });
-    const [error, setError] = useState<string | null>(null);
-    const [isPending, setIsPending] = useState(false);
-    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const mountedRef = useRef(true);
-
-    useEffect(() => {
-        return () => {
-            mountedRef.current = false;
-            if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-            }
-        };
-    }, []);
-
-    useEffect(() => {
-        try {
-            const newText = value ? JSON.stringify(value, null, 2) : '';
-            const currentParsed = text.trim() ? JSON.parse(text) : undefined;
-            if (JSON.stringify(currentParsed) !== JSON.stringify(value)) {
-                setText(newText);
-                setError(null);
-            }
-        } catch {
-            // JSON parse/stringify failed - keep existing text
-        }
-    }, [value, text]);
-
-    const validateJson = useCallback((jsonText: string): string | null => {
-        if (!jsonText.trim()) {
-            return null;
-        }
-        try {
-            JSON.parse(jsonText);
-            return null;
-        } catch (e) {
-            const parseError = e as SyntaxError;
-            let message = parseError.message
-                .replace(/^JSON\.parse: /, '')
-                .replace(/^SyntaxError: /, '');
-
-            const posMatch = message.match(/at position (\d+)/i);
-            if (posMatch) {
-                const pos = parseInt(posMatch[1], 10);
-                const lines = jsonText.substring(0, pos).split('\n');
-                const line = lines.length;
-                const col = lines[lines.length - 1].length + 1;
-                message = message.replace(/ at position \d+/, '').replace(/ in JSON at position \d+/, '');
-                return `Invalid JSON: ${message} (line ${line}, col ${col})`;
-            }
-            return `Invalid JSON: ${message}`;
-        }
-    }, []);
-
-    const handleChange = useCallback((newText: string) => {
-        setText(newText);
-        setIsPending(true);
-
-        if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-        }
-
-        timeoutRef.current = setTimeout(() => {
-            if (!mountedRef.current) return;
-
-            setIsPending(false);
-            const validationError = validateJson(newText);
-
-            if (validationError) {
-                setError(validationError);
-            } else {
-                setError(null);
-                if (!newText.trim()) {
-                    onChange(undefined);
-                } else {
-                    try {
-                        onChange(JSON.parse(newText));
-                    } catch {
-                        // JSON parse failed - already handled by validation above
-                    }
-                }
-            }
-        }, DEBOUNCE_DELAYS.JSON_VALIDATION);
-    }, [onChange, validateJson]);
-
-    const getBorderClass = useCallback(() => {
-        if (disabled) return '';
-        if (error) return 'border-destructive focus:border-destructive focus:ring-destructive/20';
-        if (isPending) return 'border-amber-400';
-        return '';
-    }, [disabled, error, isPending]);
-
-    const handleTextareaChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        handleChange(e.target.value);
-    }, [handleChange]);
-
-    return (
-        <div className="space-y-1">
-            <Textarea
-                id={field.key}
-                value={text}
-                onChange={handleTextareaChange}
-                placeholder={field.placeholder ?? '{}'}
-                disabled={disabled}
-                rows={compact ? 3 : 6}
-                className={`font-mono text-xs ${getBorderClass()}`}
-            />
-            {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
-    );
-}
-
 export function SchemaFormRenderer({
     schema,
     values,
@@ -541,30 +56,20 @@ export function SchemaFormRenderer({
     const visibleFields = useMemo(() => {
         if (!schema?.fields) return [];
         return schema.fields.filter((field) => {
-            if (field.hidden) {
-                return false;
-            }
-            if (hideOptional && !field.required && !field.advanced) {
-                return false;
-            }
-            if (!evaluateDependency(field.dependsOn, values)) {
-                return false;
-            }
+            if (field.hidden) return false;
+            if (hideOptional && !field.required && !field.advanced) return false;
+            if (!evaluateDependency(field.dependsOn, values)) return false;
             return true;
         });
     }, [schema?.fields, values, hideOptional]);
 
     const groupedFields = useMemo(() => {
         const groups: Record<string, AdapterSchemaField[]> = { _default: [] };
-
         for (const field of visibleFields) {
             const groupName = field.group || '_default';
-            if (!groups[groupName]) {
-                groups[groupName] = [];
-            }
+            if (!groups[groupName]) groups[groupName] = [];
             groups[groupName].push(field);
         }
-
         return groups;
     }, [visibleFields]);
 
@@ -585,13 +90,7 @@ export function SchemaFormRenderer({
             case 'url':
                 return (
                     <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <StringField
-                            field={field}
-                            value={value as string}
-                            onChange={(v) => handleFieldChange(field.key, v)}
-                            compact={compact}
-                            disabled={readOnly}
-                        />
+                        <StringField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
                     </FieldWrapper>
                 );
 
@@ -600,13 +99,7 @@ export function SchemaFormRenderer({
             case 'float':
                 return (
                     <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <NumberField
-                            field={field}
-                            value={value as number | undefined}
-                            onChange={(v) => handleFieldChange(field.key, v)}
-                            compact={compact}
-                            disabled={readOnly}
-                        />
+                        <NumberField field={field} value={value as number | undefined} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
                     </FieldWrapper>
                 );
 
@@ -618,12 +111,7 @@ export function SchemaFormRenderer({
                                 {field.label || field.key}
                                 {field.required && <span className="text-destructive ml-0.5">*</span>}
                             </Label>
-                            <BooleanField
-                                field={field}
-                                value={value as boolean}
-                                onChange={(v) => handleFieldChange(field.key, v)}
-                                disabled={readOnly}
-                            />
+                            <BooleanField field={field} value={value as boolean} onChange={(v) => handleFieldChange(field.key, v)} disabled={readOnly} />
                         </div>
                         {error && <p className="text-xs text-destructive mt-1">{error}</p>}
                     </div>
@@ -632,43 +120,21 @@ export function SchemaFormRenderer({
             case 'select':
                 return (
                     <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <SelectField
-                            field={field}
-                            value={value as string}
-                            onChange={(v) => handleFieldChange(field.key, v)}
-                            compact={compact}
-                            disabled={readOnly}
-                        />
+                        <SelectField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
                     </FieldWrapper>
                 );
 
             case 'secret':
                 return (
                     <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <ReferenceField
-                            field={field}
-                            value={value as string}
-                            onChange={(v) => handleFieldChange(field.key, v)}
-                            options={secretCodes}
-                            placeholder="Select secret..."
-                            compact={compact}
-                            disabled={readOnly}
-                        />
+                        <ReferenceField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} options={secretCodes} placeholder="Select secret..." compact={compact} disabled={readOnly} />
                     </FieldWrapper>
                 );
 
             case 'connection':
                 return (
                     <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <ReferenceField
-                            field={field}
-                            value={value as string}
-                            onChange={(v) => handleFieldChange(field.key, v)}
-                            options={connectionCodes}
-                            placeholder="Select connection..."
-                            compact={compact}
-                            disabled={readOnly}
-                        />
+                        <ReferenceField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} options={connectionCodes} placeholder="Select connection..." compact={compact} disabled={readOnly} />
                     </FieldWrapper>
                 );
 
@@ -677,26 +143,14 @@ export function SchemaFormRenderer({
             case 'array':
                 return (
                     <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <JsonField
-                            field={field}
-                            value={value}
-                            onChange={(v) => handleFieldChange(field.key, v)}
-                            compact={compact}
-                            disabled={readOnly}
-                        />
+                        <JsonField field={field} value={value} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
                     </FieldWrapper>
                 );
 
             case 'textarea':
                 return (
                     <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <TextareaField
-                            field={field}
-                            value={value as string}
-                            onChange={(v) => handleFieldChange(field.key, v)}
-                            compact={compact}
-                            disabled={readOnly}
-                        />
+                        <TextareaField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
                     </FieldWrapper>
                 );
 
@@ -704,42 +158,21 @@ export function SchemaFormRenderer({
             case 'expression':
                 return (
                     <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <TextareaField
-                            field={field}
-                            value={value as string}
-                            onChange={(v) => handleFieldChange(field.key, v)}
-                            compact={compact}
-                            disabled={readOnly}
-                            isCode
-                        />
+                        <TextareaField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} isCode />
                     </FieldWrapper>
                 );
 
             case 'entity':
-                // Entity fields should render as select if they have options
                 if (field.options && field.options.length > 0) {
                     return (
                         <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                            <SelectField
-                                field={field}
-                                value={value as string}
-                                onChange={(v) => handleFieldChange(field.key, v)}
-                                compact={compact}
-                                disabled={readOnly}
-                            />
+                            <SelectField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
                         </FieldWrapper>
                     );
                 }
-                // Fall through to string if no options
                 return (
                     <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <StringField
-                            field={field}
-                            value={String(value ?? field.default ?? '')}
-                            onChange={(v) => handleFieldChange(field.key, v)}
-                            compact={compact}
-                            disabled={readOnly}
-                        />
+                        <StringField field={field} value={String(value ?? field.default ?? '')} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
                     </FieldWrapper>
                 );
 
@@ -747,46 +180,21 @@ export function SchemaFormRenderer({
             case 'fileupload':
                 return (
                     <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <FileUploadField
-                            field={field}
-                            value={value as string | undefined}
-                            onChange={(v) => handleFieldChange(field.key, v)}
-                            compact={compact}
-                            disabled={readOnly}
-                        />
+                        <FileUploadField field={field} value={value as string | undefined} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
                     </FieldWrapper>
                 );
 
-            case 'cron':
-            case 'date':
-            case 'datetime':
-            case 'field':
-            case 'mapping':
-            case 'multiselect':
             default:
-                // Check if field has options - render as select if so
                 if (field.options && field.options.length > 0) {
                     return (
                         <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                            <SelectField
-                                field={field}
-                                value={value as string}
-                                onChange={(v) => handleFieldChange(field.key, v)}
-                                compact={compact}
-                                disabled={readOnly}
-                            />
+                            <SelectField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
                         </FieldWrapper>
                     );
                 }
                 return (
                     <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <StringField
-                            field={field}
-                            value={String(value ?? field.default ?? '')}
-                            onChange={(v) => handleFieldChange(field.key, v)}
-                            compact={compact}
-                            disabled={readOnly}
-                        />
+                        <StringField field={field} value={String(value ?? field.default ?? '')} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
                     </FieldWrapper>
                 );
         }
