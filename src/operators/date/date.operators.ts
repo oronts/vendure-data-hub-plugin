@@ -215,9 +215,3 @@ export function nowOperator(
     return { records: results };
 }
 
-export const FORMAT_DATE_OPERATOR_DEFINITION: AdapterDefinition = {
-    ...DATE_FORMAT_OPERATOR_DEFINITION,
-    code: 'formatDate',
-};
-
-export const formatDateOperator = dateFormatOperator;

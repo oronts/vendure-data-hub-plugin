@@ -17,10 +17,10 @@ import {
 
 import {
     dateFormatOperator, dateParseOperator, dateAddOperator, dateDiffOperator,
-    nowOperator, formatDateOperator,
+    nowOperator,
     DATE_FORMAT_OPERATOR_DEFINITION, DATE_PARSE_OPERATOR_DEFINITION,
     DATE_ADD_OPERATOR_DEFINITION, DATE_DIFF_OPERATOR_DEFINITION,
-    NOW_OPERATOR_DEFINITION, FORMAT_DATE_OPERATOR_DEFINITION,
+    NOW_OPERATOR_DEFINITION,
 } from './date';
 
 import {
@@ -130,7 +130,6 @@ const OPERATOR_REGISTRY: Record<string, OperatorRegistryEntry> = {
     dateAdd: { definition: DATE_ADD_OPERATOR_DEFINITION, fn: op(dateAddOperator) },
     dateDiff: { definition: DATE_DIFF_OPERATOR_DEFINITION, fn: op(dateDiffOperator) },
     now: { definition: NOW_OPERATOR_DEFINITION, fn: op(nowOperator) },
-    formatDate: { definition: FORMAT_DATE_OPERATOR_DEFINITION, fn: op(formatDateOperator) },
 
     // Numeric
     math: { definition: MATH_OPERATOR_DEFINITION, fn: op(mathOperator) },
