@@ -2,6 +2,7 @@ import { Writable } from 'stream';
 import { Client as BasicFtpClient } from 'basic-ftp';
 import SftpClient from 'ssh2-sftp-client';
 import { ExtractorContext } from '../../types/index';
+import { getErrorMessage } from '../../utils/error.utils';
 import { FtpExtractorConfig, FtpFileInfo, FtpProtocol, FTP_DEFAULTS, FTP_PROTOCOLS, FTP_TYPE_CODE, FTP_ITEM_TYPE } from './types';
 
 export interface FtpClient {
@@ -238,7 +239,7 @@ export async function testConnection(
     } catch (error) {
         return {
             success: false,
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
         };
     }
 }

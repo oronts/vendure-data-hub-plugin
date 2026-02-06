@@ -5,6 +5,7 @@ import { ConnectionService } from '../config/connection.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 import { LOGGER_CONTEXTS, SCHEDULER } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { getErrorMessage } from '../../utils/error.utils';
 import { ConsumerDiscovery, MessageConsumerConfig, getConsumerKey } from './consumer-discovery';
 import { ConsumerLifecycle, ActiveConsumer } from './consumer-lifecycle';
 import { MessageProcessing } from './message-processing';
@@ -81,7 +82,7 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
             await this.discoverAndStartConsumers();
         } catch (error) {
             this.logger.warn('Failed to initialize message consumers on startup, will retry on refresh', {
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
             });
         }
 

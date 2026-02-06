@@ -176,7 +176,7 @@ export class VariantHandler implements LoaderHandler {
                                 );
                             }
                         } catch (error) {
-                            this.logger.warn(`Failed to assign variant ${updated.id} to channel: ${error instanceof Error ? error.message : String(error)}`);
+                            this.logger.warn(`Failed to assign variant ${updated.id} to channel: ${getErrorMessage(error)}`);
                         }
                     }
                 } else {

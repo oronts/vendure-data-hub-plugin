@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import { JsonObject } from '../../types/index';
+import { getErrorMessage } from '../../utils/error.utils';
 import { PAGINATION } from '../../constants/index';
 import {
     DataExtractor,
@@ -318,7 +319,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 } catch (error) {
                     if (config.continueOnError) {
                         context.logger.warn(`Error processing ${file.name}`, {
-                            error: error instanceof Error ? error.message : String(error),
+                            error: getErrorMessage(error),
                         });
                     } else {
                         throw error;
@@ -406,7 +407,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
         } catch (error) {
             return {
                 success: false,
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
             };
         }
     }

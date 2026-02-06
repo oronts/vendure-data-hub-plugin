@@ -29,6 +29,7 @@ import type { PipelineDefinition } from '../../types/index';
 import type { EventTriggerServiceConfig } from '../../types/plugin-options';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { findEnabledTriggersByType, parseTriggerConfig } from '../../utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Cached event trigger entry
@@ -102,7 +103,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
             await this.refreshCache();
         } catch (error) {
             this.logger.warn('Failed to initialize event trigger cache on startup, will retry on next refresh', {
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
             });
         }
 
@@ -167,7 +168,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
             }
         } catch (error) {
             this.logger.debug('Could not register Vendure event listeners', {
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
             });
         }
     }

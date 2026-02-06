@@ -20,6 +20,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK, TRUNCATION } from '../../constants/index';
 import { HookActionType } from '../../constants/enums';
 import { validateUserCode } from '../../utils/code-security.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @Injectable()
 export class HookService implements OnModuleInit {
@@ -128,7 +129,7 @@ export class HookService implements OnModuleInit {
                 this.logger.warn('Hook action failed', {
                     stage,
                     actionType: action.type,
-                    error: error instanceof Error ? error.message : String(error),
+                    error: getErrorMessage(error),
                 });
             }
         }
@@ -193,7 +194,7 @@ export class HookService implements OnModuleInit {
                     });
                 }
             } catch (error) {
-                const errorMsg = error instanceof Error ? error.message : String(error);
+                const errorMsg = getErrorMessage(error);
                 errors.push({ action: actionName, error: errorMsg });
 
                 this.logger.warn(`Interceptor "${actionName}" failed`, {

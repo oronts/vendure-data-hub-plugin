@@ -27,6 +27,7 @@ import { VendureExtractHandler } from './extractors/vendure-extract.handler';
 import { FileExtractHandler } from './extractors/file-extract.handler';
 import { MemoryExtractHandler } from './extractors/memory-extract.handler';
 import { getAdapterCode } from '../../types/step-configs';
+import { getErrorMessage } from '../../utils/error.utils';
 
 type ExtractImpl = (ctx: RequestContext, step: PipelineStepDefinition, executorCtx: ExecutorContext, onRecordError?: OnRecordErrorCallback) => Promise<RecordObject[]>;
 
@@ -253,7 +254,7 @@ export class ExtractExecutor {
         stepKey: string,
         onRecordError?: OnRecordErrorCallback,
     ): Promise<void> {
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = getErrorMessage(error);
         this.logger.error(`Custom extractor failed: ${errorMsg}`, error instanceof Error ? error : undefined, {
             adapterCode,
             stepKey,

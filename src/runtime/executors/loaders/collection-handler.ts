@@ -211,7 +211,7 @@ export class CollectionHandler implements LoaderHandler {
             await this.collectionService.triggerApplyFiltersJob(opCtx, { collectionIds: [collectionId] });
         } catch (error) {
             this.logger.warn(
-                `Failed to apply collection filters for collection ${String(collectionId)}: ${error instanceof Error ? error.message : String(error)}`,
+                `Failed to apply collection filters for collection ${String(collectionId)}: ${getErrorMessage(error)}`,
             );
         }
     }

@@ -201,7 +201,7 @@ export class ApplyCouponHandler implements LoaderHandler {
                     const found = await this.connection.getRepository(ctx, Order).findOne({ where: { code: orderCode } });
                     if (found) ordersFound++;
                 } catch (error) {
-                    this.logger.warn(`Failed to lookup order by code '${orderCode}': ${error instanceof Error ? error.message : String(error)}`);
+                    this.logger.warn(`Failed to lookup order by code '${orderCode}': ${getErrorMessage(error)}`);
                 }
             }
         }
@@ -245,7 +245,7 @@ export class OrderTransitionHandler implements LoaderHandler {
                 await this.orderService.transitionToState(ctx, orderId, state as OrderState);
                 ok++;
             } catch (error) {
-                this.logger.warn(`Failed to transition order ${String(orderId)} to state '${state}': ${error instanceof Error ? error.message : String(error)}`);
+                this.logger.warn(`Failed to transition order ${String(orderId)} to state '${state}': ${getErrorMessage(error)}`);
                 fail++;
             }
         }

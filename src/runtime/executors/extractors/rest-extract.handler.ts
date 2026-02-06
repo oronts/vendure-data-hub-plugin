@@ -19,6 +19,7 @@ import { SecretService } from '../../../services/config/secret.service';
 import { ConnectionService } from '../../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getPath } from '../../utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 import { sleep, calculateBackoff, RetryConfig as SharedRetryConfig } from '../../../utils/retry.utils';
 import { PAGINATION, RATE_LIMIT, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
 import { ConnectionAuthType } from '../../../sdk/types/connection-types';
@@ -348,7 +349,7 @@ export class RestExtractHandler implements ExtractHandler {
                     attempt: attempt + 1,
                     maxRetries: retryConfig.retries,
                     willRetry: attempt < retryConfig.retries,
-                    error: error instanceof Error ? error.message : String(error),
+                    error: getErrorMessage(error),
                 });
                 if (attempt < retryConfig.retries) {
                     await this.waitBeforeRetry(attempt, retryConfig, adaptiveDelay || RATE_LIMIT.ADAPTIVE_DELAY_INITIAL_MS);

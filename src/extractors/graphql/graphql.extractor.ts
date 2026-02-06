@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { HTTP, WEBHOOK, GraphQLPaginationType } from '../../constants/index';
+import { getErrorMessage } from '../../utils/error.utils';
 import {
     DataExtractor,
     ExtractorContext,
@@ -433,7 +434,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
         } catch (error) {
             return {
                 success: false,
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
             };
         }
     }

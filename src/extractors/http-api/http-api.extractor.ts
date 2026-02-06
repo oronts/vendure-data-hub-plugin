@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { HttpMethod, PaginationType, TIME_UNITS, HTTP, WEBHOOK } from '../../constants/index';
+import { getErrorMessage } from '../../utils/error.utils';
 import {
     DataExtractor,
     ExtractorContext,
@@ -298,7 +299,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
         } catch (error) {
             return {
                 success: false,
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
             };
         }
     }

@@ -11,6 +11,7 @@ import {
     StepConfigSchema,
     ExtractorCategory,
 } from '../../types/index';
+import { getErrorMessage } from '../../utils/error.utils';
 import { DatabaseType, DatabasePaginationType, PAGINATION, HTTP, CONNECTION_POOL } from '../../constants/index';
 import {
     DatabaseExtractorConfig,
@@ -490,7 +491,7 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
         } catch (error) {
             return {
                 success: false,
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
                 details: {
                     databaseType: config.databaseType,
                     host: config.host ?? null,

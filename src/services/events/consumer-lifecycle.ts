@@ -3,6 +3,7 @@ import { ConnectionService } from '../config/connection.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 import { DISTRIBUTED_LOCK } from '../../constants/index';
 import { DataHubLogger } from '../logger';
+import { getErrorMessage } from '../../utils/error.utils';
 import { MessageConsumerConfig, getConsumerKey } from './consumer-discovery';
 
 /**
@@ -198,7 +199,7 @@ export class ConsumerLifecycle {
                 });
             } catch (error) {
                 this.logger.warn(`Failed to release lock for consumer ${key}`,
-                    { error: error instanceof Error ? error.message : String(error) });
+                    { error: getErrorMessage(error) });
             }
         }
 

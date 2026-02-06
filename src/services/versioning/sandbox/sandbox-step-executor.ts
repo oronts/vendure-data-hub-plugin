@@ -1,6 +1,7 @@
 import { RequestContext } from '@vendure/core';
 import { StepType, PipelineStepDefinition } from '../../../types/index';
 import { AdapterRuntimeService } from '../../../runtime/adapter-runtime.service';
+import { getErrorMessage } from '../../../utils/error.utils';
 import {
     SandboxStepStatus,
     RecordOutcome,
@@ -342,7 +343,7 @@ export class SandboxStepExecutor {
      */
     private handleStepError(execution: StepExecutionResult, error: unknown, recordCount: number): void {
         execution.status = SandboxStepStatus.ERROR;
-        execution.errorMessage = error instanceof Error ? error.message : String(error);
+        execution.errorMessage = getErrorMessage(error);
         execution.recordsErrored = recordCount;
     }
 }

@@ -3,6 +3,7 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { ConnectionService } from '../config/connection.service';
 import { AckMode } from '../../constants/index';
 import { DataHubLogger } from '../logger';
+import { getErrorMessage } from '../../utils/error.utils';
 import { queueAdapterRegistry, QueueConnectionConfig, QueueAdapter } from '../../sdk/adapters/queue';
 import { ActiveConsumer } from './consumer-lifecycle';
 
@@ -194,13 +195,13 @@ export class MessageProcessing {
                 payload: {
                     ...message.payload,
                     _originalQueue: config.queueName,
-                    _error: error instanceof Error ? error.message : String(error),
+                    _error: getErrorMessage(error),
                     _failedAt: new Date().toISOString(),
                 },
                 headers: {
                     ...message.headers,
                     'x-original-queue': config.queueName,
-                    'x-error': error instanceof Error ? error.message : String(error),
+                    'x-error': getErrorMessage(error),
                 },
             }]);
 

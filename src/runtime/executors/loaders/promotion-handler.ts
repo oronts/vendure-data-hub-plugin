@@ -272,7 +272,7 @@ export class PromotionHandler implements LoaderHandler {
                             );
                         } catch (error) {
                             this.logger.warn(
-                                `Failed to assign promotion ${updated.id} to channel: ${error instanceof Error ? error.message : String(error)}`,
+                                `Failed to assign promotion ${updated.id} to channel: ${getErrorMessage(error)}`,
                             );
                         }
                     }
@@ -309,7 +309,7 @@ export class PromotionHandler implements LoaderHandler {
                             );
                         } catch (error) {
                             this.logger.warn(
-                                `Failed to assign promotion ${created.id} to channel: ${error instanceof Error ? error.message : String(error)}`,
+                                `Failed to assign promotion ${created.id} to channel: ${getErrorMessage(error)}`,
                             );
                         }
                     }

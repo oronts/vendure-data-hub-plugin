@@ -301,7 +301,7 @@ export class CustomerHandler implements LoaderHandler {
                     stepKey,
                     customerId: customer.id,
                     addressCity: addr.city,
-                    error: error instanceof Error ? error.message : String(error),
+                    error: getErrorMessage(error),
                 });
             }
         }
@@ -393,7 +393,7 @@ export class CustomerHandler implements LoaderHandler {
                 stepKey,
                 customerId,
                 groupName,
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
             });
         }
     }
@@ -418,7 +418,7 @@ export class CustomerHandler implements LoaderHandler {
                 stepKey,
                 customerId,
                 groupId: group.id,
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
             });
         }
     }

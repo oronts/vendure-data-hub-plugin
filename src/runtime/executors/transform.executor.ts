@@ -16,6 +16,7 @@ import { OperatorAdapter, SingleRecordOperator, OperatorHelpers, OperatorContext
 import { OperatorSecretResolver } from '../../sdk/types/transform-types';
 import { hashStable } from '../utils';
 import { SecretService } from '../../services/config/secret.service';
+import { getErrorMessage } from '../../utils/error.utils';
 import {
     getAdapterCode,
     isTransformStepConfig,
@@ -362,7 +363,7 @@ export class TransformExecutor {
             stepKey,
         });
 
-        throw new Error(`Operator '${operator.code}' execution failed: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(`Operator '${operator.code}' execution failed: ${getErrorMessage(error)}`);
     }
 
     /**

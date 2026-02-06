@@ -4,6 +4,7 @@ import { Pipeline } from '../../entities/pipeline';
 import { PipelineDefinition, PipelineStepDefinition } from '../../types/index';
 import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { getErrorMessage } from '../../utils/error.utils';
 import {
     LOGGER_CONTEXTS,
     SandboxStatus,
@@ -345,7 +346,7 @@ export class SandboxService {
         result.errors.push({
             stepKey: 'sandbox',
             code: 'EXECUTION_ERROR',
-            message: error instanceof Error ? error.message : String(error),
+            message: getErrorMessage(error),
             stack: error instanceof Error ? error.stack : undefined,
         });
     }

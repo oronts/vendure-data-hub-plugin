@@ -6,6 +6,7 @@ import {
     isStreamingExtractor,
     isBatchExtractor,
 } from '../types/index';
+import { getErrorMessage } from '../utils/error.utils';
 import { HttpApiExtractor } from './http-api';
 import { WebhookExtractor } from './webhook';
 import { VendureQueryExtractor } from './vendure-query';
@@ -111,7 +112,7 @@ export class ExtractorRegistryService implements OnModuleInit {
                     this.register(extractor, 'built-in');
                 } catch (error) {
                     this.logger.warn(`Failed to register built-in extractor`, {
-                        error: error instanceof Error ? error.message : String(error),
+                        error: getErrorMessage(error),
                     });
                 }
             }

@@ -22,6 +22,7 @@ import { JsonValue } from '../../types/index';
 import { LookupType } from '../../constants/enums';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { DataHubLogger } from '../../services/logger';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.LOOKUP_TRANSFORMS);
 
@@ -133,7 +134,7 @@ export async function vendureEntityLookup(
             return (result as JsonValue) ?? null;
         }
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = getErrorMessage(error);
         logger.warn(`Lookup failed for ${entityType}.${from}=${String(value)}: ${errorMessage}`);
     }
 

@@ -10,6 +10,7 @@
 import { DeliveryResult, DestinationType, DeliveryOptions } from './destination.types';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { DataHubLogger } from '../logger';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.DELIVERY_UTILS);
 
@@ -72,7 +73,7 @@ export async function executeDelivery<TConfig extends { id: string }>(
     try {
         return await deliveryFn();
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = getErrorMessage(error);
         logger.error(
             `${destinationType.toUpperCase()}: Failed to deliver ${filename}`,
             error instanceof Error ? error : undefined,

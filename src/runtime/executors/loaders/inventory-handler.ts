@@ -143,7 +143,7 @@ export class StockAdjustHandler implements LoaderHandler {
                     });
                 }
             } catch (error) {
-                this.logger.warn(`Failed to lookup stock location '${locationName}': ${error instanceof Error ? error.message : String(error)}`);
+                this.logger.warn(`Failed to lookup stock location '${locationName}': ${getErrorMessage(error)}`);
             }
         }
         return result;

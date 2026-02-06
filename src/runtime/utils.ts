@@ -5,6 +5,7 @@ import { JsonObject, JsonValue } from '../types/index';
 import { RecordObject } from './executor-types';
 import { UNIT_CONVERSIONS } from '../constants/index';
 import { slugify } from '../operators/helpers';
+import { getErrorMessage } from '../utils/error.utils';
 import {
     getNestedValue,
     setNestedValue,
@@ -265,7 +266,7 @@ export function validateAgainstSimpleSpec(
                     const re = new RegExp(spec.pattern);
                     if (!re.test(value)) errors.push(`${key} does not match pattern`);
                 } catch (error) {
-                    errors.push(`${key} has invalid regex pattern: ${error instanceof Error ? error.message : String(error)}`);
+                    errors.push(`${key} has invalid regex pattern: ${getErrorMessage(error)}`);
                 }
             }
         }

@@ -13,6 +13,7 @@ import {
     HeadBucketCommand,
 } from '@aws-sdk/client-s3';
 import { ExtractorContext } from '../../types/index';
+import { getErrorMessage } from '../../utils/error.utils';
 import { S3ExtractorConfig, S3ObjectInfo, S3_DEFAULTS } from './types';
 
 /**
@@ -199,7 +200,7 @@ export async function testS3Connection(
     } catch (error) {
         return {
             success: false,
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
         };
     }
 }

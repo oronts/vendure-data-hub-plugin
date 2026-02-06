@@ -2,6 +2,7 @@ import { Pool as PgPool } from 'pg';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mysql2 = require('mysql2/promise');
 import { ExtractorContext } from '../../types/index';
+import { getErrorMessage } from '../../utils/error.utils';
 import { DatabaseExtractorConfig, DATABASE_DEFAULT_PORTS } from './types';
 import { DatabaseType, CONNECTION_POOL, HTTP } from '../../constants/index';
 
@@ -216,7 +217,7 @@ export async function testDatabaseConnection(
     } catch (error) {
         return {
             success: false,
-            error: error instanceof Error ? error.message : String(error),
+            error: getErrorMessage(error),
         };
     }
 }

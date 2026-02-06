@@ -13,6 +13,7 @@ import { RuntimeConfigService } from '../../services/runtime/runtime-config.serv
 import { DistributedLockService } from '../../services/runtime/distributed-lock.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS, DISTRIBUTED_LOCK } from '../../constants/index';
+import { getErrorMessage } from '../../utils/error.utils';
 import { RunStatus, PipelineDefinition, JsonObject } from '../../types/index';
 import { PipelineStatus, TriggerType, TIMER_TYPE, TimerType } from '../../constants/enums';
 import { findEnabledTriggersByType } from '../../utils';
@@ -103,7 +104,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             await this.refresh();
         } catch (error) {
             const errorMetadata: LogMetadata = {
-                error: error instanceof Error ? error.message : String(error),
+                error: getErrorMessage(error),
             };
             this.logger.warn('Failed to initialize schedules on startup, will retry on next refresh', errorMetadata);
         }
