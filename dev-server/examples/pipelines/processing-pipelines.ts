@@ -2,7 +2,7 @@
  * Data Processing Pipelines - Data enrichment and analytics
  *
  * These pipelines demonstrate:
- * - VALIDATE steps with comprehensive rules
+ * - VALIDATE steps with rules
  * - ENRICH steps with defaults, set, and computed fields
  * - Parallel processing branches for different enrichment paths
  * - Data transformation and aggregation

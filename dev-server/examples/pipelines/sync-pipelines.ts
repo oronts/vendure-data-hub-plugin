@@ -447,7 +447,7 @@ export const facebookCatalogFeed = createPipeline()
 
 /**
  * Imports product data from an external REST API.
- * Handles pagination, authentication, and field mapping.
+ * Supports pagination, authentication, and field mapping.
  *
  * Example: Importing from a supplier's product API
  */

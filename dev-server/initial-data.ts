@@ -1,8 +1,8 @@
 /**
  * Initial Data for Dev Server
  *
- * This data is used to populate a fresh database with the minimum
- * required Vendure entities (zones, countries, tax rates, etc.)
+ * Populates a fresh database with minimum required Vendure entities
+ * (zones, countries, tax rates, etc.)
  */
 import { InitialData, LanguageCode, CurrencyCode } from '@vendure/core';
 

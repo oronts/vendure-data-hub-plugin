@@ -379,7 +379,7 @@ export const scriptOperatorPipeline = createPipeline()
 // =============================================================================
 
 /**
- * Comprehensive pipeline combining interceptors, scripts, and operators.
+ * Pipeline combining interceptors, scripts, and operators.
  *
  * This pipeline demonstrates a real-world scenario:
  * - Extract orders from Vendure

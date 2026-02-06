@@ -281,28 +281,6 @@ export interface PimcoreAssetRelation {
 }
 
 /**
- * Pimcore facet/attribute
- */
-export interface PimcoreFacet {
-    id: string | number;
-    key: string;
-    name?: string | PimcoreLocalizedField;
-    values?: PimcoreFacetValue[];
-    [key: string]: unknown;
-}
-
-/**
- * Pimcore facet value
- */
-export interface PimcoreFacetValue {
-    id: string | number;
-    key: string;
-    name?: string | PimcoreLocalizedField;
-    code?: string;
-    [key: string]: unknown;
-}
-
-/**
  * Vendure product structure for upsert
  */
 export interface VendureProductInput {

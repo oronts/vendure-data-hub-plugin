@@ -51,7 +51,8 @@ async function generateSchema() {
 
     const app = await bootstrap(mergedConfig);
 
-    const { schema } = (app as any).get('VENDURE_GRAPHQL_ADMIN_SCHEMA');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vendure internal API access
+    const { schema } = (app as unknown as { get(token: string): { schema: unknown } }).get('VENDURE_GRAPHQL_ADMIN_SCHEMA');
 
     if (!schema) {
         console.error('Could not get GraphQL schema from server');

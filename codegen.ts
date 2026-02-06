@@ -22,6 +22,7 @@ const config: CodegenConfig = {
             Money: 'number',
             DateTime: 'string',
             JSON: 'Record<string, unknown>',
+            Upload: 'File',
         },
         namingConvention: {
             enumValues: 'keep',

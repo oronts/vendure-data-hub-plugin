@@ -1,9 +1,8 @@
 /**
  * Data Hub Plugin Examples
  *
- * This module exports:
- * - Custom adapter examples (operators, extractors, loaders)
- * - Production-quality pipeline examples for common use cases
+ * Custom adapter examples (operators, extractors, loaders) and production-quality
+ * pipeline examples for common use cases.
  *
  * Pipeline Categories:
  * - EXPORTS: Product, Customer, Order, Inventory exports

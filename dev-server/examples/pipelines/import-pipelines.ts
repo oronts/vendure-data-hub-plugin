@@ -19,7 +19,7 @@ import { createPipeline } from '../../../src';
 // =============================================================================
 
 /**
- * Imports products from a CSV file with comprehensive field mapping.
+ * Imports products from a CSV file with full field mapping.
  * Demonstrates:
  * - VALIDATE step with rules (required, min, max, pattern)
  * - ENRICH step with defaults, set, and computed fields
@@ -222,7 +222,7 @@ export const productImportCsv = createPipeline()
 
 /**
  * Imports customers from CSV with address parsing and email validation.
- * Handles customer groups and multiple addresses.
+ * Supports customer groups and multiple addresses.
  *
  * Expected CSV columns: email, first_name, last_name, phone,
  * address_line1, address_line2, city, state, postal_code, country,
@@ -444,7 +444,7 @@ export const stockUpdateCsv = createPipeline()
         hasHeader: true,
     })
 
-    // VALIDATE step - comprehensive stock data validation
+    // VALIDATE step - full stock data validation
     .validate('validate-stock', {
         rules: [
             { type: 'business', spec: { field: 'sku', required: true, error: 'SKU is required' } },

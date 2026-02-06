@@ -1,7 +1,7 @@
 /**
- * Connectors Pack - Enterprise Integrations Hub
+ * Connectors Pack - Third-party System Connectors
  *
- * Pre-built connectors for enterprise systems:
+ * Pre-built connectors for external systems:
  * - Pimcore PIM
  * - SAP (coming soon)
  * - Akeneo (coming soon)

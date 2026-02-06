@@ -96,26 +96,26 @@ export function transformProduct(
     defaultLanguage = 'en',
     languages: string[] = ['en'],
 ): VendureProductInput {
-    const m = { ...DEFAULT_PRODUCT_MAPPING, ...mapping };
+    const mapping_ = { ...DEFAULT_PRODUCT_MAPPING, ...mapping };
 
     const sku = String(
-        getField(pimcoreProduct, m.skuField) ??
+        getField(pimcoreProduct, mapping_.skuField) ??
         getField(pimcoreProduct, 'itemNumber') ??
         pimcoreProduct.key ??
         pimcoreProduct.id
     );
 
-    const nameField = getField(pimcoreProduct, m.nameField);
+    const nameField = getField(pimcoreProduct, mapping_.nameField);
     const name = extractLocalizedValue(nameField as string | PimcoreLocalizedField, defaultLanguage);
 
-    const slugField = getField(pimcoreProduct, m.slugField) ?? getField(pimcoreProduct, 'urlKey');
+    const slugField = getField(pimcoreProduct, mapping_.slugField) ?? getField(pimcoreProduct, 'urlKey');
     let slug = extractLocalizedValue(slugField as string | PimcoreLocalizedField, defaultLanguage);
     if (!slug) slug = generateSlug(name || sku);
 
-    const descField = getField(pimcoreProduct, m.descriptionField);
+    const descField = getField(pimcoreProduct, mapping_.descriptionField);
     const description = extractLocalizedValue(descField as string | PimcoreLocalizedField, defaultLanguage);
 
-    const enabledField = getField(pimcoreProduct, m.enabledField);
+    const enabledField = getField(pimcoreProduct, mapping_.enabledField);
     const enabled = enabledField !== false && enabledField !== 'false' && enabledField !== 0;
 
     const result: VendureProductInput = {
@@ -134,7 +134,7 @@ export function transformProduct(
         );
     }
 
-    const assets = getField(pimcoreProduct, m.assetsField) as Array<{ id: string | number }> | undefined;
+    const assets = getField(pimcoreProduct, mapping_.assetsField) as Array<{ id: string | number }> | undefined;
     if (assets?.length) {
         result.assetIds = assets.map(a => `pimcore:asset:${a.id}`);
         result.featuredAssetId = result.assetIds[0];
@@ -158,15 +158,15 @@ export function transformVariant(
     defaultLanguage = 'en',
     languages: string[] = ['en'],
 ): VendureVariantInput {
-    const m = { ...DEFAULT_PRODUCT_MAPPING, ...mapping };
+    const mapping_ = { ...DEFAULT_PRODUCT_MAPPING, ...mapping };
 
     const sku = String(
-        getField(pimcoreVariant, m.skuField) ??
+        getField(pimcoreVariant, mapping_.skuField) ??
         getField(pimcoreVariant, 'itemNumber') ??
         `${parentSku}-${pimcoreVariant.key ?? pimcoreVariant.id}`
     );
 
-    const nameField = getField(pimcoreVariant, m.nameField);
+    const nameField = getField(pimcoreVariant, mapping_.nameField);
     const name = extractLocalizedValue(nameField as string | PimcoreLocalizedField, defaultLanguage) || sku;
 
     const rawPrice = getField(pimcoreVariant, 'price') as number | string | undefined;
@@ -201,22 +201,22 @@ export function transformCategory(
     defaultLanguage = 'en',
     languages: string[] = ['en'],
 ): VendureCategoryInput {
-    const m = { ...DEFAULT_CATEGORY_MAPPING, ...mapping };
+    const mapping_ = { ...DEFAULT_CATEGORY_MAPPING, ...mapping };
 
-    const nameField = getField(pimcoreCategory, m.nameField);
+    const nameField = getField(pimcoreCategory, mapping_.nameField);
     const name = extractLocalizedValue(nameField as string | PimcoreLocalizedField, defaultLanguage) ||
         pimcoreCategory.key || String(pimcoreCategory.id);
 
-    const slugField = getField(pimcoreCategory, m.slugField);
+    const slugField = getField(pimcoreCategory, mapping_.slugField);
     let slug = extractLocalizedValue(slugField as string | PimcoreLocalizedField, defaultLanguage);
     if (!slug) slug = generateSlug(name);
 
-    const descField = getField(pimcoreCategory, m.descriptionField);
+    const descField = getField(pimcoreCategory, mapping_.descriptionField);
     const description = extractLocalizedValue(descField as string | PimcoreLocalizedField, defaultLanguage);
 
-    const parent = getField(pimcoreCategory, m.parentField) as { id: string | number } | undefined;
+    const parent = getField(pimcoreCategory, mapping_.parentField) as { id: string | number } | undefined;
     const parentExternalId = parent?.id ? `pimcore:category:${parent.id}` : undefined;
-    const position = getField(pimcoreCategory, m.positionField) as number | undefined;
+    const position = getField(pimcoreCategory, mapping_.positionField) as number | undefined;
 
     const result: VendureCategoryInput = {
         externalId: `pimcore:category:${pimcoreCategory.id}`,
@@ -248,14 +248,14 @@ export function transformAsset(
     mapping?: PimcoreMappingConfig['asset'],
     baseUrl?: string,
 ): JsonObject {
-    const m = { ...DEFAULT_ASSET_MAPPING, ...mapping };
+    const mapping_ = { ...DEFAULT_ASSET_MAPPING, ...mapping };
 
-    let url = getField(pimcoreAsset, m.urlField) as string | undefined;
+    let url = getField(pimcoreAsset, mapping_.urlField) as string | undefined;
     if (url && baseUrl && !url.startsWith('http')) {
         url = `${baseUrl.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`;
     }
 
-    const alt = getField(pimcoreAsset, m.altField) as string | undefined;
+    const alt = getField(pimcoreAsset, mapping_.altField) as string | undefined;
     let metaAlt: string | undefined;
     if (pimcoreAsset.metadata) {
         const altMeta = pimcoreAsset.metadata.find(m => m.name === 'alt' || m.name === 'title');
@@ -287,45 +287,6 @@ function getField(obj: Record<string, unknown>, path: string): unknown {
     return current;
 }
 
-export function createPimcoreTransformOperators(
-    _mapping?: PimcoreMappingConfig,
-    _defaultLanguage = 'en',
-    _languages: string[] = ['en'],
-) {
-    return {
-        transformProduct: {
-            op: 'custom',
-            args: {
-                name: 'pimcore:transformProduct',
-                code: `return records.map(record => ({ ...record, ...transformProduct(record, mapping?.product, defaultLanguage, languages), _pimcoreOriginal: record }));`,
-            },
-        },
-        transformCategory: {
-            op: 'custom',
-            args: {
-                name: 'pimcore:transformCategory',
-                code: `return records.map(record => ({ ...record, ...transformCategory(record, mapping?.category, defaultLanguage, languages), _pimcoreOriginal: record }));`,
-            },
-        },
-        flattenVariants: {
-            op: 'custom',
-            args: {
-                name: 'pimcore:flattenVariants',
-                code: `
-                    const result = [];
-                    for (const record of records) {
-                        result.push({ ...record, _recordType: 'product' });
-                        for (const variant of record.variants || []) {
-                            result.push({ ...transformVariant(variant, record.sku, mapping?.product, defaultLanguage, languages), _recordType: 'variant', _parentSku: record.sku, _pimcoreOriginal: variant });
-                        }
-                    }
-                    return result;
-                `,
-            },
-        },
-    };
-}
-
 export default {
     extractLocalizedValue,
     buildTranslations,
@@ -334,5 +295,4 @@ export default {
     transformVariant,
     transformCategory,
     transformAsset,
-    createPimcoreTransformOperators,
 };

@@ -450,7 +450,7 @@ export const config: VendureConfig = {
                 { code: 'full-custom-demo', name: 'Full Custom Adapters Demo', definition: customAdapterPipelineExample, enabled: true },
 
                 // =====================================================================
-                // EXPORT PIPELINES (comprehensive exports)
+                // EXPORT PIPELINES (full exports)
                 // =====================================================================
                 { code: 'product-export-full', name: 'Product Export - Full Catalog', definition: productExportFull, enabled: true },
                 { code: 'customer-export-full', name: 'Customer Export - Full', definition: customerExportFull, enabled: true },

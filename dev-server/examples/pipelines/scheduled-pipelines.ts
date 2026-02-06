@@ -649,7 +649,7 @@ export const webhookBasicAuth = createPipeline()
 // =============================================================================
 
 /**
- * Pipeline with multiple triggers demonstrating flexible execution patterns.
+ * Pipeline with multiple triggers demonstrating different execution patterns.
  * Can be triggered by:
  * - Manual trigger (from dashboard or API)
  * - Hourly schedule (for regular updates)
@@ -772,7 +772,7 @@ export const multiTriggerPipeline = createPipeline()
 // =============================================================================
 
 /**
- * Pipeline demonstrating comprehensive VALIDATE and ENRICH step usage.
+ * Pipeline demonstrating VALIDATE and ENRICH step usage.
  * Imports customers from CSV, validates required fields and formats,
  * enriches with default values and computed fields, then loads to Vendure.
  *
@@ -783,7 +783,7 @@ export const multiTriggerPipeline = createPipeline()
  */
 export const customerImportWithValidationAndEnrichment = createPipeline()
     .name('Customer Import with Validation & Enrichment')
-    .description('Import customers with comprehensive validation and data enrichment')
+    .description('Import customers with validation and data enrichment')
     .capabilities({ requires: ['UpdateCustomer'] })
 
     .trigger('manual-trigger', {

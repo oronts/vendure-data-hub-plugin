@@ -1,6 +1,6 @@
 # Pimcore Connector
 
-Enterprise integration for syncing products, categories, assets, and facets from **Pimcore PIM/DAM** to **Vendure Commerce**.
+Integration for syncing products, categories, assets, and facets from **Pimcore PIM/DAM** to **Vendure Commerce**.
 
 ## Overview
 

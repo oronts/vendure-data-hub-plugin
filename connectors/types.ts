@@ -1,5 +1,5 @@
 /**
- * Connector Types - Enterprise Integrations Hub
+ * Connector Types - External System Integration
  *
  * Defines the contract for all DataHub connectors (Pimcore, SAP, Akeneo, etc.)
  */
@@ -137,35 +137,3 @@ export interface ConnectorRegistrationResult {
     errors?: string[];
 }
 
-/**
- * Webhook event from external system
- */
-export interface ConnectorWebhookEvent {
-    /** Connector code */
-    connectorCode: string;
-    /** Event type (e.g., 'product.updated', 'category.deleted') */
-    eventType: string;
-    /** Entity type */
-    entityType: string;
-    /** Entity ID in source system */
-    entityId: string | number;
-    /** Timestamp of the event */
-    timestamp: string;
-    /** Additional payload */
-    payload?: Record<string, unknown>;
-}
-
-/**
- * Sync status for monitoring
- */
-export interface ConnectorSyncStatus {
-    connectorCode: string;
-    pipelineCode: string;
-    lastRunAt?: string;
-    lastSuccessAt?: string;
-    lastFailureAt?: string;
-    recordsProcessed: number;
-    recordsFailed: number;
-    status: 'idle' | 'running' | 'success' | 'failed';
-    errorMessage?: string;
-}
