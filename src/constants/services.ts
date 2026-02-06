@@ -17,7 +17,7 @@ export const SEARCH_SERVICE_ENV_VARS = {
 /**
  * Get search service URL from environment or use default
  * @param service - The search service name
- * @returns The configured URL or default localhost URL
+ * @returns Configured URL or default localhost URL
  */
 export function getSearchServiceUrl(service: keyof typeof SEARCH_SERVICE_PORTS): string {
     const envVar = SEARCH_SERVICE_ENV_VARS[service];
@@ -77,14 +77,6 @@ export const FEED_NAMESPACES = {
 } as const;
 
 /**
- * RSS feed versions
- */
-export const RSS_VERSIONS = {
-    RSS_2_0: '2.0',
-    ATOM_1_0: '1.0',
-} as const;
-
-/**
  * Content-Type headers
  */
 export const CONTENT_TYPES = {
@@ -122,16 +114,6 @@ export const AUTH_SCHEMES = {
     BEARER: 'Bearer',
     BASIC: 'Basic',
     API_KEY: 'ApiKey',
-} as const;
-
-/**
- * OAuth2 grant types
- */
-export const OAUTH2_GRANT_TYPES = {
-    CLIENT_CREDENTIALS: 'client_credentials',
-    PASSWORD: 'password',
-    AUTHORIZATION_CODE: 'authorization_code',
-    REFRESH_TOKEN: 'refresh_token',
 } as const;
 
 /**

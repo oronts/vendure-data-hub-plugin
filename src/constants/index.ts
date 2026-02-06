@@ -14,52 +14,72 @@ export type { QueueName, LoggerContext } from './core';
 
 export * from './enums';
 
+// Export all defaults from the new modular structure
 export {
+    // Core defaults
     RETENTION,
-    PAGINATION_PARAMS,
-    PAGINATION,
-    BATCH,
-    SINK,
-    SCHEDULER,
-    WEBHOOK,
-    HTTP,
-    HTTP_STATUS,
-    RATE_LIMIT,
-    FILE_STORAGE,
-    getOutputPath,
-    OUTPUT_EXTENSIONS,
-    XML_EXPORT,
-    UI,
-    CACHE,
-    EXTRACTOR_LIMITS,
-    SPAN_TRACKER,
-    TRUNCATION,
     NUMERIC,
-    PORTS,
-    DOMAIN_EVENTS,
-    CONNECTION_POOL,
-    CIRCUIT_BREAKER,
-    METRICS,
-    VALIDATION_TIMEOUTS,
-    HOOK,
-    TRANSFORM_LIMITS,
-    VALIDATION_FIELDS,
     DEFAULT_HOSTS,
-    DEFAULTS,
-    CODE_SECURITY,
-    HTTP_LOOKUP,
+    PORTS,
+    TRANSFORM_LIMITS,
     INTERNAL_TIMINGS,
-    DISTRIBUTED_LOCK,
-    WEBHOOK_QUEUE,
-    SAFE_EVALUATOR,
-    THROUGHPUT,
-    RISK_THRESHOLDS,
-    SANDBOX,
-    IMPACT_ANALYSIS,
-    EVENT_TRIGGER,
+
+    // Batch processing
+    BATCH,
     BATCH_ROLLBACK,
     STREAMING,
+
+    // Sink and queues
+    SINK,
+    WEBHOOK_QUEUE,
+    THROUGHPUT,
+
+    // Scheduler
+    SCHEDULER,
+
+    // Webhooks
+    WEBHOOK,
+
+    // Storage
+    FILE_STORAGE,
+    getOutputPath,
+
+    // Security
+    CODE_SECURITY,
+    SAFE_EVALUATOR,
+
+    // HTTP and network
+    HTTP,
+    HTTP_STATUS,
+    HTTP_LOOKUP,
+    VALIDATION_TIMEOUTS,
+
+    // UI and display
+    PAGINATION_PARAMS,
+    PAGINATION,
+    UI,
+    TRUNCATION,
+
+    // Reliability
+    RATE_LIMIT,
+    CONNECTION_POOL,
+    CIRCUIT_BREAKER,
+    DISTRIBUTED_LOCK,
+    METRICS,
+    CACHE,
+
+    // Runtime
+    SANDBOX,
+    HOOK,
+    SPAN_TRACKER,
+    DOMAIN_EVENTS,
+    EVENT_TRIGGER,
+    RISK_THRESHOLDS,
+    IMPACT_ANALYSIS,
+
+    // Parsers
     XML_PARSER,
+    VALIDATION_FIELDS,
 } from './defaults';
 
 export {
@@ -68,7 +88,6 @@ export {
     UI_TIMEOUTS,
     CRON,
     TIME,
-    toMilliseconds,
     calculateThroughput,
 } from './time';
 
@@ -76,15 +95,11 @@ export {
     WEIGHT_UNITS,
     LENGTH_UNITS,
     VOLUME_UNITS,
-    TEMPERATURE_UNITS,
     UNIT_CONVERSIONS,
     CURRENCY_DECIMALS,
-    getCurrencyDecimals,
     convertUnit,
-    formatCurrencyValue,
-    toCurrencyMinorUnits,
 } from './units';
-export type { WeightUnit, LengthUnit, VolumeUnit, TemperatureUnit } from './units';
+export type { WeightUnit, LengthUnit, VolumeUnit } from './units';
 
 export {
     STEP_ICONS,
@@ -92,12 +107,6 @@ export {
     STEP_COLORS,
     STATUS_COLORS,
     PIPELINE_STATUS_COLORS,
-    NODE_COLORS,
-    BRAND_COLORS,
-    UI_COLORS,
-    DISPLAY_CHARS,
-    FILE_SIZE_UNITS,
-    FILE_SIZE_BASE,
 } from './ui';
 
 export {
@@ -108,11 +117,9 @@ export {
     EXAMPLE_URLS,
     SERVICE_DEFAULTS,
     FEED_NAMESPACES,
-    RSS_VERSIONS,
     CONTENT_TYPES,
     HTTP_HEADERS,
     AUTH_SCHEMES,
-    OAUTH2_GRANT_TYPES,
     SERVICE_URL_TEMPLATES,
     XML_NAMESPACES,
     FEED_FORMATS,
@@ -182,7 +189,6 @@ export {
     ERROR_CODES,
     ErrorSeverity,
     isRetryableError,
-    getErrorSeverity,
 } from './error-codes';
 
 import { AdapterDefinition } from '../sdk/types';
@@ -192,6 +198,7 @@ import { EXPORTER_ADAPTERS } from './exporter-adapters';
 import { FEED_ADAPTERS } from './feed-adapters';
 import { SINK_ADAPTERS } from './sink-adapters';
 import { ALL_OPERATOR_DEFINITIONS } from '../operators';
+import { ENRICHER_ADAPTER_DEFINITIONS } from '../enrichers';
 
 export const BUILTIN_ADAPTERS: AdapterDefinition[] = [
     ...EXTRACTOR_ADAPTERS,
@@ -200,6 +207,7 @@ export const BUILTIN_ADAPTERS: AdapterDefinition[] = [
     ...EXPORTER_ADAPTERS,
     ...FEED_ADAPTERS,
     ...SINK_ADAPTERS,
+    ...ENRICHER_ADAPTER_DEFINITIONS,
 ];
 
 export { EXTRACTOR_ADAPTERS } from './extractor-adapters';
@@ -208,6 +216,7 @@ export { EXPORTER_ADAPTERS } from './exporter-adapters';
 export { FEED_ADAPTERS } from './feed-adapters';
 export { SINK_ADAPTERS, SINK_ADAPTER_CODES } from './sink-adapters';
 export type { SinkAdapterCode } from './sink-adapters';
+export { ENRICHER_ADAPTER_DEFINITIONS } from '../enrichers';
 export {
     ALL_OPERATOR_DEFINITIONS,
     DATA_OPERATOR_DEFINITIONS,

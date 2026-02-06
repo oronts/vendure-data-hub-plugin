@@ -7,15 +7,20 @@
  * Import patterns from here instead of defining them inline.
  */
 
+import {
+    EMAIL_PATTERN as SHARED_EMAIL_PATTERN,
+    isValidEmail as sharedIsValidEmail,
+} from '../../shared/utils/validation';
+
 // ============================================================================
 // Core Identifier Patterns
 // ============================================================================
 
 /**
  * Email address pattern.
- * Simple pattern: [localpart]@[domain].[tld]
+ * Re-exported from shared/utils/validation.ts (canonical source with empty check).
  */
-export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const EMAIL_PATTERN = SHARED_EMAIL_PATTERN;
 
 /**
  * Pipeline code pattern (lowercase alphanumeric with dashes).
@@ -215,18 +220,10 @@ export const PATTERNS = {
 // ============================================================================
 
 /**
- * Test a value against a pattern.
- */
-export function matchesPattern(value: string, pattern: RegExp): boolean {
-    return pattern.test(value);
-}
-
-/**
  * Validate email format.
+ * Re-exported from shared/utils/validation.ts (canonical source with empty check).
  */
-export function isValidEmail(email: string): boolean {
-    return EMAIL_PATTERN.test(email);
-}
+export const isValidEmail = sharedIsValidEmail;
 
 /**
  * Validate pipeline code format.
@@ -240,19 +237,5 @@ export function isValidPipelineCode(code: string): boolean {
  */
 export function isValidSecretCode(code: string): boolean {
     return SECRET_CODE_PATTERN.test(code);
-}
-
-/**
- * Validate slug format.
- */
-export function isValidSlug(value: string): boolean {
-    return SLUG_PATTERN.test(value);
-}
-
-/**
- * Validate UUID v4 format.
- */
-export function isValidUuid(value: string): boolean {
-    return UUID_PATTERN.test(value);
 }
 

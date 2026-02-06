@@ -41,7 +41,7 @@ export const DATAHUB_ROUTE_BASE = NAV.ROUTE_BASE;
 
 /**
  * Logger context identifiers for services, loaders, extractors, and handlers
- * Provides consistent naming for log messages across the plugin
+ * Consistent naming for log messages across the plugin
  */
 export const LOGGER_CONTEXTS = {
     PIPELINE_SERVICE: 'PipelineService',
@@ -108,6 +108,8 @@ export const LOGGER_CONTEXTS = {
     EMAIL_HANDLER: 'EmailHandler',
     RABBITMQ_ADAPTER: 'RabbitMQAdapter',
     ERROR_RESOLVER: 'ErrorResolver',
+    QUEUE_RESOLVER: 'QueueResolver',
+    FEED_RESOLVER: 'FeedResolver',
     LOOKUP_TRANSFORMS: 'LookupTransforms',
     DEFINITION_VALIDATION_SERVICE: 'DefinitionValidationService',
     CIRCUIT_BREAKER: 'CircuitBreaker',

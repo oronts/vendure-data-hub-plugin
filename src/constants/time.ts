@@ -60,28 +60,6 @@ export const TIME = {
 } as const;
 
 /**
- * Calculate milliseconds for a given duration
- * @param value - Numeric value
- * @param unit - Time unit
- * @returns Duration in milliseconds
- */
-export function toMilliseconds(
-    value: number,
-    unit: 'second' | 'minute' | 'hour' | 'day',
-): number {
-    switch (unit) {
-        case 'second':
-            return value * TIME_UNITS.SECOND;
-        case 'minute':
-            return value * TIME_UNITS.MINUTE;
-        case 'hour':
-            return value * TIME_UNITS.HOUR;
-        case 'day':
-            return value * TIME_UNITS.DAY;
-    }
-}
-
-/**
  * Calculate throughput (records per second)
  * @param records - Number of records processed
  * @param durationMs - Duration in milliseconds

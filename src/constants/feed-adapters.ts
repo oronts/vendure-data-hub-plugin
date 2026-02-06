@@ -70,7 +70,7 @@ export const FEED_ADAPTERS: AdapterDefinition[] = [
     {
         type: 'feed',
         code: 'customFeed',
-        description: 'Generate custom product feed with flexible field mapping.',
+        description: 'Generate custom product feed with configurable field mapping.',
         category: 'external',
         schema: {
             fields: [

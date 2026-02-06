@@ -32,17 +32,6 @@ export const VOLUME_UNITS = {
 export type VolumeUnit = typeof VOLUME_UNITS[keyof typeof VOLUME_UNITS];
 
 /**
- * Temperature unit identifiers
- */
-export const TEMPERATURE_UNITS = {
-    CELSIUS: 'c',
-    FAHRENHEIT: 'f',
-    KELVIN: 'k',
-} as const;
-
-export type TemperatureUnit = typeof TEMPERATURE_UNITS[keyof typeof TEMPERATURE_UNITS];
-
-/**
  * Unit conversion factors
  * Maps from source unit to target unit with multiplier
  */
@@ -115,15 +104,6 @@ export const CURRENCY_DECIMALS: Record<string, number> = {
 } as const;
 
 /**
- * Get decimal places for a currency code
- * @param currencyCode - ISO 4217 currency code
- * @returns Number of decimal places (defaults to 2)
- */
-export function getCurrencyDecimals(currencyCode: string): number {
-    return CURRENCY_DECIMALS[currencyCode.toUpperCase()] ?? 2;
-}
-
-/**
  * Convert a value between units
  * @param value - Value to convert
  * @param fromUnit - Source unit
@@ -144,24 +124,3 @@ export function convertUnit(
     return value * factor;
 }
 
-/**
- * Format a currency value
- * @param amount - Amount in minor units (e.g., cents)
- * @param currencyCode - ISO 4217 currency code
- * @returns Formatted value in major units
- */
-export function formatCurrencyValue(amount: number, currencyCode: string): number {
-    const decimals = getCurrencyDecimals(currencyCode);
-    return amount / Math.pow(10, decimals);
-}
-
-/**
- * Parse a currency value to minor units
- * @param value - Value in major units
- * @param currencyCode - ISO 4217 currency code
- * @returns Value in minor units (e.g., cents)
- */
-export function toCurrencyMinorUnits(value: number, currencyCode: string): number {
-    const decimals = getCurrencyDecimals(currencyCode);
-    return Math.round(value * Math.pow(10, decimals));
-}

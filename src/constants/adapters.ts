@@ -2,7 +2,6 @@
  * Adapter Code Constants
  *
  * Centralized constants for adapter codes used throughout the DataHub plugin.
- * Using these constants ensures consistency and enables better refactoring support.
  */
 
 /** Extractor adapter codes */

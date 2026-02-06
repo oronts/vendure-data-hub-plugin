@@ -125,7 +125,9 @@ export const ERROR_CODES = {
 /**
  * Error severity levels
  *
- * Values use SCREAMING_SNAKE_CASE to match status/severity conventions
+ * Values use SCREAMING_SNAKE_CASE to match status/severity conventions.
+ * NOTE: This enum aligns with shared/types/error.types.ts ErrorSeverity type.
+ * Use FATAL (not CRITICAL) for unrecoverable errors to maintain consistency.
  */
 export enum ErrorSeverity {
     /** Informational - not an error */
@@ -134,8 +136,8 @@ export enum ErrorSeverity {
     WARNING = 'WARNING',
     /** Error - operation failed but may be retried */
     ERROR = 'ERROR',
-    /** Critical - operation failed and cannot be recovered */
-    CRITICAL = 'CRITICAL',
+    /** Fatal - operation failed and cannot be recovered */
+    FATAL = 'FATAL',
 }
 
 /**
@@ -153,23 +155,3 @@ export function isRetryableError(code: string): boolean {
     return retryableCodes.has(code);
 }
 
-/**
- * Gets the severity level for an error code
- */
-export function getErrorSeverity(code: string): ErrorSeverity {
-    const criticalCodes: Set<string> = new Set([
-        PipelineErrorCode.INVALID_DEFINITION,
-        PipelineErrorCode.CIRCULAR_DEPENDENCY,
-        SchemaErrorCode.INCOMPATIBLE_VERSION,
-    ]);
-
-    if (criticalCodes.has(code)) {
-        return ErrorSeverity.CRITICAL;
-    }
-
-    if (code.includes('VALIDATION') || code.includes('MISSING')) {
-        return ErrorSeverity.WARNING;
-    }
-
-    return ErrorSeverity.ERROR;
-}

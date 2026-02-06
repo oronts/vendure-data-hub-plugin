@@ -58,6 +58,38 @@ export const EXTRACTOR_ADAPTERS: AdapterDefinition[] = [
             ],
         },
     },
+    // REST alias for httpApi (common alternative name)
+    {
+        type: 'extractor',
+        code: 'rest',
+        name: 'REST API',
+        description: 'Alias for httpApi - Extract records from HTTP/REST APIs.',
+        schema: {
+            fields: [
+                { key: 'url', label: 'URL', type: 'string', required: true, description: 'Full URL or path (if using connection)' },
+                { key: 'connectionCode', label: 'Connection', type: 'connection', description: 'Connection for base URL and authentication' },
+                { key: 'method', label: 'Method', type: 'select', options: [
+                    { value: HttpMethod.GET, label: 'GET' },
+                    { value: HttpMethod.POST, label: 'POST' },
+                    { value: HttpMethod.PUT, label: 'PUT' },
+                    { value: HttpMethod.PATCH, label: 'PATCH' },
+                    { value: HttpMethod.DELETE, label: 'DELETE' },
+                ] },
+                { key: 'headers', label: 'Headers (JSON)', type: 'json', description: 'Additional request headers' },
+                { key: 'body', label: 'Body (JSON)', type: 'json', description: 'Request body for POST/PUT/PATCH' },
+                { key: 'dataPath', label: 'Data Path', type: 'string', description: 'JSON path to records array (e.g., "data.items")' },
+                { key: 'pagination.type', label: 'Pagination Type', type: 'select', options: [
+                    { value: 'none', label: 'None' },
+                    { value: 'offset', label: 'Offset' },
+                    { value: 'cursor', label: 'Cursor' },
+                    { value: 'page', label: 'Page Number' },
+                    { value: 'link-header', label: 'Link Header' },
+                ] },
+                { key: 'pagination.limit', label: 'Page Size', type: 'number', description: 'Records per request' },
+                { key: 'pagination.maxPages', label: 'Max Pages', type: 'number', description: 'Safety limit for pagination' },
+            ],
+        },
+    },
     // Vendure Query extractor (runtime adapter exists; add definition for UI/validation)
     {
         type: 'extractor',
