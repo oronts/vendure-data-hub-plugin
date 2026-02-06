@@ -3,22 +3,10 @@
  */
 
 /**
- * Batch processing defaults
+ * Batch processing defaults - imported from shared constants
  */
-export const BATCH = {
-    /** Default batch size for processing */
-    SIZE: 50,
-    /** Bulk operation size */
-    BULK_SIZE: 100,
-    /** Batch size for export operations */
-    EXPORT_BATCH_SIZE: 1000,
-    /** Query limit for export operations */
-    EXPORT_QUERY_LIMIT: 10000,
-    /** Maximum concurrent in-flight operations */
-    MAX_IN_FLIGHT: 5,
-    /** Default rate limit (requests per second) */
-    RATE_LIMIT_RPS: 10,
-} as const;
+import { BATCH } from '../../../shared/constants';
+export { BATCH };
 
 /**
  * Batch rollback defaults

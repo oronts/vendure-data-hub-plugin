@@ -3,24 +3,10 @@
  */
 
 /**
- * Network port defaults - imported from shared constants
+ * Shared constants - imported from shared folder
  */
-import { PORTS } from '../../../shared/constants';
-export { PORTS };
-
-/**
- * Retention policy defaults (in days)
- */
-export const RETENTION = {
-    /** Days to retain pipeline run history */
-    RUNS_DAYS: 30,
-    /** Days to retain error records */
-    ERRORS_DAYS: 90,
-    /** Maximum retention days (1 year) */
-    MAX_DAYS: 365,
-    /** Minimum retention days */
-    MIN_DAYS: 1,
-} as const;
+import { PORTS, RETENTION, DEFAULT_HOSTS } from '../../../shared/constants';
+export { PORTS, RETENTION, DEFAULT_HOSTS };
 
 /**
  * Numeric calculation defaults
@@ -28,14 +14,6 @@ export const RETENTION = {
 export const NUMERIC = {
     /** Default decimal places for formatting */
     DEFAULT_DECIMALS: 2,
-} as const;
-
-/**
- * Default host values
- */
-export const DEFAULT_HOSTS = {
-    /** Default localhost hostname */
-    LOCALHOST: 'localhost',
 } as const;
 
 /**

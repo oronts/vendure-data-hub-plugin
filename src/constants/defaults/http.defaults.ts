@@ -3,26 +3,10 @@
  */
 
 /**
- * HTTP configuration defaults
+ * HTTP configuration defaults - imported from shared constants
  */
-export const HTTP = {
-    /** Request timeout in milliseconds */
-    TIMEOUT_MS: 30_000,
-    /** Connection test timeout in milliseconds (shorter for quick tests) */
-    CONNECTION_TEST_TIMEOUT_MS: 10_000,
-    /** Initial retry delay */
-    RETRY_DELAY_MS: 1_000,
-    /** Maximum retry delay */
-    RETRY_MAX_DELAY_MS: 30_000,
-    /** Maximum retry attempts */
-    MAX_RETRIES: 3,
-    /** Enable exponential backoff for retries */
-    EXPONENTIAL_BACKOFF: true,
-    /** Backoff multiplier for exponential backoff */
-    BACKOFF_MULTIPLIER: 2,
-    /** HTTP status codes that should trigger retry */
-    RETRYABLE_STATUS_CODES: [408, 429, 500, 502, 503, 504] as readonly number[],
-} as const;
+import { HTTP } from '../../../shared/constants';
+export { HTTP };
 
 /**
  * HTTP Status Codes
