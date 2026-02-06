@@ -16,9 +16,6 @@ export {
     ValidationBuilder,
     LoaderValidationError,
     LoaderValidationWarning,
-    // Backward compatibility aliases (deprecated)
-    ValidationError,
-    ValidationWarning,
     createValidationResult,
 } from './validation-builder';
 

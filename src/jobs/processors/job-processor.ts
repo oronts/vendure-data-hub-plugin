@@ -109,7 +109,6 @@ export function withJobProcessing<T, R>(
 
 /**
  * Retry a function with exponential backoff
- * Delegates to shared executeWithRetry utility.
  *
  * @param fn - Function to retry
  * @param options - Retry options
@@ -154,7 +153,6 @@ export { sleep };
 
 /**
  * Calculate exponential backoff delay
- * Delegates to shared calculateBackoff utility.
  *
  * @param attempt - Current attempt number (1-based)
  * @param baseDelayMs - Base delay in milliseconds
@@ -169,11 +167,11 @@ export function calculateBackoffDelay(
     multiplier: number = DEFAULT_RETRY_CONFIG.backoffMultiplier,
 ): number {
     return calculateBackoff(attempt, {
-        maxAttempts: 1, // Not used in calculation
+        maxAttempts: 1,
         initialDelayMs: baseDelayMs,
         maxDelayMs,
         backoffMultiplier: multiplier,
-        jitterFactor: 0, // Deterministic for this function
+        jitterFactor: 0,
     });
 }
 

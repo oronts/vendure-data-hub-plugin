@@ -141,9 +141,3 @@ export function containsSqlInjection(str: string): boolean {
 
     return false;
 }
-
-/**
- * Common column whitelists for SQL security validation.
- * Re-exported from constants for backward compatibility.
- */
-export const COMMON_WHITELISTS = SQL_WHITELISTS;

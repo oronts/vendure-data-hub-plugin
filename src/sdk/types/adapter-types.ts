@@ -73,8 +73,6 @@ export interface BaseAdapter<TConfig = JsonObject> {
     readonly experimental?: boolean;
     /** Message explaining experimental status and limitations */
     readonly experimentalMessage?: string;
-    /** Whether the adapter should be hidden from UI (e.g., incomplete adapters) */
-    readonly hidden?: boolean;
 }
 
 /**

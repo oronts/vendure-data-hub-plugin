@@ -42,7 +42,6 @@ export function buildHeaders(
 
 /**
  * Calculate exponential backoff delay with jitter
- * Delegates to shared retry utility for consistency across the codebase.
  */
 export function calculateBackoff(attempt: number, config: RetryConfig): number {
     return calculateBackoffShared(attempt, {

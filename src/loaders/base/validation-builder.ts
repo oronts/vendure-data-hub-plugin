@@ -13,9 +13,6 @@ import { TARGET_OPERATION } from '../../constants/enums';
 import { VALIDATION_ERROR_CODE } from '../../../shared/types/validation.types';
 import { isValidEmail } from '../../utils/input-validation.utils';
 
-// Alias for backward compatibility with enum-style usage
-const ValidationErrorCode = VALIDATION_ERROR_CODE;
-
 /**
  * Loader-specific validation error structure.
  *
@@ -32,22 +29,12 @@ export interface LoaderValidationError {
 }
 
 /**
- * @deprecated Use LoaderValidationError instead. This alias is provided for backward compatibility.
- */
-export type ValidationError = LoaderValidationError;
-
-/**
  * Loader-specific validation warning structure.
  */
 export interface LoaderValidationWarning {
     field: string;
     message: string;
 }
-
-/**
- * @deprecated Use LoaderValidationWarning instead. This alias is provided for backward compatibility.
- */
-export type ValidationWarning = LoaderValidationWarning;
 
 /**
  * Fluent builder for constructing validation results.
@@ -107,7 +94,7 @@ export class ValidationBuilder {
      */
     requireString(field: string, value: unknown, message?: string): this {
         if (!value || typeof value !== 'string' || value.trim() === '') {
-            this.addError(field, message || `${field} is required`, ValidationErrorCode.REQUIRED);
+            this.addError(field, message || `${field} is required`, VALIDATION_ERROR_CODE.REQUIRED);
         }
         return this;
     }
@@ -132,11 +119,11 @@ export class ValidationBuilder {
      */
     requireEmail(field: string, value: unknown, message?: string): this {
         if (!value || typeof value !== 'string' || value.trim() === '') {
-            this.addError(field, message || 'Email address is required', ValidationErrorCode.REQUIRED);
+            this.addError(field, message || 'Email address is required', VALIDATION_ERROR_CODE.REQUIRED);
             return this;
         }
         if (!isValidEmail(value)) {
-            this.addError(field, 'Invalid email format', ValidationErrorCode.INVALID_FORMAT);
+            this.addError(field, 'Invalid email format', VALIDATION_ERROR_CODE.INVALID_FORMAT);
         }
         return this;
     }
@@ -161,7 +148,7 @@ export class ValidationBuilder {
      */
     requireArrayNotEmpty(field: string, value: unknown, message?: string): this {
         if (!value || !Array.isArray(value) || value.length === 0) {
-            this.addError(field, message || `${field} must not be empty`, ValidationErrorCode.REQUIRED);
+            this.addError(field, message || `${field} must not be empty`, VALIDATION_ERROR_CODE.REQUIRED);
         }
         return this;
     }
@@ -186,12 +173,12 @@ export class ValidationBuilder {
      */
     requirePositiveNumber(field: string, value: unknown, message?: string): this {
         if (value === undefined || value === null) {
-            this.addError(field, message || `${field} is required`, ValidationErrorCode.REQUIRED);
+            this.addError(field, message || `${field} is required`, VALIDATION_ERROR_CODE.REQUIRED);
             return this;
         }
         const num = Number(value);
         if (Number.isNaN(num) || num < 0) {
-            this.addError(field, message || `${field} must be a positive number`, ValidationErrorCode.INVALID_VALUE);
+            this.addError(field, message || `${field} must be a positive number`, VALIDATION_ERROR_CODE.INVALID_VALUE);
         }
         return this;
     }
@@ -224,16 +211,16 @@ export class ValidationBuilder {
             return this;
         }
         if (!address.streetLine1) {
-            this.addError(`${prefix}.streetLine1`, 'Street line 1 is required', ValidationErrorCode.REQUIRED);
+            this.addError(`${prefix}.streetLine1`, 'Street line 1 is required', VALIDATION_ERROR_CODE.REQUIRED);
         }
         if (!address.city) {
-            this.addError(`${prefix}.city`, 'City is required', ValidationErrorCode.REQUIRED);
+            this.addError(`${prefix}.city`, 'City is required', VALIDATION_ERROR_CODE.REQUIRED);
         }
         if (!address.postalCode) {
-            this.addError(`${prefix}.postalCode`, 'Postal code is required', ValidationErrorCode.REQUIRED);
+            this.addError(`${prefix}.postalCode`, 'Postal code is required', VALIDATION_ERROR_CODE.REQUIRED);
         }
         if (!address.countryCode) {
-            this.addError(`${prefix}.countryCode`, 'Country code is required', ValidationErrorCode.REQUIRED);
+            this.addError(`${prefix}.countryCode`, 'Country code is required', VALIDATION_ERROR_CODE.REQUIRED);
         }
         return this;
     }
