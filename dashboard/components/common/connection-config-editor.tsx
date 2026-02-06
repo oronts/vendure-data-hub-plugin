@@ -8,6 +8,7 @@ import {
     HTTP_CONNECTION_DEFAULTS,
     DATABASE_PLACEHOLDERS,
     CLOUD_PLACEHOLDERS,
+    PLACEHOLDERS,
 } from '../../constants';
 import { validateUrl, validatePort, validateHostname } from '../../utils/form-validation';
 import { FieldError } from './validation-feedback';
@@ -257,7 +258,7 @@ function HttpConnectionFields({
                 {headerRows.map(row => (
                     <div key={row.id} className="grid grid-cols-[1fr,1fr,auto] gap-3">
                         <Input
-                            placeholder="Header name"
+                            placeholder={PLACEHOLDERS.HEADER_NAME}
                             value={row.name}
                             onChange={e => {
                                 const next = headerRows.map(r => (r.id === row.id ? { ...r, name: e.target.value } : r));
@@ -266,7 +267,7 @@ function HttpConnectionFields({
                             disabled={disabled}
                         />
                         <Input
-                            placeholder="Header value"
+                            placeholder={PLACEHOLDERS.HEADER_VALUE}
                             value={row.value}
                             onChange={e => {
                                 const next = headerRows.map(r => (r.id === row.id ? { ...r, value: e.target.value } : r));
@@ -311,7 +312,7 @@ function HttpConnectionFields({
                         <SecretReferenceInput
                             value={auth.secretCode ?? ''}
                             onChange={value => updateAuthField('secretCode', value)}
-                            placeholder="my-bearer-token"
+                            placeholder={PLACEHOLDERS.BEARER_TOKEN}
                             disabled={disabled}
                             options={secretOptions ?? []}
                         />
@@ -324,7 +325,7 @@ function HttpConnectionFields({
                         <div className="space-y-2">
                             <Label className="text-sm font-medium">Header Name</Label>
                             <Input
-                                placeholder="X-API-Key"
+                                placeholder={PLACEHOLDERS.API_KEY_HEADER}
                                 value={auth.headerName ?? ''}
                                 onChange={e => updateAuthField('headerName', e.target.value)}
                                 disabled={disabled}
@@ -335,7 +336,7 @@ function HttpConnectionFields({
                             <SecretReferenceInput
                                 value={auth.secretCode ?? ''}
                                 onChange={value => updateAuthField('secretCode', value)}
-                                placeholder="api-key-secret"
+                                placeholder={PLACEHOLDERS.API_KEY_SECRET}
                                 disabled={disabled}
                                 options={secretOptions ?? []}
                             />
@@ -348,7 +349,7 @@ function HttpConnectionFields({
                         <div className="space-y-2">
                             <Label className="text-sm font-medium">Username</Label>
                             <Input
-                                placeholder="service-user"
+                                placeholder={PLACEHOLDERS.SERVICE_USER}
                                 value={auth.username ?? ''}
                                 onChange={e => updateAuthField('username', e.target.value)}
                                 disabled={disabled}
@@ -359,7 +360,7 @@ function HttpConnectionFields({
                             <SecretReferenceInput
                                 value={auth.secretCode ?? ''}
                                 onChange={value => updateAuthField('secretCode', value)}
-                                placeholder="password-secret"
+                                placeholder={PLACEHOLDERS.PASSWORD_SECRET}
                                 disabled={disabled}
                                 options={secretOptions ?? []}
                             />

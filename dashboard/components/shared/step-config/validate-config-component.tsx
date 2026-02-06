@@ -12,6 +12,7 @@ import {
 } from '@vendure/dashboard';
 import { Plus, Trash2 } from 'lucide-react';
 import { VALIDATION_MODES, ERROR_HANDLING_MODES } from '../../../constants/step-configs';
+import { PLACEHOLDERS } from '../../../constants/placeholders';
 
 interface ValidationRule {
     id?: string;
@@ -264,7 +265,7 @@ const ValidationRuleRow = memo(function ValidationRuleRow({
                     <Input
                         value={rule.spec.field || ''}
                         onChange={handleFieldChange}
-                        placeholder="Field name (e.g., sku, price)"
+                        placeholder={PLACEHOLDERS.FIELD_NAME}
                         className="flex-1"
                     />
                     <Select
@@ -305,13 +306,13 @@ const ValidationRuleRow = memo(function ValidationRuleRow({
                     <Input
                         value={rule.spec.pattern || ''}
                         onChange={handlePatternChange}
-                        placeholder="Regex pattern (e.g., ^[A-Z]{3}-\\d+$)"
+                        placeholder={PLACEHOLDERS.REGEX_PATTERN}
                     />
                 )}
                 <Input
                     value={rule.spec.error || ''}
                     onChange={handleErrorChange}
-                    placeholder="Error message (optional)"
+                    placeholder={PLACEHOLDERS.ERROR_MESSAGE}
                     className="text-xs"
                 />
             </div>

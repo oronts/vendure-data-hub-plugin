@@ -21,6 +21,10 @@ export const PLACEHOLDERS = {
     BEARER_TOKEN: 'your-bearer-token',
     BASIC_USERNAME: 'username',
     BASIC_PASSWORD: 'password',
+    API_KEY_SECRET: 'api-key-secret',
+    PASSWORD_SECRET: 'password-secret',
+    API_KEY_HEADER: 'X-API-Key',
+    SERVICE_USER: 'service-user',
 
     // Connection
     HOST: 'localhost',
