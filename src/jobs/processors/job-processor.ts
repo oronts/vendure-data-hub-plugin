@@ -13,6 +13,7 @@ import {
     createRetryConfig,
     sleep,
     DEFAULT_RETRY_CONFIG,
+    isRetryableError as isRetryableErrorBase,
 } from '../../utils/retry.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.JOB_PROCESSOR);
@@ -178,39 +179,33 @@ export function calculateBackoffDelay(
 /**
  * Check if an error is retryable
  *
+ * Uses the base implementation from retry.utils and allows additional patterns.
+ *
  * @param error - Error to check
- * @param retryableErrors - List of retryable error types or messages
+ * @param additionalPatterns - Additional patterns to check beyond defaults
  * @returns True if the error is retryable
  */
 export function isRetryableError(
     error: Error,
-    retryableErrors: (string | RegExp)[] = [],
+    additionalPatterns: (string | RegExp)[] = [],
 ): boolean {
-    const message = error.message.toLowerCase();
+    // Check base patterns from retry.utils
+    if (isRetryableErrorBase(error)) {
+        return true;
+    }
 
-    // Default retryable errors
-    const defaultRetryable = [
-        /timeout/i,
-        /network/i,
-        /connection/i,
-        /econnreset/i,
-        /econnrefused/i,
-        /socket/i,
-        /temporary/i,
-        /rate limit/i,
-        /too many requests/i,
-    ];
-
-    const allPatterns = [...defaultRetryable, ...retryableErrors];
-
-    for (const pattern of allPatterns) {
-        if (typeof pattern === 'string') {
-            if (message.includes(pattern.toLowerCase())) {
-                return true;
-            }
-        } else {
-            if (pattern.test(message)) {
-                return true;
+    // Check additional patterns if provided
+    if (additionalPatterns.length > 0) {
+        const message = error.message.toLowerCase();
+        for (const pattern of additionalPatterns) {
+            if (typeof pattern === 'string') {
+                if (message.includes(pattern.toLowerCase())) {
+                    return true;
+                }
+            } else {
+                if (pattern.test(message)) {
+                    return true;
+                }
             }
         }
     }

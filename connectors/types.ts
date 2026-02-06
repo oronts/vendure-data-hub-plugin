@@ -99,9 +99,9 @@ export interface ConnectorDefinition<TConfig extends BaseConnectorConfig = BaseC
     icon?: string;
 
     /** Custom extractors provided by this connector */
-    extractors?: ExtractorAdapter<any>[];
+    extractors?: Array<ExtractorAdapter<unknown>>;
     /** Custom loaders provided by this connector */
-    loaders?: LoaderAdapter<any>[];
+    loaders?: Array<LoaderAdapter<unknown>>;
 
     /** Pipeline factory function */
     createPipelines: (config: TConfig) => PipelineDefinition[];

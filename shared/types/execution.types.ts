@@ -54,15 +54,15 @@ export interface PipelineMetrics {
  */
 export interface LoadError {
     /** The record that caused the error */
-    record: JsonObject;
+    readonly record: JsonObject;
     /** Human-readable error message */
-    message: string;
+    readonly message: string;
     /** Field that caused the error */
-    field?: string;
+    readonly field?: string;
     /** Error code for programmatic handling */
-    code?: string;
+    readonly code?: string;
     /** Whether the error can be recovered from */
-    recoverable?: boolean;
+    readonly recoverable?: boolean;
 }
 
 /**
@@ -70,13 +70,13 @@ export interface LoadError {
  */
 export interface ExportError {
     /** The record that caused the error */
-    record: JsonObject;
+    readonly record: JsonObject;
     /** Human-readable error message */
-    message: string;
+    readonly message: string;
     /** Error code for programmatic handling */
-    code?: string;
+    readonly code?: string;
     /** Whether the error can be recovered from */
-    recoverable?: boolean;
+    readonly recoverable?: boolean;
 }
 
 /**
@@ -84,11 +84,11 @@ export interface ExportError {
  */
 export interface SinkError {
     /** The record that caused the error */
-    record: JsonObject;
+    readonly record: JsonObject;
     /** Human-readable error message */
-    message: string;
+    readonly message: string;
     /** HTTP status code if applicable */
-    statusCode?: number;
+    readonly statusCode?: number;
 }
 
 /**
@@ -178,9 +178,9 @@ export interface ValidationResult {
  */
 export interface InvalidRecord {
     /** The record that failed validation */
-    record: JsonObject;
+    readonly record: JsonObject;
     /** Validation errors for this record */
-    errors: readonly ValidationErrorRecord[];
+    readonly errors: readonly ValidationErrorRecord[];
 }
 
 /**
@@ -188,11 +188,11 @@ export interface InvalidRecord {
  */
 export interface ValidationErrorRecord {
     /** Field that failed validation */
-    field?: string;
+    readonly field?: string;
     /** Validation rule that failed */
-    rule: string;
+    readonly rule: string;
     /** Human-readable error message */
-    message: string;
+    readonly message: string;
     /** Error code for programmatic handling */
-    code?: string;
+    readonly code?: string;
 }

@@ -20,9 +20,6 @@ export const QUEUE_NAMES = {
 
 export type QueueName = typeof QUEUE_NAMES[keyof typeof QUEUE_NAMES];
 
-export const DATAHUB_RUN_QUEUE = QUEUE_NAMES.RUN;
-export const DATAHUB_SCHEDULE_QUEUE = QUEUE_NAMES.SCHEDULE;
-
 /**
  * Navigation identifiers for admin UI
  */
@@ -34,10 +31,6 @@ export const NAV = {
     /** Base route for DataHub pages */
     ROUTE_BASE: '/data-hub/pipelines',
 } as const;
-
-export const DATAHUB_NAV_ID = NAV.ID;
-export const DATAHUB_NAV_SECTION = NAV.SECTION;
-export const DATAHUB_ROUTE_BASE = NAV.ROUTE_BASE;
 
 /**
  * Logger context identifiers for services, loaders, extractors, and handlers
