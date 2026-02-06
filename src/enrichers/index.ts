@@ -21,13 +21,16 @@ export const BUILT_IN_ENRICHERS: EnricherAdapter<JsonObject>[] = [
 ];
 
 /**
- * Enricher adapter definitions for UI/validation
+ * Enricher adapter definitions for UI/validation.
+ * Filters out hidden adapters (e.g., experimental/incomplete).
  */
-export const ENRICHER_ADAPTER_DEFINITIONS: AdapterDefinition[] = BUILT_IN_ENRICHERS.map(e => ({
-    type: e.type,
-    code: e.code,
-    name: e.name,
-    description: e.description,
-    category: e.category,
-    schema: e.schema,
-}));
+export const ENRICHER_ADAPTER_DEFINITIONS: AdapterDefinition[] = BUILT_IN_ENRICHERS
+    .filter(e => !(e as { hidden?: boolean }).hidden)
+    .map(e => ({
+        type: e.type,
+        code: e.code,
+        name: e.name,
+        description: e.description,
+        category: e.category,
+        schema: e.schema,
+    }));

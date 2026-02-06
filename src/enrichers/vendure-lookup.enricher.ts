@@ -85,6 +85,7 @@ export const vendureLookupEnricher: EnricherAdapter<VendureLookupEnricherConfig>
     schema: VENDURE_LOOKUP_ENRICHER_SCHEMA,
     experimental: true,
     experimentalMessage: 'This enricher requires Vendure service injection which is not yet implemented. Currently only applies default values.',
+    hidden: true, // Hide from UI until fully implemented
 
     async enrich(
         context: EnrichContext,
