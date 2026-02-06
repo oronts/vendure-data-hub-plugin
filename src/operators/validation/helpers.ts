@@ -2,19 +2,10 @@ import { JsonObject, JsonValue } from '../types';
 import { getNestedValue, setNestedValue, deepClone } from '../helpers';
 import { ValidationError } from './types';
 import { VALIDATION_RULE } from '../constants';
+import { isEmpty } from '../../utils/value-checks.utils';
 
-export function isEmpty(value: JsonValue | undefined): boolean {
-    if (value === null || value === undefined) {
-        return true;
-    }
-    if (typeof value === 'string' && value.trim() === '') {
-        return true;
-    }
-    if (Array.isArray(value) && value.length === 0) {
-        return true;
-    }
-    return false;
-}
+// Re-export isEmpty for consumers of this module
+export { isEmpty };
 
 export function validateRequired(
     record: JsonObject,

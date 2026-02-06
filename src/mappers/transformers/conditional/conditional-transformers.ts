@@ -2,7 +2,7 @@
  * Conditional Transform Functions
  *
  * SECURITY: Uses SafeEvaluator for secure expression evaluation with:
- * - Comprehensive code validation (70+ blocked keywords)
+ * - Code validation (70+ blocked keywords)
  * - Prototype pollution protection
  * - Method whitelist validation
  * - Sandbox execution environment
@@ -13,6 +13,7 @@ import { JsonValue, JsonObject } from '../../../types/index';
 import { TransformConfig } from '../../types/transform-config.types';
 import { getDefaultEvaluator } from '../../../runtime/sandbox/safe-evaluator';
 import { CODE_SECURITY } from '../../../constants';
+import { isEmpty } from '../../../utils/value-checks.utils';
 
 // Import canonical implementations
 import {
@@ -135,17 +136,8 @@ export function isNull(value: JsonValue | undefined): boolean {
     return value === null || value === undefined;
 }
 
-/**
- * Empty check (null, undefined, empty string, empty array)
- */
-export function isEmpty(value: JsonValue | undefined): boolean {
-    return (
-        value === null ||
-        value === undefined ||
-        value === '' ||
-        (Array.isArray(value) && value.length === 0)
-    );
-}
+// Re-export isEmpty from shared utils for consumers of this module
+export { isEmpty };
 
 /**
  * Default value if empty
