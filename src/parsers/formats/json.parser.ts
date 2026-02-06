@@ -8,6 +8,7 @@
 import { ParseResult, ParseError, JsonParseOptions } from '../types';
 import { FileFormat } from '../../constants/enums';
 import { CODE_SECURITY } from '../../constants';
+import { extractFields } from '../helpers/field-extraction';
 
 /**
  * Maximum path length to prevent performance issues
@@ -77,25 +78,8 @@ export function navigatePath(data: unknown, path: string): unknown {
     return current;
 }
 
-/**
- * Extract all unique field names from an array of records
- *
- * @param records - Array of records
- * @returns Array of unique field names
- */
-export function extractFields(records: Record<string, unknown>[]): string[] {
-    const fieldSet = new Set<string>();
-
-    for (const record of records) {
-        if (record && typeof record === 'object') {
-            for (const key of Object.keys(record)) {
-                fieldSet.add(key);
-            }
-        }
-    }
-
-    return Array.from(fieldSet);
-}
+// Re-export extractFields for backward compatibility
+export { extractFields } from '../helpers/field-extraction';
 
 /**
  * Flatten a nested object into a single-level object
@@ -309,8 +293,13 @@ export function isJsonLines(content: string): boolean {
             if (typeof parsed !== 'object' || Array.isArray(parsed)) {
                 return false;
             }
-        } catch (_err) {
+        } catch (error) {
             // JSON parse failed - not valid NDJSON line
+            // Debug log for troubleshooting JSON Lines detection
+            console.debug('[JsonParser] JSON parse failed during NDJSON detection', {
+                error: error instanceof Error ? error.message : String(error),
+                linePreview: trimmed.length > 100 ? trimmed.slice(0, 100) + '...' : trimmed,
+            });
             return false;
         }
     }
@@ -343,22 +332,8 @@ export function generateJsonLines(records: Record<string, unknown>[]): string {
     return records.map(r => JSON.stringify(r)).join('\n');
 }
 
-/**
- * Safely access nested property using dot notation
- *
- * @param obj - Object to access
- * @param path - Dot-notation path
- * @param defaultValue - Default value if path not found
- * @returns Value at path or default
- */
-export function getNestedValue<T = unknown>(
-    obj: Record<string, unknown>,
-    path: string,
-    defaultValue?: T,
-): T | undefined {
-    const value = navigatePath(obj, path);
-    return (value !== undefined ? value : defaultValue) as T | undefined;
-}
+// Re-export getNestedValue from canonical location for backward compatibility
+export { getNestedValue } from '../../utils/object-path.utils';
 
 /**
  * Set nested property using dot notation

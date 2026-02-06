@@ -6,6 +6,10 @@
  */
 
 import { JsonValue, JsonObject } from '../../types/index';
+import { getNestedValue as getNestedValueUtil } from '../../utils/object-path.utils';
+
+// Re-export for backward compatibility (other modules import getNestedValue from here)
+export { getNestedValue } from '../../utils/object-path.utils';
 
 // EXPRESSION PATTERNS - extracted for reusability and testability
 const EXPRESSION_PATTERNS = {
@@ -36,28 +40,14 @@ const EXPRESSION_PATTERNS = {
 } as const;
 
 // UTILITY FUNCTIONS
-
-/**
- * Get nested value from object using dot notation path
- * Handles null/undefined gracefully at any level
- */
-export function getNestedValue(obj: JsonObject, path: string): JsonValue {
-    const parts = path.split('.');
-    let current: JsonValue = obj;
-    for (const part of parts) {
-        if (current === null || current === undefined) return null;
-        if (typeof current !== 'object' || Array.isArray(current)) return null;
-        current = (current as JsonObject)[part];
-    }
-    return current ?? null;
-}
+// Note: getNestedValue is imported from utils/object-path.utils.ts (canonical implementation)
 
 /**
  * Parse a condition value from string
  * Converts string representations to typed values
  *
  * @param str - The string to parse
- * @returns The parsed value as JsonValue
+ * @returns Parsed value as JsonValue
  */
 export function parseConditionValue(str: string): JsonValue {
     // Handle null/undefined keywords
@@ -86,7 +76,7 @@ export function parseConditionValue(str: string): JsonValue {
  * @param leftValue - The left operand
  * @param operator - The comparison operator
  * @param rightValue - The right operand (parsed)
- * @returns The result of the comparison
+ * @returns Comparison result
  */
 function evaluateComparison(leftValue: JsonValue, operator: string, rightValue: JsonValue): boolean {
     switch (operator) {
@@ -115,7 +105,7 @@ function evaluateComparison(leftValue: JsonValue, operator: string, rightValue: 
  * @param len - The length to compare
  * @param operator - The comparison operator
  * @param num - The number to compare against
- * @returns The result of the comparison
+ * @returns Comparison result
  */
 function evaluateLengthComparison(len: number, operator: string, num: number): boolean {
     switch (operator) {
@@ -190,8 +180,8 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
         // Handle length check
         const lengthMatch = trimmedCondition.match(EXPRESSION_PATTERNS.LENGTH);
         if (lengthMatch && (typeof value === 'string' || Array.isArray(value))) {
-            const [, op, numStr] = lengthMatch;
-            const num = parseInt(numStr, 10);
+            const [, op, numberString] = lengthMatch;
+            const num = parseInt(numberString, 10);
             return evaluateLengthComparison(value.length, op, num);
         }
 
@@ -200,7 +190,7 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
             const fieldMatch = trimmedCondition.match(EXPRESSION_PATTERNS.RECORD_FIELD);
             if (fieldMatch) {
                 const [, fieldPath, operator, compareValue] = fieldMatch;
-                const fieldValue = getNestedValue(record, fieldPath);
+                const fieldValue = getNestedValueUtil(record, fieldPath) ?? null;
                 const parsedCompare = parseConditionValue(compareValue.trim());
                 return evaluateComparison(fieldValue, operator, parsedCompare);
             }
@@ -208,8 +198,14 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
 
         // Default: treat as truthy check
         return Boolean(value);
-    } catch {
+    } catch (error) {
         // Condition evaluation failed - return false as fallback
+        // Debug log for troubleshooting invalid condition expressions
+        console.debug('[ExpressionEval] Condition evaluation failed', {
+            error: error instanceof Error ? error.message : String(error),
+            condition,
+            valueType: typeof value,
+        });
         return false;
     }
 }
@@ -221,7 +217,7 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
  *
  * @param expression - The expression to evaluate
  * @param value - The string value
- * @returns The result of the string operation
+ * @returns String operation result
  */
 function evaluateStringMethod(expression: string, value: string): JsonValue | undefined {
     if (expression === 'value.toUpperCase()') return value.toUpperCase();
@@ -251,7 +247,7 @@ function evaluateStringMethod(expression: string, value: string): JsonValue | un
  *
  * @param expression - The expression to evaluate
  * @param value - The array value
- * @returns The result of the array operation
+ * @returns Array operation result
  */
 function evaluateArrayMethod(expression: string, value: JsonValue[]): JsonValue | undefined {
     if (expression === 'value.length') return value.length;
@@ -272,13 +268,13 @@ function evaluateArrayMethod(expression: string, value: JsonValue[]): JsonValue 
  *
  * @param expression - The expression to evaluate
  * @param value - The numeric value
- * @returns The result of the math operation
+ * @returns Math operation result
  */
 function evaluateMathOperation(expression: string, value: number): JsonValue | undefined {
     const mathMatch = expression.match(EXPRESSION_PATTERNS.MATH);
     if (mathMatch) {
-        const [, op, numStr] = mathMatch;
-        const num = parseFloat(numStr);
+        const [, op, numberString] = mathMatch;
+        const num = parseFloat(numberString);
         switch (op) {
             case '+': return value + num;
             case '-': return value - num;
@@ -296,7 +292,7 @@ function evaluateMathOperation(expression: string, value: number): JsonValue | u
  * @param expression - The expression string to evaluate
  * @param value - The current value being transformed
  * @param record - Optional record context for field access
- * @returns The result of the expression evaluation
+ * @returns Expression evaluation result
  */
 export function evaluateExpression(expression: string, value: JsonValue, record?: JsonObject): JsonValue {
     try {
@@ -308,7 +304,7 @@ export function evaluateExpression(expression: string, value: JsonValue, record?
         // Handle record field access
         if (trimmedExpr.startsWith('record.') && record != null) {
             const fieldPath = trimmedExpr.substring(7);
-            return getNestedValue(record, fieldPath);
+            return getNestedValueUtil(record, fieldPath) ?? null;
         }
 
         // Handle string methods
@@ -355,8 +351,14 @@ export function evaluateExpression(expression: string, value: JsonValue, record?
 
         // Return value unchanged if expression not recognized
         return value;
-    } catch {
+    } catch (error) {
         // Expression evaluation failed - return original value
+        // Debug log for troubleshooting invalid expressions
+        console.debug('[ExpressionEval] Expression evaluation failed', {
+            error: error instanceof Error ? error.message : String(error),
+            expression,
+            valueType: typeof value,
+        });
         return value;
     }
 }
@@ -368,7 +370,7 @@ export function evaluateExpression(expression: string, value: JsonValue, record?
 function interpolateTemplateExpression(template: string, record: JsonObject, currentValue: JsonValue): string {
     return template.replace(/\$\{([^}]+)\}/g, (_, path) => {
         if (path === 'value') return String(currentValue ?? '');
-        const value = getNestedValue(record, path);
+        const value = getNestedValueUtil(record, path);
         return String(value ?? '');
     });
 }

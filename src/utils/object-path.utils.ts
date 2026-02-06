@@ -15,7 +15,7 @@ import { JsonValue, JsonObject } from '../types';
  *
  * @param obj - The object to navigate
  * @param path - Dot-notation path (e.g., 'user.address.city')
- * @returns The value at the path, or undefined if not found
+ * @returns Value at the path, or undefined if not found
  *
  * @example
  * getNestedValue({ user: { name: 'John' } }, 'user.name') // 'John'

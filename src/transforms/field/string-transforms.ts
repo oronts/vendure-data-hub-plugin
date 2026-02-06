@@ -149,7 +149,7 @@ export function applyConcat(
     value: JsonValue,
     config: TransformConfig,
     record: JsonObject | undefined,
-    getNestedValue: (obj: JsonObject, path: string) => JsonValue,
+    getNestedValue: (obj: JsonObject, path: string) => JsonValue | undefined,
 ): JsonValue {
     if (config.fields && record) {
         const values = [value, ...config.fields.map(f => getNestedValue(record, f))];

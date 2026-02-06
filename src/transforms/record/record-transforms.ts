@@ -1,9 +1,8 @@
 /**
  * Record Transforms
  *
- * Record-level transform operations.
- * Handles conditional transforms, coalesce, default values,
- * and array operations that depend on record context.
+ * Record-level transform operations for conditional transforms,
+ * coalesce, default values, and array operations that depend on record context.
  */
 
 import { TransformConfig } from '../../types/index';
@@ -19,7 +18,7 @@ import { getNestedValue, evaluateCondition, evaluateExpression } from '../helper
  * @param value - The current value to evaluate
  * @param config - Transform configuration with condition, thenValue, and elseValue
  * @param record - Optional record context for field access in conditions
- * @returns The thenValue, elseValue, or original value if no condition
+ * @returns thenValue, elseValue, or original value if no condition
  */
 export function applyIfElse(value: JsonValue, config: TransformConfig, record?: JsonObject): JsonValue {
     if (config.condition != null) {
@@ -46,7 +45,7 @@ function isEmpty(value: JsonValue): boolean {
  * @param value - The current value to check
  * @param config - Transform configuration with fields array and defaultValue
  * @param record - Optional record context for field access
- * @returns The first non-empty value found, or defaultValue, or null
+ * @returns First non-empty value found, or defaultValue, or null
  */
 export function applyCoalesce(value: JsonValue, config: TransformConfig, record?: JsonObject): JsonValue {
     // Return current value if not empty
@@ -57,7 +56,7 @@ export function applyCoalesce(value: JsonValue, config: TransformConfig, record?
     // Check fallback fields from record
     if (config.fields != null && record != null) {
         for (const field of config.fields) {
-            const fieldValue = getNestedValue(record, field);
+            const fieldValue = getNestedValue(record, field) ?? null;
             if (!isEmpty(fieldValue)) {
                 return fieldValue;
             }
@@ -73,7 +72,7 @@ export function applyCoalesce(value: JsonValue, config: TransformConfig, record?
  *
  * @param value - The current value to check
  * @param config - Transform configuration with defaultValue
- * @returns The original value or defaultValue if empty
+ * @returns Original value or defaultValue if empty
  */
 export function applyDefault(value: JsonValue, config: TransformConfig): JsonValue {
     if (isEmpty(value)) {
@@ -91,7 +90,7 @@ export function applyDefault(value: JsonValue, config: TransformConfig): JsonVal
  * @param value - The array to filter
  * @param config - Transform configuration with expression for filtering
  * @param record - Optional record context for field access in conditions
- * @returns The filtered array or original value if not an array
+ * @returns Filtered array or original value if not an array
  */
 export function applyFilter(value: JsonValue, config: TransformConfig, record?: JsonObject): JsonValue {
     if (!Array.isArray(value) || config.expression == null) {
@@ -109,7 +108,7 @@ export function applyFilter(value: JsonValue, config: TransformConfig, record?: 
  * @param value - The array to transform
  * @param config - Transform configuration with expression for mapping
  * @param record - Optional record context for field access in expressions
- * @returns The transformed array or original value if not an array
+ * @returns Transformed array or original value if not an array
  */
 export function applyMapArray(value: JsonValue, config: TransformConfig, record?: JsonObject): JsonValue {
     if (!Array.isArray(value) || config.expression == null) {
