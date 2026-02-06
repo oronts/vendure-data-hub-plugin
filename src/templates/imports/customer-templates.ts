@@ -10,13 +10,17 @@ import { ImportTemplate } from './types';
 export const simpleCustomersTemplate: ImportTemplate = {
     id: 'simple-customers-csv',
     name: 'Simple Customers (CSV)',
-    description: 'Import customer records with email, name, and optional address.',
+    description: 'Import customer records with email, name, and optional phone number. Ideal for building your customer base.',
     category: 'customers',
     icon: 'users',
     difficulty: 'beginner',
     estimatedTime: '5 minutes',
     requiredFields: ['email', 'first_name', 'last_name'],
     optionalFields: ['phone', 'address_line1', 'city', 'postal_code', 'country'],
+    formats: ['csv'],
+    tags: ['initial-import'],
+    featured: true,
+    sortOrder: 1,
     sampleData: [
         { email: 'john@example.com', first_name: 'John', last_name: 'Doe', phone: '+1234567890' },
         { email: 'jane@example.com', first_name: 'Jane', last_name: 'Smith', phone: '+0987654321' },
@@ -81,13 +85,16 @@ export const simpleCustomersTemplate: ImportTemplate = {
 export const customersWithAddressesTemplate: ImportTemplate = {
     id: 'customers-with-addresses-csv',
     name: 'Customers with Addresses (CSV)',
-    description: 'Import customers with full address information for shipping and billing.',
+    description: 'Import customers with full address information for shipping and billing. Supports multiple addresses per customer.',
     category: 'customers',
     icon: 'map-pin',
     difficulty: 'intermediate',
     estimatedTime: '10 minutes',
     requiredFields: ['email', 'first_name', 'last_name', 'street', 'city', 'postal_code', 'country_code'],
     optionalFields: ['phone', 'company', 'province', 'customer_group'],
+    formats: ['csv'],
+    tags: ['initial-import', 'migration'],
+    sortOrder: 2,
     sampleData: [
         {
             email: 'john@example.com',

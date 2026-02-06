@@ -4,7 +4,8 @@ import { toast } from 'sonner';
 import { VENDURE_ENTITY_SCHEMAS } from '../../../../vendure-schemas/vendure-entity-schemas';
 import type { EnhancedFieldDefinition } from '../../../types';
 import type { ImportWizardProps, ImportConfiguration, FieldMapping } from './types';
-import { WIZARD_STEPS, IMPORT_STEP_ID } from './constants';
+import { WIZARD_STEPS, WIZARD_STEPS_FROM_TEMPLATE, IMPORT_STEP_ID } from './constants';
+import { TemplateStep } from './TemplateStep';
 import { SourceStep } from './SourceStep';
 import { PreviewStep } from './PreviewStep';
 import { TargetStep } from './TargetStep';
@@ -17,8 +18,44 @@ import { validateImportWizardStep } from '../../../utils/form-validation';
 import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../shared';
 import { BATCH_SIZES, UI_LIMITS, UI_DEFAULTS, TRIGGER_TYPES, FILE_FORMAT, SOURCE_TYPE, CLEANUP_STRATEGY, TOAST_WIZARD, formatParseError, formatParsedRecords } from '../../../constants';
 import { normalizeString } from '../../../utils';
+import { useImportTemplates } from '../../../hooks/use-import-templates';
+
+type TemplateCategory = 'products' | 'customers' | 'inventory' | 'orders' | 'promotions' | 'catalog';
+type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';
+
+interface ImportTemplateLocal {
+    id: string;
+    name: string;
+    description: string;
+    category: TemplateCategory;
+    icon?: string;
+    difficulty: TemplateDifficulty;
+    estimatedTime: string;
+    requiredFields: string[];
+    optionalFields: string[];
+    sampleData?: Record<string, unknown>[];
+    featured?: boolean;
+    tags?: string[];
+    formats?: string[];
+    definition?: unknown;
+}
 
 export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWizardProps) {
+    const { templates, categories } = useImportTemplates();
+
+    // Track if user selected a template or is starting from scratch
+    const [selectedTemplate, setSelectedTemplate] = React.useState<ImportTemplateLocal | null>(null);
+    const [startedFromScratch, setStartedFromScratch] = React.useState(false);
+
+    // Determine which steps to show based on template selection
+    const activeSteps = React.useMemo(() => {
+        // If user selected a template or started from scratch, skip the template step
+        if (selectedTemplate || startedFromScratch) {
+            return WIZARD_STEPS_FROM_TEMPLATE;
+        }
+        return WIZARD_STEPS;
+    }, [selectedTemplate, startedFromScratch]);
+
     const [currentStep, setCurrentStep] = React.useState(0);
     const [config, setConfig] = React.useState<Partial<ImportConfiguration>>(initialConfig ?? {
         name: '',
@@ -46,6 +83,31 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
     const [stepErrors, setStepErrors] = React.useState<Record<string, string>>({});
     const [attemptedNext, setAttemptedNext] = React.useState(false);
 
+    // Handle template selection
+    const handleSelectTemplate = React.useCallback((template: ImportTemplateLocal | null) => {
+        setSelectedTemplate(template);
+    }, []);
+
+    // Handle using a template
+    const handleUseTemplate = React.useCallback((template: ImportTemplateLocal) => {
+        setSelectedTemplate(template);
+        // Pre-fill config with template name
+        setConfig(prev => ({
+            ...prev,
+            name: `${template.name} Import`,
+        }));
+        // Move to first step after template (source step)
+        setCurrentStep(0);
+        toast.success(`Template "${template.name}" selected`);
+    }, []);
+
+    // Handle starting from scratch
+    const handleStartFromScratch = React.useCallback(() => {
+        setStartedFromScratch(true);
+        setSelectedTemplate(null);
+        setCurrentStep(0);
+    }, []);
+
     const updateConfig = React.useCallback((updates: Partial<ImportConfiguration>) => {
         setConfig(prev => ({ ...prev, ...updates }));
         setStepErrors({});
@@ -66,10 +128,14 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
     );
 
     const validateCurrentStep = React.useCallback(() => {
-        const stepId = WIZARD_STEPS[currentStep].id;
+        const stepId = activeSteps[currentStep].id;
+        // Template step is always valid (user can proceed or select)
+        if (stepId === IMPORT_STEP_ID.TEMPLATE) {
+            return { isValid: true, errors: [], errorsByField: {} };
+        }
         const validation = validateImportWizardStep(stepId, config, uploadedFile);
         return validation;
-    }, [currentStep, configSignature, uploadedFile]);
+    }, [currentStep, configSignature, uploadedFile, activeSteps]);
 
     const { canProceed, validationErrors } = React.useMemo(() => {
         const validation = validateCurrentStep();
@@ -92,12 +158,12 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
             return;
         }
 
-        if (currentStep < WIZARD_STEPS.length - 1) {
+        if (currentStep < activeSteps.length - 1) {
             setAttemptedNext(false);
             setStepErrors({});
             setCurrentStep(prev => prev + 1);
         }
-    }, [validateCurrentStep, currentStep]);
+    }, [validateCurrentStep, currentStep, activeSteps]);
 
     const handleBack = React.useCallback(() => {
         if (currentStep > 0) {
@@ -223,10 +289,12 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
         }
     }, [config.targetEntity, parsedData]);
 
+    const currentStepId = activeSteps[currentStep]?.id;
+
     return (
         <div className="flex flex-col h-full" data-testid="datahub-importwizard-wizard">
             <WizardProgressBar
-                steps={WIZARD_STEPS}
+                steps={activeSteps}
                 currentStep={currentStep}
                 onStepClick={setCurrentStep}
             />
@@ -234,7 +302,18 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
             <div className="flex-1 overflow-auto p-6" data-testid="datahub-importwizard-steps">
                 <ValidationErrorDisplay errors={stepErrors} show={attemptedNext} />
 
-                {WIZARD_STEPS[currentStep].id === IMPORT_STEP_ID.SOURCE && (
+                {currentStepId === IMPORT_STEP_ID.TEMPLATE && (
+                    <TemplateStep
+                        templates={templates}
+                        categories={categories}
+                        selectedTemplate={selectedTemplate}
+                        onSelectTemplate={handleSelectTemplate}
+                        onUseTemplate={handleUseTemplate}
+                        onStartFromScratch={handleStartFromScratch}
+                    />
+                )}
+
+                {currentStepId === IMPORT_STEP_ID.SOURCE && (
                     <SourceStep
                         config={config}
                         updateConfig={updateConfig}
@@ -245,15 +324,15 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
                     />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === IMPORT_STEP_ID.PREVIEW && (
+                {currentStepId === IMPORT_STEP_ID.PREVIEW && (
                     <PreviewStep parsedData={parsedData} isParsing={isParsing} />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === IMPORT_STEP_ID.TARGET && (
+                {currentStepId === IMPORT_STEP_ID.TARGET && (
                     <TargetStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === IMPORT_STEP_ID.MAPPING && (
+                {currentStepId === IMPORT_STEP_ID.MAPPING && (
                     <MappingStep
                         config={config}
                         updateConfig={updateConfig}
@@ -263,26 +342,26 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
                     />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === IMPORT_STEP_ID.TRANSFORM && (
+                {currentStepId === IMPORT_STEP_ID.TRANSFORM && (
                     <TransformStep config={config} updateConfig={updateConfig} />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === IMPORT_STEP_ID.STRATEGY && (
+                {currentStepId === IMPORT_STEP_ID.STRATEGY && (
                     <StrategyStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === IMPORT_STEP_ID.TRIGGER && (
+                {currentStepId === IMPORT_STEP_ID.TRIGGER && (
                     <TriggerStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
                 )}
 
-                {WIZARD_STEPS[currentStep].id === IMPORT_STEP_ID.REVIEW && (
+                {currentStepId === IMPORT_STEP_ID.REVIEW && (
                     <ReviewStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
                 )}
             </div>
 
             <WizardFooter
                 currentStep={currentStep}
-                totalSteps={WIZARD_STEPS.length}
+                totalSteps={activeSteps.length}
                 canProceed={canProceed}
                 onBack={handleBack}
                 onNext={handleNext}

@@ -55,6 +55,7 @@ export {
     ImportWizard,
     ExportWizard,
     WizardStepContainer,
+    TemplateStep,
 } from './wizards';
 export type {
     ImportWizardProps,
@@ -62,7 +63,17 @@ export type {
     ExportWizardProps,
     ExportConfiguration,
     WizardStepContainerProps,
+    TemplateStepProps,
 } from './wizards';
+
+export {
+    TemplateGallery,
+    TemplatePreview,
+} from './templates';
+export type {
+    TemplateGalleryProps,
+    TemplatePreviewProps,
+} from './templates';
 
 export {
     AnalyticsDashboard,

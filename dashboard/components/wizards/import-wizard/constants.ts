@@ -7,10 +7,12 @@ import {
     Settings,
     Clock,
     Check,
+    LayoutTemplate,
 } from 'lucide-react';
 import type { WizardStep } from '../../../types/wizard';
 
 export const IMPORT_STEP_ID = {
+    TEMPLATE: 'template',
     SOURCE: 'source',
     PREVIEW: 'preview',
     TARGET: 'target',
@@ -36,6 +38,7 @@ export type {
 } from '../shared';
 
 export const WIZARD_STEPS: WizardStep[] = [
+    { id: 'template', label: 'Choose Template', icon: LayoutTemplate },
     { id: 'source', label: 'Data Source', icon: Database },
     { id: 'preview', label: 'Preview Data', icon: Eye },
     { id: 'target', label: 'Target Entity', icon: Table },
@@ -46,7 +49,14 @@ export const WIZARD_STEPS: WizardStep[] = [
     { id: 'review', label: 'Review & Create', icon: Check },
 ];
 
+/** Steps to show when using a template (skips template selection) */
+export const WIZARD_STEPS_FROM_TEMPLATE: WizardStep[] = WIZARD_STEPS.slice(1);
+
 export const STEP_CONTENT = {
+    template: {
+        title: 'Choose a Template',
+        description: 'Start with a pre-built template or create your own custom import',
+    },
     source: {
         title: 'Select Data Source',
         description: 'Choose where your data will come from',

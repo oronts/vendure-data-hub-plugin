@@ -328,3 +328,36 @@ export type { CodeSecurityConfig } from './utils/code-security.utils';
 
 // Security configuration type exports
 export type { ScriptSecurityConfig, SecurityConfig } from './types/plugin-options';
+
+// Import templates exports
+export {
+    getImportTemplates,
+    getTemplateById,
+    getTemplatesByCategory,
+    getTemplatesByDifficulty,
+    getTemplatesByTag,
+    getFeaturedTemplates,
+    searchTemplates,
+    getTemplateCategories,
+    getTemplateTags,
+    getTemplateCount,
+    validateTemplate,
+    CATEGORY_LABELS,
+    CATEGORY_DESCRIPTIONS,
+    CATEGORY_ICONS,
+    DIFFICULTY_LABELS,
+    DIFFICULTY_COLORS,
+    productTemplates,
+    customerTemplates,
+    inventoryTemplates,
+    catalogTemplates,
+    promotionTemplates,
+} from './templates';
+export type {
+    ImportTemplate,
+    TemplateCategory,
+    TemplateDifficulty,
+    TemplateFileFormat,
+    TemplateTag,
+    TemplateCategoryInfo,
+} from './templates';
