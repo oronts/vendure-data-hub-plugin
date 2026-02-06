@@ -22,13 +22,8 @@ export function isValidBase64(str: string): boolean {
 
     try {
         return btoa(atob(str)) === str;
-    } catch (error) {
+    } catch {
         // Base64 decode/encode failed - invalid base64 string
-        // Debug log for troubleshooting base64 validation failures
-        console.debug('[InputValidation] Base64 decode/encode failed', {
-            error: error instanceof Error ? error.message : String(error),
-            inputLength: str.length,
-        });
         return false;
     }
 }

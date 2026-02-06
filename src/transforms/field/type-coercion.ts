@@ -61,13 +61,8 @@ export function applyToArray(value: JsonValue): JsonValue {
 export function applyToJson(value: JsonValue): JsonValue {
     try {
         return JSON.stringify(value);
-    } catch (error) {
+    } catch {
         // JSON stringify failed (circular reference etc.) - return null
-        // Debug log for troubleshooting stringify failures (e.g., circular references)
-        console.debug('[TypeCoercion] JSON stringify failed', {
-            error: error instanceof Error ? error.message : String(error),
-            valueType: typeof value,
-        });
         return null;
     }
 }

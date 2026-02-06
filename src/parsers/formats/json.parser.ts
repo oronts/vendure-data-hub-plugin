@@ -293,13 +293,8 @@ export function isJsonLines(content: string): boolean {
             if (typeof parsed !== 'object' || Array.isArray(parsed)) {
                 return false;
             }
-        } catch (error) {
+        } catch {
             // JSON parse failed - not valid NDJSON line
-            // Debug log for troubleshooting JSON Lines detection
-            console.debug('[JsonParser] JSON parse failed during NDJSON detection', {
-                error: error instanceof Error ? error.message : String(error),
-                linePreview: trimmed.length > 100 ? trimmed.slice(0, 100) + '...' : trimmed,
-            });
             return false;
         }
     }

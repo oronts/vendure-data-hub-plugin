@@ -198,14 +198,8 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
 
         // Default: treat as truthy check
         return Boolean(value);
-    } catch (error) {
+    } catch {
         // Condition evaluation failed - return false as fallback
-        // Debug log for troubleshooting invalid condition expressions
-        console.debug('[ExpressionEval] Condition evaluation failed', {
-            error: error instanceof Error ? error.message : String(error),
-            condition,
-            valueType: typeof value,
-        });
         return false;
     }
 }
@@ -351,14 +345,8 @@ export function evaluateExpression(expression: string, value: JsonValue, record?
 
         // Return value unchanged if expression not recognized
         return value;
-    } catch (error) {
+    } catch {
         // Expression evaluation failed - return original value
-        // Debug log for troubleshooting invalid expressions
-        console.debug('[ExpressionEval] Expression evaluation failed', {
-            error: error instanceof Error ? error.message : String(error),
-            expression,
-            valueType: typeof value,
-        });
         return value;
     }
 }
