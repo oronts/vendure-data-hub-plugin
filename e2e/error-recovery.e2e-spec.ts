@@ -85,23 +85,25 @@ describe('DataHub Error Recovery', () => {
                 }
             `);
 
-            if (dataHubPipelineRuns.items.length > 0) {
-                const runId = dataHubPipelineRuns.items[0].id;
-                const { dataHubRunErrors } = await adminClient.query(gql`
-                    query RunErrors($runId: ID!) {
-                        dataHubRunErrors(runId: $runId) {
-                            id
-                            message
-                        }
-                    }
-                `, { runId });
+            // Ensure we have runs to test with
+            expect(dataHubPipelineRuns.items.length).toBeGreaterThan(0);
 
-                expect(dataHubRunErrors).toBeDefined();
-            }
+            const runId = dataHubPipelineRuns.items[0].id;
+            const { dataHubRunErrors } = await adminClient.query(gql`
+                query RunErrors($runId: ID!) {
+                    dataHubRunErrors(runId: $runId) {
+                        id
+                        message
+                    }
+                }
+            `, { runId });
+
+            expect(dataHubRunErrors).toBeDefined();
         });
 
-        it('retries failed records', async () => {
-            // Get dead letter queue entries
+        it.skip('retries failed records', async () => {
+            // TODO: This test requires dead letter queue entries to exist.
+            // Need to set up a failing pipeline run first to populate the DLQ.
             const { dataHubDeadLetters } = await adminClient.query(gql`
                 query {
                     dataHubDeadLetters {
@@ -110,17 +112,17 @@ describe('DataHub Error Recovery', () => {
                 }
             `);
 
-            if (dataHubDeadLetters.length > 0) {
-                const errorId = dataHubDeadLetters[0].id;
+            expect(dataHubDeadLetters.length).toBeGreaterThan(0);
 
-                const { retryDataHubRecord } = await adminClient.query(gql`
-                    mutation Retry($id: ID!) {
-                        retryDataHubRecord(errorId: $id)
-                    }
-                `, { id: errorId });
+            const errorId = dataHubDeadLetters[0].id;
 
-                expect(retryDataHubRecord).toBeDefined();
-            }
+            const { retryDataHubRecord } = await adminClient.query(gql`
+                mutation Retry($id: ID!) {
+                    retryDataHubRecord(errorId: $id)
+                }
+            `, { id: errorId });
+
+            expect(retryDataHubRecord).toBeDefined();
         });
     });
 
@@ -248,8 +250,9 @@ describe('DataHub Error Recovery', () => {
             expect(dataHubDeadLetters).toBeDefined();
         });
 
-        it('marks error as dead letter', async () => {
-            // First get a run to query errors for
+        it.skip('marks error as dead letter', async () => {
+            // TODO: This test requires run errors to exist.
+            // Need to set up a failing pipeline run first to create errors.
             const { dataHubPipelineRuns } = await adminClient.query(gql`
                 query {
                     dataHubPipelineRuns {
@@ -258,28 +261,28 @@ describe('DataHub Error Recovery', () => {
                 }
             `);
 
-            if (dataHubPipelineRuns.items.length > 0) {
-                const runId = dataHubPipelineRuns.items[0].id;
-                const { dataHubRunErrors } = await adminClient.query(gql`
-                    query RunErrors($runId: ID!) {
-                        dataHubRunErrors(runId: $runId) {
-                            id
-                        }
+            expect(dataHubPipelineRuns.items.length).toBeGreaterThan(0);
+
+            const runId = dataHubPipelineRuns.items[0].id;
+            const { dataHubRunErrors } = await adminClient.query(gql`
+                query RunErrors($runId: ID!) {
+                    dataHubRunErrors(runId: $runId) {
+                        id
                     }
-                `, { runId });
-
-                if (dataHubRunErrors.length > 0) {
-                    const errorId = dataHubRunErrors[0].id;
-
-                    const { markDataHubDeadLetter } = await adminClient.query(gql`
-                        mutation MarkDeadLetter($id: ID!) {
-                            markDataHubDeadLetter(id: $id, deadLetter: true)
-                        }
-                    `, { id: errorId });
-
-                    expect(markDataHubDeadLetter).toBeDefined();
                 }
-            }
+            `, { runId });
+
+            expect(dataHubRunErrors.length).toBeGreaterThan(0);
+
+            const errorId = dataHubRunErrors[0].id;
+
+            const { markDataHubDeadLetter } = await adminClient.query(gql`
+                mutation MarkDeadLetter($id: ID!) {
+                    markDataHubDeadLetter(id: $id, deadLetter: true)
+                }
+            `, { id: errorId });
+
+            expect(markDataHubDeadLetter).toBeDefined();
         });
     });
 
@@ -385,22 +388,24 @@ describe('DataHub Error Recovery', () => {
                 }
             `);
 
-            if (dataHubPipelineRuns.items.length > 0) {
-                const runId = dataHubPipelineRuns.items[0].id;
+            // Ensure we have runs to query logs for
+            expect(dataHubPipelineRuns.items.length).toBeGreaterThan(0);
 
-                const { dataHubRunLogs } = await adminClient.query(gql`
-                    query GetLogs($runId: ID!) {
-                        dataHubRunLogs(runId: $runId) {
-                            id
-                            level
-                            message
-                            timestamp
-                        }
+            const runId = dataHubPipelineRuns.items[0].id;
+
+            const { dataHubRunLogs } = await adminClient.query(gql`
+                query GetLogs($runId: ID!) {
+                    dataHubRunLogs(runId: $runId) {
+                        id
+                        level
+                        message
+                        timestamp
                     }
-                `, { runId });
+                }
+            `, { runId });
 
-                expect(dataHubRunLogs).toBeDefined();
-            }
+            expect(dataHubRunLogs).toBeDefined();
+            expect(Array.isArray(dataHubRunLogs)).toBe(true);
         });
 
         it('queries recent logs', async () => {

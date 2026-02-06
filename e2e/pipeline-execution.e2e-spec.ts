@@ -99,7 +99,8 @@ describe('DataHub Pipeline Execution', () => {
         });
 
         it('gets run details', async () => {
-            if (!runId) return;
+            // Ensure runId was set by the previous test
+            expect(runId).toBeDefined();
 
             const { dataHubPipelineRun } = await adminClient.query(gql`
                 query GetRun($id: ID!) {
@@ -112,6 +113,7 @@ describe('DataHub Pipeline Execution', () => {
             `, { id: runId });
 
             expect(dataHubPipelineRun.id).toBe(runId);
+            expect(dataHubPipelineRun.status).toBeDefined();
         });
     });
 
@@ -236,18 +238,16 @@ describe('DataHub Pipeline Execution', () => {
 
     describe('Error Handling', () => {
         it('handles invalid pipeline ID', async () => {
-            try {
-                await adminClient.query(gql`
+            await expect(
+                adminClient.query(gql`
                     mutation RunPipeline($id: ID!) {
                         startDataHubPipelineRun(pipelineId: $id) {
                             id
                             status
                         }
                     }
-                `, { id: 'non-existent-id' });
-            } catch (error: any) {
-                expect(error).toBeDefined();
-            }
+                `, { id: 'non-existent-id' })
+            ).rejects.toThrow();
         });
 
         it('handles disabled pipeline', async () => {
@@ -265,7 +265,7 @@ describe('DataHub Pipeline Execution', () => {
             });
 
             // Running a disabled pipeline should throw an error
-            let error: any;
+            let error: Error | undefined;
             try {
                 await adminClient.query(gql`
                     mutation RunPipeline($id: ID!) {
@@ -276,7 +276,7 @@ describe('DataHub Pipeline Execution', () => {
                     }
                 `, { id: createDataHubPipeline.id });
             } catch (e) {
-                error = e;
+                error = e instanceof Error ? e : new Error(String(e));
             }
 
             // Cleanup
@@ -287,7 +287,7 @@ describe('DataHub Pipeline Execution', () => {
             `, { id: createDataHubPipeline.id });
 
             expect(error).toBeDefined();
-            expect(error.message).toContain('disabled');
+            expect(error?.message).toContain('disabled');
         });
     });
 
@@ -448,20 +448,22 @@ describe('DataHub Pipeline Execution', () => {
                 }
             `);
 
-            if (dataHubPipelineRuns.items.length > 0) {
-                const runId = dataHubPipelineRuns.items[0].id;
-                const { dataHubRunErrors } = await adminClient.query(gql`
-                    query RunErrors($runId: ID!) {
-                        dataHubRunErrors(runId: $runId) {
-                            id
-                            message
-                            stepKey
-                        }
-                    }
-                `, { runId });
+            // Ensure we have runs to query errors for
+            expect(dataHubPipelineRuns.items.length).toBeGreaterThan(0);
 
-                expect(dataHubRunErrors).toBeDefined();
-            }
+            const runId = dataHubPipelineRuns.items[0].id;
+            const { dataHubRunErrors } = await adminClient.query(gql`
+                query RunErrors($runId: ID!) {
+                    dataHubRunErrors(runId: $runId) {
+                        id
+                        message
+                        stepKey
+                    }
+                }
+            `, { runId });
+
+            expect(dataHubRunErrors).toBeDefined();
+            expect(Array.isArray(dataHubRunErrors)).toBe(true);
         });
 
         it('queries error analytics', async () => {

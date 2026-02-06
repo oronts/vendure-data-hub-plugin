@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createDataHubTestEnvironment } from './test-config';
 import gql from 'graphql-tag';
+import type { AdapterListItem, SecretListItem, ConnectionListItem, ValidationIssue } from './types';
 
 // Direct imports for security utility tests
 import {
@@ -276,7 +277,7 @@ describe('DataHub Plugin E2E', () => {
             expect(validateDataHubPipelineDefinition.isValid).toBe(false);
             expect(
                 validateDataHubPipelineDefinition.issues.some(
-                    (i: any) => i.message.toLowerCase().includes('cycle') ||
+                    (i: ValidationIssue) => i.message.toLowerCase().includes('cycle') ||
                                 i.message.toLowerCase().includes('circular')
                 )
             ).toBe(true);
@@ -330,14 +331,14 @@ describe('DataHub Plugin E2E', () => {
             expect(dataHubAdapters.length).toBeGreaterThan(0);
 
             // Check extractors exist
-            expect(dataHubAdapters.some((a: any) => a.type === 'extractor')).toBe(true);
+            expect(dataHubAdapters.some((a: AdapterListItem) => a.type === 'extractor')).toBe(true);
 
             // Check operators exist
-            expect(dataHubAdapters.some((a: any) => a.type === 'operator')).toBe(true);
-            expect(dataHubAdapters.some((a: any) => a.code === 'trim')).toBe(true);
+            expect(dataHubAdapters.some((a: AdapterListItem) => a.type === 'operator')).toBe(true);
+            expect(dataHubAdapters.some((a: AdapterListItem) => a.code === 'trim')).toBe(true);
 
             // Check loaders exist
-            expect(dataHubAdapters.some((a: any) => a.type === 'loader')).toBe(true);
+            expect(dataHubAdapters.some((a: AdapterListItem) => a.type === 'loader')).toBe(true);
         });
 
         it('includes expected extractors', async () => {
@@ -351,11 +352,11 @@ describe('DataHub Plugin E2E', () => {
                 }
             `);
 
-            const extractors = dataHubAdapters.filter((a: any) => a.type === 'extractor');
+            const extractors = dataHubAdapters.filter((a: AdapterListItem) => a.type === 'extractor');
             expect(extractors.length).toBeGreaterThan(0);
 
             // Check vendureQuery extractor exists (standard extractor)
-            expect(extractors.some((e: any) => e.code === 'vendureQuery')).toBe(true);
+            expect(extractors.some((e: AdapterListItem) => e.code === 'vendureQuery')).toBe(true);
         });
     });
 
@@ -398,7 +399,7 @@ describe('DataHub Plugin E2E', () => {
                 }
             `);
 
-            expect(dataHubSecrets.items.some((s: any) => s.code === 'test-api-key')).toBe(true);
+            expect(dataHubSecrets.items.some((s: SecretListItem) => s.code === 'test-api-key')).toBe(true);
             expect(dataHubSecrets.totalItems).toBeGreaterThan(0);
         });
 
@@ -457,7 +458,7 @@ describe('DataHub Plugin E2E', () => {
                 }
             `);
 
-            expect(dataHubConnections.items.some((c: any) => c.code === 'test-http-connection')).toBe(true);
+            expect(dataHubConnections.items.some((c: ConnectionListItem) => c.code === 'test-http-connection')).toBe(true);
         });
 
         it('deletes a connection', async () => {
@@ -513,10 +514,9 @@ describe('DataHub Plugin E2E', () => {
         });
 
         it('gets pipeline by id', async () => {
-            // Skip if pipeline creation failed
-            if (!pipelineId) {
-                return;
-            }
+            // Ensure pipeline was created by the previous test
+            expect(pipelineId).toBeDefined();
+
             const { dataHubPipeline } = await adminClient.query(gql`
                 query GetPipeline($id: ID!) {
                     dataHubPipeline(id: $id) {
@@ -532,10 +532,9 @@ describe('DataHub Plugin E2E', () => {
         });
 
         it('deletes pipeline', async () => {
-            // Skip if pipeline creation failed
-            if (!pipelineId) {
-                return;
-            }
+            // Ensure pipeline was created by the previous tests
+            expect(pipelineId).toBeDefined();
+
             const { deleteDataHubPipeline } = await adminClient.query(gql`
                 mutation DeletePipeline($id: ID!) {
                     deleteDataHubPipeline(id: $id) {

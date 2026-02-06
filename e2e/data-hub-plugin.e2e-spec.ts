@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createDataHubTestEnvironment } from './test-config';
 import gql from 'graphql-tag';
 import { ConnectionType, SecretProvider, StepType } from '../src/constants/enums';
+import type { PipelineListItem, AdapterListItem } from './types';
 
 describe('DataHub Plugin', () => {
     const { server, adminClient } = createDataHubTestEnvironment();
@@ -59,7 +60,7 @@ describe('DataHub Plugin', () => {
             `);
 
             expect(dataHubPipelines.totalItems).toBeGreaterThan(0);
-            expect(dataHubPipelines.items.some((p: any) => p.code === 'test-pipeline')).toBe(true);
+            expect(dataHubPipelines.items.some((p: PipelineListItem) => p.code === 'test-pipeline')).toBe(true);
         });
 
         it('gets a pipeline by id', async () => {
@@ -315,7 +316,7 @@ describe('DataHub Plugin', () => {
                 }
             `);
 
-            const httpApiExtractor = dataHubAdapters.find((a: any) => a.code === 'httpApi');
+            const httpApiExtractor = dataHubAdapters.find((a: AdapterListItem) => a.code === 'httpApi');
             expect(httpApiExtractor).toBeDefined();
             expect(httpApiExtractor.schema).toBeDefined();
         });
@@ -451,8 +452,22 @@ describe('DataHub Plugin', () => {
             }
         });
 
-        it('queries logs', async () => {
+        it('queries recent logs', async () => {
             expect(testPipelineId).toBeDefined();
+
+            const { dataHubRecentLogs } = await adminClient.query(gql`
+                query {
+                    dataHubRecentLogs(limit: 10) {
+                        id
+                        level
+                        message
+                        timestamp
+                    }
+                }
+            `);
+
+            expect(dataHubRecentLogs).toBeDefined();
+            expect(Array.isArray(dataHubRecentLogs)).toBe(true);
         });
     });
 
