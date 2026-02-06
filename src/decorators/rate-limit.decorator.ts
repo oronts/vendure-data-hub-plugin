@@ -12,9 +12,13 @@
  * native DI support through constructor injection.
  */
 
-import { HttpException, HttpStatus, Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { HttpException, HttpStatus, Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { RateLimitService } from '../services/rate-limit';
 import { INTERNAL_TIMINGS } from '../constants/defaults';
+import { LOGGER_CONTEXTS } from '../constants/core';
+
+/** Static logger instance for rate limit decorator (decorators cannot use DI) */
+const logger = new Logger(`DataHub:${LOGGER_CONTEXTS.RATE_LIMIT}`);
 
 export interface RateLimitOptions {
     /** Maximum requests per window (default: 60) */
@@ -113,8 +117,8 @@ export function RateLimit(options: RateLimitOptions = {}): MethodDecorator {
 
             // If service is not available, the module hasn't been initialized yet
             if (!rateLimitService) {
-                console.warn(
-                    '[RateLimit] RateLimitService not available. ' +
+                logger.warn(
+                    'RateLimitService not available. ' +
                         'Ensure RateLimitServiceHolder is registered as a provider in your module. ' +
                         'Rate limiting will be skipped for this request.',
                 );
