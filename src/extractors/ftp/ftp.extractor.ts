@@ -10,8 +10,6 @@ import {
     ExtractorCategory,
 } from '../../types/index';
 import { FileParserService } from '../../parsers/file-parser.service';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
 import { FileFormat } from '../../constants/enums';
 
 import {
@@ -50,14 +48,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
 
-    private readonly _logger: DataHubLogger;
-
-    constructor(
-        private readonly fileParser: FileParserService,
-        loggerFactory: DataHubLoggerFactory,
-    ) {
-        this._logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FTP_EXTRACTOR);
-    }
+    constructor(private readonly fileParser: FileParserService) {}
 
     readonly schema: StepConfigSchema = {
         groups: [

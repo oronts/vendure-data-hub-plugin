@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import { JsonObject } from '../../types/index';
-import { PAGINATION, LOGGER_CONTEXTS } from '../../constants/index';
+import { PAGINATION } from '../../constants/index';
 import {
     DataExtractor,
     ExtractorContext,
@@ -13,7 +13,6 @@ import {
     ExtractorCategory,
 } from '../../types/index';
 import { FileParserService, ParseOptions } from '../../parsers/file-parser.service';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { FileExtractorConfig, FILE_EXTRACTOR_DEFAULTS } from './types';
 import { getFiles, resolvePath } from './helpers';
 import { SortOrder, FileFormat } from '../../constants/enums';
@@ -31,14 +30,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
 
-    private readonly _logger: DataHubLogger;
-
-    constructor(
-        private readonly fileParser: FileParserService,
-        loggerFactory: DataHubLoggerFactory,
-    ) {
-        this._logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FILE_EXTRACTOR);
-    }
+    constructor(private readonly fileParser: FileParserService) {}
 
     readonly schema: StepConfigSchema = {
         groups: [

@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { HttpMethod, PaginationType, LOGGER_CONTEXTS, TIME_UNITS } from '../../constants/index';
-import { DEFAULTS } from '../../constants/index';
+import { HttpMethod, PaginationType, TIME_UNITS, HTTP, WEBHOOK } from '../../constants/index';
 import {
     DataExtractor,
     ExtractorContext,
@@ -11,7 +10,6 @@ import {
     StepConfigSchema,
     ExtractorCategory,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import {
     HttpApiExtractorConfig,
     HttpResponse,
@@ -49,12 +47,6 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
     readonly supportsPagination = true;
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
-
-    private readonly _logger: DataHubLogger;
-
-    constructor(loggerFactory: DataHubLoggerFactory) {
-        this._logger = loggerFactory.createLogger(LOGGER_CONTEXTS.HTTP_API_EXTRACTOR);
-    }
 
     readonly schema: StepConfigSchema = {
         fields: [
@@ -334,10 +326,10 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
         context: ExtractorContext,
         config: HttpApiExtractorConfig,
     ): Promise<HttpResponse> {
-        const maxAttempts = config.retry?.maxAttempts || DEFAULTS.MAX_RETRIES;
-        const initialDelay = config.retry?.initialDelayMs || DEFAULTS.RETRY_DELAY_MS;
-        const maxDelay = config.retry?.maxDelayMs || DEFAULTS.RETRY_MAX_DELAY_MS;
-        const backoffMultiplier = config.retry?.backoffMultiplier || DEFAULTS.WEBHOOK_BACKOFF_MULTIPLIER;
+        const maxAttempts = config.retry?.maxAttempts || HTTP.MAX_RETRIES;
+        const initialDelay = config.retry?.initialDelayMs || HTTP.RETRY_DELAY_MS;
+        const maxDelay = config.retry?.maxDelayMs || HTTP.RETRY_MAX_DELAY_MS;
+        const backoffMultiplier = config.retry?.backoffMultiplier || WEBHOOK.BACKOFF_MULTIPLIER;
 
         let lastError: Error | undefined;
 
@@ -356,7 +348,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
                     method: getMethod(config),
                     headers,
                     body,
-                    signal: AbortSignal.timeout(config.timeoutMs || DEFAULTS.HTTP_TIMEOUT_MS),
+                    signal: AbortSignal.timeout(config.timeoutMs || HTTP.TIMEOUT_MS),
                 });
 
                 if (!response.ok) {
@@ -391,7 +383,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
     }
 
     private isRetryableError(error: unknown, config: HttpApiExtractorConfig): boolean {
-        const retryableStatusCodes = config.retry?.retryableStatusCodes || [...DEFAULTS.RETRYABLE_STATUS_CODES];
+        const retryableStatusCodes = config.retry?.retryableStatusCodes || [...HTTP.RETRYABLE_STATUS_CODES];
 
         if (error && typeof error === 'object' && 'statusCode' in error) {
             const statusCode = (error as { statusCode: number }).statusCode;

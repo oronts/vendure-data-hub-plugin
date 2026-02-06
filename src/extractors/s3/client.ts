@@ -108,13 +108,15 @@ export async function createS3Client(
             const response = await s3.send(command);
 
             return {
-                objects: (response.Contents || []).map(obj => ({
-                    key: obj.Key!,
-                    size: obj.Size || 0,
-                    lastModified: obj.LastModified || new Date(),
-                    etag: obj.ETag?.replace(/"/g, ''),
-                    storageClass: obj.StorageClass,
-                })),
+                objects: (response.Contents || [])
+                    .filter(obj => obj.Key !== undefined)
+                    .map(obj => ({
+                        key: obj.Key as string,
+                        size: obj.Size || 0,
+                        lastModified: obj.LastModified || new Date(),
+                        etag: obj.ETag?.replace(/"/g, ''),
+                        storageClass: obj.StorageClass,
+                    })),
                 continuationToken: response.NextContinuationToken,
                 isTruncated: response.IsTruncated || false,
             };

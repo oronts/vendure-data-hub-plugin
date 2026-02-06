@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ID, TransactionalConnection } from '@vendure/core';
-import { BATCH, LOGGER_CONTEXTS, SortOrder, VendureEntityType } from '../../constants/index';
+import { BATCH, SortOrder, VendureEntityType } from '../../constants/index';
 import {
     DataExtractor,
     ExtractorContext,
@@ -10,7 +10,6 @@ import {
     ExtractorCategory,
     ExtractorPreviewResult,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { VendureQueryExtractorConfig } from './types';
 import { getEntityClass, applyFilter, entityToRecord, EntityLike } from './helpers';
 
@@ -32,14 +31,7 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
 
-    private readonly _logger: DataHubLogger;
-
-    constructor(
-        private connection: TransactionalConnection,
-        loggerFactory: DataHubLoggerFactory,
-    ) {
-        this._logger = loggerFactory.createLogger(LOGGER_CONTEXTS.VENDURE_QUERY_EXTRACTOR);
-    }
+    constructor(private connection: TransactionalConnection) {}
 
     readonly schema: StepConfigSchema = {
         fields: [

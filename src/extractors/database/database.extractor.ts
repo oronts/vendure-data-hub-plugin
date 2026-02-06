@@ -11,8 +11,7 @@ import {
     StepConfigSchema,
     ExtractorCategory,
 } from '../../types/index';
-import { DatabaseType, DatabasePaginationType, PAGINATION, HTTP, CONNECTION_POOL, LOGGER_CONTEXTS } from '../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
+import { DatabaseType, DatabasePaginationType, PAGINATION, HTTP, CONNECTION_POOL } from '../../constants/index';
 import {
     DatabaseExtractorConfig,
     DATABASE_TEST_QUERIES,
@@ -42,12 +41,6 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
     readonly supportsPagination = true;
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
-
-    private readonly _logger: DataHubLogger;
-
-    constructor(loggerFactory: DataHubLoggerFactory) {
-        this._logger = loggerFactory.createLogger(LOGGER_CONTEXTS.DATABASE_EXTRACTOR);
-    }
 
     readonly schema: StepConfigSchema = {
         groups: [

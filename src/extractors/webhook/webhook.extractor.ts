@@ -9,8 +9,6 @@ import {
     StepConfigSchema,
     ExtractorCategory,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS } from '../../constants/index';
 import { WebhookExtractorConfig } from './types';
 import { getValueByPath, validateSignature } from './helpers';
 
@@ -26,12 +24,6 @@ export class WebhookExtractor implements BatchDataExtractor<WebhookExtractorConf
     readonly supportsPagination = false;
     readonly supportsIncremental = false;
     readonly supportsCancellation = false;
-
-    private readonly _logger: DataHubLogger;
-
-    constructor(loggerFactory: DataHubLoggerFactory) {
-        this._logger = loggerFactory.createLogger(LOGGER_CONTEXTS.WEBHOOK_EXTRACTOR);
-    }
 
     readonly schema: StepConfigSchema = {
         fields: [

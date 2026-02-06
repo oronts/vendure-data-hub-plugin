@@ -1,6 +1,6 @@
 import { ExtractorConfig, PaginationConfig } from '../../types/index';
 import { JsonObject } from '../../types/index';
-import { HttpMethod, HTTP, PAGINATION, DEFAULTS } from '../../constants/index';
+import { HttpMethod, HTTP, PAGINATION, WEBHOOK } from '../../constants/index';
 
 export interface HttpApiExtractorConfig extends ExtractorConfig {
     /** Adapter code identifier */
@@ -73,7 +73,7 @@ export const HTTP_DEFAULTS = {
     maxRetries: HTTP.MAX_RETRIES,
     retryDelayMs: HTTP.RETRY_DELAY_MS,
     retryMaxDelayMs: HTTP.RETRY_MAX_DELAY_MS,
-    backoffMultiplier: DEFAULTS.WEBHOOK_BACKOFF_MULTIPLIER,
+    backoffMultiplier: WEBHOOK.BACKOFF_MULTIPLIER,
     maxPages: PAGINATION.MAX_PAGES,
     pageLimit: PAGINATION.PAGE_SIZE,
 } as const;

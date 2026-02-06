@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { LOGGER_CONTEXTS, DEFAULTS, GraphQLPaginationType } from '../../constants/index';
+import { HTTP, WEBHOOK, GraphQLPaginationType } from '../../constants/index';
 import {
     DataExtractor,
     ExtractorContext,
@@ -10,7 +10,6 @@ import {
     StepConfigSchema,
     ExtractorCategory,
 } from '../../types/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import {
     GraphQLExtractorConfig,
     GraphQLResponse,
@@ -70,12 +69,6 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
     readonly supportsPagination = true;
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
-
-    private readonly _logger: DataHubLogger;
-
-    constructor(loggerFactory: DataHubLoggerFactory) {
-        this._logger = loggerFactory.createLogger(LOGGER_CONTEXTS.GRAPHQL_EXTRACTOR);
-    }
 
     readonly schema: StepConfigSchema = {
         groups: [
@@ -494,9 +487,9 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
         variables?: Record<string, unknown>,
         queryOverride?: string,
     ): Promise<GraphQLResponse> {
-        const maxAttempts = config.retry?.maxAttempts || DEFAULTS.MAX_RETRIES;
-        const initialDelay = config.retry?.initialDelayMs || DEFAULTS.RETRY_DELAY_MS;
-        const backoffMultiplier = config.retry?.backoffMultiplier || DEFAULTS.WEBHOOK_BACKOFF_MULTIPLIER;
+        const maxAttempts = config.retry?.maxAttempts || HTTP.MAX_RETRIES;
+        const initialDelay = config.retry?.initialDelayMs || HTTP.RETRY_DELAY_MS;
+        const backoffMultiplier = config.retry?.backoffMultiplier || WEBHOOK.BACKOFF_MULTIPLIER;
 
         let lastError: Error | undefined;
 
