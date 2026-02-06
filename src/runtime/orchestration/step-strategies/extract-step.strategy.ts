@@ -33,7 +33,7 @@ export class ExtractStepStrategy implements StepStrategy {
         const afterAfterHook = await this.runAfterHook(context, out);
 
         await this.logExtractData(context, adapterCode, out);
-        await this.logStepComplete(context, adapterCode, out.length, durationMs);
+        await this.logStepComplete(context, adapterCode, out.length, durationMs, out);
 
         return {
             records: afterAfterHook,
@@ -82,8 +82,9 @@ export class ExtractStepStrategy implements StepStrategy {
         adapterCode: string,
         count: number,
         durationMs: number,
+        extractedRecords: RecordObject[],
     ): Promise<void> {
-        const { ctx, step, stepLog, records } = context;
+        const { ctx, step, stepLog } = context;
         if (stepLog?.onStepComplete) {
             await stepLog.onStepComplete(ctx, {
                 stepKey: step.key,
@@ -94,7 +95,7 @@ export class ExtractStepStrategy implements StepStrategy {
                 succeeded: count,
                 failed: 0,
                 durationMs,
-                sampleOutput: records[0] as RecordObject | undefined,
+                sampleOutput: extractedRecords[0] as RecordObject | undefined,
             });
         }
     }
