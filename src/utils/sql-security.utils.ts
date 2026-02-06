@@ -1,7 +1,7 @@
 /**
  * SQL Security Utilities
  *
- * Provides protection against SQL injection attacks through:
+ * Protection against SQL injection attacks through:
  * - Column/table name validation
  * - Identifier escaping
  * - SQL injection pattern detection
@@ -70,8 +70,8 @@ export function validateTableName(table: string | undefined): void {
  * Escapes an SQL identifier (column/table name) for safe interpolation.
  * Uses double-quote escaping per SQL standard.
  *
- * IMPORTANT: Prefer using parameterized queries when possible.
- * This function is for cases where identifiers must be interpolated.
+ * IMPORTANT: Prefer parameterized queries when possible.
+ * Use only when identifiers must be interpolated.
  *
  * @param identifier - The identifier to escape
  * @returns Escaped identifier wrapped in double quotes

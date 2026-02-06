@@ -1,7 +1,7 @@
 /**
  * Encryption Utilities for Secret Management
  *
- * Provides AES-256-GCM encryption for secrets at rest.
+ * AES-256-GCM encryption for secrets at rest.
  * The encryption key should be provided via environment variable
  * or plugin configuration.
  *
@@ -41,7 +41,7 @@ function deriveKey(masterKey: string, salt: Buffer): Buffer {
  *
  * @param plaintext - The secret value to encrypt
  * @param masterKey - The master encryption key (from env or config)
- * @returns The encrypted value with prefix
+ * @returns Encrypted value with prefix
  *
  * @example
  * ```typescript
@@ -82,7 +82,7 @@ export function encryptSecret(plaintext: string, masterKey: string): string {
  *
  * @param encryptedValue - The encrypted value (with enc:v1: prefix)
  * @param masterKey - The master encryption key
- * @returns The decrypted plaintext
+ * @returns Decrypted plaintext
  *
  * @example
  * ```typescript
@@ -162,7 +162,7 @@ export function rotateKey(encryptedValue: string, oldKey: string, newKey: string
  * Get the master encryption key from environment or throw
  *
  * @param envVarName - Environment variable name (default: DATAHUB_MASTER_KEY)
- * @returns The master key
+ * @returns Master key
  * @throws Error if key is not set
  */
 export function getMasterKey(envVarName = 'DATAHUB_MASTER_KEY'): string | undefined {

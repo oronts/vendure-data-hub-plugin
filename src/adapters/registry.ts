@@ -272,7 +272,7 @@ export function registerAdapter(adapter: AdapterDefinition): void {
     if (!adaptersByType.has(adapter.type)) {
         adaptersByType.set(adapter.type, new Set());
     }
-    adaptersByType.get(adapter.type)!.add(adapter.code);
+    adaptersByType.get(adapter.type)?.add(adapter.code);
 
     logger.debug(`Adapter registered: ${adapter.code} (${adapter.type})`);
 }
@@ -405,8 +405,8 @@ export function getAdaptersByType(type: AdapterType): AdapterDefinition[] {
     const codes = adaptersByType.get(type);
     if (!codes) return [];
     return Array.from(codes)
-        .map(code => adapterRegistry.get(code)!)
-        .filter(Boolean);
+        .map(code => adapterRegistry.get(code))
+        .filter((adapter): adapter is AdapterDefinition => adapter !== undefined);
 }
 
 /**

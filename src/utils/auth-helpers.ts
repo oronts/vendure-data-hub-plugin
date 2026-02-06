@@ -6,6 +6,7 @@
  */
 
 import { AuthType, HTTP_HEADERS, AUTH_SCHEMES } from '../constants/index';
+import { SecretResolver as SharedSecretResolver } from '../../shared/types';
 
 /**
  * Authentication configuration types
@@ -27,9 +28,17 @@ export interface AuthConfig {
 }
 
 /**
- * Secret resolver function type - retrieves secrets by code
+ * Secret resolver function type for auth helpers.
+ *
+ * This is a simplified function signature that wraps the shared SecretResolver interface.
+ * Use createSecretResolver() to convert a SharedSecretResolver to this function type.
  */
-export type SecretResolver = (secretCode: string) => Promise<string | undefined>;
+export type SecretResolverFn = (secretCode: string) => Promise<string | undefined>;
+
+/**
+ * Re-export the shared SecretResolver interface for consumers who need the full interface.
+ */
+export type { SharedSecretResolver };
 
 /**
  * Apply authentication to HTTP headers.
@@ -46,7 +55,7 @@ export type SecretResolver = (secretCode: string) => Promise<string | undefined>
 export async function applyAuthentication(
     headers: Record<string, string>,
     auth: AuthConfig | undefined,
-    secretResolver?: SecretResolver,
+    secretResolver?: SecretResolverFn,
 ): Promise<void> {
     if (!auth || auth.type === AuthType.NONE) {
         return;
@@ -94,10 +103,12 @@ export async function applyAuthentication(
 }
 
 /**
- * Create a secret resolver from an ExtractorContext-like object
+ * Create a SecretResolverFn from a SharedSecretResolver interface.
+ * This adapter function allows using the full SecretResolver interface
+ * with the simplified function-based auth helpers.
  */
 export function createSecretResolver(
-    secrets: { get: (code: string) => Promise<string | undefined> },
-): SecretResolver {
+    secrets: SharedSecretResolver,
+): SecretResolverFn {
     return (secretCode: string) => secrets.get(secretCode);
 }

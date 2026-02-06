@@ -6,9 +6,17 @@
  */
 
 /**
- * Connection configuration with base URL
+ * Minimal connection configuration for URL building.
+ *
+ * This is a simplified interface used only by URL helper functions.
+ * It accepts any connection-like object with a baseUrl, avoiding tight coupling
+ * to the full ConnectionConfig types in shared/types or sdk/types.
+ *
+ * For full connection configuration, see:
+ * - shared/types/extractor.types.ts ConnectionConfig - General extractor connections
+ * - src/sdk/types/connection-types.ts ConnectionConfig - SDK connection management
  */
-export interface ConnectionConfig {
+export interface UrlConnectionConfig {
     baseUrl?: string;
     headers?: Record<string, string>;
     auth?: {
@@ -25,7 +33,7 @@ export interface ConnectionConfig {
 /**
  * Connection resolver function type - retrieves connection config by code
  */
-export type ConnectionResolver = (connectionCode: string) => Promise<ConnectionConfig | undefined>;
+export type ConnectionResolver = (connectionCode: string) => Promise<UrlConnectionConfig | undefined>;
 
 /**
  * Build a full URL by combining a base URL from a connection with a path.
@@ -38,11 +46,11 @@ export type ConnectionResolver = (connectionCode: string) => Promise<ConnectionC
  *
  * @param url - The URL or path to build
  * @param connection - Optional connection config with baseUrl
- * @returns The fully constructed URL
+ * @returns Fully constructed URL
  */
 export function buildUrlWithConnection(
     url: string,
-    connection?: ConnectionConfig,
+    connection?: UrlConnectionConfig,
 ): string {
     if (!connection?.baseUrl) {
         return url;
@@ -69,7 +77,7 @@ export function buildUrlWithConnection(
  * @param url - The URL or path to build
  * @param connectionCode - Optional connection code to resolve
  * @param connectionResolver - Function to resolve connection codes
- * @returns The fully constructed URL
+ * @returns Fully constructed URL
  */
 export async function buildUrlWithConnectionCode(
     url: string,

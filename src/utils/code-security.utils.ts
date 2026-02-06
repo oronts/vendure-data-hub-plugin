@@ -1,7 +1,7 @@
 /**
  * Code Security Utilities
  *
- * Provides comprehensive security validation for user-provided code expressions.
+ * Security validation for user-provided code expressions.
  * Uses defense-in-depth approach with multiple layers of protection.
  */
 
@@ -75,7 +75,7 @@ export const DANGEROUS_PATTERNS = {
 
 /**
  * Keywords that should never appear in user code
- * Comprehensive list to prevent sandbox escape
+ * Block list to prevent sandbox escape
  */
 export const DISALLOWED_KEYWORDS = [
     // Function/code execution

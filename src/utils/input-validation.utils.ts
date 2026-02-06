@@ -22,8 +22,13 @@ export function isValidBase64(str: string): boolean {
 
     try {
         return btoa(atob(str)) === str;
-    } catch {
+    } catch (error) {
         // Base64 decode/encode failed - invalid base64 string
+        // Debug log for troubleshooting base64 validation failures
+        console.debug('[InputValidation] Base64 decode/encode failed', {
+            error: error instanceof Error ? error.message : String(error),
+            inputLength: str.length,
+        });
         return false;
     }
 }
@@ -76,7 +81,7 @@ export function isValidPath(filePath: string): boolean {
  *
  * @param basePath - The base directory that the path must stay within
  * @param relativePath - The relative path to resolve
- * @returns The resolved absolute path
+ * @returns Resolved absolute path
  * @throws Error if the path contains traversal attempts or escapes the base directory
  */
 export function securePath(basePath: string, relativePath: string): string {

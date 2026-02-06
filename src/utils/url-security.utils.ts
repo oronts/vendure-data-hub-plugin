@@ -1,7 +1,7 @@
 /**
  * URL Security Utilities - SSRF Protection
  *
- * Provides protection against Server-Side Request Forgery (SSRF) attacks
+ * Protection against Server-Side Request Forgery (SSRF) attacks
  * by validating URLs and preventing access to internal/private networks.
  */
 
@@ -238,7 +238,7 @@ export function isBlockedHostname(hostname: string, additionalBlocked?: string[]
 /**
  * Validate URL safety against SSRF attacks
  *
- * This function performs multiple checks:
+ * Checks performed:
  * 1. URL scheme validation (only http/https allowed)
  * 2. Hostname blocklist check (cloud metadata services, localhost, etc.)
  * 3. DNS resolution to detect private IP addresses
