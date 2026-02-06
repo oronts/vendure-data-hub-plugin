@@ -24,3 +24,4 @@ export * from './connection-types';
 export * from './ui-states';
 export * from './adapter-codes';
 export * from './toast-messages';
+export * from './placeholders';
