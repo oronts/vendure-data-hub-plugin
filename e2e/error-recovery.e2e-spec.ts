@@ -98,7 +98,7 @@ describe('DataHub Error Recovery', () => {
                 }
             `, { runId });
 
-            expect(dataHubRunErrors).toBeDefined();
+            expect(Array.isArray(dataHubRunErrors)).toBe(true);
         });
 
         it.skip('retries failed records', async () => {
@@ -141,7 +141,10 @@ describe('DataHub Error Recovery', () => {
                 }
             `);
 
-            expect(dataHubErrorAnalytics).toBeDefined();
+            expect(dataHubErrorAnalytics).toMatchObject({
+                totalErrors: expect.any(Number),
+                topErrors: expect.any(Array),
+            });
         });
 
         it('gets errors by pipeline', async () => {
@@ -156,7 +159,7 @@ describe('DataHub Error Recovery', () => {
                 }
             `);
 
-            expect(dataHubErrorAnalytics.errorsByPipeline).toBeDefined();
+            expect(Array.isArray(dataHubErrorAnalytics.errorsByPipeline)).toBe(true);
         });
     });
 
@@ -247,7 +250,7 @@ describe('DataHub Error Recovery', () => {
                 }
             `);
 
-            expect(dataHubDeadLetters).toBeDefined();
+            expect(Array.isArray(dataHubDeadLetters)).toBe(true);
         });
 
         it.skip('marks error as dead letter', async () => {
@@ -355,7 +358,10 @@ describe('DataHub Error Recovery', () => {
                 }
             `, { pipelineId, data: { lastProcessedId: 50, processedCount: 50 } });
 
-            expect(updateDataHubCheckpoint).toBeDefined();
+            expect(updateDataHubCheckpoint).toMatchObject({
+                id: expect.any(String),
+                data: expect.any(Object),
+            });
         });
     });
 
@@ -376,7 +382,8 @@ describe('DataHub Error Recovery', () => {
                 }
             `);
 
-            expect(dataHubPipelineRuns.items).toBeDefined();
+            expect(Array.isArray(dataHubPipelineRuns.items)).toBe(true);
+            expect(typeof dataHubPipelineRuns.totalItems).toBe('number');
         });
 
         it('queries logs for run', async () => {
@@ -419,7 +426,15 @@ describe('DataHub Error Recovery', () => {
                 }
             `);
 
-            expect(dataHubRecentLogs).toBeDefined();
+            expect(Array.isArray(dataHubRecentLogs)).toBe(true);
+            // Verify log structure if logs exist
+            if (dataHubRecentLogs.length > 0) {
+                expect(dataHubRecentLogs[0]).toMatchObject({
+                    id: expect.any(String),
+                    level: expect.any(String),
+                    message: expect.any(String),
+                });
+            }
         });
     });
 });

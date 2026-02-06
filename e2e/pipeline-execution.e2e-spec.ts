@@ -166,7 +166,10 @@ describe('DataHub Pipeline Execution', () => {
                 }
             `, { id: pipelineId });
 
-            expect(startDataHubPipelineDryRun).toBeDefined();
+            expect(startDataHubPipelineDryRun).toMatchObject({
+                metrics: expect.any(Object),
+                notes: expect.any(Array),
+            });
         });
     });
 
@@ -232,7 +235,10 @@ describe('DataHub Pipeline Execution', () => {
                 }
             `, { id: pipelineId });
 
-            expect(startDataHubPipelineRun).toBeDefined();
+            expect(startDataHubPipelineRun).toMatchObject({
+                id: expect.any(String),
+                status: expect.any(String),
+            });
         });
     });
 
@@ -340,7 +346,10 @@ describe('DataHub Pipeline Execution', () => {
                 }
             `, { id: pipelineId });
 
-            expect(dataHubSandbox).toBeDefined();
+            expect(dataHubSandbox).toMatchObject({
+                status: expect.any(String),
+                totalDurationMs: expect.any(Number),
+            });
         });
     });
 
@@ -402,7 +411,10 @@ describe('DataHub Pipeline Execution', () => {
                 }
             `, { id: startDataHubPipelineRun.id });
 
-            expect(cancelDataHubPipelineRun).toBeDefined();
+            expect(cancelDataHubPipelineRun).toMatchObject({
+                id: expect.any(String),
+                status: expect.any(String),
+            });
         });
     });
 
@@ -433,7 +445,11 @@ describe('DataHub Pipeline Execution', () => {
                 }
             `);
 
-            expect(dataHubRealTimeStats).toBeDefined();
+            expect(dataHubRealTimeStats).toMatchObject({
+                activeRuns: expect.any(Number),
+                queuedRuns: expect.any(Number),
+                recentErrors: expect.any(Number),
+            });
         });
     });
 
@@ -479,7 +495,10 @@ describe('DataHub Pipeline Execution', () => {
                 }
             `);
 
-            expect(dataHubErrorAnalytics).toBeDefined();
+            expect(dataHubErrorAnalytics).toMatchObject({
+                totalErrors: expect.any(Number),
+                errorsByStep: expect.any(Array),
+            });
         });
     });
 });

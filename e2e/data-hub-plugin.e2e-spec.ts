@@ -336,7 +336,11 @@ describe('DataHub Plugin', () => {
                 definition: { version: 1, steps: [], edges: [] },
             });
 
-            expect(validateDataHubPipelineDefinition).toBeDefined();
+            expect(validateDataHubPipelineDefinition).toMatchObject({
+                isValid: expect.any(Boolean),
+                errors: expect.any(Array),
+                issues: expect.any(Array),
+            });
         });
 
         it('validates a pipeline with extract step', async () => {
@@ -360,7 +364,11 @@ describe('DataHub Plugin', () => {
                 },
             });
 
-            expect(validateDataHubPipelineDefinition).toBeDefined();
+            expect(validateDataHubPipelineDefinition).toMatchObject({
+                isValid: expect.any(Boolean),
+                errors: expect.any(Array),
+                issues: expect.any(Array),
+            });
         });
 
         it('detects invalid step configuration', async () => {
@@ -402,6 +410,20 @@ describe('DataHub Plugin', () => {
             `);
 
             expect(dataHubSettings).toBeDefined();
+            expect(typeof dataHubSettings.logPersistenceLevel).toBe('string');
+            // Retention days can be null (not yet configured) or number
+            expect(
+                dataHubSettings.retentionDaysRuns === null ||
+                typeof dataHubSettings.retentionDaysRuns === 'number'
+            ).toBe(true);
+            expect(
+                dataHubSettings.retentionDaysErrors === null ||
+                typeof dataHubSettings.retentionDaysErrors === 'number'
+            ).toBe(true);
+            expect(
+                dataHubSettings.retentionDaysLogs === null ||
+                typeof dataHubSettings.retentionDaysLogs === 'number'
+            ).toBe(true);
         });
 
         it('updates settings', async () => {
@@ -461,7 +483,7 @@ describe('DataHub Plugin', () => {
                         id
                         level
                         message
-                        timestamp
+                        createdAt
                     }
                 }
             `);
