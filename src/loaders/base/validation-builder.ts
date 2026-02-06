@@ -9,8 +9,12 @@
 
 import { EntityValidationResult } from '../../types/index';
 import { TargetOperation } from '../../types/index';
-import { TARGET_OPERATION, ValidationErrorCode } from '../../constants/enums';
+import { TARGET_OPERATION } from '../../constants/enums';
+import { VALIDATION_ERROR_CODE } from '../../../shared/types/validation.types';
 import { isValidEmail } from '../../utils/input-validation.utils';
+
+// Alias for backward compatibility with enum-style usage
+const ValidationErrorCode = VALIDATION_ERROR_CODE;
 
 /**
  * Loader-specific validation error structure.

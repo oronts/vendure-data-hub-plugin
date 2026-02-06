@@ -972,18 +972,10 @@ export enum EventKind {
 }
 
 /**
- * Validation error codes used by loaders and validators
+ * Validation error codes - re-exported from shared types for backward compatibility.
+ * Use VALIDATION_ERROR_CODE from shared/types/validation.types.ts for new code.
  */
-export enum ValidationErrorCode {
-    REQUIRED = 'REQUIRED',
-    INVALID_TYPE = 'INVALID_TYPE',
-    INVALID_VALUE = 'INVALID_VALUE',
-    INVALID_FORMAT = 'INVALID_FORMAT',
-    INVALID_DATE_RANGE = 'INVALID_DATE_RANGE',
-    DUPLICATE = 'DUPLICATE',
-    NOT_FOUND = 'NOT_FOUND',
-    CONSTRAINT_VIOLATION = 'CONSTRAINT_VIOLATION',
-}
+export { VALIDATION_ERROR_CODE, type ValidationErrorCode } from '../../shared/types/validation.types';
 
 /**
  * Math operations for numeric transforms
