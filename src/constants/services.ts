@@ -1,24 +1,12 @@
-/**
- * Search service ports - imported from shared constants
- */
 import { SEARCH_SERVICE_PORTS } from '../../shared/constants';
 export { SEARCH_SERVICE_PORTS };
 
-/**
- * Environment variable names for search service URLs
- * Users can configure these in their environment to override defaults
- */
 export const SEARCH_SERVICE_ENV_VARS = {
     MEILISEARCH: 'DATAHUB_MEILISEARCH_URL',
     ELASTICSEARCH: 'DATAHUB_ELASTICSEARCH_URL',
     TYPESENSE: 'DATAHUB_TYPESENSE_URL',
 } as const;
 
-/**
- * Get search service URL from environment or use default
- * @param service - The search service name
- * @returns Configured URL or default localhost URL
- */
 export function getSearchServiceUrl(service: keyof typeof SEARCH_SERVICE_PORTS): string {
     const envVar = SEARCH_SERVICE_ENV_VARS[service];
     const envValue = process.env[envVar];
@@ -29,19 +17,12 @@ export function getSearchServiceUrl(service: keyof typeof SEARCH_SERVICE_PORTS):
     return `http://localhost:${port}`;
 }
 
-/**
- * Default URLs for search services.
- * Evaluated at module load time using environment variables or defaults.
- */
 export const SEARCH_SERVICE_URLS = {
     MEILISEARCH: getSearchServiceUrl('MEILISEARCH'),
     ELASTICSEARCH: getSearchServiceUrl('ELASTICSEARCH'),
     TYPESENSE: getSearchServiceUrl('TYPESENSE'),
 } as const;
 
-/**
- * Example URLs for documentation and placeholders
- */
 export const EXAMPLE_URLS = {
     BASE: 'https://example.com',
     API: 'https://api.example.com',
@@ -50,9 +31,6 @@ export const EXAMPLE_URLS = {
     IMAGES: 'https://example.com/images',
 } as const;
 
-/**
- * Combined service defaults for convenient access
- */
 export const SERVICE_DEFAULTS = {
     MEILISEARCH_URL: SEARCH_SERVICE_URLS.MEILISEARCH,
     ELASTICSEARCH_URL: SEARCH_SERVICE_URLS.ELASTICSEARCH,
@@ -60,9 +38,6 @@ export const SERVICE_DEFAULTS = {
     EXAMPLE_BASE_URL: EXAMPLE_URLS.BASE,
 } as const;
 
-/**
- * XML namespaces for feeds
- */
 export const FEED_NAMESPACES = {
     /** Google Shopping/Merchant namespace */
     GOOGLE_PRODUCT: 'http://base.google.com/ns/1.0',
@@ -76,9 +51,6 @@ export const FEED_NAMESPACES = {
     ATOM: 'http://www.w3.org/2005/Atom',
 } as const;
 
-/**
- * Content-Type headers
- */
 export const CONTENT_TYPES = {
     JSON: 'application/json',
     NDJSON: 'application/x-ndjson',
@@ -93,9 +65,6 @@ export const CONTENT_TYPES = {
     OCTET_STREAM: 'application/octet-stream',
 } as const;
 
-/**
- * Common HTTP headers
- */
 export const HTTP_HEADERS = {
     CONTENT_TYPE: 'Content-Type',
     AUTHORIZATION: 'Authorization',
@@ -107,18 +76,12 @@ export const HTTP_HEADERS = {
     X_TYPESENSE_API_KEY: 'X-TYPESENSE-API-KEY',
 } as const;
 
-/**
- * Authentication scheme prefixes for Authorization header
- */
 export const AUTH_SCHEMES = {
     BEARER: 'Bearer',
     BASIC: 'Basic',
     API_KEY: 'ApiKey',
 } as const;
 
-/**
- * URL templates for external services
- */
 export const SERVICE_URL_TEMPLATES = {
     /** Algolia API URL template - use with applicationId */
     ALGOLIA_API: (applicationId: string) => `https://${applicationId}.algolia.net`,
@@ -126,9 +89,6 @@ export const SERVICE_URL_TEMPLATES = {
     S3_BUCKET: (bucket: string, region: string) => `https://${bucket}.s3.${region}.amazonaws.com`,
 } as const;
 
-/**
- * XML namespace URIs for standard formats
- */
 export const XML_NAMESPACES = {
     /** XHTML namespace */
     XHTML: 'http://www.w3.org/1999/xhtml',
@@ -138,9 +98,6 @@ export const XML_NAMESPACES = {
     GOOGLE_BASE: 'http://base.google.com/ns/1.0',
 } as const;
 
-/**
- * Supported feed format definitions for product feeds
- */
 export interface FeedFormatInfo {
     code: string;
     label: string;
@@ -149,9 +106,6 @@ export interface FeedFormatInfo {
     extension: string;
 }
 
-/**
- * Available feed format types with content type and extension metadata
- */
 export const FEED_FORMATS: readonly FeedFormatInfo[] = [
     { code: 'google_shopping', label: 'Google Shopping', description: 'Google Merchant Center XML feed', contentType: CONTENT_TYPES.XML, extension: 'xml' },
     { code: 'facebook_catalog', label: 'Facebook Catalog', description: 'Facebook/Instagram product catalog (CSV)', contentType: CONTENT_TYPES.CSV, extension: 'csv' },
@@ -160,7 +114,4 @@ export const FEED_FORMATS: readonly FeedFormatInfo[] = [
     { code: 'xml', label: 'XML', description: 'Generic XML export', contentType: CONTENT_TYPES.XML, extension: 'xml' },
 ] as const;
 
-/**
- * Lookup map for feed format metadata by code
- */
 export const FEED_FORMAT_MAP = new Map(FEED_FORMATS.map(f => [f.code, f]));

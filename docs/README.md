@@ -12,7 +12,7 @@
 
 ---
 
-Welcome to the Data Hub Plugin documentation. This plugin provides comprehensive ETL (Extract, Transform, Load) capabilities for Vendure e-commerce.
+Welcome to the Data Hub Plugin documentation. This plugin provides ETL (Extract, Transform, Load) capabilities for Vendure e-commerce.
 
 ## Visual Overview
 

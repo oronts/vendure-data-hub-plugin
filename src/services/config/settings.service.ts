@@ -34,9 +34,6 @@ export class DataHubSettingsService {
         return this.ctxService.create({ apiType: 'admin' });
     }
 
-    /**
-     * Get or create the settings row
-     */
     private async getSettingsRow(): Promise<DataHubSettings> {
         const ctx = await this.getCtx();
         const repo = this.connection.getRepository(ctx, DataHubSettings);
@@ -88,19 +85,11 @@ export class DataHubSettingsService {
         };
     }
 
-    /**
-     * Get just the log persistence level (for use in pipeline execution)
-     */
     async getLogPersistenceLevel(): Promise<LogPersistenceLevel> {
         const row = await this.getSettingsRow();
         return row?.logPersistenceLevel ?? LogPersistenceLevel.PIPELINE;
     }
 
-    /**
-     * Get AutoMapper configuration (global or per-pipeline)
-     * @param pipelineId - Optional pipeline ID for per-pipeline config
-     * @returns Full AutoMapperConfig with defaults applied
-     */
     async getAutoMapperConfig(pipelineId?: ID | null): Promise<AutoMapperConfig> {
         const row = await this.getSettingsRow();
 
@@ -123,18 +112,10 @@ export class DataHubSettingsService {
         return config;
     }
 
-    /**
-     * Get the default AutoMapper configuration
-     */
     getDefaultAutoMapperConfig(): AutoMapperConfig {
         return { ...DEFAULT_AUTO_MAPPER_CONFIG };
     }
 
-    /**
-     * Update AutoMapper configuration
-     * @param input - Configuration input with optional pipelineId
-     * @returns Updated configuration with defaults applied
-     */
     async updateAutoMapperConfig(input: AutoMapperConfigInput & { pipelineId?: ID | null }): Promise<AutoMapperConfig> {
         const ctx = await this.getCtx();
         const repo = this.connection.getRepository(ctx, DataHubSettings);
@@ -166,11 +147,6 @@ export class DataHubSettingsService {
         return this.getAutoMapperConfig(input.pipelineId);
     }
 
-    /**
-     * Reset AutoMapper configuration to defaults
-     * @param pipelineId - Optional pipeline ID to reset specific pipeline config
-     * @returns Default configuration
-     */
     async resetAutoMapperConfig(pipelineId?: ID | null): Promise<AutoMapperConfig> {
         const ctx = await this.getCtx();
         const repo = this.connection.getRepository(ctx, DataHubSettings);
@@ -192,16 +168,10 @@ export class DataHubSettingsService {
         return this.getAutoMapperConfig(pipelineId);
     }
 
-    /**
-     * Validate AutoMapper configuration input
-     */
     validateAutoMapperConfig(input: AutoMapperConfigInput): AutoMapperConfigValidation {
         return validateAutoMapperConfig(input);
     }
 
-    /**
-     * Merge stored config into base config
-     */
     private mergeStoredConfig(base: AutoMapperConfig, stored: StoredAutoMapperConfig): AutoMapperConfig {
         return {
             confidenceThreshold: stored.confidenceThreshold ?? base.confidenceThreshold,
@@ -221,9 +191,6 @@ export class DataHubSettingsService {
         };
     }
 
-    /**
-     * Convert GraphQL input to stored config format
-     */
     private inputToStoredConfig(input: AutoMapperConfigInput): StoredAutoMapperConfig {
         const stored: StoredAutoMapperConfig = {};
 

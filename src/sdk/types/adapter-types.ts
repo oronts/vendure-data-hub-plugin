@@ -1,12 +1,3 @@
-/**
- * Adapter Types - SDK types for adapter definitions and configurations
- *
- * Base adapter interface and specific adapter types: extractors, operators,
- * loaders, validators, enrichers, exporters, feeds, and sinks.
- *
- * @module sdk/types/adapter-types
- */
-
 import { RequestContext, ID } from '@vendure/core';
 import { JsonObject, JsonValue, PipelineCheckpoint, PipelineContext as PipelineCtx } from '../../types/index';
 import { StepConfigSchema } from './schema-types';
@@ -162,12 +153,6 @@ export interface ExtractContext {
  */
 export interface ExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'extractor';
-    /**
-     * Extract records from source as a stream
-     * @param context Extraction context
-     * @param config Adapter configuration
-     * @yields Record envelopes
-     */
     extract(context: ExtractContext, config: TConfig): AsyncGenerator<RecordEnvelope, void, undefined>;
 }
 
@@ -176,12 +161,6 @@ export interface ExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TCon
  */
 export interface BatchExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'extractor';
-    /**
-     * Extract all records from source
-     * @param context Extraction context
-     * @param config Adapter configuration
-     * @returns All extracted records
-     */
     extractAll(context: ExtractContext, config: TConfig): Promise<ExtractResult>;
 }
 
@@ -208,15 +187,7 @@ export interface OperatorContext {
  */
 export interface OperatorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'operator';
-    /** Whether the operator is pure (no side effects) */
     readonly pure: boolean;
-    /**
-     * Apply transformation to records
-     * @param records Input records
-     * @param config Adapter configuration
-     * @param helpers Operator helpers
-     * @returns Transformed records
-     */
     apply(records: readonly JsonObject[], config: TConfig, helpers: OperatorHelpers): Promise<OperatorResult> | OperatorResult;
 }
 
@@ -225,15 +196,7 @@ export interface OperatorAdapter<TConfig = JsonObject> extends BaseAdapter<TConf
  */
 export interface SingleRecordOperator<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'operator';
-    /** Whether the operator is pure (no side effects) */
     readonly pure: boolean;
-    /**
-     * Apply transformation to a single record
-     * @param record Input record
-     * @param config Adapter configuration
-     * @param helpers Operator helpers
-     * @returns Transformed record or null to drop
-     */
     applyOne(record: JsonObject, config: TConfig, helpers: OperatorHelpers): Promise<JsonObject | null> | JsonObject | null;
 }
 
@@ -299,13 +262,6 @@ export interface LoadContext {
  */
 export interface LoaderAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'loader';
-    /**
-     * Load records into Vendure
-     * @param context Load context
-     * @param config Adapter configuration
-     * @param records Records to load
-     * @returns Load result with success/failure counts
-     */
     load(context: LoadContext, config: TConfig, records: readonly JsonObject[]): Promise<LoadResult>;
 }
 
@@ -334,13 +290,6 @@ export interface ValidateContext {
  */
 export interface ValidatorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'validator';
-    /**
-     * Validate records
-     * @param context Validation context
-     * @param config Adapter configuration
-     * @param records Records to validate
-     * @returns Validation result with valid/invalid records
-     */
     validate(context: ValidateContext, config: TConfig, records: readonly JsonObject[]): Promise<ValidationResult>;
 }
 
@@ -371,13 +320,6 @@ export interface EnrichContext {
  */
 export interface EnricherAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'enricher';
-    /**
-     * Enrich records with additional data
-     * @param context Enrichment context
-     * @param config Adapter configuration
-     * @param records Records to enrich
-     * @returns Enriched records
-     */
     enrich(context: EnrichContext, config: TConfig, records: readonly JsonObject[]): Promise<EnrichResult>;
 }
 
@@ -430,23 +372,9 @@ export interface ExportContext {
  */
 export interface ExporterAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'exporter';
-    /** Target type (file, api, etc.) */
     readonly targetType: ExportTargetType;
-    /** Supported export formats */
     readonly formats?: readonly ExportFormat[];
-    /**
-     * Export records to external system
-     * @param context Export context
-     * @param config Adapter configuration
-     * @param records Records to export
-     * @returns Export result
-     */
     export(context: ExportContext, config: TConfig, records: readonly JsonObject[]): Promise<ExportResult>;
-    /**
-     * Optional finalization step after all records exported
-     * @param context Export context
-     * @param config Adapter configuration
-     */
     finalize?(context: ExportContext, config: TConfig): Promise<void>;
 }
 
@@ -503,28 +431,11 @@ export interface FeedContext {
  */
 export interface FeedAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'feed';
-    /** Feed type (google-merchant, meta-catalog, etc.) */
     readonly feedType: FeedType;
-    /** Supported formats */
     readonly formats: readonly FeedFormat[];
-    /** Required fields for this feed type */
     readonly requiredFields: readonly string[];
-    /** Optional fields for this feed type */
     readonly optionalFields?: readonly string[];
-    /**
-     * Generate feed from records
-     * @param context Feed context
-     * @param config Adapter configuration
-     * @param records Records to include in feed
-     * @returns Feed result with validation info
-     */
     generateFeed(context: FeedContext, config: TConfig, records: readonly JsonObject[]): Promise<FeedResult>;
-    /**
-     * Optional validation for individual items
-     * @param record Record to validate
-     * @param config Adapter configuration
-     * @returns Validation errors if any
-     */
     validateItem?(record: JsonObject, config: TConfig): import('./result-types').FeedValidationError[];
 }
 
@@ -569,29 +480,9 @@ export interface SinkContext {
  */
 export interface SinkAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'sink';
-    /** Sink type (elasticsearch, algolia, etc.) */
     readonly sinkType: SinkType;
-    /**
-     * Index records to search engine
-     * @param context Sink context
-     * @param config Adapter configuration
-     * @param records Records to index
-     * @returns Index result
-     */
     index(context: SinkContext, config: TConfig, records: readonly JsonObject[]): Promise<SinkResult>;
-    /**
-     * Optional delete operation
-     * @param context Sink context
-     * @param config Adapter configuration
-     * @param ids IDs to delete
-     * @returns Delete result
-     */
     delete?(context: SinkContext, config: TConfig, ids: readonly string[]): Promise<SinkResult>;
-    /**
-     * Optional refresh operation
-     * @param context Sink context
-     * @param config Adapter configuration
-     */
     refresh?(context: SinkContext, config: TConfig): Promise<void>;
 }
 
@@ -630,25 +521,10 @@ export interface TriggerPayload {
  * Trigger adapter for initiating pipelines
  */
 export interface TriggerAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'extractor'; // Triggers are like extractors that produce initial records
-    /** Trigger type */
+    readonly type: 'extractor';
     readonly triggerType: TriggerType;
-    /**
-     * Initialize the trigger
-     * @param context Trigger context
-     * @param config Adapter configuration
-     */
     initialize?(context: TriggerContext, config: TConfig): Promise<void>;
-    /**
-     * Shutdown the trigger
-     */
     shutdown?(): Promise<void>;
-    /**
-     * Check if trigger should fire
-     * @param context Trigger context
-     * @param config Adapter configuration
-     * @param payload Trigger payload
-     */
     shouldTrigger?(context: TriggerContext, config: TConfig, payload: TriggerPayload): Promise<boolean>;
 }
 

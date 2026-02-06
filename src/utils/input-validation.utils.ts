@@ -40,16 +40,7 @@ export function escapeHtmlEntities(str: string): string {
 
 export { escapeHtmlEntities as sanitizeString };
 
-/**
- * Validates pipeline code format.
- * Uses canonical implementation from shared/utils/validation.ts.
- */
 export const isValidPipelineCode = isValidPipelineCodeFromShared;
-
-/**
- * Validates secret code format.
- * Uses canonical implementation from shared/utils/validation.ts.
- */
 export const isValidSecretCode = isValidSecretCodeFromShared;
 
 export function isValidPath(filePath: string): boolean {
@@ -70,15 +61,7 @@ export function isValidPath(filePath: string): boolean {
     return true;
 }
 
-/**
- * Securely resolve a path within a base directory, preventing path traversal attacks.
- * Throws an error if the resulting path would escape the base directory.
- *
- * @param basePath - The base directory that the path must stay within
- * @param relativePath - The relative path to resolve
- * @returns Resolved absolute path
- * @throws Error if the path contains traversal attempts or escapes the base directory
- */
+/** Throws if path contains traversal attempts or escapes base directory. */
 export function securePath(basePath: string, relativePath: string): string {
     // Check for null bytes
     if (relativePath.includes('\0') || basePath.includes('\0')) {
@@ -107,14 +90,5 @@ export function securePath(basePath: string, relativePath: string): string {
     return fullPath;
 }
 
-/**
- * Validates a cron expression.
- * Uses canonical implementation from shared/utils/validation.ts.
- */
 export const isValidCron = isValidCronFromShared;
-
-/**
- * Validates a JSON string.
- * Uses canonical implementation from shared/utils/validation.ts.
- */
 export const isValidJson = isValidJsonFromShared;

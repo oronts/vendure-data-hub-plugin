@@ -1,9 +1,3 @@
-/**
- * Job Processor Utilities
- *
- * Common utilities for job processing, error handling, and logging.
- */
-
 import { LOGGER_CONTEXTS, HTTP, TIME_UNITS } from '../../constants/index';
 import { JobResult, JobContext } from '../types';
 import { DataHubLogger } from '../../services/logger';
@@ -19,13 +13,6 @@ import { getErrorMessage } from '../../utils/error.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.JOB_PROCESSOR);
 
-/**
- * Create a job context for tracking
- *
- * @param jobId - Unique job identifier
- * @param attempt - Current attempt number
- * @param maxAttempts - Maximum attempts allowed
- */
 export function createJobContext(
     jobId: string,
     attempt: number = 1,
@@ -39,12 +26,6 @@ export function createJobContext(
     };
 }
 
-/**
- * Create a successful job result
- *
- * @param durationMs - Execution duration in milliseconds
- * @param metadata - Additional metadata
- */
 export function createSuccessResult(
     durationMs?: number,
     metadata?: Record<string, unknown>,
@@ -56,13 +37,6 @@ export function createSuccessResult(
     };
 }
 
-/**
- * Create a failed job result
- *
- * @param error - Error message or Error object
- * @param durationMs - Execution duration in milliseconds
- * @param metadata - Additional metadata
- */
 export function createFailureResult(
     error: string | Error,
     durationMs?: number,
@@ -76,13 +50,6 @@ export function createFailureResult(
     };
 }
 
-/**
- * Wrap a job processor function with error handling and timing
- *
- * @param name - Name of the job for logging
- * @param processor - The processor function to wrap
- * @returns Wrapped processor function
- */
 export function withJobProcessing<T, R>(
     name: string,
     processor: (data: T) => Promise<R>,
@@ -109,13 +76,6 @@ export function withJobProcessing<T, R>(
     };
 }
 
-/**
- * Retry a function with exponential backoff
- *
- * @param fn - Function to retry
- * @param options - Retry options
- * @returns Result of the function
- */
 export async function withRetry<T>(
     fn: () => Promise<T>,
     options: {
@@ -153,15 +113,6 @@ export async function withRetry<T>(
 
 export { sleep };
 
-/**
- * Calculate exponential backoff delay
- *
- * @param attempt - Current attempt number (1-based)
- * @param baseDelayMs - Base delay in milliseconds
- * @param maxDelayMs - Maximum delay in milliseconds
- * @param multiplier - Backoff multiplier
- * @returns Delay in milliseconds
- */
 export function calculateBackoffDelay(
     attempt: number,
     baseDelayMs: number = HTTP.RETRY_DELAY_MS,
@@ -177,15 +128,6 @@ export function calculateBackoffDelay(
     });
 }
 
-/**
- * Check if an error is retryable
- *
- * Uses the base implementation from retry.utils and allows additional patterns.
- *
- * @param error - Error to check
- * @param additionalPatterns - Additional patterns to check beyond defaults
- * @returns True if the error is retryable
- */
 export function isRetryableError(
     error: Error,
     additionalPatterns: (string | RegExp)[] = [],
@@ -214,12 +156,6 @@ export function isRetryableError(
     return false;
 }
 
-/**
- * Format job duration for display
- *
- * @param durationMs - Duration in milliseconds
- * @returns Formatted duration string
- */
 export function formatDuration(durationMs: number): string {
     if (durationMs < TIME_UNITS.SECOND) {
         return `${durationMs}ms`;

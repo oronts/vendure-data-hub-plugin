@@ -1,10 +1,3 @@
-/**
- * DataHub File Parser Service
- *
- * Unified service for parsing various file formats (CSV, JSON, XML, Excel).
- * Routes to CSV, JSON, XML, or Excel parsers based on format.
- */
-
 import { Injectable } from '@nestjs/common';
 import {
     FileFormat,
@@ -25,13 +18,6 @@ import { parseExcel, isExcelFile } from './formats/excel.parser';
 
 @Injectable()
 export class FileParserService {
-    /**
-     * Detect file format from content or filename
-     *
-     * @param content - File content as string or Buffer
-     * @param filename - Optional filename for extension detection
-     * @returns Detected file format
-     */
     detectFormat(content: string | Buffer, filename?: string): FileFormat {
         // Try filename extension first
         if (filename) {
@@ -65,13 +51,6 @@ export class FileParserService {
         return 'csv';
     }
 
-    /**
-     * Parse file content
-     *
-     * @param content - File content as string or Buffer
-     * @param options - Parse options
-     * @returns Parse result with records
-     */
     async parse(content: string | Buffer, options: ParseOptions = {}): Promise<ParseResult> {
         const format = options.format ?? this.detectFormat(content);
 
@@ -115,19 +94,8 @@ export class FileParserService {
         }
     }
 
-    /**
-     * Maximum allowed preview rows to prevent performance issues
-     */
     private static readonly MAX_PREVIEW_ROWS = PAGINATION.DATABASE_PAGE_SIZE;
 
-    /**
-     * Get preview of file content (first N rows with field analysis)
-     *
-     * @param content - File content
-     * @param options - Parse options
-     * @param maxRows - Maximum rows for preview (default: 10, max: 1000)
-     * @returns File preview with field info and sample data
-     */
     async preview(
         content: string | Buffer,
         options: ParseOptions = {},
@@ -159,13 +127,6 @@ export class FileParserService {
         };
     }
 
-    /**
-     * Analyze field types and statistics
-     *
-     * @param records - Parsed records
-     * @param fieldNames - Field names
-     * @returns Field information array
-     */
     private analyzeFields(records: Record<string, unknown>[], fieldNames: string[]): FieldInfo[] {
         const fieldStats = new Map<
             string,
@@ -243,12 +204,6 @@ export class FileParserService {
         });
     }
 
-    /**
-     * Detect the type of a value
-     *
-     * @param value - Value to analyze
-     * @returns Detected type
-     */
     private detectValueType(value: unknown): FieldType {
         if (value === null || value === undefined) return 'null';
         if (Array.isArray(value)) return 'array';
@@ -269,12 +224,7 @@ export class FileParserService {
         return 'string';
     }
 
-    /**
-     * Convert field name to human-readable label
-     *
-     * @param name - Field name
-     * @returns Human-readable label
-     */
+    /** `product_name` -> `Product name` */
     private humanizeFieldName(name: string): string {
         return name
             .replace(/_/g, ' ')

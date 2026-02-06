@@ -1,11 +1,3 @@
-/**
- * Extract Executor
- *
- * Routes data extraction requests to format-specific handlers.
- *
- * @module runtime/executors
- */
-
 import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { JsonObject, PipelineStepDefinition } from '../../types/index';
@@ -146,9 +138,6 @@ export class ExtractExecutor {
         this.logger.logExtractorOperation(adapterCode, recordCount, durationMs, { stepKey });
     }
 
-    /**
-     * Execute a custom extractor adapter from the registry
-     */
     private async executeCustomExtractor(
         ctx: RequestContext,
         step: PipelineStepDefinition,

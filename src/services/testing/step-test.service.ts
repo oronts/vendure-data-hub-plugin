@@ -7,23 +7,14 @@ import { TransformExecutor } from '../../runtime/executors/transform.executor';
 import { LoadExecutor } from '../../runtime/executors/load.executor';
 import { RecordObject } from '../../runtime/executor-types';
 
-/**
- * Result of a preview extract operation
- */
 export interface ExtractPreviewResult {
     records: RecordObject[];
     totalCount: number;
     notes: string[];
 }
 
-/**
- * Result of a simulate transform operation
- */
 export type TransformSimulationResult = RecordObject[];
 
-/**
- * Result of a simulate validate operation
- */
 export interface ValidateSimulationResult {
     records: RecordObject[];
     summary: {
@@ -34,9 +25,6 @@ export interface ValidateSimulationResult {
     };
 }
 
-/**
- * Result of a simulate load operation
- */
 export interface LoadSimulationResult {
     [key: string]: unknown;
     summary: {
@@ -45,20 +33,10 @@ export interface LoadSimulationResult {
     };
 }
 
-/**
- * Options for extract preview
- */
 export interface ExtractPreviewOptions {
-    /** Maximum number of records to return */
     limit?: number;
 }
 
-/**
- * StepTestService - Service layer for testing individual pipeline steps
- *
- * Previews and simulates pipeline step execution without running the full pipeline.
- * Intermediary between API resolvers and runtime executors (api/ -> services/ -> runtime/).
- */
 @Injectable()
 export class StepTestService {
     constructor(
@@ -67,9 +45,6 @@ export class StepTestService {
         private readonly loadExecutor: LoadExecutor,
     ) {}
 
-    /**
-     * Creates a minimal executor context for testing purposes
-     */
     private createTestExecutorContext(): ExecutorContext {
         return {
             cpData: null,
@@ -78,14 +53,6 @@ export class StepTestService {
         };
     }
 
-    /**
-     * Preview an extract step by executing it with optional limit
-     *
-     * @param ctx - Vendure request context
-     * @param stepConfig - The step configuration (extract adapter settings)
-     * @param options - Preview options (limit)
-     * @returns Preview result with records, total count, and notes
-     */
     async previewExtract(
         ctx: RequestContext,
         stepConfig: JsonObject,
@@ -110,14 +77,6 @@ export class StepTestService {
         };
     }
 
-    /**
-     * Simulate a transform step on sample data
-     *
-     * @param ctx - Vendure request context
-     * @param stepConfig - The step configuration (transform adapter settings)
-     * @param sampleData - Sample records to transform
-     * @returns Transformed records
-     */
     async simulateTransform(
         ctx: RequestContext,
         stepConfig: JsonObject,
@@ -141,14 +100,6 @@ export class StepTestService {
         );
     }
 
-    /**
-     * Simulate a validate step on sample data
-     *
-     * @param ctx - Vendure request context
-     * @param stepConfig - The step configuration (validation rules)
-     * @param sampleData - Sample records to validate
-     * @returns Validation result with passed records and summary
-     */
     async simulateValidate(
         ctx: RequestContext,
         stepConfig: JsonObject,
@@ -183,17 +134,7 @@ export class StepTestService {
         };
     }
 
-    /**
-     * Validate and simulate a load step configuration
-     *
-     * This performs a dry-run simulation of what the load step would do
-     * without actually persisting any data.
-     *
-     * @param ctx - Vendure request context
-     * @param stepConfig - The step configuration (loader adapter settings)
-     * @param sampleData - Sample records to simulate loading
-     * @returns Simulation result with what would be created/updated
-     */
+    /** Dry-run simulation of load step without persisting data */
     async validateLoadConfig(
         ctx: RequestContext,
         stepConfig: JsonObject,

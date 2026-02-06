@@ -1,7 +1,7 @@
 {
   "name": "@oronts/vendure-data-hub-plugin",
   "version": "0.1.0",
-  "description": "A comprehensive ETL (Extract, Transform, Load) data integration plugin for Vendure e-commerce",
+  "description": "ETL data integration plugin for Vendure e-commerce",
   "author": {
     "name": "Oronts Website",
     "email": "office@oronts.com",

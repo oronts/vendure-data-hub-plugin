@@ -1,25 +1,9 @@
-/**
- * DataHub Parsers - Streaming Utilities
- *
- * Helper functions for processing data in chunks and streams.
- */
-
 import { ParseError } from '../types';
 import { STREAMING } from '../../constants';
 
-/**
- * Default chunk size for streaming operations (from centralized constants)
- */
 export const DEFAULT_CHUNK_SIZE = STREAMING.DEFAULT_CHUNK_SIZE;
-
-/**
- * Maximum buffer size before forcing flush (from centralized constants)
- */
 export const MAX_BUFFER_SIZE = STREAMING.MAX_BUFFER_SIZE;
 
-/**
- * Chunk processing result
- */
 export interface ChunkResult<T> {
     /** Records successfully parsed in this chunk */
     records: T[];
@@ -31,9 +15,6 @@ export interface ChunkResult<T> {
     position: number;
 }
 
-/**
- * Stream processing options
- */
 export interface StreamOptions {
     /** Records per chunk */
     chunkSize?: number;
@@ -45,27 +26,12 @@ export interface StreamOptions {
     onProgress?: (processed: number, total?: number) => void;
 }
 
-/**
- * Create a chunked iterator from an array
- *
- * @param items - Array of items to chunk
- * @param chunkSize - Size of each chunk
- * @yields Chunks of items
- */
 export function* chunkArray<T>(items: T[], chunkSize: number = DEFAULT_CHUNK_SIZE): Generator<T[]> {
     for (let i = 0; i < items.length; i += chunkSize) {
         yield items.slice(i, i + chunkSize);
     }
 }
 
-/**
- * Process items in chunks with async callback
- *
- * @param items - Items to process
- * @param processor - Async function to process each chunk
- * @param options - Processing options
- * @returns Aggregated results
- */
 export async function processInChunks<T, R>(
     items: T[],
     processor: (chunk: T[], index: number) => Promise<R[]>,
@@ -105,9 +71,6 @@ export async function processInChunks<T, R>(
     return { results, errors };
 }
 
-/**
- * Line reader for processing text content line by line
- */
 export class LineReader {
     private buffer: string = '';
     private position: number = 0;
@@ -118,16 +81,10 @@ export class LineReader {
         private lineEnding: string = '\n',
     ) {}
 
-    /**
-     * Check if more lines are available
-     */
     hasNext(): boolean {
         return this.position < this.content.length;
     }
 
-    /**
-     * Read next line
-     */
     next(): { line: string; lineNumber: number } | null {
         if (!this.hasNext()) {
             return null;
@@ -149,9 +106,6 @@ export class LineReader {
         return { line, lineNumber: this.lineNumber };
     }
 
-    /**
-     * Read next N lines
-     */
     readLines(count: number): Array<{ line: string; lineNumber: number }> {
         const lines: Array<{ line: string; lineNumber: number }> = [];
         while (lines.length < count) {
@@ -162,35 +116,23 @@ export class LineReader {
         return lines;
     }
 
-    /**
-     * Skip N lines
-     */
     skip(count: number): void {
         for (let i = 0; i < count && this.hasNext(); i++) {
             this.next();
         }
     }
 
-    /**
-     * Reset to beginning
-     */
     reset(): void {
         this.position = 0;
         this.lineNumber = 0;
         this.buffer = '';
     }
 
-    /**
-     * Get current line number
-     */
     getLineNumber(): number {
         return this.lineNumber;
     }
 }
 
-/**
- * Buffer accumulator for batch processing
- */
 export class BatchBuffer<T> {
     private items: T[] = [];
     private flushCallback?: (items: T[]) => Promise<void> | void;
@@ -200,16 +142,10 @@ export class BatchBuffer<T> {
         private maxSize: number = MAX_BUFFER_SIZE,
     ) {}
 
-    /**
-     * Set flush callback
-     */
     onFlush(callback: (items: T[]) => Promise<void> | void): void {
         this.flushCallback = callback;
     }
 
-    /**
-     * Add item to buffer
-     */
     async add(item: T): Promise<void> {
         this.items.push(item);
 
@@ -218,18 +154,12 @@ export class BatchBuffer<T> {
         }
     }
 
-    /**
-     * Add multiple items
-     */
     async addAll(items: T[]): Promise<void> {
         for (const item of items) {
             await this.add(item);
         }
     }
 
-    /**
-     * Flush buffer
-     */
     async flush(): Promise<void> {
         if (this.items.length === 0) return;
 
@@ -241,35 +171,19 @@ export class BatchBuffer<T> {
         }
     }
 
-    /**
-     * Get current buffer size
-     */
     size(): number {
         return this.items.length;
     }
 
-    /**
-     * Get buffered items without flushing
-     */
     peek(): T[] {
         return [...this.items];
     }
 
-    /**
-     * Clear buffer without flushing
-     */
     clear(): void {
         this.items = [];
     }
 }
 
-/**
- * Create a throttled async function
- *
- * @param fn - Function to throttle
- * @param delayMs - Minimum delay between calls
- * @returns Throttled function
- */
 export function throttle<T extends (...args: unknown[]) => Promise<unknown>>(
     fn: T,
     delayMs: number,
@@ -289,14 +203,6 @@ export function throttle<T extends (...args: unknown[]) => Promise<unknown>>(
     }) as T;
 }
 
-/**
- * Run async operations with concurrency limit
- *
- * @param items - Items to process
- * @param processor - Async processor function
- * @param concurrency - Maximum concurrent operations
- * @returns Results in order
- */
 export async function mapWithConcurrency<T, R>(
     items: T[],
     processor: (item: T, index: number) => Promise<R>,
@@ -322,13 +228,6 @@ export async function mapWithConcurrency<T, R>(
     return results;
 }
 
-/**
- * Estimate total records from content size
- *
- * @param contentSize - Size in bytes
- * @param avgRecordSize - Average record size in bytes (estimated)
- * @returns Estimated record count
- */
 export function estimateRecordCount(
     contentSize: number,
     avgRecordSize: number = STREAMING.DEFAULT_AVG_RECORD_SIZE,

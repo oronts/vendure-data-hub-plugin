@@ -1,11 +1,6 @@
 /**
  * SQL Security Utilities
  *
- * Protection against SQL injection attacks through:
- * - Column/table name validation
- * - Identifier escaping
- * - SQL injection pattern detection
- *
  * IMPORTANT: These utilities should be used alongside parameterized queries,
  * not as a replacement. Always use parameterized queries for user input.
  */
@@ -16,13 +11,6 @@ import {
     SQL_PATTERNS,
 } from '../constants/sql';
 
-/**
- * Validates a column name for SQL safety.
- *
- * @param column - The column name to validate
- * @param allowedColumns - Optional whitelist of allowed column names
- * @throws Error if column is invalid or not in whitelist
- */
 export function validateColumnName(
     column: string | undefined,
     allowedColumns: Set<string> = new Set(),
@@ -44,13 +32,6 @@ export function validateColumnName(
     }
 }
 
-/**
- * Validates a table name for SQL safety.
- * Supports schema-qualified names (e.g., "schema.table").
- *
- * @param table - The table name to validate
- * @throws Error if table name is invalid
- */
 export function validateTableName(table: string | undefined): void {
     if (!table) {
         throw new Error('Table name is required');
@@ -66,16 +47,7 @@ export function validateTableName(table: string | undefined): void {
     }
 }
 
-/**
- * Escapes an SQL identifier (column/table name) for safe interpolation.
- * Uses double-quote escaping per SQL standard.
- *
- * IMPORTANT: Prefer parameterized queries when possible.
- * Use only when identifiers must be interpolated.
- *
- * @param identifier - The identifier to escape
- * @returns Escaped identifier wrapped in double quotes
- */
+/** IMPORTANT: Prefer parameterized queries. Use only when identifiers must be interpolated. */
 export function escapeSqlIdentifier(identifier: string): string {
     validateColumnName(identifier);
     return `"${identifier.replace(/"/g, '""')}"`;
@@ -99,13 +71,7 @@ export function validateLimitOffset(
     return Math.floor(num);
 }
 
-/**
- * Check if a string contains potential SQL injection patterns.
- * Note: This is a heuristic check and should be used alongside parameterized queries.
- *
- * @param str - String to check
- * @returns true if potential SQL injection detected
- */
+/** Heuristic check - use alongside parameterized queries. */
 export function containsSqlInjection(str: string): boolean {
     // Truncate very long strings to prevent ReDoS
     const checkStr = str.length > SQL_CHECK_MAX_LENGTH ? str.slice(0, SQL_CHECK_MAX_LENGTH) : str;

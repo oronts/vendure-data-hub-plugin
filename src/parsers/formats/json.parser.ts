@@ -1,32 +1,12 @@
-/**
- * DataHub Parsers - JSON Parser
- *
- * Parses JSON files with support for nested paths, array extraction,
- * and streaming large files.
- */
-
 import { ParseResult, ParseError, JsonParseOptions } from '../types';
 import { FileFormat } from '../../constants/enums';
 import { CODE_SECURITY } from '../../constants';
 import { extractFields } from '../helpers/field-extraction';
 
-/**
- * Maximum path length to prevent performance issues
- */
 const MAX_PATH_LENGTH = CODE_SECURITY.MAX_CONDITION_LENGTH;
-
-/**
- * Maximum path depth to prevent stack issues
- */
 const MAX_PATH_DEPTH = 50;
 
-/**
- * Navigate to a nested path in an object
- *
- * @param data - Object to navigate
- * @param path - Dot-notation path (e.g., "data.items")
- * @returns Value at path or undefined
- */
+/** `navigatePath(data, 'items.0.name')` - Dot-notation with array index support */
 export function navigatePath(data: unknown, path: string): unknown {
     if (!path || !data || typeof data !== 'object') {
         return data;
@@ -80,14 +60,7 @@ export function navigatePath(data: unknown, path: string): unknown {
 
 export { extractFields } from '../helpers/field-extraction';
 
-/**
- * Flatten a nested object into a single-level object
- *
- * @param obj - Object to flatten
- * @param prefix - Key prefix for nested properties
- * @param delimiter - Delimiter between nested keys (default: ".")
- * @returns Flattened object
- */
+/** `flattenObject({a: {b: 1}})` -> `{'a.b': 1}` */
 export function flattenObject(
     obj: Record<string, unknown>,
     prefix: string = '',
@@ -108,13 +81,6 @@ export function flattenObject(
     return result;
 }
 
-/**
- * Parse JSON content
- *
- * @param content - JSON content as string
- * @param options - JSON parse options
- * @returns Parse result with records
- */
 export function parseJson(
     content: string,
     options: JsonParseOptions = {},
@@ -223,13 +189,7 @@ export function parseJson(
     }
 }
 
-/**
- * Parse JSON Lines (NDJSON) format
- * Each line is a separate JSON object
- *
- * @param content - NDJSON content
- * @returns Parse result with records
- */
+/** Parse NDJSON - each line is a separate JSON object */
 export function parseJsonLines(content: string): ParseResult {
     const errors: ParseError[] = [];
     const warnings: string[] = [];
@@ -269,12 +229,6 @@ export function parseJsonLines(content: string): ParseResult {
     };
 }
 
-/**
- * Detect if content is JSON Lines format
- *
- * @param content - Content to check
- * @returns True if content appears to be JSON Lines
- */
 export function isJsonLines(content: string): boolean {
     const lines = content.trim().split('\n').slice(0, 3);
 
@@ -301,13 +255,6 @@ export function isJsonLines(content: string): boolean {
     return true;
 }
 
-/**
- * Generate JSON string from records
- *
- * @param records - Records to convert
- * @param options - Generation options
- * @returns JSON string
- */
 export function generateJson(
     records: Record<string, unknown>[],
     options: { pretty?: boolean; indent?: number } = {},
@@ -316,25 +263,13 @@ export function generateJson(
     return JSON.stringify(records, null, indent);
 }
 
-/**
- * Generate JSON Lines string from records
- *
- * @param records - Records to convert
- * @returns NDJSON string
- */
 export function generateJsonLines(records: Record<string, unknown>[]): string {
     return records.map(r => JSON.stringify(r)).join('\n');
 }
 
 export { getNestedValue } from '../../utils/object-path.utils';
 
-/**
- * Set nested property using dot notation
- *
- * @param obj - Object to modify
- * @param path - Dot-notation path
- * @param value - Value to set
- */
+/** `setNestedValue(obj, 'a.b.c', 1)` - Creates nested structure if needed */
 export function setNestedValue(
     obj: Record<string, unknown>,
     path: string,

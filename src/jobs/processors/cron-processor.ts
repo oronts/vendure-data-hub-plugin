@@ -1,20 +1,5 @@
-/**
- * Cron Expression Processor
- *
- * Cron expression parsing and matching functionality.
- * Supports:
- * - Standard 5-field cron format (minute hour day-of-month month day-of-week)
- * - Wildcards, step values, ranges, lists
- * - Named days (SUN-SAT) and months (JAN-DEC)
- * - Timezone-aware scheduling with DST handling
- */
-
 import { CRON } from '../../constants/index';
 
-/**
- * Named weekday mapping (case-insensitive)
- * Supports both 3-letter abbreviations and full names
- */
 const WEEKDAY_NAMES: Record<string, number> = {
     sun: 0, sunday: 0,
     mon: 1, monday: 1,
@@ -25,10 +10,6 @@ const WEEKDAY_NAMES: Record<string, number> = {
     sat: 6, saturday: 6,
 };
 
-/**
- * Named month mapping (case-insensitive)
- * Supports both 3-letter abbreviations and full names
- */
 const MONTH_NAMES: Record<string, number> = {
     jan: 1, january: 1,
     feb: 2, february: 2,
@@ -44,12 +25,6 @@ const MONTH_NAMES: Record<string, number> = {
     dec: 12, december: 12,
 };
 
-/**
- * Normalize a cron field value, converting named values to numbers
- * @param value - The field value (may be a number or name)
- * @param fieldType - 'weekday' or 'month' for named value lookup
- * @returns Normalized numeric value or original string if not a named value
- */
 function normalizeFieldValue(value: string, fieldType: 'weekday' | 'month'): string {
     const lower = value.toLowerCase().trim();
     const mapping = fieldType === 'weekday' ? WEEKDAY_NAMES : MONTH_NAMES;
@@ -60,12 +35,6 @@ function normalizeFieldValue(value: string, fieldType: 'weekday' | 'month'): str
     return value;
 }
 
-/**
- * Normalize an entire cron field, handling ranges and lists with named values
- * @param field - The cron field expression
- * @param fieldType - 'weekday' or 'month' for named value lookup
- * @returns Normalized field with all named values converted to numbers
- */
 function normalizeCronField(field: string, fieldType: 'weekday' | 'month'): string {
     // Handle comma-separated lists
     if (field.includes(',')) {
@@ -88,12 +57,6 @@ function normalizeCronField(field: string, fieldType: 'weekday' | 'month'): stri
     return normalizeFieldValue(field, fieldType);
 }
 
-/**
- * Validates if a timezone string is valid using Intl.DateTimeFormat
- *
- * @param timezone - The timezone string to validate (e.g., 'America/New_York', 'UTC')
- * @returns True if the timezone is valid
- */
 export function isValidTimezone(timezone: string): boolean {
     try {
         Intl.DateTimeFormat(undefined, { timeZone: timezone });
@@ -104,13 +67,6 @@ export function isValidTimezone(timezone: string): boolean {
     }
 }
 
-/**
- * Converts a Date to the equivalent date/time components in the specified timezone
- *
- * @param date - The date to convert
- * @param timezone - The target timezone (e.g., 'America/New_York', 'UTC')
- * @returns Object with date/time components in the target timezone
- */
 export function getDatePartsInTimezone(
     date: Date,
     timezone: string,
@@ -160,21 +116,7 @@ export function getDatePartsInTimezone(
     };
 }
 
-/**
- * Check if a date matches a cron expression
- *
- * Supports 5-field cron format: minute hour day-of-month month day-of-week
- * - `*` (any value)
- * - `*\/n` (step values, e.g., `*\/5` for every 5)
- * - comma-separated lists
- * - numeric values
- * - named days (SUN-SAT) and months (JAN-DEC)
- *
- * @param date - The date to check
- * @param expr - Cron expression (5 fields: m h dom mon dow)
- * @param timezone - Optional timezone for schedule evaluation (e.g., 'America/New_York', 'UTC')
- * @returns True if the date matches the cron expression
- */
+/** 5-field cron: minute hour day-of-month month day-of-week */
 export function cronMatches(date: Date, expr: string, timezone?: string): boolean {
     const fields = expr.trim().split(/\s+/);
     if (fields.length < 5) return false;
@@ -217,15 +159,6 @@ export function cronMatches(date: Date, expr: string, timezone?: string): boolea
     );
 }
 
-/**
- * Check if a value matches a cron field expression
- *
- * @param value - The numeric value to check
- * @param field - The cron field expression
- * @param min - Minimum allowed value
- * @param max - Maximum allowed value
- * @returns True if the value matches the field expression
- */
 export function cronFieldMatch(
     value: number,
     field: string,
@@ -287,13 +220,6 @@ export function cronFieldMatch(
     return !Number.isNaN(num) && num >= min && num <= max && num === value;
 }
 
-/**
- * Validate a cron expression
- * Supports named days (SUN-SAT) and months (JAN-DEC)
- *
- * @param expr - Cron expression to validate
- * @returns Validation result with error message if invalid
- */
 export function validateCronExpression(expr: string): {
     valid: boolean;
     error?: string;
@@ -343,14 +269,6 @@ export function validateCronExpression(expr: string): {
     return { valid: true };
 }
 
-/**
- * Validate a single cron field
- *
- * @param field - Cron field to validate
- * @param min - Minimum allowed value
- * @param max - Maximum allowed value
- * @returns Error message if invalid, undefined if valid
- */
 function validateCronField(
     field: string,
     min: number,
@@ -436,15 +354,6 @@ function validateCronField(
     return undefined;
 }
 
-/**
- * Get next occurrence of a cron expression
- *
- * @param expr - Cron expression
- * @param after - Start searching after this date (defaults to now)
- * @param maxIterations - Maximum iterations to prevent infinite loops
- * @param timezone - Optional timezone for schedule evaluation (e.g., 'America/New_York', 'UTC')
- * @returns Next matching date or null if not found
- */
 export function getNextCronOccurrence(
     expr: string,
     after: Date = new Date(),

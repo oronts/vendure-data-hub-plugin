@@ -20,9 +20,6 @@ import { getErrorMessage } from '../../utils/error.utils';
 // which imports ../operators -> script.operators.ts -> this file via sandbox/index.ts
 import { SAFE_EVALUATOR } from '../../constants/defaults';
 
-/**
- * Result of expression evaluation
- */
 export interface EvaluationResult<T = unknown> {
     success: boolean;
     value?: T;
@@ -30,9 +27,6 @@ export interface EvaluationResult<T = unknown> {
     executionTimeMs?: number;
 }
 
-/**
- * Configuration for the SafeEvaluator
- */
 export interface SafeEvaluatorConfig {
     /** Maximum number of cached compiled functions */
     maxCacheSize: number;
@@ -46,9 +40,6 @@ export interface SafeEvaluatorConfig {
     scriptOperatorsEnabled: boolean;
 }
 
-/**
- * Default evaluator configuration
- */
 export const DEFAULT_EVALUATOR_CONFIG: SafeEvaluatorConfig = {
     maxCacheSize: SAFE_EVALUATOR.MAX_CACHE_SIZE,
     defaultTimeoutMs: SAFE_EVALUATOR.DEFAULT_TIMEOUT_MS,
@@ -57,9 +48,6 @@ export const DEFAULT_EVALUATOR_CONFIG: SafeEvaluatorConfig = {
     scriptOperatorsEnabled: true,
 };
 
-/**
- * Allowed operators in expressions
- */
 const ALLOWED_OPERATORS = [
     '+',
     '-',
@@ -82,9 +70,6 @@ const ALLOWED_OPERATORS = [
     '??',
 ] as const;
 
-/**
- * Allowed safe methods on strings
- */
 const ALLOWED_STRING_METHODS = [
     'toString',
     'toLowerCase',
@@ -114,9 +99,6 @@ const ALLOWED_STRING_METHODS = [
     'normalize',
 ] as const;
 
-/**
- * Allowed safe methods on arrays
- */
 const ALLOWED_ARRAY_METHODS = [
     'length',
     'join',
@@ -145,9 +127,6 @@ const ALLOWED_ARRAY_METHODS = [
     'values',
 ] as const;
 
-/**
- * Allowed safe methods on numbers
- */
 const ALLOWED_NUMBER_METHODS = [
     'toString',
     'toFixed',
@@ -156,21 +135,14 @@ const ALLOWED_NUMBER_METHODS = [
     'valueOf',
 ] as const;
 
-/**
- * All allowed methods combined
- */
 const ALLOWED_METHODS: Set<string> = new Set([
     ...ALLOWED_STRING_METHODS,
     ...ALLOWED_ARRAY_METHODS,
     ...ALLOWED_NUMBER_METHODS,
 ]);
 
-/** Generic function type for compiled expressions */
 type CompiledFunction = (...args: unknown[]) => unknown;
 
-/**
- * Cache entry for compiled functions
- */
 interface CacheEntry {
     fn: CompiledFunction;
     params: string[];
@@ -178,22 +150,7 @@ interface CacheEntry {
     useCount: number;
 }
 
-/**
- * Safe expression evaluator with whitelist-based validation
- *
- * @example
- * ```typescript
- * const evaluator = new SafeEvaluator();
- *
- * // Simple expression
- * const result = evaluator.evaluate('record.price * record.quantity', { record: { price: 10, quantity: 5 } });
- * // result.value === 50
- *
- * // With string methods
- * const result2 = evaluator.evaluate('record.name.toLowerCase()', { record: { name: 'HELLO' } });
- * // result2.value === 'hello'
- * ```
- */
+/** Whitelist-based expression evaluator with security validation */
 export class SafeEvaluator {
     private readonly config: SafeEvaluatorConfig;
     private readonly cache: Map<string, CacheEntry>;
@@ -205,21 +162,10 @@ export class SafeEvaluator {
         this.sandbox = createCodeSandbox();
     }
 
-    /**
-     * Check if script operators are enabled
-     */
     get isEnabled(): boolean {
         return this.config.scriptOperatorsEnabled;
     }
 
-    /**
-     * Evaluate an expression with the given context
-     *
-     * @param expression - The expression to evaluate
-     * @param context - Variables available to the expression
-     * @param timeoutMs - Optional timeout override
-     * @returns Evaluation result with success status
-     */
     evaluate<T = unknown>(
         expression: string,
         context: Record<string, unknown>,
@@ -261,9 +207,6 @@ export class SafeEvaluator {
         }
     }
 
-    /**
-     * Evaluate an expression asynchronously with proper timeout handling
-     */
     async evaluateAsync<T = unknown>(
         expression: string,
         context: Record<string, unknown>,
@@ -306,9 +249,6 @@ export class SafeEvaluator {
         }
     }
 
-    /**
-     * Validate an expression without executing it
-     */
     validate(expression: string): { valid: boolean; error?: string } {
         try {
             this.validateExpression(expression);
@@ -321,16 +261,10 @@ export class SafeEvaluator {
         }
     }
 
-    /**
-     * Clear the expression cache
-     */
     clearCache(): void {
         this.cache.clear();
     }
 
-    /**
-     * Get cache statistics
-     */
     getCacheStats(): { size: number; maxSize: number; hitRate: number } {
         let totalUseCount = 0;
         this.cache.forEach((entry) => {
@@ -345,9 +279,6 @@ export class SafeEvaluator {
         };
     }
 
-    /**
-     * Validate an expression for security issues
-     */
     private validateExpression(expr: string): void {
         // Use the code security validation
         validateUserCode(expr, this.config.security);
@@ -356,9 +287,6 @@ export class SafeEvaluator {
         this.validateMethodCalls(expr);
     }
 
-    /**
-     * Validate that only allowed methods are called
-     */
     private validateMethodCalls(expr: string): void {
         // Match method calls: .methodName(
         const methodCallPattern = /\.([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(/g;
@@ -381,9 +309,6 @@ export class SafeEvaluator {
         }
     }
 
-    /**
-     * Get or create a compiled function for the expression
-     */
     private getCompiledFunction(
         expression: string,
         contextKeys: string[],
@@ -457,9 +382,6 @@ export class SafeEvaluator {
         }
     }
 
-    /**
-     * Cache a compiled function with LRU eviction
-     */
     private cacheFunction(key: string, fn: CompiledFunction, params: string[]): void {
         // Evict oldest entries if cache is full
         if (this.cache.size >= this.config.maxCacheSize) {
@@ -474,9 +396,6 @@ export class SafeEvaluator {
         });
     }
 
-    /**
-     * Evict the oldest entries from the cache
-     */
     private evictOldestEntries(count: number): void {
         // Sort entries by last used time
         const entries = Array.from(this.cache.entries()).sort(
@@ -489,9 +408,6 @@ export class SafeEvaluator {
         }
     }
 
-    /**
-     * Execute a function with timeout (synchronous with time check)
-     */
     private executeWithTimeout(
         fn: CompiledFunction,
         params: string[],
@@ -524,9 +440,6 @@ export class SafeEvaluator {
         }
     }
 
-    /**
-     * Execute a function with async timeout
-     */
     private async executeWithTimeoutAsync(
         fn: CompiledFunction,
         params: string[],
@@ -565,14 +478,8 @@ export class SafeEvaluator {
     }
 }
 
-/**
- * Singleton instance for convenience
- */
 let defaultEvaluator: SafeEvaluator | null = null;
 
-/**
- * Get the default SafeEvaluator instance
- */
 export function getDefaultEvaluator(): SafeEvaluator {
     if (!defaultEvaluator) {
         defaultEvaluator = new SafeEvaluator();
@@ -580,16 +487,10 @@ export function getDefaultEvaluator(): SafeEvaluator {
     return defaultEvaluator;
 }
 
-/**
- * Create a new SafeEvaluator with custom configuration
- */
 export function createEvaluator(config?: Partial<SafeEvaluatorConfig>): SafeEvaluator {
     return new SafeEvaluator(config);
 }
 
-/**
- * Convenience function to evaluate an expression
- */
 export function safeEvaluate<T = unknown>(
     expression: string,
     context: Record<string, unknown>,
@@ -598,9 +499,6 @@ export function safeEvaluate<T = unknown>(
     return getDefaultEvaluator().evaluate<T>(expression, context, timeoutMs);
 }
 
-/**
- * Convenience function to validate an expression
- */
 export function validateExpression(expression: string): { valid: boolean; error?: string } {
     return getDefaultEvaluator().validate(expression);
 }

@@ -1,12 +1,6 @@
-/**
- * Time units and UI timeouts - imported from shared constants
- */
 import { TIME_UNITS, UI_TIMEOUTS } from '../../shared/constants';
 export { TIME_UNITS, UI_TIMEOUTS };
 
-/**
- * Common time intervals in milliseconds
- */
 export const TIME_INTERVALS = {
     ONE_MINUTE_MS: TIME_UNITS.MINUTE,
     FIVE_MINUTES_MS: 5 * TIME_UNITS.MINUTE,
@@ -28,9 +22,6 @@ export const TIME_INTERVALS = {
     DATABASE_OPERATION_TIMEOUT_MS: TIME_UNITS.MINUTE,
 } as const;
 
-/**
- * Cron-related constants
- */
 export const CRON = {
     /** Maximum iterations when searching for next cron occurrence (~1 year in minutes) */
     MAX_ITERATIONS: 525600,
@@ -38,21 +29,12 @@ export const CRON = {
     MINUTES_PER_YEAR: 525600,
 } as const;
 
-/**
- * Combined TIME object for convenient access
- */
 export const TIME = {
     ...TIME_UNITS,
     ...TIME_INTERVALS,
     COPY_FEEDBACK_TIMEOUT_MS: UI_TIMEOUTS.COPY_FEEDBACK_MS,
 } as const;
 
-/**
- * Calculate throughput (records per second)
- * @param records - Number of records processed
- * @param durationMs - Duration in milliseconds
- * @returns Records per second
- */
 export function calculateThroughput(records: number, durationMs: number): number {
     if (durationMs <= 0) return 0;
     return Math.round((records / durationMs) * TIME_UNITS.SECOND);

@@ -1,36 +1,13 @@
-/**
- * DataHub Parsers - XML Parser
- *
- * Parses XML files with support for record path extraction,
- * attribute handling, and type conversion.
- */
-
 import { ParseResult, ParseError, XmlParseOptions } from '../types';
 import { FileFormat } from '../../constants/enums';
 import { XML_PARSER } from '../../constants';
 import { extractFields } from '../helpers/field-extraction';
 
-/**
- * Default tag names to search for records (from centralized constants)
- */
 const DEFAULT_RECORD_TAGS: readonly string[] = XML_PARSER.DEFAULT_RECORD_TAGS;
-
-/**
- * Default attribute prefix (from centralized constants)
- */
 const DEFAULT_ATTR_PREFIX = XML_PARSER.DEFAULT_ATTR_PREFIX;
-
-/**
- * Maximum tag name length to prevent ReDoS attacks
- */
 const MAX_TAG_NAME_LENGTH = XML_PARSER.MAX_TAG_NAME_LENGTH;
 
-/**
- * Validates a tag name to prevent ReDoS and injection attacks
- *
- * @param tagName - Tag name to validate
- * @returns true if valid, false otherwise
- */
+/** Validates a tag name to prevent ReDoS and injection attacks */
 function isValidTagName(tagName: string): boolean {
     // Check length to prevent ReDoS
     if (!tagName || tagName.length > MAX_TAG_NAME_LENGTH) {
@@ -40,13 +17,6 @@ function isValidTagName(tagName: string): boolean {
     return /^[a-zA-Z_][a-zA-Z0-9_\-:]*$/.test(tagName);
 }
 
-/**
- * Parse XML element to object
- *
- * @param xml - XML string for the element
- * @param attrPrefix - Prefix for attribute keys
- * @returns Parsed object or null
- */
 export function parseXmlElement(
     xml: string,
     attrPrefix: string = DEFAULT_ATTR_PREFIX,
@@ -90,12 +60,6 @@ export function parseXmlElement(
     return Object.keys(result).length > 0 ? result : null;
 }
 
-/**
- * Parse XML value to appropriate type
- *
- * @param value - String value from XML
- * @returns Typed value
- */
 function parseXmlValue(value: string): string | number | boolean | null {
     const trimmed = value.trim();
 
@@ -117,14 +81,6 @@ function parseXmlValue(value: string): string | number | boolean | null {
     return trimmed;
 }
 
-/**
- * Extract records from XML content
- *
- * @param content - XML content
- * @param tagNames - Tag names to search for records
- * @param attrPrefix - Prefix for attribute keys
- * @returns Array of parsed records
- */
 function extractRecords(
     content: string,
     tagNames: readonly string[],
@@ -159,12 +115,6 @@ function extractRecords(
     return records;
 }
 
-/**
- * Parse record path option to tag names
- *
- * @param recordPath - XPath-like path (e.g., "//products/product" or "product|item")
- * @returns Array of tag names
- */
 function parseRecordPath(recordPath?: string): readonly string[] {
     if (!recordPath) {
         return DEFAULT_RECORD_TAGS;
@@ -178,13 +128,6 @@ function parseRecordPath(recordPath?: string): readonly string[] {
 }
 
 
-/**
- * Parse XML content
- *
- * @param content - XML content as string
- * @param options - XML parse options
- * @returns Parse result with records
- */
 export function parseXml(
     content: string,
     options: XmlParseOptions = {},
@@ -231,23 +174,11 @@ export function parseXml(
     }
 }
 
-/**
- * Check if content appears to be valid XML
- *
- * @param content - Content to check
- * @returns True if content looks like XML
- */
 export function isXml(content: string): boolean {
     const trimmed = content.trim();
     return trimmed.startsWith('<?xml') || trimmed.startsWith('<');
 }
 
-/**
- * Extract root element name from XML
- *
- * @param content - XML content
- * @returns Root element name or undefined
- */
 export function getRootElement(content: string): string | undefined {
     // Skip XML declaration
     let xml = content.trim();
@@ -270,12 +201,6 @@ export function getRootElement(content: string): string | undefined {
     return rootMatch?.[1];
 }
 
-/**
- * Get child element names under the root
- *
- * @param content - XML content
- * @returns Array of unique child element names
- */
 export function getChildElementNames(content: string): string[] {
     const root = getRootElement(content);
     if (!root || !isValidTagName(root)) return [];
@@ -309,12 +234,6 @@ export function getChildElementNames(content: string): string[] {
     return Array.from(names);
 }
 
-/**
- * Escape special XML characters
- *
- * @param value - String to escape
- * @returns Escaped string
- */
 export function escapeXml(value: string): string {
     return value
         .replace(/&/g, '&amp;')
@@ -324,13 +243,6 @@ export function escapeXml(value: string): string {
         .replace(/'/g, '&apos;');
 }
 
-/**
- * Generate XML string from records
- *
- * @param records - Records to convert
- * @param options - Generation options
- * @returns XML string
- */
 export function generateXml(
     records: Record<string, unknown>[],
     options: {

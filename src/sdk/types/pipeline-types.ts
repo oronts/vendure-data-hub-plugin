@@ -1,12 +1,3 @@
-/**
- * Pipeline Types - SDK types for pipeline execution and hooks
- *
- * These types define the runtime execution context for pipelines,
- * including hook registration and lifecycle management.
- *
- * @module sdk/types/pipeline-types
- */
-
 import { RequestContext, ID } from '@vendure/core';
 import { JsonObject, PipelineDefinition, PipelineMetrics, PipelineCheckpoint, HookStage } from '../../types/index';
 import { RunStatus } from '../../constants/enums';
@@ -37,24 +28,8 @@ export interface PipelineExecutionContext {
     /** Logger */
     readonly logger: AdapterLogger;
 
-    /**
-     * Check if cancellation has been requested
-     * @returns True if cancellation was requested
-     */
     onCancelRequested(): Promise<boolean>;
-
-    /**
-     * Report a record-level error
-     * @param stepKey Step where error occurred
-     * @param message Error message
-     * @param payload Error payload/record
-     */
     onRecordError(stepKey: string, message: string, payload: JsonObject): Promise<void>;
-
-    /**
-     * Report progress metrics
-     * @param metrics Partial metrics to update
-     */
     onProgress(metrics: Partial<PipelineMetrics>): Promise<void>;
 }
 
@@ -147,129 +122,27 @@ export interface PipelineRunSummary {
 
 // PIPELINE BUILDER TYPES
 
-/**
- * Step builder for fluent pipeline construction
- */
 export interface StepBuilder {
-    /**
-     * Set step name
-     * @param name Step name
-     */
     name(name: string): StepBuilder;
-
-    /**
-     * Set step configuration
-     * @param config Step configuration
-     */
     config(config: JsonObject): StepBuilder;
-
-    /**
-     * Set async mode
-     * @param async Whether step runs async
-     */
     async(async: boolean): StepBuilder;
-
-    /**
-     * Set concurrency
-     * @param concurrency Max concurrent operations
-     */
     concurrency(concurrency: number): StepBuilder;
-
-    /**
-     * Build the step definition
-     */
     build(): JsonObject;
 }
 
-/**
- * Pipeline builder for fluent construction
- */
 export interface PipelineBuilder {
-    /**
-     * Add an extract step
-     * @param key Step key
-     * @param adapter Adapter code
-     */
     extract(key: string, adapter: string): StepBuilder;
-
-    /**
-     * Add a transform step
-     * @param key Step key
-     * @param adapter Adapter code
-     */
     transform(key: string, adapter: string): StepBuilder;
-
-    /**
-     * Add a validate step
-     * @param key Step key
-     * @param adapter Adapter code
-     */
     validate(key: string, adapter: string): StepBuilder;
-
-    /**
-     * Add an enrich step
-     * @param key Step key
-     * @param adapter Adapter code
-     */
     enrich(key: string, adapter: string): StepBuilder;
-
-    /**
-     * Add a route step
-     * @param key Step key
-     */
     route(key: string): StepBuilder;
-
-    /**
-     * Add a load step
-     * @param key Step key
-     * @param adapter Adapter code
-     */
     load(key: string, adapter: string): StepBuilder;
-
-    /**
-     * Add an export step
-     * @param key Step key
-     * @param adapter Adapter code
-     */
     export(key: string, adapter: string): StepBuilder;
-
-    /**
-     * Add a feed step
-     * @param key Step key
-     * @param adapter Adapter code
-     */
     feed(key: string, adapter: string): StepBuilder;
-
-    /**
-     * Add a sink step
-     * @param key Step key
-     * @param adapter Adapter code
-     */
     sink(key: string, adapter: string): StepBuilder;
-
-    /**
-     * Connect steps with an edge
-     * @param from Source step key
-     * @param to Target step key
-     * @param branch Optional branch name
-     */
     edge(from: string, to: string, branch?: string): PipelineBuilder;
-
-    /**
-     * Set pipeline context
-     * @param context Pipeline context
-     */
     context(context: JsonObject): PipelineBuilder;
-
-    /**
-     * Add hooks
-     * @param hooks Hook configuration
-     */
     hooks(hooks: JsonObject): PipelineBuilder;
-
-    /**
-     * Build the pipeline definition
-     */
     build(): PipelineDefinition;
 }
 

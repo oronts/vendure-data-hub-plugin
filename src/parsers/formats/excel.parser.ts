@@ -1,22 +1,7 @@
-/**
- * DataHub Parsers - Excel Parser
- *
- * Parses Excel files (XLSX/XLS) with support for sheet selection,
- * range specification, and header detection.
- */
-
 import { ParseResult, ParseError, XlsxParseOptions } from '../types';
 import { FileFormat } from '../../constants/enums';
 import { extractFields } from '../helpers/field-extraction';
 
-
-/**
- * Parse Excel content (XLSX)
- *
- * @param content - Excel file as Buffer
- * @param options - Excel parse options
- * @returns Parse result with records
- */
 export async function parseExcel(
     content: Buffer,
     options: XlsxParseOptions = {},
@@ -120,12 +105,6 @@ export async function parseExcel(
     }
 }
 
-/**
- * Get list of sheet names from Excel file
- *
- * @param content - Excel file as Buffer
- * @returns Array of sheet names
- */
 export async function getSheetNames(content: Buffer): Promise<string[]> {
     try {
         const XLSX = await import('xlsx');
@@ -138,13 +117,6 @@ export async function getSheetNames(content: Buffer): Promise<string[]> {
     }
 }
 
-/**
- * Get sheet dimensions
- *
- * @param content - Excel file as Buffer
- * @param sheetName - Sheet name (optional, defaults to first)
- * @returns Dimensions object or null
- */
 export async function getSheetDimensions(
     content: Buffer,
     sheetName?: string,
@@ -172,12 +144,7 @@ export async function getSheetDimensions(
     }
 }
 
-/**
- * Check if content appears to be an Excel file
- *
- * @param content - Buffer to check
- * @returns True if content appears to be Excel
- */
+/** Check file signature for XLSX (ZIP) or XLS (BIFF) format */
 export function isExcelFile(content: Buffer): boolean {
     // XLSX files are ZIP archives starting with PK
     if (content.length >= 4) {
@@ -193,13 +160,6 @@ export function isExcelFile(content: Buffer): boolean {
     return false;
 }
 
-/**
- * Generate Excel file from records
- *
- * @param records - Records to convert
- * @param options - Generation options
- * @returns Excel file as Buffer
- */
 export async function generateExcel(
     records: Record<string, unknown>[],
     options: { sheetName?: string } = {},
@@ -213,12 +173,7 @@ export async function generateExcel(
     return Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
 }
 
-/**
- * Convert cell reference to row/column indices
- *
- * @param ref - Cell reference (e.g., "A1", "BC123")
- * @returns Object with row and column (0-indexed)
- */
+/** `parseCellRef('BC123')` -> `{row: 122, col: 54}` (0-indexed) */
 export function parseCellRef(ref: string): { row: number; col: number } | null {
     const match = ref.match(/^([A-Z]+)(\d+)$/i);
     if (!match) return null;
@@ -235,13 +190,7 @@ export function parseCellRef(ref: string): { row: number; col: number } | null {
     return { row, col };
 }
 
-/**
- * Convert row/column indices to cell reference
- *
- * @param row - Row index (0-indexed)
- * @param col - Column index (0-indexed)
- * @returns Cell reference (e.g., "A1")
- */
+/** `toCellRef(122, 54)` -> `'BC123'` (0-indexed inputs) */
 export function toCellRef(row: number, col: number): string {
     let colStr = '';
     let colIndex = col + 1;
@@ -255,12 +204,7 @@ export function toCellRef(row: number, col: number): string {
     return `${colStr}${row + 1}`;
 }
 
-/**
- * Parse range string to start/end cells
- *
- * @param range - Range string (e.g., "A1:Z100")
- * @returns Start and end cell references
- */
+/** `parseRange('A1:Z100')` -> `{start: {row: 0, col: 0}, end: {row: 99, col: 25}}` */
 export function parseRange(range: string): {
     start: { row: number; col: number };
     end: { row: number; col: number };

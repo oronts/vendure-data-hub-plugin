@@ -1,13 +1,4 @@
 /**
- * SDK DSL Constants
- *
- * Constant values for SDK DSL builders. Ensures type safety and prevents
- * typos in operator and action type strings.
- *
- * @module sdk/constants
- */
-
-/**
  * Hook action types for pipeline lifecycle events.
  * Used in the `hooks` configuration of pipelines.
  *

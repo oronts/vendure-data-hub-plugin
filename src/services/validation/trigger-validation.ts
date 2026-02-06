@@ -1,8 +1,3 @@
-/**
- * Trigger-specific validation for pipeline definitions.
- * Handles validation of message triggers, queue configurations, and connection settings.
- */
-
 import { StepType as StepTypeEnum, QueueType } from '../../constants/enums';
 import {
     PipelineDefinition,
@@ -16,9 +11,6 @@ import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-er
 // Type Definitions
 // ============================================================================
 
-/**
- * Trigger step configuration structure
- */
 interface TriggerStepConfig extends TriggerConfig {
     message?: MessageTriggerConfig & {
         queue?: string;
@@ -29,10 +21,6 @@ interface TriggerStepConfig extends TriggerConfig {
 // Type Guards
 // ============================================================================
 
-/**
- * Type guard to check if config is a trigger step config.
- * Validates that config is an object with optional trigger-specific properties.
- */
 function isTriggerStepConfig(config: unknown): config is TriggerStepConfig {
     if (typeof config !== 'object' || config === null) {
         return false;
@@ -49,10 +37,6 @@ function isTriggerStepConfig(config: unknown): config is TriggerStepConfig {
     return true;
 }
 
-/**
- * Type guard to check if value is a message trigger config.
- * Validates structure has expected message trigger properties.
- */
 function isMessageTriggerConfig(
     value: unknown,
 ): value is MessageTriggerConfig & { queue?: string } {
@@ -79,16 +63,10 @@ function isMessageTriggerConfig(
     return true;
 }
 
-/**
- * Safely get trigger type from config
- */
 function getTriggerType(config: TriggerStepConfig): string | undefined {
     return typeof config.type === 'string' ? config.type : undefined;
 }
 
-/**
- * Safely get queue type from message config
- */
 function getQueueType(
     msgConfig: MessageTriggerConfig & { queue?: string } | undefined,
 ): QueueTypeValue | undefined {
@@ -101,10 +79,6 @@ function getQueueType(
 // Validation Functions
 // ============================================================================
 
-/**
- * Validates the trigger step configuration in a pipeline definition.
- * Checks message trigger settings including queue type, connection code, and queue name.
- */
 export function validateTrigger(
     definition: PipelineDefinition,
     issues: PipelineDefinitionIssue[],
@@ -128,9 +102,6 @@ export function validateTrigger(
     }
 }
 
-/**
- * Validates message trigger configuration including queue type and required fields.
- */
 function validateMessageTrigger(
     stepKey: string,
     cfg: TriggerStepConfig,

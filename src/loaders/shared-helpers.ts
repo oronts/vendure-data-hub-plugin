@@ -1,11 +1,3 @@
-/**
- * Shared Helper Functions for Loaders
- *
- * Common utilities used across multiple loader implementations.
- *
- * @module loaders
- */
-
 import { ID, RequestContext, FacetValueService, ProductVariantService } from '@vendure/core';
 import { slugify as canonicalSlugify } from '../operators/helpers';
 import { isValidEmail } from '../utils/input-validation.utils';
@@ -21,14 +13,6 @@ export { isValidEmail };
 // Record Field Accessors
 // =============================================================================
 
-/**
- * Type guard to safely get a string value from a record.
- * Converts numbers and booleans to strings.
- *
- * @param record - The record object to extract the value from
- * @param key - The field name to extract
- * @returns String value or undefined if not present/convertible
- */
 export function getStringValue(record: RecordObject, key: string): string | undefined {
     const value = record[key];
     if (typeof value === 'string') {
@@ -40,14 +24,6 @@ export function getStringValue(record: RecordObject, key: string): string | unde
     return undefined;
 }
 
-/**
- * Type guard to safely get a number value from a record.
- * Parses string numbers.
- *
- * @param record - The record object to extract the value from
- * @param key - The field name to extract
- * @returns Number value or undefined if not present/convertible
- */
 export function getNumberValue(record: RecordObject, key: string): number | undefined {
     const value = record[key];
     if (typeof value === 'number') {
@@ -60,14 +36,6 @@ export function getNumberValue(record: RecordObject, key: string): number | unde
     return undefined;
 }
 
-/**
- * Type guard to safely get an object value from a record.
- * Excludes arrays.
- *
- * @param record - The record object to extract the value from
- * @param key - The field name to extract
- * @returns Object value or undefined if not an object
- */
 export function getObjectValue(record: RecordObject, key: string): Record<string, JsonValue> | undefined {
     const value = record[key];
     if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -76,13 +44,6 @@ export function getObjectValue(record: RecordObject, key: string): Record<string
     return undefined;
 }
 
-/**
- * Safely get an ID value from a record (string or number).
- *
- * @param record - The record object to extract the value from
- * @param key - The field name to extract
- * @returns ID value or undefined if not present/valid
- */
 export function getIdValue(record: RecordObject, key: string): ID | undefined {
     const value = record[key];
     if (typeof value === 'string' || typeof value === 'number') {
@@ -91,13 +52,6 @@ export function getIdValue(record: RecordObject, key: string): ID | undefined {
     return undefined;
 }
 
-/**
- * Safely extract an array value from a record by field name.
- *
- * @param record - The record object to extract the value from
- * @param key - The field name to extract
- * @returns Array value or undefined if not an array
- */
 export function getArrayValue<T>(record: RecordObject, key: string): T[] | undefined {
     const value = record[key];
     if (!value || !Array.isArray(value)) {
@@ -106,10 +60,6 @@ export function getArrayValue<T>(record: RecordObject, key: string): T[] | undef
     return value as T[];
 }
 
-/**
- * Determines if an error is recoverable (can be retried).
- * Checks for common transient error messages.
- */
 export function isRecoverableError(error: unknown): boolean {
     if (error instanceof Error) {
         const message = error.message.toLowerCase();
@@ -122,10 +72,6 @@ export function isRecoverableError(error: unknown): boolean {
     return false;
 }
 
-/**
- * Determines if a field should be updated based on the updateOnlyFields list.
- * If no list is provided, all fields should be updated.
- */
 export function shouldUpdateField(
     field: string,
     updateOnlyFields?: string[],
@@ -136,18 +82,11 @@ export function shouldUpdateField(
     return updateOnlyFields.includes(field);
 }
 
-/**
- * Input type for configurable operations
- */
 export interface ConfigurableOperationInput {
     code: string;
     args?: Record<string, unknown>;
 }
 
-/**
- * Builds a configurable operation definition for Vendure
- * Converts user-friendly args format to Vendure's expected format
- */
 export function buildConfigurableOperation(
     input: ConfigurableOperationInput,
 ): { code: string; arguments: Array<{ name: string; value: string }> } {
@@ -160,24 +99,12 @@ export function buildConfigurableOperation(
     };
 }
 
-/**
- * Builds multiple configurable operations
- */
 export function buildConfigurableOperations(
     inputs: ConfigurableOperationInput[],
 ): Array<{ code: string; arguments: Array<{ name: string; value: string }> }> {
     return inputs.map(input => buildConfigurableOperation(input));
 }
 
-/**
- * Find a product variant by SKU.
- * Returns a minimal object with just the ID for efficiency.
- *
- * @param productVariantService - The Vendure ProductVariantService
- * @param ctx - The request context
- * @param sku - The SKU to search for
- * @returns Object with variant ID if found, null otherwise
- */
 export async function findVariantBySku(
     productVariantService: ProductVariantService,
     ctx: RequestContext,
@@ -190,16 +117,6 @@ export async function findVariantBySku(
     return result.items[0] ? { id: result.items[0].id } : null;
 }
 
-/**
- * Resolves facet value IDs from codes or names.
- * This is a shared utility used by ProductLoader and ProductVariantLoader.
- *
- * @param ctx - RequestContext
- * @param facetValueService - FacetValueService instance
- * @param codes - Array of facet value codes or names
- * @param logger - Logger instance for warnings
- * @returns Array of resolved facet value IDs
- */
 export async function resolveFacetValueIds(
     ctx: RequestContext,
     facetValueService: FacetValueService,

@@ -108,10 +108,6 @@ export const PROGRESS_BAR_STYLES = {
     PENDING: 'text-muted-foreground hover:bg-muted',
 } as const;
 
-/**
- * Loading skeleton widths in pixels for random-looking layouts.
- * Array of fixed widths ensures deterministic rendering while appearing varied.
- */
 export const SKELETON_WIDTHS = [80, 120, 100, 140] as const;
 
 /**

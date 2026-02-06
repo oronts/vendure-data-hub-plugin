@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pipeline DSL Builder**: Fluent TypeScript API for defining ETL pipelines
 - **Visual Pipeline Editor**: React Flow-based drag-and-drop pipeline designer
 - **Step Types**: EXTRACT, TRANSFORM, VALIDATE, ENRICH, ROUTE, LOAD, EXPORT, FEED, SINK
-- **59 Built-in Operators**: Comprehensive data transformation operators
+- **59 Built-in Operators**: Data transformation operators for common ETL tasks
 - **Adapter Registry**: Extensible adapter system for custom extractors, loaders, and operators
 
 #### Enterprise Features
@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Secret Encryption**: AES-256-GCM encryption at rest for INLINE secrets (requires DATAHUB_MASTER_KEY)
 
 #### Security
-- **SSRF Protection**: Comprehensive URL validation blocking private IPs and cloud metadata
+- **SSRF Protection**: URL validation blocking private IPs and cloud metadata
 - **SQL Injection Prevention**: Input validation and identifier escaping
 - **Code Sandboxing**: Safe expression evaluator with whitelist-based validation
 - **Path Traversal Protection**: Secure file path handling
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Code-First Pipelines**: Define pipelines programmatically
 - **Hook System**: 18 hook stages for customization
 - **Custom Adapters**: Register custom extractors, operators, and loaders
-- **Comprehensive Documentation**: User guides, developer guides, and API reference
+- **Documentation**: User guides, developer guides, and API reference
 
 ### Security Notes
 - Secrets stored with INLINE provider are encrypted at rest when DATAHUB_MASTER_KEY environment variable is configured

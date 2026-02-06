@@ -1,10 +1,3 @@
-/**
- * DataHub Parsers - CSV Parser
- *
- * Parses CSV and TSV files with header detection, delimiter inference,
- * and proper quote handling.
- */
-
 import * as Papa from 'papaparse';
 import {
     ParseResult,
@@ -21,9 +14,6 @@ import {
     BOOLEAN_FALSE_VALUES,
 } from '../constants';
 
-/**
- * Default CSV options
- */
 const CSV_DEFAULTS: Required<Omit<CsvParseOptions, 'preview' | 'headers' | 'lineEnding'>> = {
     delimiter: PARSER_CSV_DEFAULTS.DELIMITER as CsvDelimiter,
     header: true,
@@ -33,18 +23,8 @@ const CSV_DEFAULTS: Required<Omit<CsvParseOptions, 'preview' | 'headers' | 'line
     escapeChar: PARSER_CSV_DEFAULTS.ESCAPE_CHAR,
 };
 
-/**
- * Supported delimiters for auto-detection
- */
 const DELIMITERS: CsvDelimiter[] = [',', ';', '\t', '|'];
 
-/**
- * Detect CSV delimiter from content
- *
- * @param content - CSV content to analyze
- * @param sampleLines - Number of lines to sample (default: 5)
- * @returns Most likely delimiter
- */
 export function detectDelimiter(content: string, sampleLines: number = 5): CsvDelimiter {
     const lines = content.split('\n').slice(0, sampleLines);
 
@@ -77,15 +57,6 @@ export function detectDelimiter(content: string, sampleLines: number = 5): CsvDe
     return bestDelimiter;
 }
 
-/**
- * Parse a single CSV line respecting quotes
- *
- * @param line - Line to parse
- * @param delimiter - Column delimiter
- * @param quoteChar - Quote character
- * @param escapeChar - Escape character
- * @returns Array of field values
- */
 export function parseCsvLine(
     line: string,
     delimiter: string = ',',
@@ -131,13 +102,6 @@ export function parseCsvLine(
     return values;
 }
 
-/**
- * Parse CSV content using PapaParse
- *
- * @param content - CSV content as string
- * @param options - CSV parse options
- * @returns Parse result with records
- */
 export function parseCsv(
     content: string,
     options: CsvParseOptions = {},
@@ -216,14 +180,6 @@ export function parseCsv(
     }
 }
 
-/**
- * Parse CSV content without using PapaParse (custom implementation)
- * Useful for more control or when PapaParse is not available.
- *
- * @param content - CSV content as string
- * @param options - CSV parse options
- * @returns Parse result with records
- */
 export function parseCsvManual(
     content: string,
     options: CsvParseOptions = {},
@@ -310,12 +266,6 @@ export function parseCsvManual(
     };
 }
 
-/**
- * Parse a string value to appropriate type
- *
- * @param value - String value to parse
- * @returns Typed value
- */
 function parseValue(value: string): string | number | boolean | null {
     const trimmed = value.trim();
 
@@ -341,13 +291,6 @@ function parseValue(value: string): string | number | boolean | null {
     return trimmed;
 }
 
-/**
- * Generate CSV content from records
- *
- * @param records - Records to convert
- * @param options - CSV options
- * @returns CSV string
- */
 export function generateCsv(
     records: Record<string, unknown>[],
     options: { delimiter?: string; includeHeader?: boolean } = {},
@@ -377,13 +320,6 @@ export function generateCsv(
     return lines.join('\n');
 }
 
-/**
- * Escape a value for CSV output
- *
- * @param value - Value to escape
- * @param delimiter - Current delimiter
- * @returns Escaped value
- */
 function escapeValue(value: string, delimiter: string): string {
     const needsQuotes =
         value.includes(delimiter) ||

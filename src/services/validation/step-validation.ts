@@ -1,8 +1,3 @@
-/**
- * Step and operator validation for pipeline definitions.
- * Handles validation of transform operators, operator chains, and step configurations.
- */
-
 import { RunMode } from '../../constants/enums';
 import { JsonObject, PipelineDefinition } from '../../types/index';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -13,17 +8,11 @@ import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-er
 // Type Definitions
 // ============================================================================
 
-/**
- * Operator configuration in transform steps
- */
 export interface OperatorConfig {
     op: string;
     params?: JsonObject;
 }
 
-/**
- * Transform step configuration
- */
 export interface TransformStepConfig {
     operators?: unknown[];
     adapterCode?: string;
@@ -33,10 +22,6 @@ export interface TransformStepConfig {
 // Type Guards
 // ============================================================================
 
-/**
- * Type guard to check if value is a valid operator config.
- * Validates that op is a non-empty string and params, if present, is an object.
- */
 export function isOperatorConfig(value: unknown): value is OperatorConfig {
     if (typeof value !== 'object' || value === null) {
         return false;
@@ -55,9 +40,6 @@ export function isOperatorConfig(value: unknown): value is OperatorConfig {
     return true;
 }
 
-/**
- * Type guard to check if adapter has pure property for stream safety
- */
 function hasStreamSafetyInfo(
     adapter: AdapterDefinition | undefined,
 ): adapter is AdapterDefinition & { pure: boolean } {
@@ -68,9 +50,6 @@ function hasStreamSafetyInfo(
 // Validation Functions
 // ============================================================================
 
-/**
- * Validates transform step operators including the operator chain and individual operator params.
- */
 export function validateTransformOperators(
     stepKey: string,
     cfg: TransformStepConfig,
@@ -88,9 +67,6 @@ export function validateTransformOperators(
     }
 }
 
-/**
- * Validates that an operator chain is a non-empty array.
- */
 export function validateOperatorChain(
     stepKey: string,
     operators: unknown,
@@ -117,9 +93,6 @@ export function validateOperatorChain(
     return true;
 }
 
-/**
- * Validates individual operator parameters including stream safety requirements.
- */
 export function validateOperatorParams(
     stepKey: string,
     op: unknown,
@@ -160,9 +133,6 @@ export function validateOperatorParams(
     validateOperatorStreamSafety(stepKey, opCode, adapter, definition, issues);
 }
 
-/**
- * Validates that an operator is stream-safe when running in stream mode.
- */
 export function validateOperatorStreamSafety(
     stepKey: string,
     opCode: string,

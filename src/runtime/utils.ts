@@ -13,10 +13,6 @@ import {
     deepClone as deepCloneUtil,
 } from '../utils/object-path.utils';
 
-/**
- * Ensures the directory for the given file path exists.
- * Creates it recursively if needed.
- */
 export function ensureDirectoryExists(filePath: string): void {
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
@@ -24,10 +20,7 @@ export function ensureDirectoryExists(filePath: string): void {
     }
 }
 
-/**
- * Ensures the directory for the given file path exists (async version).
- * Creates it recursively if needed.
- */
+/** Async version of ensureDirectoryExists */
 export async function ensureDirectoryExistsAsync(filePath: string): Promise<void> {
     const dir = path.dirname(filePath);
     await fs.promises.mkdir(dir, { recursive: true });
@@ -285,13 +278,8 @@ export function chunk<T>(arr: T[], size: number): T[][] {
     return out;
 }
 
-// Re-export sleep from canonical location for backwards compatibility
 export { sleep } from '../utils/retry.utils';
 
-/**
- * Creates a deep clone of an object.
- * Uses the canonical implementation from object-path.utils.
- */
 export function deepClone<T extends JsonValue>(obj: T): T {
     return deepCloneUtil(obj as JsonObject) as T;
 }

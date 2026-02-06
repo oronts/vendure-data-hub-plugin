@@ -30,7 +30,7 @@ Include the following in your report:
 
 ### SSRF Protection
 
-The plugin includes comprehensive Server-Side Request Forgery (SSRF) protection in `src/utils/url-security.utils.ts`:
+The plugin includes SSRF protection in `src/utils/url-security.utils.ts`:
 
 - **Private IP blocking**: Blocks requests to private networks (10.x.x.x, 172.16-31.x.x, 192.168.x.x)
 - **Loopback protection**: Blocks localhost and 127.x.x.x addresses

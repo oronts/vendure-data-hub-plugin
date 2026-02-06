@@ -1,43 +1,24 @@
-/**
- * URL Security Utilities - SSRF Protection
- *
- * Protection against Server-Side Request Forgery (SSRF) attacks
- * by validating URLs and preventing access to internal/private networks.
- */
+// URL Security Utilities - SSRF Protection
 
 import { URL } from 'url';
 import * as dns from 'dns/promises';
 import * as net from 'net';
 
-/**
- * Configuration for URL security checks
- */
 export interface UrlSecurityConfig {
-    /** Disable SSRF checks (only for trusted internal environments) */
     disableSsrfProtection?: boolean;
-    /** Additional hostnames to block */
     additionalBlockedHostnames?: string[];
-    /** Additional IP ranges to block (CIDR notation) */
     additionalBlockedRanges?: string[];
-    /** Hostnames to explicitly allow (bypass checks) */
     allowedHostnames?: string[];
-    /** Allow private/internal IPs (dangerous - use with caution) */
     allowPrivateIPs?: boolean;
 }
 
-/**
- * Result of URL safety validation
- */
 export interface UrlSafetyResult {
     safe: boolean;
     reason?: string;
     resolvedIPs?: string[];
 }
 
-/**
- * Blocked IP ranges in CIDR notation
- * These ranges should never be accessible from external requests
- */
+// Blocked IP ranges in CIDR notation (private/reserved ranges)
 const BLOCKED_IP_RANGES = [
     '127.0.0.0/8',      // Loopback
     '10.0.0.0/8',       // Private (Class A)
@@ -55,9 +36,6 @@ const BLOCKED_IP_RANGES = [
     '255.255.255.255/32', // Broadcast
 ];
 
-/**
- * Blocked IPv6 ranges
- */
 const BLOCKED_IPV6_RANGES = [
     '::1/128',          // IPv6 loopback
     'fc00::/7',         // IPv6 private (Unique Local Addresses)
@@ -71,9 +49,7 @@ const BLOCKED_IPV6_RANGES = [
     'ff00::/8',         // IPv6 multicast
 ];
 
-/**
- * Known cloud metadata service hostnames that should be blocked
- */
+// Cloud metadata service hostnames that should be blocked
 const BLOCKED_HOSTNAMES = [
     'localhost',
     'localhost.localdomain',
@@ -88,14 +64,8 @@ const BLOCKED_HOSTNAMES = [
     'management.azure.com',
 ];
 
-/**
- * Blocked URL schemes
- */
 const ALLOWED_SCHEMES = ['http:', 'https:'];
 
-/**
- * Parse CIDR notation to get network address and prefix length
- */
 function parseCIDR(cidr: string): { network: bigint; prefixLength: number; isIPv6: boolean } | null {
     const parts = cidr.split('/');
     if (parts.length !== 2) return null;
@@ -113,9 +83,6 @@ function parseCIDR(cidr: string): { network: bigint; prefixLength: number; isIPv
     }
 }
 
-/**
- * Convert IP address string to BigInt for comparison
- */
 function ipToNumber(ip: string, isIPv6: boolean): bigint | null {
     if (isIPv6) {
         return ipv6ToNumber(ip);
@@ -123,9 +90,6 @@ function ipToNumber(ip: string, isIPv6: boolean): bigint | null {
     return ipv4ToNumber(ip);
 }
 
-/**
- * Convert IPv4 address to number
- */
 function ipv4ToNumber(ip: string): bigint | null {
     const parts = ip.split('.');
     if (parts.length !== 4) return null;
@@ -139,9 +103,6 @@ function ipv4ToNumber(ip: string): bigint | null {
     return result;
 }
 
-/**
- * Convert IPv6 address to BigInt
- */
 function ipv6ToNumber(ip: string): bigint | null {
     // Expand :: notation
     let expanded = ip;
@@ -171,9 +132,6 @@ function ipv6ToNumber(ip: string): bigint | null {
     return result;
 }
 
-/**
- * Check if an IP address falls within a CIDR range
- */
 function isIPInCIDR(ip: string, cidr: string): boolean {
     const isIPv6 = ip.includes(':');
     const parsed = parseCIDR(cidr);
@@ -189,9 +147,6 @@ function isIPInCIDR(ip: string, cidr: string): boolean {
     return (ipNum & mask) === (parsed.network & mask);
 }
 
-/**
- * Check if an IP address is in a private/blocked range
- */
 export function isPrivateIP(ip: string): boolean {
     const isIPv6 = ip.includes(':');
     const ranges = isIPv6 ? BLOCKED_IPV6_RANGES : BLOCKED_IP_RANGES;
@@ -205,9 +160,6 @@ export function isPrivateIP(ip: string): boolean {
     return false;
 }
 
-/**
- * Check if a hostname is in the blocked list
- */
 export function isBlockedHostname(hostname: string, additionalBlocked?: string[]): boolean {
     const normalizedHostname = hostname.toLowerCase().trim();
 
@@ -235,18 +187,7 @@ export function isBlockedHostname(hostname: string, additionalBlocked?: string[]
     return false;
 }
 
-/**
- * Validate URL safety against SSRF attacks
- *
- * Checks performed:
- * 1. URL scheme validation (only http/https allowed)
- * 2. Hostname blocklist check (cloud metadata services, localhost, etc.)
- * 3. DNS resolution to detect private IP addresses
- *
- * @param url - The URL to validate
- * @param config - Optional configuration for customizing checks
- * @returns Promise<UrlSafetyResult> - Result indicating if URL is safe
- */
+/** SSRF protection: validates scheme, hostname blocklist, and DNS resolution */
 export async function validateUrlSafety(
     url: string,
     config?: UrlSecurityConfig,
@@ -358,17 +299,7 @@ export async function validateUrlSafety(
     return { safe: true, resolvedIPs };
 }
 
-/**
- * Validate URL safety synchronously (without DNS resolution)
- *
- * This performs basic checks without DNS lookup. Use this when async
- * validation is not possible, but be aware that DNS rebinding attacks
- * may bypass this check.
- *
- * @param url - The URL to validate
- * @param config - Optional configuration
- * @returns UrlSafetyResult - Result indicating if URL is safe
- */
+/** Synchronous validation without DNS resolution (DNS rebinding attacks may bypass) */
 export function validateUrlSafetySync(
     url: string,
     config?: UrlSecurityConfig,
@@ -424,9 +355,6 @@ export function validateUrlSafetySync(
     return { safe: true };
 }
 
-/**
- * Create a URL security validator with pre-configured options
- */
 export function createUrlValidator(config: UrlSecurityConfig): {
     validate: (url: string) => Promise<UrlSafetyResult>;
     validateSync: (url: string) => UrlSafetyResult;
@@ -437,11 +365,6 @@ export function createUrlValidator(config: UrlSecurityConfig): {
     };
 }
 
-/**
- * Assert that a URL is safe, throwing an error if not
- *
- * @throws Error if URL is not safe
- */
 export async function assertUrlSafe(url: string, config?: UrlSecurityConfig): Promise<void> {
     const result = await validateUrlSafety(url, config);
     if (!result.safe) {
@@ -449,11 +372,6 @@ export async function assertUrlSafe(url: string, config?: UrlSecurityConfig): Pr
     }
 }
 
-/**
- * Assert URL safety synchronously
- *
- * @throws Error if URL is not safe
- */
 export function assertUrlSafeSync(url: string, config?: UrlSecurityConfig): void {
     const result = validateUrlSafetySync(url, config);
     if (!result.safe) {

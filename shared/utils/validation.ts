@@ -1,67 +1,17 @@
-/**
- * Shared Validation Utilities
- *
- * Canonical validation functions that can be used by both backend (src/)
- * and frontend (dashboard/) code.
- *
- * This is the SINGLE SOURCE OF TRUTH for validation logic that needs to be
- * consistent across frontend and backend.
- */
+// Shared validation utilities - single source of truth for frontend and backend
 
-// ============================================================================
-// PATTERNS - Exported for direct use when needed
-// ============================================================================
-
-/**
- * Email address pattern.
- * Simple pattern: [localpart]@[domain].[tld]
- */
 export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/**
- * URL pattern (HTTP/HTTPS).
- */
 export const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
-
-/**
- * UUID v4 pattern.
- */
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-/**
- * Slug pattern (lowercase alphanumeric with dashes).
- */
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-/**
- * Code/identifier pattern (starts with letter, alphanumeric with dashes/underscores).
- */
 export const CODE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
-
-/**
- * Pipeline code pattern (lowercase alphanumeric with dashes).
- */
 export const PIPELINE_CODE_PATTERN = /^[a-z0-9-]+$/;
-
-/**
- * Secret code pattern (alphanumeric with dashes and underscores).
- */
 export const SECRET_CODE_PATTERN = /^[a-zA-Z0-9-_]+$/;
 
-// ============================================================================
-// TYPE CHECKING UTILITIES
-// ============================================================================
-
-/**
- * Check if a value is null or undefined.
- */
 export function isNil(value: unknown): value is null | undefined {
     return value === null || value === undefined;
 }
 
-/**
- * Check if a value is empty (null, undefined, empty string, empty array, empty object).
- */
 export function isEmpty(value: unknown): boolean {
     if (isNil(value)) return true;
     if (typeof value === 'string') return value.trim() === '';
@@ -70,16 +20,10 @@ export function isEmpty(value: unknown): boolean {
     return false;
 }
 
-/**
- * Check if a value is not empty.
- */
 export function isNotEmpty(value: unknown): boolean {
     return !isEmpty(value);
 }
 
-/**
- * Check if a value can be parsed as a number.
- */
 export function isNumeric(value: unknown): boolean {
     if (typeof value === 'number') return !isNaN(value) && isFinite(value);
     if (typeof value === 'string') {
@@ -90,18 +34,12 @@ export function isNumeric(value: unknown): boolean {
     return false;
 }
 
-/**
- * Check if a value can be parsed as an integer.
- */
 export function isInteger(value: unknown): boolean {
     if (!isNumeric(value)) return false;
     const num = Number(value);
     return Number.isInteger(num);
 }
 
-/**
- * Check if a value is a boolean or can be interpreted as one.
- */
 export function isBoolean(value: unknown): boolean {
     if (typeof value === 'boolean') return true;
     if (typeof value === 'string') {
@@ -111,28 +49,11 @@ export function isBoolean(value: unknown): boolean {
     return value === 1 || value === 0;
 }
 
-// ============================================================================
-// FORMAT VALIDATION UTILITIES
-// ============================================================================
-
-/**
- * Validate email format.
- *
- * @param email - The email address to validate
- * @returns true if the email format is valid
- */
 export function isValidEmail(email: string): boolean {
     if (isEmpty(email)) return false;
     return EMAIL_PATTERN.test(email);
 }
 
-/**
- * Validate URL format.
- *
- * @param url - The URL to validate
- * @param options - Validation options
- * @returns true if the URL format is valid
- */
 export function isValidUrl(url: string, options?: { requireHttps?: boolean }): boolean {
     if (isEmpty(url)) return false;
 
@@ -147,56 +68,26 @@ export function isValidUrl(url: string, options?: { requireHttps?: boolean }): b
     }
 }
 
-/**
- * Validate UUID format (v1-v5).
- *
- * @param uuid - The UUID to validate
- * @returns true if the UUID format is valid
- */
 export function isValidUuid(uuid: string): boolean {
     if (isEmpty(uuid)) return false;
     return UUID_PATTERN.test(uuid);
 }
 
-/**
- * Validate slug format.
- *
- * @param slug - The slug to validate
- * @returns true if the slug format is valid
- */
 export function isValidSlug(slug: string): boolean {
     if (isEmpty(slug)) return false;
     return SLUG_PATTERN.test(slug);
 }
 
-/**
- * Validate pipeline code format.
- *
- * @param code - The pipeline code to validate
- * @returns true if the code format is valid
- */
 export function isValidPipelineCode(code: string): boolean {
     if (isEmpty(code)) return false;
     return PIPELINE_CODE_PATTERN.test(code);
 }
 
-/**
- * Validate secret code format.
- *
- * @param code - The secret code to validate
- * @returns true if the code format is valid
- */
 export function isValidSecretCode(code: string): boolean {
     if (isEmpty(code)) return false;
     return SECRET_CODE_PATTERN.test(code);
 }
 
-/**
- * Validate JSON string.
- *
- * @param str - The string to validate
- * @returns true if the string is valid JSON
- */
 export function isValidJson(str: string): boolean {
     if (isEmpty(str)) return false;
     try {
@@ -207,12 +98,6 @@ export function isValidJson(str: string): boolean {
     }
 }
 
-/**
- * Validate date string or Date object.
- *
- * @param value - The date to validate
- * @returns true if the value represents a valid date
- */
 export function isValidDate(value: unknown): boolean {
     if (value instanceof Date) return !isNaN(value.getTime());
     if (typeof value === 'string' || typeof value === 'number') {
@@ -222,12 +107,7 @@ export function isValidDate(value: unknown): boolean {
     return false;
 }
 
-/**
- * Validate cron expression (5 fields: minute hour day month weekday).
- *
- * @param cron - The cron expression to validate
- * @returns true if the cron expression is valid
- */
+/** Validate cron expression (5 fields: minute hour day month weekday) */
 export function isValidCron(cron: string): boolean {
     if (isEmpty(cron)) return false;
 
@@ -251,9 +131,6 @@ export function isValidCron(cron: string): boolean {
     return true;
 }
 
-/**
- * Validate a single cron part.
- */
 function isValidCronPart(part: string, min: number, max: number): boolean {
     if (part === '*') return true;
 
@@ -296,9 +173,6 @@ function isValidCronPart(part: string, min: number, max: number): boolean {
     return !isNaN(num) && num >= min && num <= max;
 }
 
-/**
- * Validate a cron range expression (e.g., "1-5").
- */
 function isValidCronRange(range: string, min: number, max: number): boolean {
     const [startStr, endStr] = range.split('-');
     const start = parseInt(startStr, 10);

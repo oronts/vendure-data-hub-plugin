@@ -1,12 +1,4 @@
 /**
- * Pipeline Builder
- *
- * Fluent API for constructing pipeline definitions programmatically.
- * The builder pattern ensures type-safe pipeline construction with proper
- * chaining support.
- *
- * @module sdk/dsl/pipeline-builder
- *
  * @example
  * ```typescript
  * import { createPipeline, operators, conditions } from '@vendure/data-hub/sdk';
@@ -61,148 +53,24 @@ import { DEFAULT_TRIGGER_TYPE } from '../constants';
  * All methods return `this` to enable method chaining.
  */
 export interface PipelineBuilder {
-    /**
-     * Set the pipeline name (for display purposes).
-     * @param name - Human-readable pipeline name
-     * @returns this - For method chaining
-     */
     name(name: string): this;
-
-    /**
-     * Set the pipeline description.
-     * @param description - Detailed description of the pipeline
-     * @returns this - For method chaining
-     */
     description(description: string): this;
-
-    /**
-     * Set the pipeline version number.
-     * @param version - Version number (default: 1)
-     * @returns this - For method chaining
-     */
     version(version: number): this;
-
-    /**
-     * Set the pipeline execution context.
-     * @param context - Context settings (channel, language, throughput)
-     * @returns this - For method chaining
-     */
     context(context: PipelineContext): this;
-
-    /**
-     * Set the pipeline capabilities (what it can read/write).
-     * @param capabilities - Capability configuration
-     * @returns this - For method chaining
-     */
     capabilities(capabilities: PipelineCapabilities): this;
-
-    /**
-     * Declare pipeline dependencies.
-     * @param codes - Pipeline codes this depends on
-     * @returns this - For method chaining
-     */
     dependsOn(...codes: string[]): this;
-
-    /**
-     * Configure pipeline lifecycle hooks.
-     * @param hooks - Hook configuration
-     * @returns this - For method chaining
-     */
     hooks(hooks: PipelineHooks): this;
-
-    /**
-     * Add a trigger step.
-     * @param key - Unique step key
-     * @param config - Trigger configuration (default: manual trigger)
-     * @returns this - For method chaining
-     */
     trigger(key: string, config?: TriggerConfig): this;
-
-    /**
-     * Add an extract step.
-     * @param key - Unique step key
-     * @param config - Extractor configuration
-     * @returns this - For method chaining
-     */
     extract(key: string, config: ExtractStepConfig): this;
-
-    /**
-     * Add a transform step.
-     * @param key - Unique step key
-     * @param config - Transform configuration with operators
-     * @returns this - For method chaining
-     */
     transform(key: string, config: TransformStepConfig): this;
-
-    /**
-     * Add a validate step.
-     * @param key - Unique step key
-     * @param config - Validation configuration
-     * @returns this - For method chaining
-     */
     validate(key: string, config: ValidateStepConfig): this;
-
-    /**
-     * Add an enrich step.
-     * @param key - Unique step key
-     * @param config - Enrichment configuration
-     * @returns this - For method chaining
-     */
     enrich(key: string, config: EnrichStepConfig): this;
-
-    /**
-     * Add a route step for conditional branching.
-     * @param key - Unique step key
-     * @param config - Route configuration with branches
-     * @returns this - For method chaining
-     */
     route(key: string, config: RouteStepConfig): this;
-
-    /**
-     * Add a load step to write to Vendure.
-     * @param key - Unique step key
-     * @param config - Loader configuration
-     * @returns this - For method chaining
-     */
     load(key: string, config: LoadStepConfig): this;
-
-    /**
-     * Add an export step to write to external systems.
-     * @param key - Unique step key
-     * @param config - Export configuration
-     * @returns this - For method chaining
-     */
     export(key: string, config: ExportStepConfig): this;
-
-    /**
-     * Add a feed step for product feed generation.
-     * @param key - Unique step key
-     * @param config - Feed configuration
-     * @returns this - For method chaining
-     */
     feed(key: string, config: FeedStepConfig): this;
-
-    /**
-     * Add a sink step for search engine indexing.
-     * @param key - Unique step key
-     * @param config - Sink configuration
-     * @returns this - For method chaining
-     */
     sink(key: string, config: SinkStepConfig): this;
-
-    /**
-     * Connect two steps with an edge.
-     * @param from - Source step key
-     * @param to - Target step key
-     * @param branch - Optional branch name (for route steps)
-     * @returns this - For method chaining
-     */
     edge(from: string, to: string, branch?: string): this;
-
-    /**
-     * Build and return the final pipeline definition.
-     * @returns Complete pipeline definition
-     */
     build(): PipelineDefinition;
 }
 
@@ -225,30 +93,18 @@ function createEdge(from: string, to: string, branch?: string): PipelineEdge {
 
 // VALIDATION HELPERS
 
-/**
- * Validates that a string is non-empty.
- * @throws Error if the string is empty or whitespace-only
- */
 function validateNonEmptyString(value: string, fieldName: string): void {
     if (!value || value.trim().length === 0) {
         throw new Error(`${fieldName} must be a non-empty string`);
     }
 }
 
-/**
- * Validates that a step key is unique.
- * @throws Error if the key already exists
- */
 function validateUniqueKey(steps: PipelineStepDefinition[], key: string): void {
     if (steps.some(s => s.key === key)) {
         throw new Error(`Duplicate step key: "${key}". Step keys must be unique within a pipeline.`);
     }
 }
 
-/**
- * Validates that a version is a positive integer.
- * @throws Error if version is invalid
- */
 function validateVersion(version: number): void {
     if (!Number.isInteger(version) || version < 1) {
         throw new Error(`Version must be a positive integer, got: ${version}`);
@@ -257,23 +113,6 @@ function validateVersion(version: number): void {
 
 // CREATE PIPELINE FUNCTION
 
-/**
- * Creates a new pipeline builder instance.
- *
- * @returns A new PipelineBuilder for fluent pipeline construction
- *
- * @example
- * ```typescript
- * const pipeline = createPipeline()
- *   .name('Product Import')
- *   .trigger('start')
- *   .extract('fetch', { adapterCode: 'httpApi', url: 'https://api.example.com/products' })
- *   .load('save', { adapterCode: 'productUpsert', strategy: 'upsert' })
- *   .edge('start', 'fetch')
- *   .edge('fetch', 'save')
- *   .build();
- * ```
- */
 export function createPipeline(): PipelineBuilder {
     const state: {
         name?: string;
@@ -445,45 +284,10 @@ export function createPipeline(): PipelineBuilder {
     return builder;
 }
 
-/**
- * Type-safe helper for defining pipeline definitions as plain objects.
- * Useful when you want to define pipelines without using the builder pattern.
- *
- * @param definition - The pipeline definition object
- * @returns Same definition with proper typing
- *
- * @example
- * ```typescript
- * const pipeline = definePipeline({
- *   version: 1,
- *   steps: [
- *     { key: 'start', type: StepType.TRIGGER, config: { type: 'manual' } },
- *   ],
- * });
- * ```
- */
 export function definePipeline<T extends PipelineDefinition>(definition: T): T {
     return definition;
 }
 
-/**
- * Creates a single step definition.
- * Lower-level helper for creating steps without the builder.
- *
- * @param key - Unique step identifier
- * @param type - Step type (trigger, extract, transform, etc.)
- * @param config - Step configuration object
- * @param extras - Optional additional step properties (throughput, async)
- * @returns A complete step definition
- *
- * @example
- * ```typescript
- * const extractStep = step('fetch', StepType.EXTRACT, {
- *   adapterCode: 'httpApi',
- *   url: 'https://api.example.com/products',
- * });
- * ```
- */
 export function step(
     key: string,
     type: StepType,

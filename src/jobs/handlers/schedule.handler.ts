@@ -1,9 +1,3 @@
-/**
- * Schedule Job Handler
- *
- * Manages scheduled pipeline execution using interval and cron triggers.
- */
-
 import { Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { RequestContextService, TransactionalConnection, ID } from '@vendure/core';
 import { In } from 'typeorm';
@@ -21,9 +15,6 @@ import { ScheduledTimer } from '../types';
 import { cronMatches, isValidTimezone } from '../processors/cron-processor';
 import type { SchedulerConfig } from '../../types/plugin-options';
 
-/**
- * Schedule trigger configuration - runtime representation
- */
 interface ScheduleTriggerConfigParsed {
     type: typeof TriggerType.SCHEDULE;
     cron: string | null;
@@ -31,9 +22,6 @@ interface ScheduleTriggerConfigParsed {
     timezone: string | null;
 }
 
-/**
- * Check if config is a schedule trigger and parse it
- */
 function parseScheduleTriggerConfig(config: JsonObject): ScheduleTriggerConfigParsed | null {
     if (!config || typeof config !== 'object') return null;
     if (config.type !== TriggerType.SCHEDULE) return null;
@@ -46,9 +34,6 @@ function parseScheduleTriggerConfig(config: JsonObject): ScheduleTriggerConfigPa
     };
 }
 
-/**
- * Structured log data for consistent logging
- */
 interface LogMetadata {
     [key: string]: string | number | boolean | undefined;
 }
@@ -90,9 +75,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         this.schedulerConfig = this.runtimeConfigService.getSchedulerConfig();
     }
 
-    /**
-     * Initialize schedules on module startup
-     */
     async onModuleInit(): Promise<void> {
         const initMetadata: LogMetadata = {
             checkIntervalMs: this.schedulerConfig.checkIntervalMs,
@@ -122,9 +104,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         });
     }
 
-    /**
-     * Clean up timers on module destroy
-     */
     async onModuleDestroy(): Promise<void> {
         this.isDestroying = true;
 
@@ -146,10 +125,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         this.logger.debug('Schedule handler cleanup complete');
     }
 
-    /**
-     * Refresh all scheduled pipelines
-     * Uses a mutex to prevent concurrent refresh operations which could cause race conditions
-     */
+    /** Uses a mutex to prevent concurrent refresh operations */
     private async refresh(): Promise<void> {
         if (this.isDestroying) {
             this.logger.debug('Skipping refresh - module is being destroyed');
@@ -255,11 +231,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /**
-     * Clean up stale cron keys for triggers that are no longer scheduled
-     * @param activeCronKeys Set of currently active composite keys (pipelineCode:triggerKey)
-     * @returns Number of removed entries
-     */
     private cleanupStaleCronKeys(activeCronKeys: Set<string>): number {
         let removedCount = 0;
         const staleCodes: string[] = [];
@@ -285,12 +256,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         return removedCount;
     }
 
-    /**
-     * Clean up stale failure counts for pipelines that are no longer scheduled
-     * This prevents memory leaks when pipelines are deleted or unscheduled
-     * @param activePipelineCodes Set of currently active pipeline codes
-     * @returns Number of removed entries
-     */
     private cleanupStaleFailureCounts(activePipelineCodes: Set<string>): number {
         let removedCount = 0;
         const staleCodes: string[] = [];
@@ -316,12 +281,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         return removedCount;
     }
 
-    /**
-     * Check if a pipeline is currently running
-     * Used for concurrency control to prevent simultaneous runs
-     * @param pipelineId Pipeline ID to check
-     * @returns True if the pipeline has a running or pending run
-     */
     private async isPipelineRunning(pipelineId: ID): Promise<boolean> {
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
         const runRepo = this.connection.getRepository(ctx, PipelineRun);
@@ -336,9 +295,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         return !!activeRun;
     }
 
-    /**
-     * Set up an interval-based schedule for a pipeline trigger
-     */
     private setupIntervalSchedule(pipeline: Pipeline, config: ScheduleTriggerConfigParsed, triggerKey: string): void {
         const intervalSec = Math.max(1, config.intervalSec ?? 1);
         const effectiveIntervalMs = Math.max(this.schedulerConfig.minIntervalMs, intervalSec * 1000);
@@ -373,9 +329,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         });
     }
 
-    /**
-     * Set up a cron-based schedule for a pipeline trigger
-     */
     private setupCronSchedule(pipeline: Pipeline, config: ScheduleTriggerConfigParsed, triggerKey: string): void {
         const cronExpr = config.cron ?? '';
         const timezone = config.timezone;
@@ -447,10 +400,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         });
     }
 
-    /**
-     * Trigger a pipeline run with concurrency control using distributed locks
-     * Prevents simultaneous runs of the same pipeline across multiple instances
-     */
+    /** Uses distributed locks to prevent simultaneous runs across instances */
     private async triggerPipeline(
         pipeline: Pipeline,
         triggerType: Exclude<TimerType, typeof TIMER_TYPE.REFRESH>,
@@ -551,34 +501,20 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /**
-     * Force refresh of all schedules
-     */
     async forceRefresh(): Promise<void> {
         await this.refresh();
     }
 
-    /**
-     * Get count of active schedules
-     */
     getActiveScheduleCount(): number {
         return this.timers.filter(t => t.type !== TIMER_TYPE.REFRESH).length;
     }
 
-    /**
-     * Get list of scheduled pipeline codes
-     */
     getScheduledPipelines(): string[] {
         return this.timers
             .filter(t => t.type !== TIMER_TYPE.REFRESH)
             .map(t => t.code);
     }
 
-    /**
-     * Clear the cron key for a specific pipeline
-     * Useful when a pipeline is deleted or disabled manually
-     * @param code Pipeline code to clear
-     */
     clearCronKeyForPipeline(code: string): void {
         if (this.lastCronKeyByPipeline.has(code)) {
             this.lastCronKeyByPipeline.delete(code);
@@ -586,20 +522,10 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /**
-     * Get the current count of cron keys stored in memory
-     * Useful for monitoring and debugging memory usage
-     * @returns Number of cron keys currently stored
-     */
     getCronKeyCount(): number {
         return this.lastCronKeyByPipeline.size;
     }
 
-    /**
-     * Reset the circuit breaker for a specific pipeline
-     * Allows the pipeline to be scheduled again after failures
-     * @param code Pipeline code to reset
-     */
     resetCircuitBreaker(code: string): void {
         if (this.failureCountByPipeline.has(code)) {
             const previousCount = this.failureCountByPipeline.get(code);
@@ -612,10 +538,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /**
-     * Reset all circuit breakers
-     * Allows all paused pipelines to be scheduled again
-     */
     resetAllCircuitBreakers(): void {
         const count = this.failureCountByPipeline.size;
         this.failureCountByPipeline.clear();
@@ -624,11 +546,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /**
-     * Get circuit breaker status for all tracked pipelines
-     * Useful for monitoring and debugging
-     * @returns Map of pipeline codes to their failure counts
-     */
     getCircuitBreakerStatus(): Map<string, { failureCount: number; isPaused: boolean }> {
         const status = new Map<string, { failureCount: number; isPaused: boolean }>();
         for (const [code, count] of this.failureCountByPipeline.entries()) {
@@ -640,10 +557,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         return status;
     }
 
-    /**
-     * Get scheduler health metrics
-     * Returns status information for monitoring
-     */
     getHealthMetrics(): {
         activeTimers: number;
         cronKeyCount: number;

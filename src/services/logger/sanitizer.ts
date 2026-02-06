@@ -1,13 +1,8 @@
-/**
- * Sensitive data sanitization utilities for logging.
- * Prevents PII and credentials from being logged.
- */
+/** Prevents PII and credentials from being logged. */
 
 import { EMAIL_REGEX } from '../../utils/input-validation.utils';
 
-/**
- * Fields that should be completely redacted (case-insensitive matching)
- */
+// Fields that should be completely redacted (case-insensitive matching)
 const SENSITIVE_FIELDS = [
     'password',
     'secret',
@@ -45,14 +40,8 @@ const SENSITIVE_FIELDS = [
     'pin',
 ];
 
-/**
- * Redaction placeholder for sensitive fields
- */
 const REDACTED = '[REDACTED]';
 
-/**
- * Phone number regex patterns (various formats)
- */
 const PHONE_PATTERNS = [
     /^\+?[1-9]\d{1,14}$/, // E.164 format
     /^\+?[\d\s\-().]{7,20}$/, // Common phone formats
@@ -60,9 +49,6 @@ const PHONE_PATTERNS = [
     /^\d{3}[-.]?\d{3}[-.]?\d{4}$/, // US format without parens
 ];
 
-/**
- * Configuration options for sanitization
- */
 export interface SanitizeOptions {
     /** Maximum recursion depth (default: 10) */
     maxDepth?: number;
@@ -81,19 +67,13 @@ const DEFAULT_OPTIONS: Required<SanitizeOptions> = {
     maskPhones: true,
 };
 
-/**
- * Check if a field name contains a sensitive keyword
- */
 function isSensitiveField(fieldName: string, additionalFields: string[]): boolean {
     const lowerField = fieldName.toLowerCase();
     const allSensitiveFields = [...SENSITIVE_FIELDS, ...additionalFields.map(f => f.toLowerCase())];
     return allSensitiveFields.some(sensitive => lowerField.includes(sensitive));
 }
 
-/**
- * Mask an email address: show first 2 chars + *** + domain
- * Example: john.doe@example.com -> jo***@example.com
- */
+/** jo***@example.com */
 export function maskEmail(email: string): string {
     const atIndex = email.indexOf('@');
     if (atIndex <= 0) return REDACTED;
@@ -107,10 +87,7 @@ export function maskEmail(email: string): string {
     return localPart.substring(0, 2) + '***' + domain;
 }
 
-/**
- * Mask a phone number: show last 4 digits only
- * Example: +1-555-123-4567 -> ***4567
- */
+/** ***4567 */
 export function maskPhone(phone: string): string {
     // Extract only digits
     const digits = phone.replace(/\D/g, '');
@@ -118,16 +95,10 @@ export function maskPhone(phone: string): string {
     return '***' + digits.slice(-4);
 }
 
-/**
- * Check if a string looks like an email
- */
 function isEmail(value: string): boolean {
     return EMAIL_REGEX.test(value);
 }
 
-/**
- * Check if a string looks like a phone number
- */
 function isPhone(value: string): boolean {
     if (typeof value !== 'string') return false;
     const trimmed = value.trim();
@@ -137,9 +108,6 @@ function isPhone(value: string): boolean {
     return PHONE_PATTERNS.some(pattern => pattern.test(trimmed));
 }
 
-/**
- * Sanitize a single value based on its content
- */
 function sanitizeValue(
     value: unknown,
     options: Required<SanitizeOptions>,
@@ -159,16 +127,7 @@ function sanitizeValue(
 
 /**
  * Recursively sanitize an object for safe logging.
- *
- * - Redacts fields with sensitive names (password, token, apiKey, etc.)
- * - Masks email addresses (shows first 2 chars + *** + domain)
- * - Masks phone numbers (shows last 4 digits only)
- * - Traverses nested objects and arrays
- * - Prevents infinite recursion with depth limit
- *
- * @param obj - Object to sanitize
- * @param options - Sanitization options
- * @returns Sanitized copy of the object
+ * Redacts sensitive field names, masks emails/phones, handles nested objects.
  */
 export function sanitizeForLog(
     obj: unknown,
@@ -182,9 +141,6 @@ export function sanitizeForLog(
     return sanitizeRecursive(obj, 0, mergedOptions, new WeakSet());
 }
 
-/**
- * Internal recursive sanitization function
- */
 function sanitizeRecursive(
     obj: unknown,
     depth: number,
@@ -249,9 +205,6 @@ function sanitizeRecursive(
     return result;
 }
 
-/**
- * Sanitize a record (convenience wrapper)
- */
 export function sanitizeRecord(
     record: Record<string, unknown>,
     options: SanitizeOptions = {},
@@ -259,9 +212,6 @@ export function sanitizeRecord(
     return sanitizeForLog(record, options) as Record<string, unknown>;
 }
 
-/**
- * Create a sanitizer with pre-configured options
- */
 export function createSanitizer(defaultOptions: SanitizeOptions = {}) {
     return {
         sanitize: <T>(obj: T): T => sanitizeForLog(obj, defaultOptions) as T,
@@ -269,7 +219,4 @@ export function createSanitizer(defaultOptions: SanitizeOptions = {}) {
     };
 }
 
-/**
- * Default sanitizer instance
- */
 export const defaultSanitizer = createSanitizer();

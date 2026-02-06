@@ -1,18 +1,8 @@
-/**
- * Database Query Builder
- * 
- * Safe SQL query construction with validation and sanitization.
- * Prevents SQL injection attacks through proper validation.
- */
-
 import { JsonValue } from '../../types/index';
 import { DatabaseExtractorConfig, DatabasePaginationConfig, PaginationState } from './types';
 import { DatabasePaginationType, PAGINATION } from '../../constants/index';
 import { validateColumnName, escapeSqlIdentifier, validateLimitOffset, containsSqlInjection } from '../../utils/sql-security.utils';
 
-/**
- * Format SQL value for safe interpolation
- */
 export function formatSqlValue(value: JsonValue): string {
     if (value === null) return 'NULL';
     if (typeof value === 'number') return String(value);
@@ -26,9 +16,6 @@ export function formatSqlValue(value: JsonValue): string {
     return 'NULL';
 }
 
-/**
- * Validate query for security issues
- */
 export function validateQuery(query: string): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
     const queryUpper = query.trim().toUpperCase();
@@ -47,16 +34,10 @@ export function validateQuery(query: string): { valid: boolean; errors: string[]
     };
 }
 
-/**
- * Check if query has LIMIT clause
- */
 export function hasLimitClause(query: string): boolean {
     return /\bLIMIT\b/i.test(query);
 }
 
-/**
- * Common column name whitelist for database operations
- */
 const COMMON_COLUMN_WHITELIST = new Set([
     'id', 'ID', '_id', 'Id',
     'created_at', 'updated_at', 'deleted_at',
@@ -64,9 +45,6 @@ const COMMON_COLUMN_WHITELIST = new Set([
     'name', 'code', 'type', 'status', 'enabled',
 ]);
 
-/**
- * Validate column name against whitelist
- */
 function validateColumnNameWithWhitelist(column: string | undefined): void {
     if (!column) {
         throw new Error('Column name is required');
@@ -74,14 +52,6 @@ function validateColumnNameWithWhitelist(column: string | undefined): void {
     validateColumnName(column, COMMON_COLUMN_WHITELIST);
 }
 
-/**
- * Build SQL query with pagination
- * 
- * @param query - Base query
- * @param pagination - Pagination configuration
- * @param state - Current pagination state
- * @returns SQL query with pagination
- */
 export function buildPaginatedQuery(
     query: string,
     pagination: DatabasePaginationConfig | undefined,
@@ -127,14 +97,6 @@ export function buildPaginatedQuery(
     return `${query} LIMIT ${pageSize}`;
 }
 
-/**
- * Build SQL query with incremental sync filter
- * 
- * @param query - Base query
- * @param config - Database extractor configuration
- * @param lastValue - Last synced value
- * @returns SQL query with incremental filter
- */
 export function appendIncrementalFilter(
     query: string,
     config: DatabaseExtractorConfig,
@@ -184,9 +146,6 @@ export function appendIncrementalFilter(
     return `${query} WHERE ${filter}`;
 }
 
-/**
- * Find the best insertion point for a WHERE clause
- */
 function findClauseInsertionPoint(query: string): number {
     const keywords = ['ORDER BY', 'GROUP BY', 'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'INTERSECT', 'EXCEPT'];
 

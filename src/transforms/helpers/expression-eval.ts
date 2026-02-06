@@ -1,10 +1,3 @@
-/**
- * Expression Evaluator
- *
- * Safe expression evaluation for conditional transforms.
- * Uses pattern matching instead of eval for security.
- */
-
 import { JsonValue, JsonObject } from '../../types/index';
 import { getNestedValue as getNestedValueUtil } from '../../utils/object-path.utils';
 
@@ -41,13 +34,6 @@ const EXPRESSION_PATTERNS = {
 // UTILITY FUNCTIONS
 // Note: getNestedValue is imported from utils/object-path.utils.ts (canonical implementation)
 
-/**
- * Parse a condition value from string
- * Converts string representations to typed values
- *
- * @param str - The string to parse
- * @returns Parsed value as JsonValue
- */
 export function parseConditionValue(str: string): JsonValue {
     // Handle null/undefined keywords
     if (str === 'null' || str === 'undefined') return null;
@@ -69,14 +55,6 @@ export function parseConditionValue(str: string): JsonValue {
 
 // CONDITION EVALUATION
 
-/**
- * Evaluate comparison between two values
- *
- * @param leftValue - The left operand
- * @param operator - The comparison operator
- * @param rightValue - The right operand (parsed)
- * @returns Comparison result
- */
 function evaluateComparison(leftValue: JsonValue, operator: string, rightValue: JsonValue): boolean {
     switch (operator) {
         case '==':
@@ -98,14 +76,6 @@ function evaluateComparison(leftValue: JsonValue, operator: string, rightValue: 
     }
 }
 
-/**
- * Evaluate length-based comparison
- *
- * @param len - The length to compare
- * @param operator - The comparison operator
- * @param num - The number to compare against
- * @returns Comparison result
- */
 function evaluateLengthComparison(len: number, operator: string, num: number): boolean {
     switch (operator) {
         case '>': return len > num;
@@ -120,15 +90,7 @@ function evaluateLengthComparison(len: number, operator: string, num: number): b
     }
 }
 
-/**
- * Evaluate a condition expression
- * Uses pattern matching for safe evaluation
- *
- * @param condition - The condition string to evaluate
- * @param value - The current value being evaluated
- * @param record - Optional record context for field access
- * @returns True if condition is met, false otherwise
- */
+/** Pattern matching for safe evaluation */
 export function evaluateCondition(condition: string, value: JsonValue, record?: JsonObject): boolean {
     try {
         const trimmedCondition = condition.trim();
@@ -205,13 +167,6 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
 
 // EXPRESSION EVALUATION
 
-/**
- * Evaluate string methods on a value
- *
- * @param expression - The expression to evaluate
- * @param value - The string value
- * @returns String operation result
- */
 function evaluateStringMethod(expression: string, value: string): JsonValue | undefined {
     if (expression === 'value.toUpperCase()') return value.toUpperCase();
     if (expression === 'value.toLowerCase()') return value.toLowerCase();
@@ -235,13 +190,6 @@ function evaluateStringMethod(expression: string, value: string): JsonValue | un
     return undefined;
 }
 
-/**
- * Evaluate array methods on a value
- *
- * @param expression - The expression to evaluate
- * @param value - The array value
- * @returns Array operation result
- */
 function evaluateArrayMethod(expression: string, value: JsonValue[]): JsonValue | undefined {
     if (expression === 'value.length') return value.length;
     if (expression === 'value[0]') return value[0] ?? null;
@@ -256,13 +204,6 @@ function evaluateArrayMethod(expression: string, value: JsonValue[]): JsonValue 
     return undefined;
 }
 
-/**
- * Evaluate math operations on a value
- *
- * @param expression - The expression to evaluate
- * @param value - The numeric value
- * @returns Math operation result
- */
 function evaluateMathOperation(expression: string, value: number): JsonValue | undefined {
     const mathMatch = expression.match(EXPRESSION_PATTERNS.MATH);
     if (mathMatch) {
@@ -278,15 +219,6 @@ function evaluateMathOperation(expression: string, value: number): JsonValue | u
     return undefined;
 }
 
-/**
- * Evaluate an expression
- * Supports common data transformation patterns safely
- *
- * @param expression - The expression string to evaluate
- * @param value - The current value being transformed
- * @param record - Optional record context for field access
- * @returns Expression evaluation result
- */
 export function evaluateExpression(expression: string, value: JsonValue, record?: JsonObject): JsonValue {
     try {
         const trimmedExpr = expression.trim();
@@ -350,10 +282,6 @@ export function evaluateExpression(expression: string, value: JsonValue, record?
     }
 }
 
-/**
- * Interpolate template expression with record values
- * Internal helper for expression evaluation
- */
 function interpolateTemplateExpression(template: string, record: JsonObject, currentValue: JsonValue): string {
     return template.replace(/\$\{([^}]+)\}/g, (_, path) => {
         if (path === 'value') return String(currentValue ?? '');

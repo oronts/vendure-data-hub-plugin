@@ -1,32 +1,13 @@
-/**
- * Retry Utilities
- *
- * Unified retry logic with exponential backoff and jitter for the data-hub plugin.
- * This module consolidates all retry patterns used across extractors, loaders,
- * webhooks, and job processors.
- */
-
 import { HTTP, WEBHOOK } from '../constants/index';
 
-/**
- * Configuration for retry behavior with exponential backoff
- */
 export interface RetryConfig {
-    /** Maximum number of attempts (including initial attempt) */
     maxAttempts: number;
-    /** Initial delay in milliseconds before first retry */
     initialDelayMs: number;
-    /** Maximum delay in milliseconds (cap for exponential growth) */
     maxDelayMs: number;
-    /** Multiplier for exponential backoff (e.g., 2 = double each time) */
     backoffMultiplier: number;
-    /** Jitter factor (0-1) to add randomness to delays, default 0.1 (10%) */
     jitterFactor?: number;
 }
 
-/**
- * Default retry configuration suitable for most HTTP operations
- */
 export const DEFAULT_RETRY_CONFIG: RetryConfig = {
     maxAttempts: HTTP.MAX_RETRIES,
     initialDelayMs: HTTP.RETRY_DELAY_MS,
@@ -35,9 +16,6 @@ export const DEFAULT_RETRY_CONFIG: RetryConfig = {
     jitterFactor: 0.1,
 };
 
-/**
- * Webhook-specific retry configuration with longer delays
- */
 export const WEBHOOK_RETRY_CONFIG: RetryConfig = {
     maxAttempts: WEBHOOK.MAX_ATTEMPTS,
     initialDelayMs: WEBHOOK.INITIAL_DELAY_MS,
@@ -46,18 +24,6 @@ export const WEBHOOK_RETRY_CONFIG: RetryConfig = {
     jitterFactor: 0.1,
 };
 
-/**
- * Calculate exponential backoff delay with optional jitter
- *
- * @param attempt - Current attempt number (1-based, so first retry is attempt 1)
- * @param config - Retry configuration
- * @returns Delay in milliseconds before the next retry
- *
- * @example
- * // With default config (initialDelayMs=1000, multiplier=2):
- * // attempt 1: ~1000ms, attempt 2: ~2000ms, attempt 3: ~4000ms
- * const delay = calculateBackoff(1, DEFAULT_RETRY_CONFIG);
- */
 export function calculateBackoff(attempt: number, config: RetryConfig): number {
     const baseDelay = config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt - 1);
     const jitterFactor = config.jitterFactor ?? 0.1;
@@ -65,56 +31,23 @@ export function calculateBackoff(attempt: number, config: RetryConfig): number {
     return Math.min(baseDelay + jitter, config.maxDelayMs);
 }
 
-/**
- * Calculate backoff delay without jitter (deterministic)
- *
- * @param attempt - Current attempt number (1-based)
- * @param config - Retry configuration
- * @returns Delay in milliseconds
- */
 export function calculateBackoffDeterministic(attempt: number, config: RetryConfig): number {
     const baseDelay = config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt - 1);
     return Math.min(baseDelay, config.maxDelayMs);
 }
 
-/**
- * Options for executeWithRetry function
- */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- T reserved for future typed retry result
 export interface ExecuteWithRetryOptions<T = unknown> {
-    /** Retry configuration */
     config: RetryConfig;
-    /** Callback when a retry is about to happen */
     onRetry?: (attempt: number, error: Error, delayMs: number) => void;
-    /** Custom function to determine if an error is retryable */
     isRetryable?: (error: unknown) => boolean;
-    /** Logger for retry events */
     logger?: {
         warn: (message: string, meta?: Record<string, unknown>) => void;
         debug: (message: string, meta?: Record<string, unknown>) => void;
     };
-    /** Context information for logging */
     context?: Record<string, unknown>;
 }
 
-/**
- * Execute a function with automatic retry on failure
- *
- * @param fn - Async function to execute
- * @param options - Retry options
- * @returns Result of the function
- * @throws Last error if all retries are exhausted
- *
- * @example
- * const result = await executeWithRetry(
- *   () => fetch(url),
- *   {
- *     config: DEFAULT_RETRY_CONFIG,
- *     logger: myLogger,
- *     context: { url },
- *   }
- * );
- */
 export async function executeWithRetry<T>(
     fn: () => Promise<T>,
     options: ExecuteWithRetryOptions<T>,
@@ -128,14 +61,12 @@ export async function executeWithRetry<T>(
         } catch (error) {
             lastError = error instanceof Error ? error : new Error(String(error));
 
-            // Check if we should retry
             if (attempt >= config.maxAttempts || !isRetryable(error)) {
                 break;
             }
 
             const delayMs = calculateBackoff(attempt, config);
 
-            // Notify about retry
             if (onRetry) {
                 onRetry(attempt, lastError, delayMs);
             }
@@ -150,7 +81,6 @@ export async function executeWithRetry<T>(
                 });
             }
 
-            // Wait before next attempt
             await sleep(delayMs);
         }
     }
@@ -158,13 +88,6 @@ export async function executeWithRetry<T>(
     throw lastError ?? new Error('Retry failed with unknown error');
 }
 
-/**
- * Execute a function with retry, returning null on failure instead of throwing
- *
- * @param fn - Async function to execute
- * @param options - Retry options
- * @returns Result of the function or null if all retries fail
- */
 export async function executeWithRetryOrNull<T>(
     fn: () => Promise<T>,
     options: ExecuteWithRetryOptions<T>,
@@ -176,18 +99,6 @@ export async function executeWithRetryOrNull<T>(
     }
 }
 
-/**
- * Check if an error is retryable based on common patterns
- *
- * Considers errors retryable if they match:
- * - Network errors (timeout, connection, socket)
- * - Rate limiting (429 Too Many Requests)
- * - Temporary/transient errors
- * - Service unavailable (503)
- *
- * @param error - Error to check
- * @returns True if the error is retryable
- */
 export function isRetryableError(error: unknown): boolean {
     if (!error) return false;
 
@@ -215,29 +126,13 @@ export function isRetryableError(error: unknown): boolean {
     return retryablePatterns.some(pattern => pattern.test(message));
 }
 
-/**
- * Check if an HTTP status code indicates a retryable error
- *
- * @param status - HTTP status code
- * @returns True if the status indicates a retryable error
- */
 export function isRetryableStatus(status: number): boolean {
-    // 429 Too Many Requests
     if (status === 429) return true;
-    // 5xx Server Errors (except 501 Not Implemented)
     if (status >= 500 && status !== 501) return true;
-    // 408 Request Timeout
     if (status === 408) return true;
     return false;
 }
 
-/**
- * Create a retry configuration from partial options with defaults
- *
- * @param partial - Partial configuration options
- * @param defaults - Default configuration to use (defaults to DEFAULT_RETRY_CONFIG)
- * @returns Complete retry configuration
- */
 export function createRetryConfig(
     partial?: Partial<RetryConfig>,
     defaults: RetryConfig = DEFAULT_RETRY_CONFIG,
@@ -251,23 +146,10 @@ export function createRetryConfig(
     };
 }
 
-/**
- * Sleep for a specified duration
- *
- * @param ms - Duration in milliseconds
- * @returns Promise that resolves after the duration
- */
 export function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/**
- * Check if an attempt should be retried based on config
- *
- * @param attempt - Current attempt number (1-based)
- * @param config - Retry configuration
- * @returns True if another retry should be attempted
- */
 export function shouldRetry(attempt: number, config: RetryConfig): boolean {
     return attempt < config.maxAttempts;
 }

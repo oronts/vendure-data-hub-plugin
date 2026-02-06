@@ -1,17 +1,5 @@
-/**
- * DataHub Table Names
- *
- * Centralized table name constants to avoid hardcoded strings in entities.
- * All DataHub tables are prefixed with 'data_hub_' for namespace isolation.
- */
-
-/** Prefix for all DataHub tables */
 export const TABLE_PREFIX = 'data_hub_';
 
-/**
- * Table names for all DataHub entities.
- * Using constants ensures consistency and makes refactoring easier.
- */
 export const TABLE_NAMES = {
     // Config entities
     CONNECTION: `${TABLE_PREFIX}connection`,

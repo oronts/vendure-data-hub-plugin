@@ -74,34 +74,19 @@ export class SecretService implements OnModuleInit {
         }
     }
 
-    /**
-     * Check if encryption is enabled for this service
-     */
     isEncryptionEnabled(): boolean {
         return this.encryptionEnabled;
     }
 
-    /**
-     * Get a secret entity by code (does not resolve the value)
-     */
     async getByCode(ctx: RequestContext, code: string): Promise<DataHubSecret | null> {
         return this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { code } });
     }
 
-    /**
-     * Get a secret entity by ID
-     */
     async getById(ctx: RequestContext, id: string): Promise<DataHubSecret | null> {
         return this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { id } });
     }
 
-    /**
-     * Resolve secret value by code.
-     *
-     * Resolution order:
-     * 1. Config secrets (plugin options)
-     * 2. Database secrets
-     */
+    /** Resolution order: 1. Config secrets, 2. Database secrets */
     async resolve(ctx: RequestContext, code: string): Promise<string | null> {
         // 1. Check config secrets first (highest priority)
         const configSecret = this.configSecrets.get(code);
@@ -119,14 +104,6 @@ export class SecretService implements OnModuleInit {
         return null;
     }
 
-    /**
-     * Resolve multiple secrets at once.
-     * Useful for extractors/loaders that need multiple credentials.
-     *
-     * @param ctx RequestContext
-     * @param codes Array of secret codes
-     * @returns Map of code -> resolved value (null if not found)
-     */
     async resolveMany(ctx: RequestContext, codes: string[]): Promise<Map<string, string | null>> {
         const results = new Map<string, string | null>();
 
@@ -140,9 +117,6 @@ export class SecretService implements OnModuleInit {
         return results;
     }
 
-    /**
-     * Check if a secret exists (config or database)
-     */
     async exists(ctx: RequestContext, code: string): Promise<boolean> {
         if (this.configSecrets.has(code)) {
             return true;
@@ -151,10 +125,7 @@ export class SecretService implements OnModuleInit {
         return dbSecret !== null;
     }
 
-    /**
-     * List all available secret codes (config + database)
-     * Does NOT expose actual values
-     */
+    /** List all available secret codes (does NOT expose values) */
     async listCodes(ctx: RequestContext): Promise<Array<{ code: string; provider: string; source: 'config' | 'database' }>> {
         const result: Array<{ code: string; provider: string; source: 'config' | 'database' }> = [];
 
@@ -183,13 +154,6 @@ export class SecretService implements OnModuleInit {
         return result;
     }
 
-    /**
-     * Validate that all required secrets for a pipeline exist.
-     *
-     * @param ctx RequestContext
-     * @param requiredCodes Array of required secret codes
-     * @returns Object with valid status and missing codes
-     */
     async validateSecrets(
         ctx: RequestContext,
         requiredCodes: string[],
@@ -208,8 +172,6 @@ export class SecretService implements OnModuleInit {
             missing,
         };
     }
-
-    // PRIVATE RESOLUTION METHODS
 
     private resolveConfigSecret(def: CodeFirstSecret): string | null {
         switch (def.provider) {
@@ -239,10 +201,7 @@ export class SecretService implements OnModuleInit {
         }
     }
 
-    /**
-     * Encrypt a secret value for storage.
-     * Only encrypts if encryption is configured, otherwise returns as-is.
-     */
+    /** Only encrypts if DATAHUB_MASTER_KEY is configured */
     encryptValue(plaintext: string): string {
         if (!this.encryptionEnabled) {
             return plaintext;
@@ -262,10 +221,7 @@ export class SecretService implements OnModuleInit {
         }
     }
 
-    /**
-     * Decrypt a secret value.
-     * Accepts both encrypted and unencrypted values for backward compatibility.
-     */
+    /** Accepts both encrypted and unencrypted values for backward compatibility */
     private decryptValue(value: string | null): string | null {
         if (value === null) {
             return null;
@@ -292,10 +248,7 @@ export class SecretService implements OnModuleInit {
         }
     }
 
-    /**
-     * Resolve a value from an environment variable.
-     * Supports fallback syntax: VAR_NAME|fallback_value
-     */
+    /** Supports fallback syntax: VAR_NAME|fallback_value */
     private resolveEnvValue(envNameOrFallback: string | null): string | null {
         if (!envNameOrFallback) {
             return null;
