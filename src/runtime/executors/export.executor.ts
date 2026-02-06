@@ -7,7 +7,8 @@ import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult, ExecutorContext } from '../executor-types';
-import { getPath, setPath, recordsToCsv, chunk, sleep, ensureDirectoryExists, deepClone } from '../utils';
+import { getPath, setPath, recordsToCsv, chunk, ensureDirectoryExists, deepClone } from '../utils';
+import { executeWithRetry, createRetryConfig, RetryConfig } from '../../utils/retry.utils';
 import { BATCH, LOGGER_CONTEXTS, HTTP, FILE_STORAGE, TRUNCATION, HttpMethod, EXPORTER_CODE, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../constants/index';
 import { FileFormat } from '../../constants/enums';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -52,53 +53,18 @@ interface BaseExportCfg {
     path?: string;
 }
 
-interface RetryOptions {
-    retries: number;
-    retryDelayMs: number;
-    maxRetryDelayMs: number;
-    backoffMultiplier: number;
-}
-
-function resolveRetryOptions(stepCfg: Record<string, JsonValue> | undefined): RetryOptions {
+function resolveRetryConfig(stepCfg: Record<string, JsonValue> | undefined): RetryConfig {
     const cfg = stepCfg ?? {};
     const retries = Math.max(0, Number(cfg.retries ?? 0) || 0);
     const retryDelayMs = Math.max(0, Number(cfg.retryDelayMs ?? 0) || 0);
     const maxRetryDelayMs = Math.max(0, Number(cfg.maxRetryDelayMs ?? HTTP.RETRY_MAX_DELAY_MS) || HTTP.RETRY_MAX_DELAY_MS);
     const backoffMultiplier = Math.max(1, Number(cfg.backoffMultiplier ?? HTTP.BACKOFF_MULTIPLIER) || HTTP.BACKOFF_MULTIPLIER);
-    return {
-        retries,
-        retryDelayMs,
-        maxRetryDelayMs,
+    return createRetryConfig({
+        maxAttempts: retries + 1,
+        initialDelayMs: retryDelayMs,
+        maxDelayMs: maxRetryDelayMs,
         backoffMultiplier,
-    };
-}
-
-async function executeWithRetry<T>(
-    fn: () => Promise<T>,
-    options: RetryOptions,
-    logger: DataHubLogger,
-): Promise<T | null> {
-    let attempt = 0;
-    let delay = options.retryDelayMs;
-    let lastError: unknown;
-    while (attempt <= options.retries) {
-        try {
-            return await fn();
-        } catch (error) {
-            lastError = error;
-            logger.warn('Export attempt failed', {
-                attempt,
-                retries: options.retries,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
-        attempt++;
-        if (attempt <= options.retries && delay > 0) {
-            await sleep(Math.min(delay, options.maxRetryDelayMs));
-            delay = Math.min(delay * options.backoffMultiplier, options.maxRetryDelayMs);
-        }
-    }
-    throw lastError instanceof Error ? lastError : new Error(String(lastError ?? 'Export failed'));
+    });
 }
 
 @Injectable()
@@ -253,7 +219,7 @@ export class ExportExecutor {
                 const headers = (webhookConfig.headers as Record<string, string>) ?? {};
                 const batchSize = Number(webhookConfig.batchSize ?? BATCH.BULK_SIZE) || BATCH.BULK_SIZE;
                 const records = input.map(prepareRecord);
-                const retryOptions = resolveRetryOptions(webhookConfig);
+                const retryConfig = resolveRetryConfig(webhookConfig);
                 const timeoutMs = Math.max(0, Number(webhookConfig.timeoutMs ?? 0) || 0);
 
                 if (!endpoint) {
@@ -321,8 +287,11 @@ export class ExportExecutor {
                                     if (timer) clearTimeout(timer);
                                 }
                             },
-                            retryOptions,
-                            this.logger,
+                            {
+                                config: retryConfig,
+                                logger: this.logger,
+                                context: { stepKey: step.key, endpoint },
+                            },
                         );
                         ok += batch.length;
                     } catch (e: unknown) {
