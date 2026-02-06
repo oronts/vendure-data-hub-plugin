@@ -12,7 +12,6 @@ import { getValueByPath } from './response-parser';
 import {
     initBasePaginationState,
     hasReachedMaxPages as sharedHasReachedMaxPages,
-    hasMoreByRecordCount,
 } from '../shared';
 
 /**

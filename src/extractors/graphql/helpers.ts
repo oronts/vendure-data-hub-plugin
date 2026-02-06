@@ -5,11 +5,10 @@ import { GraphQLPaginationType, HTTP_HEADERS, CONTENT_TYPES } from '../../consta
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 import { applyAuthentication, AuthConfig, createSecretResolver } from '../../utils/auth-helpers';
 import { buildUrlWithConnection, isValidGraphQLUrl as isValidGraphQLUrlUtil } from '../../utils/url-helpers';
-import { getNestedValue as getNestedValueUtil, getNestedValue } from '../../utils/object-path.utils';
+import { getNestedValue } from '../../utils/object-path.utils';
 import {
     ExtendedPaginationState,
     initExtendedPaginationState,
-    hasMoreByRecordCount,
 } from '../shared';
 
 /**

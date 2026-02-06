@@ -13,7 +13,7 @@ import {
     ApiType,
     Channel,
 } from '@vendure/core';
-import { ID, Type } from '@vendure/common/lib/shared-types';
+import { Type } from '@vendure/common/lib/shared-types';
 import {
     CurrencyCode,
     LanguageCode,

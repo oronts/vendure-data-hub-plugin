@@ -10,7 +10,6 @@ import { FileParserService } from '../../parsers/file-parser.service';
 import { JsonObject } from '../../types/index';
 import {
     parseFileContent,
-    filterByModifiedAfter as sharedFilterByModifiedAfter,
     attachMetadataToRecord as sharedAttachMetadataToRecord,
 } from '../shared';
 
