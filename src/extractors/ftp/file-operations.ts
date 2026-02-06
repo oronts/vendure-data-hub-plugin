@@ -8,7 +8,11 @@
 import { FtpFileInfo, FtpExtractorConfig, FtpFileMetadata, FtpProtocol } from './types';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { JsonObject } from '../../types/index';
-import { parseFileContent } from '../shared';
+import {
+    parseFileContent,
+    filterByModifiedAfter as sharedFilterByModifiedAfter,
+    attachMetadataToRecord as sharedAttachMetadataToRecord,
+} from '../shared';
 
 export function matchesPattern(filename: string, pattern: string): boolean {
     const regexPattern = pattern
@@ -24,6 +28,10 @@ export function filterByPattern(files: FtpFileInfo[], pattern?: string): FtpFile
     return files.filter(file => matchesPattern(file.name, pattern));
 }
 
+/**
+ * Filter FTP files by modification date.
+ * Delegates to shared utility for consistent behavior.
+ */
 export function filterByModifiedAfter(
     files: FtpFileInfo[],
     modifiedAfter?: string,
@@ -94,14 +102,15 @@ export function buildFileMetadata(
     };
 }
 
+/**
+ * Attach FTP metadata to a record.
+ * Uses shared utility with FTP-specific key.
+ */
 export function attachMetadataToRecord(
     record: JsonObject,
     metadata: FtpFileMetadata,
 ): JsonObject {
-    return {
-        ...record,
-        _ftp: metadata as unknown as JsonObject,
-    };
+    return sharedAttachMetadataToRecord(record, metadata, '_ftp');
 }
 
 export function calculateDestinationPath(

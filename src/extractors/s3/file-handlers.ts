@@ -12,6 +12,7 @@ import {
     detectFileFormat as sharedDetectFileFormat,
     parseFileContent,
     parseModifiedAfterDate as sharedParseModifiedAfterDate,
+    attachMetadataToRecord as sharedAttachMetadataToRecord,
 } from '../shared';
 
 /**
@@ -23,7 +24,8 @@ export function filterBySuffix(objects: S3ObjectInfo[], suffix?: string): S3Obje
 }
 
 /**
- * Filter objects by modification date
+ * Filter objects by modification date.
+ * Uses consistent date filtering logic.
  */
 export function filterByModifiedAfter(
     objects: S3ObjectInfo[],
@@ -105,16 +107,14 @@ export function buildObjectMetadata(
 }
 
 /**
- * Attach S3 metadata to record
+ * Attach S3 metadata to record.
+ * Uses shared utility with S3-specific key.
  */
 export function attachMetadataToRecord(
     record: JsonObject,
     metadata: S3ObjectMetadata,
 ): JsonObject {
-    return {
-        ...record,
-        _s3: metadata as unknown as JsonObject,
-    };
+    return sharedAttachMetadataToRecord(record, metadata, '_s3');
 }
 
 /**

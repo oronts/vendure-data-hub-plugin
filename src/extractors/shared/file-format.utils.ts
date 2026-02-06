@@ -1,8 +1,8 @@
 /**
  * Shared File Format Utilities
  *
- * This module eliminates code duplication between FTP and S3 extractors
- * for file format detection, content parsing options, and metadata handling.
+ * Unified file format detection, content parsing options, and metadata handling
+ * for FTP and S3 extractors.
  *
  * Previously duplicated in:
  * - src/extractors/ftp/file-operations.ts
@@ -169,11 +169,11 @@ export interface BaseFileMetadata {
 /**
  * Attach metadata to a record with a specified key
  * @param record - Record to attach metadata to
- * @param metadata - Metadata object
+ * @param metadata - Metadata object (any object type)
  * @param key - Metadata key (e.g., '_ftp', '_s3')
  * @returns Record with attached metadata
  */
-export function attachMetadataToRecord<T extends Record<string, unknown>>(
+export function attachMetadataToRecord<T extends object>(
     record: JsonObject,
     metadata: T,
     key: string,
