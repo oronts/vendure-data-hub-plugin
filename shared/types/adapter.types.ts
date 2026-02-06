@@ -47,32 +47,33 @@ export type AdapterCategory =
 /**
  * Field types for adapter configuration schema
  *
- * Uses SCREAMING_SNAKE_CASE as these are UI widget type identifiers
+ * Uses lowercase to match actual runtime usage throughout the codebase.
+ * The dashboard normalizes all field types to lowercase for comparison.
  */
 export type SchemaFieldType =
-    | 'STRING'
-    | 'NUMBER'
-    | 'BOOLEAN'
-    | 'SELECT'
-    | 'MULTISELECT'
-    | 'JSON'
-    | 'CODE'
-    | 'TEXTAREA'
-    | 'PASSWORD'
-    | 'SECRET'
-    | 'CONNECTION'
-    | 'ENTITY'
-    | 'FIELD'
-    | 'CRON'
-    | 'DATE'
-    | 'DATETIME'
-    | 'FILE'
-    | 'URL'
-    | 'EMAIL'
-    | 'ARRAY'
-    | 'OBJECT'
-    | 'MAPPING'
-    | 'EXPRESSION';
+    | 'string'      // Single-line text input
+    | 'number'      // Numeric input
+    | 'boolean'     // Checkbox/toggle
+    | 'select'      // Single-select dropdown
+    | 'multiselect' // Multi-select dropdown
+    | 'json'        // JSON editor
+    | 'code'        // Code editor with syntax highlighting
+    | 'textarea'    // Multi-line text input
+    | 'password'    // Password input (masked)
+    | 'secret'      // Secret reference picker
+    | 'connection'  // Connection reference picker
+    | 'entity'      // Entity reference picker
+    | 'field'       // Field selector
+    | 'cron'        // Cron expression input
+    | 'date'        // Date picker
+    | 'datetime'    // Date and time picker
+    | 'file'        // File upload input
+    | 'url'         // URL input with validation
+    | 'email'       // Email input with validation
+    | 'array'       // Array/list editor
+    | 'object'      // Object/map editor
+    | 'mapping'     // Field mapping editor
+    | 'expression'; // Expression editor
 
 /**
  * Operators for field dependency conditions

@@ -7,26 +7,10 @@
  */
 
 import { JsonValue } from '../../types/index';
+import type { SchemaFieldType } from '../../../shared/types/adapter.types';
 
-// SCHEMA FIELD TYPES - For UI auto-generation
-
-/**
- * Available field types for schema definitions.
- * These determine how the field is rendered in the UI.
- */
-export type SchemaFieldType =
-    | 'string'      // Single-line text input
-    | 'number'      // Numeric input
-    | 'boolean'     // Checkbox/toggle
-    | 'json'        // JSON editor
-    | 'select'      // Single-select dropdown
-    | 'multiselect' // Multi-select dropdown
-    | 'password'    // Password input (masked)
-    | 'textarea'    // Multi-line text input
-    | 'code'        // Code editor with syntax highlighting
-    | 'secret'      // Secret reference picker
-    | 'connection'  // Connection reference picker
-    | 'file';       // File upload input
+// Re-export SchemaFieldType from shared types (canonical source)
+export type { SchemaFieldType };
 
 /**
  * Option for select/multiselect fields
