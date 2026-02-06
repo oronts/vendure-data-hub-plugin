@@ -3,7 +3,7 @@
  */
 
 import { JsonValue } from '../../../types/index';
-import { TransformConfig } from '../../services/field-mapper.service';
+import { MapperTransformConfig } from '../../types/transform-config.types';
 
 // Import canonical implementations for individual operations
 import {
@@ -22,12 +22,12 @@ export const fromMinorUnitsCanonical = applyFromCentsCanonical;
 
 /**
  * Apply math transform.
- * Accepts lowercase operations from mapper's TransformConfig
+ * Accepts lowercase operations from mapper's MapperTransformConfig
  * and uses canonical functions where applicable.
  */
 export function applyMathTransform(
     value: JsonValue,
-    config: NonNullable<TransformConfig['math']>,
+    config: NonNullable<MapperTransformConfig['math']>,
 ): number {
     let num = typeof value === 'number' ? value : parseFloat(String(value));
     if (isNaN(num)) num = 0;

@@ -10,7 +10,7 @@
  */
 
 import { JsonValue, JsonObject } from '../../../types/index';
-import { TransformConfig } from '../../types/transform-config.types';
+import { MapperTransformConfig } from '../../types/transform-config.types';
 import { getDefaultEvaluator } from '../../../runtime/sandbox/safe-evaluator';
 import { CODE_SECURITY } from '../../../constants';
 import { isEmpty } from '../../../utils/value-checks.utils';
@@ -30,7 +30,7 @@ const MAX_EXPRESSION_LENGTH = CODE_SECURITY.MAX_CONDITION_LENGTH;
  */
 export function applyConditionalTransform(
     value: JsonValue,
-    config: NonNullable<TransformConfig['conditional']>,
+    config: NonNullable<MapperTransformConfig['conditional']>,
     record: JsonObject,
     getNestedValue: (obj: JsonObject, path: string) => JsonValue | undefined,
 ): JsonValue {
@@ -83,7 +83,7 @@ export function applyConditionalTransform(
  */
 export function applyCustomTransform(
     value: JsonValue,
-    config: NonNullable<TransformConfig['custom']>,
+    config: NonNullable<MapperTransformConfig['custom']>,
     record: JsonObject,
 ): JsonValue {
     try {

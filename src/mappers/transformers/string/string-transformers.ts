@@ -3,7 +3,7 @@
  */
 
 import { JsonValue, JsonObject } from '../../../types/index';
-import { TransformConfig } from '../../types/transform-config.types';
+import { MapperTransformConfig } from '../../types/transform-config.types';
 
 // Import canonical implementations
 import {
@@ -61,7 +61,7 @@ export function applyTemplateTransform(
  */
 export function applySplitTransform(
     value: JsonValue,
-    config: NonNullable<TransformConfig['split']>,
+    config: NonNullable<MapperTransformConfig['split']>,
 ): JsonValue {
     return applySplitCanonical(value, {
         delimiter: config.delimiter,
@@ -74,7 +74,7 @@ export function applySplitTransform(
  */
 export function applyJoinTransform(
     value: JsonValue,
-    config: NonNullable<TransformConfig['join']>,
+    config: NonNullable<MapperTransformConfig['join']>,
     record: JsonObject,
     getNestedValue: (obj: JsonObject, path: string) => JsonValue | undefined,
 ): string {
@@ -97,7 +97,7 @@ export function applyJoinTransform(
  */
 export function applyReplaceTransform(
     value: JsonValue,
-    config: NonNullable<TransformConfig['replace']>,
+    config: NonNullable<MapperTransformConfig['replace']>,
 ): JsonValue {
     if (typeof value !== 'string') return value;
 
@@ -113,7 +113,7 @@ export function applyReplaceTransform(
  */
 export function applyExtractTransform(
     value: JsonValue,
-    config: NonNullable<TransformConfig['extract']>,
+    config: NonNullable<MapperTransformConfig['extract']>,
 ): JsonValue {
     return applyRegexExtractCanonical(value, {
         pattern: config.pattern,
@@ -126,7 +126,7 @@ export function applyExtractTransform(
  */
 export function applyConcatTransform(
     value: JsonValue,
-    config: NonNullable<TransformConfig['concat']>,
+    config: NonNullable<MapperTransformConfig['concat']>,
     record: JsonObject,
     getNestedValue: (obj: JsonObject, path: string) => JsonValue | undefined,
 ): string {

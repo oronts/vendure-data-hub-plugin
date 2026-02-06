@@ -3,7 +3,7 @@
  */
 
 import { JsonValue } from '../../../types/index';
-import { TransformConfig } from '../../types/transform-config.types';
+import { MapperTransformConfig } from '../../types/transform-config.types';
 
 /**
  * Apply map transform using value dictionary.
@@ -11,7 +11,7 @@ import { TransformConfig } from '../../types/transform-config.types';
  */
 export function applyMapTransform(
     value: JsonValue,
-    config: NonNullable<TransformConfig['map']>,
+    config: NonNullable<MapperTransformConfig['map']>,
 ): JsonValue {
     // Input validation - return default for null/undefined
     if (value === null || value === undefined) {
@@ -43,7 +43,7 @@ export function applyMapTransform(
  */
 export function applyDefaultTransform(
     value: JsonValue | undefined,
-    config: NonNullable<TransformConfig['default']>,
+    config: NonNullable<MapperTransformConfig['default']>,
     isEmpty: (value: JsonValue | undefined) => boolean,
 ): JsonValue {
     if (config.onlyIfEmpty !== false && isEmpty(value)) {

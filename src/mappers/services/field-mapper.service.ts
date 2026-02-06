@@ -18,31 +18,38 @@ import { applyMapTransform, applyDefaultTransform } from '../transformers/array'
 import { applyConvertTransform } from '../transformers/conversion';
 import { applyConditionalTransform, applyCustomTransform, isEmpty } from '../transformers/conditional';
 import {
-    TransformType,
-    TransformConfig,
-    FieldMapping,
-    MappingResult,
-    MappingError,
-    LookupTable,
+    MapperTransformType,
+    MapperTransformConfig,
+    MapperFieldMapping,
+    MapperMappingResult,
+    MapperMappingError,
+    MapperLookupTable,
 } from '../types/transform-config.types';
 
-export type { TransformType, TransformConfig, FieldMapping, MappingResult, MappingError, LookupTable };
+export type {
+    MapperTransformType,
+    MapperTransformConfig,
+    MapperFieldMapping,
+    MapperMappingResult,
+    MapperMappingError,
+    MapperLookupTable,
+};
 
 @Injectable()
 export class FieldMapperService {
-    private lookupTables = new Map<string, LookupTable>();
+    private lookupTables = new Map<string, MapperLookupTable>();
 
     /**
      * Register a lookup table for use in transformations
      */
-    registerLookupTable(table: LookupTable): void {
+    registerMapperLookupTable(table: MapperLookupTable): void {
         this.lookupTables.set(table.name, table);
     }
 
     /**
      * Clear all registered lookup tables
      */
-    clearLookupTables(): void {
+    clearMapperLookupTables(): void {
         this.lookupTables.clear();
     }
 
@@ -51,9 +58,9 @@ export class FieldMapperService {
      */
     mapRecord(
         source: RecordObject,
-        mappings: FieldMapping[],
-    ): MappingResult {
-        const errors: MappingError[] = [];
+        mappings: MapperFieldMapping[],
+    ): MapperMappingResult {
+        const errors: MapperMappingError[] = [];
         const warnings: string[] = [];
         const data: RecordObject = {};
 
@@ -111,8 +118,8 @@ export class FieldMapperService {
      */
     mapRecords(
         sources: RecordObject[],
-        mappings: FieldMapping[],
-    ): { results: MappingResult[]; summary: { total: number; success: number; failed: number } } {
+        mappings: MapperFieldMapping[],
+    ): { results: MapperMappingResult[]; summary: { total: number; success: number; failed: number } } {
         const results = sources.map(source => this.mapRecord(source, mappings));
         const success = results.filter(r => r.success).length;
 
@@ -131,7 +138,7 @@ export class FieldMapperService {
      */
     private applyTransform(
         value: JsonValue,
-        config: TransformConfig,
+        config: MapperTransformConfig,
         record: RecordObject,
     ): JsonValue {
         switch (config.type) {
@@ -206,7 +213,7 @@ export class FieldMapperService {
 
     private applyLookupTransform(
         value: JsonValue,
-        config: NonNullable<TransformConfig['lookup']>,
+        config: NonNullable<MapperTransformConfig['lookup']>,
     ): JsonValue {
         const table = this.lookupTables.get(config.table);
         if (!table) {

@@ -3,7 +3,7 @@
  */
 
 import { JsonValue } from '../../../types/index';
-import { TransformConfig } from '../../services/field-mapper.service';
+import { MapperTransformConfig } from '../../types/transform-config.types';
 import { formatDate } from '../date/date-transformers';
 
 // Import canonical implementations
@@ -20,7 +20,7 @@ import {
  */
 export function applyConvertTransform(
     value: JsonValue,
-    config: NonNullable<TransformConfig['convert']>,
+    config: NonNullable<MapperTransformConfig['convert']>,
 ): JsonValue {
     switch (config.to) {
         case 'string':

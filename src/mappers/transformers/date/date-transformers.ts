@@ -3,7 +3,7 @@
  */
 
 import { JsonValue } from '../../../types/index';
-import { TransformConfig } from '../../services/field-mapper.service';
+import { MapperTransformConfig } from '../../types/transform-config.types';
 import { formatDate as formatDateCanonical } from '../../../transforms/field/date-transforms';
 import { ISO_DATE_PATTERN } from '../../constants';
 
@@ -14,7 +14,7 @@ export const formatDate = formatDateCanonical;
  */
 export function applyDateTransform(
     value: JsonValue,
-    config: NonNullable<TransformConfig['date']>,
+    config: NonNullable<MapperTransformConfig['date']>,
 ): JsonValue {
     let date: Date;
 

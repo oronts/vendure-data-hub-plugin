@@ -1,7 +1,7 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { JsonValue, EntityFieldSchema, VendureEntityType } from '../../types/index';
 import { RecordObject } from '../../runtime/executor-types';
-import { FieldMapping } from './field-mapper.service';
+import { MapperFieldMapping } from './field-mapper.service';
 import {
     AutoMapperConfig,
     DEFAULT_AUTO_MAPPER_CONFIG,
@@ -271,7 +271,7 @@ export class AutoMapperService {
     /**
      * Generate field mappings from suggestions
      */
-    suggestionsToMappings(suggestions: MappingSuggestion[]): FieldMapping[] {
+    suggestionsToMappings(suggestions: MappingSuggestion[]): MapperFieldMapping[] {
         return suggestions.map(s => ({
             source: s.source,
             target: s.target,
@@ -284,7 +284,7 @@ export class AutoMapperService {
      * Validate mappings against a target schema
      */
     validateMappings(
-        mappings: FieldMapping[],
+        mappings: MapperFieldMapping[],
         targetEntity: string,
     ): { valid: boolean; errors: string[]; warnings: string[] } {
         const schema = this.getEntitySchema(targetEntity);

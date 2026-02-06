@@ -38,6 +38,7 @@ export type { AdapterType, AdapterCategory, TriggerType } from '../../../shared/
  * Base adapter interface shared by all adapter types.
  * Contains metadata and schema for UI auto-generation.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TConfig is used by extending interfaces
 export interface BaseAdapter<TConfig = JsonObject> {
     /** Primary adapter type */
     readonly type: AdapterType;

@@ -3,7 +3,7 @@
  */
 
 import { JsonValue } from '../../types/index';
-import { TransformConfig } from './transform-config.types';
+import { MapperTransformConfig } from './transform-config.types';
 import { MatchConfidence } from '../../constants/validation';
 
 export type { MatchConfidence };
@@ -17,7 +17,7 @@ export interface MappingSuggestion {
     confidence: MatchConfidence;
     score: number;  // 0-100
     reason: string;
-    suggestedTransforms?: TransformConfig[];
+    suggestedTransforms?: MapperTransformConfig[];
 }
 
 /**

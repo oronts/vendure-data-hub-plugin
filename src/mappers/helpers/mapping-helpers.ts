@@ -3,7 +3,7 @@
  */
 
 import { EntityField } from '../../types/index';
-import { TransformConfig } from '../services/field-mapper.service';
+import { MapperTransformConfig } from '../types/transform-config.types';
 import { SourceFieldAnalysis } from '../types/mapping-types';
 import { BOOLEAN_MAPPINGS, BOOLEAN_DETECTOR_VALUES, ISO_DATE_PATTERN, SEPARATOR_PATTERN, CAMEL_CASE_PATTERN } from '../constants';
 
@@ -155,8 +155,8 @@ export function calculateDescriptionScore(
 export function suggestTransforms(
     source: SourceFieldAnalysis,
     target: EntityField,
-): TransformConfig[] {
-    const transforms: TransformConfig[] = [];
+): MapperTransformConfig[] {
+    const transforms: MapperTransformConfig[] = [];
 
     // String to number/money conversion
     if (source.detectedType === 'string' && (target.type === 'number' || target.type === 'money')) {

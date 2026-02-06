@@ -1,5 +1,8 @@
 /**
  * Transform Configuration Types for Mappers
+ *
+ * These are mapper-specific types, distinct from shared/types/mapping.types.ts.
+ * Uses Mapper prefix to avoid naming conflicts.
  */
 
 import { JsonValue } from '../../types/index';
@@ -11,7 +14,7 @@ export type {
     MappingError as SharedMappingError,
 } from '../../../shared/types';
 
-export type TransformType =
+export type MapperTransformType =
     | 'template'
     | 'lookup'
     | 'convert'
@@ -30,8 +33,8 @@ export type TransformType =
     | 'conditional'
     | 'custom';
 
-export interface TransformConfig {
-    type: TransformType;
+export interface MapperTransformConfig {
+    type: MapperTransformType;
     template?: string;
     lookup?: {
         table: string;
@@ -96,29 +99,29 @@ export interface TransformConfig {
     };
 }
 
-export interface FieldMapping {
+export interface MapperFieldMapping {
     source: string;
     target: string;
-    transforms?: TransformConfig[];
+    transforms?: MapperTransformConfig[];
     required?: boolean;
     defaultValue?: JsonValue;
     description?: string;
 }
 
-export interface MappingResult {
+export interface MapperMappingResult {
     success: boolean;
     data: RecordObject;
-    errors: MappingError[];
+    errors: MapperMappingError[];
     warnings: string[];
 }
 
-export interface MappingError {
+export interface MapperMappingError {
     field: string;
     message: string;
     value?: JsonValue;
 }
 
-export interface LookupTable {
+export interface MapperLookupTable {
     name: string;
     data: RecordObject[];
     keyField: string;

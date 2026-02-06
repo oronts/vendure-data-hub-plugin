@@ -80,7 +80,8 @@ export function calculateBackoffDeterministic(attempt: number, config: RetryConf
 /**
  * Options for executeWithRetry function
  */
-export interface ExecuteWithRetryOptions<T> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- T reserved for future typed retry result
+export interface ExecuteWithRetryOptions<T = unknown> {
     /** Retry configuration */
     config: RetryConfig;
     /** Callback when a retry is about to happen */
