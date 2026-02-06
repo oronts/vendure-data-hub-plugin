@@ -29,7 +29,7 @@ import {
     TriggerType,
 } from '../../../shared/types';
 
-// Re-export from shared for backward compatibility
+// Re-export from shared types
 export type { AdapterType, AdapterCategory, TriggerType } from '../../../shared/types';
 
 // BASE ADAPTER INTERFACE

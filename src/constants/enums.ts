@@ -972,8 +972,7 @@ export enum EventKind {
 }
 
 /**
- * Validation error codes - re-exported from shared types for backward compatibility.
- * Use VALIDATION_ERROR_CODE from shared/types/validation.types.ts for new code.
+ * Validation error codes - re-exported from shared types
  */
 export { VALIDATION_ERROR_CODE, type ValidationErrorCode } from '../../shared/types/validation.types';
 

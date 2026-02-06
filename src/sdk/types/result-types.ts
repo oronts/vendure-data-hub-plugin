@@ -127,11 +127,6 @@ export interface SdkValidationError {
 }
 
 /**
- * @deprecated Use SdkValidationError instead. This alias is provided for backward compatibility.
- */
-export type ValidationError = SdkValidationError;
-
-/**
  * Record that failed validation
  */
 export interface InvalidRecord {
