@@ -3,7 +3,7 @@ import { memo, useCallback } from 'react';
 import { Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@vendure/dashboard';
 import { MOVE_DIRECTION } from '../../../constants';
 import type { MoveDirection } from '../../../constants';
-import { OperatorFieldInput, GenericArgInput, OperatorSchemaField } from './OperatorFieldInput';
+import { OperatorFieldInput, GenericArgInput, OperatorSchemaField } from './operator-field-input';
 
 export interface OperatorConfig {
     op: string;

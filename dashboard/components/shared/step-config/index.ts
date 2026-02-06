@@ -1,23 +1,23 @@
-export { StepConfigPanel } from './StepConfigPanel';
-export type { StepConfigPanelProps, StepConfigData } from './StepConfigPanel';
+export { StepConfigPanel } from './step-config-panel';
+export type { StepConfigPanelProps, StepConfigData } from './step-config-panel';
 
-export { AdapterSelector } from './AdapterSelector';
+export { AdapterSelector } from './adapter-selector';
 export type { AdapterSelectorProps } from '../../../types';
 
-export { AdapterRequiredWarning } from './AdapterRequiredWarning';
-export type { AdapterRequiredWarningProps } from './AdapterRequiredWarning';
+export { AdapterRequiredWarning } from './adapter-required-warning';
+export type { AdapterRequiredWarningProps } from './adapter-required-warning';
 
-export { ThroughputSettingsComponent } from './ThroughputSettingsComponent';
-export type { ThroughputSettingsComponentProps } from './ThroughputSettingsComponent';
+export { ThroughputSettingsComponent } from './throughput-settings-component';
+export type { ThroughputSettingsComponentProps } from './throughput-settings-component';
 
-export { RouteConfigComponent } from './RouteConfigComponent';
-export type { RouteConfigComponentProps } from './RouteConfigComponent';
+export { RouteConfigComponent } from './route-config-component';
+export type { RouteConfigComponentProps } from './route-config-component';
 
-export { ValidateConfigComponent } from './ValidateConfigComponent';
-export type { ValidateConfigComponentProps } from './ValidateConfigComponent';
+export { ValidateConfigComponent } from './validate-config-component';
+export type { ValidateConfigComponentProps } from './validate-config-component';
 
-export { EnrichConfigComponent } from './EnrichConfigComponent';
-export type { EnrichConfigComponentProps } from './EnrichConfigComponent';
+export { EnrichConfigComponent } from './enrich-config-component';
+export type { EnrichConfigComponentProps } from './enrich-config-component';
 
 export {
     AdvancedMapEditor,
@@ -30,5 +30,5 @@ export { StepTester } from './step-tester';
 
 export { OperatorCheatSheetButton } from './operator-cheatsheet';
 
-export { TestResultContainer, JsonDisplay } from './TestResultContainer';
-export type { TestResultContainerProps } from './TestResultContainer';
+export { TestResultContainer, JsonDisplay } from './test-result-container';
+export type { TestResultContainerProps } from './test-result-container';

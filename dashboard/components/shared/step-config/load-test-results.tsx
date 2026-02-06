@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { formatKey, formatValue } from '../../../utils/formatters';
-import { TestResultContainer, JsonDisplay } from './TestResultContainer';
+import { TestResultContainer, JsonDisplay } from './test-result-container';
 import type { TestResult } from './step-test-handlers';
 
 interface LoadTestResultsProps {
