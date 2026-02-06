@@ -26,22 +26,22 @@ import {
     ThroughputMetrics,
     RealTimeStats,
     RunHistoryItem,
-    ThroughputDataPoint,
 } from './analytics.types';
+import { getStartDate, calculateTimeSeries } from './time-series.helpers';
+import { extractRunMetrics, groupErrorsByKey, getTopErrors } from './metrics.helpers';
 import {
-    getStartDate,
-    calculateTimeSeries,
-    calculateThroughputTimeSeries,
-} from './time-series.helpers';
+    aggregateRunStats,
+    calculateSuccessRates,
+    buildOverviewMetrics,
+} from './overview.helpers';
 import {
-    percentile,
-    calculateSuccessRate,
-    calculateAverage,
-    extractRunMetrics,
-    calculateThroughputRates,
-    groupErrorsByKey,
-    getTopErrors,
-} from './metrics.helpers';
+    aggregatePipelineMetrics,
+    buildPerformanceReport,
+} from './performance.helpers';
+import {
+    calculateThroughputData,
+    buildThroughputResult,
+} from './throughput.helpers';
 
 export type { TimeRange, TimeSeriesPoint, AnalyticsOverview, PipelinePerformance, ErrorAnalytics, ThroughputMetrics };
 
@@ -60,104 +60,7 @@ export class AnalyticsService implements OnModuleInit {
         this.logger.info('AnalyticsService initialized');
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Private helper methods for getOverview
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Aggregate run statistics from pipeline runs
-     */
-    private aggregateRunStats(
-        todayRuns: Array<{ status: RunStatus; metrics: PipelineMetrics | null }>,
-        weekRuns: Array<{ status: RunStatus }>,
-    ): {
-        recordsProcessedToday: number;
-        recordsFailedToday: number;
-        successfulRunsToday: number;
-        successfulRunsWeek: number;
-        durations: number[];
-    } {
-        let recordsProcessedToday = 0;
-        let recordsFailedToday = 0;
-        let successfulRunsToday = 0;
-        let successfulRunsWeek = 0;
-        const durations: number[] = [];
-
-        for (const run of todayRuns) {
-            const metrics = extractRunMetrics(run.metrics);
-            recordsProcessedToday += metrics.recordsProcessed;
-            recordsFailedToday += metrics.recordsFailed;
-            if (metrics.durationMs) {
-                durations.push(metrics.durationMs);
-            }
-            if (run.status === RunStatus.COMPLETED) {
-                successfulRunsToday++;
-            }
-        }
-
-        for (const run of weekRuns) {
-            if (run.status === RunStatus.COMPLETED) {
-                successfulRunsWeek++;
-            }
-        }
-
-        return {
-            recordsProcessedToday,
-            recordsFailedToday,
-            successfulRunsToday,
-            successfulRunsWeek,
-            durations,
-        };
-    }
-
-    /**
-     * Calculate success rates for today and this week
-     */
-    private calculateSuccessRates(
-        successfulRunsToday: number,
-        totalRunsToday: number,
-        successfulRunsWeek: number,
-        totalRunsWeek: number,
-    ): { successRateToday: number; successRateWeek: number } {
-        return {
-            successRateToday: calculateSuccessRate(successfulRunsToday, totalRunsToday),
-            successRateWeek: calculateSuccessRate(successfulRunsWeek, totalRunsWeek),
-        };
-    }
-
-    /**
-     * Build the final overview metrics object
-     */
-    private buildOverviewMetrics(params: {
-        totalPipelines: number;
-        activePipelines: number;
-        runsToday: number;
-        runsThisWeek: number;
-        activeJobs: number;
-        recordsProcessedToday: number;
-        recordsFailedToday: number;
-        successRateToday: number;
-        successRateWeek: number;
-        durations: number[];
-    }): AnalyticsOverview {
-        return {
-            totalPipelines: params.totalPipelines,
-            activePipelines: params.activePipelines,
-            totalJobs: params.runsToday,
-            activeJobs: params.activeJobs,
-            runsToday: params.runsToday,
-            runsThisWeek: params.runsThisWeek,
-            successRateToday: params.successRateToday,
-            successRateWeek: params.successRateWeek,
-            recordsProcessedToday: params.recordsProcessedToday,
-            recordsFailedToday: params.recordsFailedToday,
-            avgDurationMsToday: calculateAverage(params.durations),
-        };
-    }
-
-    /**
-     * Fetch all overview data from the database in parallel
-     */
+    /** Fetch all overview data from the database in parallel */
     private async fetchOverviewData(startOfDay: Date, startOfWeek: Date) {
         return Promise.all([
             this.connection.rawConnection.getRepository(Pipeline).count(),
@@ -178,94 +81,7 @@ export class AnalyticsService implements OnModuleInit {
         ]);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Private helper methods for getPipelinePerformance
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Aggregate metrics for pipeline runs
-     */
-    private aggregatePipelineMetrics(runs: PipelineRun[]): {
-        durations: number[];
-        totalRecordsProcessed: number;
-        totalRecordsFailed: number;
-        successfulRuns: number;
-    } {
-        const durations: number[] = [];
-        let totalRecordsProcessed = 0;
-        let totalRecordsFailed = 0;
-        let successfulRuns = 0;
-
-        for (const run of runs) {
-            const metrics = extractRunMetrics(run.metrics);
-            if (metrics.durationMs) {
-                durations.push(metrics.durationMs);
-            }
-            totalRecordsProcessed += metrics.recordsProcessed;
-            totalRecordsFailed += metrics.recordsFailed;
-            if (run.status === RunStatus.COMPLETED) {
-                successfulRuns++;
-            }
-        }
-
-        return { durations, totalRecordsProcessed, totalRecordsFailed, successfulRuns };
-    }
-
-    /**
-     * Calculate performance trends (percentiles) from durations
-     */
-    private calculatePerformanceTrends(durations: number[]): {
-        avgDurationMs: number;
-        p50DurationMs: number;
-        p95DurationMs: number;
-        p99DurationMs: number;
-    } {
-        // Sort durations for percentile calculations
-        const sortedDurations = [...durations].sort((a, b) => a - b);
-        return {
-            avgDurationMs: calculateAverage(sortedDurations),
-            p50DurationMs: percentile(sortedDurations, 50),
-            p95DurationMs: percentile(sortedDurations, 95),
-            p99DurationMs: percentile(sortedDurations, 99),
-        };
-    }
-
-    /**
-     * Build a performance report for a single pipeline
-     */
-    private buildPerformanceReport(
-        pipeline: Pipeline,
-        runs: PipelineRun[],
-        aggregatedMetrics: {
-            durations: number[];
-            totalRecordsProcessed: number;
-            totalRecordsFailed: number;
-            successfulRuns: number;
-        },
-    ): PipelinePerformance {
-        const trends = this.calculatePerformanceTrends(aggregatedMetrics.durations);
-        return {
-            pipelineId: pipeline.id.toString(),
-            pipelineCode: pipeline.code,
-            pipelineName: pipeline.name,
-            totalRuns: runs.length,
-            successfulRuns: aggregatedMetrics.successfulRuns,
-            failedRuns: runs.length - aggregatedMetrics.successfulRuns,
-            successRate: calculateSuccessRate(aggregatedMetrics.successfulRuns, runs.length),
-            avgDurationMs: trends.avgDurationMs,
-            p50DurationMs: trends.p50DurationMs,
-            p95DurationMs: trends.p95DurationMs,
-            p99DurationMs: trends.p99DurationMs,
-            totalRecordsProcessed: aggregatedMetrics.totalRecordsProcessed,
-            totalRecordsFailed: aggregatedMetrics.totalRecordsFailed,
-            lastRunAt: runs[0]?.createdAt,
-            lastRunStatus: runs[0]?.status,
-        };
-    }
-
-    /**
-     * Get analytics overview
-     */
+    /** Get analytics overview */
     async getOverview(ctx: RequestContext): Promise<AnalyticsOverview> {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
@@ -279,8 +95,8 @@ export class AnalyticsService implements OnModuleInit {
             await this.fetchOverviewData(startOfDay, startOfWeek);
 
         // Aggregate run statistics and calculate success rates
-        const runStats = this.aggregateRunStats(todayRuns, weekRuns);
-        const successRates = this.calculateSuccessRates(
+        const runStats = aggregateRunStats(todayRuns, weekRuns);
+        const successRates = calculateSuccessRates(
             runStats.successfulRunsToday,
             todayRuns.length,
             runStats.successfulRunsWeek,
@@ -288,7 +104,7 @@ export class AnalyticsService implements OnModuleInit {
         );
 
         // Build and return the overview metrics
-        return this.buildOverviewMetrics({
+        return buildOverviewMetrics({
             totalPipelines,
             activePipelines,
             runsToday,
@@ -302,42 +118,7 @@ export class AnalyticsService implements OnModuleInit {
         });
     }
 
-    /**
-     * Get pipeline performance metrics
-     */
-    async getPipelinePerformance(
-        ctx: RequestContext,
-        options?: {
-            pipelineId?: string;
-            timeRange?: TimeRange;
-            limit?: number;
-        },
-    ): Promise<PipelinePerformance[]> {
-        const startDate = getStartDate(options?.timeRange || '30d');
-
-        // Fetch pipelines
-        const pipelines = await this.fetchPipelines(options?.pipelineId, options?.limit);
-        if (pipelines.length === 0) {
-            return [];
-        }
-
-        // Batch load and group runs by pipeline
-        const runsByPipelineId = await this.loadRunsByPipeline(pipelines, startDate);
-
-        // Build performance reports for each pipeline
-        const results = pipelines.map(pipeline => {
-            const runs = runsByPipelineId.get(pipeline.id) || [];
-            const aggregatedMetrics = this.aggregatePipelineMetrics(runs);
-            return this.buildPerformanceReport(pipeline, runs, aggregatedMetrics);
-        });
-
-        // Sort by total runs descending
-        return results.sort((a, b) => b.totalRuns - a.totalRuns);
-    }
-
-    /**
-     * Fetch pipelines based on optional ID filter
-     */
+    /** Fetch pipelines based on optional ID filter */
     private async fetchPipelines(pipelineId?: string, limit?: number): Promise<Pipeline[]> {
         if (pipelineId) {
             const pipeline = await this.connection.rawConnection.getRepository(Pipeline).findOne({
@@ -350,9 +131,7 @@ export class AnalyticsService implements OnModuleInit {
         });
     }
 
-    /**
-     * Load all runs for given pipelines and group by pipeline ID
-     */
+    /** Load all runs for given pipelines and group by pipeline ID */
     private async loadRunsByPipeline(
         pipelines: Pipeline[],
         startDate: Date,
@@ -379,13 +158,38 @@ export class AnalyticsService implements OnModuleInit {
         return runsByPipelineId;
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Private helper methods for getErrorAnalytics
-    // ─────────────────────────────────────────────────────────────────────────────
+    /** Get pipeline performance metrics */
+    async getPipelinePerformance(
+        ctx: RequestContext,
+        options?: {
+            pipelineId?: string;
+            timeRange?: TimeRange;
+            limit?: number;
+        },
+    ): Promise<PipelinePerformance[]> {
+        const startDate = getStartDate(options?.timeRange || '30d');
 
-    /**
-     * Build where clause for error analytics query
-     */
+        // Fetch pipelines
+        const pipelines = await this.fetchPipelines(options?.pipelineId, options?.limit);
+        if (pipelines.length === 0) {
+            return [];
+        }
+
+        // Batch load and group runs by pipeline
+        const runsByPipelineId = await this.loadRunsByPipeline(pipelines, startDate);
+
+        // Build performance reports for each pipeline
+        const results = pipelines.map(pipeline => {
+            const runs = runsByPipelineId.get(pipeline.id) || [];
+            const aggregatedMetrics = aggregatePipelineMetrics(runs);
+            return buildPerformanceReport(pipeline, runs, aggregatedMetrics);
+        });
+
+        // Sort by total runs descending
+        return results.sort((a, b) => b.totalRuns - a.totalRuns);
+    }
+
+    /** Build where clause for error analytics query */
     private buildErrorWhereClause(startDate: Date, pipelineId?: string): FindOptionsWhere<DataHubRecordError> {
         const whereClause: FindOptionsWhere<DataHubRecordError> = { createdAt: MoreThan(startDate) };
         if (pipelineId) {
@@ -394,9 +198,7 @@ export class AnalyticsService implements OnModuleInit {
         return whereClause;
     }
 
-    /**
-     * Group errors and build analytics result
-     */
+    /** Group errors and build analytics result */
     private buildErrorAnalyticsResult(errors: DataHubRecordError[], timeRange: TimeRange): ErrorAnalytics {
         // Group errors by step
         const errorsByStepMap = groupErrorsByKey(errors, error => error.stepKey);
@@ -425,9 +227,7 @@ export class AnalyticsService implements OnModuleInit {
         return { totalErrors: errors.length, errorsByStep, errorsByPipeline, topErrors, errorTrend };
     }
 
-    /**
-     * Get error analytics
-     */
+    /** Get error analytics */
     async getErrorAnalytics(
         ctx: RequestContext,
         options?: {
@@ -448,66 +248,7 @@ export class AnalyticsService implements OnModuleInit {
         return this.buildErrorAnalyticsResult(errors, timeRange);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Private helper methods for getThroughputMetrics
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Process runs to calculate throughput data points and peak throughput
-     */
-    private calculateThroughputData(runs: Array<{ metrics: PipelineMetrics | null; createdAt: Date }>): {
-        totalRecords: number;
-        peakThroughput: number;
-        peakThroughputAt: Date;
-        throughputPoints: ThroughputDataPoint[];
-    } {
-        let totalRecords = 0;
-        let peakThroughput = 0;
-        let peakThroughputAt = new Date();
-        const throughputPoints: ThroughputDataPoint[] = [];
-
-        for (const run of runs) {
-            const metrics = extractRunMetrics(run.metrics);
-            const records = metrics.recordsProcessed;
-            const durationMs = metrics.durationMs || 1;
-            totalRecords += records;
-
-            const throughput = records / (durationMs / 1000); // records per second
-            if (throughput > peakThroughput) {
-                peakThroughput = throughput;
-                peakThroughputAt = run.createdAt;
-            }
-
-            throughputPoints.push({ timestamp: run.createdAt, records, durationMs });
-        }
-
-        return { totalRecords, peakThroughput, peakThroughputAt, throughputPoints };
-    }
-
-    /**
-     * Build the final throughput metrics result
-     */
-    private buildThroughputResult(
-        throughputData: { totalRecords: number; peakThroughput: number; peakThroughputAt: Date; throughputPoints: ThroughputDataPoint[] },
-        durationHours: number,
-        timeRange: TimeRange,
-    ): ThroughputMetrics {
-        const rates = calculateThroughputRates(throughputData.totalRecords, durationHours);
-        const throughputTrend = calculateThroughputTimeSeries(throughputData.throughputPoints, timeRange);
-
-        return {
-            recordsPerSecond: rates.recordsPerSecond,
-            recordsPerMinute: rates.recordsPerMinute,
-            recordsPerHour: rates.recordsPerHour,
-            peakThroughput: Math.round(throughputData.peakThroughput * 100) / 100,
-            peakThroughputAt: throughputData.peakThroughputAt,
-            throughputTrend,
-        };
-    }
-
-    /**
-     * Get throughput metrics
-     */
+    /** Get throughput metrics */
     async getThroughputMetrics(
         ctx: RequestContext,
         options?: {
@@ -529,17 +270,11 @@ export class AnalyticsService implements OnModuleInit {
             select: ['metrics', 'createdAt', 'finishedAt'],
         });
 
-        const throughputData = this.calculateThroughputData(runs);
-        return this.buildThroughputResult(throughputData, durationHours, timeRange);
+        const throughputData = calculateThroughputData(runs);
+        return buildThroughputResult(throughputData, durationHours, timeRange);
     }
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Private helper methods for getRunHistory
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Build where clause for run history query
-     */
+    /** Build where clause for run history query */
     private buildRunHistoryWhereClause(options?: {
         pipelineId?: string;
         status?: string;
@@ -558,9 +293,7 @@ export class AnalyticsService implements OnModuleInit {
         return whereClause;
     }
 
-    /**
-     * Map pipeline run to run history item
-     */
+    /** Map pipeline run to run history item */
     private mapRunToHistoryItem(run: PipelineRun): RunHistoryItem {
         const metrics = extractRunMetrics(run.metrics);
         return {
@@ -578,9 +311,7 @@ export class AnalyticsService implements OnModuleInit {
         };
     }
 
-    /**
-     * Get run history with pagination
-     */
+    /** Get run history with pagination */
     async getRunHistory(
         ctx: RequestContext,
         options?: {
@@ -607,9 +338,7 @@ export class AnalyticsService implements OnModuleInit {
         };
     }
 
-    /**
-     * Get real-time stats (for dashboard polling)
-     */
+    /** Get real-time stats (for dashboard polling) */
     async getRealTimeStats(ctx: RequestContext): Promise<RealTimeStats> {
         const oneMinuteAgo = new Date(Date.now() - TIME.ONE_MINUTE_MS);
         const fiveMinutesAgo = new Date(Date.now() - TIME.FIVE_MINUTES_MS);
