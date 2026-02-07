@@ -119,90 +119,25 @@ export class PostgresLockBackend implements LockBackend {
         ttlMs: number,
         now: number,
     ): Promise<boolean> {
-        // Clean up expired locks first
-        await this.deleteExpiredLock(key);
+        const expiresAt = new Date(now + ttlMs);
+        const nowDate = new Date(now);
 
-        // Try to insert new lock
-        const result = await this.insertLock(key, owner, ttlMs, now);
+        // Atomic upsert: insert new lock, or update if expired/re-entrant (same owner)
+        const rows = await this.connection.rawConnection.query(
+            `INSERT INTO data_hub_lock ("key", "owner", "expiresAt")
+             VALUES ($1, $2, $3)
+             ON CONFLICT ("key") DO UPDATE SET "owner" = $2, "expiresAt" = $3
+             WHERE data_hub_lock."expiresAt" < $4 OR data_hub_lock."owner" = $2
+             RETURNING "key"`,
+            [key, owner, expiresAt, nowDate],
+        );
 
-        if (this.wasInsertSuccessful(result)) {
-            this.setMemoryLock(key, owner, ttlMs, now);
-            return true;
-        }
-
-        // Check for re-entrant lock (we already own it)
-        return this.tryReentrantAcquire(key, owner, ttlMs, now);
-    }
-
-    private async deleteExpiredLock(key: string): Promise<void> {
-        await this.connection.rawConnection
-            .createQueryBuilder()
-            .delete()
-            .from('data_hub_lock')
-            .where('key = :key AND expiresAt < :now', { key, now: new Date() })
-            .execute();
-    }
-
-    private async insertLock(
-        key: string,
-        owner: string,
-        ttlMs: number,
-        now: number,
-    ): Promise<{ raw?: { affectedRows?: number; rowCount?: number } }> {
-        return this.connection.rawConnection
-            .createQueryBuilder()
-            .insert()
-            .into('data_hub_lock')
-            .values({
-                key,
-                owner,
-                expiresAt: new Date(now + ttlMs),
-            })
-            .orIgnore()
-            .execute();
-    }
-
-    private wasInsertSuccessful(result: {
-        raw?: { affectedRows?: number; rowCount?: number };
-    }): boolean {
-        return !!(result.raw?.affectedRows && result.raw.affectedRows > 0) ||
-               !!(result.raw?.rowCount && result.raw.rowCount > 0);
-    }
-
-    private async tryReentrantAcquire(
-        key: string,
-        owner: string,
-        ttlMs: number,
-        now: number,
-    ): Promise<boolean> {
-        const existingDb = await this.connection.rawConnection
-            .createQueryBuilder()
-            .select('*')
-            .from('data_hub_lock', 'lock')
-            .where('lock.key = :key', { key })
-            .getRawOne();
-
-        if (existingDb && existingDb.owner === owner) {
-            await this.updateLockExpiry(key, owner, ttlMs, now);
+        if (Array.isArray(rows) && rows.length > 0) {
             this.setMemoryLock(key, owner, ttlMs, now);
             return true;
         }
 
         return false;
-    }
-
-    private async updateLockExpiry(
-        key: string,
-        owner: string,
-        ttlMs: number,
-        now: number,
-    ): Promise<void> {
-        await this.connection.rawConnection
-            .createQueryBuilder()
-            .update('data_hub_lock')
-            .set({ expiresAt: new Date(now + ttlMs) })
-            .where('key = :key AND owner = :owner', { key, owner })
-            .execute();
     }
 
     private setMemoryLock(key: string, owner: string, ttlMs: number, now: number): void {
