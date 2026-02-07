@@ -202,7 +202,10 @@ export class DataHubFileUploadController {
         }
 
         res.setHeader('Content-Type', file.mimeType);
-        res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
+        const sanitizedName = file.originalName
+            .replace(/[\x00-\x1f\x7f"\\]/g, '')
+            .replace(/[^\x20-\x7e]/g, '_');
+        res.setHeader('Content-Disposition', `attachment; filename="${sanitizedName}"`);
         res.setHeader('Content-Length', file.size);
 
         return res.send(content);
