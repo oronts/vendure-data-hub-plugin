@@ -512,13 +512,15 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
             const records: RecordEnvelope[] = [];
 
             try {
+                const MAX_PREVIEW_LIMIT = 1000;
+                const safeLimit = Math.max(1, Math.min(Math.floor(limit), MAX_PREVIEW_LIMIT));
                 const previewQuery = hasLimitClause(config.query)
                     ? config.query
-                    : `${config.query} LIMIT ${limit}`;
+                    : `${config.query} LIMIT ${safeLimit}`;
 
                 const result = await client.query(previewQuery, config.parameters as unknown[]);
 
-                for (const row of result.rows.slice(0, limit)) {
+                for (const row of result.rows.slice(0, safeLimit)) {
                     records.push({
                         data: row as JsonObject,
                         meta: {
