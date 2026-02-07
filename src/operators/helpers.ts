@@ -1,4 +1,5 @@
 import { JsonValue, JsonObject } from '../types';
+import { validateRegexSafety } from '../utils/safe-regex.utils';
 import { TRANSFORM_LIMITS } from '../constants/index';
 import {
     getNestedValue as getNestedValueUtil,
@@ -49,10 +50,11 @@ export function compare(
             return typeof left === 'string' && typeof right === 'string' && left.endsWith(right);
         case 'regex':
             if (typeof left === 'string' && typeof right === 'string') {
+                const safety = validateRegexSafety(right);
+                if (!safety.safe) return false;
                 try {
                     return new RegExp(right).test(left);
                 } catch {
-                    // Invalid regex pattern - return false
                     return false;
                 }
             }

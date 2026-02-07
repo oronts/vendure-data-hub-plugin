@@ -1,5 +1,6 @@
 import { JsonObject } from '../types';
 import { getNestedValue, setNestedValue, deepClone, slugify as slugifyStr } from '../helpers';
+import { createSafeRegex } from '../../utils/safe-regex.utils';
 
 export function applySplit(
     record: JsonObject,
@@ -166,7 +167,7 @@ export function applyExtractRegex(
 
     if (typeof value === 'string') {
         try {
-            const regex = new RegExp(pattern, flags);
+            const regex = createSafeRegex(pattern, flags);
             const match = value.match(regex);
 
             if (match) {
@@ -200,7 +201,7 @@ export function applyReplaceRegex(
 
     if (typeof value === 'string') {
         try {
-            const regex = new RegExp(pattern, flags);
+            const regex = createSafeRegex(pattern, flags);
             const replaced = value.replace(regex, replacement);
             setNestedValue(result, path, replaced);
         } catch {

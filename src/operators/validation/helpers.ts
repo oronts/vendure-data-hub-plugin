@@ -3,6 +3,7 @@ import { getNestedValue, setNestedValue, deepClone } from '../helpers';
 import { ValidationError } from './types';
 import { VALIDATION_RULE } from '../constants';
 import { isEmpty } from '../../utils/value-checks.utils';
+import { validateRegexSafety } from '../../utils/safe-regex.utils';
 
 // Re-export isEmpty for consumers of this module
 export { isEmpty };
@@ -44,6 +45,15 @@ export function validateFormat(
         return {
             field,
             message: errorMessage || `Field '${field}' must be a string for format validation`,
+            rule: VALIDATION_RULE.FORMAT,
+        };
+    }
+
+    const safety = validateRegexSafety(pattern);
+    if (!safety.safe) {
+        return {
+            field,
+            message: `Unsafe regex pattern for field '${field}': ${safety.reason}`,
             rule: VALIDATION_RULE.FORMAT,
         };
     }

@@ -4,6 +4,8 @@
  * String manipulation transform operations.
  */
 
+import { createSafeRegex } from '../../utils/safe-regex.utils';
+
 import { TransformConfig } from '../../types/index';
 import { JsonValue, JsonObject } from '../../types/index';
 import { slugify } from '../../operators/helpers';
@@ -97,7 +99,7 @@ export function applyReplace(value: JsonValue, config: TransformConfig): JsonVal
 export function applyRegexReplace(value: JsonValue, config: TransformConfig): JsonValue {
     if (typeof value === 'string' && config.pattern) {
         const flags = config.global ? 'g' : '';
-        const regex = new RegExp(config.pattern, flags);
+        const regex = createSafeRegex(config.pattern, flags);
         return value.replace(regex, config.replacement ?? '');
     }
     return value;
@@ -108,7 +110,7 @@ export function applyRegexReplace(value: JsonValue, config: TransformConfig): Js
  */
 export function applyRegexExtract(value: JsonValue, config: TransformConfig): JsonValue {
     if (typeof value === 'string' && config.pattern) {
-        const regex = new RegExp(config.pattern);
+        const regex = createSafeRegex(config.pattern);
         const match = value.match(regex);
         if (match) {
             const group = config.group ?? 0;
