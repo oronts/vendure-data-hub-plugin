@@ -1,5 +1,7 @@
 import { JsonValue, JsonObject } from '../types';
 
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 export function getNestedValue(obj: JsonObject | unknown, path: string): JsonValue | undefined {
     if (!obj || !path) {
         return undefined;
@@ -9,6 +11,9 @@ export function getNestedValue(obj: JsonObject | unknown, path: string): JsonVal
     let current: unknown = obj;
 
     for (const part of parts) {
+        if (DANGEROUS_KEYS.has(part)) {
+            return undefined;
+        }
         if (current === null || current === undefined) {
             return undefined;
         }
@@ -31,6 +36,9 @@ export function setNestedValue(obj: JsonObject, path: string, value: JsonValue):
 
     for (let i = 0; i < parts.length - 1; i++) {
         const part = parts[i];
+        if (DANGEROUS_KEYS.has(part)) {
+            return;
+        }
         if (!(part in current) || typeof current[part] !== 'object' || current[part] === null) {
             current[part] = {};
         }
@@ -38,6 +46,9 @@ export function setNestedValue(obj: JsonObject, path: string, value: JsonValue):
     }
 
     const lastPart = parts[parts.length - 1];
+    if (DANGEROUS_KEYS.has(lastPart)) {
+        return;
+    }
     current[lastPart] = value;
 }
 
@@ -51,6 +62,9 @@ export function removeNestedValue(obj: JsonObject, path: string): void {
 
     for (let i = 0; i < parts.length - 1; i++) {
         const part = parts[i];
+        if (DANGEROUS_KEYS.has(part)) {
+            return;
+        }
         if (!(part in current) || typeof current[part] !== 'object' || current[part] === null) {
             return; // Path doesn't exist
         }
@@ -58,6 +72,9 @@ export function removeNestedValue(obj: JsonObject, path: string): void {
     }
 
     const lastPart = parts[parts.length - 1];
+    if (DANGEROUS_KEYS.has(lastPart)) {
+        return;
+    }
     delete current[lastPart];
 }
 
@@ -70,6 +87,9 @@ export function hasNestedValue(obj: JsonObject, path: string): boolean {
     let current: JsonValue = obj;
 
     for (const part of parts) {
+        if (DANGEROUS_KEYS.has(part)) {
+            return false;
+        }
         if (current === null || current === undefined) {
             return false;
         }
@@ -120,15 +140,20 @@ export function omitPaths(obj: JsonObject, paths: string[]): JsonObject {
     return clone;
 }
 
-export function getAllPaths(obj: JsonObject, prefix: string = ''): string[] {
+export function getAllPaths(obj: JsonObject, prefix: string = '', maxDepth: number = 32): string[] {
+    if (maxDepth <= 0) {
+        return prefix ? [prefix] : [];
+    }
+
     const paths: string[] = [];
 
     for (const key of Object.keys(obj)) {
+        if (DANGEROUS_KEYS.has(key)) continue;
         const currentPath = prefix ? `${prefix}.${key}` : key;
         const value = obj[key];
 
         if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-            paths.push(...getAllPaths(value as JsonObject, currentPath));
+            paths.push(...getAllPaths(value as JsonObject, currentPath, maxDepth - 1));
         } else {
             paths.push(currentPath);
         }
