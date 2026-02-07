@@ -87,27 +87,6 @@ export function cn(...classes: (string | boolean | undefined | null)[]): string 
     return classes.filter((c): c is string => typeof c === 'string' && c.length > 0).join(' ');
 }
 
-export function formatDuration(ms: number): string {
-    if (ms < 1000) return `${ms}ms`;
-    const seconds = Math.floor(ms / 1000);
-    if (seconds < 60) return `${seconds}s`;
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    if (minutes < 60) {
-        return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
-    }
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
-}
-
-export function formatCompactNumber(num: number): string {
-    if (num < 1000) return num.toString();
-    if (num < 1_000_000) return `${(num / 1000).toFixed(1).replace(/\.0$/, '')}K`;
-    if (num < 1_000_000_000) return `${(num / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-    return `${(num / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`;
-}
-
 export function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

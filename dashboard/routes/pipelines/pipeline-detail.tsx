@@ -13,12 +13,14 @@ import {
     useDetailPage,
 } from '@vendure/dashboard';
 import { AnyRoute, useNavigate } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { DATAHUB_PERMISSIONS, ROUTES, TOAST_PIPELINE } from '../../constants';
 import {
     createPipelineDocument,
     pipelineDetailDocument,
     updatePipelineDocument,
+    pipelineKeys,
 } from '../../hooks';
 import type { PipelineDefinition, ValidationIssue, PipelineEntity } from '../../types';
 import { PipelineRunsBlock } from './pipeline-runs';
@@ -53,6 +55,7 @@ export const pipelineDetail: DashboardRouteDefinition = {
 function PipelineDetailPage({ route }: { route: AnyRoute }) {
     const params = route.useParams();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const creating = params.id === 'new';
 
     const { form, submitHandler, entity, isPending, resetForm } = useDetailPage({
@@ -107,8 +110,11 @@ function PipelineDetailPage({ route }: { route: AnyRoute }) {
     }, [setValidation]);
 
     const handleStatusChange = React.useCallback(() => {
-        window.location.reload();
-    }, []);
+        queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
+        if (params.id && params.id !== 'new') {
+            queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(String(params.id)) });
+        }
+    }, [queryClient, params.id]);
 
     // Scroll to runs section if hash is #runs
     React.useEffect(() => {

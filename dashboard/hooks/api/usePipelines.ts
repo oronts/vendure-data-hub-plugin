@@ -246,11 +246,9 @@ export function useRunPipeline() {
     return useMutation({
         mutationFn: (pipelineId: string) =>
             api.mutate(runPipelineDocument, { pipelineId }).then((res) => res.startDataHubPipelineRun),
-        onSuccess: (data) => {
+        onSuccess: (_data, pipelineId) => {
             queryClient.invalidateQueries({ queryKey: runKeys.lists() });
-            if (data?.id) {
-                queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(String(data.id)) });
-            }
+            queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(pipelineId) });
         },
         onError: createMutationErrorHandler('run pipeline'),
     });
@@ -303,74 +301,36 @@ export function usePipelineTimeline(pipelineId: string | undefined, limit?: numb
     });
 }
 
-export function useSubmitPipelineForReview() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (id: string) =>
-            api
-                .mutate(submitPipelineForReviewDocument, { id })
-                .then((res) => res.submitDataHubPipelineForReview),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-            if (data?.id) {
-                queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(String(data.id)) });
-            }
-        },
-        onError: createMutationErrorHandler('submit pipeline for review'),
-    });
+function createPipelineStatusHook<TDoc extends Parameters<typeof api.mutate>[0]>(
+    document: TDoc,
+    resultKey: string,
+    actionName: string,
+) {
+    return function usePipelineStatusMutation() {
+        const queryClient = useQueryClient();
+        return useMutation({
+            mutationFn: (id: string) =>
+                api.mutate(document, { id }).then((res) => (res as Record<string, unknown>)[resultKey]),
+            onSuccess: (data) => {
+                queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
+                if (data && typeof data === 'object' && 'id' in data) {
+                    queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(String(data.id)) });
+                }
+            },
+            onError: createMutationErrorHandler(actionName),
+        });
+    };
 }
 
-export function useApprovePipeline() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (id: string) =>
-            api
-                .mutate(approvePipelineDocument, { id })
-                .then((res) => res.approveDataHubPipeline),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-            if (data?.id) {
-                queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(String(data.id)) });
-            }
-        },
-        onError: createMutationErrorHandler('approve pipeline'),
-    });
-}
-
-export function useRejectPipeline() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (id: string) =>
-            api
-                .mutate(rejectPipelineDocument, { id })
-                .then((res) => res.rejectDataHubPipelineReview),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-            if (data?.id) {
-                queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(String(data.id)) });
-            }
-        },
-        onError: createMutationErrorHandler('reject pipeline'),
-    });
-}
-
-export function usePublishPipeline() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (id: string) =>
-            api
-                .mutate(publishPipelineDocument, { id })
-                .then((res) => res.publishDataHubPipeline),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-            if (data?.id) {
-                queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(String(data.id)) });
-            }
-        },
-        onError: createMutationErrorHandler('publish pipeline'),
-    });
-}
+export const useSubmitPipelineForReview = createPipelineStatusHook(
+    submitPipelineForReviewDocument, 'submitDataHubPipelineForReview', 'submit pipeline for review',
+);
+export const useApprovePipeline = createPipelineStatusHook(
+    approvePipelineDocument, 'approveDataHubPipeline', 'approve pipeline',
+);
+export const useRejectPipeline = createPipelineStatusHook(
+    rejectPipelineDocument, 'rejectDataHubPipelineReview', 'reject pipeline',
+);
+export const usePublishPipeline = createPipelineStatusHook(
+    publishPipelineDocument, 'publishDataHubPipeline', 'publish pipeline',
+);

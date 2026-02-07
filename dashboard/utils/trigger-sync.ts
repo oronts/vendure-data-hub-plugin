@@ -136,28 +136,3 @@ export function updateDefinitionWithTriggers(
         edges: [...nonTriggerEdges, ...triggerEdges],
     };
 }
-
-/**
- * Check if a pipeline has any trigger configured
- */
-export function hasTrigger(definition: PipelineDefinition): boolean {
-    return getTriggerSteps(definition).length > 0;
-}
-
-/**
- * Get the primary trigger (first trigger step)
- */
-export function getPrimaryTrigger(definition: PipelineDefinition): PipelineTrigger | null {
-    const triggers = getCombinedTriggers(definition);
-    return triggers[0] ?? null;
-}
-
-/**
- * Find triggers by their config type (e.g., 'schedule', 'webhook')
- */
-export function findTriggersByConfigType(
-    definition: PipelineDefinition,
-    configType: string
-): PipelineTrigger[] {
-    return getCombinedTriggers(definition).filter(trigger => trigger.type === configType);
-}

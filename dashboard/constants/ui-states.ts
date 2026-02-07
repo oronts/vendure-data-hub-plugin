@@ -28,14 +28,6 @@ export const TEST_STATUS = {
 } as const;
 export type TestStatus = typeof TEST_STATUS[keyof typeof TEST_STATUS];
 
-/** Result view types */
-export const RESULT_VIEW = {
-    TABLE: 'table',
-    JSON: 'json',
-    RAW: 'raw',
-} as const;
-export type ResultView = typeof RESULT_VIEW[keyof typeof RESULT_VIEW];
-
 /** Checkpoint strategy types */
 export const CHECKPOINT_STRATEGY = {
     COUNT: 'COUNT',

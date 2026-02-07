@@ -142,7 +142,6 @@ export type {
     AdapterLogger,
     FormatHelpers,
     ConversionHelpers,
-    HmacAlgorithmType,
     CryptoHelpers,
     OperatorHelpers,
 } from './operator.types';

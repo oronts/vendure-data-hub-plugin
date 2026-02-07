@@ -121,12 +121,3 @@ export function mappingsToRecord(mappings: FieldMappingResult[]): Record<string,
     }
     return result;
 }
-
-export function recordToMappings(record: Record<string, string>): FieldMappingResult[] {
-    return Object.entries(record)
-        .filter(([, source]) => source)
-        .map(([target, source]) => ({
-            sourceField: source,
-            targetField: target,
-        }));
-}

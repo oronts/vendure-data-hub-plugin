@@ -76,11 +76,6 @@ export type {
 } from './templates';
 
 export {
-    AnalyticsDashboard,
-    AnalyticsPanel,
-} from './analytics';
-
-export {
     StepConfigPanel,
     AdapterSelector,
     AdapterRequiredWarning,

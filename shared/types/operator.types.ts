@@ -175,12 +175,6 @@ export interface ConversionHelpers {
 }
 
 /**
- * HMAC algorithm type alias for backward compatibility.
- * @deprecated Use HmacAlgorithm from trigger.types.ts instead. HmacAlgorithm includes SHA1.
- */
-export type HmacAlgorithmType = HmacAlgorithm;
-
-/**
  * Helper functions for cryptographic operations
  */
 export interface CryptoHelpers {

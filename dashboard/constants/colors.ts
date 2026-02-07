@@ -24,14 +24,6 @@ export const LOG_LEVEL_CONFIG = {
     ERROR: { icon: XCircle, color: 'text-red-500', bg: 'bg-red-100' },
 } as const satisfies Record<string, { icon: LucideIcon; color: string; bg: string }>;
 
-export const STATUS_COLORS = {
-    success: 'bg-emerald-100 text-emerald-800',
-    warning: 'bg-amber-100 text-amber-800',
-    error: 'bg-red-100 text-red-800',
-    info: 'bg-blue-100 text-blue-800',
-    neutral: 'bg-gray-100 text-gray-800',
-} as const;
-
 export const FALLBACK_COLORS = {
     MUTED: '#6b7280',
     BORDER: '#e5e7eb',
@@ -53,7 +45,6 @@ export const FILE_TYPE_ICON_CONFIG: Record<string, { icon: LucideIcon; color: st
 };
 
 export type UILogLevel = keyof typeof LOG_LEVEL_COLORS;
-export type UIStatusType = keyof typeof STATUS_COLORS;
 export type LogLevel = keyof typeof LOG_LEVEL_CONFIG;
 
 export function getLogLevelColor(level: string): string {
@@ -61,7 +52,3 @@ export function getLogLevelColor(level: string): string {
     return LOG_LEVEL_COLORS[key] ?? LOG_LEVEL_COLORS.info;
 }
 
-export function getStatusColor(status: string): string {
-    const key = status.toLowerCase() as UIStatusType;
-    return STATUS_COLORS[key] ?? STATUS_COLORS.neutral;
-}
