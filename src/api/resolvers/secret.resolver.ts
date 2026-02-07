@@ -1,5 +1,5 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, Transaction, TransactionalConnection } from '@vendure/core';
+import { Allow, Ctx, ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, RequestContext, Transaction, TransactionalConnection } from '@vendure/core';
 import { DeletionResponse, DeletionResult } from '@vendure/common/lib/generated-types';
 import type { JsonObject } from '../../types/index';
 import { DataHubSecret } from '../../entities/config';
@@ -111,7 +111,11 @@ export class DataHubSecretAdminResolver {
             await repo.remove(entity);
             return { result: DeletionResult.DELETED };
         } catch (e) {
-            return { result: DeletionResult.NOT_DELETED, message: e instanceof Error ? e.message : String(e) };
+            Logger.error(
+                `Failed to delete secret: ${e instanceof Error ? e.message : String(e)}`,
+                'DataHub',
+            );
+            return { result: DeletionResult.NOT_DELETED, message: 'Failed to delete secret due to an internal error' };
         }
     }
 }
