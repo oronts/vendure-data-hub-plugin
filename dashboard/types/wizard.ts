@@ -8,13 +8,6 @@ export interface WizardStep {
     description?: string;
 }
 
-export interface WizardProgress {
-    currentStep: number;
-    totalSteps: number;
-    completedSteps: number[];
-    canProceed: boolean;
-}
-
 export interface ImportConfig {
     name: string;
     description?: string;

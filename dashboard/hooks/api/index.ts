@@ -112,9 +112,6 @@ export {
 export { createMutationErrorHandler, createMutationSuccessHandler, handleMutationError } from './mutation-helpers';
 export type { MutationErrorOptions, MutationSuccessOptions } from './mutation-helpers';
 
-export { createEntityHooks, createQueryKeys } from './createEntityHooks';
-export type { EntityHooksConfig, ListOptions, PaginatedList } from './createEntityHooks';
-
 export type { ValidatePipelineDefinitionInput } from './usePipelines';
 
 export type {

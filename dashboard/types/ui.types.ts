@@ -7,11 +7,7 @@ import type {
     PipelineStepDefinition,
     PipelineContext,
     AdapterSchema,
-    TransformationType,
-    FilterCondition,
-    FormulaField,
     JsonObject,
-    AggregationFunction,
 } from '../../shared/types';
 import type { ConnectionAuthType } from '../../sdk/types/connection-types';
 import type {
@@ -30,7 +26,6 @@ import type {
     PipelineNodeData,
     VisualPipelineDefinition,
 } from './pipeline';
-import type { UIFieldMapping } from '../hooks';
 import type { FileType } from '../utils';
 
 export type {
@@ -45,36 +40,6 @@ export type {
 export type VisualEdge = Edge;
 
 export type { FileType };
-
-export interface StepFormState {
-    key: string;
-    type: StepType;
-    adapterCode?: string;
-    label?: string;
-    config: Record<string, unknown>;
-    isValid: boolean;
-    errors: Record<string, string>;
-    isDirty: boolean;
-}
-
-export interface PipelineFormState {
-    name: string;
-    code: string;
-    description?: string;
-    enabled: boolean;
-    steps: StepFormState[];
-    triggers: PipelineTrigger[];
-    isDirty: boolean;
-    isValid: boolean;
-}
-
-export interface TriggerFormState {
-    type: TriggerType;
-    enabled: boolean;
-    config: Record<string, unknown>;
-    isValid: boolean;
-    errors: Record<string, string>;
-}
 
 export interface AdapterSelectorProps {
     stepType: StepType;
@@ -112,29 +77,6 @@ export interface BaseEditorProps {
     pipelineId?: string;
 }
 
-export interface VisualPipelineEditorProps extends BaseEditorProps {
-    definition: VisualPipelineDefinition;
-    onChange: (definition: VisualPipelineDefinition) => void;
-    onSave?: () => void;
-}
-
-export interface SimplePipelineEditorProps extends BaseEditorProps {
-    definition?: Record<string, unknown>;
-    onChange?: (definition: Record<string, unknown>) => void;
-    pipeline?: DataHubPipeline;
-    initialDefinition?: Record<string, unknown>;
-    onSave?: (definition: Record<string, unknown>) => void;
-    onCancel?: () => void;
-    isLoading?: boolean;
-    isSaving?: boolean;
-    issues?: Array<{ message: string; stepKey?: string | null; field?: string | null; reason?: string | null }>;
-}
-
-export interface NodePaletteProps {
-    adapters?: DataHubAdapter[];
-    onDragStart: (event: React.DragEvent, nodeType: string, category: string, label: string) => void;
-}
-
 export interface PropertiesPanelProps {
     node: PipelineNode | null;
     adapters?: DataHubAdapter[];
@@ -143,11 +85,6 @@ export interface PropertiesPanelProps {
     onUpdate: (nodeId: string, data: Partial<PipelineNodeData>) => void;
     onDelete: (nodeId: string) => void;
     onClose: () => void;
-}
-
-export interface TriggerPanelProps {
-    triggers: PipelineTrigger[];
-    onChange: (triggers: PipelineTrigger[]) => void;
 }
 
 export interface LoadingStateProps {
@@ -181,16 +118,6 @@ export interface AdaptersByCategory {
     label: string;
     adapters: DataHubAdapter[];
 }
-
-export type PipelineRunSummary = Pick<
-    DataHubPipelineRun,
-    'id' | 'status' | 'startedAt' | 'finishedAt' | 'error' | 'metrics'
->;
-
-export type StepExecutionStatus = Omit<DataHubStepProgress, 'status' | 'runId' | 'recordsFailed'> & {
-    status: UINodeStatus;
-    errorCount?: number;
-};
 
 export interface BaseDialogProps {
     open: boolean;
@@ -265,109 +192,6 @@ export interface HttpConnectionConfig {
     };
 }
 
-export interface RunMetrics {
-    total: number;
-    successful: number;
-    failed: number;
-    pending: number;
-    cancelled: number;
-    avgDuration: number;
-    totalRecords: number;
-    errorRate: number;
-}
-
-export interface TimeSeriesPoint {
-    timestamp: string;
-    value: number;
-    label?: string;
-}
-
-export interface PipelineStats {
-    pipelineId: string;
-    pipelineName: string;
-    runCount: number;
-    successRate: number;
-    avgDuration: number;
-    lastRun?: string;
-    trend: 'up' | 'down' | 'stable';
-}
-
-export interface AnalyticsDashboardProps {
-    metrics?: RunMetrics;
-    runsByDay?: TimeSeriesPoint[];
-    runsByPipeline?: PipelineStats[];
-    errorsByType?: Array<{ type: string; count: number }>;
-    recentErrors?: Array<{
-        id: string;
-        message: string;
-        pipeline: string;
-        timestamp: string;
-    }>;
-    loading?: boolean;
-    onRefresh?: () => void;
-    onTimeRangeChange?: (range: string) => void;
-}
-
-export interface AggregateConfig {
-    groupBy: string[];
-    aggregations: Array<{
-        field: string;
-        function: AggregationFunction;
-        alias: string;
-    }>;
-}
-
-export interface TypeCast {
-    field: string;
-    type: 'string' | 'number' | 'boolean' | 'date' | 'array';
-}
-
-export type TransformStepConfig = Record<string, unknown>;
-
-export interface UITransformStep {
-    id: string;
-    type: TransformationType;
-    name: string;
-    enabled: boolean;
-    config: Record<string, unknown>;
-}
-
-export interface TransformationToolkitProps {
-    steps: UITransformStep[];
-    onChange: (steps: UITransformStep[]) => void;
-    availableFields?: string[];
-    onPreview?: (step: UITransformStep) => void;
-}
-
-export interface MapConfigProps {
-    config: { mappings: UIFieldMapping[] };
-    onChange: (config: Record<string, unknown>) => void;
-    fields: string[];
-}
-
-export interface FilterConfigProps {
-    config: { conditions: FilterCondition[]; logic: 'AND' | 'OR' };
-    onChange: (config: Record<string, unknown>) => void;
-    fields: string[];
-}
-
-export interface FormulaConfigProps {
-    config: { formulas: FormulaField[] };
-    onChange: (config: Record<string, unknown>) => void;
-    fields: string[];
-}
-
-export interface AggregateConfigProps {
-    config: AggregateConfig;
-    onChange: (config: Record<string, unknown>) => void;
-    fields: string[];
-}
-
-export interface StepEditorProps {
-    step: UITransformStep;
-    onChange: (step: UITransformStep) => void;
-    fields: string[];
-}
 
 export type DryRunResult = DataHubDryRunResult;
 
