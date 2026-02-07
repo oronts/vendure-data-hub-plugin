@@ -4,6 +4,16 @@ import SftpClient from 'ssh2-sftp-client';
 import { ExtractorContext } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
 import { FtpExtractorConfig, FtpFileInfo, FtpProtocol, FTP_DEFAULTS, FTP_PROTOCOLS, FTP_TYPE_CODE, FTP_ITEM_TYPE } from './types';
+import { isBlockedHostname } from '../../utils/url-security.utils';
+
+function validateFtpHost(host: string): void {
+    if (!host || typeof host !== 'string') {
+        throw new Error('FTP host is required');
+    }
+    if (isBlockedHostname(host)) {
+        throw new Error(`SSRF protection: hostname '${host}' is blocked for security reasons`);
+    }
+}
 
 export interface FtpClient {
     list(remotePath: string): Promise<FtpFileInfo[]>;
@@ -38,6 +48,7 @@ export async function buildFtpConnectionOptions(
     context: ExtractorContext,
     config: FtpExtractorConfig,
 ): Promise<FtpConnectionOptions> {
+    validateFtpHost(config.host);
     const options: FtpConnectionOptions = {
         host: config.host,
         port: config.port || FTP_DEFAULTS.ftpPort,
@@ -58,6 +69,7 @@ export async function buildSftpConnectionOptions(
     context: ExtractorContext,
     config: FtpExtractorConfig,
 ): Promise<SftpConnectionOptions> {
+    validateFtpHost(config.host);
     const options: SftpConnectionOptions = {
         host: config.host,
         port: config.port || FTP_DEFAULTS.sftpPort,
