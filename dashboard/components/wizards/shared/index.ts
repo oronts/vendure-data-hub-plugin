@@ -55,7 +55,6 @@ export type {
 
 export type {
     WizardStep,
-    WizardProgress,
     WizardTransformationStep,
     ParsedData,
     FeedTemplate,
