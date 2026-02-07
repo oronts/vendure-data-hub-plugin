@@ -89,11 +89,17 @@ export class DataHubWebhookController {
                 // Auth passed - use this trigger
                 authenticatedTrigger = trigger;
                 if (authType === 'none') {
-                    this.logger.warn(`Webhook received without authentication for pipeline: ${code}`, {
-                        ip,
-                        pipelineCode: code,
-                        triggerKey: trigger.key,
-                    });
+                    this.logger.error(
+                        `SECURITY: Webhook received WITHOUT authentication for pipeline: ${code}. ` +
+                        `Configure authentication (api-key, hmac, basic, or jwt) to secure this endpoint.`,
+                        undefined,
+                        {
+                            ip,
+                            pipelineCode: code,
+                            triggerKey: trigger.key,
+                            severity: 'security',
+                        },
+                    );
                 }
                 break;
             } catch (error) {
