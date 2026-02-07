@@ -60,13 +60,13 @@ interface ConnectionEntry {
     connection: AmqpConnection;
     channel: AmqpChannel;
     lastUsed: number;
-    isConnecting: boolean;
 }
 
 /**
  * Connection pool for RabbitMQ connections
  */
 const connectionPool = new Map<string, ConnectionEntry>();
+const connectingPromises = new Map<string, Promise<{ connection: AmqpConnection; channel: AmqpChannel }>>();
 
 /**
  * Generate a unique key for a connection configuration
@@ -91,78 +91,63 @@ function buildAmqpUrl(config: QueueConnectionConfig): string {
 
 /**
  * Get or create a connection from the pool
- * @param config Connection configuration
- * @param retryCount Current retry attempt (used to prevent infinite recursion)
  */
-async function getConnection(config: QueueConnectionConfig, retryCount = 0): Promise<{
+async function getConnection(config: QueueConnectionConfig): Promise<{
     connection: AmqpConnection;
     channel: AmqpChannel;
 }> {
     const key = getConnectionKey(config);
     const existing = connectionPool.get(key);
-    const maxRetries = INTERNAL_TIMINGS.CONNECTION_RETRY_MAX ?? 10;
 
     // Return existing valid connection
-    if (existing && !existing.isConnecting) {
+    if (existing) {
         existing.lastUsed = Date.now();
         return { connection: existing.connection, channel: existing.channel };
     }
 
-    // Wait if another request is already connecting, but with retry limit to prevent infinite recursion
-    if (existing?.isConnecting) {
-        if (retryCount >= maxRetries) {
-            throw new Error(`Connection timeout: exceeded ${maxRetries} retries waiting for connection to ${key}`);
+    // If another caller is already connecting, await the same promise
+    const pending = connectingPromises.get(key);
+    if (pending) {
+        return pending;
+    }
+
+    // Create connection promise that concurrent callers can share
+    const connectPromise = (async () => {
+        try {
+            const amqplib = await import('amqplib');
+            const url = buildAmqpUrl(config);
+            const connection = await amqplib.connect(url) as unknown as AmqpConnection;
+
+            connection.on('error', () => {
+                connectionPool.delete(key);
+            });
+
+            connection.on('close', () => {
+                connectionPool.delete(key);
+            });
+
+            const channel = await connection.createConfirmChannel();
+            await channel.prefetch(10);
+
+            channel.on('error', () => {
+                connectionPool.delete(key);
+            });
+
+            const entry: ConnectionEntry = {
+                connection,
+                channel,
+                lastUsed: Date.now(),
+            };
+
+            connectionPool.set(key, entry);
+            return { connection, channel };
+        } finally {
+            connectingPromises.delete(key);
         }
-        await new Promise(resolve => setTimeout(resolve, INTERNAL_TIMINGS.CONNECTION_WAIT_MS));
-        return getConnection(config, retryCount + 1);
-    }
+    })();
 
-    // Mark as connecting
-    connectionPool.set(key, {
-        connection: null as unknown as AmqpConnection,
-        channel: null as unknown as AmqpChannel,
-        lastUsed: Date.now(),
-        isConnecting: true,
-    });
-
-    try {
-        const amqplib = await import('amqplib');
-        const url = buildAmqpUrl(config);
-        const connection = await amqplib.connect(url) as unknown as AmqpConnection;
-
-        // Handle connection errors - errors are handled by cleanup, no logging in adapter layer
-        connection.on('error', () => {
-            connectionPool.delete(key);
-        });
-
-        connection.on('close', () => {
-            connectionPool.delete(key);
-        });
-
-        // Create channel with publisher confirms
-        const channel = await connection.createConfirmChannel();
-
-        // Set prefetch for fair dispatch
-        await channel.prefetch(10);
-
-        // Handle channel errors - errors are handled by cleanup, no logging in adapter layer
-        channel.on('error', () => {
-            connectionPool.delete(key);
-        });
-
-        const entry: ConnectionEntry = {
-            connection,
-            channel,
-            lastUsed: Date.now(),
-            isConnecting: false,
-        };
-
-        connectionPool.set(key, entry);
-        return { connection, channel };
-    } catch (error) {
-        connectionPool.delete(key);
-        throw error;
-    }
+    connectingPromises.set(key, connectPromise);
+    return connectPromise;
 }
 
 /**
@@ -381,7 +366,7 @@ const CONNECTION_MAX_IDLE_MS = INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS ?? 5 * 60
 const cleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const [key, entry] of connectionPool.entries()) {
-        if (now - entry.lastUsed > CONNECTION_MAX_IDLE_MS && !entry.isConnecting) {
+        if (now - entry.lastUsed > CONNECTION_MAX_IDLE_MS) {
             entry.channel.close().catch((err) => {
                 logger.warn('RabbitMQ: Failed to close channel during cleanup', { error: err?.message ?? err });
             });
