@@ -9,6 +9,7 @@
  * - LRU cache for compiled expressions
  */
 
+import * as vm from 'vm';
 import {
     validateUserCode,
     createCodeSandbox,
@@ -412,7 +413,7 @@ export class SafeEvaluator {
         fn: CompiledFunction,
         params: string[],
         context: Record<string, unknown>,
-        _timeoutMs: number,
+        timeoutMs: number,
     ): unknown {
         // Build argument values in the same order as parameters
         const sandboxKeys = Object.keys(this.sandbox);
@@ -426,14 +427,20 @@ export class SafeEvaluator {
             }
         }
 
-        // Execute the function
-        // Note: True timeout enforcement requires worker threads or vm module
-        // This implementation relies on the expression complexity limits
-        // to prevent long-running expressions
+        // Use vm.runInNewContext for true timeout enforcement on synchronous code.
+        // The compiled function and args are injected into the VM sandbox,
+        // and vm enforces timeout at the V8 level (kills the microtask).
+        const vmSandbox: Record<string, unknown> = {
+            __fn__: fn,
+            __args__: args,
+        };
         try {
-            return fn(...args);
+            return vm.runInNewContext('__fn__(...__args__)', vmSandbox, { timeout: timeoutMs });
         } catch (error) {
             if (error instanceof Error) {
+                if (error.message.includes('Script execution timed out')) {
+                    throw new Error(`Expression timeout after ${timeoutMs}ms`);
+                }
                 throw error;
             }
             throw new Error(String(error));
