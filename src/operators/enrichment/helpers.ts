@@ -7,6 +7,7 @@ import { INTERNAL_TIMINGS, SAFE_EVALUATOR, CIRCUIT_BREAKER, SINK, HTTP_LOOKUP, H
 import { TIME_UNITS } from '../../../shared/constants';
 import { HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES } from '../../constants/services';
 import { CircuitState, HttpMethod } from '../../constants/enums';
+import { validateUrlSafety } from '../../utils/url-security.utils';
 
 /**
  * In-memory cache for HTTP lookup responses
@@ -287,6 +288,16 @@ export async function applyHttpLookup(
     if (!url) {
         if (failOnError) {
             return { record: result, error: 'Failed to build URL from template' };
+        }
+        setNestedValue(result, target, defaultValue ?? null);
+        return { record: result };
+    }
+
+    // SSRF protection: validate URL before making request
+    const urlSafetyResult = await validateUrlSafety(url);
+    if (!urlSafetyResult.safe) {
+        if (failOnError) {
+            return { record: result, error: `SSRF protection: ${urlSafetyResult.reason}` };
         }
         setNestedValue(result, target, defaultValue ?? null);
         return { record: result };
