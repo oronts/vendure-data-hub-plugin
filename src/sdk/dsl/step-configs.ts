@@ -12,7 +12,7 @@
  */
 
 import { JsonObject, JsonValue, Throughput } from '../../types/index';
-import { LoadStrategy, ChannelStrategy, LanguageStrategy, ValidationStrictness, ConflictStrategy, TriggerType } from '../types/index';
+import { LoadStrategy, ChannelStrategy, LanguageStrategy, ValidationStrictness, ConflictStrategy, TriggerType, FeedFormat, FeedType, SinkType } from '../types/index';
 import { RouteOperator } from '../constants';
 import { AuthType } from '../../constants/enums';
 
@@ -314,8 +314,7 @@ export interface ExportStepConfig {
 
 // FEED STEP CONFIG
 
-export type FeedFormat = 'xml' | 'csv' | 'tsv' | 'json' | 'ndjson';
-export type FeedType = 'google-merchant' | 'meta-catalog' | 'amazon' | 'pinterest' | 'tiktok' | 'bing-shopping' | 'criteo' | 'custom';
+// FeedFormat and FeedType are imported from ../types/index (canonical: src/sdk/types/adapter-types.ts)
 
 export interface FeedStepConfig {
     adapterCode: string;
@@ -371,7 +370,7 @@ export interface FeedStepConfig {
 
 // SINK STEP CONFIG
 
-export type SinkType = 'elasticsearch' | 'opensearch' | 'meilisearch' | 'algolia' | 'typesense' | 'webhook' | 'custom';
+// SinkType is imported from ../types/index (canonical: src/sdk/types/adapter-types.ts)
 
 export interface SinkStepConfig {
     adapterCode: string;

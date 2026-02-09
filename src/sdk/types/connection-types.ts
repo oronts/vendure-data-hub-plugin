@@ -4,14 +4,14 @@ import {
     AdapterLogger as SharedAdapterLogger,
 } from '../../../shared/types';
 
-export type ConnectionType = 'http' | 's3' | 'sftp' | 'database' | 'custom';
+export type ConnectionType = 'HTTP' | 'S3' | 'FTP' | 'SFTP' | 'DATABASE' | 'CUSTOM';
 
 export enum ConnectionAuthType {
-    NONE = 'none',
-    BASIC = 'basic',
-    BEARER = 'bearer',
-    API_KEY = 'api-key',
-    OAUTH2 = 'oauth2',
+    NONE = 'NONE',
+    BASIC = 'BASIC',
+    BEARER = 'BEARER',
+    API_KEY = 'API_KEY',
+    OAUTH2 = 'OAUTH2',
 }
 
 export interface ConnectionAuth {
@@ -38,7 +38,7 @@ export interface ConnectionResolver {
 
 export type AdapterLogger = SharedAdapterLogger;
 
-export type MessengerType = 'job-queue' | 'rabbitmq';
+export type MessengerType = 'JOB_QUEUE' | 'RABBITMQ';
 
 export interface EnqueueOptions {
     readonly delayMs?: number;

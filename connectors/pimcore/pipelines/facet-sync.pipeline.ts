@@ -16,7 +16,7 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
         return createPipeline()
             .name('Pimcore Facet Sync (Disabled)')
             .description('Facet sync is disabled')
-            .trigger('manual', { type: 'manual' })
+            .trigger('MANUAL', { type: 'MANUAL' })
             .build();
     }
 
@@ -26,10 +26,10 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
         .capabilities({ requires: ['UpdateCatalog'] });
 
     if (pipelineConfig.schedule) {
-        pipeline.trigger('scheduled', { type: 'schedule', cron: pipelineConfig.schedule, timezone: 'UTC' });
+        pipeline.trigger('scheduled', { type: 'SCHEDULE', cron: pipelineConfig.schedule, timezone: 'UTC' });
     }
 
-    pipeline.trigger('manual', { type: 'manual', enabled: true });
+    pipeline.trigger('MANUAL', { type: 'MANUAL', enabled: true });
 
     pipeline.extract('fetch-facets', {
         adapterCode: 'pimcoreGraphQL',
@@ -93,7 +93,7 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
         channel: vendureChannel,
     });
 
-    pipeline.edge('manual', 'fetch-facets');
+    pipeline.edge('MANUAL', 'fetch-facets');
     if (pipelineConfig.schedule) pipeline.edge('scheduled', 'fetch-facets');
     pipeline.edge('fetch-facets', 'validate-facets');
     pipeline.edge('validate-facets', 'transform-facets');

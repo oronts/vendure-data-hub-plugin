@@ -16,7 +16,7 @@ import {
 import { DATE_UNIT_OPTIONS, DATE_DIFF_UNIT_OPTIONS } from '../constants';
 
 export const DATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'dateFormat',
     description: 'Format a date field to a string.',
     pure: true,
@@ -32,7 +32,7 @@ export const DATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const DATE_PARSE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'dateParse',
     description: 'Parse a string to a date.',
     pure: true,
@@ -47,7 +47,7 @@ export const DATE_PARSE_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const DATE_ADD_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'dateAdd',
     description: 'Add or subtract time from a date.',
     pure: true,
@@ -132,7 +132,7 @@ export function dateAddOperator(
 }
 
 export const DATE_DIFF_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'dateDiff',
     description: 'Calculate the difference between two dates in a specified unit.',
     pure: true,
@@ -176,7 +176,7 @@ export function dateDiffOperator(
 }
 
 export const NOW_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'now',
     description: 'Set the current timestamp on a field. Useful for adding created/updated timestamps.',
     pure: false, // Returns different values on each call

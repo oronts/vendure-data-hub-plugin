@@ -29,7 +29,14 @@ export type LookupEntity =
     | 'channel'
     | 'taxCategory';
 
-export interface FormatHelpers {
+/**
+ * SDK/adapter-facing format helpers with a simplified API
+ * for use within adapter implementations.
+ *
+ * @see shared/types/operator.types.ts FormatHelpers for the shared/domain version
+ *   which uses formatDate/parseDate/formatNumber/formatCurrency method names.
+ */
+export interface AdapterFormatHelpers {
     currency(amount: number, currencyCode: string, locale?: string): string;
     date(date: Date | string | number, format: string): string;
     number(value: number, decimals?: number, locale?: string): string;
@@ -49,7 +56,14 @@ export interface ConversionHelpers {
     parseDate(value: string, format?: string): Date | null;
 }
 
-export interface CryptoHelpers {
+/**
+ * SDK/adapter-facing crypto helpers with a simplified API
+ * for use within adapter implementations.
+ *
+ * @see shared/types/operator.types.ts CryptoHelpers for the shared/domain version
+ *   which uses md5/sha256/hmac/uuid method names.
+ */
+export interface AdapterCryptoHelpers {
     hash(value: string, algorithm?: 'md5' | 'sha256' | 'sha512'): string;
     hmac(value: string, secret: string, algorithm?: 'sha256' | 'sha512'): string;
     uuid(): string;
@@ -59,7 +73,15 @@ export interface OperatorSecretResolver {
     get(code: string): Promise<string | undefined>;
 }
 
-export interface OperatorHelpers {
+/**
+ * SDK/adapter-facing operator helpers with context-aware utilities
+ * for use within adapter implementations.
+ *
+ * @see shared/types/operator.types.ts OperatorHelpers for the shared/domain version
+ *   which uses getNestedValue/setNestedValue/deepClone methods and
+ *   includes connections/logger fields.
+ */
+export interface AdapterOperatorHelpers {
     readonly ctx: OperatorContext;
     readonly secrets?: OperatorSecretResolver;
     get(record: JsonObject, path: string): JsonValue | undefined;
@@ -70,8 +92,7 @@ export interface OperatorHelpers {
         by: Record<string, JsonValue>,
         select?: string | readonly string[]
     ): Promise<T | undefined>;
-    format: FormatHelpers;
+    format: AdapterFormatHelpers;
     convert: ConversionHelpers;
-    crypto: CryptoHelpers;
+    crypto: AdapterCryptoHelpers;
 }
-

@@ -10,7 +10,7 @@
  */
 
 import { JsonObject } from '../../types';
-import { OperatorHelpers, AdapterDefinition } from '../../sdk/types';
+import { AdapterOperatorHelpers, AdapterDefinition } from '../../sdk/types';
 import { OperatorResult } from '../types';
 import { ScriptOperatorConfig, ScriptContext } from './types';
 import {
@@ -70,11 +70,11 @@ export function enableScriptOperators(): void {
  * Script operator definition
  */
 export const SCRIPT_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'script',
     name: 'Script',
     description: 'Execute inline JavaScript code to transform records. Use for complex logic that cannot be expressed with standard operators.',
-    category: 'transformation',
+    category: 'TRANSFORMATION',
     schema: {
         fields: [
             {
@@ -148,7 +148,7 @@ async function executeWithTimeout<T>(
 export function scriptOperator(
     records: readonly JsonObject[],
     config: ScriptOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult | Promise<OperatorResult> {
     const { code, batch, timeout = DEFAULT_TIMEOUT, failOnError, context: contextData } = config;
 

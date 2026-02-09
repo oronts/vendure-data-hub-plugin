@@ -15,11 +15,11 @@ interface InMemoryExtractorConfig {
 }
 
 export const inMemoryExtractor: BatchExtractorAdapter<InMemoryExtractorConfig> = {
-    type: 'extractor',
+    type: 'EXTRACTOR',
     code: 'inMemory',
     name: 'In-Memory Data',
     description: 'Extract records from an in-memory data array',
-    category: 'data-source',
+    category: 'DATA_SOURCE',
     schema: inMemoryExtractorSchema,
     icon: 'memory',
     version: '1.0.0',

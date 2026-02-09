@@ -61,7 +61,7 @@ import {
  */
 @Injectable()
 export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
-    readonly type = 'extractor' as const;
+    readonly type = 'EXTRACTOR' as const;
     readonly code = 'graphql';
     readonly name = 'GraphQL Extractor';
     readonly description = 'Extract data from GraphQL APIs with pagination support';

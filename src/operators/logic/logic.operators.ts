@@ -14,7 +14,7 @@ import {
 import { getNestedValue } from '../helpers';
 
 export const WHEN_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'when',
     description: 'Filter records by conditions. Action: keep or drop.',
     pure: true,
@@ -42,7 +42,7 @@ export const WHEN_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const IF_THEN_ELSE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'ifThenElse',
     description: 'Set a value based on a condition.',
     pure: true,
@@ -63,7 +63,7 @@ export const IF_THEN_ELSE_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const SWITCH_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'switch',
     description: 'Set a value based on multiple conditions (like a switch statement).',
     pure: true,
@@ -84,7 +84,7 @@ export const SWITCH_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const DELTA_FILTER_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'deltaFilter',
     description: 'Filter out unchanged records using a stable hash stored in checkpoint. Keeps only changed/new based on idPath.',
     pure: true,

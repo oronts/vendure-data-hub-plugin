@@ -12,7 +12,7 @@ import { LoadExecutor } from '../executors';
 import { chunk, sleep } from '../utils';
 import { RATE_LIMIT, TIME, THROUGHPUT } from '../../constants/index';
 
-export type DrainStrategy = 'backoff' | 'shed' | 'queue';
+export type DrainStrategy = 'BACKOFF' | 'SHED' | 'QUEUE';
 
 /**
  * Throughput configuration
@@ -102,7 +102,7 @@ export async function executeLoadWithThroughput(params: {
         Number(stepThroughput.concurrency ?? contextThroughput.concurrency ?? 1) || 1
     );
     const pauseConfig = stepThroughput.pauseOnErrorRate;
-    const drainStrategy = (stepThroughput.drainStrategy as DrainStrategy) ?? 'backoff';
+    const drainStrategy = (stepThroughput.drainStrategy as DrainStrategy) ?? 'BACKOFF';
 
     // Split into batches
     const groups = chunk(batch, batchSize);
@@ -128,12 +128,12 @@ export async function executeLoadWithThroughput(params: {
         const ratio = group.length > 0 ? fail / group.length : 0;
         if (pauseConfig && ratio >= Number(pauseConfig.threshold ?? 1)) {
             switch (drainStrategy) {
-                case 'shed':
+                case 'SHED':
                     // Drop remaining batches
                     batchQueue.length = 0;
                     break;
 
-                case 'queue':
+                case 'QUEUE':
                     // Move remaining batches to deferred queue
                     isPaused = true;
                     while (batchQueue.length > 0) {
@@ -143,7 +143,7 @@ export async function executeLoadWithThroughput(params: {
                     }
                     break;
 
-                case 'backoff':
+                case 'BACKOFF':
                 default:
                     // Pause before continuing
                     await sleep(Math.max(RATE_LIMIT.PAUSE_CHECK_INTERVAL_MS, Number(pauseConfig.intervalSec ?? 1) * TIME.SECOND));
@@ -177,7 +177,7 @@ export async function executeLoadWithThroughput(params: {
     }
 
     // Process deferred queue if we were paused (for 'queue' strategy)
-    if (drainStrategy === 'queue' && isPaused) {
+    if (drainStrategy === 'QUEUE' && isPaused) {
         // Wait for error rate to potentially recover
         await sleep(Number(pauseConfig?.intervalSec ?? THROUGHPUT.DEFERRED_RETRY_DELAY_SEC) * TIME.SECOND);
 

@@ -43,11 +43,11 @@ export const WEBHOOK_TRIGGER_SCHEMA_FIELDS: readonly StepConfigSchemaField[] = [
         label: 'Authentication',
         type: 'select',
         options: [
-            { value: 'none', label: 'None (Not recommended)' },
-            { value: 'api-key', label: 'API Key (Recommended)' },
-            { value: 'hmac', label: 'HMAC Signature' },
-            { value: 'basic', label: 'HTTP Basic Auth' },
-            { value: 'jwt', label: 'JWT Token' },
+            { value: 'NONE', label: 'None (Not recommended)' },
+            { value: 'API_KEY', label: 'API Key (Recommended)' },
+            { value: 'HMAC', label: 'HMAC Signature' },
+            { value: 'BASIC', label: 'HTTP Basic Auth' },
+            { value: 'JWT', label: 'JWT Token' },
         ],
         required: true,
         description: 'Authentication type for webhook endpoint',
@@ -57,28 +57,28 @@ export const WEBHOOK_TRIGGER_SCHEMA_FIELDS: readonly StepConfigSchemaField[] = [
         label: 'HMAC Secret',
         type: 'secret',
         description: 'Secret code containing HMAC secret',
-        dependsOn: { field: 'authentication', value: 'hmac' },
+        dependsOn: { field: 'authentication', value: 'HMAC' },
     },
     {
         key: 'apiKeySecretCode',
         label: 'API Key Secret',
         type: 'secret',
         description: 'Secret code containing API key',
-        dependsOn: { field: 'authentication', value: 'api-key' },
+        dependsOn: { field: 'authentication', value: 'API_KEY' },
     },
     {
         key: 'basicSecretCode',
         label: 'Basic Auth Secret',
         type: 'secret',
         description: 'Secret code containing username:password',
-        dependsOn: { field: 'authentication', value: 'basic' },
+        dependsOn: { field: 'authentication', value: 'BASIC' },
     },
     {
         key: 'jwtSecretCode',
         label: 'JWT Secret',
         type: 'secret',
         description: 'Secret code containing JWT verification secret',
-        dependsOn: { field: 'authentication', value: 'jwt' },
+        dependsOn: { field: 'authentication', value: 'JWT' },
     },
     {
         key: 'apiKeyHeaderName',
@@ -86,14 +86,14 @@ export const WEBHOOK_TRIGGER_SCHEMA_FIELDS: readonly StepConfigSchemaField[] = [
         type: 'string',
         defaultValue: 'x-api-key',
         description: 'HTTP header name for API key',
-        dependsOn: { field: 'authentication', value: 'api-key' },
+        dependsOn: { field: 'authentication', value: 'API_KEY' },
     },
     {
         key: 'apiKeyPrefix',
         label: 'API Key Prefix',
         type: 'string',
         description: 'Prefix for API key value (e.g., "Bearer ")',
-        dependsOn: { field: 'authentication', value: 'api-key' },
+        dependsOn: { field: 'authentication', value: 'API_KEY' },
     },
     {
         key: 'hmacHeaderName',
@@ -101,7 +101,7 @@ export const WEBHOOK_TRIGGER_SCHEMA_FIELDS: readonly StepConfigSchemaField[] = [
         type: 'string',
         defaultValue: 'x-datahub-signature',
         description: 'HTTP header name for HMAC signature',
-        dependsOn: { field: 'authentication', value: 'hmac' },
+        dependsOn: { field: 'authentication', value: 'HMAC' },
     },
     {
         key: 'hmacAlgorithm',
@@ -113,7 +113,7 @@ export const WEBHOOK_TRIGGER_SCHEMA_FIELDS: readonly StepConfigSchemaField[] = [
         ],
         defaultValue: 'SHA256',
         description: 'Hash algorithm for HMAC signature',
-        dependsOn: { field: 'authentication', value: 'hmac' },
+        dependsOn: { field: 'authentication', value: 'HMAC' },
     },
     {
         key: 'jwtHeaderName',
@@ -121,7 +121,7 @@ export const WEBHOOK_TRIGGER_SCHEMA_FIELDS: readonly StepConfigSchemaField[] = [
         type: 'string',
         defaultValue: 'authorization',
         description: 'HTTP header name for JWT token',
-        dependsOn: { field: 'authentication', value: 'jwt' },
+        dependsOn: { field: 'authentication', value: 'JWT' },
     },
     {
         key: 'requireIdempotencyKey',
@@ -143,7 +143,7 @@ export const WEBHOOK_TRIGGER_SCHEMA_FIELDS: readonly StepConfigSchemaField[] = [
  * Default webhook trigger configuration
  */
 export const DEFAULT_WEBHOOK_CONFIG: Partial<BaseWebhookTriggerConfig> = {
-    authentication: 'none',
+    authentication: 'NONE',
     apiKeyHeaderName: 'x-api-key',
     hmacHeaderName: 'x-datahub-signature',
     hmacAlgorithm: 'SHA256',
@@ -265,9 +265,9 @@ export const MESSAGE_TRIGGER_SCHEMA_FIELDS: readonly StepConfigSchemaField[] = [
  * Default message trigger configuration
  */
 export const DEFAULT_MESSAGE_CONFIG: Partial<BaseMessageTriggerConfig> = {
-    queueType: QueueType.RABBITMQ_AMQP,
+    queueType: 'RABBITMQ_AMQP',
     batchSize: 10,
-    ackMode: AckMode.MANUAL,
+    ackMode: 'MANUAL',
     maxRetries: HTTP.MAX_RETRIES,
     concurrency: 1,
     autoStart: true,

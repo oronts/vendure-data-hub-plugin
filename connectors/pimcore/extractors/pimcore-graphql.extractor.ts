@@ -115,7 +115,7 @@ const RESPONSE_FIELDS: Record<string, string> = {
 };
 
 export const pimcoreGraphQLExtractor: ExtractorAdapter<PimcoreGraphQLExtractorConfig> = {
-    type: 'extractor',
+    type: 'EXTRACTOR',
     code: 'pimcoreGraphQL',
     name: 'Pimcore DataHub GraphQL',
     description: 'Extract data from Pimcore DataHub GraphQL API',

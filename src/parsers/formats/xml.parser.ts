@@ -1,5 +1,4 @@
 import { ParseResult, ParseError, XmlParseOptions } from '../types';
-import { FileFormat } from '../../constants/enums';
 import { XML_PARSER } from '../../constants';
 import { extractFields } from '../helpers/field-extraction';
 
@@ -154,7 +153,7 @@ export function parseXml(
 
         return {
             success: true,
-            format: FileFormat.XML,
+            format: 'XML' as const,
             records,
             fields,
             totalRows: records.length,
@@ -164,7 +163,7 @@ export function parseXml(
     } catch (err) {
         return {
             success: false,
-            format: FileFormat.XML,
+            format: 'XML' as const,
             records: [],
             fields: [],
             totalRows: 0,

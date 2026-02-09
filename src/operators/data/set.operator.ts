@@ -4,7 +4,7 @@ import { applySet } from './helpers';
 import { createRecordOperator } from './operator-factory';
 
 export const SET_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'set',
     description: 'Set a static value at a specified path.',
     pure: true,

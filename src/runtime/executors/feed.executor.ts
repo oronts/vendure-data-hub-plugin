@@ -213,7 +213,7 @@ export class FeedExecutor {
             default: {
                 // Try custom feed generators from registry
                 if (adapterCode && this.registry) {
-                    const customFeed = this.registry.getRuntime('feed', adapterCode) as FeedAdapter<unknown> | undefined;
+                    const customFeed = this.registry.getRuntime('FEED', adapterCode) as FeedAdapter<unknown> | undefined;
                     if (customFeed && typeof customFeed.generateFeed === 'function') {
                         const result = await this.executeCustomFeed(ctx, step, input, customFeed, pipelineContext);
                         ok = result.ok;

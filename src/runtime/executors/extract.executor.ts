@@ -116,7 +116,7 @@ export class ExtractExecutor {
 
         // Try custom extractors from registry
         if (adapterCode && this.registry) {
-            const customExtractor = this.registry.getRuntime('extractor', adapterCode) as ExtractorAdapter<unknown> | undefined;
+            const customExtractor = this.registry.getRuntime('EXTRACTOR', adapterCode) as ExtractorAdapter<unknown> | undefined;
             if (customExtractor && typeof customExtractor.extract === 'function') {
                 const result = await this.executeCustomExtractor(ctx, step, executorCtx, customExtractor, onRecordError);
                 this.logOperationResult(adapterCode, result.length, startTime, step.key);

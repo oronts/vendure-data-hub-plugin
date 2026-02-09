@@ -6,7 +6,7 @@ import { applyUuid } from './helpers';
  * Operator definition for generating UUIDs.
  */
 export const UUID_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'uuid',
     description: 'Generate a UUID for each record. Supports v4 (random) and v5 (namespace-based deterministic).',
     pure: false, // v4 is not deterministic

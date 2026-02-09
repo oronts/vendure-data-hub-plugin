@@ -25,16 +25,16 @@ export type RunStatus =
  * Uses lowercase to match TriggerType convention for trigger types.
  */
 export type TriggerSource =
-    | 'manual'
-    | 'schedule'
-    | 'webhook'
-    | 'event'
-    | 'file'
-    | 'message'
-    | 'api'
-    | 'queue'
-    | 'dependency'
-    | 'retry';
+    | 'MANUAL'
+    | 'SCHEDULE'
+    | 'WEBHOOK'
+    | 'EVENT'
+    | 'FILE'
+    | 'MESSAGE'
+    | 'API'
+    | 'QUEUE'
+    | 'DEPENDENCY'
+    | 'RETRY';
 
 /**
  * Statistics for a pipeline run

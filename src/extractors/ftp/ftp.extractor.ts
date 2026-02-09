@@ -37,7 +37,7 @@ import { parseModifiedAfterDate } from '../shared';
 
 @Injectable()
 export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
-    readonly type = 'extractor' as const;
+    readonly type = 'EXTRACTOR' as const;
     readonly code = 'ftp';
     readonly name = 'FTP/SFTP Extractor';
     readonly description = 'Extract data from FTP/SFTP servers';

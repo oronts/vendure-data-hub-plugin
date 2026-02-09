@@ -12,7 +12,7 @@ import { deepClone } from '../helpers';
 import { VALIDATION_FIELDS } from '../../constants/index';
 
 export const VALIDATE_REQUIRED_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'validateRequired',
     description: 'Mark records as invalid if required fields are missing.',
     pure: true,
@@ -25,7 +25,7 @@ export const VALIDATE_REQUIRED_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const VALIDATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'validateFormat',
     description: 'Validate field format using regex.',
     pure: true,

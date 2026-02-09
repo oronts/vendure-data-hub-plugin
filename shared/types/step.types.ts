@@ -44,17 +44,17 @@ export type NodeStatus =
 /**
  * Drain strategies - matches src/constants/enums.ts DrainStrategy values
  */
-export type DrainStrategy = 'backoff' | 'shed' | 'queue';
+export type DrainStrategy = 'BACKOFF' | 'SHED' | 'QUEUE';
 
 /**
  * Channel strategies - matches src/constants/enums.ts ChannelStrategy values
  */
-export type ChannelStrategy = 'explicit' | 'inherit' | 'multi';
+export type ChannelStrategy = 'EXPLICIT' | 'INHERIT' | 'MULTI';
 
 /**
  * Validation modes - matches src/constants/enums.ts ValidationMode values
  */
-export type ValidationModeType = 'strict' | 'lenient';
+export type ValidationModeType = 'STRICT' | 'LENIENT';
 
 /**
  * Run modes - matches src/constants/enums.ts RunMode values

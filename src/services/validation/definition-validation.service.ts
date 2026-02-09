@@ -57,13 +57,13 @@ export interface DefinitionValidationResult {
 // ============================================================================
 
 const STEP_TYPE_TO_ADAPTER_TYPE: Partial<Record<StepType, AdapterType>> = {
-    [StepTypeEnum.EXTRACT]: 'extractor',
-    [StepTypeEnum.TRANSFORM]: 'operator',
-    [StepTypeEnum.LOAD]: 'loader',
-    [StepTypeEnum.EXPORT]: 'exporter',
-    [StepTypeEnum.FEED]: 'feed',
-    [StepTypeEnum.ENRICH]: 'enricher',
-    [StepTypeEnum.SINK]: 'sink',
+    [StepTypeEnum.EXTRACT]: 'EXTRACTOR',
+    [StepTypeEnum.TRANSFORM]: 'OPERATOR',
+    [StepTypeEnum.LOAD]: 'LOADER',
+    [StepTypeEnum.EXPORT]: 'EXPORTER',
+    [StepTypeEnum.FEED]: 'FEED',
+    [StepTypeEnum.ENRICH]: 'ENRICHER',
+    [StepTypeEnum.SINK]: 'SINK',
 };
 
 function adapterTypeFor(stepType: StepType): AdapterType | null {

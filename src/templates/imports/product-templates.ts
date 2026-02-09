@@ -31,7 +31,7 @@ export const simpleProductsTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'csv',
+                format: 'CSV',
                 csv: {
                     delimiter: ',',
                     headerRow: true,
@@ -108,7 +108,7 @@ export const productsWithVariantsTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'csv',
+                format: 'CSV',
                 csv: {
                     delimiter: ',',
                     headerRow: true,
@@ -188,7 +188,7 @@ export const shopifyProductsTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'csv',
+                format: 'CSV',
                 csv: {
                     delimiter: ',',
                     headerRow: true,
@@ -268,7 +268,7 @@ export const woocommerceProductsTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'csv',
+                format: 'CSV',
                 csv: {
                     delimiter: ',',
                     headerRow: true,
@@ -345,7 +345,7 @@ export const priceUpdateTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'csv',
+                format: 'CSV',
                 csv: {
                     delimiter: ',',
                     headerRow: true,

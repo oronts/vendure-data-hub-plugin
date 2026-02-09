@@ -12,16 +12,17 @@ import {
     SinkResult,
     OperatorResult,
 } from './result-types';
-import { OperatorHelpers } from './transform-types';
+import { AdapterOperatorHelpers } from './transform-types';
 import { ExportFormatType } from '../../constants/enums';
 import {
     AdapterType,
     AdapterCategory,
     TriggerType,
+    ChannelStrategy,
 } from '../../../shared/types';
 
-// Re-export from shared types
-export type { AdapterType, AdapterCategory, TriggerType } from '../../../shared/types';
+// Re-export from shared types (ChannelStrategy canonical in shared/types/step.types.ts)
+export type { AdapterType, AdapterCategory, TriggerType, ChannelStrategy } from '../../../shared/types';
 
 // BASE ADAPTER INTERFACE
 
@@ -152,7 +153,7 @@ export interface ExtractContext {
  * Extractor adapter using async generator for streaming
  */
 export interface ExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'extractor';
+    readonly type: 'EXTRACTOR';
     extract(context: ExtractContext, config: TConfig): AsyncGenerator<RecordEnvelope, void, undefined>;
 }
 
@@ -160,7 +161,7 @@ export interface ExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TCon
  * Simplified extractor that returns all records at once
  */
 export interface BatchExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'extractor';
+    readonly type: 'EXTRACTOR';
     extractAll(context: ExtractContext, config: TConfig): Promise<ExtractResult>;
 }
 
@@ -186,44 +187,41 @@ export interface OperatorContext {
  * Operator adapter for batch record transformation
  */
 export interface OperatorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'operator';
+    readonly type: 'OPERATOR';
     readonly pure: boolean;
-    apply(records: readonly JsonObject[], config: TConfig, helpers: OperatorHelpers): Promise<OperatorResult> | OperatorResult;
+    apply(records: readonly JsonObject[], config: TConfig, helpers: AdapterOperatorHelpers): Promise<OperatorResult> | OperatorResult;
 }
 
 /**
  * Simpler single-record operator (engine will batch)
  */
 export interface SingleRecordOperator<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'operator';
+    readonly type: 'OPERATOR';
     readonly pure: boolean;
-    applyOne(record: JsonObject, config: TConfig, helpers: OperatorHelpers): Promise<JsonObject | null> | JsonObject | null;
+    applyOne(record: JsonObject, config: TConfig, helpers: AdapterOperatorHelpers): Promise<JsonObject | null> | JsonObject | null;
 }
 
 // LOADER ADAPTER
 
-/**
- * Channel assignment strategy
- */
-export type ChannelStrategy = 'explicit' | 'inherit' | 'multi';
+// ChannelStrategy is imported and re-exported from shared/types/step.types.ts above
 
 /**
  * Language handling strategy
  */
-export type LanguageStrategy = 'specific' | 'fallback' | 'multi';
+export type LanguageStrategy = 'SPECIFIC' | 'FALLBACK' | 'MULTI';
 
 /**
  * Validation strictness mode for loaders
  */
-export type ValidationStrictness = 'strict' | 'lenient';
+export type ValidationStrictness = 'STRICT' | 'LENIENT';
 
 /**
  * Conflict resolution strategy
  */
-export type ConflictStrategy = 'source-wins' | 'vendure-wins' | 'merge' | 'manual-queue';
+export type ConflictStrategy = 'SOURCE_WINS' | 'VENDURE_WINS' | 'MERGE' | 'MANUAL_QUEUE';
 
 export type LoadStrategy =
-    | 'create' | 'update' | 'upsert' | 'merge' | 'soft-delete' | 'hard-delete';
+    | 'CREATE' | 'UPDATE' | 'UPSERT' | 'MERGE' | 'SOFT_DELETE' | 'HARD_DELETE';
 
 /**
  * Context provided to loader adapters
@@ -261,7 +259,7 @@ export interface LoadContext {
  * Loader adapter for writing to Vendure entities
  */
 export interface LoaderAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'loader';
+    readonly type: 'LOADER';
     load(context: LoadContext, config: TConfig, records: readonly JsonObject[]): Promise<LoadResult>;
 }
 
@@ -289,7 +287,7 @@ export interface ValidateContext {
  * Validator adapter for record validation
  */
 export interface ValidatorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'validator';
+    readonly type: 'VALIDATOR';
     validate(context: ValidateContext, config: TConfig, records: readonly JsonObject[]): Promise<ValidationResult>;
 }
 
@@ -319,7 +317,7 @@ export interface EnrichContext {
  * Enricher adapter for adding data to records
  */
 export interface EnricherAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'enricher';
+    readonly type: 'ENRICHER';
     enrich(context: EnrichContext, config: TConfig, records: readonly JsonObject[]): Promise<EnrichResult>;
 }
 
@@ -329,13 +327,13 @@ export interface EnricherAdapter<TConfig = JsonObject> extends BaseAdapter<TConf
  * Export target types
  */
 export type ExportTargetType =
-    | 'file'        // CSV, JSON, XML files
-    | 'feed'        // Google Merchant, Meta, etc.
-    | 'api'         // REST/GraphQL endpoints
-    | 'search'      // Elasticsearch, MeiliSearch, OpenSearch
-    | 'warehouse'   // BigQuery, Snowflake, Redshift
-    | 'messaging'   // RabbitMQ
-    | 'storage';    // S3, GCS, Azure Blob
+    | 'FILE'        // CSV, JSON, XML files
+    | 'FEED'        // Google Merchant, Meta, etc.
+    | 'API'         // REST/GraphQL endpoints
+    | 'SEARCH'      // Elasticsearch, MeiliSearch, OpenSearch
+    | 'WAREHOUSE'   // BigQuery, Snowflake, Redshift
+    | 'MESSAGING'   // RabbitMQ
+    | 'STORAGE';    // S3, GCS, Azure Blob
 
 export type ExportFormat = ExportFormatType;
 
@@ -371,7 +369,7 @@ export interface ExportContext {
  * Exporter adapter for sending data to external systems
  */
 export interface ExporterAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'exporter';
+    readonly type: 'EXPORTER';
     readonly targetType: ExportTargetType;
     readonly formats?: readonly ExportFormat[];
     export(context: ExportContext, config: TConfig, records: readonly JsonObject[]): Promise<ExportResult>;
@@ -384,19 +382,19 @@ export interface ExporterAdapter<TConfig = JsonObject> extends BaseAdapter<TConf
  * Product feed types for marketplaces
  */
 export type FeedType =
-    | 'google-merchant'
-    | 'meta-catalog'
-    | 'amazon'
-    | 'pinterest'
-    | 'tiktok'
-    | 'bing-shopping'
-    | 'criteo'
-    | 'custom';
+    | 'GOOGLE_MERCHANT'
+    | 'META_CATALOG'
+    | 'AMAZON'
+    | 'PINTEREST'
+    | 'TIKTOK'
+    | 'BING_SHOPPING'
+    | 'CRITEO'
+    | 'CUSTOM';
 
 /**
  * Feed file formats
  */
-export type FeedFormat = 'xml' | 'csv' | 'tsv' | 'json' | 'ndjson';
+export type FeedFormat = 'XML' | 'CSV' | 'TSV' | 'JSON' | 'NDJSON';
 
 /**
  * Context provided to feed adapters
@@ -430,7 +428,7 @@ export interface FeedContext {
  * Feed adapter for generating product feeds
  */
 export interface FeedAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'feed';
+    readonly type: 'FEED';
     readonly feedType: FeedType;
     readonly formats: readonly FeedFormat[];
     readonly requiredFields: readonly string[];
@@ -445,13 +443,13 @@ export interface FeedAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> 
  * Sink types for search engine indexing
  */
 export type SinkType =
-    | 'elasticsearch'
-    | 'opensearch'
-    | 'meilisearch'
-    | 'algolia'
-    | 'typesense'
-    | 'webhook'
-    | 'custom';
+    | 'ELASTICSEARCH'
+    | 'OPENSEARCH'
+    | 'MEILISEARCH'
+    | 'ALGOLIA'
+    | 'TYPESENSE'
+    | 'WEBHOOK'
+    | 'CUSTOM';
 
 /**
  * Context provided to sink adapters
@@ -479,7 +477,7 @@ export interface SinkContext {
  * Sink adapter for indexing to search engines
  */
 export interface SinkAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'sink';
+    readonly type: 'SINK';
     readonly sinkType: SinkType;
     index(context: SinkContext, config: TConfig, records: readonly JsonObject[]): Promise<SinkResult>;
     delete?(context: SinkContext, config: TConfig, ids: readonly string[]): Promise<SinkResult>;
@@ -521,7 +519,7 @@ export interface TriggerPayload {
  * Trigger adapter for initiating pipelines
  */
 export interface TriggerAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'extractor';
+    readonly type: 'EXTRACTOR';
     readonly triggerType: TriggerType;
     initialize?(context: TriggerContext, config: TConfig): Promise<void>;
     shutdown?(): Promise<void>;

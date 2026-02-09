@@ -64,9 +64,31 @@ interface WebhookSinkCfg extends BaseSinkCfg {
     retries?: number;
 }
 
+/**
+ * Context passed to sink handler functions for executing a single sink type
+ */
+interface SinkHandlerContext {
+    ctx: RequestContext;
+    step: PipelineStepDefinition;
+    input: RecordObject[];
+    cfg: BaseSinkCfg;
+    indexName: string;
+    idField: string;
+    bulkSize: number;
+    prepareDoc: (rec: RecordObject) => RecordObject;
+    onRecordError?: OnRecordErrorCallback;
+    pipelineContext?: PipelineContext;
+}
+
+/**
+ * Handler function type for built-in sink adapters
+ */
+type SinkHandler = (handlerCtx: SinkHandlerContext) => Promise<ExecutionResult>;
+
 @Injectable()
 export class SinkExecutor {
     private readonly logger: DataHubLogger;
+    private readonly handlers: Record<string, SinkHandler>;
 
     constructor(
         private secretService: SecretService,
@@ -76,6 +98,15 @@ export class SinkExecutor {
         @Optional() private registry?: DataHubRegistryService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.SINK_EXECUTOR);
+        this.handlers = {
+            [SINK_ADAPTER_CODES.MEILISEARCH]: (hCtx) => this.handleMeiliSearch(hCtx),
+            [SINK_ADAPTER_CODES.ELASTICSEARCH]: (hCtx) => this.handleElasticsearch(hCtx),
+            [SINK_ADAPTER_CODES.OPENSEARCH]: (hCtx) => this.handleElasticsearch(hCtx),
+            [SINK_ADAPTER_CODES.ALGOLIA]: (hCtx) => this.handleAlgolia(hCtx),
+            [SINK_ADAPTER_CODES.TYPESENSE]: (hCtx) => this.handleTypesense(hCtx),
+            [SINK_ADAPTER_CODES.QUEUE_PRODUCER]: (hCtx) => this.executeQueueProducerSink(hCtx.ctx, hCtx.step, hCtx.input, hCtx.onRecordError),
+            [SINK_ADAPTER_CODES.WEBHOOK]: (hCtx) => this.executeWebhookSink(hCtx.ctx, hCtx.step, hCtx.input, hCtx.onRecordError),
+        };
     }
 
     /**
@@ -149,244 +180,31 @@ export class SinkExecutor {
             return result;
         };
 
-        switch (adapterCode) {
-            case SINK_ADAPTER_CODES.MEILISEARCH: {
-                const host = cfg.host ?? SERVICE_DEFAULTS.MEILISEARCH_URL;
-                const apiKey = await this.resolveSecret(ctx, cfg.apiKeySecretCode);
-                const primaryKey = cfg.primaryKey ?? idField;
-                const circuitKey = this.getCircuitKey(SINK_ADAPTER_CODES.MEILISEARCH, host);
+        const handlerCtx: SinkHandlerContext = {
+            ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError, pipelineContext,
+        };
 
-                const batches = chunk(input, bulkSize);
-                for (const batch of batches) {
-                    // Check circuit breaker before attempting request
-                    const circuitResult = this.checkCircuit(circuitKey);
-                    if (!circuitResult.allowed) {
-                        fail += batch.length;
-                        const errorMsg = `Circuit breaker open for MeiliSearch (${host}), retry in ${Math.ceil(circuitResult.resetTimeoutMs / 1000)}s`;
-                        this.logger.warn(errorMsg, { circuitKey, state: circuitResult.state, stepKey: step.key });
-                        if (onRecordError) await onRecordError(step.key, errorMsg, {});
-                        continue;
-                    }
-
-                    try {
-                        const docs = batch.map(prepareDoc);
-                        const headers: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON };
-                        if (apiKey) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${apiKey}`;
-                        const url = `${host}/indexes/${indexName}/documents?primaryKey=${primaryKey}`;
-                        const response = await fetch(url, {
-                            method: HttpMethod.POST,
-                            headers,
-                            body: JSON.stringify(docs),
-                        });
-                        if (response.ok) {
-                            ok += batch.length;
-                            this.circuitBreaker.recordSuccess(circuitKey);
-                        } else {
-                            fail += batch.length;
-                            const errorMsg = `MeiliSearch error: ${response.status}`;
-                            this.circuitBreaker.recordFailure(circuitKey);
-                            if (onRecordError) await onRecordError(step.key, errorMsg, {});
-                        }
-                    } catch (e: unknown) {
-                        fail += batch.length;
-                        const message = e instanceof Error ? e.message : 'MeiliSearch indexing failed';
-                        this.circuitBreaker.recordFailure(circuitKey);
-                        if (onRecordError) await onRecordError(step.key, message, {});
-                    }
+        // Try built-in handlers first
+        const handler = adapterCode ? this.handlers[adapterCode] : undefined;
+        if (handler) {
+            const result = await handler(handlerCtx);
+            ok = result.ok;
+            fail = result.fail;
+        } else {
+            // Try custom sinks from registry
+            if (adapterCode && this.registry) {
+                const customSink = this.registry.getRuntime('SINK', adapterCode) as SinkAdapter<JsonObject> | undefined;
+                if (customSink && typeof customSink.index === 'function') {
+                    const result = await this.executeCustomSink(ctx, step, input, customSink, pipelineContext);
+                    ok = result.ok;
+                    fail = result.fail;
+                } else {
+                    this.logger.warn(`Unknown sink adapter`, { stepKey: step.key, adapterCode });
+                    ok = input.length;
                 }
-                break;
-            }
-            case SINK_ADAPTER_CODES.ELASTICSEARCH:
-            case SINK_ADAPTER_CODES.OPENSEARCH: {
-                const hosts = cfg.hosts ?? [cfg.host ?? SERVICE_DEFAULTS.ELASTICSEARCH_URL];
-                const host = hosts[0];
-                const apiKey = await this.resolveSecret(ctx, cfg.apiKeySecretCode);
-                const basicAuth = await this.resolveSecret(ctx, cfg.basicSecretCode);
-                const effectiveAdapterCode = adapterCode ?? SINK_ADAPTER_CODES.ELASTICSEARCH;
-                const circuitKey = this.getCircuitKey(effectiveAdapterCode, host);
-
-                const batches = chunk(input, bulkSize);
-                for (const batch of batches) {
-                    // Check circuit breaker before attempting request
-                    const circuitResult = this.checkCircuit(circuitKey);
-                    if (!circuitResult.allowed) {
-                        fail += batch.length;
-                        const errorMsg = `Circuit breaker open for ${effectiveAdapterCode} (${host}), retry in ${Math.ceil(circuitResult.resetTimeoutMs / 1000)}s`;
-                        this.logger.warn(errorMsg, { circuitKey, state: circuitResult.state, stepKey: step.key });
-                        if (onRecordError) await onRecordError(step.key, errorMsg, {});
-                        continue;
-                    }
-
-                    try {
-                        const bulkBody: string[] = [];
-                        for (const rec of batch) {
-                            const doc = prepareDoc(rec);
-                            const docId = String(getPath(rec, idField) ?? '');
-                            bulkBody.push(JSON.stringify({ index: { _index: indexName, _id: docId } }));
-                            bulkBody.push(JSON.stringify(doc));
-                        }
-                        const headers: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.NDJSON };
-                        if (apiKey) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.API_KEY} ${apiKey}`;
-                        else if (basicAuth) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${Buffer.from(basicAuth).toString('base64')}`;
-
-                        const response = await fetch(`${host}/_bulk`, {
-                            method: HttpMethod.POST,
-                            headers,
-                            body: bulkBody.join('\n') + '\n',
-                        });
-                        if (response.ok) {
-                            ok += batch.length;
-                            this.circuitBreaker.recordSuccess(circuitKey);
-                        } else {
-                            fail += batch.length;
-                            const errorMsg = `${effectiveAdapterCode} error: ${response.status}`;
-                            this.circuitBreaker.recordFailure(circuitKey);
-                            if (onRecordError) await onRecordError(step.key, errorMsg, {});
-                        }
-                    } catch (e: unknown) {
-                        fail += batch.length;
-                        const message = e instanceof Error ? e.message : `${effectiveAdapterCode} indexing failed`;
-                        this.circuitBreaker.recordFailure(circuitKey);
-                        if (onRecordError) await onRecordError(step.key, message, {});
-                    }
-                }
-                break;
-            }
-            case SINK_ADAPTER_CODES.ALGOLIA: {
-                const applicationId = cfg.appId ?? cfg.applicationId;
-                const apiKey = await this.resolveSecret(ctx, cfg.apiKeySecretCode);
-
-                if (!applicationId || !apiKey) {
-                    fail = input.length;
-                    if (onRecordError) await onRecordError(step.key, 'Algolia applicationId and apiKey are required', {});
-                    break;
-                }
-
-                const algoliaHost = SERVICE_URL_TEMPLATES.ALGOLIA_API(applicationId);
-                const circuitKey = this.getCircuitKey(SINK_ADAPTER_CODES.ALGOLIA, algoliaHost);
-
-                const batches = chunk(input, bulkSize);
-                for (const batch of batches) {
-                    // Check circuit breaker before attempting request
-                    const circuitResult = this.checkCircuit(circuitKey);
-                    if (!circuitResult.allowed) {
-                        fail += batch.length;
-                        const errorMsg = `Circuit breaker open for Algolia (${applicationId}), retry in ${Math.ceil(circuitResult.resetTimeoutMs / 1000)}s`;
-                        this.logger.warn(errorMsg, { circuitKey, state: circuitResult.state, stepKey: step.key });
-                        if (onRecordError) await onRecordError(step.key, errorMsg, {});
-                        continue;
-                    }
-
-                    try {
-                        const docs = batch.map(rec => {
-                            const doc = prepareDoc(rec);
-                            return { ...doc, objectID: String(getPath(rec, idField) ?? '') };
-                        });
-                        const url = `${algoliaHost}/1/indexes/${indexName}/batch`;
-                        const response = await fetch(url, {
-                            method: HttpMethod.POST,
-                            headers: {
-                                'X-Algolia-Application-Id': applicationId,
-                                'X-Algolia-API-Key': apiKey,
-                                [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
-                            },
-                            body: JSON.stringify({ requests: docs.map(d => ({ action: 'updateObject', body: d })) }),
-                        });
-                        if (response.ok) {
-                            ok += batch.length;
-                            this.circuitBreaker.recordSuccess(circuitKey);
-                        } else {
-                            fail += batch.length;
-                            const errorMsg = `Algolia error: ${response.status}`;
-                            this.circuitBreaker.recordFailure(circuitKey);
-                            if (onRecordError) await onRecordError(step.key, errorMsg, {});
-                        }
-                    } catch (e: unknown) {
-                        fail += batch.length;
-                        const message = e instanceof Error ? e.message : 'Algolia indexing failed';
-                        this.circuitBreaker.recordFailure(circuitKey);
-                        if (onRecordError) await onRecordError(step.key, message, {});
-                    }
-                }
-                break;
-            }
-            case SINK_ADAPTER_CODES.TYPESENSE: {
-                const host = cfg.host ?? SERVICE_DEFAULTS.TYPESENSE_URL;
-                const apiKey = await this.resolveSecret(ctx, cfg.apiKeySecretCode);
-                const collectionName = cfg.collectionName ?? indexName;
-                const circuitKey = this.getCircuitKey(SINK_ADAPTER_CODES.TYPESENSE, host);
-
-                const batches = chunk(input, bulkSize);
-                for (const batch of batches) {
-                    // Check circuit breaker before attempting request
-                    const circuitResult = this.checkCircuit(circuitKey);
-                    if (!circuitResult.allowed) {
-                        fail += batch.length;
-                        const errorMsg = `Circuit breaker open for Typesense (${host}), retry in ${Math.ceil(circuitResult.resetTimeoutMs / 1000)}s`;
-                        this.logger.warn(errorMsg, { circuitKey, state: circuitResult.state, stepKey: step.key });
-                        if (onRecordError) await onRecordError(step.key, errorMsg, {});
-                        continue;
-                    }
-
-                    try {
-                        const docs = batch.map(rec => {
-                            const doc = prepareDoc(rec);
-                            return { ...doc, id: String(getPath(rec, idField) ?? '') };
-                        });
-                        const ndjson = docs.map(d => JSON.stringify(d)).join('\n');
-                        const headers: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.PLAIN };
-                        if (apiKey) headers[HTTP_HEADERS.X_TYPESENSE_API_KEY] = apiKey;
-
-                        const url = `${host}/collections/${collectionName}/documents/import?action=upsert`;
-                        const response = await fetch(url, {
-                            method: HttpMethod.POST,
-                            headers,
-                            body: ndjson,
-                        });
-                        if (response.ok) {
-                            ok += batch.length;
-                            this.circuitBreaker.recordSuccess(circuitKey);
-                        } else {
-                            fail += batch.length;
-                            const errorMsg = `Typesense error: ${response.status}`;
-                            this.circuitBreaker.recordFailure(circuitKey);
-                            if (onRecordError) await onRecordError(step.key, errorMsg, {});
-                        }
-                    } catch (e: unknown) {
-                        fail += batch.length;
-                        const message = e instanceof Error ? e.message : 'Typesense indexing failed';
-                        this.circuitBreaker.recordFailure(circuitKey);
-                        if (onRecordError) await onRecordError(step.key, message, {});
-                    }
-                }
-                break;
-            }
-            case SINK_ADAPTER_CODES.QUEUE_PRODUCER: {
-                const result = await this.executeQueueProducerSink(ctx, step, input, onRecordError);
-                ok = result.ok;
-                fail = result.fail;
-                break;
-            }
-            case SINK_ADAPTER_CODES.WEBHOOK: {
-                const result = await this.executeWebhookSink(ctx, step, input, onRecordError);
-                ok = result.ok;
-                fail = result.fail;
-                break;
-            }
-            default: {
-                // Try custom sinks from registry
-                if (adapterCode && this.registry) {
-                    const customSink = this.registry.getRuntime('sink', adapterCode) as SinkAdapter<JsonObject> | undefined;
-                    if (customSink && typeof customSink.index === 'function') {
-                        const result = await this.executeCustomSink(ctx, step, input, customSink, pipelineContext);
-                        ok = result.ok;
-                        fail = result.fail;
-                        break;
-                    }
-                }
+            } else {
                 this.logger.warn(`Unknown sink adapter`, { stepKey: step.key, adapterCode });
                 ok = input.length;
-                break;
             }
         }
 
@@ -394,6 +212,179 @@ export class SinkExecutor {
 
         return { ok, fail };
     }
+
+    // ─── Search engine handlers ────────────────────────────────────────
+
+    /**
+     * Shared batch loop with circuit breaker for search engine sinks.
+     * Each batch calls `sendBatch` which builds and sends the HTTP request.
+     */
+    private async executeBatchedSearchSink(
+        input: RecordObject[],
+        bulkSize: number,
+        circuitKey: string,
+        serviceName: string,
+        hostLabel: string,
+        stepKey: string,
+        onRecordError: OnRecordErrorCallback | undefined,
+        sendBatch: (batch: RecordObject[]) => Promise<Response>,
+    ): Promise<ExecutionResult> {
+        let ok = 0;
+        let fail = 0;
+        const batches = chunk(input, bulkSize);
+
+        for (const batch of batches) {
+            // Check circuit breaker before attempting request
+            const circuitResult = this.checkCircuit(circuitKey);
+            if (!circuitResult.allowed) {
+                fail += batch.length;
+                const errorMsg = `Circuit breaker open for ${serviceName} (${hostLabel}), retry in ${Math.ceil(circuitResult.resetTimeoutMs / 1000)}s`;
+                this.logger.warn(errorMsg, { circuitKey, state: circuitResult.state, stepKey });
+                if (onRecordError) await onRecordError(stepKey, errorMsg, {});
+                continue;
+            }
+
+            try {
+                const response = await sendBatch(batch);
+                if (response.ok) {
+                    ok += batch.length;
+                    this.circuitBreaker.recordSuccess(circuitKey);
+                } else {
+                    fail += batch.length;
+                    const errorMsg = `${serviceName} error: ${response.status}`;
+                    this.circuitBreaker.recordFailure(circuitKey);
+                    if (onRecordError) await onRecordError(stepKey, errorMsg, {});
+                }
+            } catch (e: unknown) {
+                fail += batch.length;
+                const message = e instanceof Error ? e.message : `${serviceName} indexing failed`;
+                this.circuitBreaker.recordFailure(circuitKey);
+                if (onRecordError) await onRecordError(stepKey, message, {});
+            }
+        }
+
+        return { ok, fail };
+    }
+
+    private async handleMeiliSearch(hCtx: SinkHandlerContext): Promise<ExecutionResult> {
+        const { ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError } = hCtx;
+        const host = cfg.host ?? SERVICE_DEFAULTS.MEILISEARCH_URL;
+        const apiKey = await this.resolveSecret(ctx, cfg.apiKeySecretCode);
+        const primaryKey = cfg.primaryKey ?? idField;
+        const circuitKey = this.getCircuitKey(SINK_ADAPTER_CODES.MEILISEARCH, host);
+
+        return this.executeBatchedSearchSink(
+            input, bulkSize, circuitKey, 'MeiliSearch', host, step.key, onRecordError,
+            async (batch) => {
+                const docs = batch.map(prepareDoc);
+                const headers: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON };
+                if (apiKey) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${apiKey}`;
+                const url = `${host}/indexes/${indexName}/documents?primaryKey=${primaryKey}`;
+                return fetch(url, {
+                    method: HttpMethod.POST,
+                    headers,
+                    body: JSON.stringify(docs),
+                });
+            },
+        );
+    }
+
+    private async handleElasticsearch(hCtx: SinkHandlerContext): Promise<ExecutionResult> {
+        const { ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError } = hCtx;
+        const adapterCode = getAdapterCode(step) || undefined;
+        const hosts = cfg.hosts ?? [cfg.host ?? SERVICE_DEFAULTS.ELASTICSEARCH_URL];
+        const host = hosts[0];
+        const apiKey = await this.resolveSecret(ctx, cfg.apiKeySecretCode);
+        const basicAuth = await this.resolveSecret(ctx, cfg.basicSecretCode);
+        const effectiveAdapterCode = adapterCode ?? SINK_ADAPTER_CODES.ELASTICSEARCH;
+        const circuitKey = this.getCircuitKey(effectiveAdapterCode, host);
+
+        return this.executeBatchedSearchSink(
+            input, bulkSize, circuitKey, effectiveAdapterCode, host, step.key, onRecordError,
+            async (batch) => {
+                const bulkBody: string[] = [];
+                for (const rec of batch) {
+                    const doc = prepareDoc(rec);
+                    const docId = String(getPath(rec, idField) ?? '');
+                    bulkBody.push(JSON.stringify({ index: { _index: indexName, _id: docId } }));
+                    bulkBody.push(JSON.stringify(doc));
+                }
+                const headers: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.NDJSON };
+                if (apiKey) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.API_KEY} ${apiKey}`;
+                else if (basicAuth) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${Buffer.from(basicAuth).toString('base64')}`;
+
+                return fetch(`${host}/_bulk`, {
+                    method: HttpMethod.POST,
+                    headers,
+                    body: bulkBody.join('\n') + '\n',
+                });
+            },
+        );
+    }
+
+    private async handleAlgolia(hCtx: SinkHandlerContext): Promise<ExecutionResult> {
+        const { ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError } = hCtx;
+        const applicationId = cfg.appId ?? cfg.applicationId;
+        const apiKey = await this.resolveSecret(ctx, cfg.apiKeySecretCode);
+
+        if (!applicationId || !apiKey) {
+            if (onRecordError) await onRecordError(step.key, 'Algolia applicationId and apiKey are required', {});
+            return { ok: 0, fail: input.length };
+        }
+
+        const algoliaHost = SERVICE_URL_TEMPLATES.ALGOLIA_API(applicationId);
+        const circuitKey = this.getCircuitKey(SINK_ADAPTER_CODES.ALGOLIA, algoliaHost);
+
+        return this.executeBatchedSearchSink(
+            input, bulkSize, circuitKey, 'Algolia', applicationId, step.key, onRecordError,
+            async (batch) => {
+                const docs = batch.map(rec => {
+                    const doc = prepareDoc(rec);
+                    return { ...doc, objectID: String(getPath(rec, idField) ?? '') };
+                });
+                const url = `${algoliaHost}/1/indexes/${indexName}/batch`;
+                return fetch(url, {
+                    method: HttpMethod.POST,
+                    headers: {
+                        'X-Algolia-Application-Id': applicationId,
+                        'X-Algolia-API-Key': apiKey,
+                        [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
+                    },
+                    body: JSON.stringify({ requests: docs.map(d => ({ action: 'updateObject', body: d })) }),
+                });
+            },
+        );
+    }
+
+    private async handleTypesense(hCtx: SinkHandlerContext): Promise<ExecutionResult> {
+        const { ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError } = hCtx;
+        const host = cfg.host ?? SERVICE_DEFAULTS.TYPESENSE_URL;
+        const apiKey = await this.resolveSecret(ctx, cfg.apiKeySecretCode);
+        const collectionName = cfg.collectionName ?? indexName;
+        const circuitKey = this.getCircuitKey(SINK_ADAPTER_CODES.TYPESENSE, host);
+
+        return this.executeBatchedSearchSink(
+            input, bulkSize, circuitKey, 'Typesense', host, step.key, onRecordError,
+            async (batch) => {
+                const docs = batch.map(rec => {
+                    const doc = prepareDoc(rec);
+                    return { ...doc, id: String(getPath(rec, idField) ?? '') };
+                });
+                const ndjson = docs.map(d => JSON.stringify(d)).join('\n');
+                const headers: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.PLAIN };
+                if (apiKey) headers[HTTP_HEADERS.X_TYPESENSE_API_KEY] = apiKey;
+
+                const url = `${host}/collections/${collectionName}/documents/import?action=upsert`;
+                return fetch(url, {
+                    method: HttpMethod.POST,
+                    headers,
+                    body: ndjson,
+                });
+            },
+        );
+    }
+
+    // ─── Utility methods ───────────────────────────────────────────────
 
     private logOperationResult(adapterCode: string, operation: string, ok: number, fail: number, startTime: number, stepKey: string): void {
         const durationMs = Date.now() - startTime;

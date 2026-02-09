@@ -144,7 +144,7 @@ export function initPaginationState(): PaginationState {
  */
 export function isPaginationEnabled(config: { pagination?: PaginationConfig }): boolean {
     const type = config.pagination?.type;
-    return type !== undefined && type !== PaginationType.NONE;
+    return type !== undefined && type !== 'NONE';
 }
 
 /**
@@ -155,7 +155,7 @@ export function getPaginationType(
 ): PaginationType {
     const type = config.pagination?.type;
 
-    if (!type || type === PaginationType.NONE) return PaginationType.NONE;
+    if (!type || type === 'NONE') return PaginationType.NONE;
 
     // The enum values match the string literal values exactly
     return type as PaginationType;

@@ -31,7 +31,7 @@ export const couponsTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'csv',
+                format: 'CSV',
                 csv: {
                     delimiter: ',',
                     headerRow: true,

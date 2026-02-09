@@ -21,10 +21,10 @@ export type SinkAdapterCode = typeof SINK_ADAPTER_CODES[keyof typeof SINK_ADAPTE
 
 export const SINK_ADAPTERS: AdapterDefinition[] = [
     {
-        type: 'sink',
+        type: 'SINK',
         code: SINK_ADAPTER_CODES.MEILISEARCH,
         description: 'Index records to MeiliSearch.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'host', label: 'Host URL', type: 'string', required: true, description: 'e.g., http://localhost:7700' },
@@ -39,10 +39,10 @@ export const SINK_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'sink',
+        type: 'SINK',
         code: SINK_ADAPTER_CODES.ELASTICSEARCH,
         description: 'Index records to Elasticsearch.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'node', label: 'Node URL', type: 'string', required: true, description: 'e.g., http://localhost:9200' },
@@ -57,10 +57,10 @@ export const SINK_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'sink',
+        type: 'SINK',
         code: SINK_ADAPTER_CODES.ALGOLIA,
         description: 'Index records to Algolia.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'appId', label: 'Application ID', type: 'string', required: true },
@@ -72,10 +72,10 @@ export const SINK_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'sink',
+        type: 'SINK',
         code: SINK_ADAPTER_CODES.TYPESENSE,
         description: 'Index records to Typesense.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'host', label: 'Host', type: 'string', required: true },
@@ -93,10 +93,10 @@ export const SINK_ADAPTERS: AdapterDefinition[] = [
     },
     // Queue Producer Sink - RabbitMQ via HTTP Management API
     {
-        type: 'sink',
+        type: 'SINK',
         code: SINK_ADAPTER_CODES.QUEUE_PRODUCER,
         description: 'Publish records to RabbitMQ message queue via HTTP Management API (port 15672).',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 {
@@ -184,10 +184,10 @@ export const SINK_ADAPTERS: AdapterDefinition[] = [
     },
     // Webhook Sink
     {
-        type: 'sink',
+        type: 'SINK',
         code: SINK_ADAPTER_CODES.WEBHOOK,
         description: 'Send records to webhook endpoints.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 {

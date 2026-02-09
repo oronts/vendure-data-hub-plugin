@@ -3,7 +3,7 @@ import { MapOperatorConfig } from './types';
 import { applyMapping } from './helpers';
 
 export const MAP_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'map',
     description: 'Transform records via field mapping. Provide a JSON object of dst -> src dot-paths.',
     pure: true,

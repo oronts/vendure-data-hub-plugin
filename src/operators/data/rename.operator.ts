@@ -3,7 +3,7 @@ import { RenameOperatorConfig } from './types';
 import { applyRename } from './helpers';
 
 export const RENAME_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'rename',
     description: 'Rename a field from one path to another.',
     pure: true,

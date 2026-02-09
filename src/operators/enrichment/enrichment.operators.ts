@@ -16,7 +16,7 @@ import {
 import { HTTP_METHOD_OPTIONS } from '../constants';
 
 export const LOOKUP_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'lookup',
     description: 'Lookup value from a map and set to target field.',
     pure: true,
@@ -31,7 +31,7 @@ export const LOOKUP_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const ENRICH_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'enrich',
     description: 'Enrich or default fields on records. "set" overwrites, "defaults" only applies to missing fields.',
     pure: true,
@@ -54,7 +54,7 @@ export const ENRICH_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const COALESCE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'coalesce',
     description: 'Return the first non-null value from a list of field paths.',
     pure: true,
@@ -74,7 +74,7 @@ export const COALESCE_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const DEFAULT_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'default',
     description: 'Set a default value if field is null or undefined.',
     pure: true,
@@ -143,12 +143,12 @@ export function defaultOperator(
 }
 
 export const HTTP_LOOKUP_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'httpLookup',
     description: 'Enrich records by fetching data from external HTTP endpoints with caching, authentication, and error handling.',
     pure: false,
     async: true,
-    category: 'enrichment',
+    category: 'ENRICHMENT',
     schema: {
         fields: [
             { key: 'url', label: 'URL', type: 'string', required: true, description: 'HTTP endpoint URL. Use {{field}} for dynamic values.' },

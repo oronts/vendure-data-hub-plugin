@@ -1,5 +1,4 @@
 import { ParseResult, ParseError, XlsxParseOptions } from '../types';
-import { FileFormat } from '../../constants/enums';
 import { extractFields } from '../helpers/field-extraction';
 
 export async function parseExcel(
@@ -27,7 +26,7 @@ export async function parseExcel(
         if (!sheetName) {
             return {
                 success: false,
-                format: FileFormat.XLSX,
+                format: 'XLSX' as const,
                 records: [],
                 fields: [],
                 totalRows: 0,
@@ -39,7 +38,7 @@ export async function parseExcel(
         if (!workbook.Sheets[sheetName]) {
             return {
                 success: false,
-                format: FileFormat.XLSX,
+                format: 'XLSX' as const,
                 records: [],
                 fields: [],
                 totalRows: 0,
@@ -68,7 +67,7 @@ export async function parseExcel(
 
         return {
             success: true,
-            format: FileFormat.XLSX,
+            format: 'XLSX' as const,
             records,
             fields,
             totalRows: records.length,
@@ -84,7 +83,7 @@ export async function parseExcel(
         if (err instanceof Error && err.message.includes('Cannot find module')) {
             return {
                 success: false,
-                format: FileFormat.XLSX,
+                format: 'XLSX' as const,
                 records: [],
                 fields: [],
                 totalRows: 0,
@@ -95,7 +94,7 @@ export async function parseExcel(
 
         return {
             success: false,
-            format: FileFormat.XLSX,
+            format: 'XLSX' as const,
             records: [],
             fields: [],
             totalRows: 0,

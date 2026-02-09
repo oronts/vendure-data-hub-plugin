@@ -32,7 +32,7 @@ import { PaginationState } from './types';
 
 @Injectable()
 export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig> {
-    readonly type = 'extractor' as const;
+    readonly type = 'EXTRACTOR' as const;
     readonly code = 'database';
     readonly name = 'Database Extractor';
     readonly description = 'Extract data from SQL databases (PostgreSQL, MySQL, SQLite, etc.)';

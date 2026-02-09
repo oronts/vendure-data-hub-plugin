@@ -508,20 +508,20 @@ export const config: VendureConfig = {
             ],
 
             // Secrets for API authentication
-            // Providers: 'inline' (stored in DB, encrypted if DATAHUB_MASTER_KEY set)
-            //            'env' (reads from environment variable at runtime)
+            // Providers: 'INLINE' (stored in DB, encrypted if DATAHUB_MASTER_KEY set)
+            //            'ENV' (reads from environment variable at runtime)
             // Env provider supports fallback syntax: 'ENV_VAR|fallback_value'
             secrets: [
-                { code: 'demo-api-key', provider: 'inline', value: 'demo-key-12345' },
-                { code: 'crm-api-key', provider: 'inline', value: 'crm-demo-key-67890' },
-                { code: 'webhook-api-key', provider: 'inline', value: 'webhook-secret-abcdef' },
-                { code: 'google-merchant-key', provider: 'inline', value: 'google-merchant-demo-key' },
-                { code: 'facebook-catalog-key', provider: 'inline', value: 'fb-catalog-demo-key' },
+                { code: 'demo-api-key', provider: 'INLINE', value: 'demo-key-12345' },
+                { code: 'crm-api-key', provider: 'INLINE', value: 'crm-demo-key-67890' },
+                { code: 'webhook-api-key', provider: 'INLINE', value: 'webhook-secret-abcdef' },
+                { code: 'google-merchant-key', provider: 'INLINE', value: 'google-merchant-demo-key' },
+                { code: 'facebook-catalog-key', provider: 'INLINE', value: 'fb-catalog-demo-key' },
                 // Pimcore connector secrets - use env provider with fallback for dev
                 // In production: set PIMCORE_API_KEY environment variable
                 // For testing: uses 'demo-pimcore-key' fallback (will fail auth but allows pipeline validation)
-                { code: 'pimcore-api-key', provider: 'env', value: 'PIMCORE_API_KEY|demo-pimcore-key' },
-                { code: 'pimcore-webhook-key', provider: 'env', value: 'PIMCORE_WEBHOOK_KEY|demo-webhook-key' },
+                { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY|demo-pimcore-key' },
+                { code: 'pimcore-webhook-key', provider: 'ENV', value: 'PIMCORE_WEBHOOK_KEY|demo-webhook-key' },
             ],
 
             // Database connections

@@ -31,5 +31,5 @@ export type ComparisonOperator =
     | 'isEmpty' | 'isNotEmpty' | 'between';
 
 export { RouteConditionOperator } from '../constants/index';
-export type { AdapterDefinition, OperatorHelpers } from '../sdk/types';
+export type { AdapterDefinition, AdapterOperatorHelpers as OperatorHelpers } from '../sdk/types';
 export type { JsonValue, JsonObject } from '../types';

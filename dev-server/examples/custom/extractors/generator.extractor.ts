@@ -36,11 +36,11 @@ function processTemplate(template: unknown, index: number): unknown {
 }
 
 export const generatorExtractor: ExtractorAdapter<GeneratorExtractorConfig> = {
-    type: 'extractor',
+    type: 'EXTRACTOR',
     code: 'generator',
     name: 'Data Generator',
     description: 'Generate test/sample records using templates (streaming)',
-    category: 'data-source',
+    category: 'DATA_SOURCE',
     schema: generatorExtractorSchema,
     icon: 'sparkles',
     version: '1.0.0',

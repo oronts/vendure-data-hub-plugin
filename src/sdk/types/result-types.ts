@@ -293,9 +293,15 @@ export interface SinkResult {
 // STEP EXECUTION RESULTS
 
 /**
- * Metrics from step execution
+ * Metrics from adapter step execution.
+ *
+ * This is the SDK/adapter-facing metrics type with fields optimized for
+ * adapter result reporting (inputCount/outputCount/durationMs).
+ *
+ * @see shared/types/step.types.ts StepMetrics for the shared/domain version
+ *   which uses inputRecords/outputRecords/duration field names.
  */
-export interface StepMetrics {
+export interface AdapterStepMetrics {
     /** Number of input records */
     readonly inputCount: number;
     /** Number of output records */
@@ -309,9 +315,15 @@ export interface StepMetrics {
 }
 
 /**
- * Error from step execution
+ * Error from adapter step execution.
+ *
+ * This is the SDK/adapter-facing error type with a simplified shape
+ * for adapter result reporting.
+ *
+ * @see shared/types/step.types.ts StepError for the shared/domain version
+ *   which includes additional fields (field, recordIndex, recordId, stack, retryable).
  */
-export interface StepError {
+export interface AdapterStepError {
     /** Error message */
     readonly message: string;
     /** The record that caused the error (if applicable) */
@@ -331,7 +343,7 @@ export interface StepExecutionResult {
     /** Output records */
     readonly records: readonly JsonObject[];
     /** Step execution metrics */
-    readonly metrics: StepMetrics;
+    readonly metrics: AdapterStepMetrics;
     /** Step errors */
-    readonly errors?: readonly StepError[];
+    readonly errors?: readonly AdapterStepError[];
 }

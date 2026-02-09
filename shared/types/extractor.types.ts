@@ -61,7 +61,7 @@ export interface RetryConfig {
 }
 
 export interface AuthConfig {
-    type: 'none' | 'basic' | 'bearer' | 'api-key' | 'oauth2' | 'hmac';
+    type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY' | 'OAUTH2' | 'HMAC';
     secretCode?: string;
     username?: string;
     password?: string;
@@ -71,7 +71,7 @@ export interface AuthConfig {
 
 // PAGINATION SUPPORT
 
-export type PaginationType = 'none' | 'offset' | 'cursor' | 'page' | 'link-header';
+export type PaginationType = 'NONE' | 'OFFSET' | 'CURSOR' | 'PAGE' | 'LINK_HEADER';
 
 export interface PaginationConfig {
     type: PaginationType;

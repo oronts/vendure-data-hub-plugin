@@ -18,7 +18,7 @@ import {
 } from './helpers';
 
 export const AGGREGATE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'aggregate',
     description: 'Compute a simple aggregate over records and set a field on each record.',
     pure: true,
@@ -44,7 +44,7 @@ export const AGGREGATE_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const COUNT_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'count',
     description: 'Count elements in an array or characters in a string.',
     pure: true,
@@ -57,7 +57,7 @@ export const COUNT_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const UNIQUE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'unique',
     description: 'Remove duplicate values from an array field.',
     pure: true,
@@ -71,7 +71,7 @@ export const UNIQUE_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const FLATTEN_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'flatten',
     description: 'Flatten a nested array into a single-level array.',
     pure: true,
@@ -85,7 +85,7 @@ export const FLATTEN_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const FIRST_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'first',
     description: 'Get the first element of an array.',
     pure: true,
@@ -98,7 +98,7 @@ export const FIRST_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const LAST_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'last',
     description: 'Get the last element of an array.',
     pure: true,
@@ -111,7 +111,7 @@ export const LAST_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const EXPAND_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'expand',
     description: 'Expand an array field into multiple records. Each array element becomes a separate record with optional parent field inheritance.',
     pure: false, // Creates multiple records from one, so not pure

@@ -24,7 +24,7 @@ import {
 import { ROUNDING_MODES, UNIT_OPTIONS } from '../constants';
 
 export const MATH_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'math',
     description: 'Perform math operations on numeric fields.',
     pure: true,
@@ -57,7 +57,7 @@ export const MATH_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const CURRENCY_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'currency',
     description: 'Convert floats to minor units or re-map currency fields.',
     pure: true,
@@ -77,7 +77,7 @@ export const CURRENCY_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const UNIT_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'unit',
     description: 'Convert units (e.g. g<->kg, cm<->m)',
     pure: true,
@@ -104,7 +104,7 @@ export const UNIT_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const TO_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'toNumber',
     description: 'Convert a string field to a number.',
     pure: true,
@@ -118,7 +118,7 @@ export const TO_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const TO_STRING_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'toString',
     description: 'Convert a value to a string.',
     pure: true,
@@ -206,7 +206,7 @@ export function toStringOperator(
 }
 
 export const PARSE_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'parseNumber',
     description: 'Parse a string to a number with locale-aware decimal/thousand separator handling.',
     pure: true,
@@ -221,7 +221,7 @@ export const PARSE_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const FORMAT_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'formatNumber',
     description: 'Format a number as a localized string with optional currency or percent formatting.',
     pure: true,
@@ -293,7 +293,7 @@ export function formatNumberOperator(
 }
 
 export const TO_CENTS_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'toCents',
     description: 'Convert a decimal amount to cents (minor currency units). Multiplies by 100 and rounds.',
     pure: true,
@@ -312,7 +312,7 @@ export const TO_CENTS_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const ROUND_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'round',
     description: 'Round a number to a specified number of decimal places.',
     pure: true,

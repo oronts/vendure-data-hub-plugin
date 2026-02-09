@@ -20,7 +20,7 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
         return createPipeline()
             .name('Pimcore Category Sync (Disabled)')
             .description('Category sync is disabled')
-            .trigger('manual', { type: 'manual' })
+            .trigger('MANUAL', { type: 'MANUAL' })
             .build();
     }
 
@@ -31,12 +31,12 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
         ;
 
     if (pipelineConfig.schedule) {
-        pipeline.trigger('scheduled', { type: 'schedule', cron: pipelineConfig.schedule, timezone: 'UTC' });
+        pipeline.trigger('scheduled', { type: 'SCHEDULE', cron: pipelineConfig.schedule, timezone: 'UTC' });
     }
 
-    pipeline.trigger('manual', { type: 'manual', enabled: true });
-    pipeline.trigger('webhook', {
-        type: 'webhook',
+    pipeline.trigger('MANUAL', { type: 'MANUAL', enabled: true });
+    pipeline.trigger('WEBHOOK', {
+        type: 'WEBHOOK',
         webhookCode: 'pimcore-category-sync',
         authentication: 'api-key',
         apiKeySecretCode: 'pimcore-webhook-key',
@@ -114,8 +114,8 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
         descriptionField: 'description',
     });
 
-    pipeline.edge('manual', 'fetch-categories');
-    pipeline.edge('webhook', 'fetch-categories');
+    pipeline.edge('MANUAL', 'fetch-categories');
+    pipeline.edge('WEBHOOK', 'fetch-categories');
     if (pipelineConfig.schedule) pipeline.edge('scheduled', 'fetch-categories');
     pipeline.edge('fetch-categories', 'validate-categories');
     pipeline.edge('validate-categories', 'transform-categories');

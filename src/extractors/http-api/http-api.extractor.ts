@@ -39,7 +39,7 @@ import {
 
 @Injectable()
 export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
-    readonly type = 'extractor' as const;
+    readonly type = 'EXTRACTOR' as const;
     readonly code = 'httpApi';
     readonly name = 'HTTP API Extractor';
     readonly description = 'Extract data from REST/GraphQL APIs with pagination support';
@@ -260,7 +260,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
             errors.push({ field: 'url', message: 'Invalid URL format' });
         }
 
-        if (config.pagination?.type === PaginationType.CURSOR && !config.pagination.cursorPath) {
+        if (config.pagination?.type === 'CURSOR' && !config.pagination.cursorPath) {
             warnings.push({
                 field: 'pagination.cursorPath',
                 message: 'Cursor path not specified for cursor pagination',
@@ -286,7 +286,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
         try {
             const response = await this.makeRequest(context, {
                 ...config,
-                pagination: { type: PaginationType.NONE },
+                pagination: { type: 'NONE' as const },
             });
 
             return {

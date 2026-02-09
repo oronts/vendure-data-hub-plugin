@@ -14,7 +14,7 @@ import { getValueByPath, validateSignature } from './helpers';
 
 @Injectable()
 export class WebhookExtractor implements BatchDataExtractor<WebhookExtractorConfig> {
-    readonly type = 'extractor' as const;
+    readonly type = 'EXTRACTOR' as const;
     readonly code = 'webhook';
     readonly name = 'Webhook Extractor';
     readonly description = 'Process incoming webhook payloads';

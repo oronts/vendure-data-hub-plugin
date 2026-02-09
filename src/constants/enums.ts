@@ -13,12 +13,12 @@ export enum DiffEntryType {
 }
 
 export enum TriggerType {
-    MANUAL = 'manual',
-    SCHEDULE = 'schedule',
-    WEBHOOK = 'webhook',
-    EVENT = 'event',
-    FILE = 'file',
-    MESSAGE = 'message',
+    MANUAL = 'MANUAL',
+    SCHEDULE = 'SCHEDULE',
+    WEBHOOK = 'WEBHOOK',
+    EVENT = 'EVENT',
+    FILE = 'FILE',
+    MESSAGE = 'MESSAGE',
 }
 
 /**
@@ -71,76 +71,76 @@ export enum StepType {
  * Adapter types in the pipeline
  */
 export enum AdapterType {
-    EXTRACTOR = 'extractor',
-    OPERATOR = 'operator',
-    LOADER = 'loader',
-    VALIDATOR = 'validator',
-    ENRICHER = 'enricher',
-    EXPORTER = 'exporter',
-    FEED = 'feed',
-    SINK = 'sink',
-    TRIGGER = 'trigger',
-    ROUTER = 'router',
+    EXTRACTOR = 'EXTRACTOR',
+    OPERATOR = 'OPERATOR',
+    LOADER = 'LOADER',
+    VALIDATOR = 'VALIDATOR',
+    ENRICHER = 'ENRICHER',
+    EXPORTER = 'EXPORTER',
+    FEED = 'FEED',
+    SINK = 'SINK',
+    TRIGGER = 'TRIGGER',
+    ROUTER = 'ROUTER',
 }
 
 /**
  * Adapter categories for organization
  */
 export enum AdapterCategory {
-    DATA_SOURCE = 'data-source',
-    TRANSFORMATION = 'transformation',
-    FILTERING = 'filtering',
-    ENRICHMENT = 'enrichment',
-    AGGREGATION = 'aggregation',
-    CONVERSION = 'conversion',
-    CATALOG = 'catalog',
-    CUSTOMERS = 'customers',
-    ORDERS = 'orders',
-    INVENTORY = 'inventory',
-    PROMOTIONS = 'promotions',
-    ASSETS = 'assets',
-    EXTERNAL = 'external',
-    UTILITY = 'utility',
+    DATA_SOURCE = 'DATA_SOURCE',
+    TRANSFORMATION = 'TRANSFORMATION',
+    FILTERING = 'FILTERING',
+    ENRICHMENT = 'ENRICHMENT',
+    AGGREGATION = 'AGGREGATION',
+    CONVERSION = 'CONVERSION',
+    CATALOG = 'CATALOG',
+    CUSTOMERS = 'CUSTOMERS',
+    ORDERS = 'ORDERS',
+    INVENTORY = 'INVENTORY',
+    PROMOTIONS = 'PROMOTIONS',
+    ASSETS = 'ASSETS',
+    EXTERNAL = 'EXTERNAL',
+    UTILITY = 'UTILITY',
 }
 
 /**
  * Load strategies for entity loaders
  */
 export enum LoadStrategy {
-    CREATE = 'create',
-    UPDATE = 'update',
-    UPSERT = 'upsert',
-    MERGE = 'merge',
-    SOFT_DELETE = 'soft-delete',
-    HARD_DELETE = 'hard-delete',
+    CREATE = 'CREATE',
+    UPDATE = 'UPDATE',
+    UPSERT = 'UPSERT',
+    MERGE = 'MERGE',
+    SOFT_DELETE = 'SOFT_DELETE',
+    HARD_DELETE = 'HARD_DELETE',
 }
 
 /**
  * Conflict resolution strategies
  */
 export enum ConflictStrategy {
-    SOURCE_WINS = 'source-wins',
-    VENDURE_WINS = 'vendure-wins',
-    MERGE = 'merge',
-    MANUAL_QUEUE = 'manual-queue',
+    SOURCE_WINS = 'SOURCE_WINS',
+    VENDURE_WINS = 'VENDURE_WINS',
+    MERGE = 'MERGE',
+    MANUAL_QUEUE = 'MANUAL_QUEUE',
 }
 
 /**
  * Channel assignment strategies
  */
 export enum ChannelStrategy {
-    EXPLICIT = 'explicit',
-    INHERIT = 'inherit',
-    MULTI = 'multi',
+    EXPLICIT = 'EXPLICIT',
+    INHERIT = 'INHERIT',
+    MULTI = 'MULTI',
 }
 
 /**
  * Language handling strategies
  */
 export enum LanguageStrategy {
-    SPECIFIC = 'specific',
-    FALLBACK = 'fallback',
-    MULTI = 'multi',
+    SPECIFIC = 'SPECIFIC',
+    FALLBACK = 'FALLBACK',
+    MULTI = 'MULTI',
 }
 
 /**
@@ -220,67 +220,67 @@ export enum RunMode {
  * Drain strategies for error handling
  */
 export enum DrainStrategy {
-    BACKOFF = 'backoff',
-    SHED = 'shed',
-    QUEUE = 'queue',
+    BACKOFF = 'BACKOFF',
+    SHED = 'SHED',
+    QUEUE = 'QUEUE',
 }
 
 /**
  * Late events policy for windowed operations
  */
 export enum LateEventsPolicy {
-    DROP = 'drop',
-    BUFFER = 'buffer',
+    DROP = 'DROP',
+    BUFFER = 'BUFFER',
 }
 
 /**
  * Validation mode for transform operations
  */
 export enum ValidationMode {
-    FAIL_FAST = 'fail-fast',
-    ACCUMULATE = 'accumulate',
+    FAIL_FAST = 'FAIL_FAST',
+    ACCUMULATE = 'ACCUMULATE',
 }
 
 /**
  * Validation strictness for load operations
  */
 export enum ValidationStrictness {
-    STRICT = 'strict',
-    LENIENT = 'lenient',
+    STRICT = 'STRICT',
+    LENIENT = 'LENIENT',
 }
 
 /**
  * Connection types for external services
  */
 export enum ConnectionType {
-    HTTP = 'http',
-    S3 = 's3',
-    FTP = 'ftp',
-    SFTP = 'sftp',
-    DATABASE = 'database',
-    CUSTOM = 'custom',
+    HTTP = 'HTTP',
+    S3 = 'S3',
+    FTP = 'FTP',
+    SFTP = 'SFTP',
+    DATABASE = 'DATABASE',
+    CUSTOM = 'CUSTOM',
 }
 
 /**
  * Authentication types
  */
 export enum AuthType {
-    NONE = 'none',
-    BASIC = 'basic',
-    BEARER = 'bearer',
-    API_KEY = 'api-key',
-    OAUTH2 = 'oauth2',
-    HMAC = 'hmac',
-    JWT = 'jwt',
+    NONE = 'NONE',
+    BASIC = 'BASIC',
+    BEARER = 'BEARER',
+    API_KEY = 'API_KEY',
+    OAUTH2 = 'OAUTH2',
+    HMAC = 'HMAC',
+    JWT = 'JWT',
 }
 
 /**
  * Secret provider types
  */
 export enum SecretProvider {
-    INLINE = 'inline',
-    ENV = 'env',
-    EXTERNAL = 'external',
+    INLINE = 'INLINE',
+    ENV = 'ENV',
+    EXTERNAL = 'EXTERNAL',
 }
 
 /**
@@ -306,59 +306,59 @@ export enum DomainEventType {
  * Database types supported by the database extractor
  */
 export enum DatabaseType {
-    POSTGRESQL = 'postgresql',
-    MYSQL = 'mysql',
-    SQLITE = 'sqlite',
-    MSSQL = 'mssql',
-    ORACLE = 'oracle',
+    POSTGRESQL = 'POSTGRESQL',
+    MYSQL = 'MYSQL',
+    SQLITE = 'SQLITE',
+    MSSQL = 'MSSQL',
+    ORACLE = 'ORACLE',
 }
 
 /**
  * Pagination types for HTTP API extractors
  */
 export enum PaginationType {
-    NONE = 'none',
-    OFFSET = 'offset',
-    CURSOR = 'cursor',
-    PAGE = 'page',
-    LINK_HEADER = 'link-header',
+    NONE = 'NONE',
+    OFFSET = 'OFFSET',
+    CURSOR = 'CURSOR',
+    PAGE = 'PAGE',
+    LINK_HEADER = 'LINK_HEADER',
 }
 
 /**
  * Pagination types for database extractors
  */
 export enum DatabasePaginationType {
-    OFFSET = 'offset',
-    CURSOR = 'cursor',
+    OFFSET = 'OFFSET',
+    CURSOR = 'CURSOR',
 }
 
 /**
  * Pagination types for GraphQL extractors
  */
 export enum GraphQLPaginationType {
-    NONE = 'none',
-    OFFSET = 'offset',
-    CURSOR = 'cursor',
-    RELAY = 'relay',
+    NONE = 'NONE',
+    OFFSET = 'OFFSET',
+    CURSOR = 'CURSOR',
+    RELAY = 'RELAY',
 }
 
 /**
  * Pagination strategies for REST sources
  */
 export enum RestPaginationStrategy {
-    OFFSET = 'offset',
-    CURSOR = 'cursor',
-    PAGE = 'page',
-    LINK = 'link',
+    OFFSET = 'OFFSET',
+    CURSOR = 'CURSOR',
+    PAGE = 'PAGE',
+    LINK = 'LINK',
 }
 
 /**
  * Pagination styles for GraphQL sources
  */
 export enum GraphQLPaginationStyle {
-    RELAY = 'relay',
-    OFFSET = 'offset',
-    CURSOR = 'cursor',
+    RELAY = 'RELAY',
+    OFFSET = 'OFFSET',
+    CURSOR = 'CURSOR',
 }
 
 /**
@@ -420,29 +420,29 @@ export enum SortOrder {
  * Supported file formats for parsing and export
  */
 export enum FileFormat {
-    CSV = 'csv',
-    JSON = 'json',
-    XML = 'xml',
-    XLSX = 'xlsx',
-    NDJSON = 'ndjson',
-    TSV = 'tsv',
-    PARQUET = 'parquet',
+    CSV = 'CSV',
+    JSON = 'JSON',
+    XML = 'XML',
+    XLSX = 'XLSX',
+    NDJSON = 'NDJSON',
+    TSV = 'TSV',
+    PARQUET = 'PARQUET',
 }
 
 /**
  * File format type (lowercase string literal union matching FileFormat enum values)
  */
-export type FileFormatType = 'csv' | 'json' | 'xml' | 'xlsx' | 'ndjson' | 'tsv' | 'parquet';
+export type FileFormatType = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'TSV' | 'PARQUET';
 
 /**
  * Export-specific formats (subset commonly used for exports)
  */
-export type ExportFormatType = 'csv' | 'json' | 'xml' | 'xlsx' | 'ndjson' | 'parquet';
+export type ExportFormatType = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'PARQUET';
 
 /**
  * Parse-specific formats (subset used for file parsing)
  */
-export type ParseFormatType = 'csv' | 'json' | 'xml' | 'xlsx';
+export type ParseFormatType = 'CSV' | 'JSON' | 'XML' | 'XLSX';
 
 /**
  * Pipeline source types (high-level data origin)
@@ -524,19 +524,19 @@ export enum LogLevel {
  * - internal: In-memory queue for testing
  */
 export enum QueueType {
-    RABBITMQ = 'rabbitmq',
-    RABBITMQ_AMQP = 'rabbitmq-amqp',
-    SQS = 'sqs',
-    REDIS = 'redis-streams',
-    INTERNAL = 'internal',
+    RABBITMQ = 'RABBITMQ',
+    RABBITMQ_AMQP = 'RABBITMQ_AMQP',
+    SQS = 'SQS',
+    REDIS = 'REDIS_STREAMS',
+    INTERNAL = 'INTERNAL',
 }
 
 /**
  * Message acknowledgment modes for queue consumers
  */
 export enum AckMode {
-    AUTO = 'auto',
-    MANUAL = 'manual',
+    AUTO = 'AUTO',
+    MANUAL = 'MANUAL',
 }
 
 /**
@@ -1049,14 +1049,14 @@ export const PIPELINE_VALIDATION_ERROR = {
  * Use these constants instead of hardcoded string literals
  */
 export const DESTINATION_TYPE = {
-    FILE: 'file',
-    S3: 's3',
-    FTP: 'ftp',
-    SFTP: 'sftp',
-    HTTP: 'http',
-    EMAIL: 'email',
-    WEBHOOK: 'webhook',
-    LOCAL: 'local',
+    FILE: 'FILE',
+    S3: 'S3',
+    FTP: 'FTP',
+    SFTP: 'SFTP',
+    HTTP: 'HTTP',
+    EMAIL: 'EMAIL',
+    WEBHOOK: 'WEBHOOK',
+    LOCAL: 'LOCAL',
 } as const;
 
 export type DestinationType = typeof DESTINATION_TYPE[keyof typeof DESTINATION_TYPE];

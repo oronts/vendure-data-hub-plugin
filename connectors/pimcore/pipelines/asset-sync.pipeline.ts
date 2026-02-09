@@ -12,7 +12,7 @@ export function createAssetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
         return createPipeline()
             .name('Pimcore Asset Sync (Disabled)')
             .description('Asset sync is disabled')
-            .trigger('manual', { type: 'manual' })
+            .trigger('MANUAL', { type: 'MANUAL' })
             .build();
     }
 
@@ -22,10 +22,10 @@ export function createAssetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
         .capabilities({ requires: ['UpdateCatalog'] });
 
     if (pipelineConfig.schedule) {
-        pipeline.trigger('scheduled', { type: 'schedule', cron: pipelineConfig.schedule, timezone: 'UTC' });
+        pipeline.trigger('scheduled', { type: 'SCHEDULE', cron: pipelineConfig.schedule, timezone: 'UTC' });
     }
 
-    pipeline.trigger('manual', { type: 'manual', enabled: true });
+    pipeline.trigger('MANUAL', { type: 'MANUAL', enabled: true });
 
     const pathFilter = buildSafePathFilter(pipelineConfig.folderPath);
     const mimeTypes = pipelineConfig.mimeTypes?.length ? pipelineConfig.mimeTypes : ['image/jpeg', 'image/png', 'image/webp'];
@@ -95,7 +95,7 @@ export function createAssetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
         nameField: 'name',
     });
 
-    pipeline.edge('manual', 'fetch-assets');
+    pipeline.edge('MANUAL', 'fetch-assets');
     if (pipelineConfig.schedule) pipeline.edge('scheduled', 'fetch-assets');
     pipeline.edge('fetch-assets', 'validate-assets');
     pipeline.edge('validate-assets', 'transform-assets');

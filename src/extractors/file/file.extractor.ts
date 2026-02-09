@@ -20,7 +20,7 @@ import { SortOrder, FileFormat } from '../../constants/enums';
 
 @Injectable()
 export class FileExtractor implements DataExtractor<FileExtractorConfig> {
-    readonly type = 'extractor' as const;
+    readonly type = 'EXTRACTOR' as const;
     readonly code = 'file';
     readonly name = 'File Extractor';
     readonly description = 'Extract data from local files (CSV, JSON, XML, Excel)';

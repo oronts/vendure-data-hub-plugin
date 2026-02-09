@@ -26,11 +26,11 @@ const LOOKUP_ENRICHER_SCHEMA: StepConfigSchema = {
 };
 
 export const lookupEnricher: EnricherAdapter<LookupEnricherConfig> = {
-    type: 'enricher',
+    type: 'ENRICHER',
     code: 'lookup',
     name: 'Lookup',
     description: 'Enrich records by looking up values from a static map.',
-    category: 'enrichment',
+    category: 'ENRICHMENT',
     schema: LOOKUP_ENRICHER_SCHEMA,
 
     async enrich(

@@ -14,12 +14,12 @@ import { JsonValue, JsonObject } from './json.types';
  * src/constants/enums.ts. Keep in sync when modifying either.
  */
 export type TriggerType =
-    | 'manual'
-    | 'schedule'
-    | 'webhook'
-    | 'event'
-    | 'file'
-    | 'message';
+    | 'MANUAL'
+    | 'SCHEDULE'
+    | 'WEBHOOK'
+    | 'EVENT'
+    | 'FILE'
+    | 'MESSAGE';
 
 /**
  * Authentication types for webhook triggers
@@ -27,13 +27,13 @@ export type TriggerType =
  * Uses lowercase/kebab-case as configuration values
  */
 export type WebhookAuthType =
-    | 'none'
-    | 'basic'
-    | 'bearer'
-    | 'api-key'
-    | 'oauth2'
-    | 'hmac'
-    | 'jwt';
+    | 'NONE'
+    | 'BASIC'
+    | 'BEARER'
+    | 'API_KEY'
+    | 'OAUTH2'
+    | 'HMAC'
+    | 'JWT';
 
 /** HMAC algorithm options for webhook signature verification */
 export type HmacAlgorithm = 'SHA256' | 'SHA512' | 'SHA1';
@@ -147,7 +147,7 @@ export interface EventTriggerConfig {
  *
  * Uses lowercase as configuration values
  */
-export type QueueTypeValue = 'rabbitmq-amqp' | 'rabbitmq' | 'sqs' | 'redis-streams' | 'internal';
+export type QueueTypeValue = 'RABBITMQ_AMQP' | 'RABBITMQ' | 'SQS' | 'REDIS_STREAMS' | 'INTERNAL';
 
 /**
  * Configuration for queue-based triggers
@@ -203,7 +203,7 @@ export interface FileWatchTriggerConfig {
  *
  * Uses lowercase as configuration values
  */
-export type AckMode = 'auto' | 'manual';
+export type AckMode = 'AUTO' | 'MANUAL';
 
 /**
  * Configuration for message queue triggers

@@ -125,7 +125,7 @@ export class LoadExecutor {
 
         // Try custom loaders from registry
         if (adapterCode && this.registry) {
-            const customLoader = this.registry.getRuntime('loader', adapterCode) as LoaderAdapter<unknown> | undefined;
+            const customLoader = this.registry.getRuntime('LOADER', adapterCode) as LoaderAdapter<unknown> | undefined;
             if (customLoader && typeof customLoader.load === 'function') {
                 const result = await this.executeCustomLoader(ctx, step, input, customLoader, pipelineContext);
                 const durationMs = Date.now() - startTime;
@@ -158,11 +158,11 @@ export class LoadExecutor {
             pipelineId: '0',
             stepKey: step.key,
             pipelineContext: pipelineContext ?? {} as PipelineContext,
-            channelStrategy: cfg.channelStrategy ?? ChannelStrategyEnum.INHERIT,
+            channelStrategy: cfg.channelStrategy ?? 'INHERIT',
             channels: [],
-            languageStrategy: cfg.languageStrategy ?? LanguageStrategyEnum.FALLBACK,
-            validationMode: cfg.validationMode ?? ValidationStrictnessEnum.LENIENT,
-            conflictStrategy: cfg.conflictStrategy ?? ConflictStrategyEnum.SOURCE_WINS,
+            languageStrategy: cfg.languageStrategy ?? 'FALLBACK',
+            validationMode: cfg.validationMode ?? 'LENIENT',
+            conflictStrategy: cfg.conflictStrategy ?? 'SOURCE_WINS',
             secrets: {
                 get: async (code: string) => {
                     const secret = await this.secretService.getByCode(ctx, code);

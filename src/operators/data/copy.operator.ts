@@ -3,7 +3,7 @@ import { CopyOperatorConfig } from './types';
 import { applyCopy } from './helpers';
 
 export const COPY_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'copy',
     description: 'Copy a field value to another path.',
     pure: true,

@@ -45,7 +45,7 @@ export type SdkRunMode = typeof SDK_RUN_MODE[keyof typeof SDK_RUN_MODE];
  * Default trigger type used when no trigger config is provided.
  * @default 'manual'
  */
-export const DEFAULT_TRIGGER_TYPE = 'manual';
+export const DEFAULT_TRIGGER_TYPE = 'MANUAL';
 
 /**
  * Route condition comparison operators.

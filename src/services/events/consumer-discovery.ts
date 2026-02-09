@@ -92,7 +92,7 @@ export class ConsumerDiscovery {
      */
     extractMessageConfigs(pipeline: Pipeline): MessageConsumerConfig[] {
         const definition = pipeline.definition as PipelineDefinition | undefined;
-        const triggers = findEnabledTriggersByType(definition, 'message');
+        const triggers = findEnabledTriggersByType(definition, 'MESSAGE');
         if (triggers.length === 0) return [];
 
         const configs: MessageConsumerConfig[] = [];

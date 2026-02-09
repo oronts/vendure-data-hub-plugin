@@ -55,7 +55,7 @@ export type SourceType =
     | 'EVENT';
 
 /** Supported file formats */
-export type FileFormat = 'csv' | 'json' | 'xml' | 'xlsx' | 'ndjson' | 'tsv' | 'parquet';
+export type FileFormat = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'TSV' | 'PARQUET';
 
 /** Type of export destination */
 export type DestinationType = 'DOWNLOAD' | 'S3' | 'FTP' | 'HTTP' | 'EMAIL';
@@ -129,19 +129,19 @@ export interface CheckpointingConfig {
  */
 
 /** Strategy for handling Vendure channels */
-export type ChannelStrategyValue = 'explicit' | 'inherit' | 'multi';
+export type ChannelStrategyValue = 'EXPLICIT' | 'INHERIT' | 'MULTI';
 
 /** Mode for validation strictness */
-export type ValidationModeValue = 'strict' | 'lenient';
+export type ValidationModeValue = 'STRICT' | 'LENIENT';
 
 /** Execution mode for the pipeline */
 export type RunModeValue = 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
 
 /** Strategy for handling multilingual content */
-export type LanguageStrategyValue = 'specific' | 'fallback' | 'multi';
+export type LanguageStrategyValue = 'SPECIFIC' | 'FALLBACK' | 'MULTI';
 
 /** Strategy for handling conflicts between source and existing data */
-export type ConflictStrategyValue = 'source-wins' | 'vendure-wins' | 'merge' | 'manual-queue';
+export type ConflictStrategyValue = 'SOURCE_WINS' | 'VENDURE_WINS' | 'MERGE' | 'MANUAL_QUEUE';
 
 /**
  * Parallel execution configuration for graph-based pipelines
@@ -385,7 +385,7 @@ export interface FileFormatConfig {
 export type WebhookAuthMode = 'NONE' | 'API_KEY' | 'HMAC' | 'JWT' | 'BASIC';
 export type WebhookResponseMode = 'SYNC' | 'ASYNC';
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-export type PaginationTypeValue = 'none' | 'offset' | 'cursor' | 'page' | 'link-header';
+export type PaginationTypeValue = 'NONE' | 'OFFSET' | 'CURSOR' | 'PAGE' | 'LINK_HEADER';
 
 export interface FileUploadSourceConfig {
     type: 'FILE_UPLOAD';

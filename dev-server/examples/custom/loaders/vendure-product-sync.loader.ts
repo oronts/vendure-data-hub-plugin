@@ -34,11 +34,11 @@ interface SyncStats {
 }
 
 export const vendureProductSyncLoader: LoaderAdapter<VendureProductSyncConfig> = {
-    type: 'loader',
+    type: 'LOADER',
     code: 'vendure-product-sync',
     name: 'Vendure Product Sync (Demo)',
     description: 'Sync external products to Vendure catalog (demo mode logs actions)',
-    category: 'data-source',
+    category: 'DATA_SOURCE',
     schema: vendureProductSyncSchema,
     icon: 'refresh',
     version: '1.0.0',

@@ -12,16 +12,16 @@ import { JsonValue } from './json.types';
  * Uses lowercase as these are internal type identifiers, not GraphQL enums
  */
 export type AdapterType =
-    | 'extractor'
-    | 'operator'
-    | 'loader'
-    | 'validator'
-    | 'enricher'
-    | 'exporter'
-    | 'feed'
-    | 'sink'
-    | 'trigger'
-    | 'router';
+    | 'EXTRACTOR'
+    | 'OPERATOR'
+    | 'LOADER'
+    | 'VALIDATOR'
+    | 'ENRICHER'
+    | 'EXPORTER'
+    | 'FEED'
+    | 'SINK'
+    | 'TRIGGER'
+    | 'ROUTER';
 
 /**
  * Categories for organizing adapters in the UI
@@ -29,20 +29,20 @@ export type AdapterType =
  * Uses kebab-case as these are display/organization identifiers
  */
 export type AdapterCategory =
-    | 'data-source'
-    | 'transformation'
-    | 'filtering'
-    | 'enrichment'
-    | 'aggregation'
-    | 'conversion'
-    | 'catalog'
-    | 'customers'
-    | 'orders'
-    | 'inventory'
-    | 'promotions'
-    | 'assets'
-    | 'external'
-    | 'utility';
+    | 'DATA_SOURCE'
+    | 'TRANSFORMATION'
+    | 'FILTERING'
+    | 'ENRICHMENT'
+    | 'AGGREGATION'
+    | 'CONVERSION'
+    | 'CATALOG'
+    | 'CUSTOMERS'
+    | 'ORDERS'
+    | 'INVENTORY'
+    | 'PROMOTIONS'
+    | 'ASSETS'
+    | 'EXTERNAL'
+    | 'UTILITY';
 
 /**
  * Field types for adapter configuration schema

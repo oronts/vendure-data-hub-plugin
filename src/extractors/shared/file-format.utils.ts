@@ -3,14 +3,14 @@ import { FileParserService } from '../../parsers/file-parser.service';
 import { JsonObject } from '../../types/index';
 
 export const FILE_FORMAT_MAP: Record<string, FileFormat> = {
-    csv: 'csv',
-    tsv: 'csv',
-    json: 'json',
-    jsonl: 'json',
-    ndjson: 'json',
-    xml: 'xml',
-    xlsx: 'xlsx',
-    xls: 'xlsx',
+    csv: 'CSV',
+    tsv: 'CSV',
+    json: 'JSON',
+    jsonl: 'JSON',
+    ndjson: 'JSON',
+    xml: 'XML',
+    xlsx: 'XLSX',
+    xls: 'XLSX',
 };
 
 export function detectFileFormat(filenameOrPath: string): FileFormat | undefined {

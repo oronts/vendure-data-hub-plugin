@@ -33,7 +33,7 @@ import {
 
 @Injectable()
 export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
-    readonly type = 'extractor' as const;
+    readonly type = 'EXTRACTOR' as const;
     readonly code = 's3';
     readonly name = 'S3 Extractor';
     readonly description = 'Extract data from AWS S3 or S3-compatible storage';

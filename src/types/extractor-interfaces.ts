@@ -94,8 +94,8 @@ export interface ExtractorContext {
 }
 
 export interface DataExtractor<TConfig extends ExtractorConfig = ExtractorConfig> {
-    /** Adapter type - always 'extractor' */
-    readonly type: 'extractor';
+    /** Adapter type - always 'EXTRACTOR' */
+    readonly type: 'EXTRACTOR';
 
     /** Unique extractor code */
     readonly code: string;

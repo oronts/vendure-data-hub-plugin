@@ -33,7 +33,7 @@ export class FileParserService {
 
         if (Buffer.isBuffer(content)) {
             if (isExcelFile(content)) {
-                return 'xlsx';
+                return 'XLSX';
             }
             content = content.toString('utf-8', 0, 1000);
         }
@@ -41,27 +41,27 @@ export class FileParserService {
         const trimmed = content.trim();
 
         if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-            return 'json';
+            return 'JSON';
         }
 
         if (trimmed.startsWith('<?xml') || trimmed.startsWith('<')) {
-            return 'xml';
+            return 'XML';
         }
 
-        return 'csv';
+        return 'CSV';
     }
 
     async parse(content: string | Buffer, options: ParseOptions = {}): Promise<ParseResult> {
         const format = options.format ?? this.detectFormat(content);
 
         switch (format) {
-            case 'csv':
+            case 'CSV':
                 return parseCsv(
                     typeof content === 'string' ? content : content.toString(options.csv?.encoding ?? 'utf-8'),
                     options.csv,
                 );
 
-            case 'json': {
+            case 'JSON': {
                 const jsonContent = typeof content === 'string' ? content : content.toString('utf-8');
                 if (isJsonLines(jsonContent)) {
                     return parseJsonLines(jsonContent);
@@ -69,13 +69,13 @@ export class FileParserService {
                 return parseJson(jsonContent, options.json);
             }
 
-            case 'xml':
+            case 'XML':
                 return parseXml(
                     typeof content === 'string' ? content : content.toString('utf-8'),
                     options.xml,
                 );
 
-            case 'xlsx':
+            case 'XLSX':
                 return parseExcel(
                     Buffer.isBuffer(content) ? content : Buffer.from(content),
                     options.xlsx,

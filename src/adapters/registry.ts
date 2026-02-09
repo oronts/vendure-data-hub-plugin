@@ -7,8 +7,8 @@ const logger = new DataHubLogger('AdapterRegistry');
 
 /** Register extractor adapter (pulls data from REST, GraphQL, CSV, etc.) */
 export function registerExtractor(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'extractor') {
-        throw new Error(`registerExtractor expects type 'extractor', got '${adapter.type}'`);
+    if (adapter.type !== 'EXTRACTOR') {
+        throw new Error(`registerExtractor expects type 'EXTRACTOR', got '${adapter.type}'`);
     }
     registerAdapter(adapter);
     logger.info(`Registered custom extractor: ${adapter.code}`, {
@@ -19,8 +19,8 @@ export function registerExtractor(adapter: AdapterDefinition): void {
 
 /** Register loader adapter (writes to Vendure entities) */
 export function registerLoader(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'loader') {
-        throw new Error(`registerLoader expects type 'loader', got '${adapter.type}'`);
+    if (adapter.type !== 'LOADER') {
+        throw new Error(`registerLoader expects type 'LOADER', got '${adapter.type}'`);
     }
     registerAdapter(adapter);
     logger.info(`Registered custom loader: ${adapter.code}`, {
@@ -31,8 +31,8 @@ export function registerLoader(adapter: AdapterDefinition): void {
 
 /** Register operator adapter (transforms or filters records) */
 export function registerOperator(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'operator') {
-        throw new Error(`registerOperator expects type 'operator', got '${adapter.type}'`);
+    if (adapter.type !== 'OPERATOR') {
+        throw new Error(`registerOperator expects type 'OPERATOR', got '${adapter.type}'`);
     }
     registerAdapter(adapter);
     logger.info(`Registered custom operator: ${adapter.code}`, {
@@ -44,8 +44,8 @@ export function registerOperator(adapter: AdapterDefinition): void {
 
 /** Register exporter adapter (sends data to external systems) */
 export function registerExporter(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'exporter') {
-        throw new Error(`registerExporter expects type 'exporter', got '${adapter.type}'`);
+    if (adapter.type !== 'EXPORTER') {
+        throw new Error(`registerExporter expects type 'EXPORTER', got '${adapter.type}'`);
     }
     registerAdapter(adapter);
     logger.info(`Registered custom exporter: ${adapter.code}`, {
@@ -56,8 +56,8 @@ export function registerExporter(adapter: AdapterDefinition): void {
 
 /** Register feed adapter (generates product feeds for Google, Meta, etc.) */
 export function registerFeed(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'feed') {
-        throw new Error(`registerFeed expects type 'feed', got '${adapter.type}'`);
+    if (adapter.type !== 'FEED') {
+        throw new Error(`registerFeed expects type 'FEED', got '${adapter.type}'`);
     }
     registerAdapter(adapter);
     logger.info(`Registered custom feed: ${adapter.code}`, {
@@ -68,8 +68,8 @@ export function registerFeed(adapter: AdapterDefinition): void {
 
 /** Register sink adapter (indexes data to Elasticsearch, Algolia, etc.) */
 export function registerSink(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'sink') {
-        throw new Error(`registerSink expects type 'sink', got '${adapter.type}'`);
+    if (adapter.type !== 'SINK') {
+        throw new Error(`registerSink expects type 'SINK', got '${adapter.type}'`);
     }
     registerAdapter(adapter);
     logger.info(`Registered custom sink: ${adapter.code}`, {
@@ -80,8 +80,8 @@ export function registerSink(adapter: AdapterDefinition): void {
 
 /** Register validator adapter (checks data against rules/schemas) */
 export function registerValidator(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'validator') {
-        throw new Error(`registerValidator expects type 'validator', got '${adapter.type}'`);
+    if (adapter.type !== 'VALIDATOR') {
+        throw new Error(`registerValidator expects type 'VALIDATOR', got '${adapter.type}'`);
     }
     registerAdapter(adapter);
     logger.info(`Registered custom validator: ${adapter.code}`, {
@@ -92,8 +92,8 @@ export function registerValidator(adapter: AdapterDefinition): void {
 
 /** Register enricher adapter (adds data from external APIs) */
 export function registerEnricher(adapter: AdapterDefinition): void {
-    if (adapter.type !== 'enricher') {
-        throw new Error(`registerEnricher expects type 'enricher', got '${adapter.type}'`);
+    if (adapter.type !== 'ENRICHER') {
+        throw new Error(`registerEnricher expects type 'ENRICHER', got '${adapter.type}'`);
     }
     registerAdapter(adapter);
     logger.info(`Registered custom enricher: ${adapter.code}`, {
@@ -252,35 +252,35 @@ export function getRegisteredAdapters(): AdapterDefinition[] {
 }
 
 export function getExtractors(): AdapterDefinition[] {
-    return getAdaptersByType('extractor');
+    return getAdaptersByType('EXTRACTOR');
 }
 
 export function getLoaders(): AdapterDefinition[] {
-    return getAdaptersByType('loader');
+    return getAdaptersByType('LOADER');
 }
 
 export function getOperators(): AdapterDefinition[] {
-    return getAdaptersByType('operator');
+    return getAdaptersByType('OPERATOR');
 }
 
 export function getExporters(): AdapterDefinition[] {
-    return getAdaptersByType('exporter');
+    return getAdaptersByType('EXPORTER');
 }
 
 export function getFeeds(): AdapterDefinition[] {
-    return getAdaptersByType('feed');
+    return getAdaptersByType('FEED');
 }
 
 export function getSinks(): AdapterDefinition[] {
-    return getAdaptersByType('sink');
+    return getAdaptersByType('SINK');
 }
 
 export function getValidators(): AdapterDefinition[] {
-    return getAdaptersByType('validator');
+    return getAdaptersByType('VALIDATOR');
 }
 
 export function getEnrichers(): AdapterDefinition[] {
-    return getAdaptersByType('enricher');
+    return getAdaptersByType('ENRICHER');
 }
 
 export function getRegistrySummary(): {

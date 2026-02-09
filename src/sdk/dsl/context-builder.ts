@@ -68,7 +68,7 @@ export const throughput = {
     },
 
     /** `throughput.withPause(0.1, 60, 'backoff')` */
-    withPause(threshold: number, intervalSec: number, strategy: 'backoff' | 'shed' | 'queue' = 'backoff'): Throughput {
+    withPause(threshold: number, intervalSec: number, strategy: 'BACKOFF' | 'SHED' | 'QUEUE' = 'BACKOFF'): Throughput {
         return { pauseOnErrorRate: { threshold, intervalSec }, drainStrategy: strategy };
     },
 };

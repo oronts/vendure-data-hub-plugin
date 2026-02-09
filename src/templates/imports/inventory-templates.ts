@@ -32,7 +32,7 @@ export const stockUpdateTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'csv',
+                format: 'CSV',
                 csv: {
                     delimiter: ',',
                     headerRow: true,
@@ -92,7 +92,7 @@ export const multiLocationInventoryTemplate: ImportTemplate = {
         source: {
             type: 'FILE_UPLOAD',
             format: {
-                format: 'csv',
+                format: 'CSV',
                 csv: {
                     delimiter: ',',
                     headerRow: true,

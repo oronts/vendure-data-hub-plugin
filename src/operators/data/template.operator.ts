@@ -3,7 +3,7 @@ import { TemplateOperatorConfig } from './types';
 import { applyTemplate } from './helpers';
 
 export const TEMPLATE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'template',
     description: 'Render a string template and set it at target path.',
     pure: true,

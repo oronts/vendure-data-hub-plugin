@@ -6,10 +6,10 @@ import { FileEncoding, FileFormat, HttpMethod } from './enums';
 
 export const EXPORTER_ADAPTERS: AdapterDefinition[] = [
     {
-        type: 'exporter',
+        type: 'EXPORTER',
         code: 'csvExport',
         description: 'Export records to CSV file.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'path', label: 'Output directory', type: 'string', required: true, description: 'Directory path for output (e.g., ./exports)' },
@@ -32,10 +32,10 @@ export const EXPORTER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'exporter',
+        type: 'EXPORTER',
         code: 'jsonExport',
         description: 'Export records to JSON file.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'path', label: 'Output directory', type: 'string', required: true, description: 'Directory path for output' },
@@ -50,10 +50,10 @@ export const EXPORTER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'exporter',
+        type: 'EXPORTER',
         code: 'xmlExport',
         description: 'Export records to XML file.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'path', label: 'Output directory', type: 'string', required: true, description: 'Directory path for output' },
@@ -66,10 +66,10 @@ export const EXPORTER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'exporter',
+        type: 'EXPORTER',
         code: 'restPost',
         description: 'Export records via REST API POST.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'endpoint', label: 'Endpoint URL', type: 'string', required: true },
@@ -90,10 +90,10 @@ export const EXPORTER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'exporter',
+        type: 'EXPORTER',
         code: 'webhookExport',
         description: 'Send records to webhook endpoint.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'url', label: 'Webhook URL', type: 'string', required: true },

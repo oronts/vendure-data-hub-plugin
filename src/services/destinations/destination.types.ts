@@ -12,7 +12,7 @@ export { DESTINATION_TYPE };
  * Export destination types - derived from DESTINATION_TYPE constant
  * Includes: s3, sftp, ftp, http, local, email
  */
-export type DestinationType = 's3' | 'sftp' | 'ftp' | 'http' | 'local' | 'email';
+export type DestinationType = 'S3' | 'SFTP' | 'FTP' | 'HTTP' | 'LOCAL' | 'EMAIL';
 
 /**
  * Base destination configuration
@@ -28,7 +28,7 @@ export interface BaseDestinationConfig {
  * S3 destination configuration
  */
 export interface S3DestinationConfig extends BaseDestinationConfig {
-    type: 's3';
+    type: 'S3';
     bucket: string;
     region: string;
     accessKeyId: string;
@@ -42,7 +42,7 @@ export interface S3DestinationConfig extends BaseDestinationConfig {
  * SFTP destination configuration
  */
 export interface SFTPDestinationConfig extends BaseDestinationConfig {
-    type: 'sftp';
+    type: 'SFTP';
     host: string;
     port?: number;
     username: string;
@@ -57,7 +57,7 @@ export interface SFTPDestinationConfig extends BaseDestinationConfig {
  * FTP destination configuration
  */
 export interface FTPDestinationConfig extends BaseDestinationConfig {
-    type: 'ftp';
+    type: 'FTP';
     host: string;
     port?: number;
     username: string;
@@ -70,7 +70,7 @@ export interface FTPDestinationConfig extends BaseDestinationConfig {
  * HTTP destination configuration
  */
 export interface HTTPDestinationConfig extends BaseDestinationConfig {
-    type: 'http';
+    type: 'HTTP';
     url: string;
     method?: 'POST' | 'PUT' | 'PATCH';
     headers?: Record<string, string>;
@@ -88,7 +88,7 @@ export interface HTTPDestinationConfig extends BaseDestinationConfig {
  * Local filesystem destination configuration
  */
 export interface LocalDestinationConfig extends BaseDestinationConfig {
-    type: 'local';
+    type: 'LOCAL';
     directory: string;
 }
 
@@ -96,7 +96,7 @@ export interface LocalDestinationConfig extends BaseDestinationConfig {
  * Email destination configuration
  */
 export interface EmailDestinationConfig extends BaseDestinationConfig {
-    type: 'email';
+    type: 'EMAIL';
     to: string[];
     cc?: string[];
     bcc?: string[];

@@ -6,7 +6,7 @@ import { HttpMethod, SortOrder, VendureEntityType } from './enums';
 
 export const EXTRACTOR_ADAPTERS: AdapterDefinition[] = [
     {
-        type: 'extractor',
+        type: 'EXTRACTOR',
         code: 'inMemory',
         description: 'Extract records from in-memory data. Use for webhook payloads, inline data, or test fixtures.',
         schema: {
@@ -16,7 +16,7 @@ export const EXTRACTOR_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'extractor',
+        type: 'EXTRACTOR',
         code: 'generator',
         description: 'Generate test records with configurable fields and count. Useful for testing pipelines.',
         schema: {
@@ -27,7 +27,7 @@ export const EXTRACTOR_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'extractor',
+        type: 'EXTRACTOR',
         code: 'httpApi',
         description: 'Extract records from HTTP/REST APIs with authentication, pagination (offset, cursor, page, link-header), and rate limiting.',
         schema: {
@@ -60,7 +60,7 @@ export const EXTRACTOR_ADAPTERS: AdapterDefinition[] = [
     },
     // REST alias for httpApi (common alternative name)
     {
-        type: 'extractor',
+        type: 'EXTRACTOR',
         code: 'rest',
         name: 'REST API',
         description: 'Alias for httpApi - Extract records from HTTP/REST APIs.',
@@ -92,7 +92,7 @@ export const EXTRACTOR_ADAPTERS: AdapterDefinition[] = [
     },
     // Vendure Query extractor (runtime adapter exists; add definition for UI/validation)
     {
-        type: 'extractor',
+        type: 'EXTRACTOR',
         code: 'vendureQuery',
         description: 'Extract data from Vendure entities (Products, Customers, Orders, etc.)',
         schema: {
@@ -121,7 +121,7 @@ export const EXTRACTOR_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'extractor',
+        type: 'EXTRACTOR',
         code: 'csv',
         description: 'Extract records from CSV. Use file upload for imports, or csvText/rows for inline data.',
         schema: {
@@ -136,7 +136,7 @@ export const EXTRACTOR_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'extractor',
+        type: 'EXTRACTOR',
         code: 'json',
         description: 'Extract records from JSON. Use file upload for imports, or jsonText for inline data.',
         schema: {
@@ -149,7 +149,7 @@ export const EXTRACTOR_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'extractor',
+        type: 'EXTRACTOR',
         code: 'graphql',
         description: 'Extract records by querying a GraphQL endpoint with optional cursor pagination.',
         schema: {

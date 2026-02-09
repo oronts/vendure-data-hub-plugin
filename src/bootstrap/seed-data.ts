@@ -171,12 +171,12 @@ export class ConfigSyncService implements OnApplicationBootstrap {
                 const existing = await repo.findOne({ where: { code: secret.code } });
 
                 // Map string provider to enum
-                const providerEnum = secret.provider === SecretProvider.ENV ? SecretProvider.ENV : SecretProvider.INLINE;
+                const providerEnum = secret.provider === 'ENV' ? SecretProvider.ENV : SecretProvider.INLINE;
 
-                // Resolve value from environment if provider is 'env'
+                // Resolve value from environment if provider is 'ENV'
                 // Supports fallback syntax: 'ENV_VAR|fallback_value'
                 let resolvedValue = secret.value;
-                if (secret.provider === SecretProvider.ENV && secret.value) {
+                if (secret.provider === 'ENV' && secret.value) {
                     const [envName, fallback] = secret.value.split('|').map(s => s.trim());
                     const envValue = process.env[envName];
                     if (envValue !== undefined) {

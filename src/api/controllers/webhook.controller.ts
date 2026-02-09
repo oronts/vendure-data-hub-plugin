@@ -51,7 +51,7 @@ export class DataHubWebhookController {
 
         // Find ALL enabled webhook triggers - supports multiple webhooks per pipeline
         const definition = pipeline.definition as PipelineDefinition | undefined;
-        const webhookTriggers = findEnabledTriggersByType(definition, 'webhook');
+        const webhookTriggers = findEnabledTriggersByType(definition, 'WEBHOOK');
 
         if (webhookTriggers.length === 0) {
             throw new HttpException('Pipeline is not configured for webhook trigger', HttpStatus.BAD_REQUEST);
@@ -64,23 +64,23 @@ export class DataHubWebhookController {
 
         for (const trigger of webhookTriggers) {
             const cfg = (trigger.config ?? {}) as unknown as Partial<PipelineTrigger>;
-            const authType = cfg.authentication || 'none';
+            const authType = cfg.authentication || 'NONE';
 
             try {
                 switch (authType) {
-                    case 'api-key':
+                    case 'API_KEY':
                         await this.verifyApiKey(ctx, req, cfg);
                         break;
-                    case 'hmac':
+                    case 'HMAC':
                         await this.verifyHmacSignature(ctx, req, body, cfg);
                         break;
-                    case 'basic':
+                    case 'BASIC':
                         await this.verifyBasicAuth(ctx, req, cfg);
                         break;
-                    case 'jwt':
+                    case 'JWT':
                         await this.verifyJwtAuth(ctx, req, cfg);
                         break;
-                    case 'none':
+                    case 'NONE':
                         // No auth required - always passes
                         break;
                     default:
@@ -88,7 +88,7 @@ export class DataHubWebhookController {
                 }
                 // Auth passed - use this trigger
                 authenticatedTrigger = trigger;
-                if (authType === 'none') {
+                if (authType === 'NONE') {
                     this.logger.error(
                         `SECURITY: Webhook received WITHOUT authentication for pipeline: ${code}. ` +
                         `Configure authentication (api-key, hmac, basic, or jwt) to secure this endpoint.`,

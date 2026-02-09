@@ -2,7 +2,7 @@
  * Operator Runtime Registry - bridges operator definitions with runtime implementations
  */
 
-import { OperatorAdapter, OperatorHelpers, AdapterDefinition } from '../sdk/types';
+import { OperatorAdapter, AdapterOperatorHelpers, AdapterDefinition } from '../sdk/types';
 import { JsonObject } from '../types';
 
 import {
@@ -89,7 +89,7 @@ type OperatorConfig = Record<string, unknown>;
 type OperatorFn = (
     records: readonly JsonObject[],
     config: OperatorConfig,
-    helpers: OperatorHelpers,
+    helpers: AdapterOperatorHelpers,
 ) => OperatorResult | Promise<OperatorResult>;
 
 interface OperatorRegistryEntry {
@@ -204,7 +204,7 @@ function createOperatorAdapter(entry: OperatorRegistryEntry): OperatorAdapter {
     const { definition, fn } = entry;
 
     return {
-        type: 'operator',
+        type: 'OPERATOR',
         code: definition.code,
         name: definition.name,
         description: definition.description,
@@ -223,7 +223,7 @@ function createOperatorAdapter(entry: OperatorRegistryEntry): OperatorAdapter {
         async apply(
             records: readonly JsonObject[],
             config: OperatorConfig,
-            helpers: OperatorHelpers,
+            helpers: AdapterOperatorHelpers,
         ): Promise<import('../sdk/types').OperatorResult> {
             const result = await Promise.resolve(fn(records, config, helpers));
             return convertToSdkResult(result);

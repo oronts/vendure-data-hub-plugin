@@ -307,7 +307,7 @@ export class ExportExecutor {
             default: {
                 // Try custom exporters from registry
                 if (adapterCode && this.registry) {
-                    const customExporter = this.registry.getRuntime('exporter', adapterCode) as ExporterAdapter<unknown> | undefined;
+                    const customExporter = this.registry.getRuntime('EXPORTER', adapterCode) as ExporterAdapter<unknown> | undefined;
                     if (customExporter && typeof customExporter.export === 'function') {
                         const result = await this.executeCustomExporter(ctx, step, input, customExporter, pipelineContext, executorCtx);
                         ok = result.ok;

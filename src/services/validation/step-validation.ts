@@ -120,7 +120,7 @@ export function validateOperatorParams(
         return;
     }
 
-    const adapter = registry.find('operator', opCode);
+    const adapter = registry.find('OPERATOR', opCode);
     if (!adapter) {
         issues.push({
             message: `Step "${stepKey}": unknown operator "${opCode}"`,

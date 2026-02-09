@@ -20,7 +20,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
         return createPipeline()
             .name('Pimcore Product Sync (Disabled)')
             .description('Product sync is disabled')
-            .trigger('manual', { type: 'manual' })
+            .trigger('MANUAL', { type: 'MANUAL' })
             .build();
     }
 
@@ -31,12 +31,12 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
         ;
 
     if (pipelineConfig.schedule) {
-        pipeline.trigger('scheduled', { type: 'schedule', cron: pipelineConfig.schedule, timezone: 'UTC' });
+        pipeline.trigger('scheduled', { type: 'SCHEDULE', cron: pipelineConfig.schedule, timezone: 'UTC' });
     }
 
-    pipeline.trigger('manual', { type: 'manual', enabled: true });
-    pipeline.trigger('webhook', {
-        type: 'webhook',
+    pipeline.trigger('MANUAL', { type: 'MANUAL', enabled: true });
+    pipeline.trigger('WEBHOOK', {
+        type: 'WEBHOOK',
         webhookCode: 'pimcore-product-sync',
         authentication: 'api-key',
         apiKeySecretCode: 'pimcore-webhook-key',
@@ -116,7 +116,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
     pipeline.load('upsert-products', {
         adapterCode: 'productUpsert',
         channel: vendureChannel,
-        strategy: 'upsert',
+        strategy: 'UPSERT',
         conflictResolution: 'source-wins',
         skuField: 'sku',
         nameField: 'name',
@@ -145,7 +145,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
 
         pipeline.load('upsert-variants', {
             adapterCode: 'variantUpsert',
-            strategy: 'upsert',
+            strategy: 'UPSERT',
             skuField: 'variantSku',
             nameField: 'variantName',
             priceField: 'priceInCents',
@@ -154,8 +154,8 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
         });
     }
 
-    pipeline.edge('manual', 'fetch-products');
-    pipeline.edge('webhook', 'fetch-products');
+    pipeline.edge('MANUAL', 'fetch-products');
+    pipeline.edge('WEBHOOK', 'fetch-products');
     if (pipelineConfig.schedule) pipeline.edge('scheduled', 'fetch-products');
     pipeline.edge('fetch-products', 'validate-products');
     pipeline.edge('validate-products', 'transform-products');

@@ -1,5 +1,4 @@
 import { ParseResult, ParseError, JsonParseOptions } from '../types';
-import { FileFormat } from '../../constants/enums';
 import { CODE_SECURITY } from '../../constants';
 import { extractFields } from '../helpers/field-extraction';
 
@@ -98,7 +97,7 @@ export function parseJson(
             if (navigated === undefined) {
                 return {
                     success: false,
-                    format: FileFormat.JSON,
+                    format: 'JSON' as const,
                     records: [],
                     fields: [],
                     totalRows: 0,
@@ -118,7 +117,7 @@ export function parseJson(
             } else {
                 return {
                     success: false,
-                    format: FileFormat.JSON,
+                    format: 'JSON' as const,
                     records: [],
                     fields: [],
                     totalRows: 0,
@@ -155,7 +154,7 @@ export function parseJson(
 
         return {
             success: errors.length === 0,
-            format: FileFormat.JSON,
+            format: 'JSON' as const,
             records: validRecords,
             fields,
             totalRows: validRecords.length,
@@ -179,7 +178,7 @@ export function parseJson(
 
         return {
             success: false,
-            format: FileFormat.JSON,
+            format: 'JSON' as const,
             records: [],
             fields: [],
             totalRows: 0,
@@ -220,7 +219,7 @@ export function parseJsonLines(content: string): ParseResult {
 
     return {
         success: errors.length === 0,
-        format: FileFormat.JSON,
+        format: 'JSON' as const,
         records,
         fields,
         totalRows: records.length,

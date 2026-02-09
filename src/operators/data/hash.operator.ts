@@ -6,7 +6,7 @@ import { applyHash } from './helpers';
  * Operator definition for generating cryptographic hashes of field values.
  */
 export const HASH_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'hash',
     description: 'Generate a cryptographic hash (MD5, SHA1, SHA256, SHA512) of field value(s).',
     pure: true,

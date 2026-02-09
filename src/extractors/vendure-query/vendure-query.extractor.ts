@@ -20,7 +20,7 @@ interface EntityWithMeta {
 
 @Injectable()
 export class VendureQueryExtractor implements DataExtractor<VendureQueryExtractorConfig> {
-    readonly type = 'extractor' as const;
+    readonly type = 'EXTRACTOR' as const;
     readonly code = 'vendureQuery';
     readonly name = 'Vendure Entity Extractor';
     readonly description = 'Extract data from Vendure entities for export or sync';

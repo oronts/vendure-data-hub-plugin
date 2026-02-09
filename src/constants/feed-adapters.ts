@@ -6,10 +6,10 @@ import { FileFormat } from './enums';
 
 export const FEED_ADAPTERS: AdapterDefinition[] = [
     {
-        type: 'feed',
+        type: 'FEED',
         code: 'googleMerchant',
         description: 'Generate Google Merchant Center product feed.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'outputPath', label: 'Output path', type: 'string', required: true, description: 'File path or URL' },
@@ -29,10 +29,10 @@ export const FEED_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'feed',
+        type: 'FEED',
         code: 'metaCatalog',
         description: 'Generate Meta (Facebook/Instagram) product catalog feed.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'outputPath', label: 'Output path', type: 'string', required: true },
@@ -49,10 +49,10 @@ export const FEED_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'feed',
+        type: 'FEED',
         code: 'amazonFeed',
         description: 'Generate Amazon Seller Central inventory feed.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'outputPath', label: 'Output path', type: 'string', required: true, description: 'File path for the feed output' },
@@ -68,10 +68,10 @@ export const FEED_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'feed',
+        type: 'FEED',
         code: 'customFeed',
         description: 'Generate custom product feed with configurable field mapping.',
-        category: 'external',
+        category: 'EXTERNAL',
         schema: {
             fields: [
                 { key: 'outputPath', label: 'Output path', type: 'string', required: true },

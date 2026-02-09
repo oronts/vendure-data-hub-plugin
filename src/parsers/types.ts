@@ -200,10 +200,10 @@ export interface FormatParser<T = Record<string, unknown>> {
  * Content type mappings for file formats
  */
 export const FORMAT_CONTENT_TYPES: Record<FileFormat, string[]> = {
-    csv: ['text/csv', 'text/plain', 'application/csv'],
-    json: ['application/json', 'text/json'],
-    xml: ['application/xml', 'text/xml'],
-    xlsx: [
+    CSV: ['text/csv', 'text/plain', 'application/csv'],
+    JSON: ['application/json', 'text/json'],
+    XML: ['application/xml', 'text/xml'],
+    XLSX: [
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'application/vnd.ms-excel',
     ],
@@ -213,8 +213,8 @@ export const FORMAT_CONTENT_TYPES: Record<FileFormat, string[]> = {
  * File extension mappings for file formats
  */
 export const FORMAT_EXTENSIONS: Record<FileFormat, string[]> = {
-    csv: ['csv', 'tsv'],
-    json: ['json'],
-    xml: ['xml'],
-    xlsx: ['xlsx', 'xls'],
+    CSV: ['csv', 'tsv'],
+    JSON: ['json'],
+    XML: ['xml'],
+    XLSX: ['xlsx', 'xls'],
 };

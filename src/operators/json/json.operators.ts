@@ -13,7 +13,7 @@ import {
 } from './helpers';
 
 export const PARSE_JSON_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'parseJson',
     description: 'Parse a JSON string field into an object.',
     pure: true,
@@ -26,7 +26,7 @@ export const PARSE_JSON_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const STRINGIFY_JSON_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'stringifyJson',
     description: 'Stringify an object field to a JSON string.',
     pure: true,
@@ -40,7 +40,7 @@ export const STRINGIFY_JSON_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const PICK_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'pick',
     description: 'Pick specific fields from a record, discarding others.',
     pure: true,
@@ -52,7 +52,7 @@ export const PICK_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const OMIT_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'omit',
     description: 'Omit specific fields from a record.',
     pure: true,

@@ -147,8 +147,8 @@ export interface CodeFirstPipeline {
 export interface CodeFirstSecret {
     /** Unique secret identifier */
     code: string;
-    /** Provider: 'inline' for direct value, 'env' to read from environment */
-    provider: 'inline' | 'env';
+    /** Provider: 'INLINE' for direct value, 'ENV' to read from environment */
+    provider: 'INLINE' | 'ENV';
     /** Value or env variable name */
     value: string;
     /** Optional metadata */

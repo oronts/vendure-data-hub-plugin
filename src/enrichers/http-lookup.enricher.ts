@@ -75,11 +75,11 @@ const HTTP_LOOKUP_ENRICHER_SCHEMA: StepConfigSchema = {
 };
 
 export const httpLookupEnricher: EnricherAdapter<HttpLookupEnricherConfig> = {
-    type: 'enricher',
+    type: 'ENRICHER',
     code: 'httpLookup',
     name: 'HTTP Lookup',
     description: 'Enrich records by fetching data from external HTTP/REST APIs with caching and authentication.',
-    category: 'enrichment',
+    category: 'ENRICHMENT',
     schema: HTTP_LOOKUP_ENRICHER_SCHEMA,
 
     async enrich(

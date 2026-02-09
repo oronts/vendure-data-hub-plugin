@@ -175,10 +175,10 @@ export class SecretService implements OnModuleInit {
 
     private resolveConfigSecret(def: CodeFirstSecret): string | null {
         switch (def.provider) {
-            case SecretProvider.INLINE:
+            case 'INLINE':
                 return def.value ?? null;
 
-            case SecretProvider.ENV:
+            case 'ENV':
                 return this.resolveEnvValue(def.value);
 
             default:

@@ -108,11 +108,11 @@ function generateMockShopifyProducts(config: ShopifyProductsConfig): JsonObject[
 }
 
 export const shopifyProductsExtractor: ExtractorAdapter<ShopifyProductsConfig> = {
-    type: 'extractor',
+    type: 'EXTRACTOR',
     code: 'shopify-products',
     name: 'Shopify Products (Demo)',
     description: 'Extract products from Shopify GraphQL API (demo mode generates mock data)',
-    category: 'data-source',
+    category: 'DATA_SOURCE',
     schema: shopifyProductsSchema,
     icon: 'shopping-bag',
     version: '1.0.0',

@@ -12,7 +12,7 @@ import {
     validateAgainstSimpleSpec,
 } from '../utils';
 import { DataHubRegistryService } from '../../sdk/registry.service';
-import { OperatorAdapter, SingleRecordOperator, OperatorHelpers, OperatorContext } from '../../sdk/types';
+import { OperatorAdapter, SingleRecordOperator, AdapterOperatorHelpers, OperatorContext } from '../../sdk/types';
 import { OperatorSecretResolver } from '../../sdk/types/transform-types';
 import { hashStable } from '../utils';
 import { SecretService } from '../../services/config/secret.service';
@@ -110,7 +110,7 @@ export class TransformExecutor {
             throw new Error('DataHubRegistryService is not available. Cannot execute operators.');
         }
 
-        const operator = this.registry.getRuntime('operator', adapterCode);
+        const operator = this.registry.getRuntime('OPERATOR', adapterCode);
         if (!operator) {
             throw new OperatorNotFoundError(adapterCode, step.key);
         }
@@ -222,7 +222,7 @@ export class TransformExecutor {
     /**
      * Build get/set/remove path helpers for operator helpers
      */
-    private buildPathHelpers(): Pick<OperatorHelpers, 'get' | 'set' | 'remove'> {
+    private buildPathHelpers(): Pick<AdapterOperatorHelpers, 'get' | 'set' | 'remove'> {
         return {
             get: (record: JsonObject, path: string) => getPath(record as RecordObject, path),
             set: (record: JsonObject, path: string, value: JsonValue) => setPath(record as RecordObject, path, value),
@@ -243,7 +243,7 @@ export class TransformExecutor {
     /**
      * Build format utilities (currency, date, number, template) for operator helpers
      */
-    private buildFormatHelpers(): OperatorHelpers['format'] {
+    private buildFormatHelpers(): AdapterOperatorHelpers['format'] {
         return {
             currency: (amount: number, currencyCode: string, locale?: string) => {
                 return new Intl.NumberFormat(locale ?? 'en-US', { style: 'currency', currency: currencyCode }).format(amount);
@@ -267,7 +267,7 @@ export class TransformExecutor {
     /**
      * Build convert utilities for operator helpers
      */
-    private buildConvertHelpers(): OperatorHelpers['convert'] {
+    private buildConvertHelpers(): AdapterOperatorHelpers['convert'] {
         return {
             toMinorUnits: (amount: number, decimals = 2) => Math.round(amount * Math.pow(10, decimals)),
             fromMinorUnits: (amount: number, decimals = 2) => amount / Math.pow(10, decimals),
@@ -282,7 +282,7 @@ export class TransformExecutor {
     /**
      * Build crypto utilities for operator helpers
      */
-    private buildCryptoHelpers(): OperatorHelpers['crypto'] {
+    private buildCryptoHelpers(): AdapterOperatorHelpers['crypto'] {
         return {
             hash: (value: string, _algorithm?: 'md5' | 'sha256' | 'sha512') => hashStable(value),
             hmac: (value: string, secret: string, _algorithm?: 'sha256' | 'sha512') => {
@@ -298,7 +298,7 @@ export class TransformExecutor {
     private loadCustomOperator(
         ctx: RequestContext,
         operatorCtx: OperatorContext,
-    ): OperatorHelpers {
+    ): AdapterOperatorHelpers {
         const pathHelpers = this.buildPathHelpers();
 
         return {
@@ -321,7 +321,7 @@ export class TransformExecutor {
         operator: OperatorAdapter<unknown> | SingleRecordOperator<unknown>,
         input: RecordObject[],
         cfg: JsonObject,
-        helpers: OperatorHelpers,
+        helpers: AdapterOperatorHelpers,
     ): Promise<RecordObject[]> {
         // Check if it's a batch operator
         if ('apply' in operator && typeof (operator as OperatorAdapter<unknown>).apply === 'function') {

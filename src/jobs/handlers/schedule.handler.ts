@@ -160,7 +160,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                 if (pipeline.status !== PipelineStatus.PUBLISHED) continue;
 
                 const definition = pipeline.definition as PipelineDefinition;
-                const scheduleTriggers = findEnabledTriggersByType(definition, 'schedule');
+                const scheduleTriggers = findEnabledTriggersByType(definition, 'SCHEDULE');
                 if (scheduleTriggers.length === 0) continue;
 
                 const failureCount = this.failureCountByPipeline.get(pipeline.code) ?? 0;

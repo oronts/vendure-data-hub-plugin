@@ -112,7 +112,7 @@ export function validateAdapterConnectivity(
     definition: PipelineDefinition,
     issues: PipelineDefinitionIssue[],
 ): void {
-    if (definition.context?.runMode === RunMode.STREAM && adapterType === 'operator') {
+    if (definition.context?.runMode === RunMode.STREAM && adapterType === 'OPERATOR') {
         if (!hasStreamSafetyInfo(adapter) || adapter.pure !== true) {
             issues.push({
                 message: `Step "${stepKey}": operator "${adapterCode}" is not stream-safe (pure=false)`,
@@ -285,5 +285,5 @@ export function isUsingBuiltInEnrichment(stepType: StepType, cfg: StepConfig): b
  * Checks if this is a GraphQL extractor step.
  */
 export function isGraphQLExtractor(adapterType: AdapterType, adapterCode: string): boolean {
-    return adapterType === 'extractor' && adapterCode === EXTRACTOR_CODE.GRAPHQL;
+    return adapterType === 'EXTRACTOR' && adapterCode === EXTRACTOR_CODE.GRAPHQL;
 }

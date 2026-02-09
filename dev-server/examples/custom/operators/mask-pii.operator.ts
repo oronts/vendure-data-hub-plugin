@@ -1,4 +1,4 @@
-import { JsonObject, SingleRecordOperator, OperatorHelpers, StepConfigSchema } from '../../../../src';
+import { JsonObject, SingleRecordOperator, AdapterOperatorHelpers, StepConfigSchema } from '../../../../src';
 
 export const maskPiiSchema: StepConfigSchema = {
     fields: [
@@ -62,7 +62,7 @@ function maskSsn(ssn: string, maskChar: string): string {
 }
 
 export const maskPiiOperator: SingleRecordOperator<MaskPiiConfig> = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'maskPII',
     name: 'Mask PII',
     description: 'Mask personally identifiable information for privacy compliance',
@@ -72,7 +72,7 @@ export const maskPiiOperator: SingleRecordOperator<MaskPiiConfig> = {
     icon: 'shield-check',
     version: '1.0.0',
 
-    applyOne(record: JsonObject, config: MaskPiiConfig, helpers: OperatorHelpers): JsonObject | null {
+    applyOne(record: JsonObject, config: MaskPiiConfig, helpers: AdapterOperatorHelpers): JsonObject | null {
         const { field, type, maskChar = '*' } = config;
         const value = helpers.get(record, field);
         if (value === undefined || value === null) return record;

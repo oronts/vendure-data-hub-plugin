@@ -58,7 +58,7 @@ export async function buildHeaders(
 
         if (connection?.auth) {
             const secretResolver = createSecretResolver(context.secrets);
-            await applyAuthentication(headers, connection.auth as AuthConfig, secretResolver);
+            await applyAuthentication(headers, connection.auth as unknown as AuthConfig, secretResolver);
         }
     }
 

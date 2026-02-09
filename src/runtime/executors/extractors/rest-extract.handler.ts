@@ -21,7 +21,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getPath } from '../../utils';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { sleep, calculateBackoff, RetryConfig as SharedRetryConfig } from '../../../utils/retry.utils';
-import { PAGINATION, RATE_LIMIT, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
+import { PAGINATION, RATE_LIMIT, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, ConnectionType } from '../../../constants/index';
 import { ConnectionAuthType } from '../../../sdk/types/connection-types';
 import {
     ExtractHandler,
@@ -141,7 +141,7 @@ export class RestExtractHandler implements ExtractHandler {
         if (!connectionCode) return null;
 
         const connectionEntity = await this.connectionService.getByCode(ctx, connectionCode);
-        if (!connectionEntity || connectionEntity.type !== 'http') return null;
+        if (!connectionEntity || connectionEntity.type !== ConnectionType.HTTP) return null;
 
         return this.normalizeHttpConnectionConfig(connectionEntity.config as JsonObject);
     }

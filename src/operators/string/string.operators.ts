@@ -29,7 +29,7 @@ import {
 import { TRIM_MODES } from '../constants';
 
 export const SPLIT_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'split',
     description: 'Split a string field into an array by delimiter.',
     pure: true,
@@ -44,7 +44,7 @@ export const SPLIT_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const JOIN_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'join',
     description: 'Join an array field into a string.',
     pure: true,
@@ -58,7 +58,7 @@ export const JOIN_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const TRIM_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'trim',
     description: 'Trim whitespace from a string field.',
     pure: true,
@@ -73,7 +73,7 @@ export const TRIM_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const LOWERCASE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'lowercase',
     description: 'Convert a string field to lowercase.',
     pure: true,
@@ -85,7 +85,7 @@ export const LOWERCASE_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const UPPERCASE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'uppercase',
     description: 'Convert a string field to uppercase.',
     pure: true,
@@ -97,7 +97,7 @@ export const UPPERCASE_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const SLUGIFY_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'slugify',
     description: 'Generate a URL-friendly slug from a string field.',
     pure: true,
@@ -111,7 +111,7 @@ export const SLUGIFY_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const CONCAT_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'concat',
     description: 'Concatenate multiple string fields into one.',
     pure: true,
@@ -125,7 +125,7 @@ export const CONCAT_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const REPLACE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'replace',
     description: 'Replace text in a string field.',
     pure: true,
@@ -224,7 +224,7 @@ export function replaceOperator(
 }
 
 export const EXTRACT_REGEX_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'extractRegex',
     description: 'Extract a value from a string field using a regular expression pattern with capture groups.',
     pure: true,
@@ -240,7 +240,7 @@ export const EXTRACT_REGEX_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const REPLACE_REGEX_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'replaceRegex',
     description: 'Replace values in a string field using a regular expression pattern.',
     pure: true,
@@ -298,7 +298,7 @@ export function replaceRegexOperator(
 }
 
 export const STRIP_HTML_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'stripHtml',
     description: 'Remove HTML tags from a string field, preserving text content.',
     pure: true,
@@ -311,7 +311,7 @@ export const STRIP_HTML_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 export const TRUNCATE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'truncate',
     description: 'Truncate a string to a maximum length, optionally adding a suffix.',
     pure: true,

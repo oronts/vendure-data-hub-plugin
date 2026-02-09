@@ -3,7 +3,7 @@ import { RemoveOperatorConfig } from './types';
 import { applyRemove } from './helpers';
 
 export const REMOVE_OPERATOR_DEFINITION: AdapterDefinition = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'remove',
     description: 'Remove a field at a specified path.',
     pure: true,

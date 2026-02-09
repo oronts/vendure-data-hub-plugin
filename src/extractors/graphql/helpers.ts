@@ -63,7 +63,7 @@ export async function buildHeaders(
         }
         // Apply connection auth
         if (connection?.auth) {
-            await applyAuthentication(headers, connection.auth as AuthConfig, secretResolver);
+            await applyAuthentication(headers, connection.auth as unknown as AuthConfig, secretResolver);
         }
     }
 
@@ -74,7 +74,7 @@ export async function buildHeaders(
 
     // Config auth overrides connection auth
     if (config.auth) {
-        await applyAuthentication(headers, config.auth as AuthConfig, secretResolver);
+        await applyAuthentication(headers, config.auth as unknown as AuthConfig, secretResolver);
     }
 
     return headers;

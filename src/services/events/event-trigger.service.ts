@@ -228,7 +228,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                 if (!pipeline.enabled) continue;
 
                 const definition = pipeline.definition as PipelineDefinition | undefined;
-                const eventTriggers = findEnabledTriggersByType(definition, 'event');
+                const eventTriggers = findEnabledTriggersByType(definition, 'EVENT');
 
                 for (const trigger of eventTriggers) {
                     const cfg = parseTriggerConfig(trigger);

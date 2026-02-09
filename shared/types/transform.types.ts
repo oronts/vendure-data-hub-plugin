@@ -7,21 +7,21 @@
 
 /** Type of transformation operation */
 export type TransformationType =
-    | 'map'
-    | 'filter'
-    | 'formula'
-    | 'merge'
-    | 'split'
-    | 'aggregate'
-    | 'lookup'
-    | 'dedupe'
-    | 'sort'
-    | 'rename'
-    | 'typecast'
-    | 'template'
-    | 'enrich'
-    | 'validate'
-    | 'script';
+    | 'MAP'
+    | 'FILTER'
+    | 'FORMULA'
+    | 'MERGE'
+    | 'SPLIT'
+    | 'AGGREGATE'
+    | 'LOOKUP'
+    | 'DEDUPE'
+    | 'SORT'
+    | 'RENAME'
+    | 'TYPECAST'
+    | 'TEMPLATE'
+    | 'ENRICH'
+    | 'VALIDATE'
+    | 'SCRIPT';
 
 /**
  * A single transformation step in a pipeline
@@ -41,15 +41,15 @@ export interface TransformStep {
 
 /** Aggregation function type for group operations */
 export type AggregationFunction =
-    | 'count'
-    | 'sum'
-    | 'avg'
-    | 'min'
-    | 'max'
-    | 'first'
-    | 'last'
-    | 'concat'
-    | 'unique';
+    | 'COUNT'
+    | 'SUM'
+    | 'AVG'
+    | 'MIN'
+    | 'MAX'
+    | 'FIRST'
+    | 'LAST'
+    | 'CONCAT'
+    | 'UNIQUE';
 
 /**
  * Configuration for aggregation operations

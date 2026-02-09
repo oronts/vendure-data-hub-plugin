@@ -67,10 +67,10 @@ export {
 
 export {
     LookupEntity,
-    FormatHelpers,
+    AdapterFormatHelpers,
     ConversionHelpers,
-    CryptoHelpers,
-    OperatorHelpers,
+    AdapterCryptoHelpers,
+    AdapterOperatorHelpers,
     UnitType,
     FieldMapping,
     FieldTransform,
@@ -101,8 +101,8 @@ export {
     FeedResult,
     SinkError,
     SinkResult,
-    StepMetrics,
-    StepError,
+    AdapterStepMetrics,
+    AdapterStepError,
     StepExecutionResult,
 } from './result-types';
 

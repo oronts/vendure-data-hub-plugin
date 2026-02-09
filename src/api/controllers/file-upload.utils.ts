@@ -69,14 +69,14 @@ export function detectMimeType(filename: string): string {
  * Detect file format from MIME type and filename
  */
 export function detectFormat(mimeType: string, filename: string): FileFormatAlias {
-    const ext = filename.toLowerCase().split('.').pop();
+    const ext = filename.toLowerCase().split('.').pop()?.toUpperCase();
 
-    if (ext === FileFormat.CSV || mimeType === 'text/csv') return FileFormat.CSV;
-    if (ext === FileFormat.JSON || mimeType === 'application/json') return FileFormat.JSON;
-    if (ext === FileFormat.XML || mimeType.includes('xml')) return FileFormat.XML;
-    if (ext === FileFormat.XLSX || ext === 'xls' || mimeType.includes('spreadsheet') || mimeType.includes('excel')) return FileFormat.XLSX;
+    if (ext === 'CSV' || mimeType === 'text/csv') return 'CSV';
+    if (ext === 'JSON' || mimeType === 'application/json') return 'JSON';
+    if (ext === 'XML' || mimeType.includes('xml')) return 'XML';
+    if (ext === 'XLSX' || ext === 'XLS' || mimeType.includes('spreadsheet') || mimeType.includes('excel')) return 'XLSX';
 
-    return FileFormat.CSV; // Default
+    return 'CSV'; // Default
 }
 
 /**

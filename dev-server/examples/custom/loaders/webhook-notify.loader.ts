@@ -96,11 +96,11 @@ async function sendWebhook(
 }
 
 export const webhookNotifyLoader: LoaderAdapter<WebhookNotifyConfig> = {
-    type: 'loader',
+    type: 'LOADER',
     code: 'webhookNotify',
     name: 'Webhook Notify',
     description: 'Send records to an external webhook endpoint',
-    category: 'external',
+    category: 'EXTERNAL',
     schema: webhookNotifySchema,
     icon: 'webhook',
     version: '1.0.0',

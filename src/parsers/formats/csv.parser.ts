@@ -6,7 +6,6 @@ import {
     CsvDelimiter,
 } from '../types';
 import { removeBom, detectLineEnding } from '../helpers/encoding';
-import { FileFormat } from '../../constants/enums';
 import {
     CSV_DEFAULTS as PARSER_CSV_DEFAULTS,
     NULL_VALUES,
@@ -157,7 +156,7 @@ export function parseCsv(
 
         return {
             success: errors.filter(e => e.code !== 'TooFewFields' && e.code !== 'TooManyFields').length === 0,
-            format: FileFormat.CSV,
+            format: 'CSV' as const,
             records,
             fields,
             totalRows: records.length,
@@ -170,7 +169,7 @@ export function parseCsv(
     } catch (err) {
         return {
             success: false,
-            format: FileFormat.CSV,
+            format: 'CSV' as const,
             records: [],
             fields: [],
             totalRows: 0,
@@ -199,7 +198,7 @@ export function parseCsvManual(
     if (lines.length === 0) {
         return {
             success: true,
-            format: FileFormat.CSV,
+            format: 'CSV' as const,
             records: [],
             fields: [],
             totalRows: 0,
@@ -254,7 +253,7 @@ export function parseCsvManual(
 
     return {
         success: errors.length === 0,
-        format: FileFormat.CSV,
+        format: 'CSV' as const,
         records,
         fields: headers,
         totalRows: lines.length - startRow,

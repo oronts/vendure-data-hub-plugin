@@ -6,7 +6,7 @@ import { AuthType, HttpMethod, VendureEntityType } from './enums';
 
 export const LOADER_ADAPTERS: AdapterDefinition[] = [
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'productUpsert',
         description: 'Upsert Products and default Variants by slug/SKU. Supports channel, multi-currency prices, tax category, stock and inventory flags.',
         requires: ['UpdateCatalog'],
@@ -39,7 +39,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'variantUpsert',
         description: 'Upsert ProductVariant by SKU. Supports channel, prices, stock, tax.',
         requires: ['UpdateCatalog'],
@@ -57,7 +57,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'customerUpsert',
         description: 'Upsert Customer by email or externalId; merge addresses; assign groups.',
         requires: ['UpdateCustomer'],
@@ -77,7 +77,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'orderNote',
         description: 'Attach a note to an Order by code or id.',
         requires: ['UpdateOrder'],
@@ -91,7 +91,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'stockAdjust',
         description: 'Adjust stock levels by SKU and stock location code map.',
         requires: ['UpdateCatalog'],
@@ -104,7 +104,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'applyCoupon',
         description: 'Apply a coupon code to an Order by id/code.',
         requires: ['UpdateOrder'],
@@ -117,7 +117,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'collectionUpsert',
         description: 'Upsert Collection by slug/code; assign to channel.',
         requires: ['UpdateCatalog'],
@@ -133,7 +133,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'promotionUpsert',
         description: 'Upsert Promotion by couponCode; create/update enabled dates/actions/conditions.',
         requires: ['UpdatePromotion'],
@@ -151,7 +151,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'orderTransition',
         description: 'Transition an order to a new state by id/code.',
         requires: ['UpdateOrder'],
@@ -164,7 +164,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'assetAttach',
         description: 'Attach existing Asset (by id) as featured asset to a Product/Collection by slug.',
         requires: ['UpdateCatalog'],
@@ -181,7 +181,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'assetImport',
         description: 'Import Asset from URL. Downloads file and creates asset in Vendure.',
         requires: ['UpdateCatalog'],
@@ -196,7 +196,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'facetUpsert',
         description: 'Upsert Facet by code; create or update facet.',
         requires: ['UpdateCatalog'],
@@ -210,7 +210,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'facetValueUpsert',
         description: 'Upsert FacetValue by code; requires facet to exist.',
         requires: ['UpdateCatalog'],
@@ -224,7 +224,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'restPost',
         description: 'POST/PUT records to an external REST endpoint. Supports auth and per-record POST or array batch.',
         requires: ['UpdateDataHubSettings'],
@@ -259,7 +259,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'taxRateUpsert',
         description: 'Upsert TaxRate by name; resolves tax category and zone by code.',
         requires: ['UpdateSettings'],
@@ -276,7 +276,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'paymentMethodUpsert',
         description: 'Upsert PaymentMethod by code; configure handler and eligibility checker.',
         requires: ['UpdateSettings'],
@@ -292,7 +292,7 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
         },
     },
     {
-        type: 'loader',
+        type: 'LOADER',
         code: 'channelUpsert',
         description: 'Upsert Channel by code; configure currencies, languages, and zones.',
         requires: ['UpdateSettings'],

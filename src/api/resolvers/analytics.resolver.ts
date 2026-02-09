@@ -191,9 +191,9 @@ export class DataHubAnalyticsAdminResolver {
     private redactDestinationSecrets(dest: DestinationConfig): RedactedDestinationConfig {
         return {
             ...dest,
-            secretAccessKey: dest.type === ConnectionType.S3 ? '***' : undefined,
-            password: [ConnectionType.SFTP, ConnectionType.FTP].includes(dest.type as ConnectionType) ? '***' : undefined,
-            privateKey: dest.type === ConnectionType.SFTP ? '***' : undefined,
+            secretAccessKey: dest.type === 'S3' ? '***' : undefined,
+            password: (['SFTP', 'FTP'] as const).includes(dest.type as 'SFTP' | 'FTP') ? '***' : undefined,
+            privateKey: dest.type === 'SFTP' ? '***' : undefined,
         };
     }
 
