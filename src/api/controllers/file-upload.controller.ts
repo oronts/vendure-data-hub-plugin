@@ -411,8 +411,30 @@ export class DataHubFileUploadController {
     ): Promise<void> {
         return new Promise<void>((resolve) => {
             const chunks: Buffer[] = [];
+            let totalSize = 0;
+            const maxBodySize = FILE_STORAGE.MAX_FILE_SIZE_BYTES * 2; // Account for base64 overhead
 
-            req.on('data', (chunk: Buffer) => chunks.push(chunk));
+            req.on('data', (chunk: Buffer) => {
+                totalSize += chunk.length;
+                if (totalSize > maxBodySize) {
+                    if (!res.headersSent) {
+                        res.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
+                            success: false,
+                            error: 'Request body too large',
+                        });
+                    }
+                    req.destroy();
+                    return resolve();
+                }
+                chunks.push(chunk);
+            });
+            req.on('error', (err) => {
+                this.logger.error('Base64 upload stream error', err);
+                if (!res.headersSent) {
+                    res.status(HttpStatus.BAD_REQUEST).json({ success: false, error: 'Upload stream error' });
+                }
+                resolve();
+            });
             req.on('end', async () => {
                 try {
                     const bodyStr = Buffer.concat(chunks).toString('utf-8');

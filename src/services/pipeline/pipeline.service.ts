@@ -77,9 +77,10 @@ export class PipelineService {
     async findDependents(ctx: RequestContext, code: string): Promise<Pipeline[]> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         // Pre-filter at SQL level: the definition JSON column must contain the code string
+        const escapedCode = code.replace(/[%_\\]/g, '\\$&');
         const candidates = await repo
             .createQueryBuilder('pipeline')
-            .where('pipeline.definition::text LIKE :pattern', { pattern: `%${code}%` })
+            .where('pipeline.definition::text LIKE :pattern', { pattern: `%${escapedCode}%` })
             .getMany();
         // Post-filter for exact match in dependsOn array
         return candidates.filter(p => {

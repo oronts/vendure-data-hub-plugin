@@ -291,7 +291,9 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                     delivery.nextRetryAt &&
                     delivery.nextRetryAt <= now
                 ) {
-                    this.attemptDelivery(delivery);
+                    this.attemptDelivery(delivery).catch(err =>
+                        this.logger.error('Retry delivery failed', err instanceof Error ? err : undefined),
+                    );
                 }
 
                 if (
@@ -312,6 +314,9 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                 }
             }
         }, WEBHOOK.RETRY_CHECK_INTERVAL_MS);
+        if (typeof this.retryProcessorHandle.unref === 'function') {
+            this.retryProcessorHandle.unref();
+        }
     }
 
     getDeliveries(options?: {
