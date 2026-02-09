@@ -76,8 +76,13 @@ export class PipelineService {
 
     async findDependents(ctx: RequestContext, code: string): Promise<Pipeline[]> {
         const repo = this.connection.getRepository(ctx, Pipeline);
-        const all = await repo.find();
-        return all.filter(p => {
+        // Pre-filter at SQL level: the definition JSON column must contain the code string
+        const candidates = await repo
+            .createQueryBuilder('pipeline')
+            .where('pipeline.definition::text LIKE :pattern', { pattern: `%${code}%` })
+            .getMany();
+        // Post-filter for exact match in dependsOn array
+        return candidates.filter(p => {
             const def = p.definition as PipelineDefinition & { dependsOn?: string[] };
             return Array.isArray(def?.dependsOn) && def.dependsOn.includes(code);
         });
@@ -89,6 +94,8 @@ export class PipelineService {
 
     async create(ctx: RequestContext, input: CreatePipelineInput): Promise<Pipeline> {
         this.logger.debug('Creating pipeline', { pipelineCode: input.code });
+        // Quick-fail optimization: check code availability before save.
+        // The DB unique constraint on Pipeline.code is the true guard against race conditions.
         await this.assertCodeAvailable(ctx, input.code);
         // Ensure definition has a valid version
         const definition = { ...input.definition };
@@ -105,7 +112,21 @@ export class PipelineService {
         entity.enabled = input.enabled ?? true;
         entity.version = input.version ?? definition.version ?? 1;
         entity.definition = definition;
-        const saved = await this.connection.getRepository(ctx, Pipeline).save(entity);
+        let saved: Pipeline;
+        try {
+            saved = await this.connection.getRepository(ctx, Pipeline).save(entity);
+        } catch (error: unknown) {
+            // Handle unique constraint violation from concurrent inserts (TOCTOU race)
+            const msg = error instanceof Error ? error.message : String(error);
+            if (
+                msg.includes('UNIQUE') || msg.includes('unique') ||
+                msg.includes('duplicate') || msg.includes('Duplicate') ||
+                msg.includes('ER_DUP_ENTRY') || msg.includes('23505')
+            ) {
+                throw new Error(`Pipeline code "${input.code}" already exists`);
+            }
+            throw error;
+        }
         this.logger.info('Pipeline created', {
             pipelineCode: input.code,
             pipelineId: saved.id,

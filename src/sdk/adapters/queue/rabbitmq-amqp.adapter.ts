@@ -20,6 +20,7 @@ import {
 import { JsonObject } from '../../../types/index';
 import { AckMode, INTERNAL_TIMINGS, LOGGER_CONTEXTS, CONTENT_TYPES } from '../../../constants';
 import { DataHubLogger } from '../../../services/logger';
+import { isBlockedHostname } from '../../../utils/url-security.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.RABBITMQ_ADAPTER);
 
@@ -83,6 +84,9 @@ function buildAmqpUrl(config: QueueConnectionConfig): string {
     const username = encodeURIComponent(config.username ?? 'guest');
     const password = encodeURIComponent(config.password ?? 'guest');
     const host = config.host ?? 'localhost';
+    if (isBlockedHostname(host)) {
+        throw new Error(`SSRF protection: hostname '${host}' is blocked for security reasons`);
+    }
     const port = config.port ?? 5672;
     const vhost = encodeURIComponent(config.vhost ?? '/');
 

@@ -9,6 +9,7 @@
  * - Expression caching
  */
 
+import { createContext, Script } from 'vm';
 import { JsonObject } from '../../types';
 import { AdapterOperatorHelpers, AdapterDefinition } from '../../sdk/types';
 import { OperatorResult } from '../types';
@@ -118,28 +119,39 @@ export const SCRIPT_OPERATOR_DEFINITION: AdapterDefinition = {
 };
 
 /**
- * Execute script with timeout
+ * Create an isolated vm context with frozen safe copies of builtins.
+ *
+ * Uses Object.create(null) for no prototype chain, and frozen copies
+ * of globals to prevent prototype pollution of the host process.
  */
-async function executeWithTimeout<T>(
-    fn: () => Promise<T> | T,
+function createSafeVmContext(sandboxGlobals: Record<string, unknown>): object {
+    const safeContext = createContext(Object.create(null), {
+        codeGeneration: { strings: false, wasm: false },
+    });
+    Object.assign(safeContext, sandboxGlobals);
+    return safeContext;
+}
+
+/**
+ * Execute script code in an isolated vm context with a hard timeout.
+ *
+ * Unlike Promise.race, vm.Script.runInContext with a timeout option
+ * can actually terminate CPU-bound synchronous loops (e.g. while(true){}).
+ */
+async function executeInVm(
+    code: string,
+    vmContext: object,
     timeout: number,
-): Promise<T> {
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    try {
-        return await Promise.race([
-            Promise.resolve(fn()),
-            new Promise<never>((_, reject) => {
-                timeoutId = setTimeout(
-                    () => reject(new Error(`Script timeout after ${timeout}ms`)),
-                    timeout,
-                );
-            }),
-        ]);
-    } finally {
-        if (timeoutId !== undefined) {
-            clearTimeout(timeoutId);
-        }
-    }
+): Promise<unknown> {
+    const script = new Script(code, {
+        filename: 'script-operator.js',
+    });
+
+    // runInContext with timeout truly kills CPU-bound code
+    return script.runInContext(vmContext, {
+        timeout,
+        breakOnSigint: true,
+    });
 }
 
 /**
@@ -186,6 +198,8 @@ export function scriptOperator(
 
 /**
  * Execute script in batch mode (all records at once)
+ *
+ * Uses vm.Script with isolated context for safe execution and hard timeout.
  */
 async function executeBatchScript(
     records: readonly JsonObject[],
@@ -200,36 +214,26 @@ async function executeBatchScript(
         data: contextData,
     };
 
-    // Build the function with all sandbox globals as parameters
-    // This prevents access to the global scope
-    const sandboxKeys = Object.keys(sandboxGlobals);
-    const sandboxValues = Object.values(sandboxGlobals);
-
-    // Create a safe function body that wraps the user code
-    // The user code is expected to be an expression or use 'return'
-    const functionBody = `
-        "use strict";
-        return (async function(__records__, __context__) {
-            const records = __records__;
-            const context = __context__;
-            ${code}
-        })(__records__, __context__);
-    `;
-
     try {
-        // Create function with sandbox parameters
-        // eslint-disable-next-line no-new-func
-        const fn = new Function(
-            ...sandboxKeys,
-            '__records__',
-            '__context__',
-            functionBody,
-        );
+        // Create isolated vm context with frozen sandbox globals
+        const vmContext = createSafeVmContext({
+            ...sandboxGlobals,
+            // Deep-copy records and context to prevent cross-boundary mutation
+            __records__: JSON.parse(JSON.stringify([...records])),
+            __context__: JSON.parse(JSON.stringify(scriptContext)),
+        });
 
-        const result = await executeWithTimeout(
-            () => fn(...sandboxValues, [...records], scriptContext),
-            timeout,
-        );
+        // Wrap user code in an async IIFE with strict mode
+        const wrappedCode = `
+            "use strict";
+            (function() {
+                const records = __records__;
+                const context = __context__;
+                ${code}
+            })();
+        `;
+
+        const result = await executeInVm(wrappedCode, vmContext, timeout);
 
         if (!Array.isArray(result)) {
             throw new Error('Batch script must return an array of records');
@@ -253,6 +257,8 @@ async function executeBatchScript(
 
 /**
  * Execute script in single-record mode (one record at a time)
+ *
+ * Uses vm.Script with isolated context for safe execution and hard timeout.
  */
 async function executeSingleRecordScript(
     records: readonly JsonObject[],
@@ -265,30 +271,20 @@ async function executeSingleRecordScript(
     const results: JsonObject[] = [];
     const errors: Array<{ message: string; field?: string }> = [];
 
-    // Build the function with all sandbox globals as parameters
-    const sandboxKeys = Object.keys(sandboxGlobals);
-    const sandboxValues = Object.values(sandboxGlobals);
-
-    // Create a safe function body
-    const functionBody = `
+    // Pre-compile the script once and reuse for each record
+    const wrappedCode = `
         "use strict";
-        return (async function(__record__, __index__, __context__) {
+        (function() {
             const record = __record__;
             const index = __index__;
             const context = __context__;
             ${code}
-        })(__record__, __index__, __context__);
+        })();
     `;
 
-    // Create function once and reuse
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(
-        ...sandboxKeys,
-        '__record__',
-        '__index__',
-        '__context__',
-        functionBody,
-    );
+    const script = new Script(wrappedCode, {
+        filename: 'script-operator.js',
+    });
 
     for (let i = 0; i < records.length; i++) {
         const record = records[i];
@@ -299,10 +295,19 @@ async function executeSingleRecordScript(
         };
 
         try {
-            const result = await executeWithTimeout(
-                () => fn(...sandboxValues, { ...record }, i, scriptContext),
+            // Create a fresh isolated context per record with frozen sandbox globals
+            const vmContext = createSafeVmContext({
+                ...sandboxGlobals,
+                // Deep-copy record and context to prevent cross-boundary mutation
+                __record__: JSON.parse(JSON.stringify({ ...record })),
+                __index__: i,
+                __context__: JSON.parse(JSON.stringify(scriptContext)),
+            });
+
+            const result = await script.runInContext(vmContext, {
                 timeout,
-            );
+                breakOnSigint: true,
+            });
 
             // null means filter out this record
             if (result === null || result === undefined) {

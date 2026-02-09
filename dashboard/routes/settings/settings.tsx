@@ -119,13 +119,7 @@ function SettingsPage() {
             },
             {
                 onSuccess: () => {
-                    toast.success(TOAST_SETTINGS.SAVE_SUCCESS);
                     setIsDirty(false);
-                },
-                onError: (err: Error) => {
-                    toast.error(TOAST_SETTINGS.SAVE_ERROR, {
-                        description: err.message || 'Unknown error',
-                    });
                 },
             }
         );

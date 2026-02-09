@@ -13,6 +13,18 @@ interface RateLimitEntry {
     resetAt: number;
 }
 
+/**
+ * In-memory rate limiter for throttling requests by IP, pipeline code, or arbitrary identifier.
+ *
+ * **Deployment considerations:**
+ * - This implementation stores all rate limit state in process memory.
+ * - In multi-instance deployments (e.g., behind a load balancer), each instance
+ *   maintains independent rate limit counters. Effective limits are therefore
+ *   multiplied by the number of instances.
+ * - For true distributed rate limiting, replace this implementation with a
+ *   Redis-backed store (e.g., using a sliding-window or token-bucket algorithm
+ *   backed by Redis MULTI/EXEC or Lua scripts).
+ */
 @Injectable()
 export class RateLimitService implements OnModuleDestroy {
     private readonly logger: DataHubLogger;

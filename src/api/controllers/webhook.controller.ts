@@ -333,6 +333,23 @@ export class DataHubWebhookController {
 
         const [headerB64, payloadB64, signatureB64] = jwtParts;
 
+        // Validate JWT algorithm header to prevent alg:none and other attacks
+        try {
+            const headerJson = Buffer.from(headerB64, 'base64url').toString('utf8');
+            const header = JSON.parse(headerJson);
+            if (header.alg !== 'HS256') {
+                throw new HttpException(
+                    `Unsupported JWT algorithm: '${header.alg}'. Only HS256 is accepted.`,
+                    HttpStatus.UNAUTHORIZED,
+                );
+            }
+        } catch (error) {
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException('Invalid JWT header', HttpStatus.UNAUTHORIZED);
+        }
+
         const signingInput = `${headerB64}.${payloadB64}`;
         const expectedSignature = crypto
             .createHmac('sha256', secret.value)

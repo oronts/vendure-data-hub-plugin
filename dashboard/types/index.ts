@@ -53,9 +53,6 @@ export type {
     EmptyStateProps,
     ErrorStateProps,
     AdaptersByCategory,
-    FieldMappingDialogProps,
-    FileUploadDialogProps,
-    ConfirmDialogProps,
     ValidationIssue,
     ValidationState,
     StatCardProps,
@@ -89,27 +86,25 @@ export type {
     WebhookConfigProps,
     BaseEditorProps,
     PropertiesPanelProps,
-    BaseDialogProps,
     VisualEdge,
     PipelineValidationResult,
     FieldSelectorProps,
     FieldErrorProps,
-    SimpleBarChartProps,
-    BarChartDataPoint,
-    SimpleDonutChartProps,
-    DonutChartDataPoint,
     TriggersPanelProps,
     TriggersPanelExplicitProps,
     TriggersPanelOnChangeProps,
 } from './ui.types';
 
 export type {
+    ParsedColumn,
+} from '../utils';
+
+export type {
     UIFieldMapping,
     SourceField,
     TargetField,
-    ParsedColumn,
     ParsedFile,
-} from '../hooks';
+} from '../components/common/file-upload-mapper/types';
 
 export type {
     WizardStep,

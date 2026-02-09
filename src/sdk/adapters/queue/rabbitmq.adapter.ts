@@ -26,6 +26,7 @@ import {
 import { JsonObject } from '../../../types/index';
 import { AckMode } from '../../../constants/enums';
 import { HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, HTTP_STATUS } from '../../../constants/index';
+import { isBlockedHostname } from '../../../utils/url-security.utils';
 
 export class RabbitMQAdapter implements QueueAdapter {
     readonly code = 'rabbitmq';
@@ -40,6 +41,9 @@ export class RabbitMQAdapter implements QueueAdapter {
 
     private buildBaseUrl(config: QueueConnectionConfig): string {
         const host = config.host ?? 'localhost';
+        if (isBlockedHostname(host)) {
+            throw new Error(`SSRF protection: hostname '${host}' is blocked for security reasons`);
+        }
         const port = config.port ?? 15672;
         const protocol = config.useTls ? 'https' : 'http';
         return `${protocol}://${host}:${port}/api`;

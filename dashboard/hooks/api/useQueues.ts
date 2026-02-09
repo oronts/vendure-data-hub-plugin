@@ -102,7 +102,7 @@ export function useStartConsumer() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (pipelineCode: string) =>
+        mutationFn: ({ pipelineCode }: { pipelineCode: string }) =>
             api.mutate(startConsumerDocument, { pipelineCode }).then((res) => res.startDataHubConsumer),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queueKeys.consumers() });
@@ -115,7 +115,7 @@ export function useStopConsumer() {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (pipelineCode: string) =>
+        mutationFn: ({ pipelineCode }: { pipelineCode: string }) =>
             api.mutate(stopConsumerDocument, { pipelineCode }).then((res) => res.stopDataHubConsumer),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queueKeys.consumers() });

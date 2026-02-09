@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ID, RequestContext } from '@vendure/core';
+import { createContext, Script } from 'vm';
 import {
     PipelineDefinition,
     HookAction,
@@ -21,6 +22,7 @@ import { LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK, TRUNCATION
 import { HookActionType } from '../../constants/enums';
 import { validateUserCode } from '../../utils/code-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
+import { validateUrlSafety } from '../../utils/url-security.utils';
 
 @Injectable()
 export class HookService implements OnModuleInit {
@@ -222,6 +224,10 @@ export class HookService implements OnModuleInit {
 
     /**
      * Execute an interceptor hook with inline code
+     *
+     * Uses Node.js vm module with an isolated context to prevent:
+     * - Prototype pollution (frozen safe copies of builtins, no prototype chain)
+     * - CPU-bound infinite loops (vm timeout actually kills execution)
      */
     private async executeInterceptor(
         action: InterceptorHookAction,
@@ -230,59 +236,73 @@ export class HookService implements OnModuleInit {
     ): Promise<JsonObject[] | undefined> {
         const timeout = action.timeout ?? HOOK.INTERCEPTOR_TIMEOUT_MS;
 
-        // Create a sandboxed function with limited globals
-        const sandboxGlobals = {
-            // Math functions
-            Math,
-            // Array functions
-            Array,
-            // Object functions
-            Object,
-            // String functions
-            String,
-            // Number functions
-            Number,
-            // Boolean
-            Boolean,
-            // JSON functions
-            JSON,
-            // Type checking
-            isNaN,
-            isFinite,
-            // URI encoding
-            encodeURIComponent,
-            decodeURIComponent,
-            // Console override (redirects to logger)
-            console: {
-                log: (...args: unknown[]) => this.logger.debug('Interceptor console.log', { consoleArgs: args }),
-                warn: (...args: unknown[]) => this.logger.warn('Interceptor console.warn', { consoleArgs: args }),
-                error: (...args: unknown[]) => this.logger.warn('Interceptor console.error', { consoleArgs: args }),
-            },
-            // Provide records and context in scope for interceptor code
-            records,
-            context,
-        };
-
         // Validate user code before execution
         validateUserCode(action.code);
 
-        // Build function - records and context are available in scope via sandboxGlobals
-        const functionBody = `
+        // Create an isolated context with no prototype chain
+        const safeContext = createContext(Object.create(null), {
+            codeGeneration: { strings: false, wasm: false },
+        });
+
+        // Add frozen, safe copies of builtins (prevents prototype mutation)
+        const safeGlobals: Record<string, unknown> = {
+            Math: Object.freeze({
+                abs: Math.abs, ceil: Math.ceil, floor: Math.floor, round: Math.round,
+                max: Math.max, min: Math.min, pow: Math.pow, sqrt: Math.sqrt,
+                random: Math.random, sign: Math.sign, trunc: Math.trunc,
+                PI: Math.PI, E: Math.E,
+            }),
+            Array: Object.freeze({
+                from: Array.from.bind(Array), isArray: Array.isArray.bind(Array), of: Array.of.bind(Array),
+            }),
+            Object: Object.freeze({
+                keys: Object.keys, values: Object.values, entries: Object.entries,
+                assign: Object.assign, freeze: Object.freeze, fromEntries: Object.fromEntries,
+            }),
+            String: Object.freeze({ fromCharCode: String.fromCharCode }),
+            Number: Object.freeze({
+                isFinite: Number.isFinite, isInteger: Number.isInteger, isNaN: Number.isNaN,
+                parseFloat, parseInt,
+            }),
+            Boolean,
+            JSON: Object.freeze({ parse: JSON.parse, stringify: JSON.stringify }),
+            Date,
+            RegExp,
+            Map,
+            Set,
+            isNaN,
+            isFinite,
+            encodeURIComponent,
+            decodeURIComponent,
+            console: Object.freeze({
+                log: (...args: unknown[]) => this.logger.debug('Interceptor console.log', { consoleArgs: args }),
+                warn: (...args: unknown[]) => this.logger.warn('Interceptor console.warn', { consoleArgs: args }),
+                error: (...args: unknown[]) => this.logger.warn('Interceptor console.error', { consoleArgs: args }),
+            }),
+            // Provide records and context in scope for interceptor code
+            records: JSON.parse(JSON.stringify(records)),
+            context: JSON.parse(JSON.stringify(context)),
+        };
+        Object.assign(safeContext, safeGlobals);
+
+        // Wrap user code in an async IIFE
+        const wrappedCode = `
             "use strict";
-            return (async function() {
+            (async function() {
                 ${action.code}
             })();
         `;
 
-        const fn = new Function(...Object.keys(sandboxGlobals), functionBody);
+        // Compile and execute with vm.Script timeout (kills CPU-bound loops)
+        const script = new Script(wrappedCode, {
+            filename: 'hook-interceptor.js',
+        });
 
-        // Execute with timeout
-        const result = await Promise.race([
-            fn(...Object.values(sandboxGlobals)),
-            new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error(`Interceptor timeout after ${timeout}ms`)), timeout),
-            ),
-        ]);
+        // runInContext with timeout truly terminates CPU-bound code
+        const result = await script.runInContext(safeContext, {
+            timeout,
+            breakOnSigint: true,
+        });
 
         // Validate result
         if (result !== undefined && !Array.isArray(result)) {
@@ -330,6 +350,16 @@ export class HookService implements OnModuleInit {
         const headers = webhookAction.headers;
 
         if (!url) return;
+
+        // SSRF protection: validate webhook URL before making the request
+        const urlSafety = await validateUrlSafety(url);
+        if (!urlSafety.safe) {
+            this.logger.warn('Webhook URL blocked by SSRF protection', {
+                url,
+                reason: urlSafety.reason,
+            });
+            return;
+        }
 
         // Use WebhookRetryService for reliable delivery with retries
         if (this.webhookRetryService) {

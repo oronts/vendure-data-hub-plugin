@@ -71,11 +71,13 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
 
     async onModuleInit() {
         await this.backend.init();
+        await this.rebuildIndex();
         this.startCleanupJob();
 
         this.logger.info('FileStorageService initialized', {
             backendType: this.backend.type,
             cleanupIntervalMs: SCHEDULER.FILE_CLEANUP_INTERVAL_MS,
+            recoveredFiles: this.fileIndex.size,
         });
     }
 
@@ -269,6 +271,78 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
             backendType: this.backend.type,
             byMimeType,
         };
+    }
+
+    /**
+     * Rebuild the in-memory file index by scanning existing files from the storage backend.
+     * This ensures the index is recovered after a service restart.
+     * Only basic metadata (path, name, size) can be recovered; original upload metadata
+     * (hash, mimeType, expiresAt, custom metadata) are not available from the storage backend.
+     */
+    private async rebuildIndex(): Promise<void> {
+        try {
+            const files = await this.backend.list('');
+            let recovered = 0;
+            for (const storagePath of files) {
+                // Extract file ID from path: paths are like "2026/01/15/file_12345_abc.csv"
+                const fileName = path.basename(storagePath);
+                const fileIdMatch = fileName.match(/^(file_\d+_[a-f0-9]+)/);
+                if (!fileIdMatch) continue;
+
+                const fileId = fileIdMatch[1];
+                // Skip if already in the index (e.g. from a previous call)
+                if (this.fileIndex.has(fileId)) continue;
+
+                // Read file to compute size; skip files that can't be read
+                const buffer = await this.backend.read(storagePath);
+                if (!buffer) continue;
+
+                const ext = path.extname(fileName).toLowerCase();
+                const mimeType = this.inferMimeType(ext);
+
+                const storedFile: StoredFile = {
+                    id: fileId,
+                    originalName: fileName,
+                    storagePath,
+                    mimeType,
+                    size: buffer.length,
+                    hash: crypto.createHash('sha256').update(buffer).digest('hex'),
+                    uploadedAt: new Date(),
+                };
+
+                this.fileIndex.set(fileId, storedFile);
+                recovered++;
+            }
+
+            if (recovered > 0) {
+                this.logger.info('Rebuilt file index from storage backend', {
+                    recoveredFiles: recovered,
+                });
+            }
+        } catch (error) {
+            this.logger.warn(
+                'Failed to rebuild file index from storage backend',
+                {
+                    error: error instanceof Error ? error.message : String(error),
+                },
+            );
+        }
+    }
+
+    /**
+     * Infer MIME type from file extension for index recovery.
+     * Only covers types relevant to DataHub file storage.
+     */
+    private inferMimeType(ext: string): string {
+        const mimeMap: Record<string, string> = {
+            '.csv': 'text/csv',
+            '.json': 'application/json',
+            '.xml': 'application/xml',
+            '.txt': 'text/plain',
+            '.xls': 'application/vnd.ms-excel',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        };
+        return mimeMap[ext] ?? 'application/octet-stream';
     }
 
     private startCleanupJob() {

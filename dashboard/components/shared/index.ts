@@ -28,7 +28,6 @@ export { TriggersPanel } from './triggers-panel';
 export { LoadingState, EmptyState, ErrorState, ValidationErrorDisplay } from './feedback';
 
 export { StatCard } from './stat-card';
-export { SimpleBarChart, SimpleDonutChart } from './charts';
 
 export {
     WizardProgressBar,
@@ -65,10 +64,6 @@ export type {
     ErrorStateProps,
     ValidationErrorDisplayProps,
     StatCardProps,
-    SimpleBarChartProps,
-    BarChartDataPoint,
-    SimpleDonutChartProps,
-    DonutChartDataPoint,
     WizardProgressBarProps,
     WizardFooterProps,
     ConfigurationNameCardProps,

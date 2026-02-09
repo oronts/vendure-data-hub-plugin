@@ -45,6 +45,22 @@ interface RateLimitState {
 
 const rateLimiters = new Map<string, RateLimitState>();
 
+/** Maximum number of entries in the circuit breaker and rate limiter maps */
+const MAX_MAP_ENTRIES = CIRCUIT_BREAKER.MAX_CIRCUITS;
+
+/** How long a CLOSED circuit breaker with no failures must be idle before cleanup (ms) */
+const STALE_CIRCUIT_BREAKER_MS = CIRCUIT_BREAKER.IDLE_TIMEOUT_MS;
+
+/**
+ * Evict the oldest entry from a Map when it exceeds maxSize.
+ * Maps iterate in insertion order, so the first key is the oldest.
+ */
+function evictOldest(map: Map<string, unknown>, maxSize: number): void {
+    if (map.size <= maxSize) return;
+    const firstKey = map.keys().next().value;
+    if (firstKey) map.delete(firstKey);
+}
+
 /**
  * Circuit breaker configuration (using constants from defaults)
  */
@@ -70,6 +86,7 @@ function getCircuitBreaker(endpoint: string): CircuitBreakerState {
     if (existing) {
         return existing;
     }
+    evictOldest(circuitBreakers, MAX_MAP_ENTRIES);
     const state: CircuitBreakerState = {
         failures: 0,
         lastFailure: 0,
@@ -147,6 +164,7 @@ async function checkRateLimit(endpoint: string, requestsPerSecond?: number): Pro
 
     let state = rateLimiters.get(domain);
     if (!state) {
+        evictOldest(rateLimiters, MAX_MAP_ENTRIES);
         state = {
             tokens: limit,
             lastRefill: now,
@@ -209,18 +227,48 @@ export function getRateLimiterStats(): Map<string, RateLimitState> {
 }
 
 /**
- * Clean expired cache entries periodically
+ * Clean expired cache entries, stale circuit breakers, and expired rate limiters periodically
  */
 function cleanExpiredCache(): void {
     const now = Date.now();
+
+    // Clean expired HTTP lookup cache entries
     for (const [key, entry] of httpLookupCache.entries()) {
         if (entry.expiresAt < now) {
             httpLookupCache.delete(key);
         }
     }
+
+    // Clean stale circuit breakers: CLOSED state with no failures for > STALE_CIRCUIT_BREAKER_MS
+    for (const [key, breaker] of circuitBreakers.entries()) {
+        if (
+            breaker.state === CircuitState.CLOSED &&
+            breaker.failures === 0 &&
+            breaker.lastFailure > 0 &&
+            now - breaker.lastFailure > STALE_CIRCUIT_BREAKER_MS
+        ) {
+            circuitBreakers.delete(key);
+        } else if (
+            breaker.state === CircuitState.CLOSED &&
+            breaker.failures === 0 &&
+            breaker.lastFailure === 0
+        ) {
+            // Never-failed breakers that have existed for longer than the stale timeout
+            // These are entries that were created but never had any activity worth tracking
+            circuitBreakers.delete(key);
+        }
+    }
+
+    // Clean expired rate limiters: those whose window has long passed
+    for (const [key, limiter] of rateLimiters.entries()) {
+        const windowAge = now - limiter.windowStart;
+        if (windowAge > STALE_CIRCUIT_BREAKER_MS) {
+            rateLimiters.delete(key);
+        }
+    }
 }
 
-// Clean cache periodically
+// Clean cache, stale circuit breakers, and expired rate limiters periodically
 // Use unref() to allow the process to exit even with this timer running
 const cleanupInterval = setInterval(cleanExpiredCache, INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
 if (typeof cleanupInterval.unref === 'function') {

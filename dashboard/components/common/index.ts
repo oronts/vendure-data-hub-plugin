@@ -10,13 +10,7 @@ export { FieldError } from './validation-feedback';
 
 export { FieldSelector } from './field-selector';
 
-export { FileUploadDialog, FieldMappingDialog, ConfirmDialog } from './dialogs';
-
 export type {
     FieldErrorProps,
     FieldSelectorProps,
-    FileUploadDialogProps,
-    FieldMappingDialogProps,
-    ConfirmDialogProps,
-    BaseDialogProps,
 } from '../../types';

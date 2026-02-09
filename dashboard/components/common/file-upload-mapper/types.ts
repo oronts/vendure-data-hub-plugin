@@ -1,6 +1,37 @@
-import type { JsonObject, FileType, ParsedColumn, ParsedFile, UIFieldMapping, SourceField, TargetField } from '../../../types';
+import type { JsonObject, FileType, ParsedColumn } from '../../../types';
+import type { JsonValue } from '../../../../shared/types';
 
-export type { ParsedColumn, ParsedFile, UIFieldMapping, SourceField, TargetField };
+export type { ParsedColumn };
+
+export interface ParsedFile {
+    fileName: string;
+    fileType: FileType;
+    rowCount: number;
+    columns: ParsedColumn[];
+    preview: JsonObject[];
+    rawData: JsonObject[];
+    fileId?: string;
+}
+
+export interface UIFieldMapping {
+    sourceField: string;
+    targetField: string;
+    transform?: string;
+    defaultValue?: JsonValue;
+}
+
+export interface SourceField {
+    name: string;
+    type?: string;
+    sampleValues?: JsonValue[];
+}
+
+export interface TargetField {
+    name: string;
+    type?: string;
+    required?: boolean;
+    description?: string;
+}
 
 export type MappingTargetField = TargetField;
 

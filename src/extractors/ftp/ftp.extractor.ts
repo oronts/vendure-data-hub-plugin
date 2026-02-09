@@ -33,6 +33,7 @@ import {
     isValidHost,
     isValidPort,
 } from './file-operations';
+import { isBlockedHostname } from '../../utils/url-security.utils';
 import { parseModifiedAfterDate } from '../shared';
 
 @Injectable()
@@ -339,6 +340,8 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
             errors.push({ field: 'host', message: 'Host is required' });
         } else if (!isValidHost(config.host)) {
             errors.push({ field: 'host', message: 'Invalid host format' });
+        } else if (isBlockedHostname(config.host)) {
+            errors.push({ field: 'host', message: 'Host is blocked for security reasons (SSRF protection)' });
         }
 
         if (!config.remotePath) {
