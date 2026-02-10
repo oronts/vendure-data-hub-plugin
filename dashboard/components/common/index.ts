@@ -8,6 +8,9 @@ export { JsonTextarea } from './JsonTextarea';
 
 export { FieldError } from './ValidationFeedback';
 
+export { ConnectionConfigEditor } from './ConnectionConfigEditor';
+export type { ConnectionConfigEditorProps } from './ConnectionConfigEditor';
+
 export { FieldSelector } from './field-selector';
 
 export type {

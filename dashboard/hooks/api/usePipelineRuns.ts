@@ -3,6 +3,7 @@ import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { createMutationErrorHandler } from './mutation-helpers';
 import { POLLING_INTERVALS, RUN_STATUS } from '../../constants';
+import { queueKeys } from './useQueues';
 import type { DataHubPipelineRunListOptions, JsonObject } from '../../types';
 
 export const runKeys = {
@@ -155,7 +156,7 @@ export function useRetryError() {
             api.mutate(retryErrorDocument, { errorId, patch }).then((res) => res.retryDataHubRecord),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: runKeys.all });
-            queryClient.invalidateQueries({ queryKey: ['queues'] });
+            queryClient.invalidateQueries({ queryKey: queueKeys.all });
         },
         onError: createMutationErrorHandler('retry record'),
     });
