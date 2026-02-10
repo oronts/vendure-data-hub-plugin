@@ -21,14 +21,14 @@ import {
     EnrichConfigComponent,
 } from './index';
 import { TriggerForm } from '../trigger-config';
-import { OperatorCheatSheetButton } from './operator-cheatsheet';
+import { OperatorCheatSheetButton } from './OperatorCheatsheet';
 import {
     AdvancedMapEditor,
     AdvancedTemplateEditor,
     AdvancedWhenEditor,
     MultiOperatorEditor,
-} from './advanced-editors';
-import { StepTester } from './step-tester';
+} from './AdvancedEditors';
+import { StepTester } from './StepTester';
 import { useAdapterCatalog, AdapterMetadata } from '../../../hooks';
 import { getAdapterTypeLabel, prepareDynamicFields, normalizeStepType, getAdapterTypeForStep } from '../../../utils';
 import {

@@ -1,34 +1,34 @@
-export { StepConfigPanel } from './step-config-panel';
-export type { StepConfigPanelProps, StepConfigData } from './step-config-panel';
+export { StepConfigPanel } from './StepConfigPanel';
+export type { StepConfigPanelProps, StepConfigData } from './StepConfigPanel';
 
-export { AdapterSelector } from './adapter-selector';
+export { AdapterSelector } from './AdapterSelector';
 export type { AdapterSelectorProps } from '../../../types';
 
-export { AdapterRequiredWarning } from './adapter-required-warning';
-export type { AdapterRequiredWarningProps } from './adapter-required-warning';
+export { AdapterRequiredWarning } from './AdapterRequiredWarning';
+export type { AdapterRequiredWarningProps } from './AdapterRequiredWarning';
 
-export { ThroughputSettingsComponent } from './throughput-settings-component';
-export type { ThroughputSettingsComponentProps } from './throughput-settings-component';
+export { ThroughputSettingsComponent } from './ThroughputSettingsComponent';
+export type { ThroughputSettingsComponentProps } from './ThroughputSettingsComponent';
 
-export { RouteConfigComponent } from './route-config-component';
-export type { RouteConfigComponentProps } from './route-config-component';
+export { RouteConfigComponent } from './RouteConfigComponent';
+export type { RouteConfigComponentProps } from './RouteConfigComponent';
 
-export { ValidateConfigComponent } from './validate-config-component';
-export type { ValidateConfigComponentProps } from './validate-config-component';
+export { ValidateConfigComponent } from './ValidateConfigComponent';
+export type { ValidateConfigComponentProps } from './ValidateConfigComponent';
 
-export { EnrichConfigComponent } from './enrich-config-component';
-export type { EnrichConfigComponentProps } from './enrich-config-component';
+export { EnrichConfigComponent } from './EnrichConfigComponent';
+export type { EnrichConfigComponentProps } from './EnrichConfigComponent';
 
 export {
     AdvancedMapEditor,
     AdvancedTemplateEditor,
     AdvancedWhenEditor,
     MultiOperatorEditor,
-} from './advanced-editors';
+} from './AdvancedEditors';
 
-export { StepTester } from './step-tester';
+export { StepTester } from './StepTester';
 
-export { OperatorCheatSheetButton } from './operator-cheatsheet';
+export { OperatorCheatSheetButton } from './OperatorCheatsheet';
 
-export { TestResultContainer, JsonDisplay } from './test-result-container';
-export type { TestResultContainerProps } from './test-result-container';
+export { TestResultContainer, JsonDisplay } from './TestResultContainer';
+export type { TestResultContainerProps } from './TestResultContainer';

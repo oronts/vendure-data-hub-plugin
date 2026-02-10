@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@vendure/dashboard';
-import { PipelineEditor } from '../../../components/pipelines/pipeline-editor';
-import { ReactFlowPipelineEditor } from '../../../components/pipelines/reactflow-pipeline-editor';
+import { PipelineEditor } from '../../../components/pipelines/PipelineEditor';
+import { ReactFlowPipelineEditor } from '../../../components/pipelines/ReactFlowPipelineEditor';
 import type {
     PipelineDefinition,
     PipelineFormControl,

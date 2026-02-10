@@ -16,7 +16,7 @@ import {
 } from '@vendure/dashboard';
 import { Play, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { JsonTextarea } from '../../common/json-textarea';
+import { JsonTextarea } from '../../common/JsonTextarea';
 import {
     WizardStepContainer,
     SOURCE_TYPE_ICONS,

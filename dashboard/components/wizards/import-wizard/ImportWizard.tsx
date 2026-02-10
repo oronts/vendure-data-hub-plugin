@@ -18,7 +18,7 @@ import { validateImportWizardStep } from '../../../utils/form-validation';
 import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../shared';
 import { BATCH_SIZES, UI_LIMITS, UI_DEFAULTS, TRIGGER_TYPES, FILE_FORMAT, SOURCE_TYPE, CLEANUP_STRATEGY, TOAST_WIZARD, formatParseError, formatParsedRecords } from '../../../constants';
 import { normalizeString } from '../../../utils';
-import { useImportTemplates } from '../../../hooks/use-import-templates';
+import { useImportTemplates } from '../../../hooks/useImportTemplates';
 
 type TemplateCategory = 'products' | 'customers' | 'inventory' | 'orders' | 'promotions' | 'catalog';
 type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';

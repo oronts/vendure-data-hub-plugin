@@ -8,8 +8,8 @@ import {
     FlaskConical,
     Rocket,
 } from 'lucide-react';
-import { PipelineImportDialog } from '../../../components/pipelines/pipeline-import';
-import { PipelineExportDialog } from '../../../components/pipelines/pipeline-export';
+import { PipelineImportDialog } from '../../../components/pipelines/PipelineImport';
+import { PipelineExportDialog } from '../../../components/pipelines/PipelineExport';
 import {
     DATAHUB_PERMISSIONS,
     PIPELINE_STATUS,

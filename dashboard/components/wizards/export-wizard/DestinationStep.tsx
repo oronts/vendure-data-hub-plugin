@@ -24,7 +24,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { WizardStepContainer } from '../shared';
 import { SelectableCard, SelectableCardGrid } from '../../shared/selectable-card';
-import { JsonTextarea } from '../../common/json-textarea';
+import { JsonTextarea } from '../../common/JsonTextarea';
 import { STEP_CONTENT, PLACEHOLDERS } from './constants';
 import type { ExportConfiguration, DestinationType, HttpMethod, HttpAuthType } from './types';
 import {

@@ -14,5 +14,5 @@ export * from './api';
 
 export { useStableKeys } from './useStableKeys';
 
-export { useImportTemplates } from './use-import-templates';
-export type { UseImportTemplatesResult } from './use-import-templates';
+export { useImportTemplates } from './useImportTemplates';
+export type { UseImportTemplatesResult } from './useImportTemplates';

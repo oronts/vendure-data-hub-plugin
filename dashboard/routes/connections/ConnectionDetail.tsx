@@ -8,7 +8,7 @@ import {
     CONNECTION_TYPE_OPTIONS,
     createDefaultConnectionConfig,
     normalizeConnectionConfig,
-} from '../../components/common/connection-config-editor';
+} from '../../components/common/ConnectionConfigEditor';
 import type { UIConnectionType } from '../../types';
 import { CODE_PATTERN } from '../../utils/form-validation';
 import { FieldError } from '../../components/common';

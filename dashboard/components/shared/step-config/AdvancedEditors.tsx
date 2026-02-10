@@ -3,11 +3,11 @@ import { useCallback, memo } from 'react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@vendure/dashboard';
 import { COMPARISON_OPERATORS, getOperatorPlaceholder, MOVE_DIRECTION, ERROR_MESSAGES } from '../../../constants';
 import type { MoveDirection } from '../../../constants';
-import { OperatorCard, OperatorConfig, StepOperatorDefinition } from './operator-card';
+import { OperatorCard, OperatorConfig, StepOperatorDefinition } from './OperatorCard';
 import { useStableKeys } from '../../../hooks';
 
-export type { OperatorConfig, StepOperatorDefinition } from './operator-card';
-export type { OperatorSchemaField } from './operator-field-input';
+export type { OperatorConfig, StepOperatorDefinition } from './OperatorCard';
+export type { OperatorSchemaField } from './OperatorFieldInput';
 
 type JsonRecord = Record<string, unknown>;
 

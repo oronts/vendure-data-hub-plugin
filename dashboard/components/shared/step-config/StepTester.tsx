@@ -12,10 +12,10 @@ import {
 } from '@vendure/dashboard';
 import { PlayIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { STEP_TYPES, ADAPTER_TYPES, DEFAULT_SAMPLE_DATA, STEP_TEST_DESCRIPTIONS, PLACEHOLDERS } from '../../../constants';
-import { runStepTest, canTestStepType, type TestResult } from './step-test-handlers';
-import { ExtractTestResults } from './extract-test-results';
-import { TransformTestResults, ValidateTestResults } from './transform-test-results';
-import { LoadTestResults, FeedTestResults, GenericTestResults } from './load-test-results';
+import { runStepTest, canTestStepType, type TestResult } from './StepTestHandlers';
+import { ExtractTestResults } from './ExtractTestResults';
+import { TransformTestResults, ValidateTestResults } from './TransformTestResults';
+import { LoadTestResults, FeedTestResults, GenericTestResults } from './LoadTestResults';
 
 interface StepTesterProps {
     stepType: string;

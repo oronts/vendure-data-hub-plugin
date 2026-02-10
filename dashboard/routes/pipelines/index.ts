@@ -1,3 +1,3 @@
-export { pipelinesList } from './pipelines-list';
-export { pipelineDetail } from './pipeline-detail';
-export { PipelineRunsBlock } from './pipeline-runs';
+export { pipelinesList } from './PipelinesList';
+export { pipelineDetail } from './PipelineDetail';
+export { PipelineRunsBlock } from './PipelineRuns';

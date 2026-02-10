@@ -4,9 +4,9 @@ export type {
     MappingTargetField,
 } from './file-upload-mapper';
 
-export { JsonTextarea } from './json-textarea';
+export { JsonTextarea } from './JsonTextarea';
 
-export { FieldError } from './validation-feedback';
+export { FieldError } from './ValidationFeedback';
 
 export { FieldSelector } from './field-selector';
 

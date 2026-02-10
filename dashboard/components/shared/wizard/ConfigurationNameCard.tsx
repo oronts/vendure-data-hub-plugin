@@ -8,7 +8,7 @@ import {
     Label,
     Textarea,
 } from '@vendure/dashboard';
-import { FieldError } from '../../common/validation-feedback';
+import { FieldError } from '../../common/ValidationFeedback';
 import type { ConfigurationNameCardProps } from '../../../types';
 
 export function ConfigurationNameCard({

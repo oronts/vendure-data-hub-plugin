@@ -18,7 +18,7 @@ export {
 } from '../../shared/step-config';
 export type { StepConfigData, StepConfigPanelProps } from '../../shared/step-config';
 
-export { getAdapterIcon } from './adapter-icons';
+export { getAdapterIcon } from './AdapterIcons';
 
 export { VISUAL_NODE_CONFIGS, getVisualNodeConfig } from './visual-node-config';
 export type { VisualNodeConfig } from './visual-node-config';

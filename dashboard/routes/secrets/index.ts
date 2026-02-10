@@ -1,2 +1,2 @@
-export { secretsList } from './secrets-list';
-export { secretDetail } from './secret-detail';
+export { secretsList } from './SecretsList';
+export { secretDetail } from './SecretDetail';

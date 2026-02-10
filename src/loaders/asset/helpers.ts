@@ -34,7 +34,7 @@ export async function downloadFile(url: string): Promise<Buffer | null> {
                 if (redirectUrl) {
                     response.resume();
                     request.destroy();
-                    downloadFile(redirectUrl).then(resolve);
+                    downloadFile(redirectUrl).then(resolve).catch(() => resolve(null));
                     return;
                 }
             }

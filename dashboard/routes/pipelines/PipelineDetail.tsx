@@ -23,7 +23,7 @@ import {
     pipelineKeys,
 } from '../../hooks';
 import type { PipelineDefinition, ValidationIssue, PipelineEntity } from '../../types';
-import { PipelineRunsBlock } from './pipeline-runs';
+import { PipelineRunsBlock } from './PipelineRuns';
 import {
     DryRunDialog,
     VersionHistoryDialog,

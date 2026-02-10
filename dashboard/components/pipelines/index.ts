@@ -1,9 +1,9 @@
-export { PipelineEditor } from './pipeline-editor';
-export { ReactFlowPipelineEditor } from './reactflow-pipeline-editor';
-export type { ReactFlowPipelineEditorProps } from './reactflow-pipeline-editor';
+export { PipelineEditor } from './PipelineEditor';
+export { ReactFlowPipelineEditor } from './ReactFlowPipelineEditor';
+export type { ReactFlowPipelineEditorProps } from './ReactFlowPipelineEditor';
 
-export { PipelineExportDialog } from './pipeline-export';
-export { PipelineImportDialog } from './pipeline-import';
+export { PipelineExportDialog } from './PipelineExport';
+export { PipelineImportDialog } from './PipelineImport';
 
 export {
     NodePropertiesPanel,

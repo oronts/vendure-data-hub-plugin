@@ -1,1 +1,1 @@
-export { hooksPage } from './hooks';
+export { hooksPage } from './Hooks';

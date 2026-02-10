@@ -1,1 +1,1 @@
-export { adaptersList } from './adapters-list';
+export { adaptersList } from './AdaptersList';

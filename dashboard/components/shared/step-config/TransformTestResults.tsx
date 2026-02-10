@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { memo } from 'react';
-import { RecordsTable } from './extract-test-results';
-import { TestResultContainer, JsonDisplay } from './test-result-container';
-import type { TestResult } from './step-test-handlers';
+import { RecordsTable } from './ExtractTestResults';
+import { TestResultContainer, JsonDisplay } from './TestResultContainer';
+import type { TestResult } from './StepTestHandlers';
 
 interface TransformTestResultsProps {
     result: TestResult;

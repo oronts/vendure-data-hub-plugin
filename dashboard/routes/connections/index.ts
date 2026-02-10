@@ -1,2 +1,2 @@
-export { connectionsList } from './connections-list';
-export { connectionDetail } from './connection-detail';
+export { connectionsList } from './ConnectionsList';
+export { connectionDetail } from './ConnectionDetail';
