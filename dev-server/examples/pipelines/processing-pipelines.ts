@@ -23,7 +23,7 @@ export const productEnrichment = createPipeline()
     .name('Product Enrichment')
     .description('Enrich products with VALIDATE, parallel SEO/Pricing enrichment, and computed fields')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
@@ -202,7 +202,7 @@ export const productEnrichment = createPipeline()
     .export('export-low-margin', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './reports',
         filenamePattern: 'low-margin-products-${date:YYYY-MM-DD}.csv',
         includeHeader: true,
@@ -239,7 +239,7 @@ export const orderAnalytics = createPipeline()
     .name('Order Analytics')
     .description('Extract orders, calculate totals, and generate analytics')
     .capabilities({ requires: ['ReadOrder'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-orders', {
         adapterCode: 'vendureQuery',
@@ -402,7 +402,7 @@ export const orderAnalytics = createPipeline()
     .export('write-analytics', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './analytics',
         filenamePattern: 'order-analytics-${date:YYYY-MM-DD}.csv',
         includeHeader: true,
@@ -430,7 +430,7 @@ export const customerSegmentation = createPipeline()
     .name('Customer Segmentation')
     .description('Segment customers with VALIDATE, ENRICH computed RFM, and parallel reporting')
     .capabilities({ requires: ['ReadCustomer', 'ReadOrder', 'UpdateCustomer'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-customers', {
         adapterCode: 'vendureQuery',
@@ -588,7 +588,7 @@ export const customerSegmentation = createPipeline()
     .export('export-champions', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './reports/segments',
         filenamePattern: 'champion-customers-${date:YYYY-MM-DD}.csv',
         includeHeader: true,
@@ -621,7 +621,7 @@ export const customerSegmentation = createPipeline()
     .export('export-high-value-non-champions', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './reports/segments',
         filenamePattern: 'high-value-opportunities-${date:YYYY-MM-DD}.csv',
         includeHeader: true,

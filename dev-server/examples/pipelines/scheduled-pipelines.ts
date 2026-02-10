@@ -33,7 +33,7 @@ export const dailyStockSync = createPipeline()
 
     // Schedule: Run daily at 6 AM UTC
     .trigger('start', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 6 * * *',  // minute hour day month weekday
         timezone: 'UTC',
     })
@@ -223,7 +223,7 @@ export const hourlyPriceSync = createPipeline()
     .description('Sync prices from pricing engine every hour')
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 * * * *',  // Every hour at minute 0
         timezone: 'UTC',
     })
@@ -278,7 +278,7 @@ export const weeklyCustomerCleanup = createPipeline()
     .description('Archive customers with no orders in 2 years')
     .capabilities({ requires: ['ReadCustomer', 'UpdateCustomer'] })
     .trigger('start', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 2 * * 0',  // Every Sunday at 2 AM
         timezone: 'UTC',
     })
@@ -358,7 +358,7 @@ export const webhookOrderSync = createPipeline()
     .description('Process incoming orders from external system via webhook')
     .capabilities({ requires: ['UpdateOrder', 'UpdateCustomer'] })
     .trigger('start', {
-        type: 'webhook',
+        type: 'WEBHOOK',
         webhookCode: 'external-orders',
         // Authentication: HMAC-SHA256 signature verification
         authentication: 'hmac',
@@ -464,7 +464,7 @@ export const lowStockAlert = createPipeline()
     .description('Send alerts when stock falls below threshold')
     .capabilities({ requires: ['ReadCatalog'] })
     .trigger('start', {
-        type: 'event',
+        type: 'EVENT',
         event: 'ProductVariantEvent.updated',
         filter: {
             'stockOnHand': { '$lt': '${outOfStockThreshold}' },
@@ -532,7 +532,7 @@ export const webhookApiKeyAuth = createPipeline()
     .description('Webhook triggered pipeline with API Key authentication')
     .capabilities({ requires: ['ReadCatalog'] })
     .trigger('start', {
-        type: 'webhook',
+        type: 'WEBHOOK',
         webhookCode: 'api-key-webhook',
         // Authentication: API Key in header
         authentication: 'api-key',
@@ -573,7 +573,7 @@ export const webhookJwtAuth = createPipeline()
     .description('Webhook triggered pipeline with JWT Bearer token authentication')
     .capabilities({ requires: ['ReadCatalog'] })
     .trigger('start', {
-        type: 'webhook',
+        type: 'WEBHOOK',
         webhookCode: 'jwt-webhook',
         // Authentication: JWT Bearer token
         authentication: 'jwt',
@@ -614,7 +614,7 @@ export const webhookBasicAuth = createPipeline()
     .description('Webhook triggered pipeline with HTTP Basic authentication')
     .capabilities({ requires: ['ReadCatalog'] })
     .trigger('start', {
-        type: 'webhook',
+        type: 'WEBHOOK',
         webhookCode: 'basic-auth-webhook',
         // Authentication: HTTP Basic Auth
         authentication: 'basic',
@@ -677,13 +677,13 @@ export const multiTriggerPipeline = createPipeline()
 
     // Trigger 1: Manual trigger for on-demand execution
     .trigger('manual-trigger', {
-        type: 'manual',
+        type: 'MANUAL',
         enabled: true,
     })
 
     // Trigger 2: Hourly incremental sync
     .trigger('hourly-sync', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 * * * *',  // Every hour at minute 0
         timezone: 'UTC',
         enabled: true,
@@ -691,7 +691,7 @@ export const multiTriggerPipeline = createPipeline()
 
     // Trigger 3: Daily full sync at 2 AM
     .trigger('daily-full-sync', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 2 * * *',  // Daily at 2 AM
         timezone: 'UTC',
         enabled: true,
@@ -699,7 +699,7 @@ export const multiTriggerPipeline = createPipeline()
 
     // Trigger 4: Webhook for external system integration
     .trigger('webhook-trigger', {
-        type: 'webhook',
+        type: 'WEBHOOK',
         authentication: 'api-key',
         apiKeySecretCode: 'inventory-webhook-key',
         apiKeyHeaderName: 'x-api-key',
@@ -739,7 +739,7 @@ export const multiTriggerPipeline = createPipeline()
 
     .load('update-inventory', {
         adapterCode: 'stockAdjust',
-        strategy: 'upsert',
+        strategy: 'UPSERT',
         locationStrategy: 'default',
     })
 
@@ -787,7 +787,7 @@ export const customerImportWithValidationAndEnrichment = createPipeline()
     .capabilities({ requires: ['UpdateCustomer'] })
 
     .trigger('manual-trigger', {
-        type: 'manual',
+        type: 'MANUAL',
     })
 
     .extract('load-csv', {
@@ -835,7 +835,7 @@ export const customerImportWithValidationAndEnrichment = createPipeline()
 
     .load('create-customers', {
         adapterCode: 'customerUpsert',
-        strategy: 'upsert',
+        strategy: 'UPSERT',
         lookupField: 'emailAddress',
     })
 
@@ -864,7 +864,7 @@ export const productCatalogEnrichment = createPipeline()
     .capabilities({ requires: ['UpdateCatalog'] })
 
     .trigger('webhook', {
-        type: 'webhook',
+        type: 'WEBHOOK',
         webhookCode: 'product-enrichment',
     })
 
@@ -915,7 +915,7 @@ export const productCatalogEnrichment = createPipeline()
 
     .load('upsert-products', {
         adapterCode: 'productUpsert',
-        strategy: 'upsert',
+        strategy: 'UPSERT',
         lookupField: 'slug',
     })
 

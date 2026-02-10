@@ -8,7 +8,7 @@ export const productExportFull = createPipeline()
     .name('Product Export - Full Catalog')
     .description('Export product catalog with variants flattened to rows')
     .capabilities({ requires: ['ReadCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
@@ -136,7 +136,7 @@ export const productExportFull = createPipeline()
     .export('write-csv', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './exports',
         filenamePattern: 'products-${date:YYYY-MM-DD}.csv',
         includeHeader: true,
@@ -156,7 +156,7 @@ export const customerExportFull = createPipeline()
     .name('Customer Export - Full Data')
     .description('Export customers with addresses, order count, and total spent')
     .capabilities({ requires: ['ReadCustomer', 'ReadOrder'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-customers', {
         adapterCode: 'vendureQuery',
@@ -250,7 +250,7 @@ export const customerExportFull = createPipeline()
     .export('write-csv', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './exports',
         filenamePattern: 'customers-${date:YYYY-MM-DD}.csv',
         includeHeader: true,
@@ -267,7 +267,7 @@ export const orderExportFull = createPipeline()
     .name('Order Export - Full Details')
     .description('Export orders with line items and customer info')
     .capabilities({ requires: ['ReadOrder'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-orders', {
         adapterCode: 'vendureQuery',
@@ -381,7 +381,7 @@ export const orderExportFull = createPipeline()
     .export('write-csv', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './exports',
         filenamePattern: 'orders-${date:YYYY-MM-DD}.csv',
         includeHeader: true,
@@ -399,7 +399,7 @@ export const inventoryExport = createPipeline()
     .name('Inventory Export - Stock Levels')
     .description('Export stock levels by SKU')
     .capabilities({ requires: ['ReadCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-variants', {
         adapterCode: 'vendureQuery',
@@ -494,7 +494,7 @@ export const inventoryExport = createPipeline()
     .export('write-csv', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './exports',
         filenamePattern: 'inventory-${date:YYYY-MM-DD-HHmmss}.csv',
         includeHeader: true,

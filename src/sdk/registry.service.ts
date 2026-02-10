@@ -14,7 +14,7 @@ function validateAdapterCode(code: string): void {
 }
 
 function validateAdapterType(type: string): void {
-    const validTypes = ['extractor', 'operator', 'loader', 'validator', 'enricher', 'exporter', 'feed', 'sink'];
+    const validTypes = ['EXTRACTOR', 'OPERATOR', 'LOADER', 'VALIDATOR', 'ENRICHER', 'EXPORTER', 'FEED', 'SINK'];
     if (!type || typeof type !== 'string') {
         throw new Error('Adapter type must be a non-empty string');
     }

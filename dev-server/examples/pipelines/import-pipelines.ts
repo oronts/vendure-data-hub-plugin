@@ -32,7 +32,7 @@ export const productImportCsv = createPipeline()
     .name('Product Import - CSV')
     .description('Import products from CSV with VALIDATE, ENRICH, and parallel error handling')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('read-csv', {
         adapterCode: 'csv',
@@ -76,7 +76,7 @@ export const productImportCsv = createPipeline()
     .export('export-errors', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './imports/errors',
         filenamePattern: 'product-import-errors-${date:YYYY-MM-DD-HHmmss}.csv',
         includeHeader: true,
@@ -192,7 +192,7 @@ export const productImportCsv = createPipeline()
     .load('upsert-products', {
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
-        strategy: 'upsert',
+        strategy: 'UPSERT',
         conflictResolution: 'source-wins',
         nameField: 'name',
         slugField: 'slug',
@@ -232,7 +232,7 @@ export const customerImportCsv = createPipeline()
     .name('Customer Import - CSV')
     .description('Import customers from CSV with address parsing and email validation')
     .capabilities({ requires: ['UpdateCustomer'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('read-csv', {
         adapterCode: 'csv',
@@ -435,7 +435,7 @@ export const stockUpdateCsv = createPipeline()
     .name('Stock Update - CSV')
     .description('Import stock with VALIDATE, ENRICH computed status, and parallel low-stock alerts')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('read-csv', {
         adapterCode: 'csv',
@@ -570,7 +570,7 @@ export const stockUpdateCsv = createPipeline()
     .export('export-low-stock', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './reports/inventory',
         filenamePattern: 'low-stock-alert-${date:YYYY-MM-DD-HHmmss}.csv',
         includeHeader: true,
@@ -609,7 +609,7 @@ export const stockUpdateCsv = createPipeline()
     .export('export-out-of-stock', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './reports/inventory',
         filenamePattern: 'out-of-stock-urgent-${date:YYYY-MM-DD-HHmmss}.csv',
         includeHeader: true,
@@ -653,7 +653,7 @@ export const priceUpdateCsv = createPipeline()
     .name('Price Update - CSV')
     .description('Bulk price update from CSV with currency conversion')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('read-csv', {
         adapterCode: 'csv',

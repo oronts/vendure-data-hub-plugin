@@ -89,7 +89,7 @@ export const customOperatorsPipelineExample = createPipeline()
     .name('Custom Operators Demo')
     .description('Currency conversion and PII masking')
     .capabilities({ requires: ['UpdateCustomer'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('sample-data', {
         adapterCode: 'csv',
         rows: [
@@ -120,7 +120,7 @@ export const customExtractorsPipelineExample = createPipeline()
     .name('Custom Extractors Demo')
     .description('Generate test data with custom extractor')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('generate', {
         adapterCode: 'generator',
         count: 50,
@@ -155,7 +155,7 @@ export const customExtractorsPipelineExample = createPipeline()
 export const customLoadersPipelineExample = createPipeline()
     .name('Custom Loaders Demo')
     .description('Send data to webhook with custom loader')
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
@@ -189,7 +189,7 @@ export const customAdapterPipelineExample = createPipeline()
     .name('Full Custom Adapters Demo')
     .description('Generator + currency convert + PII mask + webhook')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('generate', {
         adapterCode: 'generator',
         count: 20,

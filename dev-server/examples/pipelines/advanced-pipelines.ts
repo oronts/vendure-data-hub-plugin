@@ -31,7 +31,7 @@ export const interceptorHooksPipeline = createPipeline()
     .name('Interceptor Hooks Example')
     .description('Demonstrates interceptor hooks that modify records during pipeline execution')
     .capabilities({ requires: ['ReadCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
@@ -182,7 +182,7 @@ export const scriptHooksPipeline = createPipeline()
     .name('Script Hooks Example')
     .description('Demonstrates registered script hooks for type-safe data modification')
     .capabilities({ requires: ['ReadCustomer'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-customers', {
         adapterCode: 'vendureQuery',
@@ -267,7 +267,7 @@ export const scriptOperatorPipeline = createPipeline()
     .name('Script Operator Example')
     .description('Demonstrates inline JavaScript for complex transformations')
     .capabilities({ requires: ['ReadCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
@@ -359,7 +359,7 @@ export const scriptOperatorPipeline = createPipeline()
     .export('write-csv', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './exports',
         filenamePattern: 'product-metrics-${date:YYYY-MM-DD}.csv',
         includeHeader: true,
@@ -392,7 +392,7 @@ export const comprehensiveAdvancedPipeline = createPipeline()
     .name('Comprehensive Advanced Pipeline')
     .description('Real-world example combining hooks, scripts, and custom logic')
     .capabilities({ requires: ['ReadOrder', 'ReadCustomer'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-orders', {
         adapterCode: 'vendureQuery',
@@ -479,7 +479,7 @@ export const comprehensiveAdvancedPipeline = createPipeline()
     .export('write-csv', {
         adapterCode: 'csvExport',
         target: 'file',
-        format: 'csv',
+        format: 'CSV',
         path: './exports',
         filenamePattern: 'orders-analysis-${date:YYYY-MM-DD}.csv',
         includeHeader: true,
@@ -589,7 +589,7 @@ export const allHookStagesPipeline = createPipeline()
     .name('All 18 Hook Stages Demo')
     .description('Demonstrates every available hook stage with interceptors that can modify data')
     .capabilities({ requires: ['ReadCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
@@ -1006,7 +1006,7 @@ export const customAdapterPipeline = createPipeline()
     .name('Custom Adapter Example')
     .description('Demonstrates usage of custom SDK adapters')
     .capabilities({ requires: ['ReadCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     // Use custom extractor (registered via SDK)
     .extract('fetch-shopify-products', {

@@ -26,7 +26,7 @@ export const googleShoppingFeed = createPipeline()
     .name('Google Shopping Feed')
     .description('Generate Google Merchant Center product feed with proper field mapping and price formatting')
     .capabilities({ requires: ['ReadCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
@@ -248,7 +248,7 @@ export const googleShoppingFeed = createPipeline()
 
     .feed('generate-feed', {
         adapterCode: 'googleMerchant',
-        format: 'xml',
+        format: 'XML',
         outputPath: './feeds/google-shopping.xml',
         targetCountry: 'US',
         contentLanguage: 'en',
@@ -282,7 +282,7 @@ export const facebookCatalogFeed = createPipeline()
     .name('Facebook Catalog Feed')
     .description('Generate Meta (Facebook/Instagram) product catalog with required fields')
     .capabilities({ requires: ['ReadCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
@@ -426,7 +426,7 @@ export const facebookCatalogFeed = createPipeline()
 
     .feed('generate-feed', {
         adapterCode: 'metaCatalog',
-        format: 'csv',
+        format: 'CSV',
         outputPath: './feeds/facebook-catalog.csv',
         currency: 'USD',
         includeVariants: true,
@@ -455,7 +455,7 @@ export const restApiImport = createPipeline()
     .name('REST API Import')
     .description('Import products from external REST API with pagination, auth, and field mapping')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-api', {
         adapterCode: 'httpApi',
@@ -588,7 +588,7 @@ export const restApiImport = createPipeline()
     .load('upsert-products', {
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
-        strategy: 'upsert',
+        strategy: 'UPSERT',
         conflictResolution: 'source-wins',
         nameField: 'name',
         slugField: 'slug',

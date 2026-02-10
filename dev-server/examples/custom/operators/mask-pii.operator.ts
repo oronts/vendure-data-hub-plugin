@@ -66,7 +66,7 @@ export const maskPiiOperator: SingleRecordOperator<MaskPiiConfig> = {
     code: 'maskPII',
     name: 'Mask PII',
     description: 'Mask personally identifiable information for privacy compliance',
-    category: 'utility',
+    category: 'UTILITY',
     pure: true,
     schema: maskPiiSchema,
     icon: 'shield-check',

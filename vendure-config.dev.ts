@@ -68,7 +68,7 @@ const httpApiExtractorExample = createPipeline()
     .name('REST API Extractor')
     .description('Extract products from external REST API')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('fetch', {
         adapterCode: 'httpApi',
         url: 'https://api.example.com/products',
@@ -86,7 +86,7 @@ const httpApiExtractorExample = createPipeline()
     .load('upsert', {
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
-        strategy: 'upsert',
+        strategy: 'UPSERT',
         conflictResolution: 'source-wins',
         skuField: 'sku',
     })
@@ -99,7 +99,7 @@ const vendureQueryExample = createPipeline()
     .name('Vendure Query Extractor')
     .description('Extract products from Vendure')
     .capabilities({ requires: ['UpdateDataHubSettings'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
@@ -126,7 +126,7 @@ const productLoaderExample = createPipeline()
     .name('Product Loader')
     .description('Import products from CSV data')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('source', {
         adapterCode: 'csv',
         rows: [
@@ -143,7 +143,7 @@ const productLoaderExample = createPipeline()
     .load('upsert', {
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
-        strategy: 'upsert',
+        strategy: 'UPSERT',
         conflictResolution: 'source-wins',
         skuField: 'sku',
         nameField: 'name',
@@ -159,7 +159,7 @@ const customerLoaderExample = createPipeline()
     .name('Customer Loader')
     .description('Import customers from CSV data')
     .capabilities({ requires: ['UpdateCustomer'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('source', {
         adapterCode: 'csv',
         rows: [
@@ -187,7 +187,7 @@ const transformOperatorsExample = createPipeline()
     .name('Transform Operators')
     .description('String, numeric, and data transformations')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('source', {
         adapterCode: 'csv',
         rows: [
@@ -209,7 +209,7 @@ const transformOperatorsExample = createPipeline()
     .load('save', {
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
-        strategy: 'upsert',
+        strategy: 'UPSERT',
         conflictResolution: 'source-wins',
         skuField: 'slug',
         nameField: 'name',
@@ -223,7 +223,7 @@ const customAdapterExample = createPipeline()
     .name('Custom Adapters Demo')
     .description('Generator + currency convert + PII mask')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('generate', {
         adapterCode: 'generator',
         count: 10,
@@ -263,7 +263,7 @@ const productExportExample = createPipeline()
     .name('Product Export to Webhook')
     .description('Export all products to external webhook (scheduled daily)')
     .capabilities({ requires: ['ReadCatalog'] })
-    .trigger('start', { type: 'schedule', cron: '0 2 * * *' }) // Daily at 2am
+    .trigger('start', { type: 'SCHEDULE', cron: '0 2 * * *' }) // Daily at 2am
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
@@ -293,7 +293,7 @@ const customerExportExample = createPipeline()
     .name('Customer Export')
     .description('Export customers to external CRM')
     .capabilities({ requires: ['ReadCustomer'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'CUSTOMER',
@@ -324,7 +324,7 @@ const orderExportExample = createPipeline()
     .name('Order Export')
     .description('Export recent orders to fulfillment system')
     .capabilities({ requires: ['ReadOrder'] })
-    .trigger('start', { type: 'schedule', cron: '*/15 * * * *' }) // Every 15 minutes
+    .trigger('start', { type: 'SCHEDULE', cron: '*/15 * * * *' }) // Every 15 minutes
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'ORDER',

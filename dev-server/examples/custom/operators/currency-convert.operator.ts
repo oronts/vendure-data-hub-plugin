@@ -49,7 +49,7 @@ export const currencyConvertOperator: SingleRecordOperator<CurrencyConvertConfig
     code: 'currencyConvert',
     name: 'Currency Convert',
     description: 'Convert currency values using exchange rates',
-    category: 'conversion',
+    category: 'CONVERSION',
     pure: true,
     schema: currencyConvertSchema,
     icon: 'currency-exchange',
