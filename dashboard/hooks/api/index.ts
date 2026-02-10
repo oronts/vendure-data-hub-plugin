@@ -74,9 +74,6 @@ export {
     useAdapters,
     useAdaptersByType,
     useAdapter,
-    useAdaptersGroupedByType,
-    useAdaptersGroupedByCategory,
-    useVendureSchemas,
 } from './useAdapters';
 
 export {
@@ -123,17 +120,11 @@ export type {
 } from './useStepTester';
 
 export {
-    stepTesterKeys,
     previewExtractDocument,
     simulateTransformDocument,
     simulateLoadDocument,
     simulateValidateDocument,
     previewFeedDocument,
-    usePreviewExtract,
-    useSimulateTransform,
-    useSimulateLoad,
-    useSimulateValidate,
-    usePreviewFeed,
     previewExtract,
     simulateTransform,
     simulateLoad,

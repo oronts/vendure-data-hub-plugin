@@ -4,31 +4,6 @@ import { type MatchConfidence } from './defaults';
 // Re-use from defaults to avoid duplication
 export type { MatchConfidence };
 
-export const ANALYTICS_THRESHOLDS = {
-    SUCCESS_RATE_GOOD: 95,
-    SUCCESS_RATE_WARNING: 80,
-    ERROR_RATE_WARNING: 0.05,
-    ERROR_RATE_CRITICAL: 0.1,
-} as const;
-
-export const TIME_RANGE_OPTIONS = [
-    { value: '24h', label: 'Last 24 Hours' },
-    { value: '7d', label: 'Last 7 Days' },
-    { value: '30d', label: 'Last 30 Days' },
-    { value: '90d', label: 'Last 90 Days' },
-] as const;
-
-export type TimeRangeValue = typeof TIME_RANGE_OPTIONS[number]['value'];
-
-export const CHART_COLORS = {
-    success: '#22c55e',
-    error: '#ef4444',
-    warning: '#f59e0b',
-    neutral: '#6b7280',
-    primary: '#3b82f6',
-    secondary: '#8b5cf6',
-} as const;
-
 /**
  * Polling intervals in milliseconds for real-time data updates.
  * These values balance responsiveness with server load.
@@ -120,22 +95,6 @@ export { scoreToConfidence } from './defaults';
 
 export function getStatusBadgeVariant(status: string): BadgeVariant {
     return PIPELINE_STATUS_VARIANTS[status as PipelineStatus] ?? 'secondary';
-}
-
-export function getSuccessRateVariant(rate: number): 'success' | 'warning' | 'error' {
-    if (rate >= ANALYTICS_THRESHOLDS.SUCCESS_RATE_GOOD) return 'success';
-    if (rate >= ANALYTICS_THRESHOLDS.SUCCESS_RATE_WARNING) return 'warning';
-    return 'error';
-}
-
-export function getSuccessRateTrend(rate: number): 'up' | 'down' {
-    return rate >= ANALYTICS_THRESHOLDS.SUCCESS_RATE_GOOD ? 'up' : 'down';
-}
-
-export function getErrorRateVariant(rate: number): 'default' | 'warning' | 'error' {
-    if (rate >= ANALYTICS_THRESHOLDS.ERROR_RATE_CRITICAL) return 'error';
-    if (rate >= ANALYTICS_THRESHOLDS.ERROR_RATE_WARNING) return 'warning';
-    return 'default';
 }
 
 export const OPERATOR_PLACEHOLDERS: Record<string, string> = {

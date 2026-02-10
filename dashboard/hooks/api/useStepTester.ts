@@ -1,7 +1,5 @@
-import { useMutation } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
-import { createMutationErrorHandler } from './mutation-helpers';
 import type { JsonObject } from '../../types';
 
 /** Step configuration for testing */
@@ -9,15 +7,6 @@ export type StepConfig = JsonObject;
 
 /** Record type used in step testing */
 export type TestRecord = JsonObject;
-
-export const stepTesterKeys = {
-    all: ['stepTester'] as const,
-    extract: () => [...stepTesterKeys.all, 'extract'] as const,
-    transform: () => [...stepTesterKeys.all, 'transform'] as const,
-    load: () => [...stepTesterKeys.all, 'load'] as const,
-    validate: () => [...stepTesterKeys.all, 'validate'] as const,
-    feed: () => [...stepTesterKeys.all, 'feed'] as const,
-};
 
 export const previewExtractDocument = graphql(`
     mutation PreviewDataHubExtractApi($step: JSON!, $limit: Int) {
@@ -65,56 +54,6 @@ export interface SimulateStepInput {
 export interface PreviewFeedInput {
     feedCode: string;
     limit: number;
-}
-
-export function usePreviewExtract() {
-    return useMutation({
-        mutationFn: ({ step, limit }: PreviewExtractInput) =>
-            api
-                .mutate(previewExtractDocument, { step, limit })
-                .then((res) => (res?.previewDataHubExtract?.records ?? []) as TestRecord[]),
-        onError: createMutationErrorHandler('preview extract'),
-    });
-}
-
-export function useSimulateTransform() {
-    return useMutation({
-        mutationFn: ({ step, records }: SimulateStepInput) =>
-            api
-                .mutate(simulateTransformDocument, { step, records })
-                .then((res) => (res?.simulateDataHubTransform ?? []) as TestRecord[]),
-        onError: createMutationErrorHandler('simulate transform'),
-    });
-}
-
-export function useSimulateLoad() {
-    return useMutation({
-        mutationFn: ({ step, records }: SimulateStepInput) =>
-            api
-                .mutate(simulateLoadDocument, { step, records })
-                .then((res) => (res?.simulateDataHubLoad ?? {}) as JsonObject),
-        onError: createMutationErrorHandler('simulate load'),
-    });
-}
-
-export function useSimulateValidate() {
-    return useMutation({
-        mutationFn: ({ step, records }: SimulateStepInput) =>
-            api
-                .mutate(simulateValidateDocument, { step, records })
-                .then((res) => res?.simulateDataHubValidate),
-        onError: createMutationErrorHandler('simulate validate'),
-    });
-}
-
-export function usePreviewFeed() {
-    return useMutation({
-        mutationFn: ({ feedCode, limit }: PreviewFeedInput) =>
-            api
-                .mutate(previewFeedDocument, { feedCode, limit })
-                .then((res) => res?.previewDataHubFeed),
-        onError: createMutationErrorHandler('preview feed'),
-    });
 }
 
 export async function previewExtract(step: StepConfig, limit: number): Promise<TestRecord[]> {

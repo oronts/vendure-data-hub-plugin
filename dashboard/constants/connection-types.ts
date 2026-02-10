@@ -37,34 +37,4 @@ export const CONNECTION_TYPE = {
 
 export type ConnectionType = typeof CONNECTION_TYPE[keyof typeof CONNECTION_TYPE];
 
-/** Database connection types */
-const DATABASE_TYPES: readonly string[] = [
-    CONNECTION_TYPE.POSTGRES,
-    CONNECTION_TYPE.MYSQL,
-    CONNECTION_TYPE.MSSQL,
-    CONNECTION_TYPE.MONGO,
-    CONNECTION_TYPE.DATABASE,
-];
-
-/** File transfer connection types */
-const FILE_TRANSFER_TYPES: readonly string[] = [
-    CONNECTION_TYPE.FTP,
-    CONNECTION_TYPE.SFTP,
-    CONNECTION_TYPE.S3,
-];
-
-/**
- * Check if a connection type is a database type.
- */
-export function isDatabaseConnectionType(type: string): boolean {
-    return DATABASE_TYPES.includes(type);
-}
-
-/**
- * Check if a connection type is a file transfer type.
- */
-export function isFileTransferConnectionType(type: string): boolean {
-    return FILE_TRANSFER_TYPES.includes(type);
-}
-
 // Note: DESTINATION_TYPE is defined in wizard-options.ts to avoid duplicate exports

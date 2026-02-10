@@ -3,13 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { CACHE_TIMES } from '../../constants';
-import type { DataHubAdapter } from '../../types';
 
 export const adapterKeys = {
     all: ['adapters'] as const,
     catalog: () => [...adapterKeys.all, 'catalog'] as const,
     byType: (type: string) => [...adapterKeys.all, 'byType', type] as const,
-    vendureSchemas: () => [...adapterKeys.all, 'vendureSchemas'] as const,
 };
 
 const adaptersDocument = graphql(`
@@ -45,26 +43,6 @@ const adaptersDocument = graphql(`
     }
 `);
 
-const vendureSchemasDocument = graphql(`
-    query DataHubVendureSchemasApi {
-        dataHubVendureSchemas {
-            entity
-            label
-            description
-            fields {
-                key
-                type
-                required
-                readonly
-                description
-            }
-            lookupFields
-            importable
-            exportable
-        }
-    }
-`);
-
 export function useAdapters() {
     return useQuery({
         queryKey: adapterKeys.catalog(),
@@ -82,14 +60,6 @@ export function useAdaptersByType(type: string) {
     return { ...rest, data: filtered };
 }
 
-export function useVendureSchemas() {
-    return useQuery({
-        queryKey: adapterKeys.vendureSchemas(),
-        queryFn: () => api.query(vendureSchemasDocument).then((res) => res.dataHubVendureSchemas),
-        staleTime: CACHE_TIMES.VENDURE_SCHEMAS,
-    });
-}
-
 export function useAdapter(code: string | undefined) {
     const { data: adapters, ...rest } = useAdapters();
     const adapter = React.useMemo(
@@ -97,46 +67,4 @@ export function useAdapter(code: string | undefined) {
         [adapters, code]
     );
     return { ...rest, data: adapter };
-}
-
-export function useAdaptersGroupedByType() {
-    const { data: adapters, ...rest } = useAdapters();
-
-    const grouped = React.useMemo(() => {
-        if (!adapters) return undefined;
-        return adapters.reduce(
-            (acc, adapter) => {
-                const type = adapter.type;
-                if (!acc[type]) {
-                    acc[type] = [];
-                }
-                acc[type].push(adapter);
-                return acc;
-            },
-            {} as Record<string, DataHubAdapter[]>
-        );
-    }, [adapters]);
-
-    return { ...rest, data: grouped };
-}
-
-export function useAdaptersGroupedByCategory() {
-    const { data: adapters, ...rest } = useAdapters();
-
-    const grouped = React.useMemo(() => {
-        if (!adapters) return undefined;
-        return adapters.reduce(
-            (acc, adapter) => {
-                const category = adapter.category || 'other';
-                if (!acc[category]) {
-                    acc[category] = [];
-                }
-                acc[category].push(adapter);
-                return acc;
-            },
-            {} as Record<string, DataHubAdapter[]>
-        );
-    }, [adapters]);
-
-    return { ...rest, data: grouped };
 }

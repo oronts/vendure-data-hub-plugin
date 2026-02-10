@@ -50,27 +50,6 @@ export const COMPONENT_WIDTHS = {
     ALIAS_INPUT: 'w-32',
 } as const;
 
-/**
- * Chart dimension constants for consistent chart sizing.
- * Heights are in pixels, scroll areas use Tailwind classes.
- */
-export const CHART_DIMENSIONS = {
-    /** Default bar chart height: 200px */
-    BAR_HEIGHT_DEFAULT: 200,
-    /** Small bar chart height: 150px */
-    BAR_HEIGHT_SM: 150,
-    /** Medium bar chart height: 180px */
-    BAR_HEIGHT_MD: 180,
-    /** Default donut chart size: 160px */
-    DONUT_SIZE_DEFAULT: 160,
-    /** Donut chart stroke thickness: 24px */
-    DONUT_THICKNESS: 24,
-    /** Small scroll area height */
-    SCROLL_AREA_SM: 'h-[300px]',
-    /** Large scroll area height */
-    SCROLL_AREA_LG: 'h-[500px]',
-} as const;
-
 export const ICON_SIZES = {
     XS: 'w-3 h-3',
     SM: 'w-4 h-4',
