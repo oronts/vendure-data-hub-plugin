@@ -15,6 +15,7 @@ import { DataHubRegistryService } from '../../sdk/registry.service';
 import { ExporterAdapter, ExportContext, ConnectionConfig, ConnectionType } from '../../sdk/types';
 import { formatDate } from '../../transforms/field/date-transforms';
 import { getAdapterCode } from '../../types/step-configs';
+import { assertUrlSafe } from '../../utils/url-security.utils';
 
 /**
  * Resolve output file path from directory path and filename pattern
@@ -260,6 +261,8 @@ export class ExportExecutor {
                     }
                 }
 
+                await assertUrlSafe(endpoint);
+
                 const batches = chunk(records, batchSize);
                 for (const batch of batches) {
                     const payload = JSON.stringify(batch);
@@ -352,13 +355,13 @@ export class ExportExecutor {
             pipelineContext: pipelineContext ?? {} as PipelineContext,
             secrets: {
                 get: async (code: string) => {
-                    const secret = await this.secretService.getByCode(ctx, code);
-                    return secret?.value ?? undefined;
+                    const value = await this.secretService.resolve(ctx, code);
+                    return value ?? undefined;
                 },
                 getRequired: async (code: string) => {
-                    const secret = await this.secretService.getByCode(ctx, code);
-                    if (!secret?.value) throw new Error(`Secret not found: ${code}`);
-                    return secret.value;
+                    const value = await this.secretService.resolve(ctx, code);
+                    if (!value) throw new Error(`Secret not found: ${code}`);
+                    return value;
                 },
             },
             connections: {

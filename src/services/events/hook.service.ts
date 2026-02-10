@@ -24,6 +24,9 @@ import { validateUserCode } from '../../utils/code-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { validateUrlSafety } from '../../utils/url-security.utils';
 
+/** Maximum number of registered webhook IDs to prevent unbounded memory growth */
+const MAX_REGISTERED_WEBHOOKS = 1000;
+
 @Injectable()
 export class HookService implements OnModuleInit {
     private readonly logger: DataHubLogger;
@@ -365,6 +368,10 @@ export class HookService implements OnModuleInit {
 
             // Register webhook config if not already registered
             if (!this.registeredWebhooks.has(webhookId)) {
+                if (this.registeredWebhooks.size >= MAX_REGISTERED_WEBHOOKS) {
+                    this.logger.debug('Registered webhooks cache full, clearing');
+                    this.registeredWebhooks.clear();
+                }
                 const config: WebhookConfig = {
                     id: webhookId,
                     url,

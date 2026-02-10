@@ -25,6 +25,7 @@ import {
     updateCheckpoint,
     getCheckpointValue,
 } from './extract-handler.interface';
+import { assertUrlSafe } from '../../../utils/url-security.utils';
 
 interface GraphqlExtractConfig {
     endpoint?: string;
@@ -147,6 +148,7 @@ export class GraphqlExtractHandler implements ExtractHandler {
         const { fetchImpl, endpoint, headers, query, variables } = params;
 
         try {
+            await assertUrlSafe(endpoint);
             const res = await fetchImpl(endpoint, {
                 method: HttpMethod.POST,
                 headers: { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...headers },

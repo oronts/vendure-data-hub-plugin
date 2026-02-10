@@ -32,6 +32,7 @@ import {
     updateCheckpoint,
     getCheckpointValue,
 } from './extract-handler.interface';
+import { assertUrlSafe } from '../../../utils/url-security.utils';
 
 interface RestExtractConfig {
     connectionCode?: string;
@@ -308,6 +309,8 @@ export class RestExtractHandler implements ExtractHandler {
     }): Promise<{ success: boolean; data?: JsonValue; status?: number; adaptiveDelay: number }> {
         const { ctx, cfg, connectionConfig, url, method, baseHeaders, retryConfig, fetchImpl } = params;
         let adaptiveDelay = params.adaptiveDelay;
+
+        await assertUrlSafe(url);
 
         const headers = { ...baseHeaders };
         const stepAuthApplied = await this.applyStepAuth({ ctx, cfg, headers, method, url, body: cfg.body });

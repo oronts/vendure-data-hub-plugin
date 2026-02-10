@@ -13,6 +13,7 @@ import { LoaderHandler } from './types';
 import { TIME, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, AuthType, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getErrorMessage } from '../../../services/logger/error-utils';
+import { assertUrlSafe } from '../../../utils/url-security.utils';
 
 /**
  * Configuration for REST POST loader step
@@ -102,6 +103,8 @@ export class RestPostHandler implements LoaderHandler {
 
         const fetchImpl = globalThis.fetch;
         if (!fetchImpl) return { ok, fail: input.length };
+
+        await assertUrlSafe(endpoint);
 
         // Circuit breaker key based on endpoint host
         const circuitKey = this.getCircuitKey(endpoint);

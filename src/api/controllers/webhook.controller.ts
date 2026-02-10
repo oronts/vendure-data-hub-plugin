@@ -5,8 +5,8 @@ import * as crypto from 'crypto';
 import type { PipelineTrigger, PipelineDefinition, JsonValue } from '../../types/index';
 import { LOGGER_CONTEXTS, INTERNAL_TIMINGS, PipelineStatus } from '../../constants';
 import { Pipeline } from '../../entities/pipeline';
-import { DataHubSecret } from '../../entities/config';
 import { PipelineService } from '../../services';
+import { SecretService } from '../../services/config/secret.service';
 import { DataHubLoggerFactory, DataHubLogger } from '../../services/logger';
 import { RateLimitService } from '../../services/rate-limit';
 import { isValidPipelineCode, findEnabledTriggersByType } from '../../utils';
@@ -19,6 +19,7 @@ export class DataHubWebhookController {
         private requestContextService: RequestContextService,
         private connection: TransactionalConnection,
         private pipelineService: PipelineService,
+        private secretService: SecretService,
         private rateLimitService: RateLimitService,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -183,10 +184,9 @@ export class DataHubWebhookController {
             throw new HttpException('API key secret code not configured', HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        const secretRepo = this.connection.getRepository(ctx, DataHubSecret);
-        const secret = await secretRepo.findOne({ where: { code: secretCode } });
+        const secretValue = await this.secretService.resolve(ctx, secretCode);
 
-        if (!secret?.value) {
+        if (!secretValue) {
             throw new HttpException('API key not found', HttpStatus.UNAUTHORIZED);
         }
 
@@ -195,7 +195,7 @@ export class DataHubWebhookController {
             ? apiKey.slice(prefix.length)
             : apiKey;
 
-        if (!this.timingSafeCompare(secret.value, providedKey)) {
+        if (!this.timingSafeCompare(secretValue, providedKey)) {
             throw new HttpException('Invalid API key', HttpStatus.UNAUTHORIZED);
         }
     }
@@ -222,15 +222,18 @@ export class DataHubWebhookController {
             throw new HttpException('HMAC secret code not configured', HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        const secretRepo = this.connection.getRepository(ctx, DataHubSecret);
-        const secret = await secretRepo.findOne({ where: { code: secretCode } });
+        const secretValue = await this.secretService.resolve(ctx, secretCode);
 
-        if (!secret?.value) {
+        if (!secretValue) {
             throw new HttpException('HMAC secret not found', HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        const algorithm = (cfg.hmacAlgorithm?.toLowerCase() ?? 'sha256') as 'sha256' | 'sha512';
-        const expectedHash = crypto.createHmac(algorithm, secret.value)
+        const ALLOWED_HMAC_ALGORITHMS = ['sha256', 'sha512'] as const;
+        const algorithm = cfg.hmacAlgorithm?.toLowerCase() ?? 'sha256';
+        if (!ALLOWED_HMAC_ALGORITHMS.includes(algorithm as any)) {
+            throw new HttpException('Unsupported HMAC algorithm', HttpStatus.BAD_REQUEST);
+        }
+        const expectedHash = crypto.createHmac(algorithm, secretValue)
             .update(JSON.stringify(body ?? {}))
             .digest('hex');
 
@@ -279,14 +282,13 @@ export class DataHubWebhookController {
             throw new HttpException('Basic auth secret code not configured', HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        const secretRepo = this.connection.getRepository(ctx, DataHubSecret);
-        const secret = await secretRepo.findOne({ where: { code: secretCode } });
+        const secretValue = await this.secretService.resolve(ctx, secretCode);
 
-        if (!secret?.value) {
+        if (!secretValue) {
             throw new HttpException('Basic auth credentials not found', HttpStatus.UNAUTHORIZED);
         }
 
-        if (!this.timingSafeCompare(secret.value, decoded)) {
+        if (!this.timingSafeCompare(secretValue, decoded)) {
             throw new HttpException('Invalid credentials', HttpStatus.UNAUTHORIZED);
         }
     }
@@ -319,10 +321,9 @@ export class DataHubWebhookController {
             throw new HttpException('JWT secret code not configured', HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        const secretRepo = this.connection.getRepository(ctx, DataHubSecret);
-        const secret = await secretRepo.findOne({ where: { code: secretCode } });
+        const secretValue = await this.secretService.resolve(ctx, secretCode);
 
-        if (!secret?.value) {
+        if (!secretValue) {
             throw new HttpException('JWT secret not found', HttpStatus.UNAUTHORIZED);
         }
 
@@ -352,7 +353,7 @@ export class DataHubWebhookController {
 
         const signingInput = `${headerB64}.${payloadB64}`;
         const expectedSignature = crypto
-            .createHmac('sha256', secret.value)
+            .createHmac('sha256', secretValue)
             .update(signingInput)
             .digest('base64url');
 

@@ -13,6 +13,9 @@ interface RateLimitEntry {
     resetAt: number;
 }
 
+/** Maximum number of rate limit entries to prevent unbounded memory growth */
+const MAX_RATE_LIMIT_ENTRIES = 1000;
+
 /**
  * In-memory rate limiter for throttling requests by IP, pipeline code, or arbitrary identifier.
  *
@@ -56,6 +59,10 @@ export class RateLimitService implements OnModuleDestroy {
 
         // Initialize or reset if expired
         if (!entry || entry.resetAt <= now) {
+            // Evict oldest entries if at capacity
+            if (!this.store.has(keyStr) && this.store.size >= MAX_RATE_LIMIT_ENTRIES) {
+                this.evictOldest();
+            }
             entry = { count: 0, resetAt };
             this.store.set(keyStr, entry);
         }
@@ -83,6 +90,16 @@ export class RateLimitService implements OnModuleDestroy {
         const keyStr = this.generateKey(key);
         this.store.delete(keyStr);
         this.logger.debug(`Rate limit reset for key ${keyStr}`);
+    }
+
+    private evictOldest(): void {
+        const entries = Array.from(this.store.entries())
+            .sort((a, b) => a[1].resetAt - b[1].resetAt);
+        const toRemove = entries.slice(0, Math.ceil(MAX_RATE_LIMIT_ENTRIES * 0.1));
+        for (const [key] of toRemove) {
+            this.store.delete(key);
+        }
+        this.logger.debug(`Evicted ${toRemove.length} oldest rate limit entries`);
     }
 
     private cleanup(): void {

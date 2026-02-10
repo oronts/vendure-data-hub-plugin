@@ -105,7 +105,7 @@ export class DataHubFileUploadController {
             this.logger.error('Upload failed', error instanceof Error ? error : undefined);
             return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
                 success: false,
-                error: error instanceof Error ? error.message : 'Upload failed',
+                error: 'Upload failed',
             });
         }
     }
@@ -352,7 +352,7 @@ export class DataHubFileUploadController {
                         this.logger.error('Multer error', err instanceof Error ? err : undefined);
                         res.status(HttpStatus.BAD_REQUEST).json({
                             success: false,
-                            error: err.message || 'Failed to process upload',
+                            error: 'Failed to process upload',
                         });
                         return resolve();
                     }
@@ -390,7 +390,7 @@ export class DataHubFileUploadController {
                     this.logger.error('Upload processing error', error instanceof Error ? error : undefined);
                     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
                         success: false,
-                        error: error instanceof Error ? error.message : 'Failed to process upload',
+                        error: 'Failed to process upload',
                     });
                     resolve();
                 }
@@ -489,7 +489,7 @@ export class DataHubFileUploadController {
                     this.logger.error('Base64 parse error', error instanceof Error ? error : undefined);
                     res.status(HttpStatus.BAD_REQUEST).json({
                         success: false,
-                        error: error instanceof Error ? error.message : 'Failed to parse JSON body',
+                        error: 'Failed to parse request body',
                     });
                     resolve();
                 }
