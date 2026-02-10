@@ -14,6 +14,7 @@ import { queueAdapterRegistry, QueueMessage, QueueConnectionConfig } from '../..
 import { getAdapterCode } from '../../types/step-configs';
 import { ConnectionType } from '../../sdk/types/connection-types';
 import { CircuitBreakerService } from '../../services/runtime';
+import { assertUrlSafe } from '../../utils/url-security.utils';
 
 /**
  * Common sink configuration
@@ -273,6 +274,8 @@ export class SinkExecutor {
         const primaryKey = cfg.primaryKey ?? idField;
         const circuitKey = this.getCircuitKey(SINK_ADAPTER_CODES.MEILISEARCH, host);
 
+        await assertUrlSafe(host);
+
         return this.executeBatchedSearchSink(
             input, bulkSize, circuitKey, 'MeiliSearch', host, step.key, onRecordError,
             async (batch) => {
@@ -298,6 +301,8 @@ export class SinkExecutor {
         const basicAuth = await this.resolveSecret(ctx, cfg.basicSecretCode);
         const effectiveAdapterCode = adapterCode ?? SINK_ADAPTER_CODES.ELASTICSEARCH;
         const circuitKey = this.getCircuitKey(effectiveAdapterCode, host);
+
+        await assertUrlSafe(host);
 
         return this.executeBatchedSearchSink(
             input, bulkSize, circuitKey, effectiveAdapterCode, host, step.key, onRecordError,
@@ -335,6 +340,8 @@ export class SinkExecutor {
         const algoliaHost = SERVICE_URL_TEMPLATES.ALGOLIA_API(applicationId);
         const circuitKey = this.getCircuitKey(SINK_ADAPTER_CODES.ALGOLIA, algoliaHost);
 
+        await assertUrlSafe(algoliaHost);
+
         return this.executeBatchedSearchSink(
             input, bulkSize, circuitKey, 'Algolia', applicationId, step.key, onRecordError,
             async (batch) => {
@@ -362,6 +369,8 @@ export class SinkExecutor {
         const apiKey = await this.resolveSecret(ctx, cfg.apiKeySecretCode);
         const collectionName = cfg.collectionName ?? indexName;
         const circuitKey = this.getCircuitKey(SINK_ADAPTER_CODES.TYPESENSE, host);
+
+        await assertUrlSafe(host);
 
         return this.executeBatchedSearchSink(
             input, bulkSize, circuitKey, 'Typesense', host, step.key, onRecordError,
@@ -411,13 +420,13 @@ export class SinkExecutor {
             pipelineContext: pipelineContext ?? {} as PipelineContext,
             secrets: {
                 get: async (code: string) => {
-                    const secret = await this.secretService.getByCode(ctx, code);
-                    return secret?.value ?? undefined;
+                    const value = await this.secretService.resolve(ctx, code);
+                    return value ?? undefined;
                 },
                 getRequired: async (code: string) => {
-                    const secret = await this.secretService.getByCode(ctx, code);
-                    if (!secret?.value) throw new Error(`Secret not found: ${code}`);
-                    return secret.value;
+                    const value = await this.secretService.resolve(ctx, code);
+                    if (!value) throw new Error(`Secret not found: ${code}`);
+                    return value;
                 },
             },
             connections: this.createConnectionAdapter(ctx),
@@ -597,6 +606,8 @@ export class SinkExecutor {
         }
 
         const circuitKey = this.getCircuitKey(SINK_ADAPTER_CODES.WEBHOOK, url);
+
+        await assertUrlSafe(url);
 
         // Build headers
         const headers: Record<string, string> = {

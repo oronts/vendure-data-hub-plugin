@@ -27,6 +27,10 @@ export const FILE_STORAGE = {
     EXPIRY_MINUTES: 60 * 24, // 24 hours
     /** Temp directory for exports (configurable via DATA_HUB_TEMP_DIR env var) */
     TEMP_DIR: TEMP_BASE,
+    /** Maximum number of entries in the in-memory file index before LRU eviction */
+    MAX_FILE_INDEX_SIZE: 10_000,
+    /** Percentage of entries to evict when file index reaches max size (0.0-1.0) */
+    FILE_INDEX_EVICTION_RATIO: 0.1,
 } as const;
 
 /**

@@ -362,10 +362,7 @@ const PaletteAdapterItem = React.memo(function PaletteAdapterItem({
             // Create a synthetic drag event for keyboard users
             const syntheticEvent = {
                 dataTransfer: {
-                    setData: (type: string, data: string) => {
-                        // Store data for keyboard-initiated drag
-                        sessionStorage.setItem('keyboard-drag-data', data);
-                    },
+                    setData: (_type: string, _data: string) => { /* no-op for keyboard-initiated drag */ },
                     effectAllowed: 'move',
                 },
             } as unknown as React.DragEvent;

@@ -46,7 +46,20 @@ export class ConnectionService {
         entity.code = input.code;
         entity.type = input.type as ConnectionType;
         entity.config = input.config;
-        const saved = await this.connection.getRepository(ctx, DataHubConnection).save(entity);
+        let saved: DataHubConnection;
+        try {
+            saved = await this.connection.getRepository(ctx, DataHubConnection).save(entity);
+        } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : String(error);
+            if (
+                msg.includes('UNIQUE') || msg.includes('unique') ||
+                msg.includes('duplicate') || msg.includes('Duplicate') ||
+                msg.includes('ER_DUP_ENTRY') || msg.includes('23505')
+            ) {
+                throw new Error(`Connection code "${input.code}" already exists`);
+            }
+            throw error;
+        }
         this.logger.info('Connection created', { adapterCode: input.code, connectionId: saved.id });
         return saved;
     }

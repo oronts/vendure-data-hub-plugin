@@ -32,6 +32,19 @@ import {
 
 export { WebhookDeliveryStatus, WebhookDelivery, WebhookConfig, RetryConfig, WebhookPayload };
 
+
+/**
+ * Strips query parameters from a URL to avoid logging embedded credentials (e.g. ?token=xxx)
+ */
+function sanitizeUrl(url: string): string {
+    try {
+        const parsed = new URL(url);
+        return parsed.origin + parsed.pathname;
+    } catch {
+        return '<invalid-url>';
+    }
+}
+
 interface WebhookConfigWithMeta extends WebhookConfig {
     lastUsedAt: number;
 }
@@ -104,7 +117,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         });
         this.logger.info('Registered webhook', {
             webhookId: config.id,
-            url: config.url,
+            url: sanitizeUrl(config.url),
             method: config.method || 'POST',
         });
     }
@@ -181,15 +194,50 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             this.deliveryQueue.delete(id);
         }
 
+        let deadLetterRemoved = 0;
         if (this.deliveryQueue.size >= WEBHOOK_QUEUE.MAX_DELIVERY_QUEUE_SIZE) {
-            for (const id of deadLetter.slice(0, Math.ceil(deadLetter.length / 2))) {
+            const toRemove = deadLetter.slice(0, Math.ceil(deadLetter.length / 2));
+            deadLetterRemoved = toRemove.length;
+            for (const id of toRemove) {
                 this.deliveryQueue.delete(id);
+            }
+        }
+
+        // If still over limit after removing DELIVERED and DEAD_LETTER,
+        // evict oldest PENDING entries (sorted by createdAt) to prevent unbounded growth
+        let pendingRemoved = 0;
+        if (this.deliveryQueue.size >= WEBHOOK_QUEUE.MAX_DELIVERY_QUEUE_SIZE) {
+            const pendingEntries: Array<[string, WebhookDelivery]> = [];
+            for (const [id, delivery] of this.deliveryQueue.entries()) {
+                if (
+                    delivery.status === WebhookDeliveryStatus.PENDING ||
+                    delivery.status === WebhookDeliveryStatus.RETRYING
+                ) {
+                    pendingEntries.push([id, delivery]);
+                }
+            }
+            // Sort by createdAt ascending (oldest first)
+            pendingEntries.sort((a, b) => a[1].createdAt.getTime() - b[1].createdAt.getTime());
+
+            const excess = this.deliveryQueue.size - WEBHOOK_QUEUE.MAX_DELIVERY_QUEUE_SIZE;
+            const toEvict = pendingEntries.slice(0, Math.max(excess, Math.ceil(pendingEntries.length * 0.1)));
+            pendingRemoved = toEvict.length;
+            for (const [id] of toEvict) {
+                this.deliveryQueue.delete(id);
+            }
+
+            if (pendingRemoved > 0) {
+                this.logger.warn('Evicted PENDING/RETRYING deliveries due to queue overflow', {
+                    pendingRemoved,
+                    remainingSize: this.deliveryQueue.size,
+                });
             }
         }
 
         this.logger.debug('Evicted old deliveries', {
             deliveredRemoved: delivered.length,
-            deadLetterRemoved: Math.min(deadLetter.length, Math.ceil(deadLetter.length / 2)),
+            deadLetterRemoved,
+            pendingRemoved,
         });
     }
 
@@ -222,7 +270,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                 this.logger.info('Webhook delivered successfully', {
                     deliveryId: delivery.id,
                     webhookId: delivery.webhookId,
-                    url: delivery.url,
+                    url: sanitizeUrl(delivery.url),
                     statusCode: response.status,
                     attempts: delivery.attempts,
                     durationMs: Date.now() - (delivery.lastAttemptAt?.getTime() ?? Date.now()),
@@ -247,7 +295,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             this.logger.warn('Webhook moved to dead letter queue', {
                 deliveryId: delivery.id,
                 webhookId: delivery.webhookId,
-                url: delivery.url,
+                url: sanitizeUrl(delivery.url),
                 attempts: delivery.attempts,
                 maxAttempts: delivery.maxAttempts,
                 reason,

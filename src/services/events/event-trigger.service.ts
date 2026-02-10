@@ -75,12 +75,6 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
     private isRefreshing = false;
     /** Flag for module destruction */
     private isDestroying = false;
-    /** Event processing queue for backpressure control */
-    private eventQueue: Array<{ kind: string; event: VendureEvent; timestamp: number }> = [];
-    /** Maximum queue size before dropping events */
-    private readonly maxQueueSize = EVENT_TRIGGER.MAX_QUEUE_SIZE;
-    /** Flag indicating if queue processor is running */
-    private isProcessingQueue = false;
     /** Track in-flight triggers to prevent concurrent runs of same pipeline */
     private inFlightTriggers = new Set<string>();
 
@@ -190,7 +184,6 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
 
         this.eventTriggerCache.clear();
         this.shadowCache.clear();
-        this.eventQueue = [];
         this.inFlightTriggers.clear();
         this.cacheInitialized = false;
 
@@ -482,7 +475,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
             totalTriggers: this.getTotalCachedTriggers(),
             isRefreshing: this.isRefreshing,
             isDestroying: this.isDestroying,
-            queueSize: this.eventQueue.length,
+            queueSize: 0,
             inFlightTriggers: this.inFlightTriggers.size,
         };
     }

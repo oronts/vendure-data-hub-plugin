@@ -196,13 +196,13 @@ export class ExtractExecutor {
     private createSecretsAdapter(ctx: RequestContext) {
         return {
             get: async (code: string) => {
-                const secret = await this.secretService.getByCode(ctx, code);
-                return secret?.value ?? undefined;
+                const value = await this.secretService.resolve(ctx, code);
+                return value ?? undefined;
             },
             getRequired: async (code: string) => {
-                const secret = await this.secretService.getByCode(ctx, code);
-                if (!secret?.value) throw new Error(`Secret not found: ${code}`);
-                return secret.value;
+                const value = await this.secretService.resolve(ctx, code);
+                if (!value) throw new Error(`Secret not found: ${code}`);
+                return value;
             },
         };
     }

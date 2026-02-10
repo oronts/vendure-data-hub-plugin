@@ -52,4 +52,6 @@ export const INTERNAL_TIMINGS = {
     PENDING_MESSAGES_CLEANUP_INTERVAL_MS: 60_000,
     /** Maximum age for pending messages before cleanup (ms) */
     PENDING_MESSAGES_MAX_AGE_MS: 10 * 60 * 1000, // 10 minutes
+    /** Maximum number of pending (unacknowledged) messages before rejecting new ones */
+    MAX_PENDING_MESSAGES: 10_000,
 } as const;

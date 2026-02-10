@@ -293,6 +293,39 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
 
             // Store for manual ack/nack with timestamp for cleanup
             if (options.ackMode === AckMode.MANUAL) {
+                const maxPending = INTERNAL_TIMINGS.MAX_PENDING_MESSAGES ?? 10_000;
+                if (pendingMessages.size >= maxPending) {
+                    // Evict oldest pending message by createdAt and auto-nack it
+                    let oldestKey: string | null = null;
+                    let oldestTime = Infinity;
+                    for (const [key, entry] of pendingMessages.entries()) {
+                        if (entry.createdAt < oldestTime) {
+                            oldestTime = entry.createdAt;
+                            oldestKey = key;
+                        }
+                    }
+                    if (oldestKey) {
+                        const stale = pendingMessages.get(oldestKey);
+                        if (stale) {
+                            try {
+                                stale.channel.nack(
+                                    { fields: { deliveryTag: stale.deliveryTag } },
+                                    false,
+                                    true, // requeue
+                                );
+                            } catch {
+                                // Channel may be closed; ignore nack error
+                            }
+                            pendingMessages.delete(oldestKey);
+                        }
+                        logger.warn('Pending messages map at capacity; evicted oldest entry', {
+                            evictedKey: oldestKey,
+                            maxPending,
+                            currentSize: pendingMessages.size,
+                        });
+                    }
+                }
+
                 pendingMessages.set(deliveryTag, {
                     channel,
                     deliveryTag: msg.fields.deliveryTag,

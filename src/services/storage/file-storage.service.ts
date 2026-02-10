@@ -129,6 +129,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
                 metadata: options.metadata,
             };
 
+            this.evictOldestFromIndex();
             this.fileIndex.set(fileId, storedFile);
 
             this.logger.info('Stored file successfully', {
@@ -368,6 +369,31 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         if (expiredFiles.length > 0) {
             this.logger.info('Cleaned up expired files', { filesDeleted: expiredFiles.length });
         }
+    }
+
+    /**
+     * Evict oldest files from the in-memory index when it exceeds MAX_FILE_INDEX_SIZE.
+     * Sorts by uploadedAt (oldest first) and removes FILE_INDEX_EVICTION_RATIO of entries.
+     * Only removes from the index; does not delete the underlying storage files.
+     */
+    private evictOldestFromIndex(): void {
+        const maxSize = FILE_STORAGE.MAX_FILE_INDEX_SIZE;
+        if (this.fileIndex.size < maxSize) return;
+
+        const evictCount = Math.ceil(maxSize * FILE_STORAGE.FILE_INDEX_EVICTION_RATIO);
+        const sorted = Array.from(this.fileIndex.entries())
+            .sort((a, b) => a[1].uploadedAt.getTime() - b[1].uploadedAt.getTime());
+
+        const toEvict = sorted.slice(0, evictCount);
+        for (const [id] of toEvict) {
+            this.fileIndex.delete(id);
+        }
+
+        this.logger.info('Evicted oldest entries from file index', {
+            evictedCount: toEvict.length,
+            remainingCount: this.fileIndex.size,
+            maxSize,
+        });
     }
 
     private generateFileId(): string {
