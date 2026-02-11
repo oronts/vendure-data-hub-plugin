@@ -58,7 +58,7 @@ function PipelineDetailPage({ route }: { route: AnyRoute }) {
     const queryClient = useQueryClient();
     const creating = params.id === 'new';
 
-    const { form, submitHandler, entity, isPending, resetForm } = useDetailPage({
+    const { form, submitHandler, entity, isPending, resetForm, refreshEntity } = useDetailPage({
         queryDocument: pipelineDetailDocument,
         createDocument: createPipelineDocument,
         updateDocument: updatePipelineDocument,
@@ -111,10 +111,8 @@ function PipelineDetailPage({ route }: { route: AnyRoute }) {
 
     const handleStatusChange = React.useCallback(() => {
         queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-        if (params.id && params.id !== 'new') {
-            queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(String(params.id)) });
-        }
-    }, [queryClient, params.id]);
+        refreshEntity();
+    }, [queryClient, refreshEntity]);
 
     // Scroll to runs section if hash is #runs
     React.useEffect(() => {

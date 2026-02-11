@@ -112,7 +112,7 @@ export function PipelineActionButtons({
         } finally {
             setIsPublishing(false);
         }
-    }, [entityId, definition, onValidationFailed]);
+    }, [entityId, definition, onValidationFailed, onStatusChange]);
 
     if (creating) {
         return (
