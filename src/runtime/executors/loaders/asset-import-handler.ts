@@ -9,6 +9,7 @@ import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../.
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { getErrorMessage } from '../../../services/logger/error-utils';
+import { assertUrlSafe } from '../../../utils/url-security.utils';
 
 interface AssetImportConfig {
     channel?: string;
@@ -137,6 +138,7 @@ function getMimeType(url: string): string {
 }
 
 async function downloadFile(url: string): Promise<Buffer | null> {
+    await assertUrlSafe(url);
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
         try {
             const controller = new AbortController();

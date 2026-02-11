@@ -27,15 +27,10 @@ import {
     Play,
     RefreshCw,
     Zap,
-    ArrowRight,
     CheckCircle2,
     XCircle,
-    AlertTriangle,
     Info,
     Clock,
-    Database,
-    Filter,
-    Upload,
     Loader2,
 } from 'lucide-react';
 import {
@@ -46,6 +41,8 @@ import {
     handleMutationError,
 } from '../../hooks';
 import { ErrorState, LoadingState } from '../../components/shared';
+import { HOOK_STAGES } from './hook-stages';
+import type { HookStage } from './hook-stages';
 
 export const hooksPage: DashboardRouteDefinition = {
     navMenuItem: {
@@ -62,162 +59,6 @@ export const hooksPage: DashboardRouteDefinition = {
         </PermissionGuard>
     ),
 };
-
-interface HookStage {
-    key: string;
-    label: string;
-    description: string;
-    icon: React.ReactNode;
-    category: 'lifecycle' | 'data' | 'error';
-    examplePayload: Record<string, unknown>;
-}
-
-const HOOK_STAGES: HookStage[] = [
-    {
-        key: 'PIPELINE_STARTED',
-        label: 'Pipeline Started',
-        description: 'Triggered when a pipeline run begins',
-        icon: <Play className="w-4 h-4" />,
-        category: 'lifecycle',
-        examplePayload: { pipelineCode: 'my-pipeline', runId: '123' },
-    },
-    {
-        key: 'PIPELINE_COMPLETED',
-        label: 'Pipeline Completed',
-        description: 'Triggered when a pipeline finishes successfully',
-        icon: <CheckCircle2 className="w-4 h-4" />,
-        category: 'lifecycle',
-        examplePayload: { pipelineCode: 'my-pipeline', runId: '123', recordsProcessed: 100, duration: 5000 },
-    },
-    {
-        key: 'PIPELINE_FAILED',
-        label: 'Pipeline Failed',
-        description: 'Triggered when a pipeline encounters a fatal error',
-        icon: <XCircle className="w-4 h-4" />,
-        category: 'lifecycle',
-        examplePayload: { pipelineCode: 'my-pipeline', runId: '123', error: 'Connection timeout' },
-    },
-    {
-        key: 'BEFORE_EXTRACT',
-        label: 'Before Extract',
-        description: 'Before data is pulled from the source',
-        icon: <Database className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'extract', config: {} },
-    },
-    {
-        key: 'AFTER_EXTRACT',
-        label: 'After Extract',
-        description: 'After data has been extracted',
-        icon: <Database className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'extract', recordCount: 50, records: [{ id: 1 }] },
-    },
-    {
-        key: 'BEFORE_TRANSFORM',
-        label: 'Before Transform',
-        description: 'Before data transformation begins',
-        icon: <Filter className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'transform', recordCount: 50 },
-    },
-    {
-        key: 'AFTER_TRANSFORM',
-        label: 'After Transform',
-        description: 'After data has been transformed',
-        icon: <Filter className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'transform', recordCount: 48, dropped: 2 },
-    },
-    {
-        key: 'BEFORE_VALIDATE',
-        label: 'Before Validate',
-        description: 'Before schema validation runs',
-        icon: <CheckCircle2 className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'validate', schemaCode: 'product-schema' },
-    },
-    {
-        key: 'AFTER_VALIDATE',
-        label: 'After Validate',
-        description: 'After validation completes',
-        icon: <CheckCircle2 className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'validate', valid: 45, invalid: 3 },
-    },
-    {
-        key: 'BEFORE_ENRICH',
-        label: 'Before Enrich',
-        description: 'Before data enrichment step',
-        icon: <Zap className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'enrich' },
-    },
-    {
-        key: 'AFTER_ENRICH',
-        label: 'After Enrich',
-        description: 'After data has been enriched',
-        icon: <Zap className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'enrich', enrichedFields: ['category', 'price'] },
-    },
-    {
-        key: 'BEFORE_ROUTE',
-        label: 'Before Route',
-        description: 'Before records are routed to destinations',
-        icon: <ArrowRight className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'route', recordCount: 45 },
-    },
-    {
-        key: 'AFTER_ROUTE',
-        label: 'After Route',
-        description: 'After routing decisions are made',
-        icon: <ArrowRight className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'route', destinations: { products: 30, inventory: 15 } },
-    },
-    {
-        key: 'BEFORE_LOAD',
-        label: 'Before Load',
-        description: 'Before data is written to destination',
-        icon: <Upload className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'load', destination: 'vendure', recordCount: 45 },
-    },
-    {
-        key: 'AFTER_LOAD',
-        label: 'After Load',
-        description: 'After data has been loaded',
-        icon: <Upload className="w-4 h-4" />,
-        category: 'data',
-        examplePayload: { stepKey: 'load', created: 20, updated: 25, errors: 0 },
-    },
-    {
-        key: 'ON_ERROR',
-        label: 'On Error',
-        description: 'When any error occurs during processing',
-        icon: <AlertTriangle className="w-4 h-4" />,
-        category: 'error',
-        examplePayload: { error: 'Validation failed', record: { id: 1 }, stepKey: 'validate' },
-    },
-    {
-        key: 'ON_RETRY',
-        label: 'On Retry',
-        description: 'When a failed record is retried',
-        icon: <RefreshCw className="w-4 h-4" />,
-        category: 'error',
-        examplePayload: { errorId: '456', attempt: 2, maxAttempts: 3 },
-    },
-    {
-        key: 'ON_DEAD_LETTER',
-        label: 'On Dead Letter',
-        description: 'When a record is moved to dead letter queue',
-        icon: <XCircle className="w-4 h-4" />,
-        category: 'error',
-        examplePayload: { errorId: '456', reason: 'Max retries exceeded', record: { id: 1 } },
-    },
-];
 
 const STAGE_CATEGORIES = {
     lifecycle: { label: 'Lifecycle', color: 'bg-blue-100 text-blue-800', description: 'Track pipeline start, completion, and failure', gridClass: 'grid-cols-3' },
@@ -282,7 +123,7 @@ function HooksPage() {
     const hasError = pipelinesQuery.isError || eventsQuery.isError;
     const errorMessage = pipelinesQuery.error?.message || eventsQuery.error?.message;
 
-    const runTest = (stage: HookStage) => {
+    const runTest = React.useCallback((stage: HookStage) => {
         if (!pipelineId) {
             toast.error(TOAST_HOOK.SELECT_PIPELINE_FIRST);
             return;
@@ -307,7 +148,7 @@ function HooksPage() {
                 },
             }
         );
-    };
+    }, [pipelineId, testMutation.mutate, eventsQuery.refetch]);
 
     return (
         <Page pageId="data-hub-hooks">
@@ -555,7 +396,7 @@ const HookStageCard = React.memo(function HookStageCard({
             <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
                     <div className={`p-1.5 rounded ${isConfigured ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                        {stage.icon}
+                        <stage.icon className="w-4 h-4" />
                     </div>
                     <div>
                         <div className="font-medium text-sm">{stage.label}</div>

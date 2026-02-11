@@ -21,6 +21,7 @@ import { deliverToHTTP } from './http.handler';
 import { deliverToLocal, testLocalDestination } from './local.handler';
 import { deliverToSFTP, deliverToFTP } from './ftp.handler';
 import { deliverToEmail } from './email.handler';
+import { assertUrlSafe } from '../../utils/url-security.utils';
 
 export type { DestinationType, DestinationConfig, DeliveryResult };
 export type {
@@ -152,6 +153,7 @@ export class ExportDestinationService implements OnModuleInit {
 
                 case DESTINATION_TYPE.HTTP: {
                     const httpConfig = destination as HTTPDestinationConfig;
+                    await assertUrlSafe(httpConfig.url);
                     const response = await fetch(httpConfig.url, { method: 'HEAD' }).catch(() => null);
                     if (response) {
                         return { success: true, message: `HTTP endpoint reachable (${response.status})`, latencyMs: Date.now() - start };

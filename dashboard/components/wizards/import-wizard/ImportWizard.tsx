@@ -63,9 +63,9 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
         targetEntity: '',
         mappings: [],
         strategies: {
-            existingRecords: 'update',
+            existingRecords: 'UPDATE',
             lookupFields: [],
-            newRecords: 'create',
+            newRecords: 'CREATE',
             publishAfterImport: false,
             cleanupStrategy: CLEANUP_STRATEGY.NONE,
             batchSize: BATCH_SIZES.IMPORT_DEFAULT,

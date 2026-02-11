@@ -474,6 +474,7 @@ export async function applyHttpLookup(
 
             // Cache the result
             if (cacheTtlSec > 0) {
+                evictOldest(httpLookupCache, MAX_MAP_ENTRIES);
                 httpLookupCache.set(cacheKey, {
                     data: extractedData,
                     expiresAt: Date.now() + cacheTtlSec * 1000,

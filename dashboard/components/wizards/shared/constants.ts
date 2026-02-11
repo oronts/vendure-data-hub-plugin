@@ -70,20 +70,20 @@ export type {
  * Icon mappings for source types
  */
 export const SOURCE_TYPE_ICONS: Record<string, LucideIcon> = {
-    file: Upload,
-    api: Globe,
-    database: Database,
-    webhook: Webhook,
+    FILE: Upload,
+    API: Globe,
+    DATABASE: Database,
+    WEBHOOK: Webhook,
 };
 
 /**
  * Icon mappings for file formats
  */
 export const FILE_FORMAT_ICONS: Record<string, LucideIcon> = {
-    csv: FileSpreadsheet,
-    xlsx: FileSpreadsheet,
-    json: FileJson,
-    xml: FileText,
+    CSV: FileSpreadsheet,
+    XLSX: FileSpreadsheet,
+    JSON: FileJson,
+    XML: FileText,
 };
 
 /**

@@ -1,9 +1,8 @@
 import * as React from 'react';
-import { api, Button, PermissionGuard } from '@vendure/dashboard';
+import { Button, PermissionGuard } from '@vendure/dashboard';
 import { toast } from 'sonner';
 import {
     Play,
-    Upload,
     History,
     FlaskConical,
     Rocket,
@@ -17,9 +16,9 @@ import {
 } from '../../../constants';
 import type { PipelineStatus } from '../../../constants';
 import {
-    publishPipelineDocument,
-    runPipelineDocument,
-    validatePipelineDefinitionDocument,
+    useRunPipeline,
+    usePublishPipeline,
+    useValidatePipelineDefinition,
 } from '../../../hooks';
 import type {
     PipelineDefinition,
@@ -50,69 +49,78 @@ export function PipelineActionButtons({
     onValidationFailed,
     onStatusChange,
 }: Readonly<PipelineActionButtonsProps>) {
-    const [isRunning, setIsRunning] = React.useState(false);
-    const [isPublishing, setIsPublishing] = React.useState(false);
+    const runPipeline = useRunPipeline();
+    const publishPipeline = usePublishPipeline();
+    const validateDefinition = useValidatePipelineDefinition();
 
-    const handleStartRun = React.useCallback(async () => {
+    const handleStartRun = React.useCallback(() => {
         if (!entityId) return;
-        setIsRunning(true);
-        try {
-            await api.mutate(runPipelineDocument, { pipelineId: entityId });
-            toast.success(TOAST_PIPELINE.RUN_STARTED, {
-                description: 'Pipeline execution has started',
-            });
-        } catch (err) {
-            toast.error(TOAST_PIPELINE.RUN_START_ERROR, {
-                description: err instanceof Error ? err.message : 'Unknown error',
-            });
-        } finally {
-            setIsRunning(false);
-        }
-    }, [entityId]);
-
-    const handlePublish = React.useCallback(async () => {
-        if (!entityId) return;
-        setIsPublishing(true);
-        try {
-            const res = await api.mutate(validatePipelineDefinitionDocument, {
-                definition,
-            });
-            const out = res?.validateDataHubPipelineDefinition as
-                | PipelineValidationResult
-                | undefined;
-            const isValid = Boolean(out?.isValid);
-            const issuesArr: ValidationIssue[] = Array.isArray(out?.issues)
-                ? out.issues.map((i) => ({
-                      message: i.message,
-                      stepKey: i.stepKey ?? null,
-                      reason: i.reason ?? null,
-                      field: i.field ?? null,
-                  }))
-                : (Array.isArray(out?.errors) ? out.errors : []).map((m) => ({
-                      message: String(m),
-                  }));
-
-            if (!isValid) {
-                onValidationFailed(issuesArr);
-                toast.warning(TOAST_PIPELINE.VALIDATION_FIX_REQUIRED, {
-                    description: `${issuesArr.length} issue(s) found`,
+        runPipeline.mutate(entityId, {
+            onSuccess: () => {
+                toast.success(TOAST_PIPELINE.RUN_STARTED, {
+                    description: 'Pipeline execution has started',
                 });
-                return;
-            }
+            },
+            onError: (err) => {
+                toast.error(TOAST_PIPELINE.RUN_START_ERROR, {
+                    description: err instanceof Error ? err.message : 'Unknown error',
+                });
+            },
+        });
+    }, [entityId, runPipeline.mutate]);
 
-            await api.mutate(publishPipelineDocument, { id: entityId });
-            toast.success(TOAST_PIPELINE.PUBLISHED, {
-                description: 'Pipeline is now live',
-            });
-            onStatusChange?.();
-        } catch (err) {
-            toast.error(TOAST_PIPELINE.PUBLISH_ERROR, {
-                description: err instanceof Error ? err.message : 'Unknown error',
-            });
-        } finally {
-            setIsPublishing(false);
-        }
-    }, [entityId, definition, onValidationFailed, onStatusChange]);
+    const handlePublish = React.useCallback(() => {
+        if (!entityId) return;
+        validateDefinition.mutate(
+            { definition: definition as Record<string, unknown> },
+            {
+                onSuccess: (out) => {
+                    const result = out as PipelineValidationResult | undefined;
+                    const isValid = Boolean(result?.isValid);
+                    const issuesArr: ValidationIssue[] = Array.isArray(result?.issues)
+                        ? result.issues.map((i) => ({
+                              message: i.message,
+                              stepKey: i.stepKey ?? null,
+                              reason: i.reason ?? null,
+                              field: i.field ?? null,
+                          }))
+                        : (Array.isArray(result?.errors) ? result.errors : []).map((m) => ({
+                              message: String(m),
+                          }));
+
+                    if (!isValid) {
+                        onValidationFailed(issuesArr);
+                        toast.warning(TOAST_PIPELINE.VALIDATION_FIX_REQUIRED, {
+                            description: `${issuesArr.length} issue(s) found`,
+                        });
+                        return;
+                    }
+
+                    publishPipeline.mutate(entityId, {
+                        onSuccess: () => {
+                            toast.success(TOAST_PIPELINE.PUBLISHED, {
+                                description: 'Pipeline is now live',
+                            });
+                            onStatusChange?.();
+                        },
+                        onError: (err) => {
+                            toast.error(TOAST_PIPELINE.PUBLISH_ERROR, {
+                                description: err instanceof Error ? err.message : 'Unknown error',
+                            });
+                        },
+                    });
+                },
+                onError: (err) => {
+                    toast.error(TOAST_PIPELINE.PUBLISH_ERROR, {
+                        description: err instanceof Error ? err.message : 'Unknown error',
+                    });
+                },
+            },
+        );
+    }, [entityId, definition, onValidationFailed, onStatusChange, validateDefinition.mutate, publishPipeline.mutate]);
+
+    const isRunning = runPipeline.isPending;
+    const isPublishing = validateDefinition.isPending || publishPipeline.isPending;
 
     if (creating) {
         return (

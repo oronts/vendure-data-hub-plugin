@@ -29,9 +29,10 @@ export async function deliverToHTTP(
     // Validate URL against SSRF attacks before delivery
     await assertUrlSafe(config.url, ssrfConfig);
 
+    const sanitizedFilename = filename.replace(/[\x00-\x1f\x7f"\\]/g, '').replace(/[^\x20-\x7e]/g, '_');
     const headers: Record<string, string> = {
         [HTTP_HEADERS.CONTENT_TYPE]: options?.mimeType || CONTENT_TYPES.OCTET_STREAM,
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Disposition': `attachment; filename="${sanitizedFilename}"`,
         ...config.headers,
     };
 

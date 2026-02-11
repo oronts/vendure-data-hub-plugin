@@ -6,6 +6,7 @@
 
 import * as crypto from 'crypto';
 import { S3DestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
+import { assertUrlSafe } from '../../utils/url-security.utils';
 
 /**
  * Deliver content to S3 or S3-compatible storage
@@ -64,6 +65,7 @@ export async function deliverToS3(
         : `https://${host}/${key}`;
 
     try {
+        await assertUrlSafe(url);
         const response = await fetch(url, {
             method: 'PUT',
             headers: {

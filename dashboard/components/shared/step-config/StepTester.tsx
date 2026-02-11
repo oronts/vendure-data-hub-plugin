@@ -125,7 +125,7 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
                         <CardTitle className="text-sm">Step Tester</CardTitle>
                         <Badge variant="outline" className="text-xs">{effectiveType}</Badge>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)} className="h-7 px-2">
+                    <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)} className="h-7 px-2" aria-label="Toggle test panel">
                         {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </Button>
                 </div>

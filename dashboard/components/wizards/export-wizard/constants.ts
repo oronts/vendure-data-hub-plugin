@@ -51,27 +51,27 @@ export const WIZARD_STEPS: WizardStep[] = [
 
 export const FEED_TEMPLATES: FeedTemplate[] = [
     {
-        id: 'google-merchant',
+        id: 'GOOGLE_MERCHANT',
         name: 'Google Merchant Center',
         icon: ShoppingCart,
         description: 'Google Shopping product feed',
-        format: 'xml',
+        format: 'XML',
         requiredFields: ['id', 'title', 'description', 'link', 'image_link', 'price', 'availability'],
     },
     {
-        id: 'meta-catalog',
+        id: 'META_CATALOG',
         name: 'Meta (Facebook) Catalog',
         icon: Rss,
         description: 'Facebook/Instagram product catalog',
-        format: 'csv',
+        format: 'CSV',
         requiredFields: ['id', 'title', 'description', 'availability', 'condition', 'price', 'link', 'image_link', 'brand'],
     },
     {
-        id: 'amazon-feed',
+        id: 'AMAZON_FEED',
         name: 'Amazon Product Feed',
         icon: ShoppingCart,
         description: 'Amazon marketplace feed',
-        format: 'xml',
+        format: 'XML',
         requiredFields: ['sku', 'product-id', 'title', 'description', 'price', 'quantity'],
     },
     {
@@ -79,7 +79,7 @@ export const FEED_TEMPLATES: FeedTemplate[] = [
         name: 'Custom CSV',
         icon: FileSpreadsheet,
         description: 'Custom CSV export',
-        format: 'csv',
+        format: 'CSV',
         requiredFields: [],
     },
     {
@@ -87,7 +87,7 @@ export const FEED_TEMPLATES: FeedTemplate[] = [
         name: 'Custom JSON',
         icon: FileJson,
         description: 'Custom JSON export',
-        format: 'json',
+        format: 'JSON',
         requiredFields: [],
     },
     {
@@ -95,7 +95,7 @@ export const FEED_TEMPLATES: FeedTemplate[] = [
         name: 'Custom XML',
         icon: FileText,
         description: 'Custom XML export',
-        format: 'xml',
+        format: 'XML',
         requiredFields: [],
     },
 ];

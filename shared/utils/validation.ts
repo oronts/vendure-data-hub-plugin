@@ -2,13 +2,10 @@
 
 export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
-export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const CODE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 export const PIPELINE_CODE_PATTERN = /^[a-z0-9-]+$/;
-export const SECRET_CODE_PATTERN = /^[a-zA-Z0-9-_]+$/;
 
-export function isNil(value: unknown): value is null | undefined {
+function isNil(value: unknown): value is null | undefined {
     return value === null || value === undefined;
 }
 
@@ -24,7 +21,7 @@ export function isNotEmpty(value: unknown): boolean {
     return !isEmpty(value);
 }
 
-export function isNumeric(value: unknown): boolean {
+function isNumeric(value: unknown): boolean {
     if (typeof value === 'number') return !isNaN(value) && isFinite(value);
     if (typeof value === 'string') {
         const trimmed = value.trim();
@@ -38,15 +35,6 @@ export function isInteger(value: unknown): boolean {
     if (!isNumeric(value)) return false;
     const num = Number(value);
     return Number.isInteger(num);
-}
-
-export function isBoolean(value: unknown): boolean {
-    if (typeof value === 'boolean') return true;
-    if (typeof value === 'string') {
-        const lower = value.toLowerCase().trim();
-        return ['true', 'false', '1', '0', 'yes', 'no'].includes(lower);
-    }
-    return value === 1 || value === 0;
 }
 
 export function isValidEmail(email: string): boolean {
@@ -68,43 +56,9 @@ export function isValidUrl(url: string, options?: { requireHttps?: boolean }): b
     }
 }
 
-export function isValidUuid(uuid: string): boolean {
-    if (isEmpty(uuid)) return false;
-    return UUID_PATTERN.test(uuid);
-}
-
-export function isValidSlug(slug: string): boolean {
-    if (isEmpty(slug)) return false;
-    return SLUG_PATTERN.test(slug);
-}
-
 export function isValidPipelineCode(code: string): boolean {
     if (isEmpty(code)) return false;
     return PIPELINE_CODE_PATTERN.test(code);
-}
-
-export function isValidSecretCode(code: string): boolean {
-    if (isEmpty(code)) return false;
-    return SECRET_CODE_PATTERN.test(code);
-}
-
-export function isValidJson(str: string): boolean {
-    if (isEmpty(str)) return false;
-    try {
-        JSON.parse(str);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
-export function isValidDate(value: unknown): boolean {
-    if (value instanceof Date) return !isNaN(value.getTime());
-    if (typeof value === 'string' || typeof value === 'number') {
-        const date = new Date(value);
-        return !isNaN(date.getTime());
-    }
-    return false;
 }
 
 /** Validate cron expression (5 fields: minute hour day month weekday) */
@@ -179,4 +133,3 @@ function isValidCronRange(range: string, min: number, max: number): boolean {
     const end = parseInt(endStr, 10);
     return !isNaN(start) && !isNaN(end) && start >= min && end <= max && start <= end;
 }
-

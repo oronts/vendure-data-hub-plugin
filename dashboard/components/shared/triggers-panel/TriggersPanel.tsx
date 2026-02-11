@@ -62,6 +62,7 @@ const CompactTriggerItem = memo(function CompactTriggerItem({
                             size="sm"
                             className="h-6 w-6 p-0 text-destructive"
                             onClick={handleRemove}
+                            aria-label="Remove trigger"
                         >
                             <Trash2 className="h-3 w-3" />
                         </Button>

@@ -92,8 +92,8 @@ export function ValidateConfigComponent({
     showValidationMode = true,
     showRulesEditor = true,
 }: ValidateConfigComponentProps) {
-    const errorHandlingMode = (config.errorHandlingMode as string) || 'fail-fast';
-    const validationMode = (config.validationMode as string) || 'strict';
+    const errorHandlingMode = (config.errorHandlingMode as string) || 'FAIL_FAST';
+    const validationMode = (config.validationMode as string) || 'STRICT';
     const rawRules = (config.rules as ValidationRule[]) || [];
     const rules = useRulesWithStableIds(rawRules);
 

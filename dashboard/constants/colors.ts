@@ -38,10 +38,10 @@ export const BRANCH_COLORS = {
 } as const;
 
 export const FILE_TYPE_ICON_CONFIG: Record<string, { icon: LucideIcon; color: string }> = {
-    csv: { icon: FileText, color: 'text-blue-500' },
-    xlsx: { icon: FileSpreadsheet, color: 'text-green-500' },
-    json: { icon: FileJson, color: 'text-yellow-500' },
-    xml: { icon: File, color: 'text-orange-500' },
+    CSV: { icon: FileText, color: 'text-blue-500' },
+    XLSX: { icon: FileSpreadsheet, color: 'text-green-500' },
+    JSON: { icon: FileJson, color: 'text-yellow-500' },
+    XML: { icon: File, color: 'text-orange-500' },
 };
 
 export type UILogLevel = keyof typeof LOG_LEVEL_COLORS;

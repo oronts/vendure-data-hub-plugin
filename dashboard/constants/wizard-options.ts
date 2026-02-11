@@ -1,8 +1,8 @@
 export const EXISTING_RECORDS_STRATEGIES = [
-    { value: 'update', label: 'Update existing' },
-    { value: 'replace', label: 'Replace existing' },
-    { value: 'skip', label: 'Skip duplicates' },
-    { value: 'error', label: 'Error on duplicate' },
+    { value: 'UPDATE', label: 'Update existing' },
+    { value: 'REPLACE', label: 'Replace existing' },
+    { value: 'SKIP', label: 'Skip duplicates' },
+    { value: 'ERROR', label: 'Error on duplicate' },
 ] as const;
 
 /**
@@ -10,11 +10,11 @@ export const EXISTING_RECORDS_STRATEGIES = [
  * Use these instead of hardcoded string literals like === 'csv'.
  */
 export const FILE_FORMAT = {
-    CSV: 'csv',
-    JSON: 'json',
-    XML: 'xml',
-    XLSX: 'xlsx',
-    NDJSON: 'ndjson',
+    CSV: 'CSV',
+    JSON: 'JSON',
+    XML: 'XML',
+    XLSX: 'XLSX',
+    NDJSON: 'NDJSON',
 } as const;
 
 /**
@@ -22,10 +22,10 @@ export const FILE_FORMAT = {
  * Use these instead of hardcoded string literals like === 'file'.
  */
 export const SOURCE_TYPE = {
-    FILE: 'file',
-    API: 'api',
-    DATABASE: 'database',
-    WEBHOOK: 'webhook',
+    FILE: 'FILE',
+    API: 'API',
+    DATABASE: 'DATABASE',
+    WEBHOOK: 'WEBHOOK',
 } as const;
 
 /**
@@ -34,16 +34,16 @@ export const SOURCE_TYPE = {
  * Note: This mirrors the backend DESTINATION_TYPE from src/constants/enums.ts
  */
 export const DESTINATION_TYPE = {
-    FILE: 'file',
-    DOWNLOAD: 'download',
-    S3: 's3',
-    FTP: 'ftp',
-    SFTP: 'sftp',
-    HTTP: 'http',
-    EMAIL: 'email',
-    WEBHOOK: 'webhook',
-    LOCAL: 'local',
-    GCS: 'gcs',
+    FILE: 'FILE',
+    DOWNLOAD: 'DOWNLOAD',
+    S3: 'S3',
+    FTP: 'FTP',
+    SFTP: 'SFTP',
+    HTTP: 'HTTP',
+    EMAIL: 'EMAIL',
+    WEBHOOK: 'WEBHOOK',
+    LOCAL: 'LOCAL',
+    GCS: 'GCS',
 } as const;
 
 export type DestinationType = typeof DESTINATION_TYPE[keyof typeof DESTINATION_TYPE];
@@ -53,26 +53,26 @@ export type DestinationType = typeof DESTINATION_TYPE[keyof typeof DESTINATION_T
  * Use these instead of hardcoded string literals like === 'google-merchant'.
  */
 export const EXPORT_FORMAT = {
-    CSV: 'csv',
-    JSON: 'json',
-    XML: 'xml',
-    GOOGLE_MERCHANT: 'google-merchant',
-    META_CATALOG: 'meta-catalog',
-    AMAZON_FEED: 'amazon-feed',
+    CSV: 'CSV',
+    JSON: 'JSON',
+    XML: 'XML',
+    GOOGLE_MERCHANT: 'GOOGLE_MERCHANT',
+    META_CATALOG: 'META_CATALOG',
+    AMAZON_FEED: 'AMAZON_FEED',
 } as const;
 
 export const NEW_RECORDS_STRATEGIES = [
-    { value: 'create', label: 'Create new records' },
-    { value: 'skip', label: 'Skip new records' },
-    { value: 'error', label: 'Error on new record' },
+    { value: 'CREATE', label: 'Create new records' },
+    { value: 'SKIP', label: 'Skip new records' },
+    { value: 'ERROR', label: 'Error on new record' },
 ] as const;
 
 export const EXPORT_DESTINATION_TYPES = [
-    { value: 'download', label: 'Download' },
-    { value: 'sftp', label: 'SFTP Server' },
-    { value: 'http', label: 'HTTP Endpoint' },
-    { value: 's3', label: 'AWS S3' },
-    { value: 'gcs', label: 'Google Cloud Storage' },
+    { value: 'DOWNLOAD', label: 'Download' },
+    { value: 'SFTP', label: 'SFTP Server' },
+    { value: 'HTTP', label: 'HTTP Endpoint' },
+    { value: 'S3', label: 'AWS S3' },
+    { value: 'GCS', label: 'Google Cloud Storage' },
 ] as const;
 
 export const CSV_DELIMITERS = [
@@ -95,10 +95,10 @@ export const HTTP_METHODS = [
 ] as const;
 
 export const HTTP_AUTH_TYPES = [
-    { value: 'none', label: 'None' },
-    { value: 'basic', label: 'Basic Auth' },
-    { value: 'bearer', label: 'Bearer Token' },
-    { value: 'api-key', label: 'API Key' },
+    { value: 'NONE', label: 'None' },
+    { value: 'BASIC', label: 'Basic Auth' },
+    { value: 'BEARER', label: 'Bearer Token' },
+    { value: 'API_KEY', label: 'API Key' },
 ] as const;
 
 /**
@@ -106,18 +106,18 @@ export const HTTP_AUTH_TYPES = [
  * Use these instead of hardcoded string literals.
  */
 export const CLEANUP_STRATEGIES = [
-    { value: 'none', label: 'No cleanup' },
-    { value: 'unpublish-missing', label: 'Unpublish missing records' },
-    { value: 'delete-missing', label: 'Delete missing records' },
+    { value: 'NONE', label: 'No cleanup' },
+    { value: 'UNPUBLISH_MISSING', label: 'Unpublish missing records' },
+    { value: 'DELETE_MISSING', label: 'Delete missing records' },
 ] as const;
 
 /**
  * Cleanup strategy constants for type-safe comparisons.
  */
 export const CLEANUP_STRATEGY = {
-    NONE: 'none',
-    UNPUBLISH_MISSING: 'unpublish-missing',
-    DELETE_MISSING: 'delete-missing',
+    NONE: 'NONE',
+    UNPUBLISH_MISSING: 'UNPUBLISH_MISSING',
+    DELETE_MISSING: 'DELETE_MISSING',
 } as const;
 
 export type CleanupStrategy = typeof CLEANUP_STRATEGIES[number]['value'];
@@ -126,18 +126,18 @@ export type CleanupStrategy = typeof CLEANUP_STRATEGIES[number]['value'];
  * Compression options for export wizard.
  */
 export const COMPRESSION_OPTIONS = [
-    { value: 'none', label: 'None' },
-    { value: 'gzip', label: 'GZIP' },
-    { value: 'zip', label: 'ZIP' },
+    { value: 'NONE', label: 'None' },
+    { value: 'GZIP', label: 'GZIP' },
+    { value: 'ZIP', label: 'ZIP' },
 ] as const;
 
 /**
  * Compression type constants for type-safe comparisons.
  */
 export const COMPRESSION_TYPE = {
-    NONE: 'none',
-    GZIP: 'gzip',
-    ZIP: 'zip',
+    NONE: 'NONE',
+    GZIP: 'GZIP',
+    ZIP: 'ZIP',
 } as const;
 
 export type CompressionType = typeof COMPRESSION_OPTIONS[number]['value'];
@@ -160,30 +160,30 @@ export const EXPORT_DEFAULTS = {
     FILENAME: 'export.csv',
     SFTP_REMOTE_PATH: '/',
     HTTP_METHOD: 'POST',
-    AUTH_TYPE: 'none',
+    AUTH_TYPE: 'NONE',
 } as const;
 
 export const IMPORT_SOURCE_TYPES = [
-    { id: 'file' as const, label: 'File Upload', description: 'CSV, Excel, JSON, XML' },
-    { id: 'api' as const, label: 'REST API', description: 'Fetch from HTTP endpoint' },
-    { id: 'database' as const, label: 'Database', description: 'Query external database' },
-    { id: 'webhook' as const, label: 'Webhook', description: 'Receive push data' },
+    { id: 'FILE' as const, label: 'File Upload', description: 'CSV, Excel, JSON, XML' },
+    { id: 'API' as const, label: 'REST API', description: 'Fetch from HTTP endpoint' },
+    { id: 'DATABASE' as const, label: 'Database', description: 'Query external database' },
+    { id: 'WEBHOOK' as const, label: 'Webhook', description: 'Receive push data' },
 ] as const;
 
 export const IMPORT_FILE_FORMATS = [
-    { id: 'csv' as const, label: 'CSV' },
-    { id: 'xlsx' as const, label: 'Excel' },
-    { id: 'json' as const, label: 'JSON' },
-    { id: 'xml' as const, label: 'XML' },
+    { id: 'CSV' as const, label: 'CSV' },
+    { id: 'XLSX' as const, label: 'Excel' },
+    { id: 'JSON' as const, label: 'JSON' },
+    { id: 'XML' as const, label: 'XML' },
 ] as const;
 
 export const EXPORT_FORMAT_TYPES = [
-    { id: 'csv' as const, label: 'CSV', description: 'Comma-separated values' },
-    { id: 'json' as const, label: 'JSON', description: 'JavaScript Object Notation' },
-    { id: 'xml' as const, label: 'XML', description: 'Extensible Markup Language' },
-    { id: 'google-merchant' as const, label: 'Google Merchant', description: 'Google Shopping feed format' },
-    { id: 'meta-catalog' as const, label: 'Meta Catalog', description: 'Facebook/Meta product feed' },
-    { id: 'amazon-feed' as const, label: 'Amazon Feed', description: 'Amazon product feed format' },
+    { id: 'CSV' as const, label: 'CSV', description: 'Comma-separated values' },
+    { id: 'JSON' as const, label: 'JSON', description: 'JavaScript Object Notation' },
+    { id: 'XML' as const, label: 'XML', description: 'Extensible Markup Language' },
+    { id: 'GOOGLE_MERCHANT' as const, label: 'Google Merchant', description: 'Google Shopping feed format' },
+    { id: 'META_CATALOG' as const, label: 'Meta Catalog', description: 'Facebook/Meta product feed' },
+    { id: 'AMAZON_FEED' as const, label: 'Amazon Feed', description: 'Amazon product feed format' },
 ] as const;
 
 export type ImportSourceType = typeof IMPORT_SOURCE_TYPES[number]['id'];

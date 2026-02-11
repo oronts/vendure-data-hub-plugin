@@ -23,7 +23,8 @@ export function stepRequiresAdapter(stepType: StepType): boolean {
 
 export function isFileSourceAdapter(adapterCode?: string | null): boolean {
     if (!adapterCode) return false;
-    return [FILE_FORMAT.CSV, FILE_FORMAT.JSON, FILE_FORMAT.XML, FILE_FORMAT.XLSX].includes(adapterCode as typeof FILE_FORMAT[keyof typeof FILE_FORMAT]);
+    const upper = adapterCode.toUpperCase();
+    return [FILE_FORMAT.CSV, FILE_FORMAT.JSON, FILE_FORMAT.XML, FILE_FORMAT.XLSX].includes(upper as typeof FILE_FORMAT[keyof typeof FILE_FORMAT]);
 }
 
 export function isVendureLoaderAdapter(adapterCode?: string | null): boolean {

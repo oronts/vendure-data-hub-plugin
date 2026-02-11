@@ -20,7 +20,7 @@ export interface ImportConfig {
 }
 
 export interface ImportSourceConfig {
-    type: 'file' | 'api' | 'database' | 'webhook';
+    type: 'FILE' | 'API' | 'DATABASE' | 'WEBHOOK';
     fileConfig?: FileSourceConfig;
     apiConfig?: ApiSourceConfig;
     databaseConfig?: DatabaseSourceConfig;
@@ -66,12 +66,12 @@ export interface ImportFieldMapping {
 }
 
 export interface ImportStrategies {
-    existingRecords: 'skip' | 'update' | 'replace' | 'error';
+    existingRecords: 'SKIP' | 'UPDATE' | 'REPLACE' | 'ERROR';
     lookupFields: string[];
-    newRecords: 'create' | 'skip' | 'error';
+    newRecords: 'CREATE' | 'SKIP' | 'ERROR';
     publishAfterImport: boolean;
     publishDelay?: number;
-    cleanupStrategy: 'none' | 'unpublish-missing' | 'delete-missing';
+    cleanupStrategy: 'NONE' | 'UNPUBLISH_MISSING' | 'DELETE_MISSING';
     batchSize: number;
     parallelBatches: number;
     errorThreshold: number;
@@ -116,7 +116,7 @@ export interface ExportField {
 }
 
 export interface ExportFormatConfig {
-    type: 'csv' | 'json' | 'xml' | 'google-merchant' | 'meta-catalog' | 'custom';
+    type: 'CSV' | 'JSON' | 'XML' | 'GOOGLE_MERCHANT' | 'META_CATALOG' | 'custom';
     options: {
         delimiter?: string;
         includeHeaders?: boolean;
@@ -131,7 +131,7 @@ export interface ExportFormatConfig {
 }
 
 export interface DestinationConfig {
-    type: 'file' | 'sftp' | 'http' | 's3' | 'asset' | 'webhook';
+    type: 'FILE' | 'SFTP' | 'HTTP' | 'S3' | 'ASSET' | 'WEBHOOK';
     fileConfig?: FileDestinationConfig;
     sftpConfig?: SftpDestinationConfig;
     httpConfig?: HttpDestinationConfig;
@@ -158,7 +158,7 @@ export interface HttpDestinationConfig {
     url: string;
     method: 'POST' | 'PUT';
     headers?: Record<string, string>;
-    authType?: 'none' | 'basic' | 'bearer' | 'api-key';
+    authType?: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY';
     authSecretId?: string;
 }
 
@@ -191,7 +191,7 @@ export interface CacheConfig {
 export interface ExportOptions {
     batchSize: number;
     includeMetadata: boolean;
-    compression?: 'none' | 'gzip' | 'zip';
+    compression?: 'NONE' | 'GZIP' | 'ZIP';
     notifyOnComplete?: boolean;
     retryOnFailure?: boolean;
     maxRetries?: number;

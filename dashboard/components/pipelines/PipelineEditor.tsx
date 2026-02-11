@@ -49,7 +49,7 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                 defaultConfig.enabled = true;
                 break;
             case STEP_TYPES.VALIDATE:
-                defaultConfig.mode = 'fail-fast';
+                defaultConfig.mode = 'FAIL_FAST';
                 break;
             case STEP_TYPES.ROUTE:
                 defaultConfig.branches = [];

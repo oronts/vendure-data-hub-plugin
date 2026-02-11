@@ -155,7 +155,7 @@ export function TriggerForm({
                     <div className="space-y-2">
                         <Label>Authentication</Label>
                         <Select
-                            value={trigger.authentication || 'none'}
+                            value={trigger.authentication || 'NONE'}
                             onValueChange={(v) => handleChange('authentication', v as WebhookAuthType)}
                             disabled={readOnly}
                         >
@@ -172,7 +172,7 @@ export function TriggerForm({
                         </Select>
                     </div>
 
-                    {trigger.authentication && trigger.authentication !== 'none' && (
+                    {trigger.authentication && trigger.authentication !== 'NONE' && (
                         <div className="space-y-2">
                             <Label>Secret</Label>
                             <Select

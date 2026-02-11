@@ -80,7 +80,7 @@ export function LogExplorerTab() {
     const totalPages = Math.ceil(totalItems / pageSize);
     const pipelines = pipelinesQuery.data?.items ?? [];
 
-    const handleRefetch = React.useCallback(() => logsQuery.refetch(), [logsQuery]);
+    const handleRefetch = React.useCallback(() => logsQuery.refetch(), [logsQuery.refetch]);
 
     const handlePipelineChange = React.useCallback((v: string) => {
         setPipelineId(v === FILTER_VALUES.ALL ? '' : v);

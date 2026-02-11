@@ -72,7 +72,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
 
     const handleCancelRun = React.useCallback((runId: string) => {
         cancelRun.mutate(runId);
-    }, [cancelRun]);
+    }, [cancelRun.mutate]);
 
     const handleStatusChange = React.useCallback((v: string) => {
         setPage(1);
@@ -83,20 +83,12 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
         if (!open) setSelectedRun(null);
     }, []);
 
-    const handleOnCancel = React.useCallback((id: string) => {
-        cancelRun.mutate(id);
-    }, [cancelRun]);
-
     const handleOnRerun = React.useCallback((pipelineId: string) => {
         runPipeline.mutate(pipelineId, {
             onSuccess: () => toast.success(TOAST_PIPELINE.RUN_STARTED),
             onError: (err) => handleMutationError('start pipeline run', err),
         });
-    }, [runPipeline]);
-
-    const handleCancelRunClick = React.useCallback((runId: string) => {
-        handleCancelRun(runId);
-    }, [handleCancelRun]);
+    }, [runPipeline.mutate]);
 
     const columns: ColumnDef<RunRow, unknown>[] = React.useMemo(() => [
         {
@@ -147,7 +139,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             cell: ({ row }) => {
                 const st = row.original.status;
                 const canCancel = st === RUN_STATUS.RUNNING || st === RUN_STATUS.PENDING;
-                const handleClick = () => handleCancelRunClick(row.original.id);
+                const handleClick = () => handleCancelRun(row.original.id);
                 return canCancel ? (
                     <Button
                         variant="secondary"
@@ -164,7 +156,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             },
             enableSorting: false,
         },
-    ], [handleSelectRun, handleCancelRunClick, cancelRun.isPending]);
+    ], [handleSelectRun, handleCancelRun, cancelRun.isPending]);
 
     if (isError && !data) {
         return (
@@ -238,7 +230,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                         <RunDetailsPanel
                             runId={selectedRun.id}
                             initialData={selectedRun}
-                            onCancel={handleOnCancel}
+                            onCancel={handleCancelRun}
                             onRerun={handleOnRerun}
                             isCancelling={cancelRun.isPending}
                         />

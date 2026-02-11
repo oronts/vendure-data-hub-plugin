@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { createMutationErrorHandler } from './mutation-helpers';
-import { QUERY_LIMITS } from '../../constants';
 import type {
     DataHubSecretListOptions,
     CreateDataHubSecretInput,
@@ -83,16 +82,6 @@ export function useSecret(id: string | undefined) {
         queryFn: () =>
             api.query(secretDetailDocument, { id: id! }).then((res) => res.dataHubSecret),
         enabled: !!id,
-    });
-}
-
-export function useSecretCodes() {
-    return useQuery({
-        queryKey: secretKeys.codes(),
-        queryFn: () =>
-            api
-                .query(secretsListDocument, { options: { take: QUERY_LIMITS.ALL_ITEMS } })
-                .then((res) => res.dataHubSecrets.items.map((s) => s.code)),
     });
 }
 

@@ -4,8 +4,6 @@ import {
     isValidEmail as isValidEmailFromShared,
     isValidUrl as isValidUrlFromShared,
     isValidPipelineCode as isValidPipelineCodeFromShared,
-    isValidSecretCode as isValidSecretCodeFromShared,
-    isValidJson as isValidJsonFromShared,
     isValidCron as isValidCronFromShared,
 } from '../../shared/utils/validation';
 
@@ -41,7 +39,6 @@ export function escapeHtmlEntities(str: string): string {
 export { escapeHtmlEntities as sanitizeString };
 
 export const isValidPipelineCode = isValidPipelineCodeFromShared;
-export const isValidSecretCode = isValidSecretCodeFromShared;
 
 export function isValidPath(filePath: string): boolean {
     if (filePath.includes('\0')) {
@@ -91,4 +88,3 @@ export function securePath(basePath: string, relativePath: string): string {
 }
 
 export const isValidCron = isValidCronFromShared;
-export const isValidJson = isValidJsonFromShared;

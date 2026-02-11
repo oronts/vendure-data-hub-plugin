@@ -38,7 +38,7 @@ export function PipelineWebhookInfo({
                 requiresIdk: Boolean(cfg.requireIdempotencyKey),
                 sig: cfg.signature === 'hmac-sha256' || cfg.authentication === 'hmac',
                 headerName: String(cfg.hmacHeaderName ?? cfg.headerName ?? 'x-datahub-signature'),
-                authType: String(cfg.authentication ?? 'none'),
+                authType: String(cfg.authentication ?? 'NONE'),
             };
         });
 

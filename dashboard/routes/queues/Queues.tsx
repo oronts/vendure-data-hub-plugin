@@ -438,7 +438,7 @@ function QueuesPage() {
         statsQuery.refetch();
         deadLettersQuery.refetch();
         consumersQueryResult.refetch();
-    }, [statsQuery, deadLettersQuery, consumersQueryResult]);
+    }, [statsQuery.refetch, deadLettersQuery.refetch, consumersQueryResult.refetch]);
 
     // Callbacks for memoized row components
     const handleSelectRun = React.useCallback((runId: string) => {
@@ -449,28 +449,28 @@ function QueuesPage() {
         (errorId: string) => {
             retry.mutate({ errorId });
         },
-        [retry],
+        [retry.mutate],
     );
 
     const handleUnmarkDeadLetter = React.useCallback(
         (id: string) => {
             mark.mutate({ id, deadLetter: false });
         },
-        [mark],
+        [mark.mutate],
     );
 
     const handleStopConsumer = React.useCallback(
         (pipelineCode: string) => {
             stopConsumer.mutate({ pipelineCode });
         },
-        [stopConsumer],
+        [stopConsumer.mutate],
     );
 
     const handleStartConsumer = React.useCallback(
         (pipelineCode: string) => {
             startConsumer.mutate({ pipelineCode });
         },
-        [startConsumer],
+        [startConsumer.mutate],
     );
 
     const handleDrawerOpenChange = React.useCallback((open: boolean) => {

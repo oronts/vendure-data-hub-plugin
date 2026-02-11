@@ -181,7 +181,7 @@ function FileUploadConfig({
 
                 <FileDropzone
                     onFileSelect={setUploadedFile}
-                    allowedTypes={['csv', 'xlsx', 'json', 'xml']}
+                    allowedTypes={['CSV', 'XLSX', 'JSON', 'XML']}
                     loading={isParsing}
                     selectedFile={uploadedFile}
                     onClear={() => setUploadedFile(null)}

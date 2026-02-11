@@ -258,6 +258,7 @@ export function StepConfigPanel({
                                 size="sm"
                                 className="text-destructive hover:text-destructive"
                                 onClick={onDelete}
+                                aria-label="Remove step"
                             >
                                 <Trash2 className="h-4 w-4" />
                             </Button>

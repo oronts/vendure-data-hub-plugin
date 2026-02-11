@@ -15,7 +15,6 @@ export * from './routes';
 export * from './permissions';
 export * from './events';
 export * from './connection-defaults';
-export * from './field-names';
 export * from './defaults';
 export * from './validation-patterns';
 export * from './sentinel-values';

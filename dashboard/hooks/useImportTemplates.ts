@@ -50,7 +50,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '5 minutes',
         requiredFields: ['name', 'sku', 'price'],
         optionalFields: ['description', 'slug', 'enabled', 'facetCodes'],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['initial-import', 'bulk-update'],
         featured: true,
         sampleData: [
@@ -68,7 +68,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '10 minutes',
         requiredFields: ['product_name', 'variant_sku', 'price'],
         optionalFields: ['variant_name', 'color', 'size', 'stock_quantity', 'weight'],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['initial-import'],
         sampleData: [
             { product_name: 'T-Shirt', variant_sku: 'TS-BLU-S', variant_name: 'Blue Small', color: 'Blue', size: 'S', price: '29.99', stock_quantity: '50' },
@@ -85,7 +85,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '15 minutes',
         requiredFields: ['Title', 'Variant SKU', 'Variant Price'],
         optionalFields: ['Body (HTML)', 'Vendor', 'Tags', 'Variant Inventory Qty', 'Image Src'],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['migration', 'shopify'],
         featured: true,
     },
@@ -99,7 +99,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '15 minutes',
         requiredFields: ['Name', 'SKU', 'Regular price'],
         optionalFields: ['Description', 'Categories', 'Tags', 'Images', 'Stock'],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['migration', 'woocommerce'],
         sampleData: [
             { Name: 'Premium Hoodie', SKU: 'HOODIE-001', 'Regular price': '59.99', Description: 'Warm cotton hoodie', Stock: '25' },
@@ -115,7 +115,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '3 minutes',
         requiredFields: ['sku', 'price'],
         optionalFields: ['sale_price', 'cost_price'],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['bulk-update'],
         sampleData: [
             { sku: 'PROD-001', price: '29.99', sale_price: '24.99' },
@@ -134,7 +134,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '5 minutes',
         requiredFields: ['email', 'first_name', 'last_name'],
         optionalFields: ['phone', 'address_line1', 'city', 'postal_code', 'country'],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['initial-import'],
         featured: true,
         sampleData: [
@@ -152,7 +152,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '10 minutes',
         requiredFields: ['email', 'first_name', 'last_name', 'street', 'city', 'postal_code', 'country_code'],
         optionalFields: ['phone', 'company', 'province', 'customer_group'],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['initial-import', 'migration'],
         sampleData: [
             { email: 'john@example.com', first_name: 'John', last_name: 'Doe', street: '123 Main St', city: 'New York', postal_code: '10001', country_code: 'US' },
@@ -170,7 +170,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '3 minutes',
         requiredFields: ['sku', 'quantity'],
         optionalFields: ['location', 'reason'],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['bulk-update', 'sync'],
         featured: true,
         sampleData: [
@@ -189,7 +189,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '5 minutes',
         requiredFields: ['sku', 'location_name', 'quantity'],
         optionalFields: ['allocated', 'incoming', 'safety_stock'],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['bulk-update', 'sync'],
         sampleData: [
             { sku: 'PROD-001', location_name: 'Warehouse A', quantity: '100', allocated: '10' },
@@ -208,7 +208,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '5 minutes',
         requiredFields: ['name'],
         optionalFields: ['slug', 'description', 'parent_slug', 'position'],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['initial-import'],
         featured: true,
         sampleData: [
@@ -226,7 +226,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '5 minutes',
         requiredFields: ['facet_name', 'facet_code', 'value_name', 'value_code'],
         optionalFields: [],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['initial-import'],
         sampleData: [
             { facet_name: 'Color', facet_code: 'color', value_name: 'Red', value_code: 'red' },
@@ -245,7 +245,7 @@ const TEMPLATES: ImportTemplate[] = [
         estimatedTime: '5 minutes',
         requiredFields: ['name', 'coupon_code'],
         optionalFields: ['discount_percentage', 'discount_amount', 'starts_at', 'ends_at', 'usage_limit'],
-        formats: ['csv'],
+        formats: ['CSV'],
         tags: ['initial-import', 'bulk-update'],
         featured: true,
         sampleData: [

@@ -23,7 +23,7 @@ export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWiza
         filters: [],
         fields: [],
         format: { type: EXPORT_FORMAT.CSV, options: { delimiter: ',', includeHeaders: true } },
-        destination: { type: 'file', fileConfig: { directory: EXPORT_DEFAULTS.DIRECTORY, filename: EXPORT_DEFAULTS.FILENAME } },
+        destination: { type: 'FILE', fileConfig: { directory: EXPORT_DEFAULTS.DIRECTORY, filename: EXPORT_DEFAULTS.FILENAME } },
         trigger: { type: TRIGGER_TYPES.MANUAL },
         options: {
             batchSize: BATCH_SIZES.EXPORT_DEFAULT,

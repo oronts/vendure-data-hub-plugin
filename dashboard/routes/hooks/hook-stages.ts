@@ -1,0 +1,168 @@
+import {
+    Play,
+    CheckCircle2,
+    XCircle,
+    AlertTriangle,
+    RefreshCw,
+    Zap,
+    ArrowRight,
+    Database,
+    Filter,
+    Upload,
+} from 'lucide-react';
+
+export interface HookStage {
+    key: string;
+    label: string;
+    description: string;
+    icon: React.ElementType;
+    category: 'lifecycle' | 'data' | 'error';
+    examplePayload: Record<string, unknown>;
+}
+
+export const HOOK_STAGES: HookStage[] = [
+    {
+        key: 'PIPELINE_STARTED',
+        label: 'Pipeline Started',
+        description: 'Triggered when a pipeline run begins',
+        icon: Play,
+        category: 'lifecycle',
+        examplePayload: { pipelineCode: 'my-pipeline', runId: '123' },
+    },
+    {
+        key: 'PIPELINE_COMPLETED',
+        label: 'Pipeline Completed',
+        description: 'Triggered when a pipeline finishes successfully',
+        icon: CheckCircle2,
+        category: 'lifecycle',
+        examplePayload: { pipelineCode: 'my-pipeline', runId: '123', recordsProcessed: 100, duration: 5000 },
+    },
+    {
+        key: 'PIPELINE_FAILED',
+        label: 'Pipeline Failed',
+        description: 'Triggered when a pipeline encounters a fatal error',
+        icon: XCircle,
+        category: 'lifecycle',
+        examplePayload: { pipelineCode: 'my-pipeline', runId: '123', error: 'Connection timeout' },
+    },
+    {
+        key: 'BEFORE_EXTRACT',
+        label: 'Before Extract',
+        description: 'Before data is pulled from the source',
+        icon: Database,
+        category: 'data',
+        examplePayload: { stepKey: 'extract', config: {} },
+    },
+    {
+        key: 'AFTER_EXTRACT',
+        label: 'After Extract',
+        description: 'After data has been extracted',
+        icon: Database,
+        category: 'data',
+        examplePayload: { stepKey: 'extract', recordCount: 50, records: [{ id: 1 }] },
+    },
+    {
+        key: 'BEFORE_TRANSFORM',
+        label: 'Before Transform',
+        description: 'Before data transformation begins',
+        icon: Filter,
+        category: 'data',
+        examplePayload: { stepKey: 'transform', recordCount: 50 },
+    },
+    {
+        key: 'AFTER_TRANSFORM',
+        label: 'After Transform',
+        description: 'After data has been transformed',
+        icon: Filter,
+        category: 'data',
+        examplePayload: { stepKey: 'transform', recordCount: 48, dropped: 2 },
+    },
+    {
+        key: 'BEFORE_VALIDATE',
+        label: 'Before Validate',
+        description: 'Before schema validation runs',
+        icon: CheckCircle2,
+        category: 'data',
+        examplePayload: { stepKey: 'validate', schemaCode: 'product-schema' },
+    },
+    {
+        key: 'AFTER_VALIDATE',
+        label: 'After Validate',
+        description: 'After validation completes',
+        icon: CheckCircle2,
+        category: 'data',
+        examplePayload: { stepKey: 'validate', valid: 45, invalid: 3 },
+    },
+    {
+        key: 'BEFORE_ENRICH',
+        label: 'Before Enrich',
+        description: 'Before data enrichment step',
+        icon: Zap,
+        category: 'data',
+        examplePayload: { stepKey: 'enrich' },
+    },
+    {
+        key: 'AFTER_ENRICH',
+        label: 'After Enrich',
+        description: 'After data has been enriched',
+        icon: Zap,
+        category: 'data',
+        examplePayload: { stepKey: 'enrich', enrichedFields: ['category', 'price'] },
+    },
+    {
+        key: 'BEFORE_ROUTE',
+        label: 'Before Route',
+        description: 'Before records are routed to destinations',
+        icon: ArrowRight,
+        category: 'data',
+        examplePayload: { stepKey: 'route', recordCount: 45 },
+    },
+    {
+        key: 'AFTER_ROUTE',
+        label: 'After Route',
+        description: 'After routing decisions are made',
+        icon: ArrowRight,
+        category: 'data',
+        examplePayload: { stepKey: 'route', destinations: { products: 30, inventory: 15 } },
+    },
+    {
+        key: 'BEFORE_LOAD',
+        label: 'Before Load',
+        description: 'Before data is written to destination',
+        icon: Upload,
+        category: 'data',
+        examplePayload: { stepKey: 'load', destination: 'vendure', recordCount: 45 },
+    },
+    {
+        key: 'AFTER_LOAD',
+        label: 'After Load',
+        description: 'After data has been loaded',
+        icon: Upload,
+        category: 'data',
+        examplePayload: { stepKey: 'load', created: 20, updated: 25, errors: 0 },
+    },
+    {
+        key: 'ON_ERROR',
+        label: 'On Error',
+        description: 'When any error occurs during processing',
+        icon: AlertTriangle,
+        category: 'error',
+        examplePayload: { error: 'Validation failed', record: { id: 1 }, stepKey: 'validate' },
+    },
+    {
+        key: 'ON_RETRY',
+        label: 'On Retry',
+        description: 'When a failed record is retried',
+        icon: RefreshCw,
+        category: 'error',
+        examplePayload: { errorId: '456', attempt: 2, maxAttempts: 3 },
+    },
+    {
+        key: 'ON_DEAD_LETTER',
+        label: 'On Dead Letter',
+        description: 'When a record is moved to dead letter queue',
+        icon: XCircle,
+        category: 'error',
+        examplePayload: { errorId: '456', reason: 'Max retries exceeded', record: { id: 1 } },
+    },
+];

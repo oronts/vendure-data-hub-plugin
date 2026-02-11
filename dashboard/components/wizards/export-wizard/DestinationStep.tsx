@@ -44,17 +44,17 @@ interface DestinationStepProps {
 }
 
 const DESTINATION_TYPE_ICONS: Record<string, LucideIcon> = {
-    download: FolderOpen,
-    file: FolderOpen,
-    sftp: Server,
-    http: Send,
-    s3: Cloud,
-    gcs: Cloud,
-    asset: HardDrive,
+    DOWNLOAD: FolderOpen,
+    FILE: FolderOpen,
+    SFTP: Server,
+    HTTP: Send,
+    S3: Cloud,
+    GCS: Cloud,
+    ASSET: HardDrive,
 };
 
 export function DestinationStep({ config, updateConfig, errors = {} }: DestinationStepProps) {
-    const destination = config.destination ?? { type: 'file' };
+    const destination = config.destination ?? { type: 'FILE' };
 
     return (
         <WizardStepContainer

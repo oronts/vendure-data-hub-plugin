@@ -1,7 +1,7 @@
 import type { JsonValue, JsonObject } from '../../shared/types';
 import { FILE_FORMAT } from '../constants/wizard-options';
 
-export type FileType = 'csv' | 'json' | 'xlsx' | 'xml' | null;
+export type FileType = 'CSV' | 'JSON' | 'XLSX' | 'XML' | null;
 
 export interface ParsedColumn {
     name: string;
@@ -69,9 +69,9 @@ export function analyzeColumns(data: JsonObject[]): ParsedColumn[] {
 }
 
 export function getFileType(fileName: string): FileType {
-    const ext = fileName.toLowerCase().split('.').pop();
+    const ext = fileName.toLowerCase().split('.').pop()?.toUpperCase();
     if (ext === FILE_FORMAT.CSV) return FILE_FORMAT.CSV;
-    if (ext === FILE_FORMAT.XLSX || ext === 'xls') return FILE_FORMAT.XLSX;
+    if (ext === FILE_FORMAT.XLSX || ext === 'XLS') return FILE_FORMAT.XLSX;
     if (ext === FILE_FORMAT.JSON) return FILE_FORMAT.JSON;
     if (ext === FILE_FORMAT.XML) return FILE_FORMAT.XML;
     return null;

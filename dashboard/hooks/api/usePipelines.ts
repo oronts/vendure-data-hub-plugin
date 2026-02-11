@@ -290,17 +290,6 @@ export function useDryRunPipeline(pipelineId: string | undefined) {
     });
 }
 
-export function usePipelineTimeline(pipelineId: string | undefined, limit?: number) {
-    return useQuery({
-        queryKey: pipelineKeys.timeline(pipelineId ?? '', limit),
-        queryFn: () =>
-            api
-                .query(pipelineTimelineDocument, { pipelineId: pipelineId!, limit })
-                .then((res) => res.dataHubPipelineTimeline),
-        enabled: !!pipelineId,
-    });
-}
-
 function createPipelineStatusHook<TDoc extends Parameters<typeof api.mutate>[0]>(
     document: TDoc,
     resultKey: string,
@@ -333,4 +322,7 @@ export const useRejectPipeline = createPipelineStatusHook(
 );
 export const usePublishPipeline = createPipelineStatusHook(
     publishPipelineDocument, 'publishDataHubPipeline', 'publish pipeline',
+);
+export const useArchivePipeline = createPipelineStatusHook(
+    archivePipelineDocument, 'archiveDataHubPipeline', 'archive pipeline',
 );

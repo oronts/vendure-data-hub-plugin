@@ -39,25 +39,6 @@ export function findTriggerStepsByType(
     });
 }
 
-export function findTriggerByType(
-    definition: PipelineDefinition | undefined | null,
-    triggerType: TriggerType
-): PipelineStepDefinition | null {
-    const triggers = findTriggerStepsByType(definition, triggerType);
-    return triggers[0] ?? null;
-}
-
-export function hasTrigger(definition: PipelineDefinition | undefined | null): boolean {
-    return findTriggerSteps(definition).length > 0;
-}
-
-export function hasTriggerType(
-    definition: PipelineDefinition | undefined | null,
-    triggerType: TriggerType
-): boolean {
-    return findTriggerStepsByType(definition, triggerType).length > 0;
-}
-
 export function parseTriggerConfig(step: PipelineStepDefinition | undefined | null): ParsedTriggerConfig | null {
     if (!isTriggerStep(step)) {
         return null;

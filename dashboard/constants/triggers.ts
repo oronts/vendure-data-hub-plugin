@@ -151,13 +151,13 @@ export interface WebhookAuthOption {
 }
 
 export const WEBHOOK_AUTH_TYPES: readonly WebhookAuthOption[] = [
-    { value: 'none', label: 'None' },
-    { value: 'basic', label: 'Basic Auth' },
-    { value: 'bearer', label: 'Bearer Token' },
-    { value: 'api-key', label: 'API Key' },
-    { value: 'oauth2', label: 'OAuth 2.0' },
-    { value: 'hmac', label: 'HMAC Signature' },
-    { value: 'jwt', label: 'JWT Bearer' },
+    { value: 'NONE', label: 'None' },
+    { value: 'BASIC', label: 'Basic Auth' },
+    { value: 'BEARER', label: 'Bearer Token' },
+    { value: 'API_KEY', label: 'API Key' },
+    { value: 'OAUTH2', label: 'OAuth 2.0' },
+    { value: 'HMAC', label: 'HMAC Signature' },
+    { value: 'JWT', label: 'JWT Bearer' },
 ] as const;
 
 export interface WizardTriggerOption {

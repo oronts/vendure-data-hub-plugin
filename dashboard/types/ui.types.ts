@@ -1,11 +1,7 @@
-import type { Edge } from '@xyflow/react';
 import type {
     StepType,
-    TriggerType,
     PipelineTrigger,
     PipelineDefinition,
-    PipelineStepDefinition,
-    PipelineContext,
     AdapterSchema,
     JsonObject,
 } from '../../shared/types';
@@ -18,7 +14,6 @@ import type {
     DataHubValidationResult,
     DataHubDryRunResult,
     DataHubPipelineRun,
-    DataHubStepProgress,
 } from '../gql/graphql';
 import type {
     UINodeStatus,
@@ -36,8 +31,6 @@ export type {
     VisualNodeCategory,
     PipelineNodeType,
 } from './pipeline';
-
-export type VisualEdge = Edge;
 
 export type { FileType };
 
@@ -69,22 +62,6 @@ export interface SchemaFormRendererProps {
     secretCodes?: string[];
     connectionCodes?: string[];
     compact?: boolean;
-}
-
-export interface BaseEditorProps {
-    onRun?: () => void;
-    readOnly?: boolean;
-    pipelineId?: string;
-}
-
-export interface PropertiesPanelProps {
-    node: PipelineNode | null;
-    adapters?: DataHubAdapter[];
-    secretCodes?: string[];
-    connectionCodes?: string[];
-    onUpdate: (nodeId: string, data: Partial<PipelineNodeData>) => void;
-    onDelete: (nodeId: string) => void;
-    onClose: () => void;
 }
 
 export interface LoadingStateProps {

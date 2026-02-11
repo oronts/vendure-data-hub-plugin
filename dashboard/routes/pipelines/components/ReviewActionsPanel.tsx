@@ -1,6 +1,5 @@
 import * as React from 'react';
 import {
-    api,
     Button,
     Dialog,
     DialogContent,
@@ -28,10 +27,10 @@ import {
 } from '../../../constants';
 import type { PipelineStatus } from '../../../constants';
 import {
-    approvePipelineDocument,
-    rejectPipelineDocument,
-    submitPipelineForReviewDocument,
-    archivePipelineDocument,
+    useSubmitPipelineForReview,
+    useApprovePipeline,
+    useRejectPipeline,
+    useArchivePipeline,
 } from '../../../hooks';
 
 export interface ReviewActionsPanelProps {
@@ -82,79 +81,80 @@ export function ReviewActionsPanel({
     const [submitDialogOpen, setSubmitDialogOpen] = React.useState(false);
     const [archiveDialogOpen, setArchiveDialogOpen] = React.useState(false);
     const [rejectReason, setRejectReason] = React.useState('');
-    const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+    const submitForReview = useSubmitPipelineForReview();
+    const approve = useApprovePipeline();
+    const reject = useRejectPipeline();
+    const archive = useArchivePipeline();
+
+    const isSubmitting = submitForReview.isPending || approve.isPending || reject.isPending || archive.isPending;
 
     const statusConfig = STATUS_CONFIG[status ?? 'DRAFT'] ?? STATUS_CONFIG.DRAFT;
-    const StatusIcon = statusConfig.icon;
 
-    const handleSubmitForReview = React.useCallback(async () => {
+    const handleSubmitForReview = React.useCallback(() => {
         if (!entityId) return;
-        setIsSubmitting(true);
-        try {
-            await api.mutate(submitPipelineForReviewDocument, { id: entityId });
-            toast.success(TOAST_PIPELINE.SUBMITTED_FOR_REVIEW);
-            setSubmitDialogOpen(false);
-            onStatusChange?.();
-        } catch (err) {
-            toast.error(TOAST_PIPELINE.SUBMIT_ERROR, {
-                description: err instanceof Error ? err.message : 'Unknown error',
-            });
-        } finally {
-            setIsSubmitting(false);
-        }
-    }, [entityId, onStatusChange]);
+        submitForReview.mutate(entityId, {
+            onSuccess: () => {
+                toast.success(TOAST_PIPELINE.SUBMITTED_FOR_REVIEW);
+                setSubmitDialogOpen(false);
+                onStatusChange?.();
+            },
+            onError: (err) => {
+                toast.error(TOAST_PIPELINE.SUBMIT_ERROR, {
+                    description: err instanceof Error ? err.message : 'Unknown error',
+                });
+            },
+        });
+    }, [entityId, onStatusChange, submitForReview.mutate]);
 
-    const handleApprove = React.useCallback(async () => {
+    const handleApprove = React.useCallback(() => {
         if (!entityId) return;
-        setIsSubmitting(true);
-        try {
-            await api.mutate(approvePipelineDocument, { id: entityId });
-            toast.success(TOAST_PIPELINE.APPROVED);
-            setApproveDialogOpen(false);
-            onStatusChange?.();
-        } catch (err) {
-            toast.error(TOAST_PIPELINE.APPROVE_ERROR, {
-                description: err instanceof Error ? err.message : 'Unknown error',
-            });
-        } finally {
-            setIsSubmitting(false);
-        }
-    }, [entityId, onStatusChange]);
+        approve.mutate(entityId, {
+            onSuccess: () => {
+                toast.success(TOAST_PIPELINE.APPROVED);
+                setApproveDialogOpen(false);
+                onStatusChange?.();
+            },
+            onError: (err) => {
+                toast.error(TOAST_PIPELINE.APPROVE_ERROR, {
+                    description: err instanceof Error ? err.message : 'Unknown error',
+                });
+            },
+        });
+    }, [entityId, onStatusChange, approve.mutate]);
 
-    const handleReject = React.useCallback(async () => {
+    const handleReject = React.useCallback(() => {
         if (!entityId) return;
-        setIsSubmitting(true);
-        try {
-            await api.mutate(rejectPipelineDocument, { id: entityId });
-            toast.success(TOAST_PIPELINE.REJECTED);
-            setRejectDialogOpen(false);
-            setRejectReason('');
-            onStatusChange?.();
-        } catch (err) {
-            toast.error(TOAST_PIPELINE.REJECT_ERROR, {
-                description: err instanceof Error ? err.message : 'Unknown error',
-            });
-        } finally {
-            setIsSubmitting(false);
-        }
-    }, [entityId, onStatusChange]);
+        reject.mutate(entityId, {
+            onSuccess: () => {
+                toast.success(TOAST_PIPELINE.REJECTED);
+                setRejectDialogOpen(false);
+                setRejectReason('');
+                onStatusChange?.();
+            },
+            onError: (err) => {
+                toast.error(TOAST_PIPELINE.REJECT_ERROR, {
+                    description: err instanceof Error ? err.message : 'Unknown error',
+                });
+            },
+        });
+    }, [entityId, onStatusChange, reject.mutate]);
 
-    const handleArchive = React.useCallback(async () => {
+    const handleArchive = React.useCallback(() => {
         if (!entityId) return;
-        setIsSubmitting(true);
-        try {
-            await api.mutate(archivePipelineDocument, { id: entityId });
-            toast.success('Pipeline archived');
-            setArchiveDialogOpen(false);
-            onStatusChange?.();
-        } catch (err) {
-            toast.error('Failed to archive pipeline', {
-                description: err instanceof Error ? err.message : 'Unknown error',
-            });
-        } finally {
-            setIsSubmitting(false);
-        }
-    }, [entityId, onStatusChange]);
+        archive.mutate(entityId, {
+            onSuccess: () => {
+                toast.success('Pipeline archived');
+                setArchiveDialogOpen(false);
+                onStatusChange?.();
+            },
+            onError: (err) => {
+                toast.error('Failed to archive pipeline', {
+                    description: err instanceof Error ? err.message : 'Unknown error',
+                });
+            },
+        });
+    }, [entityId, onStatusChange, archive.mutate]);
 
     if (!entityId) return null;
 
