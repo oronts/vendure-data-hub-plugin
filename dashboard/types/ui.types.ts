@@ -3,13 +3,11 @@ import type {
     PipelineTrigger,
     PipelineDefinition,
     AdapterSchema,
-    JsonObject,
 } from '../../shared/types';
 import type { ConnectionAuthType } from '../../sdk/types/connection-types';
 import type {
     DataHubPipeline,
     DataHubAdapter,
-    DataHubVendureEntitySchema,
     DataHubValidationIssue,
     DataHubValidationResult,
     DataHubDryRunResult,
@@ -96,33 +94,6 @@ export interface AdaptersByCategory {
     adapters: DataHubAdapter[];
 }
 
-export interface BaseDialogProps {
-    open: boolean;
-    onClose: () => void;
-}
-
-export interface FieldMappingDialogProps extends BaseDialogProps {
-    sourceFields: string[];
-    targetSchema?: DataHubVendureEntitySchema;
-    mappings: Record<string, string>;
-    onSave: (mappings: Record<string, string>) => void;
-}
-
-export interface FileUploadDialogProps extends BaseDialogProps {
-    onFileSelected: (file: File, preview: JsonObject[]) => void;
-    acceptedFormats: string[];
-    maxSize?: number;
-}
-
-export interface ConfirmDialogProps extends BaseDialogProps {
-    title: string;
-    message: string;
-    confirmLabel?: string;
-    cancelLabel?: string;
-    destructive?: boolean;
-    onConfirm: () => void;
-}
-
 export type ValidationIssue = DataHubValidationIssue;
 
 export interface ValidationState {
@@ -149,12 +120,12 @@ export interface StatCardProps {
 }
 
 export type UIConnectionType =
-    | 'http'
-    | 'postgres'
-    | 'mysql'
-    | 's3'
-    | 'ftp'
-    | 'sftp';
+    | 'HTTP'
+    | 'POSTGRES'
+    | 'MYSQL'
+    | 'S3'
+    | 'FTP'
+    | 'SFTP';
 
 export interface HttpConnectionConfig {
     baseUrl: string;
@@ -207,17 +178,15 @@ export type PipelineEntity = Pick<
     'id' | 'code' | 'name' | 'enabled' | 'status' | 'version' | 'publishedAt' | 'definition'
 >;
 
-export interface PipelineStepConfig {
-    type?: string;
-    requireIdempotencyKey?: boolean;
-    signature?: string;
-    headerName?: string;
-    [key: string]: unknown;
-}
-
 export interface PipelineStep {
     type: string;
-    config?: PipelineStepConfig;
+    config?: {
+        type?: string;
+        requireIdempotencyKey?: boolean;
+        signature?: string;
+        headerName?: string;
+        [key: string]: unknown;
+    };
     [key: string]: unknown;
 }
 
@@ -433,36 +402,6 @@ export interface FieldSelectorProps {
     disabled?: boolean;
     allowEmpty?: boolean;
     emptyLabel?: string;
-}
-
-/**
- * Chart component types
- */
-export interface BarChartDataPoint {
-    label: string;
-    value: number;
-    color?: string;
-}
-
-export interface SimpleBarChartProps {
-    data: BarChartDataPoint[];
-    height?: number;
-    showLabels?: boolean;
-    className?: string;
-}
-
-export interface DonutChartDataPoint {
-    label: string;
-    value: number;
-    color: string;
-}
-
-export interface SimpleDonutChartProps {
-    data: DonutChartDataPoint[];
-    size?: number;
-    thickness?: number;
-    showLegend?: boolean;
-    className?: string;
 }
 
 /**

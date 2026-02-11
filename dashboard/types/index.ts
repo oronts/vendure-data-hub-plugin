@@ -63,7 +63,6 @@ export type {
     DryRunMetrics,
     PipelineEditorProps,
     PipelineEntity,
-    PipelineStepConfig,
     PipelineStep,
     PipelineFormControl,
     IndividualRunMetrics,
@@ -105,10 +104,5 @@ export type {
 
 export type {
     WizardStep,
-    ImportConfig,
-    ImportStrategies,
-    ExportConfig,
-    ExportField,
     ParsedData,
-    FeedTemplate,
 } from './wizard';

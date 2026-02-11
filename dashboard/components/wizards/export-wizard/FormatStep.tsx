@@ -117,7 +117,7 @@ function FormatOptionsCard({ format, updateConfig }: FormatOptionsCardProps) {
                     <JsonOptions format={format} updateConfig={updateConfig} />
                 )}
 
-                {(format.type === EXPORT_FORMAT.XML || format.type === EXPORT_FORMAT.GOOGLE_MERCHANT || format.type === EXPORT_FORMAT.AMAZON_FEED) && (
+                {(format.type === EXPORT_FORMAT.XML || format.type === EXPORT_FORMAT.GOOGLE_SHOPPING || format.type === EXPORT_FORMAT.AMAZON) && (
                     <XmlOptions format={format} updateConfig={updateConfig} />
                 )}
             </CardContent>

@@ -7,8 +7,6 @@ export const VALIDATION_MODES = [
     { value: 'LENIENT', label: 'Lenient - Allow with warnings' },
 ] as const;
 
-export type ValidationMode = typeof VALIDATION_MODES[number]['value'];
-
 /**
  * Error handling mode options for pipeline steps.
  * Controls whether processing stops on first error or collects all errors.
@@ -17,8 +15,6 @@ export const ERROR_HANDLING_MODES = [
     { value: 'FAIL_FAST', label: 'Fail Fast - Stop on first error' },
     { value: 'ACCUMULATE', label: 'Accumulate - Collect all errors' },
 ] as const;
-
-export type ErrorHandlingMode = typeof ERROR_HANDLING_MODES[number]['value'];
 
 /**
  * Default values for route step branch configuration.

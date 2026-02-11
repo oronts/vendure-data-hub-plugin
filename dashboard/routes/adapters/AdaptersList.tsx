@@ -62,19 +62,19 @@ export const adaptersList: DashboardRouteDefinition = {
 };
 
 const ADAPTER_TYPE_INFO = {
-    extractor: {
+    EXTRACTOR: {
         label: 'Extractors',
         description: 'Pull data from external sources (APIs, databases, files)',
         icon: <Database className="w-5 h-5" />,
         color: 'bg-blue-100 text-blue-800',
     },
-    operator: {
+    OPERATOR: {
         label: 'Operators',
         description: 'Transform, filter, and enrich data during processing',
         icon: <Cog className="w-5 h-5" />,
         color: 'bg-purple-100 text-purple-800',
     },
-    loader: {
+    LOADER: {
         label: 'Loaders',
         description: 'Write data to destinations (Vendure, files, external APIs)',
         icon: <Upload className="w-5 h-5" />,
@@ -148,18 +148,18 @@ function AdaptersPage() {
                     <CardContent>
                         <div className="grid grid-cols-3 gap-4">
                             <StatCard
-                                icon={ADAPTER_TYPE_INFO.extractor.icon}
+                                icon={ADAPTER_TYPE_INFO.EXTRACTOR.icon}
                                 title="Extractors"
                                 value={extractors.length}
                                 variant="info"
                             />
                             <StatCard
-                                icon={ADAPTER_TYPE_INFO.operator.icon}
+                                icon={ADAPTER_TYPE_INFO.OPERATOR.icon}
                                 title="Operators"
                                 value={operators.length}
                             />
                             <StatCard
-                                icon={ADAPTER_TYPE_INFO.loader.icon}
+                                icon={ADAPTER_TYPE_INFO.LOADER.icon}
                                 title="Loaders"
                                 value={loaders.length}
                                 variant="success"
@@ -192,7 +192,7 @@ function AdaptersPage() {
 
                     <TabsContent value="extractors">
                         <AdapterTypeSection
-                            type="extractor"
+                            type="EXTRACTOR"
                             adapters={extractors}
                             onSelect={setSelected}
                             isBuiltIn={isBuiltIn}
@@ -201,7 +201,7 @@ function AdaptersPage() {
 
                     <TabsContent value="operators">
                         <AdapterTypeSection
-                            type="operator"
+                            type="OPERATOR"
                             adapters={operators}
                             onSelect={setSelected}
                             isBuiltIn={isBuiltIn}
@@ -210,7 +210,7 @@ function AdaptersPage() {
 
                     <TabsContent value="loaders">
                         <AdapterTypeSection
-                            type="loader"
+                            type="LOADER"
                             adapters={loaders}
                             onSelect={setSelected}
                             isBuiltIn={isBuiltIn}
@@ -232,7 +232,7 @@ function AdaptersPage() {
                 <DrawerContent data-testid="datahub-adapter-detail-drawer">
                     <DrawerHeader>
                         <div className="flex items-center gap-2">
-                            <Badge className={ADAPTER_TYPE_INFO[selected?.type || 'extractor']?.color ?? ''}>
+                            <Badge className={ADAPTER_TYPE_INFO[selected?.type || 'EXTRACTOR']?.color ?? ''}>
                                 {selected?.type}
                             </Badge>
                             <DrawerTitle>{selected?.code}</DrawerTitle>
@@ -255,7 +255,7 @@ function AdapterTypeSection({
     onSelect,
     isBuiltIn,
 }: Readonly<{
-    type: 'extractor' | 'operator' | 'loader';
+    type: 'EXTRACTOR' | 'OPERATOR' | 'LOADER';
     adapters: DataHubAdapter[];
     onSelect: (adapter: DataHubAdapter) => void;
     isBuiltIn: (code: string) => boolean;

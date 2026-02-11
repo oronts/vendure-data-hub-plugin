@@ -22,7 +22,7 @@ import { LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK, TRUNCATION
 import { HookActionType } from '../../constants/enums';
 import { validateUserCode } from '../../utils/code-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
-import { validateUrlSafety } from '../../utils/url-security.utils';
+import { assertUrlSafe, validateUrlSafety } from '../../utils/url-security.utils';
 
 /** Maximum number of registered webhook IDs to prevent unbounded memory growth */
 const MAX_REGISTERED_WEBHOOKS = 1000;
@@ -415,6 +415,9 @@ export class HookService implements OnModuleInit {
      */
     private async simpleFetch(url: string, headers: Record<string, string> | undefined, body: JsonObject): Promise<void> {
         try {
+            // SSRF protection: validate URL before making the request (defense-in-depth)
+            await assertUrlSafe(url);
+
             const fetchImpl = (globalThis as { fetch?: typeof fetch }).fetch;
             if (!fetchImpl) return;
             await fetchImpl(url, {

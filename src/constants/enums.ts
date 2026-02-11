@@ -430,11 +430,6 @@ export enum FileFormat {
 }
 
 /**
- * File format type (lowercase string literal union matching FileFormat enum values)
- */
-export type FileFormatType = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'TSV' | 'PARQUET';
-
-/**
  * Export-specific formats (subset commonly used for exports)
  */
 export type ExportFormatType = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'PARQUET';
@@ -443,42 +438,6 @@ export type ExportFormatType = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'PAR
  * Parse-specific formats (subset used for file parsing)
  */
 export type ParseFormatType = 'CSV' | 'JSON' | 'XML' | 'XLSX';
-
-/**
- * Pipeline source types (high-level data origin)
- */
-export type PipelineSourceType =
-    | 'FILE_UPLOAD'
-    | 'WEBHOOK'
-    | 'HTTP_API'
-    | 'FTP'
-    | 'S3'
-    | 'DATABASE'
-    | 'VENDURE_QUERY'
-    | 'EVENT';
-
-/**
- * Source service types (implementation-level)
- */
-export type DataSourceType =
-    | 'local-file'
-    | 'remote-file'
-    | 'rest-api'
-    | 'graphql-api'
-    | 'sql-database'
-    | 'ftp'
-    | 'sftp'
-    | 's3'
-    | 'webhook';
-
-/**
- * Network error codes that are retryable
- */
-export enum RetryableNetworkErrorCode {
-    ECONNRESET = 'ECONNRESET',
-    ETIMEDOUT = 'ETIMEDOUT',
-    ENOTFOUND = 'ENOTFOUND',
-}
 
 /**
  * Error categories for logging and analytics
@@ -574,30 +533,6 @@ export enum RunOutcome {
 }
 
 /**
- * Load operation types for entity loaders
- *
- * Values use SCREAMING_SNAKE_CASE to match operation type conventions
- */
-export enum LoadOperationType {
-    CREATE = 'CREATE',
-    UPDATE = 'UPDATE',
-    DELETE = 'DELETE',
-    UPSERT = 'UPSERT',
-}
-
-/**
- * Outcome types for operation results
- *
- * Values use SCREAMING_SNAKE_CASE to match status conventions
- */
-export enum OutcomeType {
-    SUCCESS = 'SUCCESS',
-    FAILED = 'FAILED',
-    SKIPPED = 'SKIPPED',
-    PARTIAL = 'PARTIAL',
-}
-
-/**
  * Step execution status within a pipeline run
  * Values use SCREAMING_SNAKE_CASE to match RunStatus enum
  */
@@ -610,18 +545,6 @@ export enum StepStatus {
 }
 
 /**
- * Change types for record tracking
- *
- * Values use SCREAMING_SNAKE_CASE to match status conventions
- */
-export enum ChangeType {
-    CREATED = 'CREATED',
-    UPDATED = 'UPDATED',
-    DELETED = 'DELETED',
-    UNCHANGED = 'UNCHANGED',
-}
-
-/**
  * Severity levels for logging and alerts
  *
  * Values use SCREAMING_SNAKE_CASE to match status/severity conventions
@@ -631,26 +554,6 @@ export enum Severity {
     WARNING = 'WARNING',
     ERROR = 'ERROR',
     CRITICAL = 'CRITICAL',
-}
-
-/**
- * Error codes for categorizing errors in pipeline execution
- *
- * Values use SCREAMING_SNAKE_CASE to match error code conventions
- */
-export enum ErrorCode {
-    VALIDATION_ERROR = 'VALIDATION_ERROR',
-    NETWORK_ERROR = 'NETWORK_ERROR',
-    TIMEOUT = 'TIMEOUT',
-    RATE_LIMITED = 'RATE_LIMITED',
-    AUTH_ERROR = 'AUTH_ERROR',
-    NOT_FOUND = 'NOT_FOUND',
-    CONFLICT = 'CONFLICT',
-    INTERNAL_ERROR = 'INTERNAL_ERROR',
-    CONFIGURATION_ERROR = 'CONFIGURATION_ERROR',
-    PERMISSION_DENIED = 'PERMISSION_DENIED',
-    RESOURCE_EXHAUSTED = 'RESOURCE_EXHAUSTED',
-    UNKNOWN = 'UNKNOWN',
 }
 
 /**
@@ -871,17 +774,6 @@ export enum ExtractorCategory {
 }
 
 /**
- * Record operation types for data processing
- * Maps to GraphQL DataHubRecordOperation
- */
-export enum RecordOperationType {
-    CREATE = 'CREATE',
-    UPDATE = 'UPDATE',
-    DELETE = 'DELETE',
-    SKIP = 'SKIP',
-}
-
-/**
  * Specialized feed formats for product exports
  * Maps to GraphQL DataHubFeedFormat
  */
@@ -955,7 +847,6 @@ export const DATE_FORMAT = {
     ISO_DATETIME: 'YYYY-MM-DDTHH:mm:ss',
     ISO_DATETIME_Z: 'YYYY-MM-DDTHH:mm:ssZ',
 } as const;
-export type DateFormat = typeof DATE_FORMAT[keyof typeof DATE_FORMAT];
 
 /**
  * Event kinds for pipeline event triggers

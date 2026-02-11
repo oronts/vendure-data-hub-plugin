@@ -51,7 +51,7 @@ export const WIZARD_STEPS: WizardStep[] = [
 
 export const FEED_TEMPLATES: FeedTemplate[] = [
     {
-        id: 'GOOGLE_MERCHANT',
+        id: 'GOOGLE_SHOPPING',
         name: 'Google Merchant Center',
         icon: ShoppingCart,
         description: 'Google Shopping product feed',
@@ -67,7 +67,7 @@ export const FEED_TEMPLATES: FeedTemplate[] = [
         requiredFields: ['id', 'title', 'description', 'availability', 'condition', 'price', 'link', 'image_link', 'brand'],
     },
     {
-        id: 'AMAZON_FEED',
+        id: 'AMAZON',
         name: 'Amazon Product Feed',
         icon: ShoppingCart,
         description: 'Amazon marketplace feed',

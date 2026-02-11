@@ -29,7 +29,7 @@ export function PipelineWebhookInfo({
     const webhookTriggers: WebhookTriggerInfo[] = steps
         .filter((step): step is PipelineStep =>
             step.type === STEP_TYPES.TRIGGER &&
-            (step.config as Record<string, unknown>)?.type === 'webhook'
+            (step.config as Record<string, unknown>)?.type === 'WEBHOOK'
         )
         .map(trigger => {
             const cfg = trigger.config as Record<string, unknown> ?? {};

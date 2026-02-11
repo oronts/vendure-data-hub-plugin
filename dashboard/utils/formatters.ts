@@ -27,19 +27,6 @@ export function formatKey(key: string): string {
         .trim();
 }
 
-export function formatDate(date: Date | string | number, options?: Intl.DateTimeFormatOptions): string {
-    const dateObj = date instanceof Date ? date : new Date(date);
-    if (isNaN(dateObj.getTime())) return '\u2014';
-
-    const defaultOptions: Intl.DateTimeFormatOptions = {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-    };
-
-    return dateObj.toLocaleDateString('en-US', options || defaultOptions);
-}
-
 export function formatDateTime(date: Date | string | number, options?: Intl.DateTimeFormatOptions): string {
     const dateObj = date instanceof Date ? date : new Date(date);
     if (isNaN(dateObj.getTime())) return '\u2014';

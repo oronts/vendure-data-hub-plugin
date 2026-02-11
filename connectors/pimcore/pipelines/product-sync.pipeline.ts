@@ -38,7 +38,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
     pipeline.trigger('WEBHOOK', {
         type: 'WEBHOOK',
         webhookCode: 'pimcore-product-sync',
-        authentication: 'api-key',
+        authentication: 'API_KEY',
         apiKeySecretCode: 'pimcore-webhook-key',
         rateLimit: 100,
     });

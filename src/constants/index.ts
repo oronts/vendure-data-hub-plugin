@@ -131,9 +131,6 @@ export {
     matchesPattern,
     isValidEmail,
     isValidUrl,
-    isValidIsoDate,
-    isValidUuid,
-    isValidSlug,
     scoreToConfidence,
     confidenceToMinScore,
 } from './validation';
@@ -170,7 +167,6 @@ export {
     ENV_VAR_REF_PATTERN,
     TEMPLATE_VAR_PATTERN,
     isValidPipelineCode,
-    isValidSecretCode,
 } from './patterns';
 
 export {

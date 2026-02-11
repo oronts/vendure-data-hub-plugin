@@ -15,23 +15,23 @@ export const BUILT_IN_ADAPTER_PREFIXES = [
 
 /**
  * Adapter category constants for UI organization.
- * Values use kebab-case to match backend AdapterCategory enum in src/constants/enums.ts.
+ * Values use SCREAMING_SNAKE_CASE to match backend AdapterCategory enum in src/constants/enums.ts.
  */
 export const ADAPTER_CATEGORIES = {
-    DATA_SOURCE: 'data-source',
-    TRANSFORMATION: 'transformation',
-    FILTERING: 'filtering',
-    ENRICHMENT: 'enrichment',
-    AGGREGATION: 'aggregation',
-    CONVERSION: 'conversion',
-    CATALOG: 'catalog',
-    CUSTOMERS: 'customers',
-    ORDERS: 'orders',
-    INVENTORY: 'inventory',
-    PROMOTIONS: 'promotions',
-    ASSETS: 'assets',
-    EXTERNAL: 'external',
-    UTILITY: 'utility',
+    DATA_SOURCE: 'DATA_SOURCE',
+    TRANSFORMATION: 'TRANSFORMATION',
+    FILTERING: 'FILTERING',
+    ENRICHMENT: 'ENRICHMENT',
+    AGGREGATION: 'AGGREGATION',
+    CONVERSION: 'CONVERSION',
+    CATALOG: 'CATALOG',
+    CUSTOMERS: 'CUSTOMERS',
+    ORDERS: 'ORDERS',
+    INVENTORY: 'INVENTORY',
+    PROMOTIONS: 'PROMOTIONS',
+    ASSETS: 'ASSETS',
+    EXTERNAL: 'EXTERNAL',
+    UTILITY: 'UTILITY',
 } as const;
 
 export type UIAdapterCategory = typeof ADAPTER_CATEGORIES[keyof typeof ADAPTER_CATEGORIES];

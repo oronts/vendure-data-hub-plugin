@@ -156,31 +156,6 @@ export function isValidUrl(value: string): boolean {
     return VALIDATION_PATTERNS.URL.test(value);
 }
 
-/**
- * Check if a string is a valid ISO date
- */
-export function isValidIsoDate(value: string): boolean {
-    if (!VALIDATION_PATTERNS.ISO_DATE.test(value) && !VALIDATION_PATTERNS.ISO_DATETIME.test(value)) {
-        return false;
-    }
-    const date = new Date(value);
-    return !isNaN(date.getTime());
-}
-
-/**
- * Check if a string is a valid UUID
- */
-export function isValidUuid(value: string): boolean {
-    return VALIDATION_PATTERNS.UUID.test(value);
-}
-
-/**
- * Check if a string is a valid slug
- */
-export function isValidSlug(value: string): boolean {
-    return VALIDATION_PATTERNS.SLUG.test(value);
-}
-
 // Re-export from shared constants (single source of truth) - imported at top of file
 export { CONFIDENCE_THRESHOLDS };
 

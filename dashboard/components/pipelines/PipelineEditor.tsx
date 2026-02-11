@@ -45,7 +45,7 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
 
         switch (type) {
             case STEP_TYPES.TRIGGER:
-                defaultConfig.type = 'manual';
+                defaultConfig.type = 'MANUAL';
                 defaultConfig.enabled = true;
                 break;
             case STEP_TYPES.VALIDATE:

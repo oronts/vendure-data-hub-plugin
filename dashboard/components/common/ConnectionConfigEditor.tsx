@@ -41,8 +41,8 @@ interface ConfigFieldDef {
     description?: string;
 }
 
-const CONNECTION_SCHEMAS: Record<Exclude<UIConnectionType, 'http'>, ConfigFieldDef[]> = {
-    postgres: [
+const CONNECTION_SCHEMAS: Record<Exclude<UIConnectionType, 'HTTP'>, ConfigFieldDef[]> = {
+    POSTGRES: [
         { key: 'host', label: 'Host', type: 'string', placeholder: CONNECTION_HOSTS.LOCALHOST, required: true },
         { key: 'port', label: 'Port', type: 'number', placeholder: String(CONNECTION_PORTS.POSTGRESQL), required: true },
         { key: 'database', label: 'Database', type: 'string', placeholder: DATABASE_PLACEHOLDERS.DATABASE, required: true },
@@ -50,14 +50,14 @@ const CONNECTION_SCHEMAS: Record<Exclude<UIConnectionType, 'http'>, ConfigFieldD
         { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
         { key: 'ssl', label: 'SSL', type: 'boolean' },
     ],
-    mysql: [
+    MYSQL: [
         { key: 'host', label: 'Host', type: 'string', placeholder: CONNECTION_HOSTS.LOCALHOST, required: true },
         { key: 'port', label: 'Port', type: 'number', placeholder: String(CONNECTION_PORTS.MYSQL), required: true },
         { key: 'database', label: 'Database', type: 'string', placeholder: DATABASE_PLACEHOLDERS.DATABASE, required: true },
         { key: 'username', label: 'Username', type: 'string', placeholder: DATABASE_PLACEHOLDERS.MYSQL_USER, required: true },
         { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
     ],
-    s3: [
+    S3: [
         { key: 'bucket', label: 'Bucket', type: 'string', placeholder: CLOUD_PLACEHOLDERS.S3_BUCKET, required: true },
         { key: 'region', label: 'Region', type: 'string', placeholder: CLOUD_PLACEHOLDERS.S3_REGION, required: true },
         { key: 'accessKeyIdSecretCode', label: 'Access Key ID Secret', type: 'secret', description: 'Reference a secret by code' },
@@ -65,14 +65,14 @@ const CONNECTION_SCHEMAS: Record<Exclude<UIConnectionType, 'http'>, ConfigFieldD
         { key: 'endpoint', label: 'Custom Endpoint', type: 'string', placeholder: CLOUD_PLACEHOLDERS.S3_ENDPOINT },
         { key: 'forcePathStyle', label: 'Force Path Style', type: 'boolean' },
     ],
-    ftp: [
+    FTP: [
         { key: 'host', label: 'Host', type: 'string', placeholder: CONNECTION_HOSTS.FTP_EXAMPLE, required: true },
         { key: 'port', label: 'Port', type: 'number', placeholder: String(CONNECTION_PORTS.FTP), required: true },
         { key: 'username', label: 'Username', type: 'string', required: true },
         { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
         { key: 'secure', label: 'Use FTPS', type: 'boolean' },
     ],
-    sftp: [
+    SFTP: [
         { key: 'host', label: 'Host', type: 'string', placeholder: CONNECTION_HOSTS.SFTP_EXAMPLE, required: true },
         { key: 'port', label: 'Port', type: 'number', placeholder: String(CONNECTION_PORTS.SFTP), required: true },
         { key: 'username', label: 'Username', type: 'string', required: true },
@@ -82,7 +82,7 @@ const CONNECTION_SCHEMAS: Record<Exclude<UIConnectionType, 'http'>, ConfigFieldD
 };
 
 export function ConnectionConfigEditor({ type, config, onChange, disabled, secretOptions = [] }: ConnectionConfigEditorProps) {
-    const resolvedType = (typeof type === 'string' && type.length > 0 ? type : 'http') as UIConnectionType;
+    const resolvedType = (typeof type === 'string' && type.length > 0 ? type : 'HTTP') as UIConnectionType;
 
     if (resolvedType === CONNECTION_TYPE.HTTP) {
         return (
@@ -95,7 +95,7 @@ export function ConnectionConfigEditor({ type, config, onChange, disabled, secre
         );
     }
 
-    const schema = CONNECTION_SCHEMAS[resolvedType as Exclude<UIConnectionType, 'http'>];
+    const schema = CONNECTION_SCHEMAS[resolvedType as Exclude<UIConnectionType, 'HTTP'>];
     if (!schema || schema.length === 0) {
         return <div className="text-center py-4 text-muted-foreground">No configuration options available for this type.</div>;
     }
@@ -539,12 +539,12 @@ function SecretReferenceInput({ value, onChange, placeholder, disabled, options 
 }
 
 export const CONNECTION_TYPE_OPTIONS = [
-    { value: 'http', label: 'HTTP / REST API' },
-    { value: 'postgres', label: 'PostgreSQL' },
-    { value: 'mysql', label: 'MySQL / MariaDB' },
-    { value: 's3', label: 'Amazon S3 / Compatible' },
-    { value: 'ftp', label: 'FTP' },
-    { value: 'sftp', label: 'SFTP' },
+    { value: 'HTTP', label: 'HTTP / REST API' },
+    { value: 'POSTGRES', label: 'PostgreSQL' },
+    { value: 'MYSQL', label: 'MySQL / MariaDB' },
+    { value: 'S3', label: 'Amazon S3 / Compatible' },
+    { value: 'FTP', label: 'FTP' },
+    { value: 'SFTP', label: 'SFTP' },
 ] as const;
 
 export function createDefaultConnectionConfig(type: UIConnectionType): Record<string, unknown> {

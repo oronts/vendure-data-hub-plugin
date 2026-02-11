@@ -2,7 +2,7 @@ import { isEmpty, isEmail as checkIsEmail, isURL as checkIsURL } from './field-v
 import { RETENTION } from '../constants/defaults';
 import { EMAIL_REGEX } from '../constants/validation-patterns';
 import { SOURCE_TYPE, DESTINATION_TYPE } from '../constants/wizard-options';
-import { TRIGGER_TYPES } from '../constants';
+import { TRIGGER_TYPES, QUEUE_TYPES } from '../constants';
 import { SECRET_PROVIDER } from '../constants/ui-types';
 import { CONNECTION_TYPE } from '../constants/connection-types';
 
@@ -349,10 +349,10 @@ export function validateConnectionForm(data: {
         }
     }
 
-    if (['postgres', 'mysql', 'mongodb', 'redis', 'elasticsearch'].includes(data.type ?? '')) {
+    if ([CONNECTION_TYPE.POSTGRES, CONNECTION_TYPE.MYSQL, CONNECTION_TYPE.MONGO, 'REDIS', 'ELASTICSEARCH'].includes(data.type ?? '')) {
         const config = data.config ?? {};
 
-        if (['postgres', 'mysql', 'redis'].includes(data.type ?? '')) {
+        if ([CONNECTION_TYPE.POSTGRES, CONNECTION_TYPE.MYSQL, 'REDIS'].includes(data.type ?? '')) {
             const hostError = validateRequired(config.host, 'Host');
             if (hostError) errors.push(hostError);
 
@@ -466,7 +466,7 @@ export function validateTriggerConfig(trigger: {
         if (queueTypeError) errors.push(queueTypeError);
 
         // Connection code is required (except for internal queue)
-        if (msgConfig?.queueType !== 'internal') {
+        if (msgConfig?.queueType !== QUEUE_TYPES.INTERNAL) {
             const connectionError = validateRequired(msgConfig?.connectionCode, 'Connection');
             if (connectionError) errors.push(connectionError);
         }

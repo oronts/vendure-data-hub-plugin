@@ -382,7 +382,7 @@ export interface ExporterAdapter<TConfig = JsonObject> extends BaseAdapter<TConf
  * Product feed types for marketplaces
  */
 export type FeedType =
-    | 'GOOGLE_MERCHANT'
+    | 'GOOGLE_SHOPPING'
     | 'META_CATALOG'
     | 'AMAZON'
     | 'PINTEREST'

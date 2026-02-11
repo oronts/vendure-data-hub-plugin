@@ -232,10 +232,4 @@ export function isValidPipelineCode(code: string): boolean {
     return PIPELINE_CODE_PATTERN.test(code);
 }
 
-/**
- * Validate secret code format.
- */
-export function isValidSecretCode(code: string): boolean {
-    return SECRET_CODE_PATTERN.test(code);
-}
 

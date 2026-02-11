@@ -3,7 +3,6 @@ export {
     formatCellValue,
     formatKey,
     formatDiffValue,
-    formatDate,
     formatDateTime,
     formatSmartDateTime,
     formatFileSize,

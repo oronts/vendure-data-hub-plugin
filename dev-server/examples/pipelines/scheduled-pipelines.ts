@@ -361,7 +361,7 @@ export const webhookOrderSync = createPipeline()
         type: 'WEBHOOK',
         webhookCode: 'external-orders',
         // Authentication: HMAC-SHA256 signature verification
-        authentication: 'hmac',
+        authentication: 'HMAC',
         secretCode: 'webhook-hmac-secret',  // Reference to DataHub Secret
         hmacHeaderName: 'x-webhook-signature',
         hmacAlgorithm: 'SHA256',
@@ -535,7 +535,7 @@ export const webhookApiKeyAuth = createPipeline()
         type: 'WEBHOOK',
         webhookCode: 'api-key-webhook',
         // Authentication: API Key in header
-        authentication: 'api-key',
+        authentication: 'API_KEY',
         apiKeySecretCode: 'webhook-api-key',  // Reference to DataHub Secret
         apiKeyHeaderName: 'x-api-key',        // Custom header name (default: x-api-key)
         // Rate limit: 50 requests per minute
@@ -576,7 +576,7 @@ export const webhookJwtAuth = createPipeline()
         type: 'WEBHOOK',
         webhookCode: 'jwt-webhook',
         // Authentication: JWT Bearer token
-        authentication: 'jwt',
+        authentication: 'JWT',
         jwtSecretCode: 'webhook-jwt-secret',  // Reference to DataHub Secret (HS256 key)
         jwtHeaderName: 'Authorization',       // Standard Authorization header
         // Rate limit: 200 requests per minute
@@ -617,7 +617,7 @@ export const webhookBasicAuth = createPipeline()
         type: 'WEBHOOK',
         webhookCode: 'basic-auth-webhook',
         // Authentication: HTTP Basic Auth
-        authentication: 'basic',
+        authentication: 'BASIC',
         basicSecretCode: 'webhook-basic-creds',  // Secret contains "username:password"
         // Rate limit: 30 requests per minute (more restrictive for basic auth)
         rateLimit: 30,
@@ -700,7 +700,7 @@ export const multiTriggerPipeline = createPipeline()
     // Trigger 4: Webhook for external system integration
     .trigger('webhook-trigger', {
         type: 'WEBHOOK',
-        authentication: 'api-key',
+        authentication: 'API_KEY',
         apiKeySecretCode: 'inventory-webhook-key',
         apiKeyHeaderName: 'x-api-key',
         rateLimit: 60,

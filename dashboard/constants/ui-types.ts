@@ -12,8 +12,6 @@ export const TREND_DIRECTION = {
     DOWN: 'down',
 } as const;
 
-export type TrendDirection = typeof TREND_DIRECTION[keyof typeof TREND_DIRECTION];
-
 /** Move direction for reordering items */
 export const MOVE_DIRECTION = {
     UP: 'up',

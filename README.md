@@ -766,8 +766,8 @@ Common patterns:
 
 ```typescript
 .trigger('webhook', {
-    type: 'webhook',
-    authentication: 'api-key',      // 'none' | 'api-key' | 'hmac' | 'basic' | 'jwt'
+    type: 'WEBHOOK',
+    authentication: 'API_KEY',      // 'NONE' | 'API_KEY' | 'HMAC' | 'BASIC' | 'JWT'
     apiKeySecretCode: 'my-api-key', // Secret code storing the API key
     apiKeyHeaderName: 'x-api-key',  // Header name for API key (default: x-api-key)
     rateLimit: 100,                 // Requests per minute per IP (0 = unlimited)
@@ -779,17 +779,17 @@ Common patterns:
 
 | Type | Description | Configuration |
 |------|-------------|---------------|
-| `none` | No authentication (not recommended) | - |
-| `api-key` | API key in header | `apiKeySecretCode`, `apiKeyHeaderName`, `apiKeyPrefix` |
-| `hmac` | HMAC-SHA256 signature | `secretCode`, `hmacHeaderName`, `hmacAlgorithm` |
-| `basic` | HTTP Basic Auth | `basicSecretCode` (stores `username:password`) |
-| `jwt` | JWT Bearer token | `jwtSecretCode`, `jwtHeaderName` |
+| `NONE` | No authentication (not recommended) | - |
+| `API_KEY` | API key in header | `apiKeySecretCode`, `apiKeyHeaderName`, `apiKeyPrefix` |
+| `HMAC` | HMAC-SHA256 signature | `secretCode`, `hmacHeaderName`, `hmacAlgorithm` |
+| `BASIC` | HTTP Basic Auth | `basicSecretCode` (stores `username:password`) |
+| `JWT` | JWT Bearer token | `jwtSecretCode`, `jwtHeaderName` |
 
 **Example - HMAC Authentication:**
 ```typescript
 .trigger('webhook', {
-    type: 'webhook',
-    authentication: 'hmac',
+    type: 'WEBHOOK',
+    authentication: 'HMAC',
     secretCode: 'hmac-secret',        // Secret code storing HMAC key
     hmacHeaderName: 'x-signature',    // Header name (default: x-datahub-signature)
     hmacAlgorithm: 'SHA256',          // SHA256 or SHA512

@@ -612,16 +612,16 @@ const pipeline = createProductSyncPipeline(config);
 
 // Add event trigger
 pipeline.trigger('on-product-event', {
-  type: 'event',
+  type: 'EVENT',
   eventType: 'ProductEvent',
   filter: { action: 'created' },
 });
 
 // Add additional webhook with JWT auth
 pipeline.trigger('secure-webhook', {
-  type: 'webhook',
+  type: 'WEBHOOK',
   webhookCode: 'pimcore-secure-sync',
-  authentication: 'jwt',
+  authentication: 'JWT',
   jwtSecretCode: 'pimcore-jwt-secret',
 });
 ```

@@ -74,27 +74,27 @@ export interface AdapterCatalog {
 }
 
 const TYPE_ICONS: Record<string, LucideIcon> = {
-    extractor: Download,
-    operator: RefreshCw,
-    validator: CheckCircle,
-    enricher: Sparkles,
-    router: GitBranch,
-    loader: Upload,
-    exporter: FileOutput,
-    feed: Rss,
-    sink: Database,
+    EXTRACTOR: Download,
+    OPERATOR: RefreshCw,
+    VALIDATOR: CheckCircle,
+    ENRICHER: Sparkles,
+    ROUTER: GitBranch,
+    LOADER: Upload,
+    EXPORTER: FileOutput,
+    FEED: Rss,
+    SINK: Database,
 };
 
 const TYPE_COLORS: Record<string, string> = {
-    extractor: '#3b82f6',
-    operator: '#8b5cf6',
-    validator: '#22c55e',
-    enricher: '#f59e0b',
-    router: '#f97316',
-    loader: '#6366f1',
-    exporter: '#0ea5e9',
-    feed: '#ec4899',
-    sink: '#64748b',
+    EXTRACTOR: '#3b82f6',
+    OPERATOR: '#8b5cf6',
+    VALIDATOR: '#22c55e',
+    ENRICHER: '#f59e0b',
+    ROUTER: '#f97316',
+    LOADER: '#6366f1',
+    EXPORTER: '#0ea5e9',
+    FEED: '#ec4899',
+    SINK: '#64748b',
 };
 
 const CODE_ICONS: Record<string, LucideIcon> = {
@@ -240,7 +240,7 @@ function buildAdapterMetadata(adapter: {
 const CORE_ADAPTERS: AdapterMetadata[] = [
     {
         code: 'condition',
-        type: 'router',
+        type: 'ROUTER',
         name: 'Condition',
         description: 'Route records based on conditions',
         icon: GitBranch,

@@ -44,11 +44,10 @@ export const FILE_TYPE_ICON_CONFIG: Record<string, { icon: LucideIcon; color: st
     XML: { icon: File, color: 'text-orange-500' },
 };
 
-export type UILogLevel = keyof typeof LOG_LEVEL_COLORS;
 export type LogLevel = keyof typeof LOG_LEVEL_CONFIG;
 
 export function getLogLevelColor(level: string): string {
-    const key = level.toLowerCase() as UILogLevel;
+    const key = level.toLowerCase() as keyof typeof LOG_LEVEL_COLORS;
     return LOG_LEVEL_COLORS[key] ?? LOG_LEVEL_COLORS.info;
 }
 

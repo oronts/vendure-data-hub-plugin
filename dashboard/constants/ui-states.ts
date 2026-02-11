@@ -16,8 +16,6 @@ export const PANEL_VARIANT = {
     EDITOR: 'editor',
     MODAL: 'modal',
 } as const;
-export type PanelVariant = typeof PANEL_VARIANT[keyof typeof PANEL_VARIANT];
-
 /** Test/connection status states */
 export const TEST_STATUS = {
     IDLE: 'idle',
@@ -38,26 +36,26 @@ export type CheckpointStrategy = typeof CHECKPOINT_STRATEGY[keyof typeof CHECKPO
 
 /** Adapter type to node type mapping */
 export const ADAPTER_TYPE_TO_NODE_TYPE: Record<string, string> = {
-    extractor: 'source',
-    operator: 'transform',
-    validator: 'validate',
-    enricher: 'transform',
-    router: 'condition',
-    loader: 'load',
-    exporter: 'export',
-    feed: 'feed',
-    sink: 'sink',
+    EXTRACTOR: 'source',
+    OPERATOR: 'transform',
+    VALIDATOR: 'validate',
+    ENRICHER: 'transform',
+    ROUTER: 'condition',
+    LOADER: 'load',
+    EXPORTER: 'export',
+    FEED: 'feed',
+    SINK: 'sink',
 } as const;
 
 /** Adapter type to category mapping */
 export const ADAPTER_TYPE_TO_CATEGORY: Record<string, string> = {
-    extractor: 'sources',
-    operator: 'transforms',
-    validator: 'validation',
-    enricher: 'transforms',
-    router: 'routing',
-    loader: 'destinations',
-    exporter: 'exports',
-    feed: 'feeds',
-    sink: 'sinks',
+    EXTRACTOR: 'sources',
+    OPERATOR: 'transforms',
+    VALIDATOR: 'validation',
+    ENRICHER: 'transforms',
+    ROUTER: 'routing',
+    LOADER: 'destinations',
+    EXPORTER: 'exports',
+    FEED: 'feeds',
+    SINK: 'sinks',
 } as const;

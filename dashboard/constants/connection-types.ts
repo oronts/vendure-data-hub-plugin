@@ -10,29 +10,29 @@
  */
 export const CONNECTION_TYPE = {
     /** PostgreSQL database connection */
-    POSTGRES: 'postgres',
+    POSTGRES: 'POSTGRES',
     /** MySQL database connection */
-    MYSQL: 'mysql',
+    MYSQL: 'MYSQL',
     /** Microsoft SQL Server connection */
-    MSSQL: 'mssql',
+    MSSQL: 'MSSQL',
     /** MongoDB connection */
-    MONGO: 'mongodb',
+    MONGO: 'MONGODB',
     /** AWS S3 or S3-compatible storage */
-    S3: 's3',
+    S3: 'S3',
     /** FTP server connection */
-    FTP: 'ftp',
+    FTP: 'FTP',
     /** SFTP (SSH File Transfer Protocol) connection */
-    SFTP: 'sftp',
+    SFTP: 'SFTP',
     /** Generic HTTP connection */
-    HTTP: 'http',
+    HTTP: 'HTTP',
     /** REST API connection */
-    REST: 'rest',
+    REST: 'REST',
     /** GraphQL API connection */
-    GRAPHQL: 'graphql',
+    GRAPHQL: 'GRAPHQL',
     /** Generic database connection (used when specific type unknown) */
-    DATABASE: 'database',
+    DATABASE: 'DATABASE',
     /** Custom connection type */
-    CUSTOM: 'custom',
+    CUSTOM: 'CUSTOM',
 } as const;
 
 export type ConnectionType = typeof CONNECTION_TYPE[keyof typeof CONNECTION_TYPE];

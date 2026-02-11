@@ -98,11 +98,11 @@ export interface QueueTypeConfig {
 }
 
 export const QUEUE_TYPES = {
-    RABBITMQ_AMQP: 'rabbitmq-amqp',
-    RABBITMQ: 'rabbitmq',
-    SQS: 'sqs',
-    REDIS_STREAMS: 'redis-streams',
-    INTERNAL: 'internal',
+    RABBITMQ_AMQP: 'RABBITMQ_AMQP',
+    RABBITMQ: 'RABBITMQ',
+    SQS: 'SQS',
+    REDIS_STREAMS: 'REDIS_STREAMS',
+    INTERNAL: 'INTERNAL',
 } as const;
 
 export const QUEUE_TYPE_CONFIGS: Record<string, QueueTypeConfig> = {
@@ -136,8 +136,8 @@ export const QUEUE_TYPE_CONFIGS: Record<string, QueueTypeConfig> = {
 export type { AckMode };
 
 export const ACK_MODE_VALUES = {
-    AUTO: 'auto',
-    MANUAL: 'manual',
+    AUTO: 'AUTO',
+    MANUAL: 'MANUAL',
 } as const;
 
 export const ACK_MODES: Record<AckMode, string> = {

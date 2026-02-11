@@ -1,4 +1,4 @@
-import type { TransformationType, FilterCondition } from '../../shared/types';
+import type { TransformationType } from '../../shared/types';
 import type { FileType } from './ui.types';
 
 export interface WizardStep {
@@ -6,17 +6,6 @@ export interface WizardStep {
     label: string;
     icon: React.FC<{ className?: string }>;
     description?: string;
-}
-
-export interface ImportConfig {
-    name: string;
-    description?: string;
-    source: ImportSourceConfig;
-    targetEntity: string;
-    mappings: ImportFieldMapping[];
-    strategies: ImportStrategies;
-    trigger: ImportTriggerConfig;
-    transformations?: WizardTransformationStep[];
 }
 
 export interface ImportSourceConfig {
@@ -79,24 +68,10 @@ export interface ImportStrategies {
 }
 
 export interface ImportTriggerConfig {
-    type: 'manual' | 'scheduled' | 'webhook' | 'file-watch';
+    type: 'MANUAL' | 'SCHEDULE' | 'WEBHOOK' | 'FILE';
     schedule?: string;
     webhookPath?: string;
     fileWatchPath?: string;
-}
-
-export interface ExportConfig {
-    name: string;
-    description?: string;
-    sourceEntity: string;
-    sourceQuery?: QueryConfig;
-    filters?: FilterCondition[];
-    fields: ExportField[];
-    format: ExportFormatConfig;
-    destination: DestinationConfig;
-    trigger: ExportTriggerConfig;
-    caching?: CacheConfig;
-    options: ExportOptions;
 }
 
 export interface QueryConfig {
@@ -116,7 +91,7 @@ export interface ExportField {
 }
 
 export interface ExportFormatConfig {
-    type: 'CSV' | 'JSON' | 'XML' | 'GOOGLE_MERCHANT' | 'META_CATALOG' | 'custom';
+    type: 'CSV' | 'JSON' | 'XML' | 'GOOGLE_SHOPPING' | 'META_CATALOG' | 'CUSTOM';
     options: {
         delimiter?: string;
         includeHeaders?: boolean;
@@ -176,7 +151,7 @@ export interface WebhookDestinationConfig {
 }
 
 export interface ExportTriggerConfig {
-    type: 'manual' | 'scheduled' | 'event' | 'webhook';
+    type: 'MANUAL' | 'SCHEDULE' | 'EVENT' | 'WEBHOOK';
     schedule?: string;
     events?: string[];
     webhookPath?: string;

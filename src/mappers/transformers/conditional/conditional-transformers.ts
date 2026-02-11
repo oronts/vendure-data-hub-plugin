@@ -15,13 +15,6 @@ import { getDefaultEvaluator } from '../../../runtime/sandbox/safe-evaluator';
 import { CODE_SECURITY } from '../../../constants';
 import { isEmpty } from '../../../utils/value-checks.utils';
 
-// Import canonical implementations
-import {
-    applyIfElse as applyIfElseCanonical,
-    applyCoalesce as applyCoalesceCanonical,
-    applyDefault as applyDefaultCanonical,
-} from '../../../transforms/record/record-transforms';
-
 /** Maximum allowed expression length to prevent DoS */
 const MAX_EXPRESSION_LENGTH = CODE_SECURITY.MAX_CONDITION_LENGTH;
 
@@ -109,47 +102,5 @@ export function applyCustomTransform(
     }
 }
 
-/**
- * Coalesce - return first non-null value
- * Uses canonical implementation when fields and record are provided
- */
-export function coalesce(...values: JsonValue[]): JsonValue {
-    for (const value of values) {
-        if (value !== null && value !== undefined) {
-            return value;
-        }
-    }
-    return null;
-}
-
-/**
- * If-then-else helper
- */
-export function ifThenElse<T>(condition: boolean, thenValue: T, elseValue: T): T {
-    return condition ? thenValue : elseValue;
-}
-
-/**
- * Null check
- */
-export function isNull(value: JsonValue | undefined): boolean {
-    return value === null || value === undefined;
-}
-
 // Re-export isEmpty from shared utils for consumers of this module
 export { isEmpty };
-
-/**
- * Default value if empty
- * Uses canonical implementation
- */
-export function defaultIfEmpty<T extends JsonValue>(value: T | null | undefined, defaultValue: T): T {
-    const result = applyDefaultCanonical(value as JsonValue, { defaultValue });
-    return result as T;
-}
-
-export {
-    applyIfElseCanonical as applyIfElse,
-    applyCoalesceCanonical as applyCoalesce,
-    applyDefaultCanonical as applyDefault,
-};

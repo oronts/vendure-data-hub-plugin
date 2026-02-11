@@ -49,13 +49,5 @@ export function extractErrorDetails(error: Error | unknown): ErrorDetails {
     };
 }
 
-/**
- * Categorize an error based on its characteristics
- */
-export function categorizeError(error: Error | unknown): LogMetadata['errorCategory'] {
-    const details = extractErrorDetails(error);
-    return details.category ?? 'unknown';
-}
-
 // Re-export from canonical location for backwards compatibility
 export { getErrorMessage } from '../../utils/error.utils';

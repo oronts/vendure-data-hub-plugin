@@ -201,7 +201,7 @@ export function StepConfigPanel({
     }, [updateConfigBatch]);
 
     const triggerValue = useMemo(() => ({
-        type: (data.config?.type as TriggerType) || 'manual',
+        type: (data.config?.type as TriggerType) || 'MANUAL',
         enabled: data.config?.enabled !== false,
         cron: data.config?.cron as string,
         timezone: data.config?.timezone as string,
@@ -347,8 +347,8 @@ export function StepConfigPanel({
                     <div className="p-3 bg-muted rounded-md border border-dashed">
                         <p className="text-sm text-muted-foreground">
                             No {getAdapterTypeLabel(adapterType).toLowerCase()}s available.
-                            {adapterType === 'validator' && ' Configure validation mode below, or register custom validators for field-level validation.'}
-                            {adapterType === 'enricher' && ' Register custom enrichers to add data enrichment capabilities.'}
+                            {adapterType === ADAPTER_TYPES.VALIDATOR && ' Configure validation mode below, or register custom validators for field-level validation.'}
+                            {adapterType === ADAPTER_TYPES.ENRICHER && ' Register custom enrichers to add data enrichment capabilities.'}
                         </p>
                     </div>
                 )}

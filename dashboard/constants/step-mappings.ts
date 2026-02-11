@@ -30,16 +30,16 @@ export const NODE_CATEGORIES = {
 } as const satisfies Record<string, VisualNodeCategory>;
 
 export const ADAPTER_TYPES = {
-    TRIGGER: 'trigger',
-    EXTRACTOR: 'extractor',
-    OPERATOR: 'operator',
-    VALIDATOR: 'validator',
-    ENRICHER: 'enricher',
-    ROUTER: 'router',
-    LOADER: 'loader',
-    EXPORTER: 'exporter',
-    FEED: 'feed',
-    SINK: 'sink',
+    TRIGGER: 'TRIGGER',
+    EXTRACTOR: 'EXTRACTOR',
+    OPERATOR: 'OPERATOR',
+    VALIDATOR: 'VALIDATOR',
+    ENRICHER: 'ENRICHER',
+    ROUTER: 'ROUTER',
+    LOADER: 'LOADER',
+    EXPORTER: 'EXPORTER',
+    FEED: 'FEED',
+    SINK: 'SINK',
 } as const;
 
 export const STEP_TYPE_TO_CATEGORY: Record<string, VisualNodeCategory> = {
@@ -69,17 +69,17 @@ export const CATEGORY_TO_STEP_TYPE: Record<string, StepType> = {
 };
 
 export const CATEGORY_TO_ADAPTER_TYPE: Record<string, string> = {
-    trigger: 'trigger',
-    source: 'extractor',
-    transform: 'operator',
-    validate: 'validator',
-    enrich: 'enricher',
-    condition: 'router',
-    load: 'loader',
-    export: 'exporter',
-    feed: 'feed',
-    sink: 'sink',
-    filter: 'operator',
+    trigger: 'TRIGGER',
+    source: 'EXTRACTOR',
+    transform: 'OPERATOR',
+    validate: 'VALIDATOR',
+    enrich: 'ENRICHER',
+    condition: 'ROUTER',
+    load: 'LOADER',
+    export: 'EXPORTER',
+    feed: 'FEED',
+    sink: 'SINK',
+    filter: 'OPERATOR',
 };
 
 export const STEP_TYPE_COLORS: Record<string, string> = {

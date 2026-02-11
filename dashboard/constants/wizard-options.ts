@@ -50,15 +50,15 @@ export type DestinationType = typeof DESTINATION_TYPE[keyof typeof DESTINATION_T
 
 /**
  * Export format type constants for type-safe comparisons.
- * Use these instead of hardcoded string literals like === 'google-merchant'.
+ * Use these instead of hardcoded string literals.
  */
 export const EXPORT_FORMAT = {
     CSV: 'CSV',
     JSON: 'JSON',
     XML: 'XML',
-    GOOGLE_MERCHANT: 'GOOGLE_MERCHANT',
+    GOOGLE_SHOPPING: 'GOOGLE_SHOPPING',
     META_CATALOG: 'META_CATALOG',
-    AMAZON_FEED: 'AMAZON_FEED',
+    AMAZON: 'AMAZON',
 } as const;
 
 export const NEW_RECORDS_STRATEGIES = [
@@ -181,9 +181,9 @@ export const EXPORT_FORMAT_TYPES = [
     { id: 'CSV' as const, label: 'CSV', description: 'Comma-separated values' },
     { id: 'JSON' as const, label: 'JSON', description: 'JavaScript Object Notation' },
     { id: 'XML' as const, label: 'XML', description: 'Extensible Markup Language' },
-    { id: 'GOOGLE_MERCHANT' as const, label: 'Google Merchant', description: 'Google Shopping feed format' },
+    { id: 'GOOGLE_SHOPPING' as const, label: 'Google Shopping', description: 'Google Shopping feed format' },
     { id: 'META_CATALOG' as const, label: 'Meta Catalog', description: 'Facebook/Meta product feed' },
-    { id: 'AMAZON_FEED' as const, label: 'Amazon Feed', description: 'Amazon product feed format' },
+    { id: 'AMAZON' as const, label: 'Amazon', description: 'Amazon product feed format' },
 ] as const;
 
 export type ImportSourceType = typeof IMPORT_SOURCE_TYPES[number]['id'];
