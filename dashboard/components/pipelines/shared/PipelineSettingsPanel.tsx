@@ -362,19 +362,19 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
                                 <div className="space-y-1">
                                     <Label className={labelSize}>Error Policy</Label>
                                     <Select
-                                        value={context.parallelExecution?.errorPolicy ?? 'fail-fast'}
+                                        value={context.parallelExecution?.errorPolicy ?? 'FAIL_FAST'}
                                         onValueChange={(v) => updateParallelExecution({
                                             ...context.parallelExecution,
-                                            errorPolicy: v as 'fail-fast' | 'continue' | 'best-effort',
+                                            errorPolicy: v as 'FAIL_FAST' | 'CONTINUE' | 'BEST_EFFORT',
                                         })}
                                     >
                                         <SelectTrigger className={`${inputHeight} text-xs`}>
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="fail-fast">Fail Fast (stop on error)</SelectItem>
-                                            <SelectItem value="continue">Continue (finish others)</SelectItem>
-                                            <SelectItem value="best-effort">Best Effort (ignore errors)</SelectItem>
+                                            <SelectItem value="FAIL_FAST">Fail Fast (stop on error)</SelectItem>
+                                            <SelectItem value="CONTINUE">Continue (finish others)</SelectItem>
+                                            <SelectItem value="BEST_EFFORT">Best Effort (ignore errors)</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>

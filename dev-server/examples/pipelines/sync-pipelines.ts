@@ -589,7 +589,7 @@ export const restApiImport = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'source-wins',
+        conflictResolution: 'SOURCE_WINS',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',

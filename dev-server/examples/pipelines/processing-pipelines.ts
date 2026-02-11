@@ -45,8 +45,8 @@ export const productEnrichment = createPipeline()
             // SKU format validation
             { type: 'business', spec: { field: 'sku', pattern: '^[A-Za-z0-9_-]+$', error: 'SKU must be alphanumeric' } },
         ],
-        errorHandlingMode: 'accumulate',
-        validationMode: 'strict',
+        errorHandlingMode: 'ACCUMULATE',
+        validationMode: 'STRICT',
     })
 
     .transform('filter-valid', {
@@ -446,8 +446,8 @@ export const customerSegmentation = createPipeline()
             { type: 'business', spec: { field: 'emailAddress', pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$', error: 'Invalid email format' } },
             { type: 'business', spec: { field: 'id', required: true, error: 'Customer ID is required' } },
         ],
-        errorHandlingMode: 'accumulate',
-        validationMode: 'strict',
+        errorHandlingMode: 'ACCUMULATE',
+        validationMode: 'STRICT',
     })
 
     .transform('filter-active', {

@@ -70,12 +70,12 @@ export const TRIGGER_FIELDS = {
  * Trigger types - consistent across UI and backend
  */
 export const TRIGGER_TYPES = {
-    MANUAL: 'manual',
-    SCHEDULE: 'schedule',
-    WEBHOOK: 'webhook',
-    EVENT: 'event',
-    FILE: 'file',
-    MESSAGE: 'message',
+    MANUAL: 'MANUAL',
+    SCHEDULE: 'SCHEDULE',
+    WEBHOOK: 'WEBHOOK',
+    EVENT: 'EVENT',
+    FILE: 'FILE',
+    MESSAGE: 'MESSAGE',
 } as const;
 
 export type TriggerTypeValue = typeof TRIGGER_TYPES[keyof typeof TRIGGER_TYPES];
@@ -89,10 +89,10 @@ export type TriggerTypeValue = typeof TRIGGER_TYPES[keyof typeof TRIGGER_TYPES];
  * Use only these field names - no fallbacks or aliases.
  */
 export const LOADER_FIELDS = {
-    /** Load strategy (create, update, upsert) - controls INSERT/UPDATE behavior */
+    /** Load strategy (CREATE, UPDATE, UPSERT) - controls INSERT/UPDATE behavior */
     STRATEGY: 'strategy',
 
-    /** Conflict resolution (source-wins, vendure-wins, merge) - controls field conflicts on UPDATE */
+    /** Conflict resolution (SOURCE_WINS, VENDURE_WINS, MERGE) - controls field conflicts on UPDATE */
     CONFLICT_RESOLUTION: 'conflictResolution',
 
     /** Batch size for bulk operations */
@@ -121,32 +121,32 @@ export const LOADER_FIELDS = {
 
 /**
  * Load strategies - controls INSERT/UPDATE behavior
- * - create: Only create new records, skip if exists
- * - update: Only update existing records, skip if not exists
- * - upsert: Create if not exists, update if exists
+ * - CREATE: Only create new records, skip if exists
+ * - UPDATE: Only update existing records, skip if not exists
+ * - UPSERT: Create if not exists, update if exists
  */
 export const LOAD_STRATEGIES = {
-    CREATE: 'create',
-    UPDATE: 'update',
-    UPSERT: 'upsert',
-    MERGE: 'merge',
-    SOFT_DELETE: 'soft-delete',
-    HARD_DELETE: 'hard-delete',
+    CREATE: 'CREATE',
+    UPDATE: 'UPDATE',
+    UPSERT: 'UPSERT',
+    MERGE: 'MERGE',
+    SOFT_DELETE: 'SOFT_DELETE',
+    HARD_DELETE: 'HARD_DELETE',
 } as const;
 
 export type LoadStrategyValue = typeof LOAD_STRATEGIES[keyof typeof LOAD_STRATEGIES];
 
 /**
  * Conflict resolution strategies - controls how to handle field conflicts on UPDATE
- * - source-wins: Overwrite all Vendure fields with source data
- * - vendure-wins: Keep existing Vendure data, don't update fields
- * - merge: Merge fields (only update non-empty source fields)
+ * - SOURCE_WINS: Overwrite all Vendure fields with source data
+ * - VENDURE_WINS: Keep existing Vendure data, don't update fields
+ * - MERGE: Merge fields (only update non-empty source fields)
  */
 export const CONFLICT_RESOLUTIONS = {
-    SOURCE_WINS: 'source-wins',
-    VENDURE_WINS: 'vendure-wins',
-    MERGE: 'merge',
-    MANUAL_QUEUE: 'manual-queue',
+    SOURCE_WINS: 'SOURCE_WINS',
+    VENDURE_WINS: 'VENDURE_WINS',
+    MERGE: 'MERGE',
+    MANUAL_QUEUE: 'MANUAL_QUEUE',
 } as const;
 
 export type ConflictResolutionValue = typeof CONFLICT_RESOLUTIONS[keyof typeof CONFLICT_RESOLUTIONS];

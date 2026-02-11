@@ -525,7 +525,7 @@ function SecretReferenceInput({ value, onChange, placeholder, disabled, options 
                     <datalist id={listId}>
                         {options.map(option => (
                             <option key={option.code} value={option.code}>
-                                {option.provider ?? 'inline'}
+                                {option.provider ?? 'INLINE'}
                             </option>
                         ))}
                     </datalist>

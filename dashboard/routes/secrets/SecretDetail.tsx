@@ -118,7 +118,7 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
         );
     }, [entity?.id]);
 
-    const provider = (form.watch('provider') || entity?.provider || SECRET_PROVIDER.INLINE) as 'inline' | 'env';
+    const provider = (form.watch('provider') || entity?.provider || SECRET_PROVIDER.INLINE) as 'INLINE' | 'ENV';
     const hasStoredValue = Boolean(form.watch('hasValue') ?? (entity?.value ? true : false));
     const currentValue = form.watch('value');
 
@@ -214,7 +214,7 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                         <FormFieldWrapper
                             control={form.control}
                             name="value"
-                            label={provider === 'env' ? 'Environment Variable Name' : 'Secret Value'}
+                            label={provider === SECRET_PROVIDER.ENV ? 'Environment Variable Name' : 'Secret Value'}
                             rules={{
                                 validate: (value: string) => {
                                     if (provider === SECRET_PROVIDER.ENV && (!value || value.trim() === '')) {

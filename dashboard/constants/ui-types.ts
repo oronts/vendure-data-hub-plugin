@@ -40,14 +40,15 @@ export const MAPPER_STEP = {
 
 /** Secret provider types */
 export const SECRET_PROVIDER = {
-    ENV: 'env',
-    INLINE: 'inline',
+    ENV: 'ENV',
+    INLINE: 'INLINE',
+    EXTERNAL: 'EXTERNAL',
 } as const;
 
 /** Revision types */
 export const REVISION_TYPE = {
-    PUBLISHED: 'published',
-    DRAFT: 'draft',
+    PUBLISHED: 'PUBLISHED',
+    DRAFT: 'DRAFT',
 } as const;
 
 /** Field types for operator schema fields */

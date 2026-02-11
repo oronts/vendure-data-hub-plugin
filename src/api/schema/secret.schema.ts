@@ -27,7 +27,7 @@ export const secretSchema = `
 
     input CreateDataHubSecretInput {
         code: String!
-        provider: String = "inline"
+        provider: String = "INLINE"
         value: String
         metadata: JSON
     }

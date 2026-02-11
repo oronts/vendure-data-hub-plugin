@@ -277,8 +277,8 @@ export interface ValidateContext {
     readonly stepKey: string;
     /** Pipeline context with settings */
     readonly pipelineContext: PipelineCtx;
-    /** Validation mode (fail-fast or accumulate all errors) */
-    readonly mode: 'fail-fast' | 'accumulate';
+    /** Validation mode (FAIL_FAST or ACCUMULATE all errors) */
+    readonly mode: 'FAIL_FAST' | 'ACCUMULATE';
     /** Logger for the adapter */
     readonly logger: AdapterLogger;
 }

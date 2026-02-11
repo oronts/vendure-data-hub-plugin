@@ -671,7 +671,7 @@ export const multiTriggerPipeline = createPipeline()
         parallelExecution: {
             enabled: true,
             maxConcurrentSteps: 4,
-            errorPolicy: 'continue',
+            errorPolicy: 'CONTINUE',
         },
     })
 
@@ -730,7 +730,7 @@ export const multiTriggerPipeline = createPipeline()
     })
 
     .validate('check-stock', {
-        mode: 'fail-fast',
+        mode: 'FAIL_FAST',
         rules: [
             { type: 'business', spec: { field: 'sku', test: { op: 'present' }, error: 'SKU is required' } },
             { type: 'business', spec: { field: 'quantity', test: { op: 'gte', value: 0 }, error: 'Quantity must be non-negative' } },
@@ -798,7 +798,7 @@ export const customerImportWithValidationAndEnrichment = createPipeline()
 
     // VALIDATE step with rules array (UI format)
     .validate('validate-customers', {
-        mode: 'accumulate', // Collect all errors instead of failing on first
+        mode: 'ACCUMULATE', // Collect all errors instead of failing on first
         rules: [
             // Required fields
             { type: 'business', spec: { field: 'email', required: true } },
@@ -897,7 +897,7 @@ export const productCatalogEnrichment = createPipeline()
 
     // Then validate required catalog fields
     .validate('validate-catalog-fields', {
-        mode: 'fail-fast',
+        mode: 'FAIL_FAST',
         rules: [
             { type: 'business', spec: { field: 'sku', required: true } },
             { type: 'business', spec: { field: 'name', required: true } },

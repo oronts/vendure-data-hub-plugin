@@ -14,7 +14,7 @@
  *       operators.set('imported', true),
  *     ],
  *   })
- *   .load('products', { adapterCode: 'productUpsert', strategy: 'upsert' })
+ *   .load('products', { adapterCode: 'productUpsert', strategy: 'UPSERT' })
  *   .edge('start', 'csv')
  *   .edge('csv', 'map')
  *   .edge('map', 'products')

@@ -49,7 +49,7 @@ export function createAssetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
     });
 
     pipeline.validate('validate-assets', {
-        mode: 'accumulate',
+        mode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'id', required: true, error: 'Asset ID required' } },
             { type: 'business', spec: { field: 'fullPath', required: true, error: 'Asset path required' } },

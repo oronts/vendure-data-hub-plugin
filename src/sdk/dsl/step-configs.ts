@@ -109,12 +109,12 @@ export interface OperatorConfig {
 // VALIDATE STEP CONFIG
 
 export interface ValidateStepConfig {
-    /** Error handling mode: fail-fast stops on first error, accumulate collects all errors */
-    errorHandlingMode?: 'fail-fast' | 'accumulate';
-    /** Validation mode: strict requires all rules to pass, lenient allows warnings */
-    validationMode?: 'strict' | 'lenient';
+    /** Error handling mode: FAIL_FAST stops on first error, ACCUMULATE collects all errors */
+    errorHandlingMode?: 'FAIL_FAST' | 'ACCUMULATE';
+    /** Validation mode: STRICT requires all rules to pass, LENIENT allows warnings */
+    validationMode?: 'STRICT' | 'LENIENT';
     /** Legacy mode field (alias for errorHandlingMode) */
-    mode?: 'fail-fast' | 'accumulate';
+    mode?: 'FAIL_FAST' | 'ACCUMULATE';
     /** Validation rules to apply */
     rules?: ValidationRuleConfig[];
     /** Reference to a schema for schema-based validation */

@@ -87,7 +87,7 @@ const httpApiExtractorExample = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'source-wins',
+        conflictResolution: 'SOURCE_WINS',
         skuField: 'sku',
     })
     .edge('start', 'fetch')
@@ -144,7 +144,7 @@ const productLoaderExample = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'source-wins',
+        conflictResolution: 'SOURCE_WINS',
         skuField: 'sku',
         nameField: 'name',
         slugField: 'slug',
@@ -210,7 +210,7 @@ const transformOperatorsExample = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'source-wins',
+        conflictResolution: 'SOURCE_WINS',
         skuField: 'slug',
         nameField: 'name',
     })

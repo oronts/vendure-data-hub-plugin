@@ -361,7 +361,7 @@ export class ProductHandler implements LoaderHandler {
             if (conflictResolution === ConflictStrategy.VENDURE_WINS) {
                 return { productId: existing.id, existing };
             }
-            // strategy is 'update' or 'upsert', and conflictResolution is 'source-wins' or 'merge'
+            // strategy is 'UPDATE' or 'UPSERT', and conflictResolution is 'SOURCE_WINS' or 'MERGE'
             const updateInput: UpdateProductInput = {
                 id: existing.id,
                 translations: [productTranslation],

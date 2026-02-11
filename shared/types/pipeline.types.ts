@@ -153,11 +153,11 @@ export interface ParallelExecutionConfig {
     maxConcurrentSteps?: number;
     /**
      * Error handling policy for parallel execution:
-     * - 'fail-fast': Stop all steps on first error (default)
-     * - 'continue': Continue other parallel steps, fail at end
-     * - 'best-effort': Continue all steps, collect all errors
+     * - 'FAIL_FAST': Stop all steps on first error (default)
+     * - 'CONTINUE': Continue other parallel steps, fail at end
+     * - 'BEST_EFFORT': Continue all steps, collect all errors
      */
-    errorPolicy?: 'fail-fast' | 'continue' | 'best-effort';
+    errorPolicy?: 'FAIL_FAST' | 'CONTINUE' | 'BEST_EFFORT';
 }
 
 /**

@@ -418,7 +418,7 @@ export interface ValidateConfig extends BaseStepConfig {
     /** Schema ID to validate against */
     schemaId?: string;
     /** Validation mode */
-    mode?: 'fail-fast' | 'accumulate';
+    mode?: 'FAIL_FAST' | 'ACCUMULATE';
 }
 
 export interface RouteConfig extends BaseStepConfig {

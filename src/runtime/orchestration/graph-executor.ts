@@ -250,7 +250,7 @@ function createDispatcher(params: ExecuteGraphParams): StepDispatcher {
 const DEFAULT_PARALLEL_CONFIG: Required<ParallelExecutionConfig> = {
     enabled: false,
     maxConcurrentSteps: 4,
-    errorPolicy: 'fail-fast',
+    errorPolicy: 'FAIL_FAST',
 };
 
 /**
@@ -380,7 +380,7 @@ async function executeParallel(
         }
 
         // Check for fail-fast error
-        if (parallelConfig.errorPolicy === 'fail-fast' && errors.length > 0) {
+        if (parallelConfig.errorPolicy === 'FAIL_FAST' && errors.length > 0) {
             break;
         }
 
@@ -458,7 +458,7 @@ async function executeParallel(
 
     // Handle collected errors based on policy
     if (errors.length > 0) {
-        if (parallelConfig.errorPolicy === 'best-effort') {
+        if (parallelConfig.errorPolicy === 'BEST_EFFORT') {
             // Log errors but don't throw
             for (const { key, error } of errors) {
                 logger.warn(`[Parallel] Step ${key} failed (best-effort mode): ${error.message}`);

@@ -65,6 +65,29 @@ const SOURCE_TYPES = [
     { value: 'VENDURE', label: 'Vendure Entity', description: 'Lookup from Vendure data' },
 ];
 
+const VENDURE_ENTITY_OPTIONS = [
+    { value: 'PRODUCT', label: 'Product' },
+    { value: 'PRODUCT_VARIANT', label: 'Product Variant' },
+    { value: 'CUSTOMER', label: 'Customer' },
+    { value: 'CUSTOMER_GROUP', label: 'Customer Group' },
+    { value: 'ORDER', label: 'Order' },
+    { value: 'COLLECTION', label: 'Collection' },
+    { value: 'FACET', label: 'Facet' },
+    { value: 'FACET_VALUE', label: 'Facet Value' },
+    { value: 'PROMOTION', label: 'Promotion' },
+    { value: 'ASSET', label: 'Asset' },
+    { value: 'SHIPPING_METHOD', label: 'Shipping Method' },
+    { value: 'PAYMENT_METHOD', label: 'Payment Method' },
+    { value: 'TAX_CATEGORY', label: 'Tax Category' },
+    { value: 'TAX_RATE', label: 'Tax Rate' },
+    { value: 'COUNTRY', label: 'Country' },
+    { value: 'ZONE', label: 'Zone' },
+    { value: 'CHANNEL', label: 'Channel' },
+    { value: 'TAG', label: 'Tag' },
+    { value: 'STOCK_LOCATION', label: 'Stock Location' },
+    { value: 'INVENTORY', label: 'Inventory' },
+] as const;
+
 export function EnrichConfigComponent({
     config,
     onChange,
@@ -227,11 +250,11 @@ export function EnrichConfigComponent({
                                 <SelectValue placeholder="Select entity..." />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="Product">Product</SelectItem>
-                                <SelectItem value="ProductVariant">Product Variant</SelectItem>
-                                <SelectItem value="Customer">Customer</SelectItem>
-                                <SelectItem value="Collection">Collection</SelectItem>
-                                <SelectItem value="Facet">Facet</SelectItem>
+                                {VENDURE_ENTITY_OPTIONS.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>

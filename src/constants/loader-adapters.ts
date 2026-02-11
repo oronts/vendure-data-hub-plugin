@@ -14,14 +14,14 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
             fields: [
                 { key: 'channel', label: 'Channel code', type: 'string', required: true },
                 { key: 'strategy', label: 'Load strategy', type: 'select', required: true, options: [
-                    { value: 'create', label: 'Create only' },
-                    { value: 'update', label: 'Update only' },
-                    { value: 'upsert', label: 'Create or Update' },
+                    { value: 'CREATE', label: 'Create only' },
+                    { value: 'UPDATE', label: 'Update only' },
+                    { value: 'UPSERT', label: 'Create or Update' },
                 ] },
                 { key: 'conflictResolution', label: 'Conflict resolution', type: 'select', required: true, options: [
-                    { value: 'source-wins', label: 'Source wins (overwrite)' },
-                    { value: 'vendure-wins', label: 'Vendure wins (keep existing)' },
-                    { value: 'merge', label: 'Merge (combine fields)' },
+                    { value: 'SOURCE_WINS', label: 'Source wins (overwrite)' },
+                    { value: 'VENDURE_WINS', label: 'Vendure wins (keep existing)' },
+                    { value: 'MERGE', label: 'Merge (combine fields)' },
                 ] },
                 { key: 'nameField', label: 'Name field (from record)', type: 'string' },
                 { key: 'slugField', label: 'Slug field (from record)', type: 'string' },

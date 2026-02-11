@@ -56,7 +56,7 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
     });
 
     pipeline.validate('validate-categories', {
-        mode: 'accumulate',
+        mode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'id', required: true, error: 'Category ID required' } },
             { type: 'business', spec: { field: mapping?.category?.nameField ?? 'name', required: true, error: 'Name required' } },

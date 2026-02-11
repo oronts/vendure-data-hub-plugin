@@ -56,8 +56,8 @@ export const productImportCsv = createPipeline()
             // Weight validation (optional but if present must be positive)
             { type: 'business', spec: { field: 'weight', min: 0, error: 'Weight cannot be negative' } },
         ],
-        errorHandlingMode: 'accumulate', // Collect all errors, don't stop on first
-        validationMode: 'strict',
+        errorHandlingMode: 'ACCUMULATE', // Collect all errors, don't stop on first
+        validationMode: 'STRICT',
     })
 
     // Route invalid records to error export (parallel branch 1)
@@ -193,7 +193,7 @@ export const productImportCsv = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'source-wins',
+        conflictResolution: 'SOURCE_WINS',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
@@ -454,8 +454,8 @@ export const stockUpdateCsv = createPipeline()
             { type: 'business', spec: { field: 'stock_quantity', max: 999999, error: 'Stock quantity exceeds maximum' } },
             { type: 'business', spec: { field: 'reorder_point', min: 0, error: 'Reorder point cannot be negative' } },
         ],
-        errorHandlingMode: 'accumulate',
-        validationMode: 'strict',
+        errorHandlingMode: 'ACCUMULATE',
+        validationMode: 'STRICT',
     })
 
     .transform('filter-valid', {
