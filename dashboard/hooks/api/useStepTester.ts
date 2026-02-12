@@ -1,6 +1,8 @@
+import { useMutation } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import type { JsonObject } from '../../types';
+import { createMutationErrorHandler } from './mutation-helpers';
 
 /** Step configuration for testing */
 export type StepConfig = JsonObject;
@@ -79,4 +81,43 @@ export async function simulateValidate(step: StepConfig, records: TestRecord[]) 
 export async function previewFeed(feedCode: string, limit: number) {
     const res = await api.mutate(previewFeedDocument, { feedCode, limit });
     return res?.previewDataHubFeed;
+}
+
+// ---------------------------------------------------------------------------
+// React Query mutation hooks
+// ---------------------------------------------------------------------------
+
+export function usePreviewExtract() {
+    return useMutation({
+        mutationFn: ({ step, limit }: PreviewExtractInput) => previewExtract(step, limit),
+        onError: createMutationErrorHandler('preview extract'),
+    });
+}
+
+export function useSimulateTransform() {
+    return useMutation({
+        mutationFn: ({ step, records }: SimulateStepInput) => simulateTransform(step, records),
+        onError: createMutationErrorHandler('simulate transform'),
+    });
+}
+
+export function useSimulateLoad() {
+    return useMutation({
+        mutationFn: ({ step, records }: SimulateStepInput) => simulateLoad(step, records),
+        onError: createMutationErrorHandler('simulate load'),
+    });
+}
+
+export function useSimulateValidate() {
+    return useMutation({
+        mutationFn: ({ step, records }: SimulateStepInput) => simulateValidate(step, records),
+        onError: createMutationErrorHandler('simulate validate'),
+    });
+}
+
+export function usePreviewFeed() {
+    return useMutation({
+        mutationFn: ({ feedCode, limit }: PreviewFeedInput) => previewFeed(feedCode, limit),
+        onError: createMutationErrorHandler('preview feed'),
+    });
 }

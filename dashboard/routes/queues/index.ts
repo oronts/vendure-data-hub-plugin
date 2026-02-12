@@ -1,1 +1,1 @@
-export { queuesPage } from './Queues';
+export { queuesPage } from './QueuesPage';

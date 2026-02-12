@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useMutation } from '@tanstack/react-query';
 import {
     Button,
     Card,
@@ -12,7 +13,7 @@ import {
 } from '@vendure/dashboard';
 import { PlayIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { STEP_TYPES, ADAPTER_TYPES, DEFAULT_SAMPLE_DATA, STEP_TEST_DESCRIPTIONS, PLACEHOLDERS } from '../../../constants';
-import { runStepTest, canTestStepType, type TestResult } from './StepTestHandlers';
+import { runStepTest, canTestStepType, type TestResult, type StepTestOptions } from './StepTestHandlers';
 import { ExtractTestResults } from './ExtractTestResults';
 import { TransformTestResults, ValidateTestResults } from './TransformTestResults';
 import { LoadTestResults, FeedTestResults, GenericTestResults } from './LoadTestResults';
@@ -38,7 +39,6 @@ function getEffectiveStepType(stepType: string, adapterType: string): string {
 
 export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
     const [expanded, setExpanded] = React.useState(false);
-    const [loading, setLoading] = React.useState(false);
     const [result, setResult] = React.useState<TestResult | null>(null);
     const [sampleInput, setSampleInput] = React.useState(DEFAULT_SAMPLE_DATA);
     const [limit, setLimit] = React.useState(10);
@@ -46,6 +46,13 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
 
     const effectiveType = getEffectiveStepType(stepType, adapterType);
     const canTest = canTestStepType(effectiveType);
+
+    const stepTestMutation = useMutation({
+        mutationFn: ({ type, options }: { type: string; options: StepTestOptions }) =>
+            runStepTest(type, options),
+        onSuccess: (data) => setResult(data),
+    });
+    const loading = stepTestMutation.isPending;
 
     // Use JSON serialization to detect actual config changes, not just reference changes
     const configSignature = React.useMemo(() => JSON.stringify(config), [config]);
@@ -60,13 +67,13 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
         configRef.current = config;
     }, [config]);
 
-    const runTest = React.useCallback(async () => {
-        setLoading(true);
+    const runTest = React.useCallback(() => {
         setResult(null);
-        const testResult = await runStepTest(effectiveType, { config: configRef.current, sampleInput, limit });
-        setResult(testResult);
-        setLoading(false);
-    }, [effectiveType, sampleInput, limit]);
+        stepTestMutation.mutate({
+            type: effectiveType,
+            options: { config: configRef.current, sampleInput, limit },
+        });
+    }, [effectiveType, sampleInput, limit, stepTestMutation]);
 
     const renderInputSection = () => {
         if (effectiveType === STEP_TYPES.EXTRACT || effectiveType === STEP_TYPES.FEED) {

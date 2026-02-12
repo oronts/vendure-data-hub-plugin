@@ -1,1 +1,1 @@
-export { adaptersList } from './AdaptersList';
+export { adaptersList } from './AdaptersPage';

@@ -112,7 +112,7 @@ export function ReactFlowPipelineEditor({
         const newDef = { ...definition, nodes: newNodes, edges: newEdges };
         lastSyncedKeyRef.current = getDefinitionKey(newDef);
 
-        const { steps: _unused, ...visualDef } = definition;
+        const { steps: _steps, ...visualDef } = definition;
         onChange({ ...visualDef, nodes: newNodes, edges: newEdges });
 
         Promise.resolve().then(() => {
