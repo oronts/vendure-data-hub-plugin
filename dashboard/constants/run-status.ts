@@ -14,7 +14,7 @@ export const RUN_STATUS = {
 
 export type { RunStatus } from '../../shared/types';
 
-export interface RunStatusConfig {
+interface RunStatusConfig {
     readonly status: RunStatus;
     readonly label: string;
     readonly color: string;

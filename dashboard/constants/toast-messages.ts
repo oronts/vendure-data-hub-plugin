@@ -88,7 +88,7 @@ export const TOAST_FILE = {
 /**
  * Field mapping toast messages
  */
-export const TOAST_MAPPING = {
+const TOAST_MAPPING = {
     AUTO_MAPPED: 'Auto-mapped {count} fields',
 } as const;
 

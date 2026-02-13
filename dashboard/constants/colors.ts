@@ -10,14 +10,14 @@ import {
     type LucideIcon,
 } from 'lucide-react';
 
-export const LOG_LEVEL_COLORS = {
+const LOG_LEVEL_COLORS = {
     debug: 'bg-gray-100 text-gray-600',
     info: 'bg-blue-100 text-blue-600',
     warn: 'bg-amber-100 text-amber-600',
     error: 'bg-red-100 text-red-600',
 } as const;
 
-export const LOG_LEVEL_CONFIG = {
+const LOG_LEVEL_CONFIG = {
     DEBUG: { icon: Info, color: 'text-gray-500', bg: 'bg-gray-100' },
     INFO: { icon: CheckCircle, color: 'text-blue-500', bg: 'bg-blue-100' },
     WARN: { icon: AlertTriangle, color: 'text-yellow-500', bg: 'bg-yellow-100' },

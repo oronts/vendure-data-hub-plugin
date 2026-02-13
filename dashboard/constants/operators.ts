@@ -31,7 +31,7 @@ export const COMPARISON_OPERATORS: OperatorDefinition[] = [
     { code: 'regex', label: 'matches regex', description: 'String matches regular expression', example: '^SKU-\\d+$', valueType: 'regex' },
 ];
 
-export interface TransformOperatorDefinition {
+interface TransformOperatorDefinition {
     code: string;
     label: string;
     description: string;

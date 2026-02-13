@@ -3,7 +3,7 @@ import { formatSmartDateTime } from '../../../utils/formatters';
 import { LogLevelBadge } from './LogLevelBadge';
 import type { DataHubLog } from '../../../types';
 
-export interface LogTableRowProps {
+interface LogTableRowProps {
     log: DataHubLog;
     onSelect: (log: DataHubLog) => void;
 }

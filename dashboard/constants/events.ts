@@ -1,4 +1,4 @@
-export interface VendureEventConfig {
+interface VendureEventConfig {
     readonly event: string;
     readonly label: string;
     readonly description: string;

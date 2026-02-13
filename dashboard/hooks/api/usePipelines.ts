@@ -210,7 +210,7 @@ export function useRunPipeline() {
     });
 }
 
-export interface ValidatePipelineDefinitionInput {
+interface ValidatePipelineDefinitionInput {
     definition: Record<string, unknown>;
     level?: string;
 }

@@ -13,7 +13,7 @@ const NESTED_QUANTIFIER_PATTERN = /\([^)]*[+*][^)]*\)[+*{]/;
 /** Adjacent quantifiers like a++, a*+, a{2}+ (possessive-like patterns that fail in JS) */
 const ADJACENT_QUANTIFIER_PATTERN = /[+*}][+*]/;
 
-export interface SafeRegexResult {
+interface SafeRegexResult {
     safe: boolean;
     reason?: string;
 }

@@ -81,7 +81,7 @@ export const CATEGORY_TO_ADAPTER_TYPE: Record<string, string> = {
     filter: 'OPERATOR',
 };
 
-export const STEP_TYPE_COLORS: Record<string, string> = {
+const STEP_TYPE_COLORS: Record<string, string> = {
     TRIGGER: '#6366f1',
     EXTRACT: '#3b82f6',
     TRANSFORM: '#8b5cf6',
@@ -117,7 +117,7 @@ export function mapCategoryToStepType(category: string): StepType {
     return CATEGORY_TO_STEP_TYPE[category] ?? 'TRANSFORM';
 }
 
-export const STEP_TYPE_ICONS: Record<string, LucideIcon> = {
+const STEP_TYPE_ICONS: Record<string, LucideIcon> = {
     TRIGGER: Play,
     EXTRACT: Download,
     TRANSFORM: ArrowRightLeft,
@@ -130,7 +130,7 @@ export const STEP_TYPE_ICONS: Record<string, LucideIcon> = {
     SINK: Search,
 };
 
-export const NODE_STATUS_COLORS: Record<UINodeStatus, string> = {
+const NODE_STATUS_COLORS: Record<UINodeStatus, string> = {
     idle: '#6b7280',
     running: '#3b82f6',
     success: '#10b981',

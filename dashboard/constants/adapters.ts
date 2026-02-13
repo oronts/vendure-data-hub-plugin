@@ -17,7 +17,7 @@ export const BUILT_IN_ADAPTER_PREFIXES = [
  * Adapter category constants for UI organization.
  * Values use SCREAMING_SNAKE_CASE to match backend AdapterCategory enum in src/constants/enums.ts.
  */
-export const ADAPTER_CATEGORIES = {
+const ADAPTER_CATEGORIES = {
     DATA_SOURCE: 'DATA_SOURCE',
     TRANSFORMATION: 'TRANSFORMATION',
     FILTERING: 'FILTERING',
@@ -34,9 +34,9 @@ export const ADAPTER_CATEGORIES = {
     UTILITY: 'UTILITY',
 } as const;
 
-export type UIAdapterCategory = typeof ADAPTER_CATEGORIES[keyof typeof ADAPTER_CATEGORIES];
+type UIAdapterCategory = typeof ADAPTER_CATEGORIES[keyof typeof ADAPTER_CATEGORIES];
 
-export interface UIAdapterCategoryConfig {
+interface UIAdapterCategoryConfig {
     readonly category: UIAdapterCategory;
     readonly label: string;
     readonly description: string;
@@ -47,7 +47,7 @@ export interface UIAdapterCategoryConfig {
  * Configuration for each adapter category including display labels, descriptions, and icons.
  * Used by adapter list views and category filters.
  */
-export const ADAPTER_CATEGORY_CONFIGS: Record<UIAdapterCategory, UIAdapterCategoryConfig> = {
+const ADAPTER_CATEGORY_CONFIGS: Record<UIAdapterCategory, UIAdapterCategoryConfig> = {
     [ADAPTER_CATEGORIES.DATA_SOURCE]: {
         category: ADAPTER_CATEGORIES.DATA_SOURCE,
         label: 'Data Sources',

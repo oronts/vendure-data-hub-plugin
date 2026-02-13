@@ -13,7 +13,7 @@ interface TransformTestResultsProps {
 /**
  * Before/After diff display for transform operations
  */
-export const BeforeAfterDiff = memo(function BeforeAfterDiff({
+const BeforeAfterDiff = memo(function BeforeAfterDiff({
     beforeAfter,
 }: {
     beforeAfter: Array<{ before: Record<string, unknown>; after: Record<string, unknown> }>;

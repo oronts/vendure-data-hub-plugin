@@ -81,7 +81,7 @@ export const PIPELINE_STATUS = {
     ARCHIVED: 'ARCHIVED',
 } as const;
 
-export const PIPELINE_STATUS_VARIANTS = {
+const PIPELINE_STATUS_VARIANTS = {
     PUBLISHED: 'default',
     REVIEW: 'outline',
     DRAFT: 'secondary',
@@ -97,7 +97,7 @@ export function getStatusBadgeVariant(status: string): BadgeVariant {
     return PIPELINE_STATUS_VARIANTS[status as PipelineStatus] ?? 'secondary';
 }
 
-export const OPERATOR_PLACEHOLDERS: Record<string, string> = {
+const OPERATOR_PLACEHOLDERS: Record<string, string> = {
     in: 'JSON array, e.g. ["A","B"]',
     regex: 'regex pattern',
     default: 'value',

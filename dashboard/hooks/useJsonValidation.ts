@@ -15,7 +15,7 @@ export interface UseJsonValidationOptions {
     expectedType?: 'object' | 'array' | 'any';
 }
 
-export interface UseJsonValidationResult {
+interface UseJsonValidationResult {
     text: string;
     setText: (value: string) => void;
     parsedValue: unknown;

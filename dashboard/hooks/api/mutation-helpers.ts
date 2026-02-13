@@ -1,6 +1,6 @@
 import { toast } from 'sonner';
 
-export interface MutationErrorOptions {
+interface MutationErrorOptions {
     showDetails?: boolean;
 }
 
@@ -15,7 +15,7 @@ export function createMutationErrorHandler(action: string, options?: MutationErr
     };
 }
 
-export interface MutationSuccessOptions {
+interface MutationSuccessOptions {
     showToast?: boolean;
 }
 

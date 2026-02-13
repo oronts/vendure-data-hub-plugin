@@ -4,7 +4,7 @@ import { AlertCircle } from 'lucide-react';
 import { useJsonValidation, type UseJsonValidationOptions, type JsonValidationError } from '../../hooks';
 import { DEBOUNCE_DELAYS } from '../../constants';
 
-export interface JsonTextareaProps {
+interface JsonTextareaProps {
     /** Current JSON value */
     value: unknown;
     /** Callback when value changes (only called with valid JSON) */

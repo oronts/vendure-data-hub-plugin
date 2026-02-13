@@ -22,7 +22,7 @@ export const TRIGGER_ICONS: Record<TriggerType, LucideIcon> = {
     [TRIGGER_TYPES.MESSAGE]: MessageSquare,
 };
 
-export interface TriggerTypeConfig {
+interface TriggerTypeConfig {
     readonly type: TriggerType;
     readonly label: string;
     readonly description: string;
@@ -91,7 +91,7 @@ export const CRON_PRESETS: readonly CronPreset[] = [
 
 export type { QueueTypeValue as QueueType };
 
-export interface QueueTypeConfig {
+interface QueueTypeConfig {
     readonly type: QueueTypeValue;
     readonly label: string;
     readonly description: string;
@@ -145,7 +145,7 @@ export const ACK_MODES: Record<AckMode, string> = {
     [ACK_MODE_VALUES.MANUAL]: 'Manual',
 };
 
-export interface WebhookAuthOption {
+interface WebhookAuthOption {
     readonly value: string;
     readonly label: string;
 }

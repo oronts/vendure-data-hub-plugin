@@ -6,7 +6,7 @@ import type { JsonObject } from '../../types';
 export type StepConfig = JsonObject;
 
 /** Record type used in step testing */
-export type TestRecord = JsonObject;
+type TestRecord = JsonObject;
 
 const previewExtractDocument = graphql(`
     mutation PreviewDataHubExtractApi($step: JSON!, $limit: Int) {
@@ -41,17 +41,17 @@ const previewFeedDocument = graphql(`
     }
 `);
 
-export interface PreviewExtractInput {
+interface PreviewExtractInput {
     step: StepConfig;
     limit: number;
 }
 
-export interface SimulateStepInput {
+interface SimulateStepInput {
     step: StepConfig;
     records: TestRecord[];
 }
 
-export interface PreviewFeedInput {
+interface PreviewFeedInput {
     feedCode: string;
     limit: number;
 }

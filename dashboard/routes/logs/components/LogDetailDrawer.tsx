@@ -15,7 +15,7 @@ import { ROUTES } from '../../../constants';
 import { formatDateTime } from '../../../utils/formatters';
 import type { DataHubLog } from '../../../types';
 
-export interface LogDetailDrawerProps {
+interface LogDetailDrawerProps {
     log: DataHubLog | null;
     onClose: () => void;
 }

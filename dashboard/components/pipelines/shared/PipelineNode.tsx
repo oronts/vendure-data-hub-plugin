@@ -6,7 +6,7 @@ import { getVisualNodeConfig, VisualNodeConfig } from './visual-node-config';
 import { FALLBACK_COLORS, BRANCH_COLORS, NODE_DIMENSIONS, ICON_SIZES } from '../../../constants';
 import { TEST_STATUS } from '../../../constants/ui-states';
 
-export interface PipelineNodeProps extends NodeProps<Node<PipelineNodeData>> {
+interface PipelineNodeProps extends NodeProps<Node<PipelineNodeData>> {
     category: VisualNodeCategory;
 }
 
@@ -53,7 +53,7 @@ export function createPipelineNode(category: VisualNodeCategory) {
     };
 }
 
-export function ConditionNodeComponent({ data, selected }: NodeProps<Node<PipelineNodeData>>) {
+function ConditionNodeComponent({ data, selected }: NodeProps<Node<PipelineNodeData>>) {
     const config = getVisualNodeConfig('condition');
     const Icon = config.icon;
 
