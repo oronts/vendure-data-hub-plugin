@@ -59,7 +59,7 @@ export type ValidationModeType = 'STRICT' | 'LENIENT';
 /**
  * Run modes - matches src/constants/enums.ts RunMode values
  */
-export type RunModeType = 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
+type RunModeType = 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
 
 /**
  * Route condition operators - matches src/constants/enums.ts RouteConditionOperator values

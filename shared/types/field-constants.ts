@@ -142,14 +142,14 @@ export type LoadStrategyValue = typeof LOAD_STRATEGIES[keyof typeof LOAD_STRATEG
  * - VENDURE_WINS: Keep existing Vendure data, don't update fields
  * - MERGE: Merge fields (only update non-empty source fields)
  */
-export const CONFLICT_RESOLUTIONS = {
+const CONFLICT_RESOLUTIONS = {
     SOURCE_WINS: 'SOURCE_WINS',
     VENDURE_WINS: 'VENDURE_WINS',
     MERGE: 'MERGE',
     MANUAL_QUEUE: 'MANUAL_QUEUE',
 } as const;
 
-export type ConflictResolutionValue = typeof CONFLICT_RESOLUTIONS[keyof typeof CONFLICT_RESOLUTIONS];
+type ConflictResolutionValue = typeof CONFLICT_RESOLUTIONS[keyof typeof CONFLICT_RESOLUTIONS];
 
 // =============================================================================
 // EXTRACTOR FIELD NAMES
