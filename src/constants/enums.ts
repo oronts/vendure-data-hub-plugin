@@ -1,15 +1,13 @@
 /**
  * Diff entry type identifiers for pipeline revision comparison
- *
- * Values use lowercase to match diff/revision type identifier conventions
  */
 export enum DiffEntryType {
-    STEP = 'step',
-    TRIGGER = 'trigger',
-    HOOK = 'hook',
-    EDGE = 'edge',
-    CONFIG = 'config',
-    META = 'meta',
+    STEP = 'STEP',
+    TRIGGER = 'TRIGGER',
+    HOOK = 'HOOK',
+    EDGE = 'EDGE',
+    CONFIG = 'CONFIG',
+    META = 'META',
 }
 
 export enum TriggerType {
@@ -806,9 +804,9 @@ export const TARGET_OPERATION = {
  * Timer types for scheduled pipeline execution
  */
 export const TIMER_TYPE = {
-    INTERVAL: 'interval',
-    CRON: 'cron',
-    REFRESH: 'refresh',
+    INTERVAL: 'INTERVAL',
+    CRON: 'CRON',
+    REFRESH: 'REFRESH',
 } as const;
 export type TimerType = typeof TIMER_TYPE[keyof typeof TIMER_TYPE];
 
@@ -816,9 +814,9 @@ export type TimerType = typeof TIMER_TYPE[keyof typeof TIMER_TYPE];
  * Outcome types for loader record processing
  */
 export const OUTCOME_TYPE = {
-    SKIP: 'skip',
-    ERROR: 'error',
-    CONTINUE: 'continue',
+    SKIP: 'SKIP',
+    ERROR: 'ERROR',
+    CONTINUE: 'CONTINUE',
 } as const;
 export type LoaderOutcomeType = typeof OUTCOME_TYPE[keyof typeof OUTCOME_TYPE];
 

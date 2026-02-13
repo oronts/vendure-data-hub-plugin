@@ -153,8 +153,6 @@ export function removeControlCharacters(value: string): string {
     return result;
 }
 
-export { removeControlCharacters as sanitizeString };
-
 export function cleanWhitespace(value: string): string {
     return value.trim().replace(/\s+/g, ' ');
 }

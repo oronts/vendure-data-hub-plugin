@@ -32,7 +32,7 @@ export interface StepTestOptions {
 /**
  * Parse sample input JSON, returning records or throwing an error
  */
-export function parseSampleInput(sampleInput: string): Array<Record<string, unknown>> {
+function parseSampleInput(sampleInput: string): Array<Record<string, unknown>> {
     const inputRecords = JSON.parse(sampleInput);
     if (!Array.isArray(inputRecords)) {
         throw new Error('Input must be a JSON array');
@@ -43,7 +43,7 @@ export function parseSampleInput(sampleInput: string): Array<Record<string, unkn
 /**
  * Test an EXTRACT step by running the extractor and returning sample records
  */
-export async function testExtractStep(options: StepTestOptions): Promise<TestResult> {
+async function testExtractStep(options: StepTestOptions): Promise<TestResult> {
     const { config, limit = 10 } = options;
 
     const records = await previewExtract(config || {}, limit);
@@ -60,7 +60,7 @@ export async function testExtractStep(options: StepTestOptions): Promise<TestRes
 /**
  * Test a TRANSFORM step by applying transformations to sample records
  */
-export async function testTransformStep(options: StepTestOptions): Promise<TestResult> {
+async function testTransformStep(options: StepTestOptions): Promise<TestResult> {
     const { config, sampleInput = '[]' } = options;
 
     let inputRecords: Array<Record<string, unknown>>;
@@ -91,7 +91,7 @@ export async function testTransformStep(options: StepTestOptions): Promise<TestR
 /**
  * Test a VALIDATE step by running validation rules on sample records
  */
-export async function testValidateStep(options: StepTestOptions): Promise<TestResult> {
+async function testValidateStep(options: StepTestOptions): Promise<TestResult> {
     const { config, sampleInput = '[]' } = options;
 
     let inputRecords: Array<Record<string, unknown>>;
@@ -121,7 +121,7 @@ export async function testValidateStep(options: StepTestOptions): Promise<TestRe
 /**
  * Test a LOAD step by simulating the load operation (no actual database changes)
  */
-export async function testLoadStep(options: StepTestOptions): Promise<TestResult> {
+async function testLoadStep(options: StepTestOptions): Promise<TestResult> {
     const { config, sampleInput = '[]' } = options;
 
     let inputRecords: Array<Record<string, unknown>>;
@@ -147,7 +147,7 @@ export async function testLoadStep(options: StepTestOptions): Promise<TestResult
 /**
  * Test a FEED step by generating feed output
  */
-export async function testFeedStep(options: StepTestOptions): Promise<TestResult> {
+async function testFeedStep(options: StepTestOptions): Promise<TestResult> {
     const { config, limit = 10 } = options;
 
     const feedConfig = config as { code?: string; feedCode?: string };
@@ -183,7 +183,7 @@ export async function testFeedStep(options: StepTestOptions): Promise<TestResult
 /**
  * Get a result for TRIGGER steps (cannot be tested directly)
  */
-export function getTriggerStepResult(config: Record<string, unknown>): TestResult {
+function getTriggerStepResult(config: Record<string, unknown>): TestResult {
     const triggerConfig = config as { type?: string };
     return {
         status: 'success',
@@ -198,7 +198,7 @@ export function getTriggerStepResult(config: Record<string, unknown>): TestResul
 /**
  * Get a result for EXPORT/SINK steps (cannot be tested directly)
  */
-export function getOutputStepResult(effectiveType: string, config: Record<string, unknown>): TestResult {
+function getOutputStepResult(effectiveType: string, config: Record<string, unknown>): TestResult {
     return {
         status: 'success',
         message: `${effectiveType} steps write to external destinations. Use the full pipeline dry run to test.`,
@@ -209,7 +209,7 @@ export function getOutputStepResult(effectiveType: string, config: Record<string
 /**
  * Get a result for unknown step types
  */
-export function getUnknownStepResult(effectiveType: string): TestResult {
+function getUnknownStepResult(effectiveType: string): TestResult {
     return {
         status: 'warning',
         message: `Unknown step type: ${effectiveType}`,

@@ -93,9 +93,11 @@ export function applyFilter<T extends ObjectLiteral>(
             queryBuilder.andWhere(`entity.${filter.field} IN (:...${paramName})`, { [paramName]: filter.value });
             break;
         case 'like':
-        case 'contains':
-            queryBuilder.andWhere(`entity.${filter.field} LIKE :${paramName}`, { [paramName]: `%${filter.value}%` });
+        case 'contains': {
+            const escaped = String(filter.value).replace(/[%_\\]/g, '\\$&');
+            queryBuilder.andWhere(`entity.${filter.field} LIKE :${paramName}`, { [paramName]: `%${escaped}%` });
             break;
+        }
     }
 }
 

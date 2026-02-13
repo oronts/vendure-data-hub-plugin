@@ -4,7 +4,7 @@ import { graphql } from '../../gql';
 import { POLLING_INTERVALS } from '../../constants';
 import type { DataHubLogListOptions } from '../../types';
 
-export const logKeys = {
+const logKeys = {
     all: ['logs'] as const,
     lists: () => [...logKeys.all, 'list'] as const,
     list: (options?: DataHubLogListOptions) => [...logKeys.lists(), options] as const,

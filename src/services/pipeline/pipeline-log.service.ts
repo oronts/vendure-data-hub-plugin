@@ -147,7 +147,7 @@ export class PipelineLogService {
         return repo.find({
             where: { runId: Number(runId) },
             order: { createdAt: SortOrder.ASC },
-            take: 10000,
+            take: PAGINATION.MAX_RUN_LOG_ENTRIES,
         });
     }
 

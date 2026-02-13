@@ -24,6 +24,8 @@ export const PAGINATION_PARAMS = {
  * Pagination and limits defaults
  */
 export const PAGINATION = {
+    /** Maximum log entries to return for a single pipeline run */
+    MAX_RUN_LOG_ENTRIES: 10000,
     /** Maximum pages to fetch from paginated APIs */
     MAX_PAGES: 100,
     /** Maximum pages for GraphQL queries */

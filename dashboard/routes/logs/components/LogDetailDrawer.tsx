@@ -12,6 +12,7 @@ import {
 import { Link } from '@tanstack/react-router';
 import { LogLevelBadge } from './LogLevelBadge';
 import { ROUTES } from '../../../constants';
+import { formatDateTime } from '../../../utils/formatters';
 import type { DataHubLog } from '../../../types';
 
 export interface LogDetailDrawerProps {
@@ -34,7 +35,7 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
                 <DrawerHeader>
                     <DrawerTitle>Log Details</DrawerTitle>
                     <DrawerDescription>
-                        {log?.createdAt ? new Date(log.createdAt).toLocaleString() : ''}
+                        {log?.createdAt ? formatDateTime(log.createdAt) : ''}
                     </DrawerDescription>
                 </DrawerHeader>
                 {log && (

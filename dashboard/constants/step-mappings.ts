@@ -13,7 +13,6 @@ import {
     Rss,
     Search,
 } from 'lucide-react';
-import { FALLBACK_COLORS } from './colors';
 
 export const NODE_CATEGORIES = {
     TRIGGER: 'trigger',
@@ -118,15 +117,6 @@ export function mapCategoryToStepType(category: string): StepType {
     return CATEGORY_TO_STEP_TYPE[category] ?? 'TRANSFORM';
 }
 
-function getStepTypeColor(stepType: string): string {
-    const type = String(stepType).toUpperCase();
-    return STEP_TYPE_COLORS[type] ?? FALLBACK_COLORS.MUTED;
-}
-
-function getCategoryColor(category: VisualNodeCategory): string {
-    return CATEGORY_COLORS[category] ?? FALLBACK_COLORS.MUTED;
-}
-
 export const STEP_TYPE_ICONS: Record<string, LucideIcon> = {
     TRIGGER: Play,
     EXTRACT: Download,
@@ -154,6 +144,3 @@ export function getStepTypeIcon(stepType: string): LucideIcon | undefined {
     return STEP_TYPE_ICONS[type];
 }
 
-function getNodeStatusColor(status: UINodeStatus): string {
-    return NODE_STATUS_COLORS[status] ?? FALLBACK_COLORS.MUTED;
-}

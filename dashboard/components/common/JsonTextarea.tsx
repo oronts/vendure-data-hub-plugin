@@ -129,7 +129,7 @@ export function JsonTextarea({
     );
 }
 
-export interface InlineJsonTextareaProps {
+interface InlineJsonTextareaProps {
     value: unknown;
     onChange: (value: unknown) => void;
     placeholder?: string;
@@ -141,7 +141,7 @@ export interface InlineJsonTextareaProps {
     expectedType?: 'object' | 'array' | 'any';
 }
 
-export function InlineJsonTextarea({
+function InlineJsonTextarea({
     value,
     onChange,
     placeholder = '{}',

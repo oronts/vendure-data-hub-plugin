@@ -8,8 +8,8 @@ export interface DiffEntry {
     path: string;
     /** Human-readable label: "Transform 'normalize' → operator 'map'" */
     label: string;
-    /** Type of change: step, trigger, hook, edge, config, meta */
-    type: 'step' | 'trigger' | 'hook' | 'edge' | 'config' | 'meta';
+    /** Type of change: STEP, TRIGGER, HOOK, EDGE, CONFIG, META */
+    type: 'STEP' | 'TRIGGER' | 'HOOK' | 'EDGE' | 'CONFIG' | 'META';
     /** Value before the change (null for additions) */
     before: unknown | null;
     /** Value after the change (null for removals) */

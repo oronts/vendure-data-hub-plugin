@@ -13,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { pipelineTimelineDocument, pipelineKeys } from '../../../hooks';
 import { REVISION_TYPE, UI_LIMITS, DIALOG_DIMENSIONS } from '../../../constants';
+import { formatDateTime } from '../../../utils/formatters';
 
 export interface TimelineEntry {
     revision: {
@@ -85,7 +86,7 @@ export function VersionHistoryDialog({
                                             </Badge>
                                         </div>
                                         <span className="text-xs text-muted-foreground">
-                                            {new Date(entry.revision.createdAt).toLocaleString()}
+                                            {formatDateTime(entry.revision.createdAt)}
                                         </span>
                                     </div>
                                     {entry.revision.commitMessage && (

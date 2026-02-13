@@ -150,7 +150,7 @@ export abstract class BaseEntityLoader<
 
     /**
      * Handle an existing entity during load.
-     * Returns 'continue' to proceed with success increment, 'skip' to skip, or 'error' on failure.
+     * Returns CONTINUE to proceed with success increment, SKIP to skip, or ERROR on failure.
      */
     private async handleExistingEntity(
         context: LoaderContext,

@@ -25,7 +25,7 @@ export interface UseJsonValidationResult {
     validateNow: () => JsonValidationError | null;
 }
 
-export function parseJsonWithDetails(text: string): { value: unknown; error: JsonValidationError | null } {
+function parseJsonWithDetails(text: string): { value: unknown; error: JsonValidationError | null } {
     if (!text.trim()) {
         return { value: undefined, error: null };
     }

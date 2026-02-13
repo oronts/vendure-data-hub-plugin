@@ -1,15 +1,12 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
-import { createMutationErrorHandler } from './mutation-helpers';
 import { QUERY_LIMITS } from '../../constants';
 import type {
     DataHubConnectionListOptions,
-    CreateDataHubConnectionInput,
-    UpdateDataHubConnectionInput,
 } from '../../types';
 
-export const connectionKeys = {
+const connectionKeys = {
     all: ['connections'] as const,
     lists: () => [...connectionKeys.all, 'list'] as const,
     list: (options?: DataHubConnectionListOptions) => [...connectionKeys.lists(), options] as const,
@@ -95,47 +92,3 @@ export function useConnectionCodes() {
     });
 }
 
-export function useCreateConnection() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (input: CreateDataHubConnectionInput) =>
-            api.mutate(createConnectionDocument, { input }).then((res) => res.createDataHubConnection),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: connectionKeys.lists() });
-            queryClient.invalidateQueries({ queryKey: connectionKeys.codes() });
-        },
-        onError: createMutationErrorHandler('create connection'),
-    });
-}
-
-export function useUpdateConnection() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (input: UpdateDataHubConnectionInput) =>
-            api.mutate(updateConnectionDocument, { input }).then((res) => res.updateDataHubConnection),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: connectionKeys.lists() });
-            queryClient.invalidateQueries({ queryKey: connectionKeys.codes() });
-            if (data?.id) {
-                queryClient.invalidateQueries({ queryKey: connectionKeys.detail(String(data.id)) });
-            }
-        },
-        onError: createMutationErrorHandler('update connection'),
-    });
-}
-
-export function useDeleteConnection() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (id: string) =>
-            api.mutate(deleteConnectionDocument, { id }).then((res) => res.deleteDataHubConnection),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: connectionKeys.lists() });
-            queryClient.invalidateQueries({ queryKey: connectionKeys.codes() });
-        },
-        onError: createMutationErrorHandler('delete connection'),
-    });
-}

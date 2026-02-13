@@ -36,8 +36,6 @@ export function escapeHtmlEntities(str: string): string {
         .replace(/\//g, '&#x2F;');
 }
 
-export { escapeHtmlEntities as sanitizeString };
-
 export const isValidPipelineCode = isValidPipelineCodeFromShared;
 
 export function isValidPath(filePath: string): boolean {

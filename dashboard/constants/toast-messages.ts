@@ -100,6 +100,7 @@ export const TOAST_WIZARD = {
     IMPORT_NAME_REQUIRED: 'Please provide a name for the import configuration',
     EXPORT_NAME_REQUIRED: 'Please provide a name for the export configuration',
     URL_REQUIRED: 'Please enter a URL first',
+    TEMPLATE_SELECTED: 'Template applied',
 } as const;
 
 /**

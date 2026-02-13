@@ -240,7 +240,8 @@ export class VendureExtractHandler implements ExtractHandler {
 
     private getFilterParamValue(operator: FilterOperator, value: unknown): unknown {
         if (operator === 'like' || operator === 'contains') {
-            return `%${value}%`;
+            const escaped = String(value).replace(/[%_\\]/g, '\\$&');
+            return `%${escaped}%`;
         }
         return value;
     }

@@ -8,25 +8,25 @@ export type StepConfig = JsonObject;
 /** Record type used in step testing */
 export type TestRecord = JsonObject;
 
-export const previewExtractDocument = graphql(`
+const previewExtractDocument = graphql(`
     mutation PreviewDataHubExtractApi($step: JSON!, $limit: Int) {
         previewDataHubExtract(step: $step, limit: $limit) { records }
     }
 `);
 
-export const simulateTransformDocument = graphql(`
+const simulateTransformDocument = graphql(`
     mutation SimulateDataHubTransformApi($step: JSON!, $records: JSON!) {
         simulateDataHubTransform(step: $step, records: $records)
     }
 `);
 
-export const simulateLoadDocument = graphql(`
+const simulateLoadDocument = graphql(`
     mutation SimulateDataHubLoadApi($step: JSON!, $records: JSON!) {
         simulateDataHubLoad(step: $step, records: $records)
     }
 `);
 
-export const simulateValidateDocument = graphql(`
+const simulateValidateDocument = graphql(`
     mutation SimulateDataHubValidateApi($step: JSON!, $records: JSON!) {
         simulateDataHubValidate(step: $step, records: $records) {
             records
@@ -35,7 +35,7 @@ export const simulateValidateDocument = graphql(`
     }
 `);
 
-export const previewFeedDocument = graphql(`
+const previewFeedDocument = graphql(`
     mutation PreviewDataHubFeedApi($feedCode: String!, $limit: Int) {
         previewDataHubFeed(feedCode: $feedCode, limit: $limit) { content contentType itemCount }
     }

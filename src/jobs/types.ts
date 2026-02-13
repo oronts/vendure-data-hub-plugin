@@ -14,8 +14,8 @@ export interface ScheduledPipelineJobData {
     pipelineId: ID;
     /** The code of the pipeline (for logging) */
     pipelineCode: string;
-    /** Trigger type: interval or cron */
-    triggerType: 'interval' | 'cron';
+    /** Trigger type: INTERVAL or CRON */
+    triggerType: 'INTERVAL' | 'CRON';
 }
 
 /**

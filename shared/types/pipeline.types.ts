@@ -3,7 +3,7 @@
  */
 
 import { JsonObject, JsonValue } from './json.types';
-import { Throughput, PipelineStepDefinition, PipelineEdge, PipelineCapabilities } from './step.types';
+import { Throughput, PipelineStepDefinition, PipelineEdge, PipelineCapabilities, ChannelStrategy, ValidationModeType } from './step.types';
 import { FieldMapping } from './mapping.types';
 import { FilterCondition } from './filter.types';
 import { PipelineHooksConfig, PipelineHooks } from './hook.types';
@@ -131,11 +131,11 @@ export interface CheckpointingConfig {
  * These types match the enum values in src/constants/enums.ts
  */
 
-/** Strategy for handling Vendure channels */
-export type ChannelStrategyValue = 'EXPLICIT' | 'INHERIT' | 'MULTI';
+// ChannelStrategyValue is canonical as ChannelStrategy in step.types.ts
+export type ChannelStrategyValue = ChannelStrategy;
 
-/** Mode for validation strictness */
-export type ValidationModeValue = 'STRICT' | 'LENIENT';
+// ValidationModeValue is canonical as ValidationModeType in step.types.ts
+export type ValidationModeValue = ValidationModeType;
 
 /** Execution mode for the pipeline */
 export type RunModeValue = 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';

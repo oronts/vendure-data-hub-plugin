@@ -4,7 +4,7 @@ import { graphql } from '../../gql';
 import { createMutationErrorHandler, createMutationSuccessHandler } from './mutation-helpers';
 import type { DataHubSettingsInput } from '../../types';
 
-export const settingsKeys = {
+const settingsKeys = {
     all: ['settings'] as const,
     detail: () => [...settingsKeys.all, 'detail'] as const,
 };

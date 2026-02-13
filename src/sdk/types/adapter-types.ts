@@ -19,6 +19,10 @@ import {
     AdapterCategory,
     TriggerType,
     ChannelStrategy,
+    LanguageStrategyValue,
+    ValidationModeValue,
+    ConflictStrategyValue,
+    FeedType,
 } from '../../../shared/types';
 
 // Re-export from shared types (ChannelStrategy canonical in shared/types/step.types.ts)
@@ -218,20 +222,14 @@ export interface SingleRecordOperator<TConfig = JsonObject> extends BaseAdapter<
 
 // ChannelStrategy is imported and re-exported from shared/types/step.types.ts above
 
-/**
- * Language handling strategy
- */
-export type LanguageStrategy = 'SPECIFIC' | 'FALLBACK' | 'MULTI';
+// LanguageStrategy is canonical as LanguageStrategyValue in shared/types/pipeline.types.ts
+export type LanguageStrategy = LanguageStrategyValue;
 
-/**
- * Validation strictness mode for loaders
- */
-export type ValidationStrictness = 'STRICT' | 'LENIENT';
+// ValidationStrictness is canonical as ValidationModeValue in shared/types/pipeline.types.ts
+export type ValidationStrictness = ValidationModeValue;
 
-/**
- * Conflict resolution strategy
- */
-export type ConflictStrategy = 'SOURCE_WINS' | 'VENDURE_WINS' | 'MERGE' | 'MANUAL_QUEUE';
+// ConflictStrategy is canonical as ConflictStrategyValue in shared/types/pipeline.types.ts
+export type ConflictStrategy = ConflictStrategyValue;
 
 export type LoadStrategy =
     | 'CREATE' | 'UPDATE' | 'UPSERT' | 'MERGE' | 'SOFT_DELETE' | 'HARD_DELETE';
@@ -391,20 +389,8 @@ export interface ExporterAdapter<TConfig = JsonObject> extends BaseAdapter<TConf
 
 // FEED ADAPTER
 
-/**
- * Product feed types for marketplaces
- */
-export type FeedType =
-    | 'GOOGLE_SHOPPING'
-    | 'META_CATALOG'
-    | 'AMAZON'
-    | 'PINTEREST'
-    | 'TIKTOK'
-    | 'BING_SHOPPING'
-    | 'CSV'
-    | 'JSON'
-    | 'XML'
-    | 'CUSTOM';
+// FeedType is canonical in shared/types/pipeline.types.ts (imported at top)
+export type { FeedType };
 
 /**
  * Feed file formats

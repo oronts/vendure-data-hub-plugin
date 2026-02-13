@@ -98,7 +98,7 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
         }));
         // Move to first step after template (source step)
         setCurrentStep(0);
-        toast.success(`Template "${template.name}" selected`);
+        toast.success(TOAST_WIZARD.TEMPLATE_SELECTED);
     }, []);
 
     // Handle starting from scratch

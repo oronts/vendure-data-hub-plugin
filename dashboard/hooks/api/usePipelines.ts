@@ -5,8 +5,6 @@ import { ArchiveDataHubPipelineApiDocument } from '../../gql/graphql';
 import { createMutationErrorHandler } from './mutation-helpers';
 import type {
     DataHubPipelineListOptions,
-    CreateDataHubPipelineInput,
-    UpdateDataHubPipelineInput,
 } from '../../types';
 import { runKeys } from './usePipelineRuns';
 
@@ -80,7 +78,7 @@ export const deletePipelineDocument = graphql(`
     }
 `);
 
-export const runPipelineDocument = graphql(`
+const runPipelineDocument = graphql(`
     mutation RunDataHubPipelineApi($pipelineId: ID!) {
         startDataHubPipelineRun(pipelineId: $pipelineId) {
             id
@@ -111,7 +109,7 @@ export const validatePipelineDefinitionDocument = graphql(`
     }
 `);
 
-export const dryRunPipelineDocument = graphql(`
+const dryRunPipelineDocument = graphql(`
     mutation DryRunDataHubPipelineApi($pipelineId: ID!) {
         startDataHubPipelineDryRun(pipelineId: $pipelineId) {
             metrics
@@ -142,7 +140,7 @@ export const pipelineTimelineDocument = graphql(`
     }
 `);
 
-export const submitPipelineForReviewDocument = graphql(`
+const submitPipelineForReviewDocument = graphql(`
     mutation SubmitDataHubPipelineForReviewApi($id: ID!) {
         submitDataHubPipelineForReview(id: $id) {
             id
@@ -151,7 +149,7 @@ export const submitPipelineForReviewDocument = graphql(`
     }
 `);
 
-export const approvePipelineDocument = graphql(`
+const approvePipelineDocument = graphql(`
     mutation ApproveDataHubPipelineApi($id: ID!) {
         approveDataHubPipeline(id: $id) {
             id
@@ -160,7 +158,7 @@ export const approvePipelineDocument = graphql(`
     }
 `);
 
-export const rejectPipelineDocument = graphql(`
+const rejectPipelineDocument = graphql(`
     mutation RejectDataHubPipelineReviewApi($id: ID!) {
         rejectDataHubPipelineReview(id: $id) {
             id
@@ -169,7 +167,7 @@ export const rejectPipelineDocument = graphql(`
     }
 `);
 
-export const publishPipelineDocument = graphql(`
+const publishPipelineDocument = graphql(`
     mutation PublishDataHubPipelineApi($id: ID!) {
         publishDataHubPipeline(id: $id) {
             id
@@ -179,7 +177,7 @@ export const publishPipelineDocument = graphql(`
     }
 `);
 
-export const archivePipelineDocument = ArchiveDataHubPipelineApiDocument;
+const archivePipelineDocument = ArchiveDataHubPipelineApiDocument;
 
 export function usePipelines(options?: DataHubPipelineListOptions) {
     return useQuery({
@@ -195,48 +193,6 @@ export function usePipeline(id: string | undefined) {
         queryFn: () =>
             api.query(pipelineDetailDocument, { id: id! }).then((res) => res.dataHubPipeline),
         enabled: !!id,
-    });
-}
-
-export function useCreatePipeline() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (input: CreateDataHubPipelineInput) =>
-            api.mutate(createPipelineDocument, { input }).then((res) => res.createDataHubPipeline),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-        },
-        onError: createMutationErrorHandler('create pipeline'),
-    });
-}
-
-export function useUpdatePipeline() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (input: UpdateDataHubPipelineInput) =>
-            api.mutate(updatePipelineDocument, { input }).then((res) => res.updateDataHubPipeline),
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-            if (data?.id) {
-                queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(String(data.id)) });
-            }
-        },
-        onError: createMutationErrorHandler('update pipeline'),
-    });
-}
-
-export function useDeletePipeline() {
-    const queryClient = useQueryClient();
-
-    return useMutation({
-        mutationFn: (id: string) =>
-            api.mutate(deletePipelineDocument, { id }).then((res) => res.deleteDataHubPipeline),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: pipelineKeys.lists() });
-        },
-        onError: createMutationErrorHandler('delete pipeline'),
     });
 }
 

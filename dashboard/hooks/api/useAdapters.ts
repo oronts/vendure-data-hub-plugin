@@ -4,7 +4,7 @@ import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { CACHE_TIMES } from '../../constants';
 
-export const adapterKeys = {
+const adapterKeys = {
     all: ['adapters'] as const,
     catalog: () => [...adapterKeys.all, 'catalog'] as const,
     byType: (type: string) => [...adapterKeys.all, 'byType', type] as const,

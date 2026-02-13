@@ -23,6 +23,7 @@ import {
 } from '@vendure/dashboard';
 import { toast } from 'sonner';
 import { DATAHUB_NAV_SECTION, UI_DEFAULTS, QUERY_LIMITS, ROUTES, DATAHUB_PERMISSIONS, TOAST_HOOK } from '../../constants';
+import { formatDateTime } from '../../utils/formatters';
 import {
     Play,
     RefreshCw,
@@ -294,6 +295,7 @@ function HooksPage() {
                         <input
                             className="border rounded px-3 py-1.5 text-sm w-48"
                             placeholder="Filter events..."
+                            aria-label="Filter hook events"
                             value={eventFilter}
                             onChange={e => setEventFilter(e.target.value)}
                         />
@@ -318,7 +320,7 @@ function HooksPage() {
                                     <tr key={`${e.createdAt}-${e.name}`} className="border-t align-top hover:bg-muted/50">
                                         <td className="px-3 py-2 text-muted-foreground">
                                             <Clock className="w-3 h-3 inline mr-1" />
-                                            {new Date(e.createdAt as string).toLocaleTimeString()}
+                                            {formatDateTime(e.createdAt as string)}
                                         </td>
                                         <td className="px-3 py-2">
                                             <code className="text-xs bg-muted px-1.5 py-0.5 rounded">

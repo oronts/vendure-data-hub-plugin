@@ -256,6 +256,7 @@ export function LogExplorerTab() {
                                 onClick={handlePrevPage}
                                 disabled={page === 1}
                                 data-testid="datahub-logs-prev-page"
+                                aria-label="Previous page"
                             >
                                 <ChevronLeft className="w-4 h-4" />
                             </Button>
@@ -268,6 +269,7 @@ export function LogExplorerTab() {
                                 onClick={handleNextPage}
                                 disabled={page >= totalPages}
                                 data-testid="datahub-logs-next-page"
+                                aria-label="Next page"
                             >
                                 <ChevronRight className="w-4 h-4" />
                             </Button>

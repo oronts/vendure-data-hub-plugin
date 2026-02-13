@@ -5,7 +5,7 @@ import { createMutationErrorHandler } from './mutation-helpers';
 import { POLLING_INTERVALS } from '../../constants';
 import type { JsonObject } from '../../types';
 
-export const hookKeys = {
+const hookKeys = {
     all: ['pipelineHooks'] as const,
     details: () => [...hookKeys.all, 'detail'] as const,
     detail: (pipelineId: string) => [...hookKeys.details(), pipelineId] as const,
