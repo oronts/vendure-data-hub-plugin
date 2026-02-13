@@ -11,7 +11,7 @@ import {
     ExtractorPreviewResult,
 } from '../../types/index';
 import { VendureQueryExtractorConfig } from './types';
-import { getEntityClass, applyFilter, entityToRecord, EntityLike } from './helpers';
+import { getEntityClass, applyFilter, entityToRecord, EntityLike, validateFieldName } from './helpers';
 
 interface EntityWithMeta {
     id: ID;
@@ -121,6 +121,9 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
                 const queryBuilder = repo.createQueryBuilder('entity');
 
                 for (const relation of relations) {
+                    if (!validateFieldName(relation)) {
+                        throw new Error(`Invalid relation name: ${relation}`);
+                    }
                     queryBuilder.leftJoinAndSelect(`entity.${relation}`, relation);
                 }
 
@@ -131,10 +134,24 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
                 }
 
                 if (config.where) {
-                    queryBuilder.andWhere(config.where);
+                    if (typeof config.where === 'string') {
+                        throw new Error('Raw WHERE clauses are not supported. Use config.filters instead.');
+                    }
+                    if (typeof config.where === 'object') {
+                        for (const [field, value] of Object.entries(config.where)) {
+                            if (!validateFieldName(field)) {
+                                throw new Error(`Invalid field name in where clause: ${field}`);
+                            }
+                            const paramName = `where_${field.replace(/\./g, '_')}`;
+                            queryBuilder.andWhere(`entity.${field} = :${paramName}`, { [paramName]: value });
+                        }
+                    }
                 }
 
                 const sortBy = config.sortBy || 'createdAt';
+                if (!validateFieldName(sortBy)) {
+                    throw new Error(`Invalid sortBy field name: ${sortBy}`);
+                }
                 const sortOrder = config.sortOrder || SortOrder.ASC;
                 queryBuilder.orderBy(`entity.${sortBy}`, sortOrder);
 

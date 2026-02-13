@@ -1,6 +1,5 @@
 import * as React from 'react';
 import {
-    api,
     Button,
     Dialog,
     DialogContent,
@@ -13,7 +12,7 @@ import {
     TabsTrigger,
 } from '@vendure/dashboard';
 import { toast } from 'sonner';
-import { dryRunPipelineDocument } from '../../../hooks';
+import { useDryRunPipeline } from '../../../hooks';
 import type { DryRunResult, DryRunMetrics, PipelineDefinition } from '../../../types';
 import { formatDiffValue } from '../../../utils/formatters';
 import { DIFF_TYPE, DIALOG_DIMENSIONS, SCROLL_HEIGHTS, TOAST_PIPELINE } from '../../../constants';
@@ -30,50 +29,44 @@ export function DryRunDialog({
     onOpenChange,
     pipelineId,
 }: DryRunDialogProps) {
-    const [dryRunResult, setDryRunResult] = React.useState<DryRunResult | null>(null);
-    const [dryRunPending, setDryRunPending] = React.useState(false);
-    const [dryRunError, setDryRunError] = React.useState<string | null>(null);
+    const dryRun = useDryRunPipeline(pipelineId);
     const [hasAttempted, setHasAttempted] = React.useState(false);
     const [dryRunTab, setDryRunTab] = React.useState<'summary' | 'diff' | 'simulation'>('summary');
 
-    const handleDryRun = React.useCallback(async () => {
+    const dryRunResult: DryRunResult | null = React.useMemo(() => {
+        if (!dryRun.data) return null;
+        const result = dryRun.data;
+        return {
+            metrics: (result as Record<string, unknown>).metrics,
+            notes: ((result as Record<string, unknown>).notes as string[] | undefined) ?? [],
+            sampleRecords: ((result as Record<string, unknown>).sampleRecords as DryRunResult['sampleRecords']) ?? undefined,
+        };
+    }, [dryRun.data]);
+
+    const dryRunError = dryRun.error instanceof Error ? dryRun.error.message : dryRun.error ? 'Unknown error' : null;
+
+    const handleDryRun = React.useCallback(() => {
         if (!pipelineId) return;
-        setDryRunPending(true);
-        setDryRunError(null);
         setHasAttempted(true);
-        try {
-            const res = await api.mutate(dryRunPipelineDocument, { pipelineId });
-            const result = res?.startDataHubPipelineDryRun;
-            if (result) {
-                setDryRunResult({
-                    metrics: result.metrics,
-                    notes: result.notes ?? [],
-                    sampleRecords: result.sampleRecords ?? undefined,
-                });
-            } else {
-                setDryRunResult(null);
-            }
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-            setDryRunError(errorMessage);
-            toast.error(TOAST_PIPELINE.DRY_RUN_FAILED, { description: errorMessage });
-        } finally {
-            setDryRunPending(false);
-        }
-    }, [pipelineId]);
+        dryRun.mutate(undefined, {
+            onError: (err) => {
+                const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+                toast.error(TOAST_PIPELINE.DRY_RUN_FAILED, { description: errorMessage });
+            },
+        });
+    }, [pipelineId, dryRun]);
 
     // Run dry run when dialog opens (only once)
     React.useEffect(() => {
-        if (open && pipelineId && !hasAttempted && !dryRunPending) {
+        if (open && pipelineId && !hasAttempted && !dryRun.isPending) {
             handleDryRun();
         }
-    }, [open, pipelineId, hasAttempted, dryRunPending, handleDryRun]);
+    }, [open, pipelineId, hasAttempted, dryRun.isPending, handleDryRun]);
 
     // Reset state when dialog closes
     React.useEffect(() => {
         if (!open) {
-            setDryRunResult(null);
-            setDryRunError(null);
+            dryRun.reset();
             setHasAttempted(false);
             setDryRunTab('summary');
         }
@@ -85,7 +78,7 @@ export function DryRunDialog({
                 <DialogHeader>
                     <DialogTitle>Dry Run</DialogTitle>
                     <DialogDescription>
-                        {dryRunPending ? 'Running dry run...' : 'Preview pipeline execution without making changes'}
+                        {dryRun.isPending ? 'Running dry run...' : 'Preview pipeline execution without making changes'}
                     </DialogDescription>
                 </DialogHeader>
                 <Tabs value={dryRunTab} onValueChange={v => setDryRunTab(v as typeof dryRunTab)} className="flex-1 overflow-hidden flex flex-col">
@@ -96,7 +89,7 @@ export function DryRunDialog({
                     </TabsList>
                     <div className="flex-1 overflow-auto mt-4">
                         <TabsContent value="summary" className="mt-0">
-                            {dryRunPending ? (
+                            {dryRun.isPending ? (
                                 <div className="flex items-center gap-2 text-muted-foreground py-8 justify-center">
                                     <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
                                     <span>Running dry run...</span>
@@ -198,9 +191,9 @@ export function DryRunDialog({
                                         handleDryRun();
                                         setDryRunTab('diff');
                                     }}
-                                    disabled={dryRunPending}
+                                    disabled={dryRun.isPending}
                                 >
-                                    {dryRunPending ? 'Running...' : 'Run Dry Run & View Diff'}
+                                    {dryRun.isPending ? 'Running...' : 'Run Dry Run & View Diff'}
                                 </Button>
                             </div>
                         </TabsContent>
@@ -212,8 +205,8 @@ export function DryRunDialog({
                     </div>
                     <div className="flex items-center gap-2">
                         <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-                        <Button onClick={handleDryRun} disabled={dryRunPending}>
-                            {dryRunPending ? 'Running...' : 'Run Dry Run'}
+                        <Button onClick={handleDryRun} disabled={dryRun.isPending}>
+                            {dryRun.isPending ? 'Running...' : 'Run Dry Run'}
                         </Button>
                     </div>
                 </div>

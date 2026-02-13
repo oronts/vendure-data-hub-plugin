@@ -22,6 +22,7 @@ import {
 import { Link } from '@tanstack/react-router';
 import { RefreshCw, AlertTriangle, Clock, CheckCircle, XCircle, Radio } from 'lucide-react';
 import { StatCard, LoadingState, ErrorState } from '../../components/shared';
+import { formatDateTime } from '../../utils/formatters';
 import { DATAHUB_NAV_SECTION, ROUTES, DATAHUB_PERMISSIONS } from '../../constants';
 import {
     useQueueStats,
@@ -253,11 +254,11 @@ function QueuesPage() {
                                 <div className="grid grid-cols-2 gap-2 text-sm">
                                     <div>
                                         <div className="text-muted-foreground">Started</div>
-                                        <div>{runDetails.data?.startedAt ? new Date(String(runDetails.data?.startedAt)).toLocaleString() : '—'}</div>
+                                        <div>{runDetails.data?.startedAt ? formatDateTime(String(runDetails.data?.startedAt)) : '—'}</div>
                                     </div>
                                     <div>
                                         <div className="text-muted-foreground">Finished</div>
-                                        <div>{runDetails.data?.finishedAt ? new Date(String(runDetails.data?.finishedAt)).toLocaleString() : '—'}</div>
+                                        <div>{runDetails.data?.finishedAt ? formatDateTime(String(runDetails.data?.finishedAt)) : '—'}</div>
                                     </div>
                                 </div>
                                 <div>

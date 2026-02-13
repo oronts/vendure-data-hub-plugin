@@ -1,6 +1,5 @@
 import * as React from 'react';
 import {
-    api,
     Badge,
     Button,
     Dialog,
@@ -10,9 +9,10 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@vendure/dashboard';
-import { toast } from 'sonner';
-import { pipelineTimelineDocument } from '../../../hooks';
-import { REVISION_TYPE, UI_LIMITS, DIALOG_DIMENSIONS, TOAST_PIPELINE } from '../../../constants';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@vendure/dashboard';
+import { pipelineTimelineDocument, pipelineKeys } from '../../../hooks';
+import { REVISION_TYPE, UI_LIMITS, DIALOG_DIMENSIONS } from '../../../constants';
 
 export interface TimelineEntry {
     revision: {
@@ -42,32 +42,13 @@ export function VersionHistoryDialog({
     onOpenChange,
     pipelineId,
 }: VersionHistoryDialogProps) {
-    const [historyPending, setHistoryPending] = React.useState(false);
-    const [timeline, setTimeline] = React.useState<TimelineEntry[]>([]);
-
-    // Load timeline when dialog opens
-    React.useEffect(() => {
-        if (open && pipelineId) {
-            setHistoryPending(true);
-            api.query(pipelineTimelineDocument, { pipelineId, limit: UI_LIMITS.TIMELINE_LIMIT })
-                .then(res => {
-                    setTimeline((res?.dataHubPipelineTimeline ?? []) as TimelineEntry[]);
-                })
-                .catch(err => {
-                    toast.error(TOAST_PIPELINE.HISTORY_LOAD_ERROR, { description: err instanceof Error ? err.message : 'Unknown error' });
-                })
-                .finally(() => {
-                    setHistoryPending(false);
-                });
-        }
-    }, [open, pipelineId]);
-
-    // Reset state when dialog closes
-    React.useEffect(() => {
-        if (!open) {
-            setTimeline([]);
-        }
-    }, [open]);
+    const { data: timeline = [], isPending: historyPending } = useQuery({
+        queryKey: pipelineKeys.timeline(pipelineId ?? '', UI_LIMITS.TIMELINE_LIMIT),
+        queryFn: () =>
+            api.query(pipelineTimelineDocument, { pipelineId: pipelineId!, limit: UI_LIMITS.TIMELINE_LIMIT })
+                .then(res => (res?.dataHubPipelineTimeline ?? []) as TimelineEntry[]),
+        enabled: open && !!pipelineId,
+    });
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>

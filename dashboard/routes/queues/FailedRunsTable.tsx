@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Button } from '@vendure/dashboard';
 import type { FailedRun } from './types';
+import { formatDateTime } from '../../utils/formatters';
 
 // Memoized row component for failed runs
 const FailedRunRow = React.memo(function FailedRunRow({
@@ -22,7 +23,7 @@ const FailedRunRow = React.memo(function FailedRunRow({
                 </button>
             </td>
             <td className="px-3 py-2 font-mono text-muted-foreground">{run.code}</td>
-            <td className="px-3 py-2">{run.finishedAt ? new Date(run.finishedAt).toLocaleString() : '—'}</td>
+            <td className="px-3 py-2">{run.finishedAt ? formatDateTime(run.finishedAt) : '—'}</td>
             <td className="px-3 py-2 max-w-[640px] truncate" title={run.error ?? ''}>
                 {run.error ?? '—'}
             </td>

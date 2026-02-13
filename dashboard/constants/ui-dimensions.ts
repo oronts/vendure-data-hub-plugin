@@ -145,3 +145,8 @@ export const TEXTAREA_HEIGHTS = {
     CODE_EXPORT_MAX: 'max-h-[400px]',
     ADAPTER_SCHEMA: 'min-h-[160px]',
 } as const;
+
+/**
+ * Default number of items to display per page in paginated lists.
+ */
+export const ITEMS_PER_PAGE = 20;

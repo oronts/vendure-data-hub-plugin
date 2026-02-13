@@ -17,7 +17,7 @@ import { SortOrder } from '../../../constants/index';
 import { RecordObject } from '../../executor-types';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { BATCH, LOGGER_CONTEXTS } from '../../../constants/index';
-import { getEntityClass, entityToRecord, EntityLike } from '../../../extractors/vendure-query/helpers';
+import { getEntityClass, entityToRecord, EntityLike, validateFieldName } from '../../../extractors/vendure-query/helpers';
 import { VendureQueryExtractorConfig } from '../../../extractors/vendure-query/types';
 import {
     ExtractHandler,
@@ -174,6 +174,9 @@ export class VendureExtractHandler implements ExtractHandler {
         addedAliases: Set<string>,
     ): void {
         const [parent, child] = relation.split('.');
+        if (!validateFieldName(parent) || !validateFieldName(child)) {
+            throw new Error(`Invalid relation name: ${relation}`);
+        }
         const parentAlias = parent;
         const childAlias = `${parent}_${child}`;
 
@@ -190,6 +193,9 @@ export class VendureExtractHandler implements ExtractHandler {
         relation: string,
         addedAliases: Set<string>,
     ): void {
+        if (!validateFieldName(relation)) {
+            throw new Error(`Invalid relation name: ${relation}`);
+        }
         if (!addedAliases.has(relation)) {
             queryBuilder.leftJoinAndSelect(`entity.${relation}`, relation);
             addedAliases.add(relation);
@@ -213,6 +219,10 @@ export class VendureExtractHandler implements ExtractHandler {
     }
 
     private buildFilterCondition(field: string, operator: FilterOperator, paramName: string): string | null {
+        if (!validateFieldName(field)) {
+            throw new Error(`Invalid field name: ${field}`);
+        }
+
         const operatorMap: Record<FilterOperator, string> = {
             eq: `entity.${field} = :${paramName}`,
             ne: `entity.${field} != :${paramName}`,
@@ -239,6 +249,9 @@ export class VendureExtractHandler implements ExtractHandler {
         if (!where || typeof where !== 'object') return;
 
         for (const [field, value] of Object.entries(where)) {
+            if (!validateFieldName(field)) {
+                throw new Error(`Invalid field name in where clause: ${field}`);
+            }
             const paramName = `where_${field.replace(/\./g, '_')}`;
             queryBuilder.andWhere(`entity.${field} = :${paramName}`, { [paramName]: value });
         }
@@ -251,6 +264,9 @@ export class VendureExtractHandler implements ExtractHandler {
         batchSize: number,
     ): void {
         const sortBy = cfg.sortBy || 'createdAt';
+        if (!validateFieldName(sortBy)) {
+            throw new Error(`Invalid sortBy field name: ${sortBy}`);
+        }
         const sortOrder = cfg.sortOrder || SortOrder.ASC;
 
         queryBuilder.orderBy(`entity.${sortBy}`, sortOrder);

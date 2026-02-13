@@ -1,4 +1,4 @@
-export { pipelinesList, pipelineDetail, PipelineRunsBlock } from './pipelines';
+export { pipelinesList, pipelineDetail } from './pipelines';
 export { connectionsList, connectionDetail } from './connections';
 export { secretsList, secretDetail } from './secrets';
 export { adaptersList } from './adapters';

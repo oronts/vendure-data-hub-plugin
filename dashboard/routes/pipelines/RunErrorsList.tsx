@@ -39,7 +39,7 @@ function ErrorRow({ item, onStartEditing }: ErrorRowProps) {
     );
 }
 
-export function RunErrorsList({ runId, items, onRetry }: RunErrorsListProps) {
+export function RunErrorsList({ runId: _runId, items, onRetry }: RunErrorsListProps) {
     const [editing, setEditing] = React.useState<{ id: string; patch: string } | null>(null);
 
     const handleStartEditing = React.useCallback((itemId: string) => {

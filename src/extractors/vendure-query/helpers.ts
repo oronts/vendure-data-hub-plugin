@@ -53,7 +53,7 @@ export function getEntityClass(entityType: VendureEntityType | string): EntityCl
 
 const VALID_FIELD_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/;
 
-function validateFieldName(field: string): boolean {
+export function validateFieldName(field: string): boolean {
     return VALID_FIELD_NAME_PATTERN.test(field) && field.length <= 128;
 }
 

@@ -58,7 +58,7 @@ export type SourceType =
 export type FileFormat = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'TSV' | 'PARQUET';
 
 /** Type of export destination */
-export type DestinationType = 'DOWNLOAD' | 'S3' | 'FTP' | 'HTTP' | 'EMAIL';
+export type DestinationType = 'FILE' | 'DOWNLOAD' | 'S3' | 'FTP' | 'SFTP' | 'HTTP' | 'EMAIL' | 'WEBHOOK' | 'LOCAL';
 
 /** Type of product feed for e-commerce platforms */
 export type FeedType =
@@ -68,6 +68,7 @@ export type FeedType =
     | 'PINTEREST'
     | 'TIKTOK'
     | 'BING_SHOPPING'
+    | 'CRITEO'
     | 'CUSTOM';
 
 // CONTEXT TYPES

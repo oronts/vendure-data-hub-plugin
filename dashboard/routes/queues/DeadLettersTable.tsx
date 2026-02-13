@@ -5,7 +5,7 @@ import {
     Json,
 } from '@vendure/dashboard';
 import { AlertTriangle } from 'lucide-react';
-import { DATAHUB_PERMISSIONS } from '../../constants';
+import { DATAHUB_PERMISSIONS, ITEMS_PER_PAGE } from '../../constants';
 import type { DeadLetter } from './types';
 
 // Memoized row component for dead letters
@@ -70,7 +70,6 @@ export function DeadLettersTable({
     isRetryPending: boolean;
     isUnmarkPending: boolean;
 }) {
-    const ITEMS_PER_PAGE = 20;
     const [displayCount, setDisplayCount] = React.useState(ITEMS_PER_PAGE);
 
     const displayedLetters = deadLetters.slice(0, displayCount);

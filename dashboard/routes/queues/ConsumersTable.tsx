@@ -5,8 +5,9 @@ import {
     Badge,
 } from '@vendure/dashboard';
 import { Play, Square, Radio } from 'lucide-react';
-import { DATAHUB_PERMISSIONS } from '../../constants';
+import { DATAHUB_PERMISSIONS, ITEMS_PER_PAGE } from '../../constants';
 import type { Consumer } from './types';
+import { formatDateTime } from '../../utils/formatters';
 
 // Memoized row component for consumers
 const ConsumerRow = React.memo(function ConsumerRow({
@@ -48,7 +49,7 @@ const ConsumerRow = React.memo(function ConsumerRow({
                 )}
             </td>
             <td className="px-3 py-2">
-                {consumer.lastMessageAt ? new Date(consumer.lastMessageAt).toLocaleString() : '—'}
+                {consumer.lastMessageAt ? formatDateTime(consumer.lastMessageAt) : '—'}
             </td>
             <td className="px-3 py-2">
                 <PermissionGuard requires={[DATAHUB_PERMISSIONS.UPDATE_PIPELINE]}>
@@ -83,7 +84,6 @@ export function ConsumersTable({
     isStopPending: boolean;
     isStartPending: boolean;
 }) {
-    const ITEMS_PER_PAGE = 20;
     const [displayCount, setDisplayCount] = React.useState(ITEMS_PER_PAGE);
 
     const displayedConsumers = consumers.slice(0, displayCount);

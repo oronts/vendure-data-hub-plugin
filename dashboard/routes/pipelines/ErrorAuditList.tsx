@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Json } from '@vendure/dashboard';
 import { useErrorAudits } from '../../hooks';
+import { formatDateTime } from '../../utils/formatters';
 
 export function ErrorAuditList({ errorId }: { errorId: string }) {
     const { data: audits, isFetching } = useErrorAudits(errorId);
@@ -14,7 +15,7 @@ export function ErrorAuditList({ errorId }: { errorId: string }) {
                 {audits.map(a => (
                     <div key={a.id} className="text-xs">
                         <div className="text-muted-foreground">
-                            {new Date(String(a.createdAt)).toLocaleString()} · user {a.userId ?? '—'}
+                            {formatDateTime(String(a.createdAt))} · user {a.userId ?? '—'}
                         </div>
                         <div className="grid grid-cols-3 gap-2">
                             <div>

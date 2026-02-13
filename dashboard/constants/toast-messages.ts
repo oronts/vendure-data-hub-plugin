@@ -27,6 +27,7 @@ export const TOAST_PIPELINE = {
     PUBLISH_ERROR: 'Publish failed',
     VALIDATION_FIX_REQUIRED: 'Fix validation issues before publishing',
     ARCHIVED: 'Pipeline archived',
+    ARCHIVE_ERROR: 'Failed to archive pipeline',
     RESTORED: 'Pipeline restored',
     DELETED: 'Pipeline deleted',
     DUPLICATED: 'Pipeline duplicated',

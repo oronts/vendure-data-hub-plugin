@@ -117,7 +117,8 @@ export class PipelineLogService {
             where.stepKey = options.stepKey;
         }
         if (options.search) {
-            where.message = ILike(`%${options.search}%`);
+            const escapedSearch = options.search.replace(/[%_\\]/g, '\\$&');
+            where.message = ILike(`%${escapedSearch}%`);
         }
         if (options.startDate && options.endDate) {
             where.createdAt = Between(options.startDate, options.endDate);
@@ -146,6 +147,7 @@ export class PipelineLogService {
         return repo.find({
             where: { runId: Number(runId) },
             order: { createdAt: SortOrder.ASC },
+            take: 10000,
         });
     }
 
@@ -279,7 +281,7 @@ export class PipelineLogService {
         const repo = this.connection.getRepository(ctx, PipelineLog);
         return repo.find({
             order: { createdAt: SortOrder.DESC },
-            take: limit,
+            take: Math.min(limit, 1000),
             relations: ['pipeline'],
         });
     }

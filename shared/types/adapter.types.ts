@@ -9,7 +9,7 @@ import { JsonValue } from './json.types';
 /**
  * Types of adapters available in the pipeline system
  *
- * Uses lowercase as these are internal type identifiers, not GraphQL enums
+ * Uses SCREAMING_SNAKE_CASE as these are internal type identifiers, not GraphQL enums
  */
 export type AdapterType =
     | 'EXTRACTOR'
@@ -26,7 +26,7 @@ export type AdapterType =
 /**
  * Categories for organizing adapters in the UI
  *
- * Uses kebab-case as these are display/organization identifiers
+ * Uses SCREAMING_SNAKE_CASE as these are display/organization identifiers
  */
 export type AdapterCategory =
     | 'DATA_SOURCE'

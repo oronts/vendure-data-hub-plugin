@@ -144,12 +144,12 @@ export function ReviewActionsPanel({
         if (!entityId) return;
         archive.mutate(entityId, {
             onSuccess: () => {
-                toast.success('Pipeline archived');
+                toast.success(TOAST_PIPELINE.ARCHIVED);
                 setArchiveDialogOpen(false);
                 onStatusChange?.();
             },
             onError: (err) => {
-                toast.error('Failed to archive pipeline', {
+                toast.error(TOAST_PIPELINE.ARCHIVE_ERROR, {
                     description: err instanceof Error ? err.message : 'Unknown error',
                 });
             },

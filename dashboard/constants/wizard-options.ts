@@ -43,7 +43,6 @@ export const DESTINATION_TYPE = {
     EMAIL: 'EMAIL',
     WEBHOOK: 'WEBHOOK',
     LOCAL: 'LOCAL',
-    GCS: 'GCS',
 } as const;
 
 export type DestinationType = typeof DESTINATION_TYPE[keyof typeof DESTINATION_TYPE];
@@ -72,7 +71,6 @@ export const EXPORT_DESTINATION_TYPES = [
     { value: 'SFTP', label: 'SFTP Server' },
     { value: 'HTTP', label: 'HTTP Endpoint' },
     { value: 'S3', label: 'AWS S3' },
-    { value: 'GCS', label: 'Google Cloud Storage' },
 ] as const;
 
 export const CSV_DELIMITERS = [

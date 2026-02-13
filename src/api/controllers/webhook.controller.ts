@@ -230,7 +230,7 @@ export class DataHubWebhookController {
 
         const ALLOWED_HMAC_ALGORITHMS = ['sha256', 'sha512'] as const;
         const algorithm = cfg.hmacAlgorithm?.toLowerCase() ?? 'sha256';
-        if (!ALLOWED_HMAC_ALGORITHMS.includes(algorithm as any)) {
+        if (!(ALLOWED_HMAC_ALGORITHMS as readonly string[]).includes(algorithm)) {
             throw new HttpException('Unsupported HMAC algorithm', HttpStatus.BAD_REQUEST);
         }
         const expectedHash = crypto.createHmac(algorithm, secretValue)

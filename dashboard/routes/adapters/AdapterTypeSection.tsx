@@ -3,6 +3,7 @@ import { Button } from '@vendure/dashboard';
 import { CheckCircle2, Info, Puzzle } from 'lucide-react';
 import { AdapterCard } from './AdapterCard';
 import { ADAPTER_TYPE_INFO } from './constants';
+import { ITEMS_PER_PAGE } from '../../constants';
 import type { DataHubAdapter } from '../../types';
 
 export function AdapterTypeSection({
@@ -16,7 +17,6 @@ export function AdapterTypeSection({
     onSelect: (adapter: DataHubAdapter) => void;
     isBuiltIn: (code: string) => boolean;
 }>) {
-    const ITEMS_PER_PAGE = 20;
     const [builtInDisplayCount, setBuiltInDisplayCount] = React.useState(ITEMS_PER_PAGE);
     const [customDisplayCount, setCustomDisplayCount] = React.useState(ITEMS_PER_PAGE);
 

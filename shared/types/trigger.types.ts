@@ -1,7 +1,7 @@
 /**
  * Trigger Types
  *
- * Types for pipeline triggers. Trigger types use lowercase as per naming conventions.
+ * Types for pipeline triggers. Trigger types use SCREAMING_SNAKE_CASE as per naming conventions.
  */
 
 import { JsonValue, JsonObject } from './json.types';
@@ -9,7 +9,7 @@ import { JsonValue, JsonObject } from './json.types';
 /**
  * Types of triggers that can start a pipeline execution
  *
- * Uses lowercase as per naming convention for trigger types.
+ * Uses SCREAMING_SNAKE_CASE as per naming convention for trigger types.
  * NOTE: This type alias must match the TriggerType enum values in
  * src/constants/enums.ts. Keep in sync when modifying either.
  */
@@ -24,7 +24,7 @@ export type TriggerType =
 /**
  * Authentication types for webhook triggers
  *
- * Uses lowercase/kebab-case as configuration values
+ * Uses SCREAMING_SNAKE_CASE as configuration values
  */
 export type WebhookAuthType =
     | 'NONE'
@@ -145,7 +145,7 @@ export interface EventTriggerConfig {
 /**
  * Queue type values for message triggers
  *
- * Uses lowercase as configuration values
+ * Uses SCREAMING_SNAKE_CASE as configuration values
  */
 export type QueueTypeValue = 'RABBITMQ_AMQP' | 'RABBITMQ' | 'SQS' | 'REDIS_STREAMS' | 'INTERNAL';
 
@@ -201,7 +201,7 @@ export interface FileWatchTriggerConfig {
 /**
  * Message acknowledgment mode
  *
- * Uses lowercase as configuration values
+ * Uses SCREAMING_SNAKE_CASE as configuration values
  */
 export type AckMode = 'AUTO' | 'MANUAL';
 

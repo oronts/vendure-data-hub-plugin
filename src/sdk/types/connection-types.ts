@@ -12,6 +12,8 @@ export enum ConnectionAuthType {
     BEARER = 'BEARER',
     API_KEY = 'API_KEY',
     OAUTH2 = 'OAUTH2',
+    HMAC = 'HMAC',
+    JWT = 'JWT',
 }
 
 export interface ConnectionAuth {
