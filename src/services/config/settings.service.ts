@@ -11,7 +11,7 @@ import {
 } from '../../mappers';
 
 /** Full settings response including logging configuration */
-export interface DataHubSettingsResult {
+interface DataHubSettingsResult {
     retentionDaysRuns: number | null;
     retentionDaysErrors: number | null;
     retentionDaysLogs: number | null;

@@ -12,7 +12,7 @@ import { calculateThroughputTimeSeries } from './time-series.helpers';
 /**
  * Throughput data calculation result
  */
-export interface ThroughputDataResult {
+interface ThroughputDataResult {
     totalRecords: number;
     peakThroughput: number;
     peakThroughputAt: Date;

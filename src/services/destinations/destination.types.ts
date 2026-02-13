@@ -17,7 +17,7 @@ export type DestinationType = 'S3' | 'SFTP' | 'FTP' | 'HTTP' | 'LOCAL' | 'EMAIL'
 /**
  * Base destination configuration
  */
-export interface BaseDestinationConfig {
+interface BaseDestinationConfig {
     type: DestinationType;
     id: string;
     name: string;

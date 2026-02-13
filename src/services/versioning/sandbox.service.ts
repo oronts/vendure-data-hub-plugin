@@ -124,14 +124,14 @@ export interface SandboxResult {
     dataLineage: RecordLineage[];
 }
 
-export interface SandboxWarning {
+interface SandboxWarning {
     stepKey: string;
     code: string;
     message: string;
     context?: Record<string, unknown>;
 }
 
-export interface SandboxError {
+interface SandboxError {
     stepKey: string;
     recordIndex?: number;
     code: string;

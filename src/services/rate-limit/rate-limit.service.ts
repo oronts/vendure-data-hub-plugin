@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS, INTERNAL_TIMINGS } from '../../constants/index';
 
-export interface RateLimitKey {
+interface RateLimitKey {
     ip?: string;
     pipelineCode?: string;
     identifier?: string;

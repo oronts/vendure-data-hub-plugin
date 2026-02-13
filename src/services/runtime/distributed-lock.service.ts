@@ -8,7 +8,7 @@ import { sleep } from '../../utils/retry.utils';
 /**
  * Lock configuration options
  */
-export interface LockOptions {
+interface LockOptions {
     /** Lock timeout in milliseconds (default: 30000) */
     ttlMs?: number;
     /** Whether to wait for lock (default: false) */

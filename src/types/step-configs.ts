@@ -134,7 +134,7 @@ export function isEnrichStepConfig(config: unknown): config is EnrichStepConfig 
 // Route Step Config
 // ============================================================================
 
-export type RouteStepConfigDefinition = RouteConfig & {
+type RouteStepConfigDefinition = RouteConfig & {
     adapterCode?: string;
 };
 

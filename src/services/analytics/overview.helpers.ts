@@ -15,7 +15,7 @@ import {
 /**
  * Run statistics aggregation result
  */
-export interface RunStatsResult {
+interface RunStatsResult {
     recordsProcessedToday: number;
     recordsFailedToday: number;
     successfulRunsToday: number;
@@ -26,7 +26,7 @@ export interface RunStatsResult {
 /**
  * Success rates result
  */
-export interface SuccessRatesResult {
+interface SuccessRatesResult {
     successRateToday: number;
     successRateWeek: number;
 }
@@ -34,7 +34,7 @@ export interface SuccessRatesResult {
 /**
  * Overview metrics parameters
  */
-export interface OverviewMetricsParams {
+interface OverviewMetricsParams {
     totalPipelines: number;
     activePipelines: number;
     runsToday: number;

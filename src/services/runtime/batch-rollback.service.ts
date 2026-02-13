@@ -5,7 +5,7 @@ import { BatchTransactionStatus, LOGGER_CONTEXTS, RollbackOperationType, BATCH_R
 import { JsonObject } from '../../types/index';
 import type { DeepPartial, ObjectLiteral } from 'typeorm';
 
-export interface RollbackableOperation {
+interface RollbackableOperation {
     type: RollbackOperationType;
     entityType: string;
     entityId: string | number;
@@ -13,7 +13,7 @@ export interface RollbackableOperation {
     newState?: JsonObject;
 }
 
-export interface BatchTransaction {
+interface BatchTransaction {
     id: string;
     operations: RollbackableOperation[];
     status: BatchTransactionStatus;

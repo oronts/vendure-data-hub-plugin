@@ -46,7 +46,7 @@ export function calculateAverage(values: number[]): number {
 /**
  * Pipeline run metrics shape
  */
-export interface RunMetrics {
+interface RunMetrics {
     recordsProcessed?: number;
     recordsFailed?: number;
     durationMs?: number;

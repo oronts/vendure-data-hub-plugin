@@ -58,7 +58,7 @@ export interface PipelinePerformance {
 /**
  * Step error count for analytics
  */
-export interface StepErrorCount {
+interface StepErrorCount {
     stepKey: string;
     count: number;
 }
@@ -66,7 +66,7 @@ export interface StepErrorCount {
 /**
  * Pipeline error count for analytics
  */
-export interface PipelineErrorCount {
+interface PipelineErrorCount {
     pipelineCode: string;
     count: number;
 }

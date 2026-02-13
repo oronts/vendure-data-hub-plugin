@@ -17,7 +17,7 @@ import {
 /**
  * Aggregated pipeline metrics result
  */
-export interface AggregatedPipelineMetrics {
+interface AggregatedPipelineMetrics {
     durations: number[];
     totalRecordsProcessed: number;
     totalRecordsFailed: number;
@@ -27,7 +27,7 @@ export interface AggregatedPipelineMetrics {
 /**
  * Performance trends (percentiles) result
  */
-export interface PerformanceTrends {
+interface PerformanceTrends {
     avgDurationMs: number;
     p50DurationMs: number;
     p95DurationMs: number;

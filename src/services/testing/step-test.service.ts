@@ -7,15 +7,15 @@ import { TransformExecutor } from '../../runtime/executors/transform.executor';
 import { LoadExecutor } from '../../runtime/executors/load.executor';
 import { RecordObject } from '../../runtime/executor-types';
 
-export interface ExtractPreviewResult {
+interface ExtractPreviewResult {
     records: RecordObject[];
     totalCount: number;
     notes: string[];
 }
 
-export type TransformSimulationResult = RecordObject[];
+type TransformSimulationResult = RecordObject[];
 
-export interface ValidateSimulationResult {
+interface ValidateSimulationResult {
     records: RecordObject[];
     summary: {
         input: number;
@@ -33,7 +33,7 @@ export interface LoadSimulationResult {
     };
 }
 
-export interface ExtractPreviewOptions {
+interface ExtractPreviewOptions {
     limit?: number;
 }
 

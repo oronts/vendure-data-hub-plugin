@@ -47,12 +47,12 @@ export type {
 
 export type SecretResolver = SharedSecretResolver;
 
-export interface ExtractorConnectionResolver {
+interface ExtractorConnectionResolver {
     get(code: string): Promise<ConnectionConfig | undefined>;
     getRequired(code: string): Promise<ConnectionConfig>;
 }
 
-export type ExtractorLogger = AdapterLogger;
+type ExtractorLogger = AdapterLogger;
 
 export interface ExtractorContext {
     /** Vendure request context */

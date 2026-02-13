@@ -8,7 +8,7 @@ import { ImpactFieldChangeType } from '../../constants/enums';
 /**
  * Sample record structure for field detection
  */
-export interface FieldDetectionSample {
+interface FieldDetectionSample {
     step: string;
     before: Record<string, unknown>;
     after: Record<string, unknown>;

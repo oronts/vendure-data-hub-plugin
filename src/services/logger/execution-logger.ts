@@ -29,7 +29,7 @@ export type LogEventType =
     | 'debug';
 
 /** Options for logging an event */
-export interface LogEventOptions {
+interface LogEventOptions {
     pipelineId?: ID;
     runId?: ID;
     stepKey?: string;
@@ -43,7 +43,7 @@ export interface LogEventOptions {
 }
 
 /** Source/target mapping info for debugging */
-export interface FieldMappingInfo {
+interface FieldMappingInfo {
     sourceField: string;
     targetField: string;
     transformType?: string;
@@ -52,7 +52,7 @@ export interface FieldMappingInfo {
 }
 
 /** Step execution info for detailed logging */
-export interface StepExecutionInfo {
+interface StepExecutionInfo {
     stepKey: string;
     stepType: string;
     adapterCode?: string;

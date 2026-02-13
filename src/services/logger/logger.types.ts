@@ -115,7 +115,7 @@ export interface SpanData {
 /**
  * Event within a span
  */
-export interface SpanEvent {
+interface SpanEvent {
     name: string;
     timestamp: number;
     attributes?: Record<string, unknown>;
@@ -124,7 +124,7 @@ export interface SpanEvent {
 /**
  * Metrics types
  */
-export interface MetricValue {
+interface MetricValue {
     name: string;
     value: number;
     labels: Record<string, string>;

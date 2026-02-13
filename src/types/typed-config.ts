@@ -116,47 +116,47 @@ interface BaseStep {
     concurrency?: number;
 }
 
-export interface TypedExtractStep extends BaseStep {
+interface TypedExtractStep extends BaseStep {
     type: typeof StepType.EXTRACT;
     config: TypedExtractorConfig;
 }
 
-export interface TypedTransformStep extends BaseStep {
+interface TypedTransformStep extends BaseStep {
     type: typeof StepType.TRANSFORM;
     config: TypedOperatorConfig;
 }
 
-export interface TypedValidateStep extends BaseStep {
+interface TypedValidateStep extends BaseStep {
     type: typeof StepType.VALIDATE;
     config: SchemaValidatorConfig;
 }
 
-export interface TypedEnrichStep extends BaseStep {
+interface TypedEnrichStep extends BaseStep {
     type: typeof StepType.ENRICH;
     config: EnrichOperatorConfig;
 }
 
-export interface TypedRouteStep extends BaseStep {
+interface TypedRouteStep extends BaseStep {
     type: typeof StepType.ROUTE;
     config: RouteConfig;
 }
 
-export interface TypedLoadStep extends BaseStep {
+interface TypedLoadStep extends BaseStep {
     type: typeof StepType.LOAD;
     config: TypedLoaderConfig;
 }
 
-export interface TypedExportStep extends BaseStep {
+interface TypedExportStep extends BaseStep {
     type: typeof StepType.EXPORT;
     config: TypedExporterConfig;
 }
 
-export interface TypedFeedStep extends BaseStep {
+interface TypedFeedStep extends BaseStep {
     type: typeof StepType.FEED;
     config: TypedFeedConfig;
 }
 
-export type TypedStep =
+type TypedStep =
     | TypedExtractStep
     | TypedTransformStep
     | TypedValidateStep

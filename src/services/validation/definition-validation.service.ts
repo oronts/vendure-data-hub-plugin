@@ -40,12 +40,12 @@ export enum ValidationLevel {
     FULL = 'full',
 }
 
-export interface ValidationOptions {
+interface ValidationOptions {
     level?: ValidationLevel;
     skipDependencyCheck?: boolean;
 }
 
-export interface DefinitionValidationResult {
+interface DefinitionValidationResult {
     isValid: boolean;
     issues: PipelineDefinitionIssue[];
     warnings: PipelineDefinitionIssue[];

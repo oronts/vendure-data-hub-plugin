@@ -49,7 +49,7 @@ const PHONE_PATTERNS = [
     /^\d{3}[-.]?\d{3}[-.]?\d{4}$/, // US format without parens
 ];
 
-export interface SanitizeOptions {
+interface SanitizeOptions {
     /** Maximum recursion depth (default: 10) */
     maxDepth?: number;
     /** Custom fields to redact (besides defaults) */

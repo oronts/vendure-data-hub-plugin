@@ -253,7 +253,7 @@ export interface LoadStepConfig {
 
 import { ExportFormatType } from '../../constants/enums';
 export type ExportFormat = ExportFormatType;
-export type ExportTarget = 'file' | 'api' | 'webhook' | 's3' | 'sftp' | 'email';
+type ExportTarget = 'file' | 'api' | 'webhook' | 's3' | 'sftp' | 'email';
 
 export interface ExportStepConfig {
     adapterCode: string;

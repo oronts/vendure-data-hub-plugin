@@ -20,7 +20,7 @@ import { trackFieldChanges } from './field-detection';
 /**
  * Internal collector type for aggregating entity impacts during analysis
  */
-export interface EntityBreakdownCollector {
+interface EntityBreakdownCollector {
     [entityType: string]: {
         operations: EntityOperations;
         fieldChanges: Map<string, FieldChangePreview>;

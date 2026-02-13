@@ -22,13 +22,13 @@ export interface StoredFile {
     metadata?: Record<string, unknown>;
 }
 
-export interface UploadResult {
+interface UploadResult {
     success: boolean;
     file?: StoredFile;
     error?: string;
 }
 
-export interface StorageOptions {
+interface StorageOptions {
     maxFileSize?: number;
     allowedMimeTypes?: string[];
     expiresInMinutes?: number;

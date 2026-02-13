@@ -11,7 +11,7 @@ import { TRUNCATION } from '../../constants';
  * Scoring weights for field matching
  * All weights should sum to approximately 1.0
  */
-export interface ScoringWeights {
+interface ScoringWeights {
     /** Weight for field name similarity (0-1) */
     nameSimilarity: number;
 

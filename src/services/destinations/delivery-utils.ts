@@ -92,7 +92,7 @@ export async function executeDelivery<TConfig extends { id: string }>(
 /**
  * Connection test result helper
  */
-export interface ConnectionTestContext {
+interface ConnectionTestContext {
     startTime: number;
 }
 

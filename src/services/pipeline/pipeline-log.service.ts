@@ -19,7 +19,7 @@ export interface LogEntry {
     recordsFailed?: number;
 }
 
-export interface LogSearchOptions {
+interface LogSearchOptions {
     pipelineId?: ID;
     runId?: ID;
     level?: LogLevel | LogLevel[];
