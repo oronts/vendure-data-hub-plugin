@@ -140,7 +140,7 @@ export const STEP_CONFIGS: Record<StepType, StepConfig> = {
     },
 };
 
-export const STEP_TYPE_OPTIONS: { value: StepType; label: string }[] = [
+const STEP_TYPE_OPTIONS: { value: StepType; label: string }[] = [
     { value: 'EXTRACT', label: 'Extract' },
     { value: 'TRANSFORM', label: 'Transform' },
     { value: 'VALIDATE', label: 'Validate' },

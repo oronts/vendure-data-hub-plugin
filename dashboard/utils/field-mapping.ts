@@ -21,12 +21,12 @@ export const FIELD_VARIATIONS: Record<string, string[]> = {
     'updatedat': ['updated', 'modifiedat', 'modified', 'lastmodified'],
 };
 
-export interface FieldMappingResult {
+interface FieldMappingResult {
     sourceField: string;
     targetField: string;
 }
 
-export interface AutoMapOptions {
+interface AutoMapOptions {
     includeDots?: boolean;
     customVariations?: Record<string, string[]>;
     includeUnmatchedRequired?: boolean;
@@ -112,7 +112,7 @@ export function computeAutoMappings(
     return mappings;
 }
 
-export function mappingsToRecord(mappings: FieldMappingResult[]): Record<string, string> {
+function mappingsToRecord(mappings: FieldMappingResult[]): Record<string, string> {
     const result: Record<string, string> = {};
     for (const mapping of mappings) {
         if (mapping.sourceField) {

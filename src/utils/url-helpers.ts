@@ -50,19 +50,6 @@ export async function buildUrlWithConnectionCode(
     return buildUrlWithConnection(url, connection);
 }
 
-export function isValidUrlFormat(url: string, allowRelative: boolean = false): boolean {
-    if (allowRelative && url.startsWith('/')) {
-        return true;
-    }
-
-    try {
-        new URL(url);
-        return true;
-    } catch {
-        return false;
-    }
-}
-
 export function isValidGraphQLUrl(url: string, hasConnection: boolean): boolean {
     if (!url) {
         return hasConnection; // Empty URL is ok if we have a connection

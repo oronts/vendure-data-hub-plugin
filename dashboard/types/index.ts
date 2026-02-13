@@ -4,8 +4,6 @@ export type {
     JsonValue,
     JsonObject,
     StepType,
-    AdapterType,
-    AdapterSchema,
     AdapterSchemaField,
     SchemaFieldType,
     SelectOption,
@@ -14,17 +12,10 @@ export type {
     PipelineTrigger,
     RunStatus,
     TransformationType,
-    AggregationFunction,
-    FieldMapping,
     FilterCondition,
     FilterOperator,
-    FilterConfig,
-    LogLevel,
-    ValidationError,
     PipelineDefinition,
     PipelineStepDefinition,
-    DestinationType,
-    EntityField,
     Throughput,
     EnhancedSchemaDefinition,
     EnhancedFieldDefinition,
@@ -52,7 +43,6 @@ export type {
     LoadingStateProps,
     EmptyStateProps,
     ErrorStateProps,
-    AdaptersByCategory,
     ValidationIssue,
     ValidationState,
     StatCardProps,
@@ -97,8 +87,6 @@ export type {
 
 export type {
     UIFieldMapping,
-    SourceField,
-    TargetField,
     ParsedFile,
 } from '../components/common/file-upload-mapper/types';
 

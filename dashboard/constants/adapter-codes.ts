@@ -9,4 +9,4 @@ export const TRANSFORM_ADAPTER_CODE = {
     SCRIPT: 'script',
 } as const;
 
-export type TransformAdapterCode = typeof TRANSFORM_ADAPTER_CODE[keyof typeof TRANSFORM_ADAPTER_CODE];
+type TransformAdapterCode = typeof TRANSFORM_ADAPTER_CODE[keyof typeof TRANSFORM_ADAPTER_CODE];

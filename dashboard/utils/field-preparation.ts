@@ -1,6 +1,6 @@
 import type { AdapterSchemaField, SelectOption } from '../../shared/types';
 
-export interface PrepareDynamicFieldsOptions {
+interface PrepareDynamicFieldsOptions {
     baseFields: AdapterSchemaField[];
     connectionCodes?: string[];
     secretCodes?: string[];

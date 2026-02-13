@@ -11,4 +11,4 @@ export const ROUTES = {
     CONNECTIONS: `${DATAHUB_API_BASE}/connections`,
 } as const;
 
-export type RouteKey = keyof typeof ROUTES;
+type RouteKey = keyof typeof ROUTES;

@@ -40,4 +40,4 @@ export const DATAHUB_PERMISSIONS = {
     READ_FILES: 'ReadDataHubFiles',
 } as const;
 
-export type DataHubPermission = typeof DATAHUB_PERMISSIONS[keyof typeof DATAHUB_PERMISSIONS];
+type DataHubPermission = typeof DATAHUB_PERMISSIONS[keyof typeof DATAHUB_PERMISSIONS];

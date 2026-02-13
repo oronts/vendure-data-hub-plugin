@@ -22,7 +22,7 @@ export interface RunStatusConfig {
     readonly icon: string;
 }
 
-export const RUN_STATUS_CONFIGS: Record<RunStatus, RunStatusConfig> = {
+const RUN_STATUS_CONFIGS: Record<RunStatus, RunStatusConfig> = {
     PENDING: {
         status: 'PENDING',
         label: 'Pending',

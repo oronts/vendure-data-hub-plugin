@@ -20,7 +20,7 @@ export function getTriggerSteps(definition: PipelineDefinition): PipelineStepDef
 /**
  * Get the first trigger step from pipeline definition
  */
-export function getTriggerStep(definition: PipelineDefinition): PipelineStepDefinition | null {
+function getTriggerStep(definition: PipelineDefinition): PipelineStepDefinition | null {
     const triggers = getTriggerSteps(definition);
     return triggers[0] ?? null;
 }

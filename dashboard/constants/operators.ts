@@ -44,7 +44,7 @@ export interface TransformOperatorDefinition {
  * Codes are camelCase to match operator codes in src/operators/ (JS method naming convention).
  * Note: These are distinct from TransformationType which uses SCREAMING_SNAKE_CASE for step-level types.
  */
-export const TRANSFORM_OPERATORS: TransformOperatorDefinition[] = [
+const TRANSFORM_OPERATORS: TransformOperatorDefinition[] = [
     { code: 'map', label: 'Map', description: 'Map fields to new names/values', category: 'field', configFields: ['mapping'] },
     { code: 'template', label: 'Template', description: 'Generate fields using templates', category: 'field', configFields: ['templates'] },
     { code: 'rename', label: 'Rename', description: 'Rename field keys', category: 'field', configFields: ['renames'] },

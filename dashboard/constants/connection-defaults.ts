@@ -34,11 +34,11 @@ export const CLOUD_PLACEHOLDERS = {
     S3_ENDPOINT: 'https://s3.amazonaws.com',
 } as const;
 
-export const SEARCH_PLACEHOLDERS = {
+const SEARCH_PLACEHOLDERS = {
     ELASTICSEARCH_NODE: 'http://localhost:9200',
 } as const;
 
-export function getConnectionPlaceholder(
+function getConnectionPlaceholder(
     type: string,
     field: string,
 ): string | number | undefined {

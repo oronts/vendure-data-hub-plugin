@@ -138,6 +138,6 @@ export const ADAPTER_CATEGORY_CONFIGS: Record<UIAdapterCategory, UIAdapterCatego
  * Get the configuration for an adapter category.
  * Returns undefined if the category is not found.
  */
-export function getAdapterCategoryConfig(category: string): UIAdapterCategoryConfig | undefined {
+function getAdapterCategoryConfig(category: string): UIAdapterCategoryConfig | undefined {
     return ADAPTER_CATEGORY_CONFIGS[category as UIAdapterCategory];
 }

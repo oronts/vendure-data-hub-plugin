@@ -24,7 +24,7 @@ export const TEST_STATUS = {
     ERROR: 'error',
     WARNING: 'warning',
 } as const;
-export type TestStatus = typeof TEST_STATUS[keyof typeof TEST_STATUS];
+type TestStatus = typeof TEST_STATUS[keyof typeof TEST_STATUS];
 
 /** Checkpoint strategy types */
 export const CHECKPOINT_STRATEGY = {

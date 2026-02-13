@@ -9,13 +9,13 @@ import { CODE_PATTERN } from '../../shared/utils/validation';
 
 export { CODE_PATTERN };
 
-export interface FieldValidationError {
+interface FieldValidationError {
     field: string;
     message: string;
     type: 'required' | 'format' | 'range' | 'custom';
 }
 
-export interface FormValidationResult {
+interface FormValidationResult {
     isValid: boolean;
     errors: FieldValidationError[];
     errorsByField: Record<string, string>;
@@ -279,7 +279,7 @@ export function validateJson(value: string, fieldName: string = 'JSON'): FieldVa
     }
 }
 
-export type ValidatorFn = (value: unknown) => FieldValidationError | null;
+type ValidatorFn = (value: unknown) => FieldValidationError | null;
 
 export function composeValidators(...validators: ValidatorFn[]): ValidatorFn {
     return (value: unknown) => {

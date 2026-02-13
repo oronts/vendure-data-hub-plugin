@@ -21,13 +21,13 @@ export function stepRequiresAdapter(stepType: StepType): boolean {
     return STEP_TO_ADAPTER_TYPE[stepType] !== null;
 }
 
-export function isFileSourceAdapter(adapterCode?: string | null): boolean {
+function isFileSourceAdapter(adapterCode?: string | null): boolean {
     if (!adapterCode) return false;
     const upper = adapterCode.toUpperCase();
     return [FILE_FORMAT.CSV, FILE_FORMAT.JSON, FILE_FORMAT.XML, FILE_FORMAT.XLSX].includes(upper as typeof FILE_FORMAT[keyof typeof FILE_FORMAT]);
 }
 
-export function isVendureLoaderAdapter(adapterCode?: string | null): boolean {
+function isVendureLoaderAdapter(adapterCode?: string | null): boolean {
     if (!adapterCode) return false;
     const vendureLoaders = [
         'productUpsert', 'variantUpsert', 'customerUpsert', 'orderNote',
@@ -37,7 +37,7 @@ export function isVendureLoaderAdapter(adapterCode?: string | null): boolean {
     return vendureLoaders.includes(adapterCode);
 }
 
-export function getTargetSchemaEntity(adapterCode?: string | null): string | null {
+function getTargetSchemaEntity(adapterCode?: string | null): string | null {
     if (!adapterCode) return null;
     if (adapterCode.includes('product') && !adapterCode.includes('variant')) return 'Product';
     if (adapterCode.includes('variant')) return 'ProductVariant';
@@ -52,12 +52,12 @@ export function getTargetSchemaEntity(adapterCode?: string | null): string | nul
  * Note: For wizard form validation with field-specific errors,
  * use StepValidationResult from components/wizards/shared/types.ts
  */
-export interface SimpleStepValidation {
+interface SimpleStepValidation {
     isValid: boolean;
     issues: string[];
 }
 
-export function validateStepConfig(step: { type: StepType; config?: Record<string, unknown> }): SimpleStepValidation {
+function validateStepConfig(step: { type: StepType; config?: Record<string, unknown> }): SimpleStepValidation {
     const issues: string[] = [];
 
     if (stepRequiresAdapter(step.type)) {

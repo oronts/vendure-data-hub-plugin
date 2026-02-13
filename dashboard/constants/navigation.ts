@@ -26,7 +26,7 @@ export const DATAHUB_API_UPLOAD = `${DATAHUB_API_BASE}/upload`;
  * @param fileId - The uploaded file ID
  * @param rows - Number of rows to preview
  */
-export const DATAHUB_API_FILE_PREVIEW = (fileId: string, rows: number) =>
+const DATAHUB_API_FILE_PREVIEW = (fileId: string, rows: number) =>
     `${DATAHUB_API_BASE}/files/${fileId}/preview?rows=${rows}`;
 
 /**

@@ -118,12 +118,12 @@ export function mapCategoryToStepType(category: string): StepType {
     return CATEGORY_TO_STEP_TYPE[category] ?? 'TRANSFORM';
 }
 
-export function getStepTypeColor(stepType: string): string {
+function getStepTypeColor(stepType: string): string {
     const type = String(stepType).toUpperCase();
     return STEP_TYPE_COLORS[type] ?? FALLBACK_COLORS.MUTED;
 }
 
-export function getCategoryColor(category: VisualNodeCategory): string {
+function getCategoryColor(category: VisualNodeCategory): string {
     return CATEGORY_COLORS[category] ?? FALLBACK_COLORS.MUTED;
 }
 
@@ -154,6 +154,6 @@ export function getStepTypeIcon(stepType: string): LucideIcon | undefined {
     return STEP_TYPE_ICONS[type];
 }
 
-export function getNodeStatusColor(status: UINodeStatus): string {
+function getNodeStatusColor(status: UINodeStatus): string {
     return NODE_STATUS_COLORS[status] ?? FALLBACK_COLORS.MUTED;
 }

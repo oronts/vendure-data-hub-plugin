@@ -22,7 +22,7 @@ export function groupAdaptersByCategory(adapters: DataHubAdapter[] = []): Record
     }, {} as Record<string, DataHubAdapter[]>);
 }
 
-export interface FilterOptions {
+interface FilterOptions {
     stepType?: StepType;
     includeDescription?: boolean;
 }
@@ -44,7 +44,7 @@ export function filterAdapters(
     });
 }
 
-export function filterAndGroupAdaptersByType(
+function filterAndGroupAdaptersByType(
     adapters: DataHubAdapter[],
     searchQuery: string,
     options: FilterOptions = {}

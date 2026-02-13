@@ -20,13 +20,13 @@ export interface UIFieldMapping {
     defaultValue?: JsonValue;
 }
 
-export interface SourceField {
+interface SourceField {
     name: string;
     type?: string;
     sampleValues?: JsonValue[];
 }
 
-export interface TargetField {
+interface TargetField {
     name: string;
     type?: string;
     required?: boolean;

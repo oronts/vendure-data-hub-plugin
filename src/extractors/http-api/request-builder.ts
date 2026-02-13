@@ -10,6 +10,7 @@ import { HttpMethod, PaginationType, HTTP_HEADERS, CONTENT_TYPES, PAGINATION_PAR
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 import { applyAuthentication, AuthConfig, createSecretResolver } from '../../utils/auth-helpers';
 import { buildUrlWithConnection } from '../../utils/url-helpers';
+import { isValidUrl as _isValidUrl } from '../../../shared/utils/validation';
 
 /**
  * Build full URL from config, resolving connection base URL if needed
@@ -146,20 +147,13 @@ export function buildGraphqlBody(
 }
 
 /**
- * Validate URL format
+ * Validate URL format.
+ * Delegates to the canonical isValidUrl from shared/utils/validation.
+ * Note: The canonical version restricts to http/https protocols, which is
+ * appropriate here since this is an HTTP API extractor.
  */
 export function isValidUrl(url: string, allowRelative: boolean = false): boolean {
-    if (allowRelative && url.startsWith('/')) {
-        return true;
-    }
-
-    try {
-        new URL(url);
-        return true;
-    } catch {
-        // URL parsing failed - invalid URL format
-        return false;
-    }
+    return _isValidUrl(url, { allowRelative });
 }
 
 /**

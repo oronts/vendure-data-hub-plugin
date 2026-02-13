@@ -150,11 +150,10 @@ export function matchesPattern(value: string, pattern: RegExp): boolean {
 export { isValidEmailFromPatterns as isValidEmail };
 
 /**
- * Check if a string is a valid URL
+ * Check if a string is a valid URL.
+ * Delegates to the canonical isValidUrl from shared/utils/validation.
  */
-export function isValidUrl(value: string): boolean {
-    return VALIDATION_PATTERNS.URL.test(value);
-}
+export { isValidUrl } from '../../shared/utils/validation';
 
 // Re-export from shared constants (single source of truth) - imported at top of file
 export { CONFIDENCE_THRESHOLDS };

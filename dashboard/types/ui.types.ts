@@ -88,7 +88,7 @@ export interface ErrorStateProps {
     className?: string;
 }
 
-export interface AdaptersByCategory {
+interface AdaptersByCategory {
     category: string;
     label: string;
     adapters: DataHubAdapter[];

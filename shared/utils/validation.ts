@@ -42,8 +42,12 @@ export function isValidEmail(email: string): boolean {
     return EMAIL_PATTERN.test(email);
 }
 
-export function isValidUrl(url: string, options?: { requireHttps?: boolean }): boolean {
+export function isValidUrl(url: string, options?: { requireHttps?: boolean; allowRelative?: boolean }): boolean {
     if (isEmpty(url)) return false;
+
+    if (options?.allowRelative && url.startsWith('/')) {
+        return true;
+    }
 
     try {
         const parsed = new URL(url);

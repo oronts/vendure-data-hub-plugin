@@ -10,4 +10,4 @@ export const SENTINEL_VALUES = {
     NONE: '__none__',
 } as const;
 
-export type SentinelValue = typeof SENTINEL_VALUES[keyof typeof SENTINEL_VALUES];
+type SentinelValue = typeof SENTINEL_VALUES[keyof typeof SENTINEL_VALUES];

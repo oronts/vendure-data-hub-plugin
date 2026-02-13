@@ -1,7 +1,7 @@
 import type { PipelineDefinition } from '../../shared/types';
 import { PORTS, HTTP, BATCH, UI_TIMEOUTS, TIME_UNITS } from './defaults';
 
-export const EDITOR_DEFAULTS = {
+const EDITOR_DEFAULTS = {
     GRID_SIZE: 20,
     NODE_WIDTH: 280,
     NODE_HEIGHT: 80,
@@ -52,7 +52,7 @@ export const PIPELINE_CHECKPOINT_DEFAULTS = {
     MIN_INTERVAL_MS: TIME_UNITS.SECOND,
 } as const;
 
-export const DEFAULT_PIPELINE_DEFINITION: PipelineDefinition = {
+const DEFAULT_PIPELINE_DEFINITION: PipelineDefinition = {
     version: 1,
     steps: [],
     triggers: [],
