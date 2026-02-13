@@ -41,7 +41,7 @@ export type HmacAlgorithm = 'SHA256' | 'SHA512' | 'SHA1';
 /**
  * Operators for trigger condition evaluation
  *
- * Uses camelCase as per naming convention for operators
+ * Values are camelCase (serialized to DB, changing requires migration)
  */
 export type TriggerConditionOperator =
     | 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'in' | 'exists';

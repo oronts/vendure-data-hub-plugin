@@ -22,7 +22,7 @@ export type RunStatus =
 /**
  * Source that triggered the pipeline run
  *
- * Uses lowercase to match TriggerType convention for trigger types.
+ * Uses SCREAMING_SNAKE_CASE matching TriggerType convention.
  */
 export type TriggerSource =
     | 'MANUAL'

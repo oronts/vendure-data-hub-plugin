@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Badge, Button } from '@vendure/dashboard';
 import { toast } from 'sonner';
+import { TOAST_TEMPLATE } from '../../constants/toast-messages';
 
 type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';
 
@@ -68,7 +69,7 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
             );
             const csv = [csvHeader, ...csvRows].join('\n');
             navigator.clipboard.writeText(csv);
-            toast.success('Sample data copied to clipboard');
+            toast.success(TOAST_TEMPLATE.SAMPLE_COPIED);
         }
     }, [template]);
 
@@ -100,7 +101,7 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            toast.success('Sample file downloaded');
+            toast.success(TOAST_TEMPLATE.SAMPLE_DOWNLOADED);
         }
     }, [template]);
 

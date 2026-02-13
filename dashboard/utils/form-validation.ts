@@ -5,6 +5,9 @@ import { SOURCE_TYPE, DESTINATION_TYPE } from '../constants/wizard-options';
 import { TRIGGER_TYPES, QUEUE_TYPES } from '../constants';
 import { SECRET_PROVIDER } from '../constants/ui-types';
 import { CONNECTION_TYPE } from '../constants/connection-types';
+import { CODE_PATTERN } from '../../shared/utils/validation';
+
+export { CODE_PATTERN };
 
 export interface FieldValidationError {
     field: string;
@@ -17,8 +20,6 @@ export interface FormValidationResult {
     errors: FieldValidationError[];
     errorsByField: Record<string, string>;
 }
-
-export const CODE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 export const IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 export const EMAIL_PATTERN = EMAIL_REGEX;
 export const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;

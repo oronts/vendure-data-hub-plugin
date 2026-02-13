@@ -2,7 +2,7 @@
  * Operator Types
  *
  * Types for transform operators in pipeline processing.
- * Operators use camelCase as per naming conventions for comparison operators.
+ * Comparison operators use camelCase values (serialized to DB, changing requires migration).
  */
 
 import { JsonValue, JsonObject } from './json.types';
@@ -11,7 +11,7 @@ import { HmacAlgorithm } from './trigger.types';
 /**
  * Comparison operators for conditions and routing
  *
- * Uses camelCase as per naming convention for operators/comparison operators.
+ * Values are camelCase (serialized to DB, changing requires migration).
  * Aligned with RouteConditionOperator enum in src/constants/enums.ts.
  */
 export type ComparisonOperator =

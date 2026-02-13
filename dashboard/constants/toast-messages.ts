@@ -115,6 +115,14 @@ export const TOAST_SECRET = {
 /**
  * Settings-related toast messages
  */
+/**
+ * Template-related toast messages
+ */
+export const TOAST_TEMPLATE = {
+    SAMPLE_COPIED: 'Sample data copied to clipboard',
+    SAMPLE_DOWNLOADED: 'Sample file downloaded',
+} as const;
+
 export const TOAST_SETTINGS = {
     VALIDATION_ERRORS: 'Please fix validation errors before saving',
     SAVE_SUCCESS: 'Settings saved successfully',

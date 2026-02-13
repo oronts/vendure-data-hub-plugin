@@ -47,8 +47,8 @@ export type AdapterCategory =
 /**
  * Field types for adapter configuration schema
  *
- * Uses lowercase to match actual runtime usage throughout the codebase.
- * The dashboard normalizes all field types to lowercase for comparison.
+ * Uses lowercase values as these represent HTML input types and schema primitives.
+ * Intentionally not SCREAMING_SNAKE_CASE - these are standard type identifiers.
  */
 export type SchemaFieldType =
     | 'string'      // Single-line text input
