@@ -8,8 +8,8 @@ import type {
     ExportOptions,
 } from '../../../types/wizard';
 import type { FilterCondition } from '../../../types';
+import type { HttpMethod } from '../../../../shared/types';
 import type {
-    HttpMethod as WizardHttpMethod,
     HttpAuthType as WizardHttpAuthType,
 } from '../../../constants/wizard-options';
 
@@ -35,7 +35,7 @@ export interface ExportConfiguration {
 
 export type QueryType = QueryConfig['type'];
 export type DestinationType = DestinationConfig['type'];
-export type HttpMethod = WizardHttpMethod;
+export type { HttpMethod };
 export type HttpAuthType = WizardHttpAuthType;
 export type FormatType = ExportFormatConfig['type'];
 export type ExportTriggerType = ExportTriggerConfig['type'];

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Play } from 'lucide-react';
 import { toast } from 'sonner';
-import { VENDURE_ENTITY_SCHEMAS } from '../../../../vendure-schemas/vendure-entity-schemas';
+import { VENDURE_ENTITY_SCHEMAS } from '../../../../shared/vendure-schemas';
 import type { EnhancedFieldDefinition } from '../../../types';
 import type { ImportWizardProps, ImportConfiguration, FieldMapping } from './types';
 import { WIZARD_STEPS, WIZARD_STEPS_FROM_TEMPLATE, IMPORT_STEP_ID } from './constants';

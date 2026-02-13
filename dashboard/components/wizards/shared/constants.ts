@@ -107,7 +107,7 @@ export interface WizardPlaceholders {
 
 /**
  * Transformation type options for import wizard.
- * IDs match TransformationType from shared/types/transform.types.ts (camelCase).
+ * IDs are lowercase operator codes (distinct from TransformationType which uses SCREAMING_SNAKE_CASE).
  * All 15 backend transformation types are represented here.
  */
 export const TRANSFORM_TYPES = [

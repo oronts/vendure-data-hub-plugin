@@ -1,6 +1,6 @@
 /**
  * Transform adapter codes for operator/transform steps
- * Codes are camelCase to match operator codes in src/operators/
+ * Codes are lowercase to match operator codes in src/operators/
  */
 export const TRANSFORM_ADAPTER_CODE = {
     MAP: 'map',

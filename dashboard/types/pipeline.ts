@@ -24,7 +24,11 @@ export interface PipelineNodeData {
 export type PipelineNode = Node<PipelineNodeData>;
 
 /**
- * Visual pipeline definition (ReactFlow-based format)
+ * Visual pipeline definition (ReactFlow-based format) - dashboard version.
+ * Uses ReactFlow PipelineNode/Edge types for the visual editor.
+ *
+ * Parallel definition in src/services/pipeline/pipeline-format.service.ts
+ * uses backend VisualNode/VisualEdge types for pipeline format conversion.
  */
 export interface VisualPipelineDefinition {
     nodes: PipelineNode[];

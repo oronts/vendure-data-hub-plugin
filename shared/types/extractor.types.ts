@@ -119,6 +119,12 @@ export interface ConnectionConfig {
 }
 
 // RECORD ENVELOPE
+//
+// Parallel definition exists in src/sdk/types/adapter-types.ts (SDK RecordEnvelope).
+// This shared version is mutable and used for pipeline definitions, serialization,
+// and internal processing. The SDK version is readonly (immutable contract for
+// adapter implementors) and includes additional fields (hash, cursor) for runtime
+// change detection and pagination state.
 
 export interface RecordEnvelope {
     /** The actual data */
@@ -225,6 +231,12 @@ export interface ExtractorValidationWarning {
 }
 
 // STEP CONFIG SCHEMA (for UI)
+//
+// Parallel definition exists in src/sdk/types/schema-types.ts (SDK StepConfigSchema).
+// This shared version is a simplified, mutable format used in pipeline definitions
+// and API responses. The SDK version is readonly, has richer field types
+// (FieldValidation, FieldDependency with more operators), and is used for
+// adapter registration and auto-generated UI forms.
 
 export interface StepConfigSchema {
     fields: StepConfigField[];

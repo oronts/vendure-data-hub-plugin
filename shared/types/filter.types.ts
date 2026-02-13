@@ -2,13 +2,13 @@
  * Filter Types
  *
  * Types for filtering records in pipeline processing.
- * Comparison operator values are camelCase (serialized to DB, changing requires migration).
+ * Comparison operator values are lowercase/camelCase (serialized to DB, changing requires migration).
  */
 
 /**
  * Comparison operators for filter conditions
  *
- * Values are camelCase (serialized to DB, changing requires migration)
+ * Values are lowercase/camelCase (serialized to DB, changing requires migration)
  */
 export type FilterOperator =
     | 'eq'

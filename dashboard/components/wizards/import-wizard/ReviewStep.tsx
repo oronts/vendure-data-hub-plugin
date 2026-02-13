@@ -12,7 +12,7 @@ import {
     Clock,
     ArrowRight,
 } from 'lucide-react';
-import { VENDURE_ENTITY_LIST } from '../../../../vendure-schemas/vendure-entity-schemas';
+import { VENDURE_ENTITY_LIST } from '../../../../shared/vendure-schemas';
 import { WizardStepContainer } from '../shared';
 import { ConfigurationNameCard, SummaryCard, SummaryCardGrid } from '../../shared/wizard';
 import { STEP_CONTENT, PLACEHOLDERS } from './constants';

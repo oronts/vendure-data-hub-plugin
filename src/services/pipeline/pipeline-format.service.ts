@@ -51,7 +51,11 @@ export interface VisualEdge {
 }
 
 /**
- * Visual pipeline definition (nodes/edges format)
+ * Visual pipeline definition (nodes/edges format) - backend version.
+ * Uses backend VisualNode/VisualEdge types for pipeline format conversion.
+ *
+ * Parallel definition in dashboard/types/pipeline.ts uses ReactFlow
+ * PipelineNode/Edge types for the visual editor UI.
  */
 export interface VisualPipelineDefinition {
     nodes: VisualNode[];

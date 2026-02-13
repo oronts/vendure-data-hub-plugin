@@ -22,6 +22,15 @@ export interface ConnectionAuth {
     readonly headerName?: string;
 }
 
+/**
+ * SDK ConnectionConfig - the full connection entity with `code` identifier.
+ * Readonly contract for adapter implementors.
+ *
+ * Related ConnectionConfig types:
+ * - shared/types/extractor.types.ts ConnectionConfig - inline connection format for
+ *   extractor configs (no `code`, narrower type set, mutable)
+ * - src/utils/url-helpers.ts UrlConnectionConfig - minimal interface for URL building
+ */
 export interface ConnectionConfig {
     readonly code: string;
     readonly type: ConnectionType;

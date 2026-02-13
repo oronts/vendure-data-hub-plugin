@@ -6,7 +6,7 @@ import {
     CardDescription,
     Badge,
 } from '@vendure/dashboard';
-import { VENDURE_ENTITY_LIST } from '../../../../vendure-schemas/vendure-entity-schemas';
+import { VENDURE_ENTITY_LIST } from '../../../../shared/vendure-schemas';
 import type { EnhancedFieldDefinition } from '../../../types';
 import { WizardStepContainer } from '../shared';
 import { EntitySelector } from '../../shared/entity-selector';

@@ -68,7 +68,7 @@ export type RouteConditionOp =
     | 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte'
     | 'in' | 'notIn'
     | 'contains' | 'notContains' | 'startsWith' | 'endsWith'
-    | 'regex' | 'exists' | 'isNull';
+    | 'matches' | 'regex' | 'exists' | 'isNull';
 
 /** Domain that a pipeline operates on */
 export type PipelineCapabilityDomain =

@@ -193,5 +193,10 @@ export type NewRecordsStrategy = typeof NEW_RECORDS_STRATEGIES[number]['value'];
 export type ExportDestinationType = typeof EXPORT_DESTINATION_TYPES[number]['value'];
 export type CsvDelimiter = typeof CSV_DELIMITERS[number]['value'];
 export type FileEncoding = typeof FILE_ENCODINGS[number]['value'];
-export type HttpMethod = typeof HTTP_METHODS[number]['value'];
+/**
+ * Canonical HttpMethod type from shared - supports all HTTP methods.
+ * The HTTP_METHODS array above is intentionally narrower (POST/PUT only)
+ * for the export wizard UI, but the type should match the full shared definition.
+ */
+export type { HttpMethod } from '../../shared/types';
 export type HttpAuthType = typeof HTTP_AUTH_TYPES[number]['value'];

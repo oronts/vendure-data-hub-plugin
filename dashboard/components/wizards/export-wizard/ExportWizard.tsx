@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
-import { VENDURE_ENTITY_SCHEMAS } from '../../../../vendure-schemas/vendure-entity-schemas';
+import { VENDURE_ENTITY_SCHEMAS } from '../../../../shared/vendure-schemas';
 import { WIZARD_STEPS, EXPORT_STEP_ID } from './constants';
 import { QUERY_LIMITS, BATCH_SIZES, UI_DEFAULTS, EXPORT_DEFAULTS, TRIGGER_TYPES, EXPORT_FORMAT, COMPRESSION_TYPE, TOAST_WIZARD } from '../../../constants';
 import type { ExportWizardProps, ExportConfiguration, ExportField } from './types';

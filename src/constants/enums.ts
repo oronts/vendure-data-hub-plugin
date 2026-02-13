@@ -1,7 +1,7 @@
 /**
  * Diff entry type identifiers for pipeline revision comparison
  *
- * Values use lowercase to match type identifier conventions (AdapterType, TriggerType)
+ * Values use lowercase to match diff/revision type identifier conventions
  */
 export enum DiffEntryType {
     STEP = 'step',

@@ -36,7 +36,11 @@ export interface PipelineExecutionContext {
 // HOOK TYPES
 
 /**
- * Context provided to hook handlers
+ * SDK HookContext - runtime hook context with Vendure RequestContext.
+ * All fields are readonly (immutable contract for hook implementors).
+ *
+ * Parallel definition in shared/types/hook.types.ts is the serializable
+ * format with string IDs, `metadata` field, and no Vendure RequestContext.
  */
 export interface HookContext {
     /** Vendure request context */

@@ -2,7 +2,7 @@ import * as React from 'react';
 import { memo, useCallback } from 'react';
 import { Badge } from '@vendure/dashboard';
 import { Check } from 'lucide-react';
-import { VENDURE_ENTITY_LIST, VENDURE_ENTITY_SCHEMAS } from '../../../../vendure-schemas/vendure-entity-schemas';
+import { VENDURE_ENTITY_LIST, VENDURE_ENTITY_SCHEMAS } from '../../../../shared/vendure-schemas';
 import type { EntitySelectorProps } from '../../../types';
 
 function EntitySelectorComponent({ value, onChange, className = '' }: EntitySelectorProps) {

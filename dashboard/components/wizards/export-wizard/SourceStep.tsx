@@ -12,7 +12,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@vendure/dashboard';
-import { VENDURE_ENTITY_SCHEMAS } from '../../../../vendure-schemas/vendure-entity-schemas';
+import { VENDURE_ENTITY_SCHEMAS } from '../../../../shared/vendure-schemas';
 import { QUERY_LIMITS } from '../../../constants';
 import { WizardStepContainer } from '../shared';
 import { EntitySelector } from '../../shared/entity-selector';

@@ -1,4 +1,4 @@
-import { JsonObject, JsonValue, ErrorHandlingConfig, CheckpointingConfig } from '../types/index';
+import { JsonObject, JsonValue, ErrorHandlingConfig, CheckpointingConfig, ExecutorContext as SharedExecutorContext } from '../types/index';
 
 export type RecordObject = JsonObject;
 
@@ -28,15 +28,11 @@ export interface CheckpointData {
 }
 
 /**
- * Context passed to executors for accessing services and state
+ * Runtime ExecutorContext - extends the shared base with runtime-specific fields
+ * (errorHandling, checkpointing). The shared base (from shared/types/pipeline.types.ts)
+ * provides the core checkpoint management contract (cpData, cpDirty, markCheckpointDirty).
  */
-export interface ExecutorContext {
-    /** Checkpoint data for resumable extraction */
-    cpData: CheckpointData | null;
-    /** Flag indicating whether checkpoint data has changed */
-    cpDirty: boolean;
-    /** Marks the checkpoint as dirty */
-    markCheckpointDirty: () => void;
+export interface ExecutorContext extends SharedExecutorContext {
     /** Error handling configuration from pipeline context */
     errorHandling?: ErrorHandlingConfig;
     /** Checkpointing configuration from pipeline context */

@@ -1,5 +1,34 @@
 // Shared validation utilities - single source of truth for frontend and backend
 
+import { CONFIDENCE_THRESHOLDS } from '../constants';
+
+/**
+ * Match confidence level for field mapping suggestions.
+ */
+export type MatchConfidence = 'high' | 'medium' | 'low';
+
+/**
+ * Convert numeric score to confidence level.
+ * Replaces ternary chains: score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low'
+ */
+export function scoreToConfidence(score: number): MatchConfidence {
+    if (score >= CONFIDENCE_THRESHOLDS.HIGH) return 'high';
+    if (score >= CONFIDENCE_THRESHOLDS.MEDIUM) return 'medium';
+    return 'low';
+}
+
+/**
+ * Get minimum score for a confidence level option.
+ * Replaces: minConfidence === 'high' ? 70 : minConfidence === 'medium' ? 40 : 0
+ */
+export function confidenceToMinScore(confidence: MatchConfidence | undefined): number {
+    switch (confidence) {
+        case 'high': return CONFIDENCE_THRESHOLDS.HIGH;
+        case 'medium': return CONFIDENCE_THRESHOLDS.MEDIUM;
+        default: return 0;
+    }
+}
+
 export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
 export const CODE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;

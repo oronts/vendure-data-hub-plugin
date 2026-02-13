@@ -68,7 +68,9 @@ export type FeedType =
     | 'PINTEREST'
     | 'TIKTOK'
     | 'BING_SHOPPING'
-    | 'CRITEO'
+    | 'CSV'
+    | 'JSON'
+    | 'XML'
     | 'CUSTOM';
 
 // CONTEXT TYPES

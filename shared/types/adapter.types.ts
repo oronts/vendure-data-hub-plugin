@@ -78,7 +78,7 @@ export type SchemaFieldType =
 /**
  * Operators for field dependency conditions
  *
- * Uses camelCase as per naming convention for operators
+ * Values are lowercase abbreviations (serialized to DB, changing requires migration)
  */
 export type DependsOnOperator = 'eq' | 'ne' | 'in' | 'exists';
 
@@ -168,7 +168,14 @@ export interface AdapterSchema {
 }
 
 /**
- * Complete adapter definition including metadata and schema
+ * Shared AdapterDefinition - mutable format for pipeline definitions and API
+ * serialization. Used in the shared layer for describing adapter metadata.
+ *
+ * Parallel definition exists in src/sdk/types/adapter-types.ts with a different
+ * shape: all readonly fields, optional `name`, uses StepConfigSchema instead of
+ * AdapterSchema, and includes SDK-specific fields (requires, version,
+ * deprecatedMessage, experimentalMessage). The SDK version is the immutable
+ * contract for custom adapter registration.
  */
 export interface AdapterDefinition {
     /** Type of adapter */

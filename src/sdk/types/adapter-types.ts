@@ -69,9 +69,15 @@ export interface BaseAdapter<TConfig = JsonObject> {
 }
 
 /**
- * AdapterDefinition is used for static adapter metadata/schema definitions
- * that don't include runtime methods. Used in constants-adapters.ts for
- * declaring available adapters and their configuration schemas.
+ * SDK AdapterDefinition - immutable contract for custom adapter registration.
+ * Used in constants-adapters.ts for declaring available adapters and their
+ * configuration schemas. All fields are readonly.
+ *
+ * Parallel definition exists in shared/types/adapter.types.ts with a different
+ * shape: mutable fields, required `name`, `tags[]`, uses AdapterSchema instead
+ * of StepConfigSchema, and omits SDK-specific fields (requires, version,
+ * deprecatedMessage, experimentalMessage). The shared version is used for
+ * pipeline definitions and API serialization.
  */
 export interface AdapterDefinition {
     readonly type: AdapterType;
@@ -96,6 +102,13 @@ export interface AdapterDefinition {
 }
 
 // RECORD TYPES
+//
+// Parallel definition exists in shared/types/extractor.types.ts (shared RecordEnvelope).
+// This SDK version is the immutable runtime contract for custom adapter implementors.
+// All fields are readonly to prevent adapters from mutating records during processing.
+// Includes additional fields (hash, cursor) not in the shared version, used for
+// runtime change detection and pagination state.
+// The shared version is mutable and used for pipeline definitions and serialization.
 
 /**
  * Envelope wrapping a data record with metadata
@@ -388,7 +401,9 @@ export type FeedType =
     | 'PINTEREST'
     | 'TIKTOK'
     | 'BING_SHOPPING'
-    | 'CRITEO'
+    | 'CSV'
+    | 'JSON'
+    | 'XML'
     | 'CUSTOM';
 
 /**

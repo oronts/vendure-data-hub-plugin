@@ -19,7 +19,7 @@ export {
 } from '../../shared/constants';
 
 /**
- * Match confidence type and conversion function - re-exported from src/constants
+ * Match confidence type and conversion function - re-exported from shared
  */
-export type { MatchConfidence } from '../../src/constants/validation';
-export { scoreToConfidence } from '../../src/constants/validation';
+export type { MatchConfidence } from '../../shared/utils/validation';
+export { scoreToConfidence } from '../../shared/utils/validation';

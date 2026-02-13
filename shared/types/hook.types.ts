@@ -108,6 +108,13 @@ export type PipelineHooksConfig = Partial<Record<HookStageValue, HookConfig[]>>;
 
 export type PipelineHooks = Partial<Record<HookStageValue, HookAction[]>>;
 
+/**
+ * Shared HookContext - serializable format with string IDs and metadata.
+ *
+ * Parallel definition in src/sdk/types/pipeline-types.ts is the runtime
+ * version with Vendure RequestContext and readonly fields (immutable
+ * contract for custom hook implementors).
+ */
 export interface HookContext {
     pipelineId: string;
     runId: string;

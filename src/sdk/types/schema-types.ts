@@ -13,7 +13,11 @@ import type { SchemaFieldType } from '../../../shared/types/adapter.types';
 export type { SchemaFieldType };
 
 /**
- * Option for select/multiselect fields
+ * Option for select/multiselect fields (SDK version - readonly).
+ *
+ * Parallel definition in shared/types/adapter.types.ts includes an additional
+ * `icon` field and is mutable. Both share the same core shape (value, label,
+ * description).
  */
 export interface SelectOption {
     /** The value stored when this option is selected */
@@ -82,7 +86,12 @@ export interface StepConfigSchemaField {
 }
 
 /**
- * Complete schema definition for step/adapter configuration
+ * SDK StepConfigSchema - immutable, full-featured schema definition for adapter
+ * configuration with validation rules and rich field dependencies.
+ *
+ * Parallel definition exists in shared/types/extractor.types.ts with a simpler,
+ * mutable shape: fewer field attributes (no validation, simpler dependsOn),
+ * used for pipeline definitions and API serialization.
  */
 export interface StepConfigSchema {
     /** List of field definitions */

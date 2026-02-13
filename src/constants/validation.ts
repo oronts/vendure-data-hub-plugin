@@ -158,29 +158,8 @@ export { isValidUrl } from '../../shared/utils/validation';
 // Re-export from shared constants (single source of truth) - imported at top of file
 export { CONFIDENCE_THRESHOLDS };
 
-/**
- * Match confidence type
- */
-export type MatchConfidence = 'high' | 'medium' | 'low';
-
-/**
- * Convert numeric score to confidence level
- * Replaces ternary chains: score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low'
- */
-export function scoreToConfidence(score: number): MatchConfidence {
-    if (score >= CONFIDENCE_THRESHOLDS.HIGH) return 'high';
-    if (score >= CONFIDENCE_THRESHOLDS.MEDIUM) return 'medium';
-    return 'low';
-}
-
-/**
- * Get minimum score for a confidence level option
- * Replaces: minConfidence === 'high' ? 70 : minConfidence === 'medium' ? 40 : 0
- */
-export function confidenceToMinScore(confidence: MatchConfidence | undefined): number {
-    switch (confidence) {
-        case 'high': return CONFIDENCE_THRESHOLDS.HIGH;
-        case 'medium': return CONFIDENCE_THRESHOLDS.MEDIUM;
-        default: return 0;
-    }
-}
+// Re-export MatchConfidence type and conversion functions from shared (single source of truth).
+// These were moved to shared/utils/validation.ts so dashboard can import without
+// crossing the src/ boundary.
+export type { MatchConfidence } from '../../shared/utils/validation';
+export { scoreToConfidence, confidenceToMinScore } from '../../shared/utils/validation';

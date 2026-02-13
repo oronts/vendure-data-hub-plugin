@@ -9,7 +9,7 @@ export interface OperatorDefinition {
 
 /**
  * Comparison operators for filter conditions.
- * Codes are camelCase to match backend FilterOperator and RouteConditionOperator types.
+ * Codes are lowercase/camelCase to match backend FilterOperator and RouteConditionOperator types.
  * Standardized on 'ne' (not 'neq') and 'notIn' (not 'nin') for consistency.
  */
 export const COMPARISON_OPERATORS: OperatorDefinition[] = [
@@ -41,7 +41,7 @@ export interface TransformOperatorDefinition {
 
 /**
  * Transform operators for pipeline steps.
- * Codes are camelCase to match operator codes in src/operators/ (JS method naming convention).
+ * Codes are lowercase to match operator codes in src/operators/ (JS method naming convention).
  * Note: These are distinct from TransformationType which uses SCREAMING_SNAKE_CASE for step-level types.
  */
 const TRANSFORM_OPERATORS: TransformOperatorDefinition[] = [
