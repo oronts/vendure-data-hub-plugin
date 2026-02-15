@@ -25,18 +25,3 @@ export const SQL_PATTERNS = {
     TABLE: /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)?$/,
 } as const;
 
-/**
- * Common column whitelists for SQL security validation
- */
-export const SQL_WHITELISTS = {
-    /** Common ID column names */
-    ID_COLUMNS: new Set(['id', 'ID', '_id', 'Id']),
-    /** Common timestamp column names */
-    TIMESTAMP_COLUMNS: new Set(['created_at', 'updated_at', 'deleted_at', 'createdAt', 'updatedAt', 'deletedAt']),
-    /** Common safe columns for general queries */
-    COMMON_COLUMNS: new Set([
-        'id', 'name', 'code', 'type', 'status', 'enabled',
-        'created_at', 'updated_at', 'deleted_at',
-        'createdAt', 'updatedAt', 'deletedAt',
-    ]),
-} as const;

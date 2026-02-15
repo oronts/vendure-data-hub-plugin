@@ -16,7 +16,6 @@ export {
     AdvancedWhenEditor,
     MultiOperatorEditor,
     StepTester,
-    getAdapterIcon,
     VISUAL_NODE_CONFIGS,
     getVisualNodeConfig,
     createPipelineNode,

@@ -3,7 +3,7 @@
  *
  * Backend-specific regex patterns plus re-exports of shared patterns.
  * Shared patterns (EMAIL, URL, PIPELINE_CODE) are canonical in shared/utils/validation.ts.
- * Backend-only patterns (SECRET_CODE, IDENTIFIER, UUID, etc.) live here.
+ * Backend-only patterns (UUID, SLUG, PHONE, etc.) live here.
  */
 
 import {
@@ -31,16 +31,6 @@ export const EMAIL_PATTERN = SHARED_EMAIL_PATTERN;
 export const PIPELINE_CODE_PATTERN = SHARED_PIPELINE_CODE_PATTERN;
 
 /**
- * Secret code pattern (alphanumeric with dashes and underscores).
- */
-export const SECRET_CODE_PATTERN = /^[a-zA-Z0-9-_]+$/;
-
-/**
- * Generic code/identifier pattern (alphanumeric, dashes, underscores, dots).
- */
-export const IDENTIFIER_PATTERN = /^[a-zA-Z][a-zA-Z0-9_.-]*$/;
-
-/**
  * Slug pattern (lowercase alphanumeric with dashes).
  */
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -63,12 +53,6 @@ export const URL_PATTERN = SHARED_URL_PATTERN;
  * ISO 8601 date format (YYYY-MM-DD).
  */
 export const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * Cron expression pattern (5 fields: minute hour day month weekday).
- * Note: For full validation, use isValidCron() from shared/utils/validation.ts
- */
-export const CRON_BASIC_PATTERN = /^(\S+\s+){4}\S+$/;
 
 // ============================================================================
 // UUID and ID Patterns
@@ -108,8 +92,6 @@ export const PATTERNS = {
     // Core identifiers
     EMAIL: EMAIL_PATTERN,
     PIPELINE_CODE: PIPELINE_CODE_PATTERN,
-    SECRET_CODE: SECRET_CODE_PATTERN,
-    IDENTIFIER: IDENTIFIER_PATTERN,
     SLUG: SLUG_PATTERN,
 
     // URL and network
@@ -117,7 +99,6 @@ export const PATTERNS = {
 
     // Date and time
     ISO_DATE: ISO_DATE_PATTERN,
-    CRON_BASIC: CRON_BASIC_PATTERN,
 
     // UUID and IDs
     UUID: UUID_PATTERN,

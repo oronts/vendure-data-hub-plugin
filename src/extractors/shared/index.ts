@@ -9,6 +9,7 @@
 
 export {
     FILE_FORMAT_MAP,
+    extractFileExtension,
     detectFileFormat,
     getFileExtension,
     hasExpectedExtension,

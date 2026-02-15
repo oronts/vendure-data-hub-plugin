@@ -266,7 +266,7 @@ export const pipelineSchema = `
         issues: [DataHubValidationIssue!]!
         "Non-blocking warnings"
         warnings: [DataHubValidationIssue!]
-        "Validation level used: 'strict' | 'normal' | 'lenient'"
+        "Validation level used: SYNTAX | SEMANTIC | FULL"
         level: String
     }
 

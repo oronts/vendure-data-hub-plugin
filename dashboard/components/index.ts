@@ -6,7 +6,6 @@ export {
     NodePropertiesPanel,
     PipelineSettingsPanel,
     StepListItem,
-    getAdapterIcon,
     VISUAL_NODE_CONFIGS,
     getVisualNodeConfig,
     createPipelineNode,

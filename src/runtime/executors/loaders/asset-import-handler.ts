@@ -11,6 +11,7 @@ import { LoaderHandler } from './types';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
 import { HTTP } from '../../../../shared/constants';
+import { extractFileExtension } from '../../../extractors/shared/file-format.utils';
 
 interface AssetImportConfig {
     channel?: string;
@@ -120,7 +121,7 @@ function extractFilename(url: string): string {
 }
 
 function getMimeType(url: string): string {
-    const ext = url.split('.').pop()?.toLowerCase() ?? '';
+    const ext = extractFileExtension(url);
     const mimeMap: Record<string, string> = {
         jpg: 'image/jpeg',
         jpeg: 'image/jpeg',

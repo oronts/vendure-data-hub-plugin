@@ -4,6 +4,7 @@
 
 import { StoredFile } from '../../services';
 import { ParseFormatType, FileFormat } from '../../constants/enums';
+import { extractFileExtension } from '../../extractors/shared/file-format.utils';
 
 export type FileFormatAlias = ParseFormatType;
 
@@ -61,7 +62,7 @@ export function formatFileResponse(file: StoredFile): {
  * Detect MIME type from filename extension
  */
 export function detectMimeType(filename: string): string {
-    const ext = filename.toLowerCase().split('.').pop();
+    const ext = extractFileExtension(filename);
     return MIME_TYPE_MAP[ext || ''] || DEFAULT_MIME_TYPE;
 }
 
@@ -69,7 +70,7 @@ export function detectMimeType(filename: string): string {
  * Detect file format from MIME type and filename
  */
 export function detectFormat(mimeType: string, filename: string): FileFormatAlias {
-    const ext = filename.toLowerCase().split('.').pop()?.toUpperCase();
+    const ext = extractFileExtension(filename).toUpperCase();
 
     if (ext === 'CSV' || mimeType === 'text/csv') return 'CSV';
     if (ext === 'JSON' || mimeType === 'application/json') return 'JSON';

@@ -2,6 +2,7 @@ export * from '../types/index';
 
 // Shared utilities for extractors (eliminates duplication)
 export {
+    extractFileExtension,
     detectFileFormat,
     getFileExtension,
     hasExpectedExtension,

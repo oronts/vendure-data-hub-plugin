@@ -184,7 +184,7 @@ export class BatchRollbackService implements OnModuleDestroy {
             return;
         }
 
-        const repo = this.connection.rawConnection.getRepository(entityMeta.target);
+        const repo = this.connection.getRepository(ctx, entityMeta.target);
 
         switch (op.type) {
             case RollbackOperationType.CREATE:

@@ -36,9 +36,9 @@ import { validateCapabilities, validateContext } from './context-validation';
 // ============================================================================
 
 export enum ValidationLevel {
-    SYNTAX = 'syntax',
-    SEMANTIC = 'semantic',
-    FULL = 'full',
+    SYNTAX = 'SYNTAX',
+    SEMANTIC = 'SEMANTIC',
+    FULL = 'FULL',
 }
 
 interface ValidationOptions {

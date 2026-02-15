@@ -28,7 +28,7 @@ export interface CheckpointData {
 export interface ValidationInput {
     /** Pipeline definition in canonical (steps) or visual (nodes/edges) format */
     definition: PipelineDefinition | VisualPipelineDefinition;
-    /** Validation level: 'syntax', 'semantic', or 'full' */
+    /** Validation level: 'SYNTAX', 'SEMANTIC', or 'FULL' */
     level?: string;
 }
 

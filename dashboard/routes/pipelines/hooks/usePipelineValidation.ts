@@ -69,7 +69,7 @@ export function usePipelineValidation(definition: unknown): {
         mutationFn: async (def: unknown) => {
             const res = await api.query(validatePipelineDefinitionDocument, {
                 definition: def,
-                level: 'full',
+                level: 'FULL',
             });
             return res?.validateDataHubPipelineDefinition as PipelineValidationResult | undefined;
         },

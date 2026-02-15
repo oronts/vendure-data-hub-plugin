@@ -61,28 +61,28 @@ export class AnalyticsService implements OnModuleInit {
     }
 
     /** Fetch all overview data from the database in parallel */
-    private async fetchOverviewData(startOfDay: Date, startOfWeek: Date) {
+    private async fetchOverviewData(ctx: RequestContext, startOfDay: Date, startOfWeek: Date) {
         return Promise.all([
-            this.connection.rawConnection.getRepository(Pipeline).count(),
-            this.connection.rawConnection.getRepository(Pipeline).count({ where: { enabled: true } }),
-            this.connection.rawConnection.getRepository(PipelineRun).count({ where: { createdAt: MoreThan(startOfDay) } }),
-            this.connection.rawConnection.getRepository(PipelineRun).count({ where: { createdAt: MoreThan(startOfWeek) } }),
-            this.connection.rawConnection.getRepository(PipelineRun).find({
+            this.connection.getRepository(ctx, Pipeline).count(),
+            this.connection.getRepository(ctx, Pipeline).count({ where: { enabled: true } }),
+            this.connection.getRepository(ctx, PipelineRun).count({ where: { createdAt: MoreThan(startOfDay) } }),
+            this.connection.getRepository(ctx, PipelineRun).count({ where: { createdAt: MoreThan(startOfWeek) } }),
+            this.connection.getRepository(ctx, PipelineRun).find({
                 where: { createdAt: MoreThan(startOfDay) },
                 select: ['status', 'metrics'],
             }),
-            this.connection.rawConnection.getRepository(PipelineRun).find({
+            this.connection.getRepository(ctx, PipelineRun).find({
                 where: { createdAt: MoreThan(startOfWeek) },
                 select: ['status'],
             }),
-            this.connection.rawConnection.getRepository(PipelineRun).count({
+            this.connection.getRepository(ctx, PipelineRun).count({
                 where: [{ status: RunStatus.RUNNING }, { status: RunStatus.PENDING }],
             }),
         ]);
     }
 
     /** Get analytics overview */
-    async getOverview(_ctx: RequestContext): Promise<AnalyticsOverview> {
+    async getOverview(ctx: RequestContext): Promise<AnalyticsOverview> {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
 
@@ -92,7 +92,7 @@ export class AnalyticsService implements OnModuleInit {
 
         // Fetch all data in parallel
         const [totalPipelines, activePipelines, runsToday, runsThisWeek, todayRuns, weekRuns, activeJobs] =
-            await this.fetchOverviewData(startOfDay, startOfWeek);
+            await this.fetchOverviewData(ctx, startOfDay, startOfWeek);
 
         // Aggregate run statistics and calculate success rates
         const runStats = aggregateRunStats(todayRuns, weekRuns);
@@ -119,25 +119,26 @@ export class AnalyticsService implements OnModuleInit {
     }
 
     /** Fetch pipelines based on optional ID filter */
-    private async fetchPipelines(pipelineId?: string, limit?: number): Promise<Pipeline[]> {
+    private async fetchPipelines(ctx: RequestContext, pipelineId?: string, limit?: number): Promise<Pipeline[]> {
         if (pipelineId) {
-            const pipeline = await this.connection.rawConnection.getRepository(Pipeline).findOne({
+            const pipeline = await this.connection.getRepository(ctx, Pipeline).findOne({
                 where: { id: pipelineId as ID },
             });
             return pipeline ? [pipeline] : [];
         }
-        return this.connection.rawConnection.getRepository(Pipeline).find({
+        return this.connection.getRepository(ctx, Pipeline).find({
             take: limit || PAGINATION.LIST_PAGE_SIZE,
         });
     }
 
     /** Load all runs for given pipelines and group by pipeline ID */
     private async loadRunsByPipeline(
+        ctx: RequestContext,
         pipelines: Pipeline[],
         startDate: Date,
     ): Promise<Map<string | number, PipelineRun[]>> {
         const pipelineIds = pipelines.map(p => p.id);
-        const allRuns = await this.connection.rawConnection.getRepository(PipelineRun).find({
+        const allRuns = await this.connection.getRepository(ctx, PipelineRun).find({
             where: {
                 pipeline: { id: In(pipelineIds) },
                 createdAt: MoreThan(startDate),
@@ -170,13 +171,13 @@ export class AnalyticsService implements OnModuleInit {
         const startDate = getStartDate(options?.timeRange || '30d');
 
         // Fetch pipelines
-        const pipelines = await this.fetchPipelines(options?.pipelineId, options?.limit);
+        const pipelines = await this.fetchPipelines(ctx, options?.pipelineId, options?.limit);
         if (pipelines.length === 0) {
             return [];
         }
 
         // Batch load and group runs by pipeline
-        const runsByPipelineId = await this.loadRunsByPipeline(pipelines, startDate);
+        const runsByPipelineId = await this.loadRunsByPipeline(ctx, pipelines, startDate);
 
         // Build performance reports for each pipeline
         const results = pipelines.map(pipeline => {
@@ -239,7 +240,7 @@ export class AnalyticsService implements OnModuleInit {
         const startDate = getStartDate(timeRange);
         const whereClause = this.buildErrorWhereClause(startDate, options?.pipelineId);
 
-        const errors = await this.connection.rawConnection.getRepository(DataHubRecordError).find({
+        const errors = await this.connection.getRepository(ctx, DataHubRecordError).find({
             where: whereClause,
             relations: ['run', 'run.pipeline'],
             order: { createdAt: SortOrder.DESC },
@@ -265,7 +266,7 @@ export class AnalyticsService implements OnModuleInit {
             whereClause.pipeline = { id: options.pipelineId as ID };
         }
 
-        const runs = await this.connection.rawConnection.getRepository(PipelineRun).find({
+        const runs = await this.connection.getRepository(ctx, PipelineRun).find({
             where: whereClause,
             select: ['metrics', 'createdAt', 'finishedAt'],
         });
@@ -324,7 +325,7 @@ export class AnalyticsService implements OnModuleInit {
     ): Promise<{ runs: RunHistoryItem[]; totalItems: number }> {
         const whereClause = this.buildRunHistoryWhereClause(options);
 
-        const [runs, totalItems] = await this.connection.rawConnection.getRepository(PipelineRun).findAndCount({
+        const [runs, totalItems] = await this.connection.getRepository(ctx, PipelineRun).findAndCount({
             where: whereClause,
             relations: ['pipeline'],
             order: { createdAt: SortOrder.DESC },
@@ -339,21 +340,21 @@ export class AnalyticsService implements OnModuleInit {
     }
 
     /** Get real-time stats (for dashboard polling) */
-    async getRealTimeStats(_ctx: RequestContext): Promise<RealTimeStats> {
+    async getRealTimeStats(ctx: RequestContext): Promise<RealTimeStats> {
         const oneMinuteAgo = new Date(Date.now() - TIME.ONE_MINUTE_MS);
         const fiveMinutesAgo = new Date(Date.now() - TIME.FIVE_MINUTES_MS);
 
         const [activeRuns, queuedRuns, recentErrors, recentRuns] = await Promise.all([
-            this.connection.rawConnection.getRepository(PipelineRun).count({
+            this.connection.getRepository(ctx, PipelineRun).count({
                 where: { status: RunStatus.RUNNING },
             }),
-            this.connection.rawConnection.getRepository(PipelineRun).count({
+            this.connection.getRepository(ctx, PipelineRun).count({
                 where: { status: RunStatus.PENDING },
             }),
-            this.connection.rawConnection.getRepository(DataHubRecordError).count({
+            this.connection.getRepository(ctx, DataHubRecordError).count({
                 where: { createdAt: MoreThan(fiveMinutesAgo) },
             }),
-            this.connection.rawConnection.getRepository(PipelineRun).find({
+            this.connection.getRepository(ctx, PipelineRun).find({
                 where: { finishedAt: MoreThan(oneMinuteAgo) },
                 select: ['metrics'],
             }),

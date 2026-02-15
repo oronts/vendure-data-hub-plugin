@@ -31,20 +31,20 @@ export function RetryPatchHelper({ onChange }: { onChange: (p: Record<string, un
     return (
         <div className="grid grid-cols-4 gap-2">
             <div>
-                <label className="text-xs text-muted-foreground">slug</label>
-                <Input value={String(values.slug ?? '')} onChange={handleSlugChange} />
+                <label htmlFor="retry-slug" className="text-xs text-muted-foreground">slug</label>
+                <Input id="retry-slug" value={String(values.slug ?? '')} onChange={handleSlugChange} />
             </div>
             <div>
-                <label className="text-xs text-muted-foreground">sku</label>
-                <Input value={String(values.sku ?? '')} onChange={handleSkuChange} />
+                <label htmlFor="retry-sku" className="text-xs text-muted-foreground">sku</label>
+                <Input id="retry-sku" value={String(values.sku ?? '')} onChange={handleSkuChange} />
             </div>
             <div>
-                <label className="text-xs text-muted-foreground">code</label>
-                <Input value={String(values.code ?? '')} onChange={handleCodeChange} />
+                <label htmlFor="retry-code" className="text-xs text-muted-foreground">code</label>
+                <Input id="retry-code" value={String(values.code ?? '')} onChange={handleCodeChange} />
             </div>
             <div>
-                <label className="text-xs text-muted-foreground">name</label>
-                <Input value={String(values.name ?? '')} onChange={handleNameChange} />
+                <label htmlFor="retry-name" className="text-xs text-muted-foreground">name</label>
+                <Input id="retry-name" value={String(values.name ?? '')} onChange={handleNameChange} />
             </div>
         </div>
     );

@@ -206,8 +206,9 @@ export class DataHubPipelineAdminResolver {
             if (this.isVisualFormat(definition)) {
                 definition = this.formatService.toCanonical(definition);
             }
+            const level = args.level?.toUpperCase() as ValidationLevel | undefined;
             const result = await this.definitionValidator.validateAsync(definition as PipelineDefinition, {
-                level: args.level as ValidationLevel | undefined,
+                level,
             });
             return {
                 isValid: result.isValid,
@@ -223,7 +224,7 @@ export class DataHubPipelineAdminResolver {
                     errors: e.issues.map(issue => issue.message),
                     issues: e.issues,
                     warnings: [],
-                    level: 'full',
+                    level: ValidationLevel.FULL,
                 };
             }
             const msg = getErrorMessage(e);
@@ -233,7 +234,7 @@ export class DataHubPipelineAdminResolver {
                 errors,
                 issues: errors.map(message => ({ message })),
                 warnings: [],
-                level: 'full',
+                level: ValidationLevel.FULL,
             };
         }
     }

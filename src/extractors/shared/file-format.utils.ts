@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { FileFormat } from '../../parsers/types';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { JsonObject } from '../../types/index';
@@ -13,14 +14,33 @@ export const FILE_FORMAT_MAP: Record<string, FileFormat> = {
     xls: 'XLSX',
 };
 
+/**
+ * Extract the file extension from a filename, path, or URL.
+ * Handles URLs with query params/fragments, dotfiles, and missing extensions.
+ * Returns lowercase extension without the leading dot, or empty string if none.
+ */
+export function extractFileExtension(filenameOrUrl: string): string {
+    let pathname = filenameOrUrl;
+    try {
+        // If it looks like a URL, parse out the pathname to strip query/fragment
+        if (filenameOrUrl.includes('://')) {
+            pathname = new URL(filenameOrUrl).pathname;
+        }
+    } catch {
+        // Not a valid URL -- fall through to path-based extraction
+    }
+    const ext = path.extname(pathname);
+    // path.extname returns '' for no extension, '.ext' otherwise
+    return ext ? ext.slice(1).toLowerCase() : '';
+}
+
 export function detectFileFormat(filenameOrPath: string): FileFormat | undefined {
-    const extension = filenameOrPath.split('.').pop()?.toLowerCase();
+    const extension = extractFileExtension(filenameOrPath);
     return FILE_FORMAT_MAP[extension || ''];
 }
 
-export function getFileExtension(path: string): string {
-    const parts = path.split('.');
-    return parts.length > 1 ? parts.pop()?.toLowerCase() || '' : '';
+export function getFileExtension(filePath: string): string {
+    return extractFileExtension(filePath);
 }
 
 export function hasExpectedExtension(filename: string, format?: FileFormat): boolean {

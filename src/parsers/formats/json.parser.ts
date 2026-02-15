@@ -267,24 +267,4 @@ export function generateJsonLines(records: Record<string, unknown>[]): string {
     return records.map(r => JSON.stringify(r)).join('\n');
 }
 
-export { getNestedValue } from '../../utils/object-path.utils';
-
-/** `setNestedValue(obj, 'a.b.c', 1)` - Creates nested structure if needed */
-export function setNestedValue(
-    obj: Record<string, unknown>,
-    path: string,
-    value: unknown,
-): void {
-    const parts = path.split('.');
-    let current = obj;
-
-    for (let i = 0; i < parts.length - 1; i++) {
-        const key = parts[i];
-        if (!(key in current) || typeof current[key] !== 'object') {
-            current[key] = {};
-        }
-        current = current[key] as Record<string, unknown>;
-    }
-
-    current[parts[parts.length - 1]] = value;
-}
+export { getNestedValue, setNestedValue } from '../../utils/object-path.utils';

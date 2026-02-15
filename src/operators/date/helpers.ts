@@ -2,6 +2,7 @@ import { JsonObject, JsonValue } from '../types';
 import { getNestedValue, setNestedValue, deepClone } from '../helpers';
 import { DateUnit } from './types';
 import { TIME_UNITS } from '../../constants/index';
+import { formatDate } from '../../transforms/field/date-transforms';
 
 function parseDate(value: JsonValue | undefined, format?: string): Date | null {
     if (value === null || value === undefined) {
@@ -120,18 +121,6 @@ function parseDateWithFormat(value: string, format: string): Date | null {
         // Date parsing failed - return null as fallback
         return null;
     }
-}
-
-function formatDate(date: Date, format: string): string {
-    const pad = (n: number): string => n.toString().padStart(2, '0');
-
-    return format
-        .replace('YYYY', date.getFullYear().toString())
-        .replace('MM', pad(date.getMonth() + 1))
-        .replace('DD', pad(date.getDate()))
-        .replace('HH', pad(date.getHours()))
-        .replace('mm', pad(date.getMinutes()))
-        .replace('ss', pad(date.getSeconds()));
 }
 
 export function applyDateFormat(
