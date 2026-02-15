@@ -18,14 +18,6 @@ export const DEFAULT_RETRY_CONFIG: ResolvedRetryConfig = {
     jitterFactor: 0.1,
 };
 
-export const WEBHOOK_RETRY_CONFIG: ResolvedRetryConfig = {
-    maxAttempts: WEBHOOK.MAX_ATTEMPTS,
-    initialDelayMs: WEBHOOK.INITIAL_DELAY_MS,
-    maxDelayMs: WEBHOOK.MAX_DELAY_MS,
-    backoffMultiplier: WEBHOOK.BACKOFF_MULTIPLIER,
-    jitterFactor: 0.1,
-};
-
 export function calculateBackoff(attempt: number, config: ResolvedRetryConfig): number {
     const baseDelay = config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt - 1);
     const jitterFactor = config.jitterFactor ?? 0.1;

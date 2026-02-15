@@ -225,13 +225,13 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /** Accepts both encrypted and unencrypted values for backward compatibility */
+    /** Handles both encrypted and plaintext values gracefully */
     private decryptValue(value: string | null): string | null {
         if (value === null) {
             return null;
         }
 
-        // If not encrypted, return as-is (backward compatibility)
+        // Plaintext values pass through without decryption
         if (!isEncrypted(value)) {
             return value;
         }

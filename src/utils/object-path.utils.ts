@@ -121,25 +121,6 @@ export function deepClone<T extends JsonValue>(value: T): T {
     return result as T;
 }
 
-export function pickPaths(obj: JsonObject, paths: string[]): JsonObject {
-    const result: JsonObject = {};
-    for (const path of paths) {
-        const value = getNestedValue(obj, path);
-        if (value !== undefined) {
-            setNestedValue(result, path, value);
-        }
-    }
-    return result;
-}
-
-export function omitPaths(obj: JsonObject, paths: string[]): JsonObject {
-    const clone = deepClone(obj);
-    for (const path of paths) {
-        removeNestedValue(clone, path);
-    }
-    return clone;
-}
-
 function getAllPaths(obj: JsonObject, prefix: string = '', maxDepth: number = 32): string[] {
     if (maxDepth <= 0) {
         return prefix ? [prefix] : [];

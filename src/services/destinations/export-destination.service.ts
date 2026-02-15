@@ -34,6 +34,8 @@ export type {
     EmailDestinationConfig,
 } from './destination.types';
 
+const MAX_EXPORT_DESTINATIONS = 100;
+
 @Injectable()
 export class ExportDestinationService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
@@ -54,6 +56,14 @@ export class ExportDestinationService implements OnModuleInit, OnModuleDestroy {
     }
 
     registerDestination(config: DestinationConfig): void {
+        if (this.destinations.size >= MAX_EXPORT_DESTINATIONS && !this.destinations.has(config.id)) {
+            const oldest = this.destinations.keys().next().value;
+            if (oldest !== undefined) {
+                this.destinations.delete(oldest);
+                this.logger.warn('Evicted oldest export destination due to limit', { evictedId: oldest, limit: MAX_EXPORT_DESTINATIONS });
+            }
+        }
+
         this.destinations.set(config.id, {
             ...config,
             enabled: config.enabled !== false,

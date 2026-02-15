@@ -462,7 +462,7 @@ export type FeedConfig = GoogleMerchantFeedConfig | MetaCatalogFeedConfig | Amaz
 
 export type SinkConfig = MeilisearchSinkConfig | ElasticsearchSinkConfig | AlgoliaSinkConfig | TypesenseSinkConfig;
 
-export type StepConfig =
+export type RuntimeStepConfig =
     | ExtractorConfig
     | TransformConfig
     | LoaderConfig

@@ -8,7 +8,7 @@ import {
     CONNECTION_TYPE_OPTIONS,
     createDefaultConnectionConfig,
     normalizeConnectionConfig,
-} from '../../components/common/ConnectionConfigEditor';
+} from '../../components/common';
 import type { UIConnectionType } from '../../types';
 import { getErrorMessage } from '../../../shared';
 import { CODE_PATTERN } from '../../utils';

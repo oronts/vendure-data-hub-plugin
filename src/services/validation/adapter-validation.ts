@@ -20,7 +20,7 @@ export type { AdapterType } from '../../../shared/types';
 /**
  * Step configuration with adapter code
  */
-export interface StepConfig {
+export interface AdapterStepConfig {
     adapterCode?: string;
     query?: string;
     variables?: Record<string, JsonValue>;
@@ -73,7 +73,7 @@ export function hasStreamSafetyInfo(
 export function validateAdapterConfig(
     stepKey: string,
     stepType: StepType,
-    cfg: StepConfig,
+    cfg: AdapterStepConfig,
     adapterType: AdapterType,
     registry: DataHubRegistryService,
     issues: PipelineDefinitionIssue[],
@@ -128,7 +128,7 @@ export function validateAdapterConnectivity(
  */
 export function validateAdapterFields(
     stepKey: string,
-    cfg: StepConfig,
+    cfg: AdapterStepConfig,
     adapter: AdapterDefinition,
     issues: PipelineDefinitionIssue[],
 ): void {
@@ -238,7 +238,7 @@ export function validateFieldMappings(
  */
 export function validateGraphQLExtractor(
     stepKey: string,
-    cfg: StepConfig,
+    cfg: AdapterStepConfig,
     issues: PipelineDefinitionIssue[],
 ): void {
     const q: string | undefined = typeof cfg.query === 'string' ? cfg.query : undefined;
@@ -272,7 +272,7 @@ export function validateGraphQLExtractor(
 /**
  * Checks if a step type requires an adapter and returns true if built-in config is used.
  */
-export function isUsingBuiltInEnrichment(stepType: StepType, cfg: StepConfig): boolean {
+export function isUsingBuiltInEnrichment(stepType: StepType, cfg: AdapterStepConfig): boolean {
     if (stepType !== 'ENRICH') {
         return false;
     }

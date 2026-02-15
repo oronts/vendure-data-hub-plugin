@@ -19,7 +19,7 @@ import { getErrorMessage } from '../../utils/error.utils';
 // Import specialized validators
 import { validateTrigger } from './trigger-validation';
 import {
-    StepConfig,
+    AdapterStepConfig,
     AdapterType,
     validateAdapterConfig,
     validateAdapterConnectivity,
@@ -219,7 +219,7 @@ export class DefinitionValidationService {
     ): void {
         for (const step of definition.steps) {
             const type = step.type as StepType;
-            const cfg = (step.config ?? {}) as StepConfig;
+            const cfg = (step.config ?? {}) as AdapterStepConfig;
             const adapterType = adapterTypeFor(type);
 
             if (!adapterType) {

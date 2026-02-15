@@ -175,7 +175,7 @@ Pimcore GraphQL → Validate → Transform → Delta Filter → Vendure Products
 **Webhook Setup:**
 ```bash
 # In Pimcore, configure webhook to call:
-POST /api/data-hub/webhooks/pimcore-product-sync
+POST /data-hub/webhook/pimcore-product-sync
 Headers:
   X-API-Key: your-webhook-key
 Body:
@@ -601,7 +601,7 @@ PimcoreConnector({
       schedule: '0 */4 * * *', // Every 4 hours
 
       // Webhook trigger is auto-configured with code: pimcore-product-sync
-      // POST /api/data-hub/webhooks/pimcore-product-sync
+      // POST /data-hub/webhook/pimcore-product-sync
     },
   },
 })
@@ -715,6 +715,61 @@ const externalSyncPipeline = createPipeline()
 | `set` | Set static value | `{ op: 'set', args: { path: 'field', value: 'val' } }` |
 | `remove` | Remove a field | `{ op: 'remove', args: { path: 'fieldName' } }` |
 | `flatten` | Flatten nested arrays | `{ op: 'flatten', args: { source: 'variants' } }` |
+| `copy` | Copy value to another field | `{ op: 'copy', args: { from: 'name', to: 'displayName' } }` |
+| `hash` | Generate hash of a value | `{ op: 'hash', args: { source: 'sku', algorithm: 'sha256', target: 'skuHash' } }` |
+| `uuid` | Generate a UUID | `{ op: 'uuid', args: { target: 'externalRef' } }` |
+| **String** | | |
+| `concat` | Concatenate field values | `{ op: 'concat', args: { sources: ['brand', 'name'], separator: ' - ', target: 'title' } }` |
+| `extractRegex` | Extract via regex capture group | `{ op: 'extractRegex', args: { source: 'sku', pattern: '^(\\w+)-', target: 'prefix' } }` |
+| `join` | Join array elements into string | `{ op: 'join', args: { source: 'tags', separator: ', ', target: 'tagString' } }` |
+| `replace` | Replace substring | `{ op: 'replace', args: { source: 'name', search: '&', replace: 'and', target: 'name' } }` |
+| `replaceRegex` | Replace via regex pattern | `{ op: 'replaceRegex', args: { source: 'html', pattern: '<[^>]+>', replace: '', target: 'text' } }` |
+| `split` | Split string into array | `{ op: 'split', args: { source: 'categories', separator: '/', target: 'categoryParts' } }` |
+| `stripHtml` | Strip HTML tags from text | `{ op: 'stripHtml', args: { source: 'description', target: 'plainDescription' } }` |
+| `truncate` | Truncate string to max length | `{ op: 'truncate', args: { source: 'description', maxLength: 255, target: 'shortDesc' } }` |
+| `lowercase` | Convert to lowercase | `{ op: 'lowercase', args: { source: 'sku', target: 'skuLower' } }` |
+| `uppercase` | Convert to uppercase | `{ op: 'uppercase', args: { source: 'code', target: 'codeUpper' } }` |
+| `trim` | Trim whitespace | `{ op: 'trim', args: { source: 'name' } }` |
+| **Numeric** | | |
+| `currency` | Format as currency string | `{ op: 'currency', args: { source: 'price', currency: 'EUR', target: 'formattedPrice' } }` |
+| `formatNumber` | Format number with locale rules | `{ op: 'formatNumber', args: { source: 'weight', decimals: 2, target: 'formattedWeight' } }` |
+| `math` | Arithmetic operations | `{ op: 'math', args: { source: 'price', operator: '*', operand: 100, target: 'priceInCents' } }` |
+| `parseNumber` | Parse localized number string | `{ op: 'parseNumber', args: { source: 'priceStr', locale: 'de-DE', target: 'price' } }` |
+| `round` | Round a number | `{ op: 'round', args: { source: 'price', decimals: 2 } }` |
+| `toCents` | Convert decimal price to cents | `{ op: 'toCents', args: { source: 'price', target: 'priceInCents' } }` |
+| `toString` | Convert value to string | `{ op: 'toString', args: { source: 'productId', target: 'productIdStr' } }` |
+| `unit` | Convert measurement units | `{ op: 'unit', args: { source: 'weight', from: 'kg', to: 'g', target: 'weightGrams' } }` |
+| **Date** | | |
+| `dateAdd` | Add duration to a date | `{ op: 'dateAdd', args: { source: 'createdAt', amount: 30, unit: 'days', target: 'expiresAt' } }` |
+| `dateDiff` | Difference between two dates | `{ op: 'dateDiff', args: { from: 'createdAt', to: 'updatedAt', unit: 'days', target: 'ageDays' } }` |
+| `dateFormat` | Format date to string | `{ op: 'dateFormat', args: { source: 'syncedAt', format: 'YYYY-MM-DD', target: 'syncDate' } }` |
+| `dateParse` | Parse date string | `{ op: 'dateParse', args: { source: 'dateStr', format: 'DD.MM.YYYY', target: 'parsedDate' } }` |
+| `now` | Set current timestamp | `{ op: 'now', args: { target: 'importedAt' } }` |
+| **JSON** | | |
+| `omit` | Remove keys from object | `{ op: 'omit', args: { source: 'data', keys: ['internal', 'debug'], target: 'cleanData' } }` |
+| `parseJson` | Parse JSON string to object | `{ op: 'parseJson', args: { source: 'metadataJson', target: 'metadata' } }` |
+| `pick` | Keep only specified keys | `{ op: 'pick', args: { source: 'data', keys: ['sku', 'name', 'price'], target: 'essentials' } }` |
+| `stringifyJson` | Serialize object to JSON string | `{ op: 'stringifyJson', args: { source: 'metadata', target: 'metadataStr' } }` |
+| **Logic** | | |
+| `switch` | Multi-branch conditional mapping | `{ op: 'switch', args: { source: 'type', cases: { 'A': 'TypeA', 'B': 'TypeB' }, default: 'Other', target: 'category' } }` |
+| **Enrichment** | | |
+| `default` | Set default for empty fields | `{ op: 'default', args: { path: 'stock', value: 0 } }` |
+| `enrich` | Enrich from another data source | `{ op: 'enrich', args: { lookupPipeline: 'price-list', matchField: 'sku', target: 'pricing' } }` |
+| `httpLookup` | Fetch data from external HTTP API | `{ op: 'httpLookup', args: { url: 'https://api.example.com/stock/${sku}', target: 'stockData' } }` |
+| `lookup` | Look up value from a reference table | `{ op: 'lookup', args: { source: 'colorCode', table: 'colorMap', target: 'colorName' } }` |
+| **Aggregation** | | |
+| `aggregate` | Aggregate values across records | `{ op: 'aggregate', args: { groupBy: 'category', field: 'price', function: 'avg', target: 'avgPrice' } }` |
+| `count` | Count records in a group | `{ op: 'count', args: { groupBy: 'category', target: 'productCount' } }` |
+| `expand` | Expand array into multiple records | `{ op: 'expand', args: { source: 'variants', target: 'variant' } }` |
+| `first` | Take first record per group | `{ op: 'first', args: { groupBy: 'sku' } }` |
+| `last` | Take last record per group | `{ op: 'last', args: { groupBy: 'sku' } }` |
+| `unique` | Deduplicate records by field | `{ op: 'unique', args: { field: 'sku' } }` |
+| **Validation** | | |
+| `validateFormat` | Validate field matches a pattern | `{ op: 'validateFormat', args: { field: 'sku', pattern: '^[A-Z0-9-]+$', error: 'Invalid SKU' } }` |
+| `validateRequired` | Ensure required fields are present | `{ op: 'validateRequired', args: { fields: ['sku', 'name', 'price'] } }` |
+| **Script** | | |
+| `script` | Run custom JavaScript transform | `{ op: 'script', args: { code: 'return { ...record, fullName: record.brand + " " + record.name }' } }` |
+| **Other** | | |
 | `deltaFilter` | Filter unchanged records | `{ op: 'deltaFilter', args: { idPath: 'sku', includePaths: ['name', 'price'] } }` |
 
 ## Support

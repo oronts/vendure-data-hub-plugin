@@ -48,6 +48,19 @@ export function compare(
             return typeof left === 'string' && typeof right === 'string' && left.startsWith(right);
         case 'endsWith':
             return typeof left === 'string' && typeof right === 'string' && left.endsWith(right);
+        case 'matches':
+            if (typeof left === 'string' && typeof right === 'string') {
+                const pattern = right
+                    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+                    .replace(/\*/g, '.*')
+                    .replace(/\?/g, '.');
+                try {
+                    return new RegExp(`^${pattern}$`).test(left);
+                } catch {
+                    return false;
+                }
+            }
+            return false;
         case 'regex':
             if (typeof left === 'string' && typeof right === 'string') {
                 const safety = validateRegexSafety(right);
@@ -78,20 +91,6 @@ export function slugify(text: string, separator = '-'): string {
         .replace(/[^a-z0-9]+/g, separator)
         .replace(new RegExp(`^${separator}+|${separator}+$`, 'g'), '')
         .substring(0, TRANSFORM_LIMITS.SLUG_MAX_LENGTH);
-}
-
-export function interpolateTemplate(
-    template: string,
-    record: JsonObject,
-    currentValue?: JsonValue,
-): string {
-    return template.replace(/\$\{([^}]+)\}/g, (_, path) => {
-        if (path === 'value') {
-            return String(currentValue ?? '');
-        }
-        const value = getNestedValue(record, path);
-        return String(value ?? '');
-    });
 }
 
 export function simpleHash(value: JsonValue): string {

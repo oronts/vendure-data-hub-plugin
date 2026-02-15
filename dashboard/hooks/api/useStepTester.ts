@@ -2,9 +2,6 @@ import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import type { JsonObject } from '../../types';
 
-/** Step configuration for testing */
-export type StepConfig = JsonObject;
-
 /** Record type used in step testing */
 type TestRecord = JsonObject;
 
@@ -42,12 +39,12 @@ const previewFeedDocument = graphql(`
 `);
 
 interface PreviewExtractInput {
-    step: StepConfig;
+    step: JsonObject;
     limit: number;
 }
 
 interface SimulateStepInput {
-    step: StepConfig;
+    step: JsonObject;
     records: TestRecord[];
 }
 
@@ -56,22 +53,22 @@ interface PreviewFeedInput {
     limit: number;
 }
 
-export async function previewExtract(step: StepConfig, limit: number): Promise<TestRecord[]> {
+export async function previewExtract(step: JsonObject, limit: number): Promise<TestRecord[]> {
     const res = await api.mutate(previewExtractDocument, { step, limit });
     return (res?.previewDataHubExtract?.records ?? []) as TestRecord[];
 }
 
-export async function simulateTransform(step: StepConfig, records: TestRecord[]): Promise<TestRecord[]> {
+export async function simulateTransform(step: JsonObject, records: TestRecord[]): Promise<TestRecord[]> {
     const res = await api.mutate(simulateTransformDocument, { step, records });
     return (res?.simulateDataHubTransform ?? []) as TestRecord[];
 }
 
-export async function simulateLoad(step: StepConfig, records: TestRecord[]): Promise<JsonObject> {
+export async function simulateLoad(step: JsonObject, records: TestRecord[]): Promise<JsonObject> {
     const res = await api.mutate(simulateLoadDocument, { step, records });
     return (res?.simulateDataHubLoad ?? {}) as JsonObject;
 }
 
-export async function simulateValidate(step: StepConfig, records: TestRecord[]) {
+export async function simulateValidate(step: JsonObject, records: TestRecord[]) {
     const res = await api.mutate(simulateValidateDocument, { step, records });
     return res?.simulateDataHubValidate;
 }
