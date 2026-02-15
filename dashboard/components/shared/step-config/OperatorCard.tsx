@@ -136,6 +136,7 @@ function OperatorCardComponent({
                         className="h-6 w-6 p-0"
                         onClick={(e) => { e.stopPropagation(); onMove(MOVE_DIRECTION.UP); }}
                         disabled={index === 0}
+                        aria-label="Move operator up"
                     >
                         {'\u2191'}
                     </Button>
@@ -145,6 +146,7 @@ function OperatorCardComponent({
                         className="h-6 w-6 p-0"
                         onClick={(e) => { e.stopPropagation(); onMove(MOVE_DIRECTION.DOWN); }}
                         disabled={index === totalCount - 1}
+                        aria-label="Move operator down"
                     >
                         {'\u2193'}
                     </Button>
@@ -153,6 +155,7 @@ function OperatorCardComponent({
                         size="sm"
                         className="h-6 w-6 p-0 text-destructive"
                         onClick={(e) => { e.stopPropagation(); onRemove(); }}
+                        aria-label="Remove operator"
                     >
                         {'\u00D7'}
                     </Button>

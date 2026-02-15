@@ -11,24 +11,24 @@ import { PipelineDefinition, PipelineStepDefinition, TriggerType } from '../../s
 import { StepType } from '../constants/enums';
 
 /** Parsed trigger config (type-safe subset) */
-export interface ParsedTriggerConfig {
+interface ParsedTriggerConfig {
     type: TriggerType;
     enabled?: boolean;
     [key: string]: unknown;
 }
 
-export function isTriggerStep(step: PipelineStepDefinition | undefined | null): step is PipelineStepDefinition {
+function isTriggerStep(step: PipelineStepDefinition | undefined | null): step is PipelineStepDefinition {
     return step?.type === StepType.TRIGGER;
 }
 
-export function findTriggerSteps(definition: PipelineDefinition | undefined | null): PipelineStepDefinition[] {
+function findTriggerSteps(definition: PipelineDefinition | undefined | null): PipelineStepDefinition[] {
     if (!definition?.steps || !Array.isArray(definition.steps)) {
         return [];
     }
     return definition.steps.filter(isTriggerStep);
 }
 
-export function findTriggerStepsByType(
+function findTriggerStepsByType(
     definition: PipelineDefinition | undefined | null,
     triggerType: TriggerType
 ): PipelineStepDefinition[] {

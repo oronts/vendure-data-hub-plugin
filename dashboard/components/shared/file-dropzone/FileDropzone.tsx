@@ -91,6 +91,7 @@ function FileDropzoneComponent({
         <div
             role="button"
             tabIndex={0}
+            aria-label="Upload file"
             className={`border-2 border-dashed rounded-lg ${padding} text-center transition-colors cursor-pointer ${borderClass} ${className}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}

@@ -446,6 +446,7 @@ export function TriggerForm({
                             size="sm"
                             onClick={onRemove}
                             className="text-destructive hover:text-destructive"
+                            aria-label="Remove trigger"
                             data-testid="datahub-trigger-remove-btn"
                         >
                             <Trash2 className="h-4 w-4" />

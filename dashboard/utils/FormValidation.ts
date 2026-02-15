@@ -1,6 +1,5 @@
 import { isEmpty, isEmail as checkIsEmail, isURL as checkIsURL } from './FieldValidators';
 import { RETENTION } from '../constants/Defaults';
-import { EMAIL_REGEX } from '../constants/ValidationPatterns';
 import { SOURCE_TYPE, DESTINATION_TYPE } from '../constants/WizardOptions';
 import { TRIGGER_TYPES, QUEUE_TYPES } from '../constants';
 import { SECRET_PROVIDER } from '../constants/UiTypes';
@@ -20,12 +19,7 @@ interface FormValidationResult {
     errors: FieldValidationError[];
     errorsByField: Record<string, string>;
 }
-export const IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-const EMAIL_PATTERN = EMAIL_REGEX;
-export const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
-export const CRON_PATTERN = /^(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)$/;
 const HOSTNAME_PATTERN = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/;
-export const PORT_PATTERN = /^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$/;
 
 export const ERROR_MESSAGES = {
     required: (field: string) => `${field} is required`,

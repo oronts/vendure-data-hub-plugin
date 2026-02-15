@@ -1,6 +1,6 @@
 import { normalizeString } from './StringHelpers';
 
-export const FIELD_VARIATIONS: Record<string, string[]> = {
+const FIELD_VARIATIONS: Record<string, string[]> = {
     'id': ['identifier', 'uid', 'uuid', 'key'],
     'name': ['title', 'label', 'displayname'],
     'description': ['desc', 'summary', 'details', 'content'],
@@ -112,12 +112,3 @@ export function computeAutoMappings(
     return mappings;
 }
 
-function mappingsToRecord(mappings: FieldMappingResult[]): Record<string, string> {
-    const result: Record<string, string> = {};
-    for (const mapping of mappings) {
-        if (mapping.sourceField) {
-            result[mapping.targetField] = mapping.sourceField;
-        }
-    }
-    return result;
-}

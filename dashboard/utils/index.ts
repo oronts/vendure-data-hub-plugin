@@ -41,10 +41,6 @@ export {
 
 export {
     CODE_PATTERN,
-    IDENTIFIER_PATTERN,
-    URL_PATTERN,
-    CRON_PATTERN,
-    PORT_PATTERN,
     ERROR_MESSAGES,
     validateEmail,
     validateUrl,
@@ -65,8 +61,6 @@ export {
 
 export {
     isEmpty,
-    isNotEmpty,
-    isInteger,
     isEmail,
     isURL,
 } from './FieldValidators';

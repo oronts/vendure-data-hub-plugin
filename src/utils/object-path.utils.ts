@@ -140,7 +140,7 @@ export function omitPaths(obj: JsonObject, paths: string[]): JsonObject {
     return clone;
 }
 
-export function getAllPaths(obj: JsonObject, prefix: string = '', maxDepth: number = 32): string[] {
+function getAllPaths(obj: JsonObject, prefix: string = '', maxDepth: number = 32): string[] {
     if (maxDepth <= 0) {
         return prefix ? [prefix] : [];
     }

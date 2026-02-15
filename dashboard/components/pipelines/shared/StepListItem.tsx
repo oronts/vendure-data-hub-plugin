@@ -119,6 +119,7 @@ function StepListItemComponent({
                     className="h-6 w-6 p-0 text-destructive"
                     onClick={handleRemove}
                     title={deleteTitle}
+                    aria-label={deleteTitle}
                     data-testid={`datahub-step-remove-${step.key}`}
                 >
                     <Trash2 className={ICON_SIZES.XS} />

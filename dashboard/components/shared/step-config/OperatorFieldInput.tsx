@@ -211,6 +211,7 @@ export function GenericArgInput({ argKey, value, onChange, onRemove }: GenericAr
                 type="button"
                 className="h-6 w-6 p-0 mt-5 text-destructive hover:bg-destructive/10 rounded inline-flex items-center justify-center"
                 onClick={() => onRemove(argKey)}
+                aria-label={`Remove argument ${argKey}`}
             >
                 {'\u00D7'}
             </button>

@@ -909,7 +909,7 @@ export const productCatalogEnrichment = createPipeline()
     .transform('format-price', {
         operators: [
             { op: 'coerce', args: { path: 'price', type: 'number' } },
-            { op: 'math', args: { path: 'price', op: 'multiply', value: 100, target: 'priceInCents' } },
+            { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100', target: 'priceInCents' } },
         ],
     })
 

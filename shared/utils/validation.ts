@@ -46,7 +46,7 @@ export function isEmpty(value: unknown): boolean {
     return false;
 }
 
-export function isNotEmpty(value: unknown): boolean {
+function isNotEmpty(value: unknown): boolean {
     return !isEmpty(value);
 }
 
@@ -60,7 +60,7 @@ function isNumeric(value: unknown): boolean {
     return false;
 }
 
-export function isInteger(value: unknown): boolean {
+function isInteger(value: unknown): boolean {
     if (!isNumeric(value)) return false;
     const num = Number(value);
     return Number.isInteger(num);

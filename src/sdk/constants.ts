@@ -108,44 +108,29 @@ export type RouteOperator = typeof ROUTE_OPERATOR[keyof typeof ROUTE_OPERATOR];
  * ```
  */
 export const TRANSFORM_OPERATOR = {
+    // Data operators
     /** Map fields from source to destination paths */
     MAP: 'map',
     /** Set a static value at a path */
     SET: 'set',
-    /** Enrich with defaults or lookups */
-    ENRICH: 'enrich',
     /** Remove a field */
     REMOVE: 'remove',
     /** Rename a field */
     RENAME: 'rename',
-    /** Conditional filter (keep/drop) */
-    WHEN: 'when',
+    /** Copy a field value to another path */
+    COPY: 'copy',
     /** Render a string template */
     TEMPLATE: 'template',
-    /** Lookup value from a map */
-    LOOKUP: 'lookup',
-    /** Convert currency to minor units */
-    CURRENCY: 'currency',
-    /** Convert between units */
-    UNIT: 'unit',
-    /** Filter unchanged records (delta detection) */
-    DELTA_FILTER: 'deltaFilter',
-    /** Compute aggregate (count, sum, avg, etc.) */
-    AGGREGATE: 'aggregate',
-    /** Flatten nested arrays */
-    FLATTEN: 'flatten',
+    /** Generate hash of field values */
+    HASH: 'hash',
+    /** Generate a UUID */
+    UUID: 'uuid',
+
+    // String operators
     /** Split string into array */
     SPLIT: 'split',
     /** Join array into string */
     JOIN: 'join',
-    /** Return first non-null value from paths */
-    COALESCE: 'coalesce',
-    /** Format a date */
-    DATE_FORMAT: 'dateFormat',
-    /** Parse JSON string to object */
-    PARSE_JSON: 'parseJson',
-    /** Stringify object to JSON */
-    STRINGIFY_JSON: 'stringifyJson',
     /** Trim whitespace */
     TRIM: 'trim',
     /** Convert to lowercase */
@@ -154,8 +139,108 @@ export const TRANSFORM_OPERATOR = {
     UPPERCASE: 'uppercase',
     /** Generate URL-safe slug */
     SLUGIFY: 'slugify',
+    /** Concatenate multiple fields into one */
+    CONCAT: 'concat',
+    /** Replace substring in a field */
+    REPLACE: 'replace',
+    /** Extract value using regex pattern */
+    EXTRACT_REGEX: 'extractRegex',
+    /** Replace using regex pattern */
+    REPLACE_REGEX: 'replaceRegex',
+    /** Strip HTML tags from a string */
+    STRIP_HTML: 'stripHtml',
+    /** Truncate string to a maximum length */
+    TRUNCATE: 'truncate',
+
+    // Numeric operators
+    /** Perform math operations (add, subtract, multiply, etc.) */
+    MATH: 'math',
+    /** Convert currency to minor units */
+    CURRENCY: 'currency',
+    /** Convert between units */
+    UNIT: 'unit',
+    /** Convert value to number */
+    TO_NUMBER: 'toNumber',
+    /** Convert value to string */
+    TO_STRING: 'toString',
+    /** Parse number from locale-formatted string */
+    PARSE_NUMBER: 'parseNumber',
+    /** Format number with locale/currency support */
+    FORMAT_NUMBER: 'formatNumber',
+    /** Convert decimal amount to cents */
+    TO_CENTS: 'toCents',
+    /** Round a number */
+    ROUND: 'round',
+
+    // Date operators
+    /** Format a date */
+    DATE_FORMAT: 'dateFormat',
+    /** Parse a date from string */
+    DATE_PARSE: 'dateParse',
+    /** Add time to a date */
+    DATE_ADD: 'dateAdd',
+    /** Calculate difference between two dates */
+    DATE_DIFF: 'dateDiff',
+    /** Set field to current timestamp */
+    NOW: 'now',
+
+    // Logic operators
+    /** Conditional filter (keep/drop) */
+    WHEN: 'when',
+    /** Conditional value assignment (if/then/else) */
+    IF_THEN_ELSE: 'ifThenElse',
+    /** Map values using switch/case logic */
+    SWITCH: 'switch',
+    /** Filter unchanged records (delta detection) */
+    DELTA_FILTER: 'deltaFilter',
+
+    // JSON operators
+    /** Parse JSON string to object */
+    PARSE_JSON: 'parseJson',
+    /** Stringify object to JSON */
+    STRINGIFY_JSON: 'stringifyJson',
+    /** Keep only specified fields */
+    PICK: 'pick',
+    /** Remove specified fields */
+    OMIT: 'omit',
+
+    // Enrichment operators
+    /** Lookup value from a map */
+    LOOKUP: 'lookup',
+    /** Return first non-null value from paths */
+    COALESCE: 'coalesce',
+    /** Enrich with defaults or lookups */
+    ENRICH: 'enrich',
+    /** Set a default value if field is missing */
+    DEFAULT: 'default',
     /** Fetch data from HTTP endpoint */
     HTTP_LOOKUP: 'httpLookup',
+
+    // Aggregation operators
+    /** Compute aggregate (count, sum, avg, etc.) */
+    AGGREGATE: 'aggregate',
+    /** Count items in an array field */
+    COUNT: 'count',
+    /** Deduplicate array values */
+    UNIQUE: 'unique',
+    /** Flatten nested arrays */
+    FLATTEN: 'flatten',
+    /** Get first element of an array */
+    FIRST: 'first',
+    /** Get last element of an array */
+    LAST: 'last',
+    /** Expand array field into multiple records */
+    EXPAND: 'expand',
+
+    // Validation operators
+    /** Validate required fields are present */
+    VALIDATE_REQUIRED: 'validateRequired',
+    /** Validate field matches a pattern */
+    VALIDATE_FORMAT: 'validateFormat',
+
+    // Script operator
+    /** Execute inline JavaScript code */
+    SCRIPT: 'script',
 } as const;
 
 /** Transform operator type - union of all TRANSFORM_OPERATOR values */

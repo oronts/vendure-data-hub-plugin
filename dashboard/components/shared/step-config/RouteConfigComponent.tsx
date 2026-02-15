@@ -109,6 +109,7 @@ export function RouteConfigComponent({
                         size="sm"
                         onClick={() => removeBranch(i)}
                         className="text-destructive"
+                        aria-label={`Remove branch ${branch.name || i + 1}`}
                     >
                         <Trash2 className="h-4 w-4" />
                     </Button>
