@@ -52,6 +52,7 @@ export function AdaptersTable({
                 }, [row.original]);
                 return (
                     <button
+                        type="button"
                         className="font-mono text-sm underline-offset-2 hover:underline"
                         onClick={handleClick}
                     >

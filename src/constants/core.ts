@@ -107,5 +107,3 @@ export const LOGGER_CONTEXTS = {
     DEFINITION_VALIDATION_SERVICE: 'DefinitionValidationService',
     CIRCUIT_BREAKER: 'CircuitBreaker',
 } as const;
-
-export type LoggerContext = typeof LOGGER_CONTEXTS[keyof typeof LOGGER_CONTEXTS];

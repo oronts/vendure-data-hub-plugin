@@ -8,18 +8,14 @@
 import { FtpFileInfo, FtpExtractorConfig, FtpFileMetadata, FtpProtocol } from './types';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { JsonObject } from '../../types/index';
+import { globToRegex } from '../../../shared';
 import {
     parseFileContent,
     attachMetadataToRecord as sharedAttachMetadataToRecord,
 } from '../shared';
 
 export function matchesPattern(filename: string, pattern: string): boolean {
-    const regexPattern = pattern
-        .replace(/[.+^${}()|[\]\\]/g, '\\$&') // Escape special regex chars
-        .replace(/\*/g, '.*') // * matches any characters
-        .replace(/\?/g, '.'); // ? matches single character
-
-    return new RegExp(`^${regexPattern}$`, 'i').test(filename);
+    return globToRegex(pattern, 'i').test(filename);
 }
 
 export function filterByPattern(files: FtpFileInfo[], pattern?: string): FtpFileInfo[] {

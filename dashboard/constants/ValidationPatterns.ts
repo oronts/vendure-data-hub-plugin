@@ -6,13 +6,10 @@
  */
 
 import {
-    EMAIL_PATTERN,
     isValidEmail as sharedIsValidEmail,
     isValidUrl as sharedIsValidUrl,
     ERROR_MESSAGES as SHARED_ERROR_MESSAGES,
 } from '../../shared';
-
-export const EMAIL_REGEX = EMAIL_PATTERN;
 
 export const ERROR_MESSAGES = {
     ...SHARED_ERROR_MESSAGES,

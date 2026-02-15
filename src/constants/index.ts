@@ -5,7 +5,7 @@ export {
     NAV,
     LOGGER_CONTEXTS,
 } from './core';
-export type { QueueName, LoggerContext } from './core';
+export type { QueueName } from './core';
 
 export * from './enums';
 

@@ -25,6 +25,7 @@ export const LogTableRow = React.memo(function LogTableRow({
 
     return (
         <tr
+            role="row"
             className="border-t hover:bg-muted/30 cursor-pointer"
             onClick={handleClick}
             onKeyDown={handleKeyDown}

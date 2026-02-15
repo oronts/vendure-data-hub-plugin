@@ -54,11 +54,6 @@ export interface UpdatedPaginationState {
     page: number;
 }
 
-export interface RateLimitConfig {
-    requestsPerSecond?: number;
-    burstLimit?: number;
-}
-
 export const RETRYABLE_NETWORK_CODES = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND'] as const;
 
 export const HTTP_DEFAULTS = {

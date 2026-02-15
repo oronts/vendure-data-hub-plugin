@@ -50,16 +50,26 @@ function StepListItemComponent({
         onRemove();
     }, [onRemove]);
 
+    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClick();
+        }
+    }, [onClick]);
+
     const deleteTitle = connectionCount > 0
         ? `Delete step (${connectionCount} connection${connectionCount > 1 ? 's' : ''} will be removed)`
         : 'Delete step';
 
     return (
         <div
+            role="button"
+            tabIndex={0}
             className={`group flex items-center gap-2 p-2 rounded-md cursor-pointer transition-colors ${
                 isSelected ? 'bg-primary/10 border border-primary/30' : 'hover:bg-muted'
             }`}
             onClick={onClick}
+            onKeyDown={handleKeyDown}
             data-testid={`datahub-step-item-${step.key}`}
         >
             <div

@@ -1,5 +1,6 @@
 import { JsonValue, JsonObject } from '../types';
 import { validateRegexSafety } from '../utils/safe-regex.utils';
+import { globToRegex } from '../../shared';
 import { TRANSFORM_LIMITS } from '../constants/index';
 import {
     getNestedValue as getNestedValueUtil,
@@ -50,12 +51,8 @@ export function compare(
             return typeof left === 'string' && typeof right === 'string' && left.endsWith(right);
         case 'matches':
             if (typeof left === 'string' && typeof right === 'string') {
-                const pattern = right
-                    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-                    .replace(/\*/g, '.*')
-                    .replace(/\?/g, '.');
                 try {
-                    return new RegExp(`^${pattern}$`).test(left);
+                    return globToRegex(right).test(left);
                 } catch {
                     return false;
                 }

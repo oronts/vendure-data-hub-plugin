@@ -88,6 +88,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                 const handleClick = () => handleSelectRun(row.original);
                 return (
                     <button
+                        type="button"
                         className="font-mono text-muted-foreground underline-offset-2 hover:underline"
                         onClick={handleClick}
                     >

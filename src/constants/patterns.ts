@@ -76,7 +76,7 @@ export const ISO_DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3
 
 /**
  * Cron expression pattern (5 fields: minute hour day month weekday).
- * Note: For full validation, use isValidCron() from input-validation.utils.ts
+ * Note: For full validation, use isValidCron() from shared/utils/validation.ts
  */
 export const CRON_BASIC_PATTERN = /^(\S+\s+){4}\S+$/;
 

@@ -160,6 +160,19 @@ function isValidCronPart(part: string, min: number, max: number): boolean {
     return !isNaN(num) && num >= min && num <= max;
 }
 
+/**
+ * Convert a glob pattern to a RegExp.
+ * Supports `*` (any characters) and `?` (single character).
+ * All other special regex characters are escaped.
+ */
+export function globToRegex(pattern: string, flags?: string): RegExp {
+    const escaped = pattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*')
+        .replace(/\?/g, '.');
+    return new RegExp(`^${escaped}$`, flags);
+}
+
 function isValidCronRange(range: string, min: number, max: number): boolean {
     const [startStr, endStr] = range.split('-');
     const start = parseInt(startStr, 10);
