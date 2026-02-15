@@ -15,6 +15,7 @@ import {
 import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { formatCellValue } from '../../../utils/formatters';
 import { TEST_STATUS } from '../../../constants/ui-states';
+import { UI_LIMITS } from '../../../constants/ui-config';
 import type { TestResult } from './step-test-handlers';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
 
@@ -58,7 +59,7 @@ export const RecordsTable = memo(function RecordsTable({ records }: { records: A
         return <div className="text-muted-foreground text-sm">No records</div>;
     }
 
-    const allKeys = Array.from(new Set(records.flatMap(r => Object.keys(r)))).slice(0, 8);
+    const allKeys = Array.from(new Set(records.flatMap(r => Object.keys(r)))).slice(0, UI_LIMITS.TABLE_PREVIEW_COLUMNS);
 
     return (
         <div className="border rounded overflow-auto max-h-[300px]">
@@ -74,7 +75,7 @@ export const RecordsTable = memo(function RecordsTable({ records }: { records: A
                 </TableHeader>
                 <TableBody>
                     {/* Index as key acceptable - static test result data, not reordered */}
-                    {records.slice(0, 20).map((rec, recordIndex) => (
+                    {records.slice(0, UI_LIMITS.TABLE_PREVIEW_ROWS).map((rec, recordIndex) => (
                         <TableRow key={`record-${recordIndex}`}>
                             {allKeys.map(key => (
                                 <TableCell key={key} className="text-xs py-1 max-w-[200px] truncate">
@@ -85,9 +86,9 @@ export const RecordsTable = memo(function RecordsTable({ records }: { records: A
                     ))}
                 </TableBody>
             </Table>
-            {records.length > 20 && (
+            {records.length > UI_LIMITS.TABLE_PREVIEW_ROWS && (
                 <div className="text-xs text-muted-foreground p-2 border-t">
-                    Showing 20 of {records.length} records
+                    Showing {UI_LIMITS.TABLE_PREVIEW_ROWS} of {records.length} records
                 </div>
             )}
         </div>

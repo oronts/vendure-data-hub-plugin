@@ -89,16 +89,6 @@ export function decryptSecret(encryptedValue: string, masterKey: string): string
     }
 }
 
-/** Generate: `export DATAHUB_MASTER_KEY=$(openssl rand -hex 32)` */
-export function generateMasterKey(): string {
-    return crypto.randomBytes(32).toString('hex');
-}
-
-export function rotateKey(encryptedValue: string, oldKey: string, newKey: string): string {
-    const plaintext = decryptSecret(encryptedValue, oldKey);
-    return encryptSecret(plaintext, newKey);
-}
-
 export function getMasterKey(envVarName = 'DATAHUB_MASTER_KEY'): string | undefined {
     return process.env[envVarName];
 }

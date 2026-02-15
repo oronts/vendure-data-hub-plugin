@@ -1,15 +1,4 @@
-import type { PipelineDefinition } from '../../shared/types';
 import { PORTS, HTTP, BATCH, UI_TIMEOUTS, TIME_UNITS } from './defaults';
-
-const EDITOR_DEFAULTS = {
-    GRID_SIZE: 20,
-    NODE_WIDTH: 280,
-    NODE_HEIGHT: 80,
-    INITIAL_X: 100,
-    INITIAL_Y: 100,
-    NODE_SPACING_X: 350,
-    NODE_SPACING_Y: 150,
-} as const;
 
 export const NODE_LAYOUT = {
     INITIAL_X: 120,
@@ -52,8 +41,32 @@ export const PIPELINE_CHECKPOINT_DEFAULTS = {
     MIN_INTERVAL_MS: TIME_UNITS.SECOND,
 } as const;
 
-const DEFAULT_PIPELINE_DEFINITION: PipelineDefinition = {
-    version: 1,
-    steps: [],
-    triggers: [],
-};
+/** Default edge style for ReactFlow pipeline connections */
+export const EDGE_STYLE = {
+    STROKE_WIDTH: 2,
+} as const;
+
+/** Canvas CSS class for the ReactFlow editor background */
+export const CANVAS_BG_CLASS = 'bg-gray-50' as const;
+
+/** Run mode options for pipeline execution */
+export const RUN_MODES = [
+    { value: 'SYNC', label: 'Sync (blocking)' },
+    { value: 'ASYNC', label: 'Async (background)' },
+    { value: 'BATCH', label: 'Batch (grouped)' },
+    { value: 'STREAM', label: 'Stream (real-time)' },
+] as const;
+
+/** Default run mode */
+export const DEFAULT_RUN_MODE = 'BATCH' as const;
+
+/** Parallel execution error policy options */
+export const ERROR_POLICIES = [
+    { value: 'FAIL_FAST', label: 'Fail Fast (stop on error)' },
+    { value: 'CONTINUE', label: 'Continue (finish others)' },
+    { value: 'BEST_EFFORT', label: 'Best Effort (ignore errors)' },
+] as const;
+
+/** Default error policy */
+export const DEFAULT_ERROR_POLICY = 'FAIL_FAST' as const;
+

@@ -1,6 +1,7 @@
 import { AdapterDefinition, AdapterType } from '../sdk/types';
 import { DataHubLogger } from '../services/logger/datahub-logger';
 
+const MAX_ADAPTERS = 200;
 const adapterRegistry = new Map<string, AdapterDefinition>();
 const adaptersByType = new Map<AdapterType, Set<string>>();
 const logger = new DataHubLogger('AdapterRegistry');
@@ -102,10 +103,14 @@ export function registerEnricher(adapter: AdapterDefinition): void {
     });
 }
 
-/** Register adapter (throws if code already exists) */
+/** Register adapter (throws if code already exists or registry is full) */
 export function registerAdapter(adapter: AdapterDefinition): void {
     if (adapterRegistry.has(adapter.code)) {
         throw new Error(`Adapter with code '${adapter.code}' is already registered`);
+    }
+
+    if (adapterRegistry.size >= MAX_ADAPTERS) {
+        throw new Error(`Adapter registry is full (max ${MAX_ADAPTERS}). Cannot register '${adapter.code}'.`);
     }
 
     adapterRegistry.set(adapter.code, adapter);

@@ -58,10 +58,13 @@ export interface RetryConfig {
 
     /** HTTP status codes to retry */
     retryableStatusCodes?: number[];
+
+    /** Jitter factor (0-1) for randomizing backoff delays */
+    jitterFactor?: number;
 }
 
 export interface AuthConfig {
-    type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY' | 'OAUTH2' | 'HMAC';
+    type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY' | 'OAUTH2' | 'HMAC' | 'JWT';
     secretCode?: string;
     username?: string;
     password?: string;

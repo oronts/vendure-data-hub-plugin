@@ -581,8 +581,8 @@ pipeline.transform('custom-transforms', {
     // Set: Set static values
     { op: 'set', args: { path: 'source', value: 'pimcore' } },
 
-    // Remove: Remove fields
-    { op: 'remove', args: { paths: ['internalId', 'tempField'] } },
+    // Remove: Remove a field
+    { op: 'remove', args: { path: 'internalId' } },
   ],
 });
 ```
@@ -713,9 +713,9 @@ const externalSyncPipeline = createPipeline()
 | `map` | Restructure fields | `{ op: 'map', args: { mapping: { new: 'old' } } }` |
 | `rename` | Rename field | `{ op: 'rename', args: { from: 'old', to: 'new' } }` |
 | `set` | Set static value | `{ op: 'set', args: { path: 'field', value: 'val' } }` |
-| `remove` | Remove fields | `{ op: 'remove', args: { paths: ['a', 'b'] } }` |
+| `remove` | Remove a field | `{ op: 'remove', args: { path: 'fieldName' } }` |
 | `flatten` | Flatten nested arrays | `{ op: 'flatten', args: { source: 'variants' } }` |
-| `deltaFilter` | Filter unchanged records | `{ op: 'deltaFilter', args: { hashFields: ['sku', 'name'] } }` |
+| `deltaFilter` | Filter unchanged records | `{ op: 'deltaFilter', args: { idPath: 'sku', includePaths: ['name', 'price'] } }` |
 
 ## Support
 

@@ -113,8 +113,6 @@ export {
     PipelineRunInput,
     PipelineRunStatus,
     PipelineRunSummary,
-    StepBuilder,
-    PipelineBuilder,
     SchemaFieldTypeValue,
     SchemaFieldDefinition,
     SchemaDefinition,

@@ -67,18 +67,3 @@ export function isValidGraphQLUrl(url: string, hasConnection: boolean): boolean 
     }
 }
 
-export function normalizeUrl(url: string): string {
-    return url.replace(/\/+$/, '');
-}
-
-export function joinUrlParts(...parts: string[]): string {
-    return parts
-        .map((part, index) => {
-            if (index === 0) {
-                return part.replace(/\/+$/, '');
-            }
-            return part.replace(/^\/+/, '').replace(/\/+$/, '');
-        })
-        .filter(Boolean)
-        .join('/');
-}

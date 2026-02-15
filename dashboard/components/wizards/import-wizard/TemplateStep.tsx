@@ -13,9 +13,7 @@ import { Button } from '@vendure/dashboard';
 import { TemplateGallery } from '../../templates';
 import { TemplatePreview } from '../../templates';
 import { STEP_CONTENT } from './constants';
-
-type TemplateCategory = 'products' | 'customers' | 'inventory' | 'orders' | 'promotions' | 'catalog';
-type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';
+import type { TemplateCategory, TemplateDifficulty } from '../../../types';
 
 interface ImportTemplate {
     id: string;

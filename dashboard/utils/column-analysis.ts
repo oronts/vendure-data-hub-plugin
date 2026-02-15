@@ -1,5 +1,6 @@
 import type { JsonValue, JsonObject } from '../../shared/types';
 import { FILE_FORMAT } from '../constants/wizard-options';
+import { UI_LIMITS } from '../constants/ui-config';
 
 export type FileType = 'CSV' | 'JSON' | 'XLSX' | 'XML' | null;
 
@@ -59,7 +60,7 @@ export function analyzeColumns(data: JsonObject[]): ParsedColumn[] {
         columns.push({
             name: key,
             type: detectColumnType(values),
-            sampleValues: nonNullValues.slice(0, 5),
+            sampleValues: nonNullValues.slice(0, UI_LIMITS.COLUMN_SAMPLE_VALUES),
             nullCount: values.length - nonNullValues.length,
             uniqueCount: uniqueValues.size,
         });

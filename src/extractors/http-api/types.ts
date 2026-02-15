@@ -1,6 +1,8 @@
-import { ExtractorConfig, PaginationConfig } from '../../types/index';
+import { ExtractorConfig, PaginationConfig, RetryConfig } from '../../types/index';
 import { JsonObject } from '../../types/index';
 import { HttpMethod, HTTP, PAGINATION, WEBHOOK } from '../../constants/index';
+
+export type { RetryConfig };
 
 export interface HttpApiExtractorConfig extends ExtractorConfig {
     /** Adapter code identifier */
@@ -55,14 +57,6 @@ export interface UpdatedPaginationState {
 export interface RateLimitConfig {
     requestsPerSecond?: number;
     burstLimit?: number;
-}
-
-export interface RetryConfig {
-    maxAttempts?: number;
-    initialDelayMs?: number;
-    maxDelayMs?: number;
-    backoffMultiplier?: number;
-    retryableStatusCodes?: number[];
 }
 
 export const RETRYABLE_NETWORK_CODES = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND'] as const;

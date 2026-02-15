@@ -12,29 +12,6 @@ export function isValidUrl(url: string, requireHttps: boolean = false): boolean 
     return isValidUrlFromShared(url, { requireHttps });
 }
 
-export function isValidBase64(str: string): boolean {
-    if (typeof str !== 'string') {
-        return false;
-    }
-
-    try {
-        return btoa(atob(str)) === str;
-    } catch {
-        // Base64 decode/encode failed - invalid base64 string
-        return false;
-    }
-}
-
-export function escapeHtmlEntities(str: string): string {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#x27;')
-        .replace(/\//g, '&#x2F;');
-}
-
 export const isValidPipelineCode = isValidPipelineCodeFromShared;
 
 export function isValidPath(filePath: string): boolean {

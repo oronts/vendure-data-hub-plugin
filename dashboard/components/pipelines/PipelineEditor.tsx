@@ -16,6 +16,8 @@ import {
     MOVE_DIRECTION,
     STEP_CONFIGS,
     STEP_TYPES,
+    TRIGGER_TYPES,
+    ERROR_HANDLING_MODES,
     getStepTypeIcon,
 } from '../../constants';
 import type { MoveDirection } from '../../constants';
@@ -45,11 +47,11 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
 
         switch (type) {
             case STEP_TYPES.TRIGGER:
-                defaultConfig.type = 'MANUAL';
+                defaultConfig.type = TRIGGER_TYPES.MANUAL;
                 defaultConfig.enabled = true;
                 break;
             case STEP_TYPES.VALIDATE:
-                defaultConfig.mode = 'FAIL_FAST';
+                defaultConfig.mode = ERROR_HANDLING_MODES[0].value;
                 break;
             case STEP_TYPES.ROUTE:
                 defaultConfig.branches = [];

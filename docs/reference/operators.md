@@ -659,22 +659,6 @@ Set the current timestamp on a field.
 { op: 'now', args: { target: 'localTime', format: 'YYYY-MM-DD HH:mm:ss', timezone: 'America/New_York' } }
 ```
 
-### formatDate
-
-Alias for `dateFormat`. Format a date to a string.
-
-| Arg | Type | Required | Description |
-|-----|------|----------|-------------|
-| `source` | string | Yes | Source field path |
-| `target` | string | Yes | Target field path |
-| `format` | string | Yes | Output format (e.g., `YYYY-MM-DD`) |
-| `inputFormat` | string | No | Input format if source is string |
-| `timezone` | string | No | Timezone |
-
-```typescript
-{ op: 'formatDate', args: { source: 'createdAt', target: 'displayDate', format: 'DD MMM YYYY' } }
-```
-
 ---
 
 ## Logic Operators
@@ -1050,7 +1034,7 @@ The code receives `records` array and `context`. Return the modified array.
 | Data (8) | `set`, `copy`, `rename`, `remove`, `map`, `template`, `hash`, `uuid` |
 | String (12) | `trim`, `uppercase`, `lowercase`, `slugify`, `split`, `join`, `concat`, `replace`, `extractRegex`, `replaceRegex`, `stripHtml`, `truncate` |
 | Numeric (9) | `math`, `toNumber`, `toString`, `currency`, `unit`, `parseNumber`, `formatNumber`, `toCents`, `round` |
-| Date (6) | `dateFormat`, `dateParse`, `dateAdd`, `dateDiff`, `now`, `formatDate` |
+| Date (5) | `dateFormat`, `dateParse`, `dateAdd`, `dateDiff`, `now` |
 | Logic (4) | `when`, `ifThenElse`, `switch`, `deltaFilter` |
 | JSON (4) | `pick`, `omit`, `parseJson`, `stringifyJson` |
 | Enrichment (5) | `lookup`, `enrich`, `coalesce`, `default`, `httpLookup` |

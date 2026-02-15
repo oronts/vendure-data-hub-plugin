@@ -18,6 +18,10 @@ import { Clock, AlertTriangle, Zap, GitBranch } from 'lucide-react';
 import {
     PIPELINE_RETRY_DEFAULTS,
     PIPELINE_CHECKPOINT_DEFAULTS,
+    RUN_MODES,
+    DEFAULT_RUN_MODE,
+    ERROR_POLICIES,
+    DEFAULT_ERROR_POLICY,
 } from '../../../constants';
 import { CHECKPOINT_STRATEGY } from '../../../constants/ui-states';
 import type {
@@ -70,17 +74,16 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
                 <div className="space-y-2">
                     <Label className={labelSize}>Run Mode</Label>
                     <Select
-                        value={context.runMode ?? 'BATCH'}
+                        value={context.runMode ?? DEFAULT_RUN_MODE}
                         onValueChange={(v) => onChange({ ...context, runMode: v as RunModeValue })}
                     >
                         <SelectTrigger className={`${labelSize} ${inputHeight}`}>
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="SYNC">Sync (blocking)</SelectItem>
-                            <SelectItem value="ASYNC">Async (background)</SelectItem>
-                            <SelectItem value="BATCH">Batch (grouped)</SelectItem>
-                            <SelectItem value="STREAM">Stream (real-time)</SelectItem>
+                            {RUN_MODES.map(mode => (
+                                <SelectItem key={mode.value} value={mode.value}>{mode.label}</SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
@@ -362,7 +365,7 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
                                 <div className="space-y-1">
                                     <Label className={labelSize}>Error Policy</Label>
                                     <Select
-                                        value={context.parallelExecution?.errorPolicy ?? 'FAIL_FAST'}
+                                        value={context.parallelExecution?.errorPolicy ?? DEFAULT_ERROR_POLICY}
                                         onValueChange={(v) => updateParallelExecution({
                                             ...context.parallelExecution,
                                             errorPolicy: v as 'FAIL_FAST' | 'CONTINUE' | 'BEST_EFFORT',
@@ -372,9 +375,9 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="FAIL_FAST">Fail Fast (stop on error)</SelectItem>
-                                            <SelectItem value="CONTINUE">Continue (finish others)</SelectItem>
-                                            <SelectItem value="BEST_EFFORT">Best Effort (ignore errors)</SelectItem>
+                                            {ERROR_POLICIES.map(policy => (
+                                                <SelectItem key={policy.value} value={policy.value}>{policy.label}</SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
                                 </div>

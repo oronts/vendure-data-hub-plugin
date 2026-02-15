@@ -49,13 +49,13 @@ export const ADAPTER_TYPE_TO_NODE_TYPE: Record<string, string> = {
 
 /** Adapter type to category mapping */
 export const ADAPTER_TYPE_TO_CATEGORY: Record<string, string> = {
-    EXTRACTOR: 'sources',
-    OPERATOR: 'transforms',
-    VALIDATOR: 'validation',
-    ENRICHER: 'transforms',
-    ROUTER: 'routing',
-    LOADER: 'destinations',
-    EXPORTER: 'exports',
-    FEED: 'feeds',
-    SINK: 'sinks',
+    EXTRACTOR: 'SOURCES',
+    OPERATOR: 'TRANSFORMS',
+    VALIDATOR: 'VALIDATION',
+    ENRICHER: 'TRANSFORMS',
+    ROUTER: 'ROUTING',
+    LOADER: 'DESTINATIONS',
+    EXPORTER: 'EXPORTS',
+    FEED: 'FEEDS',
+    SINK: 'SINKS',
 } as const;

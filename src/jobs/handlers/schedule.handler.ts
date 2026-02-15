@@ -62,6 +62,8 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
     private failureCountByPipeline = new Map<string, number>();
     /** Maximum consecutive failures before pausing a pipeline's schedule */
     private readonly maxConsecutiveFailures = 5;
+    /** Safety cap for tracking maps to prevent unbounded memory growth */
+    private readonly maxTrackingEntries = 1000;
 
     constructor(
         private connection: TransactionalConnection,
@@ -379,7 +381,9 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
 
                         if (lastKey !== minuteKey) {
                             await this.triggerPipeline(pipeline, TIMER_TYPE.CRON, triggerKey);
-                            this.lastCronKeyByPipeline.set(cronTrackingKey, minuteKey);
+                            if (this.lastCronKeyByPipeline.size < this.maxTrackingEntries) {
+                                this.lastCronKeyByPipeline.set(cronTrackingKey, minuteKey);
+                            }
                         }
                     }
                 } catch (error) {
@@ -469,7 +473,9 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         } catch (error) {
             const currentFailures = this.failureCountByPipeline.get(pipeline.code) ?? 0;
             const newFailureCount = currentFailures + 1;
-            this.failureCountByPipeline.set(pipeline.code, newFailureCount);
+            if (this.failureCountByPipeline.size < this.maxTrackingEntries || this.failureCountByPipeline.has(pipeline.code)) {
+                this.failureCountByPipeline.set(pipeline.code, newFailureCount);
+            }
 
             this.logger.error(
                 'Failed to trigger scheduled pipeline',

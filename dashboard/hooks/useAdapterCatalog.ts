@@ -245,7 +245,7 @@ const CORE_ADAPTERS: AdapterMetadata[] = [
         description: 'Route records based on conditions',
         icon: GitBranch,
         color: '#f97316',
-        category: 'routing',
+        category: UI_ADAPTER_CATEGORY.ROUTING,
         nodeType: 'condition',
         schema: {
             fields: [

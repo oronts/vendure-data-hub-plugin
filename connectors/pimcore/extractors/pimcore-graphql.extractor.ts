@@ -2,6 +2,7 @@ import { ExtractorAdapter, ExtractContext, RecordEnvelope } from '../../../src/s
 import { JsonObject } from '../../../src/types';
 import { sleep } from '../../../src/utils/retry.utils';
 import { getErrorMessage } from '../../../src/utils/error.utils';
+import { assertUrlSafe } from '../../../src/utils/url-security.utils';
 import { PimcoreObjectListing } from '../types';
 
 const DEFAULTS = {
@@ -150,6 +151,8 @@ export const pimcoreGraphQLExtractor: ExtractorAdapter<PimcoreGraphQLExtractorCo
             context.logger.error('Pimcore endpoint not configured');
             throw new Error('Pimcore endpoint not configured');
         }
+
+        await assertUrlSafe(endpoint);
 
         const apiKey = await context.secrets.get(apiKeySecretCode);
         if (!apiKey) {

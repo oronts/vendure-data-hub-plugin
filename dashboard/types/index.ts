@@ -79,6 +79,8 @@ export type {
     TriggersPanelProps,
     TriggersPanelExplicitProps,
     TriggersPanelOnChangeProps,
+    TemplateCategory,
+    TemplateDifficulty,
 } from './ui-types';
 
 export type {

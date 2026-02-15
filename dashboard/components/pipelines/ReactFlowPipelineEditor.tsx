@@ -26,7 +26,7 @@ import {
 import { NodePropertiesPanel } from './shared/NodePropertiesPanel';
 import { pipelineNodeTypes } from './shared/PipelineNode';
 import { useAdapterCatalog, AdapterMetadata } from '../../hooks';
-import { ADAPTER_TYPES, PANEL_WIDTHS, SCROLL_HEIGHTS } from '../../constants';
+import { ADAPTER_TYPES, PANEL_WIDTHS, SCROLL_HEIGHTS, EDGE_STYLE, CANVAS_BG_CLASS } from '../../constants';
 import type { PipelineNodeData, VisualPipelineDefinition, ValidationIssue } from '../../types';
 import {
     Play,
@@ -125,7 +125,7 @@ export function ReactFlowPipelineEditor({
             ...connection,
             id: `edge-${Date.now()}`,
             markerEnd: { type: MarkerType.ArrowClosed },
-            style: { strokeWidth: 2 },
+            style: { strokeWidth: EDGE_STYLE.STROKE_WIDTH },
         } as Edge;
         setEdges(eds => {
             const newEdges = addEdge(newEdge, eds);
@@ -240,7 +240,7 @@ export function ReactFlowPipelineEditor({
 
     const defaultEdgeOptions = React.useMemo(() => ({
         markerEnd: { type: MarkerType.ArrowClosed },
-        style: { strokeWidth: 2 },
+        style: { strokeWidth: EDGE_STYLE.STROKE_WIDTH },
     }), []);
 
     return (
@@ -290,7 +290,7 @@ export function ReactFlowPipelineEditor({
                         nodeTypes={pipelineNodeTypes}
                         defaultEdgeOptions={defaultEdgeOptions}
                         fitView
-                        className="bg-gray-50"
+                        className={CANVAS_BG_CLASS}
                     >
                         <Background />
                         <Controls />

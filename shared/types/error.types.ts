@@ -132,19 +132,6 @@ export const ERROR_CODES = {
     CONFIGURATION_ERROR: 'CONFIGURATION_ERROR',
 } as const;
 
-/**
- * Check if an error code represents a retriable error (for shared API context)
- */
-export function isRetriableError(code: string): boolean {
-    const retriableCodes = [
-        ERROR_CODES.CONNECTION_FAILED,
-        ERROR_CODES.TIMEOUT,
-        ERROR_CODES.RATE_LIMITED,
-        ERROR_CODES.SOURCE_UNREACHABLE,
-    ];
-    return retriableCodes.includes(code as typeof retriableCodes[number]);
-}
-
 // NOTE: getErrorSeverity() is intentionally NOT exported from shared/types.
 // Use the authoritative implementation from src/constants/error-codes.ts instead.
 // That version handles both shared and pipeline-specific error codes.

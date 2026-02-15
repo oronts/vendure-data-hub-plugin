@@ -8,7 +8,7 @@ import { ConnectionService } from '../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult, ExecutorContext } from '../executor-types';
 import { getPath, setPath, recordsToCsv, chunk, ensureDirectoryExists, deepClone } from '../utils';
-import { executeWithRetry, createRetryConfig, RetryConfig } from '../../utils/retry.utils';
+import { executeWithRetry, createRetryConfig, ResolvedRetryConfig } from '../../utils/retry.utils';
 import { BATCH, LOGGER_CONTEXTS, HTTP, FILE_STORAGE, TRUNCATION, HttpMethod, EXPORTER_CODE, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../constants/index';
 import { FileFormat } from '../../constants/enums';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -55,7 +55,7 @@ interface BaseExportCfg {
     path?: string;
 }
 
-function resolveRetryConfig(stepCfg: Record<string, JsonValue> | undefined): RetryConfig {
+function resolveRetryConfig(stepCfg: Record<string, JsonValue> | undefined): ResolvedRetryConfig {
     const cfg = stepCfg ?? {};
     const retries = Math.max(0, Number(cfg.retries ?? 0) || 0);
     const retryDelayMs = Math.max(0, Number(cfg.retryDelayMs ?? 0) || 0);

@@ -298,7 +298,7 @@ export const weeklyCustomerCleanup = createPipeline()
             // Get last order date
             { op: 'first', args: { source: 'orders', target: 'lastOrder' } },
             {
-                op: 'formatDate',
+                op: 'dateFormat',
                 args: {
                     source: 'lastOrder.orderPlacedAt',
                     target: 'lastOrderDate',
@@ -908,7 +908,7 @@ export const productCatalogEnrichment = createPipeline()
 
     .transform('format-price', {
         operators: [
-            { op: 'coerce', args: { path: 'price', type: 'number' } },
+            { op: 'toNumber', args: { source: 'price' } },
             { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100', target: 'priceInCents' } },
         ],
     })

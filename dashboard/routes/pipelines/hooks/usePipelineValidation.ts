@@ -67,7 +67,7 @@ export function usePipelineValidation(definition: unknown): {
 
     const validateMutation = useMutation({
         mutationFn: async (def: unknown) => {
-            const res = await api.mutate(validatePipelineDefinitionDocument, {
+            const res = await api.query(validatePipelineDefinitionDocument, {
                 definition: def,
                 level: 'full',
             });
@@ -107,6 +107,8 @@ export function usePipelineValidation(definition: unknown): {
         return () => {
             clearTimeout(timer);
         };
+        // validateMutation is intentionally excluded: including it would cause infinite
+        // re-triggers since useMutation returns a new object each render.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [definition]);
 

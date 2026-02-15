@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ID, RequestContext } from '@vendure/core';
 import { createContext, Script } from 'vm';
 import {
@@ -28,7 +28,7 @@ import { assertUrlSafe, validateUrlSafety } from '../../utils/url-security.utils
 const MAX_REGISTERED_WEBHOOKS = 1000;
 
 @Injectable()
-export class HookService implements OnModuleInit {
+export class HookService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private webhookRetryService: WebhookRetryService | null = null;
     private registeredWebhooks = new Set<string>();
@@ -70,6 +70,12 @@ export class HookService implements OnModuleInit {
         } catch {
             this.logger.debug('WebhookRetryService not available, using simple fetch for webhooks');
         }
+    }
+
+    onModuleDestroy() {
+        this.registeredWebhooks.clear();
+        this.registeredScripts.clear();
+        this.webhookRetryService = null;
     }
 
     async run(

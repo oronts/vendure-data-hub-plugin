@@ -31,6 +31,9 @@ export type { ActiveConsumer } from './consumer-lifecycle';
  * - ConsumerLifecycle: Manages consumer start/stop and distributed locks
  * - MessageProcessing: Handles message polling and pipeline triggering
  */
+/** Maximum number of concurrent consumers to prevent unbounded growth */
+const MAX_CONSUMERS = 500;
+
 @Injectable()
 export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
@@ -176,6 +179,10 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
      * runs the consumer for a given pipeline+trigger combination
      */
     async startConsumer(config: MessageConsumerConfig): Promise<void> {
+        if (this.consumers.size >= MAX_CONSUMERS) {
+            this.logger.warn(`Consumer limit reached (max ${MAX_CONSUMERS}), cannot start consumer for ${config.pipelineCode}`);
+            return;
+        }
         const consumer = await this.lifecycle.createConsumer(
             config,
             this.consumers,

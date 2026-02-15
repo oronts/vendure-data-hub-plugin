@@ -36,6 +36,9 @@ export type {
     MapperLookupTable,
 };
 
+/** Maximum number of lookup tables that can be registered */
+const MAX_LOOKUP_TABLES = 200;
+
 @Injectable()
 export class FieldMapperService {
     private lookupTables = new Map<string, MapperLookupTable>();
@@ -44,6 +47,9 @@ export class FieldMapperService {
      * Register a lookup table for use in transformations
      */
     registerMapperLookupTable(table: MapperLookupTable): void {
+        if (!this.lookupTables.has(table.name) && this.lookupTables.size >= MAX_LOOKUP_TABLES) {
+            throw new Error(`Lookup table registry is full (max ${MAX_LOOKUP_TABLES}). Clear existing tables before registering new ones.`);
+        }
         this.lookupTables.set(table.name, table);
     }
 

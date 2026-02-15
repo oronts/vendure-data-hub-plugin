@@ -431,3 +431,11 @@ export interface TriggersPanelOnChangeProps {
 }
 
 export type TriggersPanelProps = TriggersPanelExplicitProps | TriggersPanelOnChangeProps;
+
+// TEMPLATE TYPES (canonical dashboard source - mirrors src/templates/imports/types.ts)
+
+/** Template categories for grouping import templates */
+export type TemplateCategory = 'products' | 'customers' | 'inventory' | 'orders' | 'promotions' | 'catalog';
+
+/** Template difficulty levels */
+export type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';

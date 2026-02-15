@@ -88,7 +88,7 @@ const runPipelineDocument = graphql(`
 `);
 
 export const validatePipelineDefinitionDocument = graphql(`
-    mutation ValidateDataHubPipelineDefinitionApi($definition: JSON!, $level: String) {
+    query ValidateDataHubPipelineDefinitionApi($definition: JSON!, $level: String) {
         validateDataHubPipelineDefinition(definition: $definition, level: $level) {
             isValid
             errors
@@ -210,7 +210,7 @@ export function useValidatePipelineDefinition() {
     return useMutation({
         mutationFn: ({ definition, level }: ValidatePipelineDefinitionInput) =>
             api
-                .mutate(validatePipelineDefinitionDocument, { definition, level })
+                .query(validatePipelineDefinitionDocument, { definition, level })
                 .then((res) => res.validateDataHubPipelineDefinition),
         onError: createMutationErrorHandler('validate pipeline definition'),
     });

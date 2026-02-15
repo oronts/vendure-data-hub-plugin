@@ -28,6 +28,9 @@ import { AckMode } from '../../../constants/enums';
 import { HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, HTTP_STATUS } from '../../../constants/index';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
+import { DataHubLogger } from '../../../services/logger/datahub-logger';
+
+const logger = new DataHubLogger('RabbitMQHttpAdapter');
 
 export class RabbitMQAdapter implements QueueAdapter {
     readonly code = 'rabbitmq';
@@ -199,6 +202,7 @@ export class RabbitMQAdapter implements QueueAdapter {
         _connectionConfig: QueueConnectionConfig,
         _deliveryTag: string,
     ): Promise<void> {
+        logger.warn('RabbitMQ HTTP adapter does not support individual message acknowledgement. Messages are auto-acked on consume. Use rabbitmq-amqp adapter for manual ack support.');
     }
 
     async nack(
@@ -206,6 +210,7 @@ export class RabbitMQAdapter implements QueueAdapter {
         _deliveryTag: string,
         _requeue: boolean,
     ): Promise<void> {
+        logger.warn('RabbitMQ HTTP adapter does not support individual message rejection. Messages are auto-acked on consume. Use rabbitmq-amqp adapter for manual nack support.');
     }
 
     async testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean> {

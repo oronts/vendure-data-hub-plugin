@@ -23,6 +23,9 @@ import { AckMode, INTERNAL_TIMINGS } from '../../../constants';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 
+/** Queue name used for SQS connection tests */
+const SQS_TEST_CONNECTION_QUEUE = 'data-hub-test-connection';
+
 /**
  * SQS-specific connection configuration
  */
@@ -508,7 +511,7 @@ export class SqsAdapter implements QueueAdapter {
             if (!sqs) throw new Error('SQS module not loaded');
 
             await client.send(new sqs.GetQueueUrlCommand({
-                QueueName: 'test-connection-queue',
+                QueueName: SQS_TEST_CONNECTION_QUEUE,
             }));
 
             return true;

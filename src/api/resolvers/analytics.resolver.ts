@@ -33,6 +33,7 @@ import type {
     ConnectionTestResult,
 } from '../../services/destinations/destination.types';
 import { ConnectionType } from '../../constants/enums';
+import { PAGINATION } from '../../constants/index';
 
 /** Redacted destination config for API responses */
 interface RedactedDestinationConfig extends Omit<DestinationConfig, 'secretAccessKey' | 'password' | 'privateKey'> {
@@ -80,7 +81,7 @@ export class DataHubAnalyticsAdminResolver {
     ): Promise<PipelinePerformance[]> {
         return this.analyticsService.getPipelinePerformance(ctx, {
             pipelineId: args.pipelineId,
-            limit: Math.min(args.limit ?? 100, 1000),
+            limit: Math.min(args.limit ?? 100, PAGINATION.MAX_QUERY_LIMIT),
         });
     }
 
@@ -121,7 +122,7 @@ export class DataHubAnalyticsAdminResolver {
         return this.webhookRetryService.getDeliveries({
             status: args.status as WebhookDeliveryStatus | undefined,
             webhookId: args.webhookId,
-            limit: Math.min(args.limit ?? 100, 1000),
+            limit: Math.min(args.limit ?? 100, PAGINATION.MAX_QUERY_LIMIT),
         });
     }
 

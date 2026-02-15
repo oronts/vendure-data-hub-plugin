@@ -2,6 +2,7 @@ import * as React from 'react';
 import { memo } from 'react';
 import { RecordsTable } from './ExtractTestResults';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
+import { UI_LIMITS } from '../../../constants/ui-config';
 import type { TestResult } from './step-test-handlers';
 
 interface TransformTestResultsProps {
@@ -21,7 +22,7 @@ const BeforeAfterDiff = memo(function BeforeAfterDiff({
     return (
         <div className="space-y-3">
             {/* Index as key acceptable - static test result data, not reordered */}
-            {beforeAfter.slice(0, 5).map((pair, recordIndex) => (
+            {beforeAfter.slice(0, UI_LIMITS.DIFF_PREVIEW_RECORDS).map((pair, recordIndex) => (
                 <div key={`record-${recordIndex}`} className="border rounded overflow-hidden">
                     <div className="bg-muted/50 px-2 py-1 text-xs font-medium">
                         Record {recordIndex + 1}
@@ -42,9 +43,9 @@ const BeforeAfterDiff = memo(function BeforeAfterDiff({
                     </div>
                 </div>
             ))}
-            {beforeAfter.length > 5 && (
+            {beforeAfter.length > UI_LIMITS.DIFF_PREVIEW_RECORDS && (
                 <div className="text-xs text-muted-foreground">
-                    Showing 5 of {beforeAfter.length} records
+                    Showing {UI_LIMITS.DIFF_PREVIEW_RECORDS} of {beforeAfter.length} records
                 </div>
             )}
         </div>

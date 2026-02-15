@@ -68,7 +68,9 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                     .join(','),
             );
             const csv = [csvHeader, ...csvRows].join('\n');
-            navigator.clipboard.writeText(csv);
+            navigator.clipboard.writeText(csv).catch(() => {
+                console.warn('Clipboard API not available');
+            });
             toast.success(TOAST_TEMPLATE.SAMPLE_COPIED);
         }
     }, [template]);

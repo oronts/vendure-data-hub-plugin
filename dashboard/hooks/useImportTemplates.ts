@@ -5,9 +5,7 @@
  */
 
 import * as React from 'react';
-
-type TemplateCategory = 'products' | 'customers' | 'inventory' | 'orders' | 'promotions' | 'catalog';
-type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';
+import type { TemplateCategory, TemplateDifficulty } from '../types';
 
 interface ImportTemplate {
     id: string;

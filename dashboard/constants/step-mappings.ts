@@ -1,5 +1,5 @@
 import type { StepType } from '../../shared/types';
-import type { VisualNodeCategory, UINodeStatus } from '../types/pipeline';
+import type { VisualNodeCategory } from '../types/pipeline';
 import type { LucideIcon } from 'lucide-react';
 import {
     Play,
@@ -81,7 +81,15 @@ export const CATEGORY_TO_ADAPTER_TYPE: Record<string, string> = {
     filter: 'OPERATOR',
 };
 
-const STEP_TYPE_COLORS: Record<string, string> = {
+/**
+ * Canonical color for each step type. Shared between:
+ * - STEP_CONFIGS (simple editor step list)
+ * - CATEGORY_COLORS (workflow editor node palette/nodes)
+ * - visual-node-config (ReactFlow node rendering)
+ *
+ * Change here to update all editors consistently.
+ */
+export const STEP_TYPE_CANONICAL_COLORS: Record<string, string> = {
     TRIGGER: '#6366f1',
     EXTRACT: '#3b82f6',
     TRANSFORM: '#8b5cf6',
@@ -94,18 +102,19 @@ const STEP_TYPE_COLORS: Record<string, string> = {
     SINK: '#84cc16',
 };
 
+/** Category colors derived from canonical step type colors for consistency. */
 export const CATEGORY_COLORS: Record<VisualNodeCategory, string> = {
-    trigger: '#6366f1',
-    source: '#3b82f6',
-    transform: '#8b5cf6',
-    validate: '#f59e0b',
-    enrich: '#10b981',
-    condition: '#f97316',
-    load: '#ef4444',
-    export: '#ec4899',
-    feed: '#06b6d4',
-    sink: '#84cc16',
-    filter: '#8b5cf6',
+    trigger: STEP_TYPE_CANONICAL_COLORS.TRIGGER,
+    source: STEP_TYPE_CANONICAL_COLORS.EXTRACT,
+    transform: STEP_TYPE_CANONICAL_COLORS.TRANSFORM,
+    validate: STEP_TYPE_CANONICAL_COLORS.VALIDATE,
+    enrich: STEP_TYPE_CANONICAL_COLORS.ENRICH,
+    condition: STEP_TYPE_CANONICAL_COLORS.ROUTE,
+    load: STEP_TYPE_CANONICAL_COLORS.LOAD,
+    export: STEP_TYPE_CANONICAL_COLORS.EXPORT,
+    feed: STEP_TYPE_CANONICAL_COLORS.FEED,
+    sink: STEP_TYPE_CANONICAL_COLORS.SINK,
+    filter: STEP_TYPE_CANONICAL_COLORS.TRANSFORM,
 };
 
 export function mapStepTypeToCategory(stepType: string): VisualNodeCategory {
@@ -128,15 +137,6 @@ const STEP_TYPE_ICONS: Record<string, LucideIcon> = {
     EXPORT: Upload,
     FEED: Rss,
     SINK: Search,
-};
-
-const NODE_STATUS_COLORS: Record<UINodeStatus, string> = {
-    idle: '#6b7280',
-    running: '#3b82f6',
-    success: '#10b981',
-    error: '#ef4444',
-    warning: '#f59e0b',
-    testing: '#8b5cf6',
 };
 
 export function getStepTypeIcon(stepType: string): LucideIcon | undefined {

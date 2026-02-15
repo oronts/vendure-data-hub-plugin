@@ -24,6 +24,7 @@ export {
  * - 'notIn' for not-in-array (aligned with RouteConditionOperator)
  *
  * @see shared/types/operator.types.ts — base ComparisonOperator (subset)
+ * @see src/constants/enums.ts — RouteConditionOperator enum
  */
 export type ComparisonOperator =
     | SharedComparisonOperator

@@ -197,8 +197,7 @@ export class DataHubPipelineAdminResolver {
         return this.pipelineService.revertToRevision(ctx, args.revisionId);
     }
 
-    @Mutation()
-    @Transaction()
+    @Query()
     @Allow(DataHubPipelinePermission.Read)
     async validateDataHubPipelineDefinition(@Args() args: ValidationInput) {
         try {

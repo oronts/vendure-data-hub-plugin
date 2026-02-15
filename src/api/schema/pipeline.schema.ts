@@ -301,6 +301,7 @@ export const pipelineQueries = `
         dataHubToVisualFormat(definition: JSON!): DataHubFormatConversionResult!
         "Convert visual (nodes/edges) definition to canonical (step-based) format"
         dataHubToCanonicalFormat(definition: JSON!): DataHubFormatConversionResult!
+        validateDataHubPipelineDefinition(definition: JSON!, level: String): DataHubValidationResult!
     }
 `;
 
@@ -317,7 +318,6 @@ export const pipelineMutations = `
         startDataHubPipelineRun(pipelineId: ID!): DataHubPipelineRun!
         cancelDataHubPipelineRun(id: ID!): DataHubPipelineRun!
         startDataHubPipelineDryRun(pipelineId: ID!): DataHubDryRunResult!
-        validateDataHubPipelineDefinition(definition: JSON!, level: String): DataHubValidationResult!
         retryDataHubRecord(errorId: ID!, patch: JSON): Boolean!
         updateDataHubCheckpoint(pipelineId: ID!, data: JSON!): DataHubCheckpoint!
         markDataHubDeadLetter(id: ID!, deadLetter: Boolean!): Boolean!

@@ -1088,7 +1088,7 @@ DataHubPlugin.init({
 
 See complete examples in the codebase:
 
-- **Operators:** `src/operators/` - 58 built-in operators
+- **Operators:** `src/operators/` - 57 built-in operators
 - **Extractors:** `src/extractors/` - REST, GraphQL, CSV, etc.
 - **Loaders:** `src/loaders/` - Product, Customer, Order, etc.
 - **Sinks:** `src/runtime/executors/sink.executor.ts` - MeiliSearch, Elasticsearch, etc.

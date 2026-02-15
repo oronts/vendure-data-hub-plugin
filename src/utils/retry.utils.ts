@@ -1,15 +1,16 @@
 import { HTTP, WEBHOOK } from '../constants/index';
 import { getErrorMessage } from './error.utils';
+import type { RetryConfig } from '../../shared/types';
 
-export interface RetryConfig {
-    maxAttempts: number;
-    initialDelayMs: number;
-    maxDelayMs: number;
-    backoffMultiplier: number;
-    jitterFactor?: number;
-}
+export type { RetryConfig };
 
-export const DEFAULT_RETRY_CONFIG: RetryConfig = {
+/**
+ * RetryConfig with all core fields resolved (non-optional).
+ * Used internally by retry utilities after merging with defaults.
+ */
+export type ResolvedRetryConfig = Required<Pick<RetryConfig, 'maxAttempts' | 'initialDelayMs' | 'maxDelayMs' | 'backoffMultiplier'>> & Pick<RetryConfig, 'jitterFactor' | 'retryableStatusCodes'>;
+
+export const DEFAULT_RETRY_CONFIG: ResolvedRetryConfig = {
     maxAttempts: HTTP.MAX_RETRIES,
     initialDelayMs: HTTP.RETRY_DELAY_MS,
     maxDelayMs: HTTP.RETRY_MAX_DELAY_MS,
@@ -17,7 +18,7 @@ export const DEFAULT_RETRY_CONFIG: RetryConfig = {
     jitterFactor: 0.1,
 };
 
-export const WEBHOOK_RETRY_CONFIG: RetryConfig = {
+export const WEBHOOK_RETRY_CONFIG: ResolvedRetryConfig = {
     maxAttempts: WEBHOOK.MAX_ATTEMPTS,
     initialDelayMs: WEBHOOK.INITIAL_DELAY_MS,
     maxDelayMs: WEBHOOK.MAX_DELAY_MS,
@@ -25,20 +26,15 @@ export const WEBHOOK_RETRY_CONFIG: RetryConfig = {
     jitterFactor: 0.1,
 };
 
-export function calculateBackoff(attempt: number, config: RetryConfig): number {
+export function calculateBackoff(attempt: number, config: ResolvedRetryConfig): number {
     const baseDelay = config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt - 1);
     const jitterFactor = config.jitterFactor ?? 0.1;
     const jitter = baseDelay * (Math.random() * jitterFactor);
     return Math.min(baseDelay + jitter, config.maxDelayMs);
 }
 
-export function calculateBackoffDeterministic(attempt: number, config: RetryConfig): number {
-    const baseDelay = config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt - 1);
-    return Math.min(baseDelay, config.maxDelayMs);
-}
-
 interface ExecuteWithRetryOptions<T = unknown> {
-    config: RetryConfig;
+    config: ResolvedRetryConfig;
     onRetry?: (attempt: number, error: Error, delayMs: number) => void;
     isRetryable?: (error: unknown) => boolean;
     logger?: {
@@ -88,17 +84,6 @@ export async function executeWithRetry<T>(
     throw lastError ?? new Error('Retry failed with unknown error');
 }
 
-export async function executeWithRetryOrNull<T>(
-    fn: () => Promise<T>,
-    options: ExecuteWithRetryOptions<T>,
-): Promise<T | null> {
-    try {
-        return await executeWithRetry(fn, options);
-    } catch {
-        return null;
-    }
-}
-
 export function isRetryableError(error: unknown): boolean {
     if (!error) return false;
 
@@ -135,8 +120,8 @@ export function isRetryableStatus(status: number): boolean {
 
 export function createRetryConfig(
     partial?: Partial<RetryConfig>,
-    defaults: RetryConfig = DEFAULT_RETRY_CONFIG,
-): RetryConfig {
+    defaults: ResolvedRetryConfig = DEFAULT_RETRY_CONFIG,
+): ResolvedRetryConfig {
     return {
         maxAttempts: partial?.maxAttempts ?? defaults.maxAttempts,
         initialDelayMs: partial?.initialDelayMs ?? defaults.initialDelayMs,
@@ -150,6 +135,3 @@ export function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export function shouldRetry(attempt: number, config: RetryConfig): boolean {
-    return attempt < config.maxAttempts;
-}

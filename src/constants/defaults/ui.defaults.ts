@@ -24,6 +24,8 @@ export const PAGINATION_PARAMS = {
  * Pagination and limits defaults
  */
 export const PAGINATION = {
+    /** Maximum limit for resolver query results (security cap) */
+    MAX_QUERY_LIMIT: 500,
     /** Maximum log entries to return for a single pipeline run */
     MAX_RUN_LOG_ENTRIES: 10000,
     /** Maximum pages to fetch from paginated APIs */

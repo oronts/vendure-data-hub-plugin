@@ -35,6 +35,14 @@ export const SPAN_TRACKER = {
 } as const;
 
 /**
+ * Queue/admin query defaults
+ */
+export const QUEUE = {
+    /** Default limit for recent failed runs query */
+    DEFAULT_RECENT_FAILED_LIMIT: 10,
+} as const;
+
+/**
  * Domain events configuration
  */
 export const DOMAIN_EVENTS = {

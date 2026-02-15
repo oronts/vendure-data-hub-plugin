@@ -20,7 +20,7 @@ import { ConnectionService } from '../../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getPath } from '../../utils';
 import { getErrorMessage } from '../../../utils/error.utils';
-import { sleep, calculateBackoff, RetryConfig as SharedRetryConfig } from '../../../utils/retry.utils';
+import { sleep, calculateBackoff, ResolvedRetryConfig } from '../../../utils/retry.utils';
 import { PAGINATION, RATE_LIMIT, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, ConnectionType } from '../../../constants/index';
 import { ConnectionAuthType } from '../../../sdk/types/connection-types';
 import {
@@ -88,7 +88,7 @@ interface ExtractRetryConfig {
 /**
  * Convert local config to shared RetryConfig format
  */
-function toSharedRetryConfig(config: ExtractRetryConfig): SharedRetryConfig {
+function toSharedRetryConfig(config: ExtractRetryConfig): ResolvedRetryConfig {
     return {
         maxAttempts: config.retries + 1,
         initialDelayMs: config.retryDelay,

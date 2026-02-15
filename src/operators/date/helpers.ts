@@ -37,14 +37,32 @@ function parseDate(value: JsonValue | undefined, format?: string): Date | null {
 
 function parseDateWithFormat(value: string, format: string): Date | null {
     try {
-        // Build regex from format
-        const pattern = format
-            .replace('YYYY', '(\\d{4})')
-            .replace('MM', '(\\d{2})')
-            .replace('DD', '(\\d{2})')
-            .replace('HH', '(\\d{2})')
-            .replace('mm', '(\\d{2})')
-            .replace('ss', '(\\d{2})');
+        // Replace known tokens with capture groups, then escape remaining chars
+        // to prevent regex injection from format strings with special characters.
+        const TOKENS: Record<string, string> = {
+            'YYYY': '(\\d{4})',
+            'MM': '(\\d{2})',
+            'DD': '(\\d{2})',
+            'HH': '(\\d{2})',
+            'mm': '(\\d{2})',
+            'ss': '(\\d{2})',
+        };
+        const TOKEN_RE = /YYYY|MM|DD|HH|mm|ss/g;
+        const segments: string[] = [];
+        let lastIndex = 0;
+        let m: RegExpExecArray | null;
+        while ((m = TOKEN_RE.exec(format)) !== null) {
+            if (m.index > lastIndex) {
+                // Escape literal characters between tokens
+                segments.push(format.slice(lastIndex, m.index).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+            }
+            segments.push(TOKENS[m[0]]);
+            lastIndex = m.index + m[0].length;
+        }
+        if (lastIndex < format.length) {
+            segments.push(format.slice(lastIndex).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        }
+        const pattern = segments.join('');
 
         const regex = new RegExp(`^${pattern}$`);
         const match = value.match(regex);

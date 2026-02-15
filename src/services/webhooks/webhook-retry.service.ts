@@ -31,7 +31,8 @@ import {
     resetForRetry,
 } from './webhook.helpers';
 
-export { WebhookDeliveryStatus, WebhookDelivery, WebhookConfig, RetryConfig, WebhookPayload };
+export { WebhookDeliveryStatus, WebhookDelivery, WebhookConfig, WebhookPayload };
+export type { RetryConfig };
 
 
 /**
@@ -315,7 +316,9 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             });
 
             setTimeout(() => {
-                this.jobQueue?.add({ deliveryId: delivery.id });
+                this.jobQueue?.add({ deliveryId: delivery.id }).catch(() => {
+                    // Job queue may be unavailable during shutdown
+                });
             }, delay);
         }
     }

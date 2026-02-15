@@ -509,7 +509,7 @@ Compute aggregates over records:
 { op: 'aggregate', args: { op: 'sum', source: 'quantity', target: 'totalQuantity' } }
 ```
 
-Operations: `count`, `sum`
+Operations: `count`, `sum`, `avg`, `min`, `max`, `first`, `last`
 
 ---
 

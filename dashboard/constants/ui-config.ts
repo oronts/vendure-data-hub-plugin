@@ -44,6 +44,14 @@ export const UI_LIMITS = {
     CELL_TRUNCATE_LIMIT: 50,
     REALTIME_LOG_LIMIT: 50,
     TIMELINE_LIMIT: 20,
+    /** Max records shown in test result tables */
+    TABLE_PREVIEW_ROWS: 20,
+    /** Max columns shown in test result tables */
+    TABLE_PREVIEW_COLUMNS: 8,
+    /** Max records shown in before/after diff views */
+    DIFF_PREVIEW_RECORDS: 5,
+    /** Max sample values shown in column analysis */
+    COLUMN_SAMPLE_VALUES: 5,
 } as const;
 
 export const BATCH_SIZES = {

@@ -1,6 +1,7 @@
 import { ExtractorConfig } from '../../types/index';
 import { FileFormat } from '../../parsers/types';
 import { PORTS, HTTP } from '../../constants/index';
+import type { FtpFileInfo } from '../../../shared/types/extractor.types';
 
 export type FtpProtocol = 'ftp' | 'sftp';
 
@@ -101,13 +102,7 @@ export interface FtpExtractorConfig extends ExtractorConfig {
     timeoutMs?: number;
 }
 
-export interface FtpFileInfo {
-    name: string;
-    path: string;
-    size: number;
-    modifiedAt: Date;
-    isDirectory: boolean;
-}
+export type { FtpFileInfo };
 
 export interface FtpFileMetadata {
     protocol: FtpProtocol;

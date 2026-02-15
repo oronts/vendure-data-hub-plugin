@@ -48,6 +48,8 @@ export {
     webhookJwtAuth,
     webhookBasicAuth,
     multiTriggerPipeline,
+    customerImportWithValidationAndEnrichment,
+    productCatalogEnrichment,
 } from './scheduled-pipelines';
 
 export {
@@ -95,6 +97,8 @@ import {
     webhookJwtAuth,
     webhookBasicAuth,
     multiTriggerPipeline,
+    customerImportWithValidationAndEnrichment,
+    productCatalogEnrichment,
 } from './scheduled-pipelines';
 
 import {
@@ -142,6 +146,8 @@ export const examplePipelines = {
         webhookJwtAuth,
         webhookBasicAuth,
         multiTriggerPipeline,
+        customerImportWithValidationAndEnrichment,
+        productCatalogEnrichment,
     },
     advanced: {
         interceptorHooksPipeline,
@@ -180,6 +186,8 @@ export const allExamplePipelines = [
     webhookJwtAuth,
     webhookBasicAuth,
     multiTriggerPipeline,
+    customerImportWithValidationAndEnrichment,
+    productCatalogEnrichment,
     interceptorHooksPipeline,
     scriptHooksPipeline,
     scriptOperatorPipeline,

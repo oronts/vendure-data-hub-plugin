@@ -22,7 +22,7 @@ import {
     Label,
 } from '@vendure/dashboard';
 import { toast } from 'sonner';
-import { DATAHUB_NAV_SECTION, UI_DEFAULTS, QUERY_LIMITS, ROUTES, DATAHUB_PERMISSIONS, TOAST_HOOK } from '../../constants';
+import { DATAHUB_NAV_SECTION, UI_DEFAULTS, UI_LIMITS, QUERY_LIMITS, ROUTES, DATAHUB_PERMISSIONS, TOAST_HOOK } from '../../constants';
 import { formatDateTime } from '../../utils/formatters';
 import {
     Play,
@@ -315,7 +315,7 @@ function HooksPage() {
                             {/* Events have unique createdAt timestamps, used as stable keys */}
                             {(eventsQuery.data ?? [])
                                 .filter(e => !eventFilter || (e.name ?? '').toLowerCase().includes(eventFilter.toLowerCase()))
-                                .slice(0, 20)
+                                .slice(0, UI_LIMITS.TABLE_PREVIEW_ROWS)
                                 .map((e) => (
                                     <tr key={`${e.createdAt}-${e.name}`} className="border-t align-top hover:bg-muted/50">
                                         <td className="px-3 py-2 text-muted-foreground">

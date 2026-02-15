@@ -5,6 +5,9 @@
  */
 
 import { WEBHOOK } from '../../constants/index';
+import type { RetryConfig } from '../../../shared/types';
+
+export type { RetryConfig };
 
 /**
  * Webhook delivery status
@@ -56,16 +59,6 @@ export interface WebhookConfig {
     signatureHeader?: string;
     retryConfig?: RetryConfig;
     enabled?: boolean;
-}
-
-/**
- * Retry configuration
- */
-export interface RetryConfig {
-    maxAttempts: number;
-    initialDelayMs: number;
-    maxDelayMs: number;
-    backoffMultiplier: number;
 }
 
 /**

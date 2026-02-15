@@ -19,9 +19,7 @@ import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../s
 import { BATCH_SIZES, UI_LIMITS, UI_DEFAULTS, TRIGGER_TYPES, FILE_FORMAT, SOURCE_TYPE, CLEANUP_STRATEGY, TOAST_WIZARD, formatParseError, formatParsedRecords } from '../../../constants';
 import { normalizeString, parseCSVLine } from '../../../utils';
 import { useImportTemplates } from '../../../hooks/useImportTemplates';
-
-type TemplateCategory = 'products' | 'customers' | 'inventory' | 'orders' | 'promotions' | 'catalog';
-type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';
+import type { TemplateCategory, TemplateDifficulty } from '../../../types';
 
 interface ImportTemplateLocal {
     id: string;

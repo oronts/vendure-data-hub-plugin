@@ -775,8 +775,6 @@ export const fullDataQualityPipeline = createPipeline()
             { op: 'lowercase', args: { path: 'email' } },
             { op: 'trim', args: { path: 'firstName' } },
             { op: 'trim', args: { path: 'lastName' } },
-            { op: 'capitalize', args: { path: 'firstName' } },
-            { op: 'capitalize', args: { path: 'lastName' } },
         ],
     })
 

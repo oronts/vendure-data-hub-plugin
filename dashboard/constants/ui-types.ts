@@ -1,39 +1,39 @@
 /** Diff change types */
 export const DIFF_TYPE = {
-    ADDED: 'added',
-    REMOVED: 'removed',
-    CHANGED: 'changed',
-    UNCHANGED: 'unchanged',
+    ADDED: 'ADDED',
+    REMOVED: 'REMOVED',
+    CHANGED: 'CHANGED',
+    UNCHANGED: 'UNCHANGED',
 } as const;
 
 /** Trend directions for stat cards */
 export const TREND_DIRECTION = {
-    UP: 'up',
-    DOWN: 'down',
+    UP: 'UP',
+    DOWN: 'DOWN',
 } as const;
 
 /** Move direction for reordering items */
 export const MOVE_DIRECTION = {
-    UP: 'up',
-    DOWN: 'down',
+    UP: 'UP',
+    DOWN: 'DOWN',
 } as const;
 
 export type MoveDirection = typeof MOVE_DIRECTION[keyof typeof MOVE_DIRECTION];
 
 /** Loading state types */
 export const LOADING_STATE_TYPE = {
-    SPINNER: 'spinner',
-    TABLE: 'table',
-    FORM: 'form',
-    CARD: 'card',
-    LIST: 'list',
+    SPINNER: 'SPINNER',
+    TABLE: 'TABLE',
+    FORM: 'FORM',
+    CARD: 'CARD',
+    LIST: 'LIST',
 } as const;
 
 /** File upload mapper steps */
 export const MAPPER_STEP = {
-    UPLOAD: 'upload',
-    PREVIEW: 'preview',
-    MAPPING: 'mapping',
+    UPLOAD: 'UPLOAD',
+    PREVIEW: 'PREVIEW',
+    MAPPING: 'MAPPING',
 } as const;
 
 /** Secret provider types */
@@ -83,12 +83,12 @@ export type FieldType = typeof FIELD_TYPE[keyof typeof FIELD_TYPE];
 
 /** UI adapter categories for pipeline organization */
 export const UI_ADAPTER_CATEGORY = {
-    SOURCES: 'sources',
-    TRANSFORMS: 'transforms',
-    VALIDATION: 'validation',
-    ROUTING: 'routing',
-    DESTINATIONS: 'destinations',
-    FEEDS: 'feeds',
-    EXPORTS: 'exports',
-    SINKS: 'sinks',
+    SOURCES: 'SOURCES',
+    TRANSFORMS: 'TRANSFORMS',
+    VALIDATION: 'VALIDATION',
+    ROUTING: 'ROUTING',
+    DESTINATIONS: 'DESTINATIONS',
+    FEEDS: 'FEEDS',
+    EXPORTS: 'EXPORTS',
+    SINKS: 'SINKS',
 } as const;

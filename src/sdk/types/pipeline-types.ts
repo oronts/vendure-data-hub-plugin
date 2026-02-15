@@ -124,32 +124,6 @@ export interface PipelineRunSummary {
     readonly dryRun: boolean;
 }
 
-// PIPELINE BUILDER TYPES
-
-export interface StepBuilder {
-    name(name: string): StepBuilder;
-    config(config: JsonObject): StepBuilder;
-    async(async: boolean): StepBuilder;
-    concurrency(concurrency: number): StepBuilder;
-    build(): JsonObject;
-}
-
-export interface PipelineBuilder {
-    extract(key: string, adapter: string): StepBuilder;
-    transform(key: string, adapter: string): StepBuilder;
-    validate(key: string, adapter: string): StepBuilder;
-    enrich(key: string, adapter: string): StepBuilder;
-    route(key: string): StepBuilder;
-    load(key: string, adapter: string): StepBuilder;
-    export(key: string, adapter: string): StepBuilder;
-    feed(key: string, adapter: string): StepBuilder;
-    sink(key: string, adapter: string): StepBuilder;
-    edge(from: string, to: string, branch?: string): PipelineBuilder;
-    context(context: JsonObject): PipelineBuilder;
-    hooks(hooks: JsonObject): PipelineBuilder;
-    build(): PipelineDefinition;
-}
-
 // SCHEMA DEFINITION TYPES
 
 /**

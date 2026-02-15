@@ -3,7 +3,7 @@ import { Allow, RequestContext, Ctx, Transaction, TransactionalConnection } from
 import { ViewDataHubRunsPermission, DataHubPipelinePermission } from '../../permissions';
 import { PipelineRun, Pipeline } from '../../entities/pipeline';
 import { MessageConsumerService } from '../../services/events/message-consumer.service';
-import { RunStatus, SortOrder, LOGGER_CONTEXTS } from '../../constants/index';
+import { RunStatus, SortOrder, LOGGER_CONTEXTS, QUEUE } from '../../constants/index';
 import { DataHubLogger } from '../../services/logger';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.QUEUE_RESOLVER);
@@ -85,7 +85,7 @@ export class DataHubQueueAdminResolver {
             .addSelect(['pipeline.code'])
             .where('pr.status = :st', { st: RunStatus.FAILED })
             .orderBy('pr.finishedAt', SortOrder.DESC)
-            .limit(10);
+            .limit(QUEUE.DEFAULT_RECENT_FAILED_LIMIT);
         const recentFailedRows = await recentFailedQb.getMany();
         const recentFailed = recentFailedRows.map(r => ({
             id: String(r.id),

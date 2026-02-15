@@ -1,4 +1,4 @@
-import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { DataHubSecret } from '../../entities/config';
 import { DATAHUB_PLUGIN_OPTIONS, LOGGER_CONTEXTS } from '../../constants/index';
@@ -39,7 +39,7 @@ import {
  */
 
 @Injectable()
-export class SecretService implements OnModuleInit {
+export class SecretService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private configSecrets: Map<string, CodeFirstSecret> = new Map();
     private readonly encryptionEnabled: boolean;
@@ -72,6 +72,10 @@ export class SecretService implements OnModuleInit {
                 'to enable encryption at rest for INLINE secrets.',
             );
         }
+    }
+
+    onModuleDestroy() {
+        this.configSecrets.clear();
     }
 
     isEncryptionEnabled(): boolean {

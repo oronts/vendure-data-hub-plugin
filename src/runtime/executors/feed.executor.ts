@@ -243,7 +243,12 @@ export class FeedExecutor {
     }
 
     /**
-     * Execute a custom feed adapter from the registry
+     * Execute a custom feed adapter from the registry.
+     *
+     * SECURITY NOTE: Custom feed adapters that make outbound HTTP requests
+     * are responsible for calling assertUrlSafe() (from url-security.utils)
+     * before fetching any user-supplied URLs. The FeedContext does not proxy
+     * HTTP calls, so SSRF protection must be applied within each adapter.
      */
     private async executeCustomFeed(
         ctx: RequestContext,

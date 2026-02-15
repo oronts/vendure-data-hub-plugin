@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 
@@ -35,7 +35,7 @@ export type {
 } from './destination.types';
 
 @Injectable()
-export class ExportDestinationService implements OnModuleInit {
+export class ExportDestinationService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private destinations: Map<string, DestinationConfig> = new Map();
 
@@ -47,6 +47,10 @@ export class ExportDestinationService implements OnModuleInit {
 
     async onModuleInit() {
         this.logger.info('ExportDestinationService initialized');
+    }
+
+    onModuleDestroy() {
+        this.destinations.clear();
     }
 
     registerDestination(config: DestinationConfig): void {

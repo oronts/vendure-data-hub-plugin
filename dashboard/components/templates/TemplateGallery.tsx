@@ -27,16 +27,7 @@ import {
     CheckCircle,
 } from 'lucide-react';
 import { Badge, Input } from '@vendure/dashboard';
-
-/**
- * Template category type
- */
-type TemplateCategory = 'products' | 'customers' | 'inventory' | 'orders' | 'promotions' | 'catalog';
-
-/**
- * Template difficulty type
- */
-type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';
+import type { TemplateCategory, TemplateDifficulty } from '../../types';
 
 /**
  * Import template interface (matches backend type)

@@ -187,12 +187,12 @@ pipelines:
       version: 1
       steps:
         - key: trigger
-          type: trigger
+          type: TRIGGER
           config:
-            type: schedule
+            type: SCHEDULE
             cron: "0 2 * * *"
         - key: extract
-          type: extract
+          type: EXTRACT
           config:
             adapterCode: httpApi
             url: https://api.example.com/products

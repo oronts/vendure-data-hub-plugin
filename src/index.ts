@@ -56,11 +56,6 @@ export {
     VOLUME_UNITS,
     UNIT_CONVERSIONS,
     CURRENCY_DECIMALS,
-    STEP_ICONS,
-    ADAPTER_ICONS,
-    STEP_COLORS,
-    STATUS_COLORS,
-    PIPELINE_STATUS_COLORS,
     SEARCH_SERVICE_URLS,
     EXAMPLE_URLS,
     SERVICE_DEFAULTS,
@@ -117,6 +112,7 @@ export type { VariantWithCustomFields, ProductWithCustomFields } from './feeds/f
 export { DataHubScheduleHandler, DataHubRunQueueHandler } from './jobs';
 
 export { createPipeline, definePipeline, step, steps, edge } from './sdk/dsl';
+export type { PipelineBuilder } from './sdk/dsl';
 
 export type {
     AdapterType,
@@ -177,8 +173,6 @@ export type {
     PipelineExecutionContext,
     PipelineRunInput,
     PipelineRunSummary,
-    StepBuilder,
-    PipelineBuilder,
     SchemaFieldTypeValue,
     SchemaFieldDefinition,
     SchemaDefinition,

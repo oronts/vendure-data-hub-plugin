@@ -13,6 +13,9 @@ const NESTED_QUANTIFIER_PATTERN = /\([^)]*[+*][^)]*\)[+*{]/;
 /** Adjacent quantifiers like a++, a*+, a{2}+ (possessive-like patterns that fail in JS) */
 const ADJACENT_QUANTIFIER_PATTERN = /[+*}][+*]/;
 
+/** Backreference followed by quantifier like (.+)\1+ which can cause exponential backtracking */
+const BACKREF_QUANTIFIER_PATTERN = /\\[1-9]\d*[+*{]/;
+
 interface SafeRegexResult {
     safe: boolean;
     reason?: string;
@@ -37,6 +40,9 @@ export function validateRegexSafety(pattern: string): SafeRegexResult {
     }
     if (ADJACENT_QUANTIFIER_PATTERN.test(pattern)) {
         return { safe: false, reason: 'Pattern contains adjacent quantifiers that may cause catastrophic backtracking' };
+    }
+    if (BACKREF_QUANTIFIER_PATTERN.test(pattern)) {
+        return { safe: false, reason: 'Pattern contains backreference with quantifier that may cause exponential backtracking' };
     }
 
     return { safe: true };

@@ -52,14 +52,14 @@ Complete reference documentation for all Data Hub adapters.
 | `PAYMENT_METHOD` | Create/update payment methods with handlers |
 | `CHANNEL` | Create/update channels with currencies and languages |
 
-### Operator Categories (58 operators)
+### Operator Categories (57 operators)
 
 | Category | Operators |
 |----------|-----------|
 | Data (8) | `set`, `copy`, `rename`, `remove`, `map`, `template`, `hash`, `uuid` |
 | String (12) | `trim`, `uppercase`, `lowercase`, `slugify`, `split`, `join`, `concat`, `replace`, `extractRegex`, `replaceRegex`, `stripHtml`, `truncate` |
 | Numeric (9) | `math`, `toNumber`, `toString`, `currency`, `unit`, `parseNumber`, `formatNumber`, `toCents`, `round` |
-| Date (6) | `dateFormat`, `dateParse`, `dateAdd`, `dateDiff`, `now`, `formatDate` |
+| Date (5) | `dateFormat`, `dateParse`, `dateAdd`, `dateDiff`, `now` |
 | Logic (4) | `when`, `ifThenElse`, `switch`, `deltaFilter` |
 | JSON (4) | `pick`, `omit`, `parseJson`, `stringifyJson` |
 | Enrichment (5) | `lookup`, `enrich`, `coalesce`, `default`, `httpLookup` |
