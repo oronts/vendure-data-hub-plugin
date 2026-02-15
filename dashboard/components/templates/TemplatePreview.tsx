@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { Badge, Button } from '@vendure/dashboard';
 import { toast } from 'sonner';
-import { TOAST_TEMPLATE } from '../../constants/toast-messages';
+import { TOAST_TEMPLATE } from '../../constants/ToastMessages';
 
 type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';
 

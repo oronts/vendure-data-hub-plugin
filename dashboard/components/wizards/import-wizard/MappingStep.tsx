@@ -21,8 +21,8 @@ import {
 import { WizardStepContainer } from '../shared';
 import { UI_LIMITS, SENTINEL_VALUES } from '../../../constants';
 import type { EnhancedFieldDefinition } from '../../../types';
-import { STEP_CONTENT } from './constants';
-import type { ImportConfiguration, FieldMapping } from './types';
+import { STEP_CONTENT } from './Constants';
+import type { ImportConfiguration, FieldMapping } from './Types';
 
 interface MappingStepProps {
     config: Partial<ImportConfiguration>;

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { memo } from 'react';
 import type { TriggerType, TriggerSelectorProps } from '../../../types';
-import { TRIGGER_ICONS } from '../../../constants/triggers';
+import { TRIGGER_ICONS } from '../../../constants/Triggers';
 import { Play } from 'lucide-react';
 import { SelectableCard, SelectableCardGrid } from '../selectable-card';
 

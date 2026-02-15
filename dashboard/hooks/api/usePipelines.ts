@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { ArchiveDataHubPipelineApiDocument } from '../../gql/graphql';
-import { createMutationErrorHandler } from './mutation-helpers';
+import { createMutationErrorHandler } from './MutationHelpers';
 import type {
     DataHubPipelineListOptions,
 } from '../../types';

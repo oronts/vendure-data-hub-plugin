@@ -26,7 +26,7 @@ import {
 } from '../shared';
 import { SelectableCard, SelectableCardGrid } from '../../shared/selectable-card';
 import { FileDropzone } from '../../shared/file-dropzone';
-import { SOURCE_TYPES, FILE_FORMATS, STEP_CONTENT, PLACEHOLDERS } from './constants';
+import { SOURCE_TYPES, FILE_FORMATS, STEP_CONTENT, PLACEHOLDERS } from './Constants';
 import { getErrorMessage } from '../../../../shared';
 import { CSV_DELIMITERS, TOAST_WIZARD, TOAST_CONNECTION, TEST_STATUS } from '../../../constants';
 import type {
@@ -34,7 +34,7 @@ import type {
     SourceType,
     FileFormat,
     ApiMethod,
-} from './types';
+} from './Types';
 
 interface SourceStepProps {
     config: Partial<ImportConfiguration>;

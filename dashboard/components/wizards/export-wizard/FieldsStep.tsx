@@ -14,9 +14,9 @@ import {
     ScrollArea,
 } from '@vendure/dashboard';
 import { WizardStepContainer } from '../shared';
-import { STEP_CONTENT } from './constants';
+import { STEP_CONTENT } from './Constants';
 import { COMPONENT_HEIGHTS, SENTINEL_VALUES } from '../../../constants';
-import type { ExportConfiguration, ExportField } from './types';
+import type { ExportConfiguration, ExportField } from './Types';
 
 interface FieldsStepProps {
     config: Partial<ExportConfiguration>;

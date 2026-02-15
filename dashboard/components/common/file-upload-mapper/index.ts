@@ -1,2 +1,2 @@
-export type { FileUploadMapperProps, MappingTargetField } from './types';
+export type { FileUploadMapperProps, MappingTargetField } from './Types';
 export { FileUploadMapper } from './FileUploadMapper';

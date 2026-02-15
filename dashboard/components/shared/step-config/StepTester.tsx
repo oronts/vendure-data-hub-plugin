@@ -14,7 +14,7 @@ import {
 import { PlayIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { STEP_TYPES, ADAPTER_TYPES, DEFAULT_SAMPLE_DATA, STEP_TEST_DESCRIPTIONS, PLACEHOLDERS } from '../../../constants';
 import { createMutationErrorHandler } from '../../../hooks';
-import { runStepTest, canTestStepType, type TestResult, type StepTestOptions } from './step-test-handlers';
+import { runStepTest, canTestStepType, type TestResult, type StepTestOptions } from './StepTestHandlers';
 import { ExtractTestResults } from './ExtractTestResults';
 import { TransformTestResults, ValidateTestResults } from './TransformTestResults';
 import { LoadTestResults, FeedTestResults, GenericTestResults } from './LoadTestResults';

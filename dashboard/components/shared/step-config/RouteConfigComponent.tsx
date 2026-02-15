@@ -1,8 +1,8 @@
 import React, { useCallback } from 'react';
 import { Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { Button, Input, Label } from '@vendure/dashboard';
-import { ROUTE_BRANCH_DEFAULTS } from '../../../constants/step-configs';
-import { ERROR_MESSAGES } from '../../../constants/validation-patterns';
+import { ROUTE_BRANCH_DEFAULTS } from '../../../constants/StepConfigs';
+import { ERROR_MESSAGES } from '../../../constants/ValidationPatterns';
 import { useStableKeys } from '../../../hooks';
 
 export interface RouteConfigComponentProps {

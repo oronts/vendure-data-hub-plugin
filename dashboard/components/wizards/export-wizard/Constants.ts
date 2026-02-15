@@ -10,7 +10,7 @@ import {
     FileJson,
     FileText,
 } from 'lucide-react';
-import type { WizardStep, FeedTemplate } from '../../../types/wizard';
+import type { WizardStep, FeedTemplate } from '../../../types/Wizard';
 
 export const EXPORT_STEP_ID = {
     SOURCE: 'source',

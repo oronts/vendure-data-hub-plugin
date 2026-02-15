@@ -3,7 +3,7 @@ export type {
     WizardTransformationStep,
     ParsedData,
     FeedTemplate,
-} from '../../../types/wizard';
+} from '../../../types/Wizard';
 
 export interface StepValidationResult {
     isValid: boolean;
@@ -20,7 +20,7 @@ export type {
     ImportFieldMapping,
     ImportStrategies,
     ImportTriggerConfig,
-} from '../../../types/wizard';
+} from '../../../types/Wizard';
 
 export type {
     QueryConfig,
@@ -35,4 +35,4 @@ export type {
     ExportTriggerConfig,
     CacheConfig,
     ExportOptions,
-} from '../../../types/wizard';
+} from '../../../types/Wizard';

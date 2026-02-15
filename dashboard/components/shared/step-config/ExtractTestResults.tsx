@@ -15,7 +15,7 @@ import {
 import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { formatCellValue } from '../../../utils';
 import { TEST_STATUS, UI_LIMITS } from '../../../constants';
-import type { TestResult } from './step-test-handlers';
+import type { TestResult } from './StepTestHandlers';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
 
 interface ExtractTestResultsProps {

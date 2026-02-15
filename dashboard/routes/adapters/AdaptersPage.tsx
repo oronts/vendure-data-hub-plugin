@@ -35,7 +35,7 @@ import {
 } from 'lucide-react';
 import { ErrorState, LoadingState } from '../../components/shared';
 import { useAdapters } from '../../hooks';
-import { ADAPTER_TYPE_INFO } from './constants';
+import { ADAPTER_TYPE_INFO } from './Constants';
 import { AdapterTypeSection } from './AdapterTypeSection';
 import { AdaptersTable } from './AdaptersTable';
 import { AdapterDetail } from './AdapterDetail';

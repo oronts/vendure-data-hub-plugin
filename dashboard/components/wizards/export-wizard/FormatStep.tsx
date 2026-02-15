@@ -16,8 +16,8 @@ import {
 import { CSV_DELIMITERS, FILE_ENCODINGS, EXPORT_FORMAT, XML_DEFAULTS, DEFAULT_ENCODING } from '../../../constants';
 import { WizardStepContainer } from '../shared';
 import { SelectableCard, SelectableCardGrid } from '../../shared/selectable-card';
-import { FEED_TEMPLATES, STEP_CONTENT, PLACEHOLDERS } from './constants';
-import type { ExportConfiguration, FormatType } from './types';
+import { FEED_TEMPLATES, STEP_CONTENT, PLACEHOLDERS } from './Constants';
+import type { ExportConfiguration, FormatType } from './Types';
 
 interface FormatStepProps {
     config: Partial<ExportConfiguration>;

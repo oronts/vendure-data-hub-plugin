@@ -27,7 +27,7 @@ import { StepIndicator } from './StepIndicator';
 import { parseCSV, analyzeColumns, getFileType, computeAutoMappings } from '../../../utils';
 import { UI_LIMITS, FILE_FORMAT, MAPPER_STEP, TOAST_FILE, formatParsedRowsColumns, formatMissingRequired } from '../../../constants';
 import { getErrorMessage } from '../../../../shared';
-import type { FileUploadMapperProps, ParsedFile, UIFieldMapping } from './types';
+import type { FileUploadMapperProps, ParsedFile, UIFieldMapping } from './Types';
 
 export function FileUploadMapper({
     targetSchema = [],

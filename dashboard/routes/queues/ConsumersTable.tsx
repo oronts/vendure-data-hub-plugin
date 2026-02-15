@@ -6,7 +6,7 @@ import {
 } from '@vendure/dashboard';
 import { Play, Square, Radio } from 'lucide-react';
 import { DATAHUB_PERMISSIONS, ITEMS_PER_PAGE } from '../../constants';
-import type { Consumer } from './types';
+import type { Consumer } from './Types';
 import { formatDateTime } from '../../utils';
 
 // Memoized row component for consumers

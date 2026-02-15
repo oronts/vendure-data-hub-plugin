@@ -13,7 +13,7 @@ import {
 import { validateUrl, validatePort, validateHostname } from '../../utils';
 import { FieldError } from './ValidationFeedback';
 import type { UIConnectionType, HttpConnectionConfig, DataHubSecret } from '../../types';
-import { CONNECTION_TYPE } from '../../constants/connection-types';
+import { CONNECTION_TYPE } from '../../constants/ConnectionTypes';
 
 const DEFAULT_HTTP_CONFIG: HttpConnectionConfig = {
     baseUrl: '',

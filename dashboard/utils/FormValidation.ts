@@ -1,5 +1,5 @@
-import { isEmpty, isURL as checkIsURL } from './field-validators';
-import { SOURCE_TYPE, DESTINATION_TYPE } from '../constants/wizard-options';
+import { isEmpty, isURL as checkIsURL } from './FieldValidators';
+import { SOURCE_TYPE, DESTINATION_TYPE } from '../constants/WizardOptions';
 import { CODE_PATTERN } from '../../shared';
 
 export { CODE_PATTERN };

@@ -3,7 +3,7 @@ import { memo } from 'react';
 import { RecordsTable } from './ExtractTestResults';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
 import { UI_LIMITS } from '../../../constants';
-import type { TestResult } from './step-test-handlers';
+import type { TestResult } from './StepTestHandlers';
 
 interface TransformTestResultsProps {
     result: TestResult;

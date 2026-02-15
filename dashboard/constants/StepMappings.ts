@@ -1,5 +1,5 @@
 import type { StepType } from '../../shared/types';
-import type { VisualNodeCategory } from '../types/pipeline';
+import type { VisualNodeCategory } from '../types/Pipeline';
 import type { LucideIcon } from 'lucide-react';
 import {
     Play,

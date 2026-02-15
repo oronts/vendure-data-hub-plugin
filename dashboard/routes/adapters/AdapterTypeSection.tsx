@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Button } from '@vendure/dashboard';
 import { CheckCircle2, Info, Puzzle } from 'lucide-react';
 import { AdapterCard } from './AdapterCard';
-import { ADAPTER_TYPE_INFO } from './constants';
+import { ADAPTER_TYPE_INFO } from './Constants';
 import { ITEMS_PER_PAGE } from '../../constants';
 import type { DataHubAdapter } from '../../types';
 

@@ -17,8 +17,8 @@ import { QUERY_LIMITS } from '../../../constants';
 import { WizardStepContainer } from '../shared';
 import { EntitySelector } from '../../shared/entity-selector';
 import { FilterConditionsEditor } from '../../shared/filter-conditions-editor';
-import { STEP_CONTENT } from './constants';
-import type { ExportConfiguration, QueryType } from './types';
+import { STEP_CONTENT } from './Constants';
+import type { ExportConfiguration, QueryType } from './Types';
 import type { FilterCondition, FilterOperator } from '../../../types';
 
 interface SourceStepProps {

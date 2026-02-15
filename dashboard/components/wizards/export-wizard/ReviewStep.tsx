@@ -14,8 +14,8 @@ import {
 import { VENDURE_ENTITY_LIST } from '../../../../shared';
 import { WizardStepContainer } from '../shared';
 import { ConfigurationNameCard, SummaryCard, SummaryCardGrid } from '../../shared/wizard';
-import { STEP_CONTENT, PLACEHOLDERS } from './constants';
-import type { ExportConfiguration } from './types';
+import { STEP_CONTENT, PLACEHOLDERS } from './Constants';
+import type { ExportConfiguration } from './Types';
 
 interface ReviewStepProps {
     config: Partial<ExportConfiguration>;

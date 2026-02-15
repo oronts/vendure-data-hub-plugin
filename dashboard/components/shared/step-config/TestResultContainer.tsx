@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { StatusBadge, ViewToggle } from './ExtractTestResults';
-import type { TestResult } from './step-test-handlers';
+import type { TestResult } from './StepTestHandlers';
 
 export interface TestResultContainerProps {
     result: TestResult;
