@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { formatKey, formatValue } from '../../../utils/formatters';
+import { formatKey, formatValue } from '../../../utils';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
 import type { TestResult } from './step-test-handlers';
 

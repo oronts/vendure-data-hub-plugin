@@ -24,7 +24,7 @@ import { AnyRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { AlertCircle, Key, Server } from 'lucide-react';
 import { getErrorMessage } from '../../../shared';
-import { CODE_PATTERN } from '../../utils/form-validation';
+import { CODE_PATTERN } from '../../utils';
 import { DATAHUB_PERMISSIONS, ROUTES, SECRET_PROVIDER, SELECT_WIDTHS, TOAST_SECRET, ERROR_MESSAGES } from '../../constants';
 import { FieldError } from '../../components/common';
 import {

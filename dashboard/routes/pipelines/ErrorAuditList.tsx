@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Json } from '@vendure/dashboard';
 import { useErrorAudits } from '../../hooks';
-import { formatDateTime } from '../../utils/formatters';
+import { formatDateTime } from '../../utils';
 
 export function ErrorAuditList({ errorId }: { errorId: string }) {
     const { data: audits, isFetching } = useErrorAudits(errorId);

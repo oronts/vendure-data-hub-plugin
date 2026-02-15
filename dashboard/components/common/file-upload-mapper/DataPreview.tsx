@@ -10,7 +10,7 @@ import {
     TableHeader,
     TableRow,
 } from '@vendure/dashboard';
-import { formatCellValue } from '../../../utils/formatters';
+import { formatCellValue } from '../../../utils';
 import { COMPONENT_HEIGHTS, COMPONENT_WIDTHS } from '../../../constants';
 import type { DataPreviewProps } from './types';
 

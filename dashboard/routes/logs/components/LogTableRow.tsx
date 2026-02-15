@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { formatSmartDateTime } from '../../../utils/formatters';
+import { formatSmartDateTime } from '../../../utils';
 import { LogLevelBadge } from './LogLevelBadge';
 import type { DataHubLog } from '../../../types';
 

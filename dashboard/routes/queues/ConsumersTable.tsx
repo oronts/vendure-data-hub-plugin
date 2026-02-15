@@ -7,7 +7,7 @@ import {
 import { Play, Square, Radio } from 'lucide-react';
 import { DATAHUB_PERMISSIONS, ITEMS_PER_PAGE } from '../../constants';
 import type { Consumer } from './types';
-import { formatDateTime } from '../../utils/formatters';
+import { formatDateTime } from '../../utils';
 
 // Memoized row component for consumers
 const ConsumerRow = React.memo(function ConsumerRow({

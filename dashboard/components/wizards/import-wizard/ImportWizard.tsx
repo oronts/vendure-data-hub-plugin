@@ -14,10 +14,9 @@ import { TransformStep } from './TransformStep';
 import { StrategyStep } from './StrategyStep';
 import { TriggerStep } from './TriggerStep';
 import { ReviewStep } from './ReviewStep';
-import { validateImportWizardStep } from '../../../utils/form-validation';
 import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../shared';
 import { BATCH_SIZES, UI_LIMITS, UI_DEFAULTS, TRIGGER_TYPES, FILE_FORMAT, SOURCE_TYPE, CLEANUP_STRATEGY, TOAST_WIZARD, formatParseError, formatParsedRecords } from '../../../constants';
-import { normalizeString, parseCSVLine } from '../../../utils';
+import { normalizeString, parseCSVLine, validateImportWizardStep } from '../../../utils';
 import { useImportTemplates } from '../../../hooks/useImportTemplates';
 import type { TemplateCategory, TemplateDifficulty } from '../../../types';
 

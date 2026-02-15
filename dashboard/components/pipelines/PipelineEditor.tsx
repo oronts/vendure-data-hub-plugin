@@ -19,10 +19,9 @@ import {
     TRIGGER_TYPES,
     ERROR_HANDLING_MODES,
     getStepTypeIcon,
+    PIPELINE_EDITOR_PANEL,
 } from '../../constants';
-import type { MoveDirection } from '../../constants';
-import { PIPELINE_EDITOR_PANEL } from '../../constants/ui-states';
-import type { PipelineEditorPanel } from '../../constants/ui-states';
+import type { MoveDirection, PipelineEditorPanel } from '../../constants';
 import { useAdapterCatalog } from '../../hooks';
 import type {
     StepType,

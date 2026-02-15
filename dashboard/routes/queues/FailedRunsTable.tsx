@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Button } from '@vendure/dashboard';
 import type { FailedRun } from './types';
-import { formatDateTime } from '../../utils/formatters';
+import { formatDateTime } from '../../utils';
 
 // Memoized row component for failed runs
 const FailedRunRow = React.memo(function FailedRunRow({

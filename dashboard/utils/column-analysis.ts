@@ -1,6 +1,6 @@
 import type { JsonValue, JsonObject } from '../../shared/types';
 import { FILE_FORMAT } from '../constants/wizard-options';
-import { UI_LIMITS } from '../constants/ui-config';
+import { UI_LIMITS } from '../constants';
 
 export type FileType = 'CSV' | 'JSON' | 'XLSX' | 'XML' | null;
 

@@ -13,7 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { pipelineTimelineDocument, pipelineKeys } from '../../../hooks';
 import { REVISION_TYPE, UI_LIMITS, DIALOG_DIMENSIONS } from '../../../constants';
-import { formatDateTime } from '../../../utils/formatters';
+import { formatDateTime } from '../../../utils';
 
 export interface TimelineEntry {
     revision: {

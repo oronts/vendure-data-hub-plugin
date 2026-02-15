@@ -23,7 +23,7 @@ import {
 } from '@vendure/dashboard';
 import { toast } from 'sonner';
 import { DATAHUB_NAV_SECTION, UI_DEFAULTS, UI_LIMITS, QUERY_LIMITS, ROUTES, DATAHUB_PERMISSIONS, TOAST_HOOK } from '../../constants';
-import { formatDateTime } from '../../utils/formatters';
+import { formatDateTime } from '../../utils';
 import {
     Play,
     RefreshCw,

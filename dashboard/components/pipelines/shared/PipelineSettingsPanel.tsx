@@ -22,8 +22,8 @@ import {
     DEFAULT_RUN_MODE,
     ERROR_POLICIES,
     DEFAULT_ERROR_POLICY,
+    CHECKPOINT_STRATEGY,
 } from '../../../constants';
-import { CHECKPOINT_STRATEGY } from '../../../constants/ui-states';
 import type {
     PipelineContext,
     ErrorHandlingConfig,

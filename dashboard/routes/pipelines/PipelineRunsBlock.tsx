@@ -17,7 +17,7 @@ import {
 import { ColumnDef, SortingState } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { ErrorState, LoadingState } from '../../components/shared';
-import { formatDateTime } from '../../utils/formatters';
+import { formatDateTime } from '../../utils';
 import { QUERY_LIMITS, RUN_STATUS, FILTER_VALUES, SELECT_WIDTHS, TOAST_PIPELINE } from '../../constants';
 import {
     usePipelineRuns,

@@ -11,7 +11,7 @@ import { FormatStep } from './FormatStep';
 import { DestinationStep } from './DestinationStep';
 import { TriggerStep } from './TriggerStep';
 import { ReviewStep } from './ReviewStep';
-import { validateExportWizardStep } from '../../../utils/form-validation';
+import { validateExportWizardStep } from '../../../utils';
 import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../shared';
 
 export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWizardProps) {

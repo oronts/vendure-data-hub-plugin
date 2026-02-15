@@ -22,7 +22,7 @@ import {
 import { Link } from '@tanstack/react-router';
 import { RefreshCw, AlertTriangle, Clock, CheckCircle, XCircle, Radio } from 'lucide-react';
 import { StatCard, LoadingState, ErrorState } from '../../components/shared';
-import { formatDateTime } from '../../utils/formatters';
+import { formatDateTime } from '../../utils';
 import { DATAHUB_NAV_SECTION, ROUTES, DATAHUB_PERMISSIONS } from '../../constants';
 import {
     useQueueStats,

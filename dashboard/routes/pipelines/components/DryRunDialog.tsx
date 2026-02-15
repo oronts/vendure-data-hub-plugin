@@ -14,7 +14,7 @@ import {
 import { toast } from 'sonner';
 import { useDryRunPipeline } from '../../../hooks';
 import type { DryRunResult, DryRunMetrics, PipelineDefinition } from '../../../types';
-import { formatDiffValue } from '../../../utils/formatters';
+import { formatDiffValue } from '../../../utils';
 import { DIFF_TYPE, DIALOG_DIMENSIONS, SCROLL_HEIGHTS, TOAST_PIPELINE } from '../../../constants';
 import { getErrorMessage } from '../../../../shared';
 
