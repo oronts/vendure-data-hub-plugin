@@ -32,6 +32,8 @@ export interface PipelineMetrics {
 
 /**
  * Error that occurred during entity loading
+ *
+ * @see src/sdk/types/result-types.ts LoadError for the SDK/adapter-facing version
  */
 export interface LoadError {
     /** The record that caused the error */

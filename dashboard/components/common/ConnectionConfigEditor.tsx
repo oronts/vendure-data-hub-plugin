@@ -578,7 +578,7 @@ export function normalizeConnectionConfig(
         return createDefaultConnectionConfig(type);
     }
     if (type === CONNECTION_TYPE.HTTP) {
-        return normalizeHttpConfig(obj) as unknown as Record<string, unknown>;
+        return { ...normalizeHttpConfig(obj) };
     }
     return obj;
 }

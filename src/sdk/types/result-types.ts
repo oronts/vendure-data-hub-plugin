@@ -44,6 +44,8 @@ export interface ExtractResult {
 
 /**
  * Error from operator processing
+ *
+ * @see shared/types/operator.types.ts OperatorError for the shared/domain version
  */
 export interface OperatorError {
     /** The record that caused the error */
@@ -70,6 +72,8 @@ export interface OperatorResult {
 
 /**
  * Error from loading operation
+ *
+ * @see shared/types/execution.types.ts LoadError for the shared/domain version
  */
 export interface LoadError {
     /** The record that failed to load */

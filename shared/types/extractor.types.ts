@@ -65,11 +65,18 @@ export interface RetryConfig {
 
 export interface AuthConfig {
     type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY' | 'OAUTH2' | 'HMAC' | 'JWT';
+    /** Secret code for looking up the token/password via secret resolver */
     secretCode?: string;
-    username?: string;
-    password?: string;
+    /** Header name for api-key auth (defaults to 'X-API-Key') */
     headerName?: string;
+    /** Username for basic auth */
+    username?: string;
+    /** Secret code for looking up username (for basic auth) */
+    usernameSecretCode?: string;
+    /** Direct token value (if not using secret resolver) */
     token?: string;
+    /** Direct password value for basic auth (if not using secret resolver) */
+    password?: string;
 }
 
 // PAGINATION SUPPORT

@@ -1,6 +1,6 @@
-import type { StepType, DataHubAdapter } from '../types';
+import type { StepType, AdapterListItem } from '../types';
 
-function groupAdaptersByCategory(adapters: DataHubAdapter[] = []): Record<string, DataHubAdapter[]> {
+function groupAdaptersByCategory(adapters: AdapterListItem[] = []): Record<string, AdapterListItem[]> {
     return (adapters ?? []).reduce((acc, adapter) => {
         const category = adapter.category || 'other';
         if (!acc[category]) {
@@ -8,7 +8,7 @@ function groupAdaptersByCategory(adapters: DataHubAdapter[] = []): Record<string
         }
         acc[category].push(adapter);
         return acc;
-    }, {} as Record<string, DataHubAdapter[]>);
+    }, {} as Record<string, AdapterListItem[]>);
 }
 
 interface FilterOptions {
@@ -17,15 +17,15 @@ interface FilterOptions {
 }
 
 function filterAdapters(
-    adapters: DataHubAdapter[] = [],
+    adapters: AdapterListItem[] = [],
     searchQuery: string,
     options: FilterOptions = {}
-): DataHubAdapter[] {
+): AdapterListItem[] {
     const { stepType, includeDescription = true } = options;
     const query = searchQuery.toLowerCase();
     return (adapters ?? []).filter(adapter => {
         const matchesSearch = !query ||
-            adapter.name.toLowerCase().includes(query) ||
+            (adapter.name?.toLowerCase().includes(query) ?? false) ||
             adapter.code.toLowerCase().includes(query) ||
             (includeDescription && adapter.description?.toLowerCase().includes(query));
         const matchesType = !stepType || adapter.type.toUpperCase() === stepType;
@@ -34,10 +34,10 @@ function filterAdapters(
 }
 
 export function filterAndGroupAdaptersByCategory(
-    adapters: DataHubAdapter[],
+    adapters: AdapterListItem[],
     searchQuery: string,
     options: FilterOptions = {}
-): Record<string, DataHubAdapter[]> {
+): Record<string, AdapterListItem[]> {
     const filtered = filterAdapters(adapters, searchQuery, options);
     return groupAdaptersByCategory(filtered);
 }

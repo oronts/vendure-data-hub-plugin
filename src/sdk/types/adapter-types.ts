@@ -20,13 +20,13 @@ import {
     TriggerType,
     ChannelStrategy,
     LanguageStrategyValue,
-    ValidationModeValue,
+    ValidationModeType,
     ConflictStrategyValue,
     FeedType,
 } from '../../../shared/types';
 
 // Re-export canonical types from shared
-export type { AdapterType, AdapterCategory, TriggerType, ChannelStrategy, LanguageStrategyValue, ValidationModeValue, ConflictStrategyValue } from '../../../shared/types';
+export type { AdapterType, AdapterCategory, TriggerType, ChannelStrategy, LanguageStrategyValue, ValidationModeType, ConflictStrategyValue } from '../../../shared/types';
 
 // BASE ADAPTER INTERFACE
 
@@ -221,7 +221,7 @@ export interface SingleRecordOperator<TConfig = JsonObject> extends BaseAdapter<
 // LOADER ADAPTER
 
 // ChannelStrategy is imported and re-exported from shared/types/step.types.ts above
-// LanguageStrategyValue, ValidationModeValue, ConflictStrategyValue are canonical in shared/types/pipeline.types.ts
+// LanguageStrategyValue, ValidationModeType, ConflictStrategyValue are canonical in shared/types
 
 export type LoadStrategy =
     | 'CREATE' | 'UPDATE' | 'UPSERT' | 'MERGE' | 'SOFT_DELETE' | 'HARD_DELETE';
@@ -245,7 +245,7 @@ export interface LoadContext {
     /** Language handling strategy */
     readonly languageStrategy: LanguageStrategyValue;
     /** Validation strictness mode */
-    readonly validationMode: ValidationModeValue;
+    readonly validationMode: ValidationModeType;
     /** Conflict resolution strategy */
     readonly conflictStrategy: ConflictStrategyValue;
     /** Secret resolver */

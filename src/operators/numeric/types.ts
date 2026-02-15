@@ -1,4 +1,5 @@
 import { BaseOperatorConfig } from '../types';
+import type { UnitType } from '../../sdk/types/transform-types';
 
 export type MathOperation =
     | 'add' | 'subtract' | 'multiply' | 'divide' | 'modulo' | 'power'
@@ -21,10 +22,11 @@ export interface CurrencyOperatorConfig extends BaseOperatorConfig {
     readonly round?: RoundingMode;
 }
 
-export type UnitType =
-    | 'g' | 'kg' | 'lb' | 'oz'
-    | 'cm' | 'm' | 'mm' | 'in' | 'ft'
-    | 'ml' | 'l' | 'gal';
+/**
+ * Re-exported from SDK transform-types.ts (canonical, includes temperature units).
+ * @see src/sdk/types/transform-types.ts UnitType
+ */
+export type { UnitType };
 
 export interface UnitOperatorConfig extends BaseOperatorConfig {
     readonly source: string;

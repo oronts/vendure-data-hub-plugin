@@ -4,11 +4,9 @@ import { Button, Input, Label, Select, SelectContent, SelectItem, SelectTrigger,
 import { MOVE_DIRECTION } from '../../../constants';
 import type { MoveDirection } from '../../../constants';
 import { OperatorFieldInput, GenericArgInput, OperatorSchemaField } from './OperatorFieldInput';
+import type { OperatorConfig } from '../../../../shared/types';
 
-export interface OperatorConfig {
-    op: string;
-    args?: Record<string, unknown>;
-}
+export type { OperatorConfig };
 
 /**
  * Definition for step operators with schema-based configuration.

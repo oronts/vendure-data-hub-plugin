@@ -13,8 +13,6 @@ export interface UrlConnectionConfig {
     };
 }
 
-export type ConnectionResolver = (connectionCode: string) => Promise<UrlConnectionConfig | undefined>;
-
 export function buildUrlWithConnection(
     url: string,
     connection?: UrlConnectionConfig,

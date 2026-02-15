@@ -1,6 +1,9 @@
 import { RecordLineage, RecordState, SandboxOptions } from '../sandbox.service';
 import { LineageOutcome } from '../../../constants/enums';
 
+/** Maximum serialized JSON length before replacing with a summary */
+const MAX_SERIALIZATION_LENGTH = 10_000;
+
 /**
  * Helper for tracking data lineage through pipeline execution
  */
@@ -90,7 +93,7 @@ export class DataLineageTracker {
     private cloneForLineage(data: Record<string, unknown>): Record<string, unknown> {
         try {
             const str = JSON.stringify(data);
-            if (str.length > 10000) {
+            if (str.length > MAX_SERIALIZATION_LENGTH) {
                 return { _summary: `Object with ${Object.keys(data).length} keys (${str.length} chars)` };
             }
             return JSON.parse(str);

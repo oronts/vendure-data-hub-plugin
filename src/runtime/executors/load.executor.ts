@@ -34,7 +34,7 @@ import {
     RestPostHandler,
 } from './loaders';
 import { DataHubRegistryService } from '../../sdk/registry.service';
-import { LoaderAdapter, LoadContext, ChannelStrategy, LanguageStrategyValue, ValidationModeValue, ConflictStrategyValue } from '../../sdk/types';
+import { LoaderAdapter, LoadContext, ChannelStrategy, LanguageStrategyValue, ValidationModeType, ConflictStrategyValue } from '../../sdk/types';
 import { ChannelStrategy as ChannelStrategyEnum, LanguageStrategy as LanguageStrategyEnum, ConflictStrategy as ConflictStrategyEnum, ValidationStrictness as ValidationStrictnessEnum } from '../../constants/enums';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
@@ -48,7 +48,7 @@ interface LoadStepCfg {
     adapterCode?: string;
     channelStrategy?: ChannelStrategy;
     languageStrategy?: LanguageStrategyValue;
-    validationMode?: ValidationModeValue;
+    validationMode?: ValidationModeType;
     conflictStrategy?: ConflictStrategyValue;
     [key: string]: unknown;
 }

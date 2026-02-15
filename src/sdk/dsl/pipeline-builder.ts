@@ -276,6 +276,8 @@ export function createPipeline(): PipelineBuilder {
 
             return {
                 version: state.version,
+                name: state.name,
+                description: state.description,
                 steps: state.steps,
                 edges: state.edges.length > 0 ? state.edges : undefined,
                 dependsOn: state.dependsOn,

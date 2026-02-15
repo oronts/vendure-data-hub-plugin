@@ -31,7 +31,7 @@ interface EntityBreakdownCollector {
 /**
  * Entity operations count structure
  */
-export interface EntityOperations {
+interface EntityOperations {
     create: number;
     update: number;
     delete: number;
@@ -196,7 +196,7 @@ export function generateStepTransformations(
 /**
  * Get load steps from pipeline definition
  */
-export function getLoadSteps(definition: PipelineDefinition): PipelineDefinition['steps'] {
+function getLoadSteps(definition: PipelineDefinition): PipelineDefinition['steps'] {
     return (definition.steps || []).filter(s => s.type === StepType.LOAD);
 }
 
@@ -210,7 +210,7 @@ export function findStep(definition: PipelineDefinition, stepKey: string): Pipel
 /**
  * Map adapter codes to entity types
  */
-export function inferEntityType(adapterCode: string): string {
+function inferEntityType(adapterCode: string): string {
     const mapping: Record<string, string> = {
         'vendure-products': VendureEntityType.PRODUCT,
         'vendure-variants': VendureEntityType.PRODUCT_VARIANT,
@@ -228,7 +228,7 @@ export function inferEntityType(adapterCode: string): string {
 /**
  * Infer entity type from sample record structure
  */
-export function inferEntityTypeFromSample(
+function inferEntityTypeFromSample(
     sample: { step: string; after: Record<string, unknown> },
     entityTypes: Set<string>,
 ): string {
@@ -244,7 +244,7 @@ export function inferEntityTypeFromSample(
 /**
  * Infer operation type from before/after states
  */
-export function inferOperation(
+function inferOperation(
     sample: { before: Record<string, unknown>; after: Record<string, unknown> },
 ): SandboxLoadResultType {
     const isEmpty = (obj: Record<string, unknown>) =>
@@ -265,7 +265,7 @@ export function inferOperation(
 /**
  * Extract record ID from common ID fields
  */
-export function extractRecordId(record: Record<string, unknown>): string | null {
+function extractRecordId(record: Record<string, unknown>): string | null {
     const idFields = ['id', '_id', 'ID', 'Id', 'sku', 'code', 'uuid'];
     for (const field of idFields) {
         if (record[field] != null) {

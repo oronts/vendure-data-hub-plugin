@@ -14,7 +14,7 @@ export {
     startConnectionTest,
     createTestSuccess,
     createTestFailure,
-    extractErrorMessage,
+    extractUnknownErrorMessage,
     normalizeRemotePath,
-    getMimeType,
+    getConfiguredMimeType,
 } from './delivery-utils';

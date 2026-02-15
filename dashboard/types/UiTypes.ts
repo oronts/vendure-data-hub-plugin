@@ -27,10 +27,18 @@ export type {
     PipelineNode,
     VisualPipelineDefinition,
     VisualNodeCategory,
-    PipelineNodeType,
 } from './Pipeline';
 
 export type { FileType };
+
+/** Minimal adapter shape accepted by AdapterSelector - both DataHubAdapter (GraphQL) and AdapterMetadata (catalog) satisfy this. */
+export interface AdapterListItem {
+    code: string;
+    type: string;
+    name?: string | null;
+    description?: string | null;
+    category?: string | null;
+}
 
 export interface AdapterSelectorProps {
     stepType: StepType;
@@ -38,7 +46,7 @@ export interface AdapterSelectorProps {
     onChange: (code: string) => void;
     placeholder?: string;
     disabled?: boolean;
-    adapters?: DataHubAdapter[];
+    adapters?: AdapterListItem[];
 }
 
 export interface TriggerFormProps {

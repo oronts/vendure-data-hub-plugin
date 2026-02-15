@@ -13,7 +13,7 @@ import { JsonValue, JsonObject } from '../../../types/index';
 import { MapperTransformConfig } from '../../types/transform-config.types';
 import { getDefaultEvaluator } from '../../../runtime/sandbox/safe-evaluator';
 import { CODE_SECURITY } from '../../../constants';
-import { isEmpty } from '../../../utils/value-checks.utils';
+import { isEmpty } from '../../../../shared/utils/validation';
 
 /** Maximum allowed expression length to prevent DoS */
 const MAX_EXPRESSION_LENGTH = CODE_SECURITY.MAX_CONDITION_LENGTH;

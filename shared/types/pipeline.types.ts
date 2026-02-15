@@ -131,9 +131,6 @@ export interface CheckpointingConfig {
  * These types match the enum values in src/constants/enums.ts
  */
 
-// ValidationModeValue is canonical as ValidationModeType in step.types.ts
-export type ValidationModeValue = ValidationModeType;
-
 /** Execution mode for the pipeline */
 export type RunModeValue = 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
 
@@ -173,7 +170,7 @@ export interface PipelineContext {
     /** Specific channel IDs to operate on */
     channelIds?: string[];
     /** Validation mode */
-    validationMode?: ValidationModeValue;
+    validationMode?: ValidationModeType;
     /** Field to use as idempotency key */
     idempotencyKeyField?: string;
     /** Execution mode */
@@ -474,6 +471,10 @@ export interface UnifiedPipelineDefinition {
 export interface PipelineDefinition {
     /** Schema version */
     version: number;
+    /** Human-readable pipeline name (set via builder's .name() method) */
+    name?: string;
+    /** Human-readable pipeline description (set via builder's .description() method) */
+    description?: string;
     /** Pipeline steps */
     steps: PipelineStepDefinition[];
     /** Pipeline codes this depends on */

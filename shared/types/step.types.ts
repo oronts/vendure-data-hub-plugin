@@ -277,6 +277,17 @@ export interface RouteStepConfig {
 }
 
 /**
+ * Configuration for a single operator within a transform step.
+ *
+ * Intentional variant: src/services/validation/step-validation.ts defines
+ * a similar interface using `params` instead of `args` for its own validation needs.
+ */
+export interface OperatorConfig {
+    op: string;
+    args?: Record<string, unknown>;
+}
+
+/**
  * Pipeline capabilities declaration
  */
 export interface PipelineCapabilities {

@@ -31,12 +31,12 @@ export type {
     UINodeStatus,
     PipelineNodeData,
     PipelineNode,
-    PipelineNodeType,
     VisualPipelineDefinition,
     VisualNodeCategory,
 } from './Pipeline';
 
 export type {
+    AdapterListItem,
     AdapterSelectorProps,
     TriggerFormProps,
     SchemaFormRendererProps,

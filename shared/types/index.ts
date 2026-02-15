@@ -144,6 +144,7 @@ export type {
     StepError,
     DrainStrategy,
     ChannelStrategy,
+    OperatorConfig,
     RouteConditionOp,
     PipelineCapabilityDomain,
     Throughput,
@@ -156,6 +157,7 @@ export type {
     RouteBranch,
     RouteStepConfig,
     PipelineCapabilities,
+    ValidationModeType,
 } from './step.types';
 
 export type {
@@ -213,7 +215,6 @@ export type {
     ErrorHandlingConfig,
     CheckpointStrategy,
     CheckpointingConfig,
-    ValidationModeValue,
     RunModeValue,
     LanguageStrategyValue,
     ConflictStrategyValue,

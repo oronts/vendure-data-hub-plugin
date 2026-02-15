@@ -1,5 +1,5 @@
 import type { JsonValue } from '../../shared/types';
-import type { PipelineStepDefinition } from '../../shared/types';
+import type { PipelineStepDefinition, OperatorConfig } from '../../shared/types';
 import type {
     TypedExtractorConfig,
     TypedLoaderConfig,
@@ -13,6 +13,14 @@ import type {
 // Base Step Config Interface
 // ============================================================================
 
+/**
+ * Base step configuration for pipeline step definitions.
+ * Requires `adapterCode` since pipeline definitions must identify the adapter.
+ *
+ * @see src/runtime/config-types.ts BaseStepConfig - runtime variant where
+ *   `adapterCode` is optional because some runtime configs (e.g., inline
+ *   transforms like set/remove) don't use named adapters.
+ */
 export interface BaseStepConfig {
     adapterCode: string;
 }
@@ -30,9 +38,7 @@ export function hasAdapterCode(config: unknown): config is BaseStepConfig {
 // Extract Step Config
 // ============================================================================
 
-export type ExtractStepConfig = TypedExtractorConfig;
-
-export function isExtractStepConfig(config: unknown): config is ExtractStepConfig {
+export function isExtractStepConfig(config: unknown): config is TypedExtractorConfig {
     return hasAdapterCode(config);
 }
 
@@ -40,10 +46,7 @@ export function isExtractStepConfig(config: unknown): config is ExtractStepConfi
 // Transform Step Config
 // ============================================================================
 
-export interface OperatorConfig {
-    op: string;
-    args?: Record<string, unknown>;
-}
+export type { OperatorConfig };
 
 export interface BranchConfig {
     name: string;
@@ -164,9 +167,7 @@ export function isLoadStepConfig(config: unknown): config is LoadStepConfig {
 // Export Step Config
 // ============================================================================
 
-export type ExportStepConfig = TypedExporterConfig;
-
-export function isExportStepConfig(config: unknown): config is ExportStepConfig {
+export function isExportStepConfig(config: unknown): config is TypedExporterConfig {
     return hasAdapterCode(config);
 }
 
@@ -174,9 +175,7 @@ export function isExportStepConfig(config: unknown): config is ExportStepConfig 
 // Feed Step Config
 // ============================================================================
 
-export type FeedStepConfig = TypedFeedConfig;
-
-export function isFeedStepConfig(config: unknown): config is FeedStepConfig {
+export function isFeedStepConfig(config: unknown): config is TypedFeedConfig {
     return hasAdapterCode(config);
 }
 
@@ -201,14 +200,14 @@ export function isSinkStepConfig(config: unknown): config is SinkStepConfig {
 // ============================================================================
 
 export type StepConfig =
-    | ExtractStepConfig
+    | TypedExtractorConfig
     | TransformStepConfig
     | ValidateStepConfig
     | EnrichStepConfig
     | RouteStepConfigDefinition
     | LoadStepConfig
-    | ExportStepConfig
-    | FeedStepConfig
+    | TypedExporterConfig
+    | TypedFeedConfig
     | SinkStepConfig;
 
 // ============================================================================

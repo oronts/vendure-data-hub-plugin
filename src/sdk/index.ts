@@ -9,7 +9,7 @@ export {
     LoadStrategy,
     ChannelStrategy,
     LanguageStrategyValue,
-    ValidationModeValue,
+    ValidationModeType,
     ConflictStrategyValue,
     TriggerType,
 } from './types/index';

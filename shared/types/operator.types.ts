@@ -44,6 +44,8 @@ export interface OperatorCondition {
 
 /**
  * Error that occurred during operator execution
+ *
+ * @see src/sdk/types/result-types.ts OperatorError for the SDK/adapter-facing version
  */
 export interface OperatorError {
     /** Human-readable error message */

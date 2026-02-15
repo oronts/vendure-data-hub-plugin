@@ -8,7 +8,7 @@
 import { PaginationConfig, JsonObject } from '../../types/index';
 import { HttpResponse, UpdatedPaginationState, PaginationState, HTTP_DEFAULTS } from './types';
 import { PaginationType } from '../../constants/index';
-import { getValueByPath } from './response-parser';
+import { getNestedValue } from '../../operators/helpers';
 import {
     initBasePaginationState,
     hasReachedMaxPages as sharedHasReachedMaxPages,
@@ -66,7 +66,7 @@ function extractCursor(
 ): string | undefined {
     if (!pagination?.cursorPath) return undefined;
 
-    const cursor = getValueByPath(response.data as JsonObject, pagination.cursorPath);
+    const cursor = getNestedValue(response.data as JsonObject, pagination.cursorPath);
     if (typeof cursor === 'string') return cursor;
     if (typeof cursor === 'number') return String(cursor);
     return undefined;
@@ -83,7 +83,7 @@ function determineCursorHasMore(
 ): boolean {
     // Check explicit hasMore field
     if (pagination?.hasMorePath) {
-        const hasMore = getValueByPath(response.data as JsonObject, pagination.hasMorePath);
+        const hasMore = getNestedValue(response.data as JsonObject, pagination.hasMorePath);
         if (typeof hasMore === 'boolean') return hasMore;
     }
 

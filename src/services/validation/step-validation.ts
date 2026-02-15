@@ -8,6 +8,13 @@ import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-er
 // Type Definitions
 // ============================================================================
 
+/**
+ * Validation-specific OperatorConfig variant.
+ * Uses `params` (not `args`) because the validation layer normalizes
+ * operator arguments into a typed JsonObject for schema-based validation,
+ * distinct from the runtime `args: Record<string, unknown>` in the
+ * canonical OperatorConfig (shared/types/step.types.ts).
+ */
 export interface OperatorConfig {
     op: string;
     params?: JsonObject;

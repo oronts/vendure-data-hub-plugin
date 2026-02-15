@@ -12,7 +12,8 @@
  */
 
 import { JsonObject, JsonValue, Throughput } from '../../types/index';
-import { LoadStrategy, ChannelStrategy, LanguageStrategyValue, ValidationModeValue, ConflictStrategyValue, TriggerType, FeedFormat, FeedType, SinkType } from '../types/index';
+import type { OperatorConfig } from '../../types/step-configs';
+import { LoadStrategy, ChannelStrategy, LanguageStrategyValue, ValidationModeType, ConflictStrategyValue, TriggerType, FeedFormat, FeedType, SinkType } from '../types/index';
 import { RouteOperator } from '../constants';
 import { AuthType } from '../../constants/enums';
 
@@ -101,10 +102,7 @@ export interface TransformStepConfig {
     async?: boolean;
 }
 
-export interface OperatorConfig {
-    op: string;
-    args?: Record<string, unknown>;
-}
+export type { OperatorConfig };
 
 // VALIDATE STEP CONFIG
 
@@ -203,7 +201,7 @@ export interface LoadStepConfig {
     channelStrategy?: ChannelStrategy;
     channels?: string[];
     languageStrategy?: LanguageStrategyValue;
-    validationMode?: ValidationModeValue;
+    validationMode?: ValidationModeType;
     conflictStrategy?: ConflictStrategyValue;
     nameField?: string;
     slugField?: string;

@@ -134,7 +134,7 @@ export function createTestFailure(
 /**
  * Extract error message from unknown error
  */
-export function extractErrorMessage(error: unknown, defaultMessage: string): string {
+export function extractUnknownErrorMessage(error: unknown, defaultMessage: string): string {
     if (error instanceof Error) {
         return error.message;
     }
@@ -149,8 +149,8 @@ export function normalizeRemotePath(basePath: string, filename: string): string 
 }
 
 /**
- * Get MIME type with fallback
+ * Get MIME type from delivery options with fallback
  */
-export function getMimeType(options?: DeliveryOptions): string {
+export function getConfiguredMimeType(options?: DeliveryOptions): string {
     return options?.mimeType || 'application/octet-stream';
 }

@@ -212,15 +212,18 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
         try {
             const ctx = await this.requestContextService.create({ apiType: 'admin' });
             const repo = this.connection.getRepository(ctx, Pipeline);
-            const allPipelines = await repo.find();
+            const allPipelines = await repo.find({
+                where: {
+                    status: PipelineStatus.PUBLISHED,
+                    enabled: true,
+                },
+                take: 1000,
+            });
 
             this.shadowCache.clear();
 
             let cachedCount = 0;
             for (const pipeline of allPipelines) {
-                if (pipeline.status !== PipelineStatus.PUBLISHED) continue;
-                if (!pipeline.enabled) continue;
-
                 const definition = pipeline.definition as PipelineDefinition | undefined;
                 const eventTriggers = findEnabledTriggersByType(definition, 'EVENT');
 

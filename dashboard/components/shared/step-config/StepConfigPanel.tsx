@@ -46,7 +46,6 @@ import type {
     PipelineTrigger,
     TriggerType,
     AdapterSchemaField,
-    DataHubAdapter,
 } from '../../../types';
 
 export interface StepConfigData {
@@ -366,7 +365,7 @@ export function StepConfigPanel({
                         value={adapterCode}
                         onChange={handleAdapterCodeChange}
                         placeholder={`Select ${getAdapterTypeLabel(adapterType).toLowerCase()}...`}
-                        adapters={availableAdapters as unknown as DataHubAdapter[]}
+                        adapters={availableAdapters}
                     />
                 )}
 

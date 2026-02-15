@@ -19,6 +19,7 @@ import {
 import { DataHubLogger } from '../logger';
 import { isBlockedHostname } from '../../utils/url-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
+import { normalizeRemotePath } from './delivery-utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.FTP_HANDLER);
 
@@ -31,7 +32,7 @@ export async function deliverToSFTP(
     filename: string,
     _options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
-    const remotePath = `${config.remotePath}/${filename}`.replace(/\/+/g, '/');
+    const remotePath = normalizeRemotePath(config.remotePath, filename);
     const port = config.port || PORTS.SFTP;
     const sftp = new SftpClient();
 
@@ -98,7 +99,7 @@ export async function deliverToFTP(
     filename: string,
     _options?: DeliveryOptions,
 ): Promise<DeliveryResult> {
-    const remotePath = `${config.remotePath}/${filename}`.replace(/\/+/g, '/');
+    const remotePath = normalizeRemotePath(config.remotePath, filename);
     const port = config.port || PORTS.FTP;
     const client = new FtpClient();
     client.ftp.verbose = false;

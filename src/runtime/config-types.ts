@@ -1,6 +1,14 @@
 import { JsonValue } from '../types/index';
 import { AuthType, LoadStrategy } from '../constants/index';
 
+/**
+ * Base step configuration for runtime execution.
+ * `adapterCode` is optional because some inline runtime transforms
+ * (e.g., set, remove, rename) don't use named adapters.
+ *
+ * @see src/types/step-configs.ts BaseStepConfig - pipeline definition variant
+ *   where `adapterCode` is required since definitions must reference an adapter.
+ */
 export interface BaseStepConfig {
     /** Adapter code identifying the operation */
     adapterCode?: string;

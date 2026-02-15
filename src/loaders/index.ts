@@ -69,7 +69,7 @@ export { TaxRateLoader } from './tax-rate';
 export type { TaxRateInput } from './tax-rate';
 
 export { PaymentMethodLoader } from './payment-method';
-export type { PaymentMethodInput, ConfigurableOperationInput as PaymentConfigurableOperationInput } from './payment-method';
+export type { PaymentMethodInput } from './payment-method';
 
 export { ChannelLoader } from './channel';
 export type { ChannelInput } from './channel';

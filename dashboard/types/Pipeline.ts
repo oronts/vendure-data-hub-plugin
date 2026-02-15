@@ -5,13 +5,11 @@ import type {
     PipelineDefinition,
 } from '../../shared/types';
 
-export type PipelineNodeType = StepType;
-
 export type UINodeStatus = 'idle' | 'running' | 'success' | 'error' | 'warning' | 'testing';
 
 export interface PipelineNodeData {
     label: string;
-    type: PipelineNodeType;
+    type: StepType;
     adapterCode?: string;
     config: JsonObject;
     status?: UINodeStatus;

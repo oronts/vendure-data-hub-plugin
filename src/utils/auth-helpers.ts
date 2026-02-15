@@ -1,21 +1,14 @@
 import { AuthType, HTTP_HEADERS, AUTH_SCHEMES } from '../constants/index';
-import { SecretResolver as SharedSecretResolver } from '../../shared/types';
+import { SecretResolver as SharedSecretResolver, AuthConfig as SharedAuthConfig } from '../../shared/types';
 
-export interface AuthConfig {
-    type: AuthType;
-    /** Secret code for looking up the token/password via secret resolver */
-    secretCode?: string;
-    /** Header name for api-key auth (defaults to 'X-API-Key') */
-    headerName?: string;
-    /** Username for basic auth */
-    username?: string;
-    /** Secret code for looking up username (for basic auth) */
-    usernameSecretCode?: string;
-    /** Direct token value (if not using secret resolver) */
-    token?: string;
-    /** Direct password value for basic auth (if not using secret resolver) */
-    password?: string;
-}
+/**
+ * AuthConfig used by auth-helpers. Re-exports the shared AuthConfig with
+ * the AuthType enum as the `type` discriminator for runtime switch/case.
+ * The shared version uses equivalent string literals.
+ *
+ * @see shared/types/extractor.types.ts AuthConfig - canonical shared definition
+ */
+export type AuthConfig = Omit<SharedAuthConfig, 'type'> & { type: AuthType };
 
 export type SecretResolverFn = (secretCode: string) => Promise<string | undefined>;
 export type { SharedSecretResolver };

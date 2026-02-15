@@ -13,7 +13,6 @@ export {
 
 export {
     extractRecords,
-    getValueByPath,
     parseResponseHeaders,
     buildHttpResponse,
     isSuccessResponse,

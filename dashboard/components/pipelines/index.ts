@@ -46,7 +46,6 @@ export type {
     PipelineNodeData,
     PipelineDefinition,
     PipelineTrigger,
-    PipelineNodeType,
     PipelineEditorProps,
     DataHubVendureEntitySchema,
 } from '../../types';

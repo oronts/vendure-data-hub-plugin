@@ -43,7 +43,7 @@ export type {
     CheckpointStrategy,
     CheckpointingConfig,
     ChannelStrategy as ChannelStrategyType,
-    ValidationModeValue,
+    ValidationModeType,
     RunModeValue,
     LanguageStrategyValue,
     ConflictStrategyValue,

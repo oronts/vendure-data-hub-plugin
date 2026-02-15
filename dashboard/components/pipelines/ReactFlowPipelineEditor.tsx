@@ -143,6 +143,34 @@ export function ReactFlowPipelineEditor({
         event.dataTransfer.effectAllowed = 'move';
     }, []);
 
+    /** Add a node directly to the canvas center -- used by keyboard accessibility path
+     *  where a real drag-drop gesture is not possible. */
+    const addNodeToCanvas = React.useCallback((nodeType: string, category: string, label: string) => {
+        const bounds = reactFlowRef.current?.getBoundingClientRect();
+        const position = {
+            x: (bounds ? bounds.width / 2 : 300) + Math.round(Math.random() * 40 - 20),
+            y: (bounds ? bounds.height / 2 : 200) + Math.round(Math.random() * 40 - 20),
+        };
+
+        const newNode: Node<PipelineNodeData> = {
+            id: `node-${Date.now()}`,
+            type: category,
+            position,
+            data: {
+                label,
+                type: category,
+                adapterCode: nodeType,
+                config: { adapterCode: nodeType },
+            },
+        };
+
+        setNodes(nds => {
+            const newNodes = [...nds, newNode];
+            notifyChange(newNodes as Node<PipelineNodeData>[], edges);
+            return newNodes;
+        });
+    }, [setNodes, edges, notifyChange]);
+
     const onDragOver = React.useCallback((event: React.DragEvent) => {
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
@@ -246,7 +274,7 @@ export function ReactFlowPipelineEditor({
     return (
         <div className="flex h-full gap-4">
             {!readOnly && (
-                <NodePaletteDynamic adapters={adapters} onDragStart={onDragStart} />
+                <NodePaletteDynamic adapters={adapters} onDragStart={onDragStart} onAddNode={addNodeToCanvas} />
             )}
 
             <div className="flex-1 flex flex-col">
@@ -343,12 +371,14 @@ interface PaletteAdapterItemProps {
     readonly adapter: AdapterMetadata;
     readonly category: string;
     readonly onDragStart: (e: React.DragEvent, nodeType: string, category: string, label: string) => void;
+    readonly onAddNode: (nodeType: string, category: string, label: string) => void;
 }
 
 const PaletteAdapterItem = React.memo(function PaletteAdapterItem({
     adapter,
     category,
     onDragStart,
+    onAddNode,
 }: PaletteAdapterItemProps) {
     const Icon = adapter.icon;
 
@@ -359,16 +389,9 @@ const PaletteAdapterItem = React.memo(function PaletteAdapterItem({
     const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            // Create a synthetic drag event for keyboard users
-            const syntheticEvent = {
-                dataTransfer: {
-                    setData: (_type: string, _data: string) => { /* no-op for keyboard-initiated drag */ },
-                    effectAllowed: 'move',
-                },
-            } as unknown as React.DragEvent;
-            onDragStart(syntheticEvent, adapter.code, category, adapter.name);
+            onAddNode(adapter.code, category, adapter.name);
         }
-    }, [onDragStart, adapter.code, category, adapter.name]);
+    }, [onAddNode, adapter.code, category, adapter.name]);
 
     return (
         <div
@@ -423,6 +446,7 @@ const PaletteSectionHeader = React.memo(function PaletteSectionHeader({
 
     return (
         <button
+            type="button"
             className="w-full flex items-center justify-between px-2 py-1.5 text-sm font-medium hover:bg-muted rounded"
             onClick={handleClick}
             aria-expanded={isExpanded}
@@ -440,7 +464,7 @@ const PaletteSectionHeader = React.memo(function PaletteSectionHeader({
     );
 });
 
-function NodePaletteDynamic({ adapters, onDragStart }: { adapters: AdapterMetadata[]; onDragStart: (e: React.DragEvent, nodeType: string, category: string, label: string) => void }) {
+function NodePaletteDynamic({ adapters, onDragStart, onAddNode }: { adapters: AdapterMetadata[]; onDragStart: (e: React.DragEvent, nodeType: string, category: string, label: string) => void; onAddNode: (nodeType: string, category: string, label: string) => void }) {
     const [expanded, setExpanded] = React.useState<Record<string, boolean>>({
         sources: true,
         transforms: true,
@@ -506,6 +530,7 @@ function NodePaletteDynamic({ adapters, onDragStart }: { adapters: AdapterMetada
                                                 adapter={adapter}
                                                 category={section.category}
                                                 onDragStart={onDragStart}
+                                                onAddNode={onAddNode}
                                             />
                                         ))}
                                     </div>

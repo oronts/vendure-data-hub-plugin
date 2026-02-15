@@ -9,8 +9,6 @@ import { HttpResponse } from './types';
 import { getNestedValue } from '../../operators/helpers';
 import { HTTP_STATUS } from '../../constants/defaults';
 
-export { getNestedValue as getValueByPath };
-
 /**
  * Extract records from response data using a data path
  */

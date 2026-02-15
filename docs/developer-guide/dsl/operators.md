@@ -138,6 +138,37 @@ Return the first non-null value from a list of paths:
 }}
 ```
 
+### hash
+
+Generate a cryptographic hash of field value(s):
+
+```typescript
+{ op: 'hash', args: { source: 'email', target: 'emailHash' } }
+{ op: 'hash', args: { source: 'email', target: 'emailHash', algorithm: 'md5' } }
+{ op: 'hash', args: { source: ['sku', 'name', 'price'], target: 'contentHash', algorithm: 'sha256' } }
+{ op: 'hash', args: { source: 'payload', target: 'signature', algorithm: 'sha512', encoding: 'base64' } }
+```
+
+- `source` (required): Single field path or array of paths to hash together
+- `target` (required): Field path for the hash result
+- `algorithm`: `md5`, `sha1`, `sha256`, `sha512` (default: `sha256`)
+- `encoding`: `hex`, `base64` (default: `hex`)
+
+### uuid
+
+Generate a UUID for each record:
+
+```typescript
+{ op: 'uuid', args: { target: 'id' } }
+{ op: 'uuid', args: { target: 'id', version: 'v4' } }
+{ op: 'uuid', args: { target: 'stableId', version: 'v5', namespace: 'dns', source: 'domain' } }
+```
+
+- `target` (required): Field path for the UUID
+- `version`: `v4` (random) or `v5` (namespace-based deterministic). Default: `v4`
+- `namespace`: For v5 -- UUID namespace or well-known name (`dns`, `url`, `oid`, `x500`)
+- `source`: For v5 -- field path containing the name to hash
+
 ---
 
 ## String Operators
@@ -214,6 +245,63 @@ Replace text in a string field:
 { op: 'replace', args: { path: 'sku', search: '-', replacement: '_', all: true } }
 ```
 
+### extractRegex
+
+Extract a value from a string field using a regular expression with capture groups:
+
+```typescript
+{ op: 'extractRegex', args: { source: 'url', target: 'domain', pattern: 'https?://([^/]+)' } }
+{ op: 'extractRegex', args: { source: 'sku', target: 'prefix', pattern: '^([A-Z]+)-\\d+', group: 1 } }
+{ op: 'extractRegex', args: { source: 'title', target: 'year', pattern: '(\\d{4})', flags: 'i' } }
+```
+
+- `source` (required): Source field path containing the string to match
+- `target` (required): Target field path for the extracted value
+- `pattern` (required): Regular expression pattern (without delimiters)
+- `group`: Capture group index to extract (0 = full match, 1+ = capture groups). Default: `1`
+- `flags`: Regex flags (e.g., `i` for case-insensitive)
+
+### replaceRegex
+
+Replace values in a string field using a regular expression:
+
+```typescript
+{ op: 'replaceRegex', args: { path: 'description', pattern: '<[^>]+>', replacement: '' } }
+{ op: 'replaceRegex', args: { path: 'phone', pattern: '[^\\d+]', replacement: '', flags: 'g' } }
+{ op: 'replaceRegex', args: { path: 'text', pattern: '(\\w+)@(\\w+)', replacement: '$1 at $2', flags: 'gi' } }
+```
+
+- `path` (required): Field path containing the string to modify
+- `pattern` (required): Regular expression pattern (without delimiters)
+- `replacement` (required): Replacement string (use `$1`, `$2` for capture groups)
+- `flags`: Regex flags (e.g., `gi` for global case-insensitive). Default: `g`
+
+### stripHtml
+
+Remove HTML tags from a string field, preserving text content:
+
+```typescript
+{ op: 'stripHtml', args: { source: 'description' } }
+{ op: 'stripHtml', args: { source: 'htmlContent', target: 'plainText' } }
+```
+
+- `source` (required): Source field path containing the HTML string
+- `target`: Target field path for the stripped text. Defaults to `source` if not set
+
+### truncate
+
+Truncate a string to a maximum length with an optional suffix:
+
+```typescript
+{ op: 'truncate', args: { source: 'description', length: 100 } }
+{ op: 'truncate', args: { source: 'title', target: 'shortTitle', length: 50, suffix: '...' } }
+```
+
+- `source` (required): Source field path containing the string to truncate
+- `target`: Target field path for the truncated string. Defaults to `source` if not set
+- `length` (required): Maximum length of the resulting string
+- `suffix`: Suffix to append when truncated (e.g., `...`). Default: none
+
 ---
 
 ## Numeric Operators
@@ -278,7 +366,69 @@ Convert units (weight and length):
 { op: 'unit', args: { source: 'heightCm', target: 'heightM', from: 'cm', to: 'm' } }
 ```
 
-Supported units: `g`, `kg`, `cm`, `m`
+Supported units: `g`, `kg`, `lb`, `oz`, `cm`, `m`, `mm`, `in`, `ft`, `ml`, `l`, `gal`
+
+### parseNumber
+
+Parse a string to a number with locale-aware decimal and thousand separator handling:
+
+```typescript
+{ op: 'parseNumber', args: { source: 'priceStr' } }
+{ op: 'parseNumber', args: { source: 'germanPrice', target: 'price', locale: 'de-DE' } }
+{ op: 'parseNumber', args: { source: 'amount', locale: 'fr-FR', default: 0 } }
+```
+
+- `source` (required): Source field path containing the string to parse
+- `target`: Target field path for the parsed number. Defaults to `source` if not set
+- `locale`: Locale for parsing (e.g., `en-US`, `de-DE`, `fr-FR`). Affects decimal/thousand separators
+- `default`: Value to use if parsing fails
+
+### formatNumber
+
+Format a number as a localized string with optional currency or percent formatting:
+
+```typescript
+{ op: 'formatNumber', args: { source: 'price', target: 'priceText', locale: 'en-US', decimals: 2 } }
+{ op: 'formatNumber', args: { source: 'price', target: 'priceDisplay', locale: 'de-DE', style: 'currency', currency: 'EUR' } }
+{ op: 'formatNumber', args: { source: 'ratio', target: 'percentage', style: 'percent', decimals: 1 } }
+{ op: 'formatNumber', args: { source: 'count', target: 'countStr', locale: 'en-US', useGrouping: true } }
+```
+
+- `source` (required): Source field path containing the number
+- `target` (required): Target field path for the formatted string
+- `locale`: Locale for formatting (e.g., `en-US`, `de-DE`). Default: `en-US`
+- `decimals`: Number of decimal places
+- `style`: Format style -- `decimal`, `currency`, `percent`
+- `currency`: Currency code (e.g., `USD`, `EUR`). Required when style is `currency`
+- `useGrouping`: Whether to use thousand separators
+
+### toCents
+
+Convert a decimal amount to cents (minor currency units). Multiplies by 100 and rounds:
+
+```typescript
+{ op: 'toCents', args: { source: 'price', target: 'priceInCents' } }
+{ op: 'toCents', args: { source: 'amount', target: 'cents', round: 'floor' } }
+```
+
+- `source` (required): Field containing decimal amount (e.g., `19.99`)
+- `target` (required): Field for cents amount (e.g., `1999`)
+- `round`: Rounding mode -- `round`, `floor`, `ceil`. Default: `round`
+
+### round
+
+Round a number to a specified number of decimal places:
+
+```typescript
+{ op: 'round', args: { source: 'price' } }
+{ op: 'round', args: { source: 'price', target: 'roundedPrice', decimals: 2 } }
+{ op: 'round', args: { source: 'quantity', decimals: 0, mode: 'ceil' } }
+```
+
+- `source` (required): Source field path containing the number to round
+- `target`: Target field path for the rounded number. Defaults to `source` if not set
+- `decimals`: Number of decimal places. Default: `0` (round to integer)
+- `mode`: Rounding mode -- `round`, `floor`, `ceil`. Default: `round`
 
 ---
 
@@ -312,6 +462,37 @@ Add or subtract time from a date:
 ```
 
 Units: `seconds`, `minutes`, `hours`, `days`, `weeks`, `months`, `years`
+
+### dateDiff
+
+Calculate the difference between two dates in a specified unit:
+
+```typescript
+{ op: 'dateDiff', args: { startDate: 'createdAt', endDate: 'closedAt', target: 'daysOpen', unit: 'days' } }
+{ op: 'dateDiff', args: { startDate: 'birthDate', endDate: 'registrationDate', target: 'ageAtRegistration', unit: 'years' } }
+{ op: 'dateDiff', args: { startDate: 'startTime', endDate: 'endTime', target: 'durationMinutes', unit: 'minutes', absolute: true } }
+```
+
+- `startDate` (required): Field path containing the start date
+- `endDate` (required): Field path containing the end date
+- `target` (required): Target field path for the result
+- `unit` (required): Result unit -- `seconds`, `minutes`, `hours`, `days`, `weeks`, `months`, `years`
+- `absolute`: Return absolute value (no negative numbers). Default: `false`
+
+### now
+
+Set the current timestamp on a field:
+
+```typescript
+{ op: 'now', args: { target: 'importedAt' } }
+{ op: 'now', args: { target: 'syncDate', format: 'date' } }
+{ op: 'now', args: { target: 'timestamp', format: 'timestamp' } }
+{ op: 'now', args: { target: 'lastUpdated', format: 'datetime', timezone: 'Europe/Berlin' } }
+```
+
+- `target` (required): Target field path for the current timestamp
+- `format`: Output format -- `ISO` (default, e.g., `2024-01-15T10:30:00.000Z`), `timestamp` (Unix ms), `date` (`YYYY-MM-DD`), `datetime` (`YYYY-MM-DD HH:mm:ss`), or a custom format string
+- `timezone`: Timezone (e.g., `UTC`, `Europe/London`, `America/New_York`). Default: `UTC`
 
 ---
 
@@ -510,6 +691,139 @@ Compute aggregates over records:
 ```
 
 Operations: `count`, `sum`, `avg`, `min`, `max`, `first`, `last`
+
+### expand
+
+Expand an array field into multiple records. Each array element becomes a separate record with optional parent field inheritance:
+
+```typescript
+{ op: 'expand', args: { path: 'variants' } }
+{ op: 'expand', args: { path: 'variants', mergeParent: true } }
+{ op: 'expand', args: {
+    path: 'lines',
+    parentFields: {
+        'orderId': 'id',
+        'orderDate': 'createdAt',
+        'customerEmail': 'customer.email',
+    },
+}}
+```
+
+- `path` (required): Path to the array field to expand (e.g., `variants` or `lines`)
+- `mergeParent`: Include all parent (non-array) fields in each expanded record
+- `parentFields`: Map of specific parent fields to include -- `{ targetField: sourceFieldPath }`
+
+---
+
+## Enrichment Operators
+
+### httpLookup
+
+Enrich records by fetching data from external HTTP endpoints. Supports caching, authentication, and configurable error handling:
+
+```typescript
+// Simple GET lookup
+{ op: 'httpLookup', args: {
+    url: 'https://api.example.com/products/{{sku}}',
+    target: 'externalData',
+}}
+
+// With response path extraction and default
+{ op: 'httpLookup', args: {
+    url: 'https://api.example.com/lookup?id={{productId}}',
+    target: 'category',
+    responsePath: 'data.category.name',
+    default: 'Uncategorized',
+}}
+
+// POST with authentication and caching
+{ op: 'httpLookup', args: {
+    url: 'https://api.example.com/enrich',
+    method: 'POST',
+    bodyField: 'lookupPayload',
+    target: 'enrichedData',
+    bearerTokenSecretCode: 'api-token',
+    cacheTtlSec: 600,
+    timeoutMs: 3000,
+    maxRetries: 3,
+}}
+
+// With rate limiting and concurrency control
+{ op: 'httpLookup', args: {
+    url: 'https://api.example.com/items/{{id}}',
+    target: 'itemData',
+    batchSize: 10,
+    rateLimitPerSecond: 50,
+    skipOn404: true,
+}}
+```
+
+- `url` (required): HTTP endpoint URL. Use `{{field}}` for dynamic values from the record
+- `target` (required): Field path to store the response data
+- `method`: HTTP method -- `GET` or `POST`. Default: `GET`
+- `responsePath`: JSON path to extract from response (e.g., `data.result`)
+- `keyField`: Field to use as cache key. If not set, URL is used
+- `default`: Value to use if lookup fails or returns 404
+- `timeoutMs`: Request timeout in milliseconds. Default: `5000`
+- `cacheTtlSec`: Cache time-to-live in seconds. Default: `300`. Set to `0` to disable
+- `headers`: Static HTTP headers as JSON object
+- `bearerTokenSecretCode`: Secret code for Bearer token authentication
+- `apiKeySecretCode`: Secret code for API key authentication
+- `apiKeyHeader`: Header name for API key. Default: `X-API-Key`
+- `basicAuthSecretCode`: Secret code for Basic auth (format: `username:password`)
+- `bodyField`: Field path for POST body (uses record value at this path)
+- `body`: Static POST body (JSON object)
+- `skipOn404`: Skip record if endpoint returns 404. Default: `false`
+- `failOnError`: Fail pipeline if HTTP request fails. Default: `false`
+- `maxRetries`: Maximum retry attempts on transient errors. Default: `2`
+- `batchSize`: Process this many records in parallel. Default: `50`
+- `rateLimitPerSecond`: Max requests per second per domain. Default: `100`
+
+---
+
+## Script Operators
+
+### script
+
+Execute inline JavaScript code for complex transformations that cannot be expressed with standard operators. Code runs in a secure sandboxed VM with timeout enforcement:
+
+```typescript
+// Single-record mode (default): receives record, index, context
+{ op: 'script', args: {
+    code: 'return { ...record, total: record.price * record.quantity }',
+}}
+
+// Filter records by returning null
+{ op: 'script', args: {
+    code: 'return record.status === "active" ? record : null',
+}}
+
+// Complex transformation with context data
+{ op: 'script', args: {
+    code: 'const markup = context.data.markupPercent / 100; return { ...record, price: record.cost * (1 + markup) }',
+    context: { markupPercent: 30 },
+}}
+
+// Batch mode: receives records array, useful for cross-record operations
+{ op: 'script', args: {
+    code: 'return records.sort((a, b) => a.price - b.price)',
+    batch: true,
+}}
+
+// Batch mode with running total
+{ op: 'script', args: {
+    code: 'let total = 0; return records.map(r => ({ ...r, runningTotal: total += r.amount }))',
+    batch: true,
+    timeout: 10000,
+    failOnError: true,
+}}
+```
+
+- `code` (required): JavaScript code to execute. In single-record mode: receives `record`, `index`, `context`. In batch mode: receives `records`, `context`. Must return the transformed result
+- `batch`: If `true`, processes all records at once. If `false` (default), processes one record at a time
+- `timeout`: Maximum execution time in milliseconds. Default: `5000`
+- `failOnError`: If `true`, errors fail the entire step. If `false` (default), errors are logged and records skipped
+- `context`: Optional JSON data passed to the script as `context.data`
 
 ---
 

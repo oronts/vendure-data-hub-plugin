@@ -10,7 +10,8 @@ import {
     ExtractorCategory,
 } from '../../types/index';
 import { WebhookExtractorConfig } from './types';
-import { getValueByPath, validateSignature } from './helpers';
+import { getNestedValue } from '../../operators/helpers';
+import { validateSignature } from './helpers';
 
 @Injectable()
 export class WebhookExtractor implements BatchDataExtractor<WebhookExtractorConfig> {
@@ -118,7 +119,7 @@ export class WebhookExtractor implements BatchDataExtractor<WebhookExtractorConf
             let rawRecords: unknown[];
 
             if (config.dataPath) {
-                const extracted = getValueByPath(webhookData, config.dataPath);
+                const extracted = getNestedValue(webhookData, config.dataPath);
                 if (Array.isArray(extracted)) {
                     rawRecords = extracted;
                 } else if (extracted && config.wrapSingleRecord !== false) {
@@ -139,7 +140,7 @@ export class WebhookExtractor implements BatchDataExtractor<WebhookExtractorConf
             const records: RecordEnvelope[] = rawRecords.map((record, index) => {
                 const data = record as JsonObject;
                 const idempotencyKey = config.idempotencyKeyField
-                    ? getValueByPath(data, config.idempotencyKeyField)
+                    ? getNestedValue(data, config.idempotencyKeyField)
                     : undefined;
 
                 return {

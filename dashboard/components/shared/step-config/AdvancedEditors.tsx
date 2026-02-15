@@ -157,12 +157,12 @@ export function AdvancedMapEditor({ config, onChange }: { config: JsonRecord; on
             return rows.map((row: JsonRecord) => {
                 const out: JsonRecord = {};
                 for (const [dst, src] of Object.entries(mapping)) {
-                    out[dst] = src ? String(src).split('.').reduce((o: unknown, k) => {
+                    out[dst] = src ? String(src).split('.').reduce<unknown>((o, k) => {
                         if (o && typeof o === 'object' && k in (o as JsonRecord)) {
                             return (o as JsonRecord)[k];
                         }
                         return undefined;
-                    }, row as unknown) : undefined;
+                    }, row) : undefined;
                 }
                 return out;
             });

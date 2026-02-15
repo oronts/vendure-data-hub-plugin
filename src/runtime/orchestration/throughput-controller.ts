@@ -7,12 +7,11 @@
 
 import { RequestContext } from '@vendure/core';
 import { PipelineDefinition, PipelineStepDefinition } from '../../types/index';
+import type { DrainStrategy } from '../../../shared/types';
 import { RecordObject, OnRecordErrorCallback } from '../executor-types';
 import { LoadExecutor } from '../executors';
 import { chunk, sleep } from '../utils';
 import { RATE_LIMIT, TIME, THROUGHPUT } from '../../constants/index';
-
-export type DrainStrategy = 'BACKOFF' | 'SHED' | 'QUEUE';
 
 /**
  * Throughput configuration

@@ -8,9 +8,6 @@ import * as crypto from 'crypto';
 import { JsonObject } from '../../types/index';
 import { ExtractorContext } from '../../types/index';
 import { WebhookExtractorConfig } from './types';
-import { getNestedValue } from '../../operators/helpers';
-
-export { getNestedValue as getValueByPath };
 
 /**
  * Validate webhook signature

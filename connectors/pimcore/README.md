@@ -715,23 +715,23 @@ const externalSyncPipeline = createPipeline()
 | `set` | Set static value | `{ op: 'set', args: { path: 'field', value: 'val' } }` |
 | `remove` | Remove a field | `{ op: 'remove', args: { path: 'fieldName' } }` |
 | `flatten` | Flatten nested arrays | `{ op: 'flatten', args: { source: 'variants' } }` |
-| `copy` | Copy value to another field | `{ op: 'copy', args: { from: 'name', to: 'displayName' } }` |
+| `copy` | Copy value to another field | `{ op: 'copy', args: { source: 'name', target: 'displayName' } }` |
 | `hash` | Generate hash of a value | `{ op: 'hash', args: { source: 'sku', algorithm: 'sha256', target: 'skuHash' } }` |
 | `uuid` | Generate a UUID | `{ op: 'uuid', args: { target: 'externalRef' } }` |
 | **String** | | |
 | `concat` | Concatenate field values | `{ op: 'concat', args: { sources: ['brand', 'name'], separator: ' - ', target: 'title' } }` |
 | `extractRegex` | Extract via regex capture group | `{ op: 'extractRegex', args: { source: 'sku', pattern: '^(\\w+)-', target: 'prefix' } }` |
-| `join` | Join array elements into string | `{ op: 'join', args: { source: 'tags', separator: ', ', target: 'tagString' } }` |
+| `join` | Join array elements into string | `{ op: 'join', args: { source: 'tags', delimiter: ', ', target: 'tagString' } }` |
 | `replace` | Replace substring | `{ op: 'replace', args: { source: 'name', search: '&', replace: 'and', target: 'name' } }` |
 | `replaceRegex` | Replace via regex pattern | `{ op: 'replaceRegex', args: { source: 'html', pattern: '<[^>]+>', replace: '', target: 'text' } }` |
-| `split` | Split string into array | `{ op: 'split', args: { source: 'categories', separator: '/', target: 'categoryParts' } }` |
+| `split` | Split string into array | `{ op: 'split', args: { source: 'categories', delimiter: '/', target: 'categoryParts' } }` |
 | `stripHtml` | Strip HTML tags from text | `{ op: 'stripHtml', args: { source: 'description', target: 'plainDescription' } }` |
-| `truncate` | Truncate string to max length | `{ op: 'truncate', args: { source: 'description', maxLength: 255, target: 'shortDesc' } }` |
+| `truncate` | Truncate string to max length | `{ op: 'truncate', args: { source: 'description', length: 255, target: 'shortDesc' } }` |
 | `lowercase` | Convert to lowercase | `{ op: 'lowercase', args: { source: 'sku', target: 'skuLower' } }` |
 | `uppercase` | Convert to uppercase | `{ op: 'uppercase', args: { source: 'code', target: 'codeUpper' } }` |
 | `trim` | Trim whitespace | `{ op: 'trim', args: { source: 'name' } }` |
 | **Numeric** | | |
-| `currency` | Format as currency string | `{ op: 'currency', args: { source: 'price', currency: 'EUR', target: 'formattedPrice' } }` |
+| `currency` | Format as currency string | `{ op: 'currency', args: { source: 'price', target: 'formattedPrice', decimals: 2 } }` |
 | `formatNumber` | Format number with locale rules | `{ op: 'formatNumber', args: { source: 'weight', decimals: 2, target: 'formattedWeight' } }` |
 | `math` | Arithmetic operations | `{ op: 'math', args: { source: 'price', operation: 'multiply', operand: 100, target: 'priceInCents' } }` |
 | `parseNumber` | Parse localized number string | `{ op: 'parseNumber', args: { source: 'priceStr', locale: 'de-DE', target: 'price' } }` |
@@ -760,7 +760,7 @@ const externalSyncPipeline = createPipeline()
 | **Aggregation** | | |
 | `aggregate` | Aggregate values across records | `{ op: 'aggregate', args: { groupBy: 'category', field: 'price', function: 'avg', target: 'avgPrice' } }` |
 | `count` | Count records in a group | `{ op: 'count', args: { groupBy: 'category', target: 'productCount' } }` |
-| `expand` | Expand array into multiple records | `{ op: 'expand', args: { source: 'variants', target: 'variant' } }` |
+| `expand` | Expand array into multiple records | `{ op: 'expand', args: { path: 'variants', mergeParent: true } }` |
 | `first` | Take first record per group | `{ op: 'first', args: { groupBy: 'sku' } }` |
 | `last` | Take last record per group | `{ op: 'last', args: { groupBy: 'sku' } }` |
 | `unique` | Deduplicate records by field | `{ op: 'unique', args: { field: 'sku' } }` |

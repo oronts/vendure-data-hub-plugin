@@ -2,7 +2,7 @@ import { JsonObject, JsonValue } from '../types';
 import { getNestedValue, setNestedValue, deepClone } from '../helpers';
 import { ValidationError } from './types';
 import { VALIDATION_RULE } from '../constants';
-import { isEmpty } from '../../utils/value-checks.utils';
+import { isEmpty } from '../../../shared/utils/validation';
 import { validateRegexSafety } from '../../utils/safe-regex.utils';
 
 // Re-export isEmpty for consumers of this module
