@@ -10,6 +10,7 @@ import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../exec
 import { LoaderHandler } from './types';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
+import { HTTP } from '../../../../shared/constants';
 
 interface AssetImportConfig {
     channel?: string;
@@ -22,9 +23,6 @@ interface AssetImportConfig {
 interface AssetRecord {
     [key: string]: unknown;
 }
-
-const TIMEOUT_MS = 30000;
-const MAX_RETRIES = 2;
 
 @Injectable()
 export class AssetImportHandler implements LoaderHandler {
@@ -139,10 +137,10 @@ function getMimeType(url: string): string {
 
 async function downloadFile(url: string): Promise<Buffer | null> {
     await assertUrlSafe(url);
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 0; attempt <= HTTP.MAX_RETRIES; attempt++) {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+            const timeoutId = setTimeout(() => controller.abort(), HTTP.TIMEOUT_MS);
 
             const response = await fetch(url, { signal: controller.signal });
             clearTimeout(timeoutId);
@@ -152,8 +150,8 @@ async function downloadFile(url: string): Promise<Buffer | null> {
             const arrayBuffer = await response.arrayBuffer();
             return Buffer.from(arrayBuffer);
         } catch {
-            if (attempt === MAX_RETRIES) return null;
-            await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+            if (attempt === HTTP.MAX_RETRIES) return null;
+            await new Promise(r => setTimeout(r, HTTP.RETRY_DELAY_MS * (attempt + 1)));
         }
     }
     return null;

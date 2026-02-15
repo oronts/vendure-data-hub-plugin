@@ -16,8 +16,8 @@ import {
     RetryConfig,
     WebhookStats,
     WebhookPayload,
-    DEFAULT_RETRY_CONFIG,
 } from './webhook.types';
+import { DEFAULT_RETRY_CONFIG } from '../../utils/retry.utils';
 import {
     signPayload,
     buildHeaders,

@@ -61,6 +61,8 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
     private readonly eventTriggerConfig: Required<EventTriggerServiceConfig>;
     private subscriptions: Subscription[] = [];
 
+    /** Maximum number of entries in the event trigger cache */
+    private static readonly MAX_CACHE_ENTRIES = 10_000;
     /** Cache of event triggers indexed by event kind */
     private eventTriggerCache = new Map<string, CachedEventTrigger[]>();
     /** Shadow cache for atomic swap during refresh */
@@ -224,10 +226,20 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
 
             let cachedCount = 0;
             for (const pipeline of allPipelines) {
+                if (cachedCount >= DataHubEventTriggerService.MAX_CACHE_ENTRIES) {
+                    this.logger.warn('Event trigger cache hard cap reached, skipping remaining pipelines', {
+                        cap: DataHubEventTriggerService.MAX_CACHE_ENTRIES,
+                        cachedCount,
+                    });
+                    break;
+                }
+
                 const definition = pipeline.definition as PipelineDefinition | undefined;
                 const eventTriggers = findEnabledTriggersByType(definition, 'EVENT');
 
                 for (const trigger of eventTriggers) {
+                    if (cachedCount >= DataHubEventTriggerService.MAX_CACHE_ENTRIES) break;
+
                     const cfg = parseTriggerConfig(trigger);
                     if (!cfg) continue;
 

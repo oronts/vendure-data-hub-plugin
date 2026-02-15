@@ -18,7 +18,7 @@ const FailedRunRow = React.memo(function FailedRunRow({
     return (
         <tr className="border-t align-top">
             <td className="px-3 py-2 font-mono text-muted-foreground">
-                <button className="underline underline-offset-2 hover:text-foreground" onClick={handleClick}>
+                <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={handleClick}>
                     {run.id}
                 </button>
             </td>

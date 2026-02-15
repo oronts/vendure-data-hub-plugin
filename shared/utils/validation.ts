@@ -46,26 +46,6 @@ export function isEmpty(value: unknown): boolean {
     return false;
 }
 
-function isNotEmpty(value: unknown): boolean {
-    return !isEmpty(value);
-}
-
-function isNumeric(value: unknown): boolean {
-    if (typeof value === 'number') return !isNaN(value) && isFinite(value);
-    if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (trimmed === '') return false;
-        return !isNaN(Number(trimmed)) && isFinite(Number(trimmed));
-    }
-    return false;
-}
-
-function isInteger(value: unknown): boolean {
-    if (!isNumeric(value)) return false;
-    const num = Number(value);
-    return Number.isInteger(num);
-}
-
 export function isValidEmail(email: string): boolean {
     if (isEmpty(email)) return false;
     return EMAIL_PATTERN.test(email);

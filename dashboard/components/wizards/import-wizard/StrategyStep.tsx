@@ -227,6 +227,7 @@ const StrategyOptionButton = memo(function StrategyOptionButton({
 
     return (
         <button
+            type="button"
             className={`p-3 border rounded-lg text-left transition-all ${
                 isSelected
                     ? 'border-primary bg-primary/5'

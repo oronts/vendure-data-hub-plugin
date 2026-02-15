@@ -20,6 +20,8 @@ interface CacheEntry {
 }
 
 const httpLookupCache = new Map<string, CacheEntry>();
+/** Hard cap for HTTP lookup cache entries to prevent unbounded memory growth */
+const MAX_HTTP_LOOKUP_CACHE_ENTRIES = 10_000;
 
 /**
  * Circuit breaker state for each endpoint
@@ -474,7 +476,16 @@ export async function applyHttpLookup(
 
             // Cache the result
             if (cacheTtlSec > 0) {
-                evictOldest(httpLookupCache, MAX_MAP_ENTRIES);
+                if (httpLookupCache.size >= MAX_HTTP_LOOKUP_CACHE_ENTRIES) {
+                    // Evict oldest entries (Maps iterate in insertion order)
+                    const entriesToEvict = Math.max(1, Math.floor(MAX_HTTP_LOOKUP_CACHE_ENTRIES * 0.1));
+                    let evicted = 0;
+                    for (const key of httpLookupCache.keys()) {
+                        if (evicted >= entriesToEvict) break;
+                        httpLookupCache.delete(key);
+                        evicted++;
+                    }
+                }
                 httpLookupCache.set(cacheKey, {
                     data: extractedData,
                     expiresAt: Date.now() + cacheTtlSec * 1000,

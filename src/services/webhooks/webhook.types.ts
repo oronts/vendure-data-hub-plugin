@@ -4,7 +4,6 @@
  * Type definitions for webhook delivery and retry management.
  */
 
-import { WEBHOOK } from '../../constants/index';
 import type { RetryConfig } from '../../../shared/types';
 
 export type { RetryConfig };
@@ -74,12 +73,3 @@ export interface WebhookStats {
     byWebhook: Record<string, { total: number; delivered: number; failed: number }>;
 }
 
-/**
- * Default retry configuration
- */
-export const DEFAULT_RETRY_CONFIG: RetryConfig = {
-    maxAttempts: WEBHOOK.MAX_ATTEMPTS,
-    initialDelayMs: WEBHOOK.INITIAL_DELAY_MS,
-    maxDelayMs: WEBHOOK.MAX_DELAY_MS,
-    backoffMultiplier: WEBHOOK.BACKOFF_MULTIPLIER,
-};

@@ -5,22 +5,10 @@ import {
     EMAIL_PATTERN,
     URL_PATTERN,
     ISO_DATE_PATTERN,
-    ISO_DATETIME_PATTERN,
     UUID_PATTERN,
-    SKU_PATTERN,
     SLUG_PATTERN,
     PHONE_PATTERN,
-    POSTAL_CODE_PATTERN,
-    COUNTRY_CODE_PATTERN,
-    LANGUAGE_CODE_PATTERN,
-    CURRENCY_CODE_PATTERN,
-    BARCODE_PATTERN,
-    ALPHANUMERIC_PATTERN,
-    SAFE_FILENAME_PATTERN,
-    JSON_PATH_PATTERN,
     SQL_IDENTIFIER_PATTERN,
-    SECRET_REF_PATTERN,
-    ENV_VAR_REF_PATTERN,
     isValidEmail as isValidEmailFromPatterns,
 } from './patterns';
 import { CONFIDENCE_THRESHOLDS } from '../../shared/constants';
@@ -35,14 +23,8 @@ export const VALIDATION_PATTERNS = {
     /** ISO 8601 date format (YYYY-MM-DD) */
     ISO_DATE: ISO_DATE_PATTERN,
 
-    /** ISO 8601 datetime format */
-    ISO_DATETIME: ISO_DATETIME_PATTERN,
-
     /** UUID v4 pattern */
     UUID: UUID_PATTERN,
-
-    /** SKU pattern (alphanumeric with dashes/underscores) */
-    SKU: SKU_PATTERN,
 
     /** Slug pattern (lowercase alphanumeric with dashes) */
     SLUG: SLUG_PATTERN,
@@ -50,38 +32,8 @@ export const VALIDATION_PATTERNS = {
     /** Phone number (international format, loose) */
     PHONE: PHONE_PATTERN,
 
-    /** Postal/ZIP code (general pattern) */
-    POSTAL_CODE: POSTAL_CODE_PATTERN,
-
-    /** Country code (ISO 3166-1 alpha-2) */
-    COUNTRY_CODE: COUNTRY_CODE_PATTERN,
-
-    /** Language code (ISO 639-1) */
-    LANGUAGE_CODE: LANGUAGE_CODE_PATTERN,
-
-    /** Currency code (ISO 4217) */
-    CURRENCY_CODE: CURRENCY_CODE_PATTERN,
-
-    /** Barcode (EAN-13, UPC-A, etc.) */
-    BARCODE: BARCODE_PATTERN,
-
-    /** Alphanumeric code (general) */
-    ALPHANUMERIC: ALPHANUMERIC_PATTERN,
-
-    /** Safe filename (no special chars) */
-    SAFE_FILENAME: SAFE_FILENAME_PATTERN,
-
-    /** JSON path expression */
-    JSON_PATH: JSON_PATH_PATTERN,
-
     /** SQL identifier (table/column name) */
     SQL_IDENTIFIER: SQL_IDENTIFIER_PATTERN,
-
-    /** Secret reference pattern */
-    SECRET_REF: SECRET_REF_PATTERN,
-
-    /** Environment variable reference */
-    ENV_VAR_REF: ENV_VAR_REF_PATTERN,
 } as const;
 
 /**

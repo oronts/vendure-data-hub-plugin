@@ -851,3 +851,12 @@ Operators execute in order:
     ],
 })
 ```
+
+---
+
+## SDK Convenience Aliases
+
+The transform builder SDK provides two shorthand methods that map to existing operators:
+
+- **`operators.filter(condition)`** -- alias for `operators.when([condition], 'keep')`. Filters records matching the given condition.
+- **`operators.defaults(fields)`** -- alias for `operators.enrich({ defaults: fields })`. Sets default values for fields that are null or undefined.

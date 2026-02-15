@@ -722,14 +722,14 @@ const externalSyncPipeline = createPipeline()
 | `concat` | Concatenate field values | `{ op: 'concat', args: { sources: ['brand', 'name'], separator: ' - ', target: 'title' } }` |
 | `extractRegex` | Extract via regex capture group | `{ op: 'extractRegex', args: { source: 'sku', pattern: '^(\\w+)-', target: 'prefix' } }` |
 | `join` | Join array elements into string | `{ op: 'join', args: { source: 'tags', delimiter: ', ', target: 'tagString' } }` |
-| `replace` | Replace substring | `{ op: 'replace', args: { source: 'name', search: '&', replace: 'and', target: 'name' } }` |
-| `replaceRegex` | Replace via regex pattern | `{ op: 'replaceRegex', args: { source: 'html', pattern: '<[^>]+>', replace: '', target: 'text' } }` |
+| `replace` | Replace substring | `{ op: 'replace', args: { path: 'name', search: '&', replacement: 'and' } }` |
+| `replaceRegex` | Replace via regex pattern | `{ op: 'replaceRegex', args: { path: 'html', pattern: '<[^>]+>', replacement: '' } }` |
 | `split` | Split string into array | `{ op: 'split', args: { source: 'categories', delimiter: '/', target: 'categoryParts' } }` |
 | `stripHtml` | Strip HTML tags from text | `{ op: 'stripHtml', args: { source: 'description', target: 'plainDescription' } }` |
 | `truncate` | Truncate string to max length | `{ op: 'truncate', args: { source: 'description', length: 255, target: 'shortDesc' } }` |
-| `lowercase` | Convert to lowercase | `{ op: 'lowercase', args: { source: 'sku', target: 'skuLower' } }` |
-| `uppercase` | Convert to uppercase | `{ op: 'uppercase', args: { source: 'code', target: 'codeUpper' } }` |
-| `trim` | Trim whitespace | `{ op: 'trim', args: { source: 'name' } }` |
+| `lowercase` | Convert to lowercase | `{ op: 'lowercase', args: { path: 'sku' } }` |
+| `uppercase` | Convert to uppercase | `{ op: 'uppercase', args: { path: 'code' } }` |
+| `trim` | Trim whitespace | `{ op: 'trim', args: { path: 'name' } }` |
 | **Numeric** | | |
 | `currency` | Format as currency string | `{ op: 'currency', args: { source: 'price', target: 'formattedPrice', decimals: 2 } }` |
 | `formatNumber` | Format number with locale rules | `{ op: 'formatNumber', args: { source: 'weight', decimals: 2, target: 'formattedWeight' } }` |
@@ -741,29 +741,29 @@ const externalSyncPipeline = createPipeline()
 | `unit` | Convert measurement units | `{ op: 'unit', args: { source: 'weight', from: 'kg', to: 'g', target: 'weightGrams' } }` |
 | **Date** | | |
 | `dateAdd` | Add duration to a date | `{ op: 'dateAdd', args: { source: 'createdAt', amount: 30, unit: 'days', target: 'expiresAt' } }` |
-| `dateDiff` | Difference between two dates | `{ op: 'dateDiff', args: { from: 'createdAt', to: 'updatedAt', unit: 'days', target: 'ageDays' } }` |
+| `dateDiff` | Difference between two dates | `{ op: 'dateDiff', args: { startDate: 'createdAt', endDate: 'updatedAt', unit: 'days', target: 'ageDays' } }` |
 | `dateFormat` | Format date to string | `{ op: 'dateFormat', args: { source: 'syncedAt', format: 'YYYY-MM-DD', target: 'syncDate' } }` |
 | `dateParse` | Parse date string | `{ op: 'dateParse', args: { source: 'dateStr', format: 'DD.MM.YYYY', target: 'parsedDate' } }` |
 | `now` | Set current timestamp | `{ op: 'now', args: { target: 'importedAt' } }` |
 | **JSON** | | |
-| `omit` | Remove keys from object | `{ op: 'omit', args: { source: 'data', keys: ['internal', 'debug'], target: 'cleanData' } }` |
+| `omit` | Remove keys from object | `{ op: 'omit', args: { fields: ['internal', 'debug'] } }` |
 | `parseJson` | Parse JSON string to object | `{ op: 'parseJson', args: { source: 'metadataJson', target: 'metadata' } }` |
-| `pick` | Keep only specified keys | `{ op: 'pick', args: { source: 'data', keys: ['sku', 'name', 'price'], target: 'essentials' } }` |
+| `pick` | Keep only specified keys | `{ op: 'pick', args: { fields: ['sku', 'name', 'price'] } }` |
 | `stringifyJson` | Serialize object to JSON string | `{ op: 'stringifyJson', args: { source: 'metadata', target: 'metadataStr' } }` |
 | **Logic** | | |
-| `switch` | Multi-branch conditional mapping | `{ op: 'switch', args: { source: 'type', cases: { 'A': 'TypeA', 'B': 'TypeB' }, default: 'Other', target: 'category' } }` |
+| `switch` | Multi-branch conditional mapping | `{ op: 'switch', args: { source: 'type', cases: [{ value: 'A', result: 'TypeA' }, { value: 'B', result: 'TypeB' }], default: 'Other', target: 'category' } }` |
 | **Enrichment** | | |
 | `default` | Set default for empty fields | `{ op: 'default', args: { path: 'stock', value: 0 } }` |
-| `enrich` | Enrich from another data source | `{ op: 'enrich', args: { lookupPipeline: 'price-list', matchField: 'sku', target: 'pricing' } }` |
+| `enrich` | Enrich or default fields on records | `{ op: 'enrich', args: { set: { category: 'electronics' } } }` |
 | `httpLookup` | Fetch data from external HTTP API | `{ op: 'httpLookup', args: { url: 'https://api.example.com/stock/${sku}', target: 'stockData' } }` |
-| `lookup` | Look up value from a reference table | `{ op: 'lookup', args: { source: 'colorCode', table: 'colorMap', target: 'colorName' } }` |
+| `lookup` | Look up value from a reference table | `{ op: 'lookup', args: { source: 'colorCode', map: { 'R': 'Red', 'G': 'Green', 'B': 'Blue' }, target: 'colorName' } }` |
 | **Aggregation** | | |
-| `aggregate` | Aggregate values across records | `{ op: 'aggregate', args: { groupBy: 'category', field: 'price', function: 'avg', target: 'avgPrice' } }` |
-| `count` | Count records in a group | `{ op: 'count', args: { groupBy: 'category', target: 'productCount' } }` |
+| `aggregate` | Aggregate values across records | `{ op: 'aggregate', args: { op: 'avg', source: 'price', target: 'avgPrice' } }` |
+| `count` | Count records in a group | `{ op: 'count', args: { source: 'items', target: 'productCount' } }` |
 | `expand` | Expand array into multiple records | `{ op: 'expand', args: { path: 'variants', mergeParent: true } }` |
-| `first` | Take first record per group | `{ op: 'first', args: { groupBy: 'sku' } }` |
-| `last` | Take last record per group | `{ op: 'last', args: { groupBy: 'sku' } }` |
-| `unique` | Deduplicate records by field | `{ op: 'unique', args: { field: 'sku' } }` |
+| `first` | Take first element of an array | `{ op: 'first', args: { source: 'variants', target: 'defaultVariant' } }` |
+| `last` | Take last element of an array | `{ op: 'last', args: { source: 'variants', target: 'latestVariant' } }` |
+| `unique` | Deduplicate values in an array | `{ op: 'unique', args: { source: 'tags' } }` |
 | **Validation** | | |
 | `validateFormat` | Validate field matches a pattern | `{ op: 'validateFormat', args: { field: 'sku', pattern: '^[A-Z0-9-]+$', error: 'Invalid SKU' } }` |
 | `validateRequired` | Ensure required fields are present | `{ op: 'validateRequired', args: { fields: ['sku', 'name', 'price'] } }` |
