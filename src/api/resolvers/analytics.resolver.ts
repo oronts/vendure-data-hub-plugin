@@ -80,7 +80,7 @@ export class DataHubAnalyticsAdminResolver {
     ): Promise<PipelinePerformance[]> {
         return this.analyticsService.getPipelinePerformance(ctx, {
             pipelineId: args.pipelineId,
-            limit: args.limit,
+            limit: Math.min(args.limit ?? 100, 1000),
         });
     }
 

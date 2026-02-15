@@ -12,6 +12,7 @@ import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { Transform, TransformType, JsonValue, JsonObject } from '../types/index';
 import { LOGGER_CONTEXTS } from '../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
+import { getErrorMessage } from '../utils/error.utils';
 
 import { CustomTransformFn, CustomTransformInfo } from './types';
 
@@ -163,7 +164,7 @@ export class TransformExecutor implements OnModuleInit {
                 result = await this.applyTransform(ctx, result, transform, record);
             } catch (error) {
                 this.logger.warn(
-                    `Transform ${transform.type} failed: ${error instanceof Error ? error.message : error}`,
+                    `Transform ${transform.type} failed: ${getErrorMessage(error)}`,
                 );
                 // Continue with current value on error
             }

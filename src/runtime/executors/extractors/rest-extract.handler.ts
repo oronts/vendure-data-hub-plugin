@@ -267,7 +267,7 @@ export class RestExtractHandler implements ExtractHandler {
                     stepKey: step.key,
                     url,
                     page,
-                    error: err instanceof Error ? err.message : String(err),
+                    error: getErrorMessage(err),
                 });
                 break;
             }
@@ -538,7 +538,7 @@ export class RestExtractHandler implements ExtractHandler {
         } catch (err) {
             this.logger.debug('Failed to resolve secret', {
                 secretCode: code,
-                error: err instanceof Error ? err.message : String(err),
+                error: getErrorMessage(err),
             });
             return null;
         }

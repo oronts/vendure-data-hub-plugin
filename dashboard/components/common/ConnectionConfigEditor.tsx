@@ -10,10 +10,10 @@ import {
     CLOUD_PLACEHOLDERS,
     PLACEHOLDERS,
 } from '../../constants';
-import { validateUrl, validatePort, validateHostname } from '../../utils/form-validation';
+import { validateUrl, validatePort, validateHostname } from '../../utils/FormValidation';
 import { FieldError } from './ValidationFeedback';
 import type { UIConnectionType, HttpConnectionConfig, DataHubSecret } from '../../types';
-import { CONNECTION_TYPE } from '../../constants/connection-types';
+import { CONNECTION_TYPE } from '../../constants/ConnectionTypes';
 
 const DEFAULT_HTTP_CONFIG: HttpConnectionConfig = {
     baseUrl: '',

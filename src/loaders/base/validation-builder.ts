@@ -10,7 +10,7 @@
 import { EntityValidationResult } from '../../types/index';
 import { TargetOperation } from '../../types/index';
 import { TARGET_OPERATION } from '../../constants/enums';
-import { VALIDATION_ERROR_CODE } from '../../../shared/types/validation.types';
+import { VALIDATION_ERROR_CODE } from '../../../shared/types';
 import { isValidEmail } from '../../utils/input-validation.utils';
 
 /**

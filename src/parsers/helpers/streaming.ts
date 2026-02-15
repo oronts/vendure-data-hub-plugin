@@ -1,5 +1,6 @@
 import { ParseError } from '../types';
 import { STREAMING } from '../../constants';
+import { getErrorMessage } from '../../utils/error.utils';
 
 export const DEFAULT_CHUNK_SIZE = STREAMING.DEFAULT_CHUNK_SIZE;
 export const MAX_BUFFER_SIZE = STREAMING.MAX_BUFFER_SIZE;
@@ -55,7 +56,7 @@ export async function processInChunks<T, R>(
             results.push(...chunkResults);
         } catch (error) {
             errors.push({
-                message: error instanceof Error ? error.message : 'Chunk processing error',
+                message: getErrorMessage(error),
                 row: offset + processed,
             });
         }

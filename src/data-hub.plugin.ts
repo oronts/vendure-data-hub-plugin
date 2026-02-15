@@ -88,6 +88,7 @@ import { FileExtractor } from './extractors/file';
 import { FtpExtractor } from './extractors/ftp';
 import { S3Extractor } from './extractors/s3';
 import { DatabaseExtractor } from './extractors/database';
+import { GraphQLExtractor } from './extractors/graphql';
 import { DataHubExtractorAdminResolver } from './api/resolvers/extractor.resolver';
 import { EntitySchemaAdminResolver } from './api/resolvers/entity-schema.resolver';
 import { DataHubVersioningResolver } from './api/resolvers/versioning.resolver';
@@ -238,6 +239,7 @@ import {
         FtpExtractor,
         S3Extractor,
         DatabaseExtractor,
+        GraphQLExtractor,
         // DataHub services
         FileStorageService,
         WebhookRetryService,
@@ -262,6 +264,7 @@ import {
         EntitySchemaAdminResolver,
         DataHubVersioningResolver,
         DataHubSandboxResolver,
+        DataHubTestAdminResolver,
         // Versioning Services
         DiffService,
         RevisionService,

@@ -19,7 +19,7 @@ import {
     PIPELINE_RETRY_DEFAULTS,
     PIPELINE_CHECKPOINT_DEFAULTS,
 } from '../../../constants';
-import { CHECKPOINT_STRATEGY } from '../../../constants/ui-states';
+import { CHECKPOINT_STRATEGY } from '../../../constants/UiStates';
 import type {
     PipelineContext,
     ErrorHandlingConfig,

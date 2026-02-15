@@ -19,7 +19,8 @@ import {
     ConsumeResult,
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
-import { AckMode } from '../../../constants/enums';
+import { AckMode, INTERNAL_TIMINGS } from '../../../constants';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 /**
  * SQS-specific connection configuration
@@ -289,7 +290,7 @@ export class SqsAdapter implements QueueAdapter {
                     results.push({
                         success: false,
                         messageId: msg.id,
-                        error: error instanceof Error ? error.message : 'Unknown error',
+                        error: getErrorMessage(error),
                     });
                 }
             }
@@ -358,6 +359,22 @@ export class SqsAdapter implements QueueAdapter {
                     // Ignore delete errors for auto-ack
                 }
             } else {
+                // Evict oldest pending receipt if at capacity
+                const maxPending = INTERNAL_TIMINGS.MAX_PENDING_MESSAGES ?? 10_000;
+                if (pendingReceipts.size >= maxPending) {
+                    let oldestKey: string | null = null;
+                    let oldestTime = Infinity;
+                    for (const [key, entry] of pendingReceipts.entries()) {
+                        if (entry.createdAt < oldestTime) {
+                            oldestTime = entry.createdAt;
+                            oldestKey = key;
+                        }
+                    }
+                    if (oldestKey) {
+                        pendingReceipts.delete(oldestKey);
+                    }
+                }
+
                 // Manual ack: store receipt handle
                 const deliveryTag = `sqs:${messageId}:${Date.now()}`;
                 pendingReceipts.set(deliveryTag, {

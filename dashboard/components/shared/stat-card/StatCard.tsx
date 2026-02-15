@@ -110,6 +110,7 @@ function StatCardComponent({
             onKeyDown={handleKeyDown}
             role={onClick ? 'button' : undefined}
             tabIndex={onClick ? 0 : undefined}
+            aria-label={onClick ? `${title}: ${value}` : undefined}
             data-testid="datahub-statcard-card"
         >
             {content}

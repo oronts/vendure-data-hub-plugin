@@ -10,6 +10,7 @@ import * as nodemailer from 'nodemailer';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { EmailDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 import { DataHubLogger } from '../logger';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.EMAIL_HANDLER);
 
@@ -90,7 +91,7 @@ export async function deliverToEmail(
             },
         };
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Email delivery failed';
+        const errorMessage = getErrorMessage(error);
         logger.error(`Email: Failed to send ${filename}`, error instanceof Error ? error : undefined);
 
         return {

@@ -5,6 +5,7 @@ import { ManageDataHubFeedsPermission } from '../../permissions';
 import { PAGINATION, FEED_FORMATS, LOGGER_CONTEXTS } from '../../constants/index';
 import type { FeedFormatInfo } from '../../constants/index';
 import { DataHubLogger } from '../../services/logger';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.FEED_RESOLVER);
 
@@ -76,7 +77,7 @@ export class DataHubFeedAdminResolver {
                 success: false,
                 itemCount: 0,
                 generatedAt: new Date(),
-                errors: [error instanceof Error ? error.message : 'Unknown error'],
+                errors: [getErrorMessage(error)],
                 warnings: [],
             };
         }

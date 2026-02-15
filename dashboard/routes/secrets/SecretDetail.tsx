@@ -23,7 +23,7 @@ import {
 import { AnyRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { AlertCircle, Key, Server } from 'lucide-react';
-import { CODE_PATTERN } from '../../utils/form-validation';
+import { CODE_PATTERN } from '../../utils/FormValidation';
 import { DATAHUB_PERMISSIONS, ROUTES, SECRET_PROVIDER, SELECT_WIDTHS, TOAST_SECRET, ERROR_MESSAGES } from '../../constants';
 import { FieldError } from '../../components/common';
 import {
@@ -116,7 +116,7 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
             },
             { keepDirty: false, keepTouched: false },
         );
-    }, [entity?.id]);
+    }, [entity?.id, form]);
 
     const provider = (form.watch('provider') || entity?.provider || SECRET_PROVIDER.INLINE) as 'INLINE' | 'ENV';
     const hasStoredValue = Boolean(form.watch('hasValue') ?? (entity?.value ? true : false));

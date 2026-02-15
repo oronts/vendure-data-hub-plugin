@@ -113,6 +113,8 @@ function OperatorCardComponent({
             <div
                 role="button"
                 tabIndex={0}
+                aria-expanded={isExpanded}
+                aria-label={`Operator ${operator.op}, step ${index + 1} of ${totalCount}`}
                 className="flex items-center justify-between p-2.5 cursor-pointer"
                 onClick={onToggleExpand}
                 onKeyDown={handleKeyDown}

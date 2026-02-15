@@ -4,7 +4,6 @@ import {
     isValidEmail as isValidEmailFromShared,
     isValidUrl as isValidUrlFromShared,
     isValidPipelineCode as isValidPipelineCodeFromShared,
-    isValidCron as isValidCronFromShared,
 } from '../../shared/utils/validation';
 
 export const EMAIL_REGEX = EMAIL_PATTERN;
@@ -85,4 +84,3 @@ export function securePath(basePath: string, relativePath: string): string {
     return fullPath;
 }
 
-export const isValidCron = isValidCronFromShared;

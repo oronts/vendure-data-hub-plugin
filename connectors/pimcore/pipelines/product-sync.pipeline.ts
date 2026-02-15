@@ -74,7 +74,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
             { op: 'slugify', args: { source: mapping?.product?.slugField ?? '_name', target: '_slug' } },
             { op: 'template', args: { template: 'pimcore:product:${id}', target: 'externalId' } },
             { op: 'set', args: { path: 'enabled', value: true } },
-            { op: 'when', args: { conditions: [{ field: 'published', cmp: 'eq', value: false }], action: 'set', setValue: { enabled: false } } },
+            { op: 'ifThenElse', args: { condition: { field: 'published', operator: 'eq', value: false }, thenValue: false, elseValue: true, target: 'enabled' } },
             {
                 op: 'map',
                 args: {

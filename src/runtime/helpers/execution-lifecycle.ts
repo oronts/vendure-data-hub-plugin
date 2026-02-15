@@ -4,6 +4,7 @@ import { DataHubLogger } from '../../services/logger';
 import { HookService } from '../../services/events/hook.service';
 import { DomainEventsService } from '../../services/events/domain-events.service';
 import { CheckpointManager } from './checkpoint-manager';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Manages pipeline execution lifecycle: preparation and finalization
@@ -104,7 +105,7 @@ export class ExecutionLifecycleManager {
             });
         } catch (err) {
             this.logger.debug('Failed to publish domain event', {
-                error: err instanceof Error ? err.message : String(err),
+                error: getErrorMessage(err),
             });
         }
     }

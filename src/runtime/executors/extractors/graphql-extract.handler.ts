@@ -26,6 +26,7 @@ import {
     getCheckpointValue,
 } from './extract-handler.interface';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 interface GraphqlExtractConfig {
     endpoint?: string;
@@ -162,7 +163,7 @@ export class GraphqlExtractHandler implements ExtractHandler {
             const data = await res.json();
             return { success: true, data };
         } catch (err) {
-            return { success: false, error: err instanceof Error ? err.message : String(err) };
+            return { success: false, error: getErrorMessage(err) };
         }
     }
 
@@ -244,7 +245,7 @@ export class GraphqlExtractHandler implements ExtractHandler {
         } catch (err) {
             this.logger.debug('Failed to resolve secret for GraphQL extraction', {
                 secretCode: code,
-                error: err instanceof Error ? err.message : String(err),
+                error: getErrorMessage(err),
             });
             return null;
         }

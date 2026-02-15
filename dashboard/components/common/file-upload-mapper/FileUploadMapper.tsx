@@ -25,11 +25,11 @@ import { FieldMappingEditor } from './FieldMappingEditor';
 import { ColumnStats } from './ColumnStats';
 import { StepIndicator } from './StepIndicator';
 import { parseCSV, analyzeColumns, getFileType, computeAutoMappings } from '../../../utils';
-import { UI_LIMITS } from '../../../constants/ui-config';
-import { FILE_FORMAT } from '../../../constants/wizard-options';
-import { MAPPER_STEP } from '../../../constants/ui-types';
-import { TOAST_FILE, formatParsedRowsColumns, formatMissingRequired } from '../../../constants/toast-messages';
-import type { FileUploadMapperProps, ParsedFile, UIFieldMapping } from './types';
+import { UI_LIMITS } from '../../../constants/UiConfig';
+import { FILE_FORMAT } from '../../../constants/WizardOptions';
+import { MAPPER_STEP } from '../../../constants/UiTypes';
+import { TOAST_FILE, formatParsedRowsColumns, formatMissingRequired } from '../../../constants/ToastMessages';
+import type { FileUploadMapperProps, ParsedFile, UIFieldMapping } from './Types';
 
 export function FileUploadMapper({
     targetSchema = [],

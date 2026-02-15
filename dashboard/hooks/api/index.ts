@@ -8,7 +8,6 @@ export {
     pipelineTimelineDocument,
     validatePipelineDefinitionDocument,
     usePipelines,
-    usePipeline,
     useRunPipeline,
     useValidatePipelineDefinition,
     useDryRunPipeline,
@@ -80,7 +79,7 @@ export {
     useUpdateSettings,
 } from './useSettings';
 
-export { createMutationErrorHandler, createMutationSuccessHandler, handleMutationError } from './mutation-helpers';
+export { createMutationErrorHandler, createMutationSuccessHandler, handleMutationError } from './MutationHelpers';
 
 export {
     previewExtract,

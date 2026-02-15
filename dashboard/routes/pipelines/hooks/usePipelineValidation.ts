@@ -5,6 +5,9 @@ import { validatePipelineDefinitionDocument } from '../../../hooks';
 import type { PipelineValidationResult, ValidationIssue } from '../../../types';
 import type { ValidationState } from '../components';
 
+/** Debounce delay (ms) before triggering validation after definition changes. */
+const VALIDATION_DEBOUNCE_MS = 300;
+
 const EMPTY_VALIDATION: ValidationState = {
     isValid: null,
     count: 0,
@@ -99,7 +102,7 @@ export function usePipelineValidation(definition: unknown): {
                     warnings: [],
                 });
             }
-        }, 300);
+        }, VALIDATION_DEBOUNCE_MS);
 
         return () => {
             clearTimeout(timer);

@@ -12,6 +12,7 @@ import { Pipeline, PipelineRun } from '../../entities/pipeline';
 import { PipelineService, CreatePipelineInput, UpdatePipelineInput, DefinitionValidationService, PipelineFormatService, VisualPipelineDefinition } from '../../services';
 import { PipelineDefinition } from '../../types';
 import { PipelineDefinitionError } from '../../validation/pipeline-definition-error';
+import { getErrorMessage } from '../../utils/error.utils';
 import {
     DataHubPipelinePermission,
     RunDataHubPipelinePermission,
@@ -225,7 +226,7 @@ export class DataHubPipelineAdminResolver {
                     level: 'full',
                 };
             }
-            const msg = e instanceof Error ? e.message : String(e);
+            const msg = getErrorMessage(e);
             const errors = msg.split('\n').map(l => l.trim()).filter(Boolean);
             return {
                 isValid: false,

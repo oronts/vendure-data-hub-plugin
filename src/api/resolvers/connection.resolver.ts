@@ -7,6 +7,7 @@ import { DataHubConnection } from '../../entities/config';
 import { ManageDataHubConnectionsPermission } from '../../permissions';
 import { ConnectionType } from '../../constants/enums';
 import { RESOLVER_ERROR_MESSAGES } from '../../constants/index';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @Resolver()
 export class DataHubConnectionAdminResolver {
@@ -83,7 +84,7 @@ export class DataHubConnectionAdminResolver {
             return { result: DeletionResult.DELETED };
         } catch (e) {
             Logger.error(
-                `Failed to delete connection: ${e instanceof Error ? e.message : String(e)}`,
+                `Failed to delete connection: ${getErrorMessage(e)}`,
                 'DataHub',
             );
             return { result: DeletionResult.NOT_DELETED, message: 'Failed to delete connection due to an internal error' };

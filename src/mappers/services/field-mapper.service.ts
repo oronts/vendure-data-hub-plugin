@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { JsonValue } from '../../types/index';
 import { RecordObject } from '../../runtime/executor-types';
+import { getErrorMessage } from '../../utils/error.utils';
 import {
     applyTemplateTransform,
     applySplitTransform,
@@ -87,7 +88,7 @@ export class FieldMapperService {
                         } catch (err) {
                             errors.push({
                                 field: mapping.source,
-                                message: `Transform error: ${err instanceof Error ? err.message : String(err)}`,
+                                message: `Transform error: ${getErrorMessage(err)}`,
                                 value: value ?? null,
                             });
                         }
@@ -100,7 +101,7 @@ export class FieldMapperService {
             } catch (err) {
                 errors.push({
                     field: mapping.source,
-                    message: err instanceof Error ? err.message : String(err),
+                    message: getErrorMessage(err),
                 });
             }
         }

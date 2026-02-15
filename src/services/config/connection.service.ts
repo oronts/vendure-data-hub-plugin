@@ -5,6 +5,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { ConnectionType } from '../../constants/enums';
 import type { JsonObject } from '../../types/index';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @Injectable()
 export class ConnectionService {
@@ -50,7 +51,7 @@ export class ConnectionService {
         try {
             saved = await this.connection.getRepository(ctx, DataHubConnection).save(entity);
         } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : String(error);
+            const msg = getErrorMessage(error);
             if (
                 msg.includes('UNIQUE') || msg.includes('unique') ||
                 msg.includes('duplicate') || msg.includes('Duplicate') ||

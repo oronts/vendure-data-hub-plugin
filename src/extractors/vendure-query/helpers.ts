@@ -19,6 +19,7 @@ import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { JsonObject, JsonValue } from '../../types/index';
 import { VendureEntityType } from '../../types/index';
 import { VendureQueryFilter, VendureQueryExtractorConfig } from './types';
+import { escapeLikePattern } from '../../utils/sql-security.utils';
 
 /** Type for Vendure entity classes (using Function to avoid strict class type issues) */
 type EntityClass = typeof Product | typeof ProductVariant | typeof Customer | typeof Collection | typeof Facet | typeof FacetValue | typeof Order | typeof Promotion | typeof Asset;
@@ -94,7 +95,7 @@ export function applyFilter<T extends ObjectLiteral>(
             break;
         case 'like':
         case 'contains': {
-            const escaped = String(filter.value).replace(/[%_\\]/g, '\\$&');
+            const escaped = escapeLikePattern(String(filter.value));
             queryBuilder.andWhere(`entity.${filter.field} LIKE :${paramName}`, { [paramName]: `%${escaped}%` });
             break;
         }

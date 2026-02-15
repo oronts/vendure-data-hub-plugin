@@ -6,6 +6,7 @@ import { LockBackend, MemoryLockEntry } from './lock-backend.interface';
 import { MemoryLockBackend } from './memory-lock.backend';
 import { RedisLockBackend } from './redis-lock.backend';
 import { PostgresLockBackend } from './postgres-lock.backend';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 export interface BackendFactoryDependencies {
     connection: TransactionalConnection;
@@ -74,7 +75,7 @@ export class LockBackendFactory {
             return await RedisLockBackend.create(url ?? DISTRIBUTED_LOCK.DEFAULT_REDIS_URL, this.deps.logger);
         } catch (error) {
             this.deps.logger.warn('Redis backend initialization failed, falling back', {
-                error: error instanceof Error ? error.message : 'Unknown error',
+                error: getErrorMessage(error),
             });
             return null;
         }

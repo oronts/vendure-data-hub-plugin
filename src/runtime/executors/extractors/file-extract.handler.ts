@@ -25,6 +25,7 @@ import {
     getCheckpointValue,
 } from './extract-handler.interface';
 import { FileFormat } from '../../../constants/enums';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 interface CsvExtractConfig {
     adapterCode?: string;
@@ -131,7 +132,7 @@ export class FileExtractHandler implements ExtractHandler {
             this.logger.warn('Failed to read uploaded file', {
                 stepKey,
                 fileId,
-                error: err instanceof Error ? err.message : String(err),
+                error: getErrorMessage(err),
             });
             return [];
         }
@@ -163,7 +164,7 @@ export class FileExtractHandler implements ExtractHandler {
                 this.logger.warn('Failed to parse CSV file', {
                     stepKey,
                     path: csvPath,
-                    error: err instanceof Error ? err.message : String(err),
+                    error: getErrorMessage(err),
                 });
             }
             return [];
@@ -220,7 +221,7 @@ export class FileExtractHandler implements ExtractHandler {
             this.logger.warn('Failed to read/parse uploaded JSON file', {
                 stepKey,
                 fileId,
-                error: err instanceof Error ? err.message : String(err),
+                error: getErrorMessage(err),
             });
             return null;
         }
@@ -238,7 +239,7 @@ export class FileExtractHandler implements ExtractHandler {
                 this.logger.warn('Failed to read/parse JSON file', {
                     stepKey,
                     path: jsonPath,
-                    error: err instanceof Error ? err.message : String(err),
+                    error: getErrorMessage(err),
                 });
             }
             return null;
@@ -251,7 +252,7 @@ export class FileExtractHandler implements ExtractHandler {
         } catch (err) {
             this.logger.warn(`Failed to parse ${source}`, {
                 stepKey,
-                error: err instanceof Error ? err.message : String(err),
+                error: getErrorMessage(err),
             });
             return null;
         }

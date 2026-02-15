@@ -32,7 +32,7 @@ import { useAdapters } from './api/useAdapters';
 import { useConnectionCodes } from './api/useConnections';
 import { useSecrets } from './api/useSecrets';
 import { QUERY_LIMITS, FALLBACK_COLORS, UI_ADAPTER_CATEGORY } from '../constants';
-import { ADAPTER_TYPE_TO_NODE_TYPE, ADAPTER_TYPE_TO_CATEGORY } from '../constants/ui-states';
+import { ADAPTER_TYPE_TO_NODE_TYPE, ADAPTER_TYPE_TO_CATEGORY } from '../constants/UiStates';
 
 interface CatalogSchemaField {
     key: string;
@@ -61,7 +61,7 @@ export interface AdapterMetadata {
 
 type AdapterNodeType = import('../types').VisualNodeCategory;
 
-export interface AdapterCatalog {
+interface AdapterCatalog {
     sources: AdapterMetadata[];
     transforms: AdapterMetadata[];
     validation: AdapterMetadata[];

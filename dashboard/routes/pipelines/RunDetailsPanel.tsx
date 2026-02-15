@@ -5,7 +5,7 @@ import {
     Json,
 } from '@vendure/dashboard';
 import { toast } from 'sonner';
-import { formatDateTime } from '../../utils/formatters';
+import { formatDateTime } from '../../utils/Formatters';
 import { DATAHUB_PERMISSIONS, RUN_STATUS, TOAST_PIPELINE } from '../../constants';
 import {
     usePipelineRun,

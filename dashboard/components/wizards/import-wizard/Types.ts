@@ -5,7 +5,7 @@ import type {
     ImportSourceConfig,
     ImportTriggerConfig,
     WizardTransformationStep,
-} from '../../../types/wizard';
+} from '../../../types/Wizard';
 
 export type SourceType = ImportSourceConfig['type'];
 export type FileFormat = NonNullable<ImportSourceConfig['fileConfig']>['format'];

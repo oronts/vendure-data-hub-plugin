@@ -1,5 +1,5 @@
 import type { JsonValue, JsonObject } from '../../shared/types';
-import { FILE_FORMAT } from '../constants/wizard-options';
+import { FILE_FORMAT } from '../constants/WizardOptions';
 
 export type FileType = 'CSV' | 'JSON' | 'XLSX' | 'XML' | null;
 
@@ -11,7 +11,7 @@ export interface ParsedColumn {
     uniqueCount: number;
 }
 
-export function detectColumnType(values: JsonValue[]): ParsedColumn['type'] {
+function detectColumnType(values: JsonValue[]): ParsedColumn['type'] {
     const nonNullValues = values.filter(v => v !== null && v !== undefined && v !== '');
     if (nonNullValues.length === 0) return 'unknown';
 

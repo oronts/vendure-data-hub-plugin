@@ -6,6 +6,7 @@ import { DataHubSecret } from '../../entities/config';
 import { DataHubSecretPermission } from '../../permissions';
 import { SecretProvider } from '../../constants/enums';
 import { RESOLVER_ERROR_MESSAGES } from '../../constants/index';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const MASKED_SECRET_VALUE = '********';
 
@@ -112,7 +113,7 @@ export class DataHubSecretAdminResolver {
             return { result: DeletionResult.DELETED };
         } catch (e) {
             Logger.error(
-                `Failed to delete secret: ${e instanceof Error ? e.message : String(e)}`,
+                `Failed to delete secret: ${getErrorMessage(e)}`,
                 'DataHub',
             );
             return { result: DeletionResult.NOT_DELETED, message: 'Failed to delete secret due to an internal error' };

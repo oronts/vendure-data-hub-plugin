@@ -23,7 +23,7 @@ import {
 } from '@vendure/dashboard';
 import { toast } from 'sonner';
 import { DATAHUB_NAV_SECTION, UI_DEFAULTS, QUERY_LIMITS, ROUTES, DATAHUB_PERMISSIONS, TOAST_HOOK } from '../../constants';
-import { formatDateTime } from '../../utils/formatters';
+import { formatDateTime } from '../../utils/Formatters';
 import {
     Play,
     RefreshCw,
@@ -42,8 +42,8 @@ import {
     handleMutationError,
 } from '../../hooks';
 import { ErrorState, LoadingState } from '../../components/shared';
-import { HOOK_STAGES } from './hook-stages';
-import type { HookStage } from './hook-stages';
+import { HOOK_STAGES } from './HookStages';
+import type { HookStage } from './HookStages';
 
 export const hooksPage: DashboardRouteDefinition = {
     navMenuItem: {

@@ -18,6 +18,7 @@ import { RecordObject } from '../../executor-types';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { BATCH, LOGGER_CONTEXTS } from '../../../constants/index';
 import { getEntityClass, entityToRecord, EntityLike, validateFieldName } from '../../../extractors/vendure-query/helpers';
+import { escapeLikePattern } from '../../../utils/sql-security.utils';
 import { VendureQueryExtractorConfig } from '../../../extractors/vendure-query/types';
 import {
     ExtractHandler,
@@ -240,7 +241,7 @@ export class VendureExtractHandler implements ExtractHandler {
 
     private getFilterParamValue(operator: FilterOperator, value: unknown): unknown {
         if (operator === 'like' || operator === 'contains') {
-            const escaped = String(value).replace(/[%_\\]/g, '\\$&');
+            const escaped = escapeLikePattern(String(value));
             return `%${escaped}%`;
         }
         return value;

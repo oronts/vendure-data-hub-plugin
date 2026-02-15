@@ -7,6 +7,7 @@ import {
     RiskRule,
     RiskWarning,
 } from '../../types/index';
+import { getErrorMessage } from '../../utils/error.utils';
 import {
     LOGGER_CONTEXTS,
     RunOutcome,
@@ -205,7 +206,7 @@ export class RiskAssessmentService {
             } catch (err) {
                 this.logger.warn('Risk rule evaluation failed', {
                     ruleId: rule.id,
-                    error: err instanceof Error ? err.message : String(err),
+                    error: getErrorMessage(err),
                 });
             }
         }

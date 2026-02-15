@@ -1,6 +1,7 @@
 import { ExtractorAdapter, ExtractContext, RecordEnvelope } from '../../../src/sdk/types';
 import { JsonObject } from '../../../src/types';
 import { sleep } from '../../../src/utils/retry.utils';
+import { getErrorMessage } from '../../../src/utils/error.utils';
 import { PimcoreObjectListing } from '../types';
 
 const DEFAULTS = {
@@ -307,7 +308,7 @@ async function executeQuery(
         if (err instanceof Error && err.name === 'AbortError') {
             return { success: false, error: `Request timed out after ${DEFAULTS.TIMEOUT_MS / 1000}s - check if the Pimcore server is reachable` };
         }
-        const message = err instanceof Error ? err.message : String(err);
+        const message = getErrorMessage(err);
         if (message.includes('fetch failed') || message.includes('ECONNREFUSED') || message.includes('ENOTFOUND')) {
             return { success: false, error: `Cannot connect to Pimcore server - verify the endpoint URL is correct and the server is running` };
         }

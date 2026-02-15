@@ -36,8 +36,7 @@ export function calculateBackoffDeterministic(attempt: number, config: RetryConf
     return Math.min(baseDelay, config.maxDelayMs);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- T reserved for future typed retry result
-export interface ExecuteWithRetryOptions<T = unknown> {
+interface ExecuteWithRetryOptions<T = unknown> {
     config: RetryConfig;
     onRetry?: (attempt: number, error: Error, delayMs: number) => void;
     isRetryable?: (error: unknown) => boolean;

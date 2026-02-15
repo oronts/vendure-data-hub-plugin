@@ -67,7 +67,7 @@ export const EXPORTER_ADAPTERS: AdapterDefinition[] = [
     },
     {
         type: 'EXPORTER',
-        code: 'restPost',
+        code: 'restPostExport',
         description: 'Export records via REST API POST.',
         category: 'EXTERNAL',
         schema: {

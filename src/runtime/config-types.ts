@@ -295,7 +295,7 @@ export interface XmlExportConfig extends BaseStepConfig {
 }
 
 export interface WebhookExportConfig extends BaseStepConfig {
-    adapterCode: 'webhookExport' | 'restPost';
+    adapterCode: 'webhookExport' | 'restPostExport';
     /** Target endpoint URL */
     endpoint?: string;
     url?: string;

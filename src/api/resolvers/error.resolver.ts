@@ -13,6 +13,7 @@ import { PipelineRun, Pipeline } from '../../entities/pipeline';
 import { DataHubRecordRetryAudit, DataHubRecordError } from '../../entities/data';
 import { deepClone } from '../../utils';
 import { DataHubLogger } from '../../services/logger';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.ERROR_RESOLVER);
 
@@ -166,7 +167,7 @@ export class DataHubErrorAdminResolver {
         await this.errorReplay.replayRecord(ctx, pipeline.definition, rec.stepKey, payload);
 
         await this.retryAudits.record(ctx, rec, payloadBefore, cleanPatch, payload).catch((err: unknown) => {
-            logger.warn(`Failed to record retry audit for record ${args.errorId}`, { error: err instanceof Error ? err.message : String(err) });
+            logger.warn(`Failed to record retry audit for record ${args.errorId}`, { error: getErrorMessage(err) });
         });
 
         return true;

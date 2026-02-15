@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { LocalDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 import { securePath } from '../../utils/input-validation.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Securely resolve a filename within the destination directory.
@@ -66,7 +67,7 @@ export async function testLocalDestination(config: LocalDestinationConfig): Prom
         } catch (error) {
             return {
                 success: false,
-                message: error instanceof Error ? error.message : 'Failed to create directory',
+                message: getErrorMessage(error),
             };
         }
     }

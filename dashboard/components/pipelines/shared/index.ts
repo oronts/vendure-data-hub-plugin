@@ -20,8 +20,8 @@ export type { StepConfigData, StepConfigPanelProps } from '../../shared/step-con
 
 export { getAdapterIcon } from './AdapterIcons';
 
-export { VISUAL_NODE_CONFIGS, getVisualNodeConfig } from './visual-node-config';
-export type { VisualNodeConfig } from './visual-node-config';
+export { VISUAL_NODE_CONFIGS, getVisualNodeConfig } from './VisualNodeConfig';
+export type { VisualNodeConfig } from './VisualNodeConfig';
 
 export {
     createPipelineNode,

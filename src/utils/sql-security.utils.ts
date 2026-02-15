@@ -71,6 +71,11 @@ export function validateLimitOffset(
     return Math.floor(num);
 }
 
+/** Escape LIKE metacharacters (%, _, \) in a user-provided search string. */
+export function escapeLikePattern(value: string): string {
+    return value.replace(/[%_\\]/g, '\\$&');
+}
+
 /** Heuristic check - use alongside parameterized queries. */
 export function containsSqlInjection(str: string): boolean {
     // Truncate very long strings to prevent ReDoS

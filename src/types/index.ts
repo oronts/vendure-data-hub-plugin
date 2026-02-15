@@ -91,24 +91,10 @@ export type {
 } from '../../shared/types';
 
 export {
-    TRIGGER_FIELDS,
     TRIGGER_TYPES,
-    LOADER_FIELDS,
-    LOAD_STRATEGIES,
-    EXTRACTOR_FIELDS,
-    EXPORT_FIELDS,
-    FEED_FIELDS,
-    TRANSFORM_FIELDS,
-    THROUGHPUT_FIELDS,
-    COMMON_FIELDS,
-    STEP_RESULT_FIELDS,
-    WEBHOOK_FIELDS,
 } from '../../shared/types';
 
 export type {
     TriggerTypeValue,
-    LoadStrategyValue,
-    CanonicalTriggerConfig,
-    CanonicalLoaderConfig,
     ValidationError,
 } from '../../shared/types';

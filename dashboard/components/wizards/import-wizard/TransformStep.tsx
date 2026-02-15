@@ -15,8 +15,8 @@ import {
 } from 'lucide-react';
 import { WizardStepContainer } from '../shared';
 import { EmptyState } from '../../shared/feedback';
-import { TRANSFORM_TYPES, STEP_CONTENT } from './constants';
-import type { ImportConfiguration, TransformationType } from './types';
+import { TRANSFORM_TYPES, STEP_CONTENT } from './Constants';
+import type { ImportConfiguration, TransformationType } from './Types';
 
 interface TransformStepProps {
     config: Partial<ImportConfiguration>;

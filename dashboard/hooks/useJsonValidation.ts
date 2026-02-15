@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { DEBOUNCE_DELAYS } from '../constants';
-import { ERROR_MESSAGES } from '../constants/validation-patterns';
+import { ERROR_MESSAGES } from '../constants/ValidationPatterns';
 
 export interface JsonValidationError {
     message: string;

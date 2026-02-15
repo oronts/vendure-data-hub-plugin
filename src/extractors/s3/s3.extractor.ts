@@ -11,6 +11,7 @@ import {
 } from '../../types/index';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { FileFormat } from '../../constants/enums';
+import { getErrorMessage } from '../../utils/error.utils';
 import {
     S3ExtractorConfig,
     S3_DEFAULTS,
@@ -491,7 +492,7 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                 records: [],
                 totalAvailable: 0,
                 metadata: {
-                    error: error instanceof Error ? error.message : 'Preview failed',
+                    error: getErrorMessage(error),
                     bucket: config.bucket,
                     prefix: config.prefix ?? null,
                 },

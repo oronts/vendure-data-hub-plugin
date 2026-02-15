@@ -12,7 +12,7 @@ import { FileCode, Sparkles } from 'lucide-react';
 import { Button } from '@vendure/dashboard';
 import { TemplateGallery } from '../../templates';
 import { TemplatePreview } from '../../templates';
-import { STEP_CONTENT } from './constants';
+import { STEP_CONTENT } from './Constants';
 
 type TemplateCategory = 'products' | 'customers' | 'inventory' | 'orders' | 'promotions' | 'catalog';
 type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';

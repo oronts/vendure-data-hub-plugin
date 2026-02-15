@@ -1,2 +1,2 @@
 export { ExportWizard } from './ExportWizard';
-export type { ExportWizardProps, ExportConfiguration } from './types';
+export type { ExportWizardProps, ExportConfiguration } from './Types';

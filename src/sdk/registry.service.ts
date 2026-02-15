@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { DataHubAdapter, AdapterDefinition, AdapterType } from './types';
 
+/** Maximum number of adapter definitions/runtime adapters to prevent unbounded memory growth */
+const MAX_REGISTRY_SIZE = 1000;
+
 function validateAdapterCode(code: string): void {
     if (!code || typeof code !== 'string') {
         throw new Error('Adapter code must be a non-empty string');
@@ -44,6 +47,9 @@ export class DataHubRegistryService {
         if (this.definitions.has(key)) {
             throw new Error(`Adapter already registered: ${key}`);
         }
+        if (this.definitions.size >= MAX_REGISTRY_SIZE) {
+            throw new Error(`Adapter registry is full (max ${MAX_REGISTRY_SIZE}). Unregister an adapter first.`);
+        }
         this.definitions.set(key, adapter);
     }
 
@@ -55,9 +61,15 @@ export class DataHubRegistryService {
         validateAdapterCode(adapter.code);
 
         const key = `${adapter.type}:${adapter.code}`;
+        if (!this.runtimeAdapters.has(key) && this.runtimeAdapters.size >= MAX_REGISTRY_SIZE) {
+            throw new Error(`Runtime adapter registry is full (max ${MAX_REGISTRY_SIZE}). Unregister an adapter first.`);
+        }
         this.runtimeAdapters.set(key, adapter);
         // Also register the definition if not already present
         if (!this.definitions.has(key)) {
+            if (this.definitions.size >= MAX_REGISTRY_SIZE) {
+                throw new Error(`Adapter definition registry is full (max ${MAX_REGISTRY_SIZE}). Unregister an adapter first.`);
+            }
             this.definitions.set(key, adapter);
         }
     }

@@ -1,5 +1,5 @@
 import type { PipelineDefinition } from '../../shared/types';
-import { PORTS, HTTP, BATCH, UI_TIMEOUTS, TIME_UNITS } from './defaults';
+import { PORTS, HTTP, BATCH, UI_TIMEOUTS, TIME_UNITS } from './Defaults';
 
 const EDITOR_DEFAULTS = {
     GRID_SIZE: 20,

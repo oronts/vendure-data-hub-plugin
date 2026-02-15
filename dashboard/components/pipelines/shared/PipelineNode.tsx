@@ -2,9 +2,9 @@ import * as React from 'react';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { Badge } from '@vendure/dashboard';
 import type { PipelineNodeData, VisualNodeCategory } from '../../../types';
-import { getVisualNodeConfig, VisualNodeConfig } from './visual-node-config';
+import { getVisualNodeConfig, VisualNodeConfig } from './VisualNodeConfig';
 import { FALLBACK_COLORS, BRANCH_COLORS, NODE_DIMENSIONS, ICON_SIZES } from '../../../constants';
-import { TEST_STATUS } from '../../../constants/ui-states';
+import { TEST_STATUS } from '../../../constants/UiStates';
 
 interface PipelineNodeProps extends NodeProps<Node<PipelineNodeData>> {
     category: VisualNodeCategory;

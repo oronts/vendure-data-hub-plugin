@@ -6,7 +6,7 @@
  */
 
 import { UnifiedPipelineDefinition } from '../../types/index';
-import type { JsonObject } from '../../../shared/types/json.types';
+import type { JsonObject } from '../../../shared/types';
 
 export type { UnifiedPipelineDefinition } from '../../types/index';
 

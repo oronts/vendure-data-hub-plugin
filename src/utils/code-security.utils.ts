@@ -179,7 +179,7 @@ export const DISALLOWED_KEYWORDS = [
  * Pattern to match disallowed keywords as whole words
  * Uses word boundaries to avoid false positives
  */
-export const DISALLOWED_KEYWORDS_PATTERN = new RegExp(
+const DISALLOWED_KEYWORDS_PATTERN = new RegExp(
     `\\b(${DISALLOWED_KEYWORDS.join('|')})\\b`,
     'i',
 );
@@ -210,7 +210,7 @@ export const PROTOTYPE_POLLUTION_PATTERNS = [
 /**
  * Allowed safe characters pattern for simple expressions
  */
-export const SAFE_EXPRESSION_PATTERN = /^[a-zA-Z0-9_$.\s+\-*/%&|!?:=<>()[\],'"]*$/;
+const SAFE_EXPRESSION_PATTERN = /^[a-zA-Z0-9_$.\s+\-*/%&|!?:=<>()[\],'"]*$/;
 
 /**
  * Validates user code for security issues

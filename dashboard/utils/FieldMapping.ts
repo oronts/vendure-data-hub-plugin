@@ -1,4 +1,4 @@
-import { normalizeString } from './string-helpers';
+import { normalizeString } from './StringHelpers';
 
 export const FIELD_VARIATIONS: Record<string, string[]> = {
     'id': ['identifier', 'uid', 'uuid', 'key'],

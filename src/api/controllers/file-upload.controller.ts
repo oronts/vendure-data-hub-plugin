@@ -33,6 +33,7 @@ import { PAGINATION, LOGGER_CONTEXTS, FILE_STORAGE } from '../../constants/index
 import { detectFormat, isValidFileId, formatFileResponse, detectMimeType } from './file-upload.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 
+
 /** Multer configuration for file uploads */
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -266,9 +267,10 @@ export class DataHubFileUploadController {
                 warnings: preview.warnings,
             });
         } catch (error) {
+            this.logger.error('File preview failed', error instanceof Error ? error : undefined);
             return res.status(HttpStatus.BAD_REQUEST).json({
                 success: false,
-                error: error instanceof Error ? error.message : 'Failed to parse file',
+                error: 'Failed to parse file preview',
             });
         }
     }

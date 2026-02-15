@@ -10,7 +10,7 @@ import {
     normalizeConnectionConfig,
 } from '../../components/common/ConnectionConfigEditor';
 import type { UIConnectionType } from '../../types';
-import { CODE_PATTERN } from '../../utils/form-validation';
+import { CODE_PATTERN } from '../../utils/FormValidation';
 import { FieldError } from '../../components/common';
 import { QUERY_LIMITS, DATAHUB_PERMISSIONS, ROUTES, CONNECTION_DEFAULT_TYPE, SELECT_WIDTHS, TOAST_CONNECTION, ERROR_MESSAGES } from '../../constants';
 import {

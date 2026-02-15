@@ -3,13 +3,14 @@
  */
 
 import { ParseFormatType } from '../constants/enums';
+import type { CsvDelimiter } from '../../shared/types';
 
 export type FileFormat = ParseFormatType;
 
 /**
- * CSV delimiter options
+ * CSV delimiter options - canonical definition in shared/types/pipeline.types.ts
  */
-export type CsvDelimiter = ',' | ';' | '\t' | '|';
+export type { CsvDelimiter };
 
 /**
  * Line ending types

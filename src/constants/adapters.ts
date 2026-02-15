@@ -55,7 +55,7 @@ export const EXPORTER_CODE = {
     XML: 'xmlExport',
     XLSX: 'xlsxExport',
     PARQUET: 'parquetExport',
-    REST_POST: 'restPost',
+    REST_POST: 'restPostExport',
     WEBHOOK: 'webhookExport',
 } as const;
 

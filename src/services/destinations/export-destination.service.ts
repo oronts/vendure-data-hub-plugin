@@ -22,6 +22,7 @@ import { deliverToLocal, testLocalDestination } from './local.handler';
 import { deliverToSFTP, deliverToFTP } from './ftp.handler';
 import { deliverToEmail } from './email.handler';
 import { assertUrlSafe } from '../../utils/url-security.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 export type { DestinationType, DestinationConfig, DeliveryResult };
 export type {
@@ -125,7 +126,7 @@ export class ExportDestinationService implements OnModuleInit {
                 }
             }
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const errorMessage = getErrorMessage(error);
             this.logger.error(`Delivery failed to ${destinationId}: ${errorMessage}`);
             return {
                 success: false,
@@ -172,7 +173,7 @@ export class ExportDestinationService implements OnModuleInit {
         } catch (error) {
             return {
                 success: false,
-                message: error instanceof Error ? error.message : 'Connection test failed',
+                message: getErrorMessage(error),
                 latencyMs: Date.now() - start,
             };
         }

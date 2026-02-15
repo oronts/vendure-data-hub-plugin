@@ -547,7 +547,7 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                 records: [],
                 totalAvailable: 0,
                 metadata: {
-                    error: error instanceof Error ? error.message : 'Preview failed',
+                    error: getErrorMessage(error),
                     databaseType: config.databaseType,
                     host: config.host ?? null,
                     database: config.database ?? null,

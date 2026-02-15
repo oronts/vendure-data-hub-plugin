@@ -5,6 +5,7 @@ import { SANDBOX } from '../../constants/index';
 import { RecordObject, OnRecordErrorCallback, ExecutorContext } from '../executor-types';
 import { ExtractExecutor, TransformExecutor, LoadExecutor } from '../executors';
 import { getAdapterCode } from '../../types/step-configs';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Dry run simulation for pipeline steps
@@ -271,7 +272,7 @@ export class DryRunSimulator {
             }
             return { records: out, processed: out.length, samples };
         } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = getErrorMessage(err);
             dryRunCtx.errors.push(`[${step.key || 'extract'}] ${msg}`);
             this.logger.error('Dry run extract failed', err instanceof Error ? err : undefined, { stepKey: step.key });
             return { records: [], processed: 0, samples };

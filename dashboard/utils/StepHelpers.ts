@@ -13,7 +13,7 @@ export const STEP_TO_ADAPTER_TYPE: Record<StepType, string | null> = {
     SINK: ADAPTER_TYPES.SINK,
 };
 
-export function getAdapterType(stepType: StepType): string | null {
+function getAdapterType(stepType: StepType): string | null {
     return STEP_TO_ADAPTER_TYPE[stepType] ?? null;
 }
 

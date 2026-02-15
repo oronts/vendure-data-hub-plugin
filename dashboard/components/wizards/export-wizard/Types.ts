@@ -6,12 +6,12 @@ import type {
     ExportTriggerConfig,
     CacheConfig,
     ExportOptions,
-} from '../../../types/wizard';
+} from '../../../types/Wizard';
 import type { FilterCondition } from '../../../types';
 import type { HttpMethod } from '../../../../shared/types';
 import type {
     HttpAuthType as WizardHttpAuthType,
-} from '../../../constants/wizard-options';
+} from '../../../constants/WizardOptions';
 
 export interface ExportWizardProps {
     onComplete: (config: ExportConfiguration) => void;

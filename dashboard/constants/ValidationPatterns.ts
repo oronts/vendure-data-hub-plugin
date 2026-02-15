@@ -13,7 +13,7 @@ import {
 
 import {
     ERROR_MESSAGES as SHARED_ERROR_MESSAGES,
-} from '../../shared/types/validation.types';
+} from '../../shared/types';
 
 export const EMAIL_REGEX = EMAIL_PATTERN;
 

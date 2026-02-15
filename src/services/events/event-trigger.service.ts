@@ -108,6 +108,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
             }),
             cacheRefreshIntervalMs,
         );
+        this.refreshTimerHandle.unref();
         this.logger.debug('Cache refresh timer started', { cacheRefreshIntervalMs });
 
         try {

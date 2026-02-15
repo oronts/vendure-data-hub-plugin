@@ -425,6 +425,7 @@ const PaletteSectionHeader = React.memo(function PaletteSectionHeader({
         <button
             className="w-full flex items-center justify-between px-2 py-1.5 text-sm font-medium hover:bg-muted rounded"
             onClick={handleClick}
+            aria-expanded={isExpanded}
         >
             <span className="flex items-center gap-2">
                 <Icon className="w-4 h-4 text-muted-foreground" />

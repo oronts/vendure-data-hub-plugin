@@ -27,6 +27,7 @@ import { JsonObject } from '../../../types/index';
 import { AckMode } from '../../../constants/enums';
 import { HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, HTTP_STATUS } from '../../../constants/index';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 export class RabbitMQAdapter implements QueueAdapter {
     readonly code = 'rabbitmq';
@@ -108,7 +109,7 @@ export class RabbitMQAdapter implements QueueAdapter {
                 results.push({
                     success: false,
                     messageId: msg.id,
-                    error: error instanceof Error ? error.message : 'Unknown error',
+                    error: getErrorMessage(error),
                 });
             }
         }
@@ -190,7 +191,7 @@ export class RabbitMQAdapter implements QueueAdapter {
                 };
             });
         } catch (error) {
-            throw new Error(`Failed to consume from RabbitMQ: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            throw new Error(`Failed to consume from RabbitMQ: ${getErrorMessage(error)}`);
         }
     }
 

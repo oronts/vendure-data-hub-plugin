@@ -12,6 +12,10 @@ import {
 } from './types';
 import { PipelineDefinition } from '../src/types';
 import { ExtractorAdapter, LoaderAdapter } from '../src/sdk/types';
+import { getErrorMessage } from '../src/utils/error.utils';
+
+/** Maximum number of registered connectors to prevent unbounded memory growth */
+const MAX_CONNECTORS = 1000;
 
 /**
  * Registry for managing DataHub connectors
@@ -28,6 +32,18 @@ export class ConnectorRegistry {
         connector: ConnectorDefinition<TConfig>,
         config: TConfig,
     ): ConnectorRegistrationResult {
+        // Enforce size limit to prevent unbounded memory growth
+        if (!this.connectors.has(connector.code) && this.connectors.size >= MAX_CONNECTORS) {
+            return {
+                success: false,
+                connectorCode: connector.code,
+                pipelineCount: 0,
+                extractorCount: 0,
+                loaderCount: 0,
+                errors: [`Connector registry is full (max ${MAX_CONNECTORS}). Unregister a connector first.`],
+            };
+        }
+
         const errors: string[] = [];
 
         // Merge with default config
@@ -56,7 +72,7 @@ export class ConnectorRegistry {
         try {
             pipelines = connector.createPipelines(mergedConfig);
         } catch (err) {
-            errors.push(`Failed to create pipelines: ${err instanceof Error ? err.message : String(err)}`);
+            errors.push(`Failed to create pipelines: ${getErrorMessage(err)}`);
             return {
                 success: false,
                 connectorCode: connector.code,

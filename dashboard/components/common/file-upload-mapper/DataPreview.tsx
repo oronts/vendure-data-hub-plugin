@@ -10,9 +10,9 @@ import {
     TableHeader,
     TableRow,
 } from '@vendure/dashboard';
-import { formatCellValue } from '../../../utils/formatters';
+import { formatCellValue } from '../../../utils/Formatters';
 import { COMPONENT_HEIGHTS, COMPONENT_WIDTHS } from '../../../constants';
-import type { DataPreviewProps } from './types';
+import type { DataPreviewProps } from './Types';
 
 function DataPreviewComponent({ data, columns, maxRows = 10 }: DataPreviewProps) {
     const previewData = data.slice(0, maxRows);

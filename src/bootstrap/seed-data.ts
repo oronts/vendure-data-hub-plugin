@@ -15,7 +15,7 @@ import { DataHubConnection } from '../entities/config/connection.entity';
 import { SecretProvider, ConnectionType } from '../constants/enums';
 import { getErrorMessage, DataHubLogger } from '../services/logger';
 import { sleep } from '../utils/retry.utils';
-import type { JsonObject, JsonValue } from '../../shared/types/json.types';
+import type { JsonObject, JsonValue } from '../../shared/types';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';

@@ -7,6 +7,7 @@
 import { AuthType, HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES, TRUNCATION } from '../../constants/index';
 import { HTTPDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Deliver content to HTTP endpoint
@@ -84,7 +85,7 @@ export async function deliverToHTTP(
             },
         };
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'HTTP delivery failed';
+        const errorMessage = getErrorMessage(error);
         return {
             success: false,
             destinationId: config.id,

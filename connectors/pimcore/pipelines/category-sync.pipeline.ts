@@ -74,7 +74,7 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
             { op: 'coalesce', args: { fields: [mapping?.category?.slugField ?? 'slug', 'key'], target: '_slugSource' } },
             { op: 'slugify', args: { source: '_slugSource', target: '_slug' } },
             { op: 'template', args: { template: 'pimcore:category:${id}', target: 'externalId' } },
-            { op: 'when', args: { conditions: [{ field: `${mapping?.category?.parentField ?? 'parent'}.id`, cmp: 'exists', value: true }], action: 'set' } },
+            { op: 'ifThenElse', args: { condition: { field: `${mapping?.category?.parentField ?? 'parent'}.id`, operator: 'ne', value: null }, thenValue: true, elseValue: false, target: '_hasParent' } },
             { op: 'template', args: { template: 'pimcore:category:${parent.id}', target: 'parentExternalId', skipIfEmpty: true } },
             { op: 'coalesce', args: { fields: [mapping?.category?.positionField ?? 'position', 'index'], target: '_position' } },
             { op: 'toNumber', args: { source: '_position' } },
@@ -94,8 +94,7 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
                     },
                 },
             },
-            { op: 'when', args: { conditions: [{ field: 'isPrivate', cmp: 'eq', value: true }], action: 'set', setValue: { isPrivate: false } } },
-            { op: 'when', args: { conditions: [{ field: 'isPrivate', cmp: 'neq', value: false }], action: 'set', setValue: { isPrivate: true } } },
+            { op: 'ifThenElse', args: { condition: { field: 'isPrivate', operator: 'eq', value: true }, thenValue: false, elseValue: true, target: 'isPrivate' } },
         ],
     });
 

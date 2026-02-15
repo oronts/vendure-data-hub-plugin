@@ -4,6 +4,7 @@ import { PipelineLog } from '../../entities/pipeline';
 import { LogLevel, SortOrder } from '../../constants/enums';
 import { Between, ILike, In, LessThan, MoreThan, Repository } from 'typeorm';
 import { PAGINATION } from '../../constants/index';
+import { escapeLikePattern } from '../../utils/sql-security.utils';
 import type { JsonObject } from '../../types/index';
 
 export interface LogEntry {
@@ -117,7 +118,7 @@ export class PipelineLogService {
             where.stepKey = options.stepKey;
         }
         if (options.search) {
-            const escapedSearch = options.search.replace(/[%_\\]/g, '\\$&');
+            const escapedSearch = escapeLikePattern(options.search);
             where.message = ILike(`%${escapedSearch}%`);
         }
         if (options.startDate && options.endDate) {

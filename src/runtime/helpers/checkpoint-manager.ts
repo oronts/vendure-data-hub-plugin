@@ -2,6 +2,7 @@ import { RequestContext, ID } from '@vendure/core';
 import { CheckpointService } from '../../services/data/checkpoint.service';
 import { DataHubLogger } from '../../services/logger';
 import { CheckpointData } from '../executor-types';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Manages checkpoint data lifecycle: loading, saving, and clearing
@@ -50,7 +51,7 @@ export class CheckpointManager {
             } catch (err) {
                 this.logger.debug('Failed to load checkpoint', {
                     pipelineId: String(pipelineId),
-                    error: err instanceof Error ? err.message : String(err),
+                    error: getErrorMessage(err),
                 });
                 this.cpData = {};
             }
@@ -71,7 +72,7 @@ export class CheckpointManager {
         } catch (err) {
             this.logger.debug('Failed to clear checkpoint', {
                 pipelineId: String(pipelineId),
-                error: err instanceof Error ? err.message : String(err),
+                error: getErrorMessage(err),
             });
         }
     }
@@ -86,7 +87,7 @@ export class CheckpointManager {
             } catch (err) {
                 this.logger.warn('Failed to save checkpoint', {
                     pipelineId: String(pipelineId),
-                    error: err instanceof Error ? err.message : String(err),
+                    error: getErrorMessage(err),
                 });
             }
         }

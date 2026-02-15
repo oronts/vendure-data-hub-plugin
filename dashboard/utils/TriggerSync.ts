@@ -13,7 +13,7 @@ const TRIGGER_STEP_TYPE = 'TRIGGER' as StepType;
 /**
  * Get all trigger steps from pipeline definition
  */
-export function getTriggerSteps(definition: PipelineDefinition): PipelineStepDefinition[] {
+function getTriggerSteps(definition: PipelineDefinition): PipelineStepDefinition[] {
     return (definition.steps ?? []).filter(step => step.type === TRIGGER_STEP_TYPE);
 }
 
@@ -28,7 +28,7 @@ function getTriggerStep(definition: PipelineDefinition): PipelineStepDefinition 
 /**
  * Convert trigger step to PipelineTrigger (for TriggersPanel)
  */
-export function stepToTrigger(step: PipelineStepDefinition): PipelineTrigger {
+function stepToTrigger(step: PipelineStepDefinition): PipelineTrigger {
     return {
         ...(step.config as PipelineTrigger),
         stepKey: step.key,
@@ -38,7 +38,7 @@ export function stepToTrigger(step: PipelineStepDefinition): PipelineTrigger {
 /**
  * Convert trigger steps to PipelineTrigger array
  */
-export function stepsToTriggers(steps: PipelineStepDefinition[]): PipelineTrigger[] {
+function stepsToTriggers(steps: PipelineStepDefinition[]): PipelineTrigger[] {
     return steps
         .filter(step => step.type === TRIGGER_STEP_TYPE)
         .map(stepToTrigger);
@@ -47,7 +47,7 @@ export function stepsToTriggers(steps: PipelineStepDefinition[]): PipelineTrigge
 /**
  * Convert a trigger config to a step
  */
-export function triggerToStep(
+function triggerToStep(
     trigger: PipelineTrigger,
     existingKey?: string
 ): PipelineStepDefinition {
@@ -63,7 +63,7 @@ export function triggerToStep(
 /**
  * Convert triggers from TriggersPanel back to steps
  */
-export function triggersToSteps(
+function triggersToSteps(
     triggers: PipelineTrigger[],
     existingSteps: PipelineStepDefinition[]
 ): PipelineStepDefinition[] {

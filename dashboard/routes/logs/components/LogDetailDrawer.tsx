@@ -12,7 +12,7 @@ import {
 import { Link } from '@tanstack/react-router';
 import { LogLevelBadge } from './LogLevelBadge';
 import { ROUTES } from '../../../constants';
-import { formatDateTime } from '../../../utils/formatters';
+import { formatDateTime } from '../../../utils/Formatters';
 import type { DataHubLog } from '../../../types';
 
 interface LogDetailDrawerProps {

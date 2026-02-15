@@ -13,13 +13,13 @@ import {
     SelectValue,
     Switch,
 } from '@vendure/dashboard';
-import { EXPORT_WIZARD_TRIGGERS, TRIGGER_TYPES } from '../../../constants/triggers';
-import { UI_DEFAULTS } from '../../../constants/editor';
-import { COMPRESSION_OPTIONS, COMPRESSION_TYPE } from '../../../constants/wizard-options';
+import { EXPORT_WIZARD_TRIGGERS, TRIGGER_TYPES } from '../../../constants/Triggers';
+import { UI_DEFAULTS } from '../../../constants/Editor';
+import { COMPRESSION_OPTIONS, COMPRESSION_TYPE } from '../../../constants/WizardOptions';
 import { WizardStepContainer } from '../shared';
 import { TriggerSelector, ScheduleConfig } from '../../shared/wizard-trigger';
-import { STEP_CONTENT } from './constants';
-import type { ExportConfiguration, ExportTriggerType, CompressionType } from './types';
+import { STEP_CONTENT } from './Constants';
+import type { ExportConfiguration, ExportTriggerType, CompressionType } from './Types';
 
 interface TriggerStepProps {
     config: Partial<ExportConfiguration>;

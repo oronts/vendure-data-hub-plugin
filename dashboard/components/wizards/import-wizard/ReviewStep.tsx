@@ -15,8 +15,8 @@ import {
 import { VENDURE_ENTITY_LIST } from '../../../../shared/vendure-schemas';
 import { WizardStepContainer } from '../shared';
 import { ConfigurationNameCard, SummaryCard, SummaryCardGrid } from '../../shared/wizard';
-import { STEP_CONTENT, PLACEHOLDERS } from './constants';
-import type { ImportConfiguration } from './types';
+import { STEP_CONTENT, PLACEHOLDERS } from './Constants';
+import type { ImportConfiguration } from './Types';
 
 interface ReviewStepProps {
     config: Partial<ImportConfiguration>;

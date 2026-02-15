@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
 import { EventBus } from '@vendure/core';
 import { Subject, Observable } from 'rxjs';
 import { share } from 'rxjs/operators';
@@ -27,13 +27,17 @@ export interface BufferedEvent {
 }
 
 @Injectable()
-export class DomainEventsService {
+export class DomainEventsService implements OnModuleDestroy {
     private buffer: BufferedEvent[] = [];
     private readonly max = DOMAIN_EVENTS.MAX_EVENTS;
     private eventSubject = new Subject<DataHubEvent>();
     readonly events$: Observable<DataHubEvent> = this.eventSubject.asObservable().pipe(share());
 
     constructor(@Optional() private eventBus?: EventBus) {}
+
+    onModuleDestroy(): void {
+        this.eventSubject.complete();
+    }
 
     publish<T extends DomainEventPayload = DomainEventPayload>(name: string, payload?: T): void {
         try {

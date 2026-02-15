@@ -140,7 +140,7 @@ export class CollectionHandler implements LoaderHandler {
         } catch (err) {
             // Channel resolution failed - fall back to original context
             // This is expected when the channel token is invalid
-            Logger.debug(`Failed to resolve channel context: ${err instanceof Error ? err.message : String(err)}`, 'CollectionHandler');
+            Logger.debug(`Failed to resolve channel context: ${getErrorMessage(err)}`, 'CollectionHandler');
             return ctx;
         }
     }

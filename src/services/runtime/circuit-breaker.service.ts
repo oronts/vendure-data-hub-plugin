@@ -22,6 +22,7 @@ export class CircuitBreakerService implements OnModuleDestroy {
     constructor(private readonly runtimeConfig: RuntimeConfigService) {
         this.config = this.runtimeConfig.getCircuitBreakerConfig();
         this.cleanupInterval = setInterval(() => this.cleanupIdleCircuits(), CIRCUIT_BREAKER.CLEANUP_INTERVAL_MS);
+        this.cleanupInterval.unref();
     }
 
     onModuleDestroy(): void {

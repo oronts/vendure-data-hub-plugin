@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { ArchiveDataHubPipelineApiDocument } from '../../gql/graphql';
-import { createMutationErrorHandler } from './mutation-helpers';
+import { createMutationErrorHandler } from './MutationHelpers';
 import type {
     DataHubPipelineListOptions,
 } from '../../types';
@@ -184,15 +184,6 @@ export function usePipelines(options?: DataHubPipelineListOptions) {
         queryKey: pipelineKeys.list(options),
         queryFn: () =>
             api.query(pipelinesListDocument, { options }).then((res) => res.dataHubPipelines),
-    });
-}
-
-export function usePipeline(id: string | undefined) {
-    return useQuery({
-        queryKey: pipelineKeys.detail(id ?? ''),
-        queryFn: () =>
-            api.query(pipelineDetailDocument, { id: id! }).then((res) => res.dataHubPipeline),
-        enabled: !!id,
     });
 }
 

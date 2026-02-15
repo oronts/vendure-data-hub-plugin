@@ -7,7 +7,7 @@
  */
 
 import { JsonValue } from '../../types/index';
-import type { SchemaFieldType } from '../../../shared/types/adapter.types';
+import type { SchemaFieldType } from '../../../shared/types';
 
 // Re-export SchemaFieldType from shared types (canonical source)
 export type { SchemaFieldType };

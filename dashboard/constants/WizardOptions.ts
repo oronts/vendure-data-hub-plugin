@@ -191,8 +191,11 @@ export type ExportFormatType = typeof EXPORT_FORMAT_TYPES[number]['id'];
 export type ExistingRecordsStrategy = typeof EXISTING_RECORDS_STRATEGIES[number]['value'];
 export type NewRecordsStrategy = typeof NEW_RECORDS_STRATEGIES[number]['value'];
 export type ExportDestinationType = typeof EXPORT_DESTINATION_TYPES[number]['value'];
-export type CsvDelimiter = typeof CSV_DELIMITERS[number]['value'];
-export type FileEncoding = typeof FILE_ENCODINGS[number]['value'];
+/**
+ * CsvDelimiter and FileEncoding are canonical in shared/types.
+ * Re-exported here for backward-compatible imports from WizardOptions.
+ */
+export type { CsvDelimiter, FileEncoding } from '../../shared/types';
 /**
  * Canonical HttpMethod type from shared - supports all HTTP methods.
  * The HTTP_METHODS array above is intentionally narrower (POST/PUT only)

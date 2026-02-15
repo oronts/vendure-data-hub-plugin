@@ -12,6 +12,7 @@ import {
     BOOLEAN_TRUE_VALUES,
     BOOLEAN_FALSE_VALUES,
 } from '../constants';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const CSV_DEFAULTS: Required<Omit<CsvParseOptions, 'preview' | 'headers' | 'lineEnding'>> = {
     delimiter: PARSER_CSV_DEFAULTS.DELIMITER as CsvDelimiter,
@@ -246,7 +247,7 @@ export function parseCsvManual(
         } catch (error) {
             errors.push({
                 row: i + 1,
-                message: error instanceof Error ? error.message : 'Parse error',
+                message: getErrorMessage(error),
             });
         }
     }

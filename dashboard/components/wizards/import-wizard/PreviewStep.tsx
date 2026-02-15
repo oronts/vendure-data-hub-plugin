@@ -5,9 +5,9 @@ import {
 } from '@vendure/dashboard';
 import { FileText } from 'lucide-react';
 import { LoadingState, EmptyState } from '../../shared/feedback';
-import type { ParsedData } from '../../../types/wizard';
+import type { ParsedData } from '../../../types/Wizard';
 import { UI_LIMITS, COMPONENT_HEIGHTS } from '../../../constants';
-import { STEP_CONTENT } from './constants';
+import { STEP_CONTENT } from './Constants';
 
 interface PreviewStepProps {
     parsedData: ParsedData | null;

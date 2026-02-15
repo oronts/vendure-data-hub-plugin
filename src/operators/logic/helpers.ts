@@ -14,7 +14,7 @@ export function evaluateCondition(
     condition: OperatorCondition,
 ): boolean {
     const fieldValue = getNestedValue(record, condition.field);
-    const operator = condition.operator ?? 'eq';
+    const operator = condition.cmp ?? condition.operator ?? 'eq';
     return compare(fieldValue ?? null, operator, condition.value ?? null);
 }
 

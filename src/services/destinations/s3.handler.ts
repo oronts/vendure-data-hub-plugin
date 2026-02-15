@@ -7,6 +7,7 @@
 import * as crypto from 'crypto';
 import { S3DestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 import { assertUrlSafe } from '../../utils/url-security.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Deliver content to S3 or S3-compatible storage
@@ -102,7 +103,7 @@ export async function deliverToS3(
             metadata: { bucket: config.bucket, key },
         };
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'S3 upload failed';
+        const errorMessage = getErrorMessage(error);
         return {
             success: false,
             destinationId: config.id,

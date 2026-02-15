@@ -474,7 +474,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                 records: [],
                 totalAvailable: 0,
                 metadata: {
-                    error: error instanceof Error ? error.message : 'Preview failed',
+                    error: getErrorMessage(error),
                 },
             };
         }

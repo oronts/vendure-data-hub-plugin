@@ -11,6 +11,7 @@ import {
 } from '../../types/index';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { FileFormat } from '../../constants/enums';
+import { getErrorMessage } from '../../utils/error.utils';
 
 import {
     FtpProtocol,
@@ -476,7 +477,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                 records: [],
                 totalAvailable: 0,
                 metadata: {
-                    error: error instanceof Error ? error.message : 'Preview failed',
+                    error: getErrorMessage(error),
                     protocol: config.protocol,
                     host: config.host,
                     remotePath: config.remotePath,

@@ -97,6 +97,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             }),
             this.schedulerConfig.refreshIntervalMs,
         );
+        refreshHandle.unref();
         this.timers.push({
             code: '__refresh__',
             handle: refreshHandle,
@@ -320,6 +321,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             },
             effectiveIntervalMs,
         );
+        handle.unref();
 
         this.timers.push({
             code: pipeline.code,
@@ -391,6 +393,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             },
             this.schedulerConfig.checkIntervalMs,
         );
+        handle.unref();
 
         this.timers.push({
             code: pipeline.code,
@@ -494,7 +497,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                 } catch (lockError) {
                     this.logger.warn('Failed to release scheduler lock', {
                         lockKey,
-                        error: lockError instanceof Error ? lockError.message : String(lockError),
+                        error: getErrorMessage(lockError),
                     });
                 }
             }

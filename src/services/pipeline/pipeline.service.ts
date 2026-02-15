@@ -21,6 +21,8 @@ import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { PipelineQueueRequestEvent } from '../events/pipeline-events';
+import { getErrorMessage } from '../../utils/error.utils';
+import { escapeLikePattern } from '../../utils/sql-security.utils';
 
 export interface CreatePipelineInput {
     code: string;
@@ -77,7 +79,7 @@ export class PipelineService {
     async findDependents(ctx: RequestContext, code: string): Promise<Pipeline[]> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         // Pre-filter at SQL level: the definition JSON column must contain the code string
-        const escapedCode = code.replace(/[%_\\]/g, '\\$&');
+        const escapedCode = escapeLikePattern(code);
         const candidates = await repo
             .createQueryBuilder('pipeline')
             .where('pipeline.definition::text LIKE :pattern', { pattern: `%${escapedCode}%` })
@@ -118,7 +120,7 @@ export class PipelineService {
             saved = await this.connection.getRepository(ctx, Pipeline).save(entity);
         } catch (error: unknown) {
             // Handle unique constraint violation from concurrent inserts (TOCTOU race)
-            const msg = error instanceof Error ? error.message : String(error);
+            const msg = getErrorMessage(error);
             if (
                 msg.includes('UNIQUE') || msg.includes('unique') ||
                 msg.includes('duplicate') || msg.includes('Duplicate') ||
@@ -171,7 +173,7 @@ export class PipelineService {
             await repo.remove(entity);
             return { result: DeletionResult.DELETED };
         } catch (e) {
-            return { result: DeletionResult.NOT_DELETED, message: e instanceof Error ? e.message : String(e) };
+            return { result: DeletionResult.NOT_DELETED, message: getErrorMessage(e) };
         }
     }
 
@@ -213,7 +215,7 @@ export class PipelineService {
         } catch (e) {
             this.logger.warn('Failed to save pipeline revision', {
                 pipelineCode: pipeline.code,
-                error: e instanceof Error ? e.message : String(e),
+                error: getErrorMessage(e),
             });
         }
         return assertFound(this.findOne(ctx, pipeline.id));

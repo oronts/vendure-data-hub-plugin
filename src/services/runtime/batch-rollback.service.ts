@@ -38,6 +38,7 @@ export class BatchRollbackService implements OnModuleDestroy {
             () => this.cleanupStaleTransactions(),
             BATCH_ROLLBACK.CLEANUP_INTERVAL_MS,
         );
+        this.cleanupInterval.unref();
     }
 
     onModuleDestroy(): void {

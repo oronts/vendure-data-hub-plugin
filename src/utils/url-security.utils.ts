@@ -3,6 +3,7 @@
 import { URL } from 'url';
 import * as dns from 'dns/promises';
 import * as net from 'net';
+import { getErrorMessage } from './error.utils';
 
 export interface UrlSecurityConfig {
     disableSsrfProtection?: boolean;
@@ -264,7 +265,7 @@ export async function validateUrlSafety(
         // or simply an invalid hostname
         return {
             safe: false,
-            reason: `Failed to resolve hostname '${hostname}': ${error instanceof Error ? error.message : 'Unknown error'}`,
+            reason: `Failed to resolve hostname '${hostname}': ${getErrorMessage(error)}`,
         };
     }
 

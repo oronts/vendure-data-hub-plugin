@@ -18,7 +18,9 @@ import {
     ConsumeResult,
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
-import { AckMode } from '../../../constants/enums';
+import { AckMode, INTERNAL_TIMINGS } from '../../../constants';
+import { getErrorMessage } from '../../../utils/error.utils';
+import { isBlockedHostname } from '../../../utils/url-security.utils';
 
 /**
  * Redis-specific connection configuration
@@ -130,12 +132,17 @@ async function getClient(config: RedisConnectionConfig): Promise<RedisClient> {
         return cached.client;
     }
 
+    const host = config.host ?? 'localhost';
+    if (isBlockedHostname(host)) {
+        throw new Error(`SSRF protection: hostname '${host}' is blocked for security reasons`);
+    }
+
     const redis = await loadRedisModule();
     if (!redis) throw new Error('Redis module not loaded');
 
     const Redis = redis.default;
     const client = new Redis({
-        host: config.host ?? 'localhost',
+        host,
         port: config.port ?? 6379,
         password: config.password,
         db: config.db ?? 0,
@@ -230,7 +237,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
                 results.push({
                     success: false,
                     messageId: msg.id,
-                    error: error instanceof Error ? error.message : 'Unknown error',
+                    error: getErrorMessage(error),
                 });
             }
         }
@@ -290,6 +297,22 @@ export class RedisStreamsAdapter implements QueueAdapter {
             if (options.ackMode === AckMode.AUTO) {
                 await client.xack(streamKey, groupName, streamId);
             } else {
+                // Evict oldest pending entry if at capacity
+                const maxPending = INTERNAL_TIMINGS.MAX_PENDING_MESSAGES ?? 10_000;
+                if (pendingEntries.size >= maxPending) {
+                    let oldestKey: string | null = null;
+                    let oldestTime = Infinity;
+                    for (const [key, entry] of pendingEntries.entries()) {
+                        if (entry.createdAt < oldestTime) {
+                            oldestTime = entry.createdAt;
+                            oldestKey = key;
+                        }
+                    }
+                    if (oldestKey) {
+                        pendingEntries.delete(oldestKey);
+                    }
+                }
+
                 // Store for manual acknowledgment
                 pendingEntries.set(deliveryTag, {
                     streamKey,

@@ -7,6 +7,10 @@ import {
 } from '../../../hooks';
 import { STEP_TYPES } from '../../../constants';
 
+function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Result from running a step test
  */
@@ -251,7 +255,7 @@ export async function runStepTest(
                 return getUnknownStepResult(effectiveType);
         }
     } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = getErrorMessage(err);
         return {
             status: 'error',
             message: message.includes('GraphQL')

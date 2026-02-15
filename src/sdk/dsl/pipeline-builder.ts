@@ -253,6 +253,11 @@ export function createPipeline(): PipelineBuilder {
             return this;
         },
         build(): PipelineDefinition {
+            // Validate name is set
+            if (!state.name || state.name.trim().length === 0) {
+                throw new Error('Pipeline name is required. Call .name() before .build()');
+            }
+
             // Validate minimum requirements
             if (state.steps.length === 0) {
                 throw new Error('Pipeline must have at least one step');

@@ -8,6 +8,7 @@
 import { Injectable } from '@nestjs/common';
 import { StepType } from '../../constants/index';
 import { PipelineDefinition, PipelineStepDefinition, PipelineEdge, PipelineCapabilities, PipelineContext } from '../../types/index';
+import { getErrorMessage } from '../../utils/error.utils';
 
 // VISUAL FORMAT TYPES
 
@@ -384,7 +385,7 @@ export class PipelineFormatService {
                 issues.push(`Edge count mismatch: ${origEdges.length} vs ${convEdges.length}`);
             }
         } catch (e) {
-            issues.push(`Round-trip conversion failed: ${e instanceof Error ? e.message : String(e)}`);
+            issues.push(`Round-trip conversion failed: ${getErrorMessage(e)}`);
         }
 
         return {

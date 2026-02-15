@@ -38,6 +38,7 @@ export class RateLimitService implements OnModuleDestroy {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.RATE_LIMIT);
 
         this.cleanupInterval = setInterval(() => this.cleanup(), INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
+        this.cleanupInterval.unref();
     }
 
     onModuleDestroy(): void {

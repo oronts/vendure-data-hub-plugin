@@ -9,7 +9,7 @@ import {
     Check,
     LayoutTemplate,
 } from 'lucide-react';
-import type { WizardStep } from '../../../types/wizard';
+import type { WizardStep } from '../../../types/Wizard';
 
 export const IMPORT_STEP_ID = {
     TEMPLATE: 'template',

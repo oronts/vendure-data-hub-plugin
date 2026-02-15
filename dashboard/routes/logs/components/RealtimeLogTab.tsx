@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useRecentLogs } from '../../../hooks';
 import { ErrorState } from '../../../components/shared';
-import { formatSmartDateTime } from '../../../utils/formatters';
+import { formatSmartDateTime } from '../../../utils/Formatters';
 import { LogLevelBadge } from './LogLevelBadge';
 import { UI_LIMITS, SCROLL_HEIGHTS } from '../../../constants';
 

@@ -12,6 +12,7 @@ import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/inde
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { DataHubLogger } from '../../../services/logger';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 /**
  * Configuration for a step extracted from step.config
@@ -80,7 +81,7 @@ export abstract class BaseLoaderHandler implements LoaderHandler {
                     }
                 }
             } catch (e: unknown) {
-                const errorMessage = e instanceof Error ? e.message : String(e);
+                const errorMessage = getErrorMessage(e);
                 if (onRecordError) {
                     await onRecordError(step.key, errorMessage, rec);
                 }

@@ -1,4 +1,5 @@
-export * from './field-constants';
+export { TRIGGER_TYPES } from './field-constants';
+export type { TriggerTypeValue } from './field-constants';
 
 export type { JsonValue, JsonObject } from './json.types';
 

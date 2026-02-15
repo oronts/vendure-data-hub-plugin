@@ -17,6 +17,8 @@ import {
     DESTINATION_TYPE,
 } from './destination.types';
 import { DataHubLogger } from '../logger';
+import { isBlockedHostname } from '../../utils/url-security.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.FTP_HANDLER);
 
@@ -34,6 +36,10 @@ export async function deliverToSFTP(
     const sftp = new SftpClient();
 
     try {
+        if (isBlockedHostname(config.host)) {
+            throw new Error(`SSRF protection: hostname '${config.host}' is blocked`);
+        }
+
         await sftp.connect({
             host: config.host,
             port,
@@ -65,7 +71,7 @@ export async function deliverToSFTP(
             location: `sftp://${config.host}:${port}${remotePath}`,
         };
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'SFTP delivery failed';
+        const errorMessage = getErrorMessage(error);
         logger.error(`SFTP: Failed to deliver ${filename}`, undefined, { error: errorMessage });
 
         return {
@@ -98,6 +104,10 @@ export async function deliverToFTP(
     client.ftp.verbose = false;
 
     try {
+        if (isBlockedHostname(config.host)) {
+            throw new Error(`SSRF protection: hostname '${config.host}' is blocked`);
+        }
+
         await client.access({
             host: config.host,
             port,
@@ -128,7 +138,7 @@ export async function deliverToFTP(
             location: `ftp://${config.host}:${port}${remotePath}`,
         };
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'FTP delivery failed';
+        const errorMessage = getErrorMessage(error);
         logger.error(`FTP: Failed to deliver ${filename}`, undefined, { error: errorMessage });
 
         return {

@@ -10,6 +10,7 @@ import { RecordErrorService } from '../data/record-error.service';
 import { DataHubLogger, DataHubLoggerFactory, ExecutionLogger, SpanContext } from '../logger';
 import { LOGGER_CONTEXTS, DISTRIBUTED_LOCK, calculateThroughput } from '../../constants/index';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /** Context for pipeline execution passed between helper methods */
 interface ExecutionContext {
@@ -299,7 +300,7 @@ export class PipelineRunnerService {
             } catch (lockError) {
                 runLogger.warn('Failed to release distributed lock', {
                     lockKey,
-                    error: lockError instanceof Error ? lockError.message : String(lockError),
+                    error: getErrorMessage(lockError),
                 });
             }
         }

@@ -21,6 +21,7 @@ import { JsonObject } from '../../../types/index';
 import { AckMode, INTERNAL_TIMINGS, LOGGER_CONTEXTS, CONTENT_TYPES } from '../../../constants';
 import { DataHubLogger } from '../../../services/logger';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.RABBITMQ_ADAPTER);
 
@@ -242,7 +243,7 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
                 results.push({
                     success: false,
                     messageId: msg.id,
-                    error: error instanceof Error ? error.message : 'Unknown error',
+                    error: getErrorMessage(error),
                 });
             }
         }

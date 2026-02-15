@@ -7,6 +7,7 @@ import {
 import { LOGGER_CONTEXTS, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK_QUEUE, WEBHOOK } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 import {
     WebhookDeliveryStatus,
@@ -279,7 +280,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                 this.handleFailure(delivery, config, `HTTP ${response.status}`);
             }
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            const errorMessage = getErrorMessage(error);
             delivery.error = errorMessage;
             this.handleFailure(delivery, config, errorMessage);
         }

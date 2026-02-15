@@ -126,7 +126,7 @@ export function createTestFailure(
 ): { success: false; message: string; latencyMs: number } {
     return {
         success: false,
-        message: error instanceof Error ? error.message : 'Connection failed',
+        message: getErrorMessage(error),
         latencyMs: Date.now() - context.startTime,
     };
 }

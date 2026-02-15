@@ -32,6 +32,8 @@ export interface OperatorCondition {
     field: string;
     /** Comparison operator (defaults to 'eq' if not specified) */
     operator?: ComparisonOperator;
+    /** Alias for operator (for compatibility with pipeline DSL and schema examples) */
+    cmp?: ComparisonOperator;
     /** Value to compare against */
     value?: JsonValue;
     /** Whether string comparisons should be case-insensitive */

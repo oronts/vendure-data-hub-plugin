@@ -1,10 +1,10 @@
-import { isEmpty, isEmail as checkIsEmail, isURL as checkIsURL } from './field-validators';
-import { RETENTION } from '../constants/defaults';
-import { EMAIL_REGEX } from '../constants/validation-patterns';
-import { SOURCE_TYPE, DESTINATION_TYPE } from '../constants/wizard-options';
+import { isEmpty, isEmail as checkIsEmail, isURL as checkIsURL } from './FieldValidators';
+import { RETENTION } from '../constants/Defaults';
+import { EMAIL_REGEX } from '../constants/ValidationPatterns';
+import { SOURCE_TYPE, DESTINATION_TYPE } from '../constants/WizardOptions';
 import { TRIGGER_TYPES, QUEUE_TYPES } from '../constants';
-import { SECRET_PROVIDER } from '../constants/ui-types';
-import { CONNECTION_TYPE } from '../constants/connection-types';
+import { SECRET_PROVIDER } from '../constants/UiTypes';
+import { CONNECTION_TYPE } from '../constants/ConnectionTypes';
 import { CODE_PATTERN } from '../../shared/utils/validation';
 
 export { CODE_PATTERN };
@@ -21,10 +21,10 @@ interface FormValidationResult {
     errorsByField: Record<string, string>;
 }
 export const IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-export const EMAIL_PATTERN = EMAIL_REGEX;
+const EMAIL_PATTERN = EMAIL_REGEX;
 export const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
 export const CRON_PATTERN = /^(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)\s+(\*|[0-9,\-\/]+)$/;
-export const HOSTNAME_PATTERN = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/;
+const HOSTNAME_PATTERN = /^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$/;
 export const PORT_PATTERN = /^([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$/;
 
 export const ERROR_MESSAGES = {
@@ -46,7 +46,7 @@ export const ERROR_MESSAGES = {
     invalidSelection: 'Please select a valid option',
 };
 
-export function createValidationResult(errors: FieldValidationError[]): FormValidationResult {
+function createValidationResult(errors: FieldValidationError[]): FormValidationResult {
     const errorsByField: Record<string, string> = {};
     for (const error of errors) {
         errorsByField[error.field] = error.message;
@@ -58,7 +58,7 @@ export function createValidationResult(errors: FieldValidationError[]): FormVali
     };
 }
 
-export function validateRequired(value: unknown, fieldName: string): FieldValidationError | null {
+function validateRequired(value: unknown, fieldName: string): FieldValidationError | null {
     if (isEmpty(value)) {
         return {
             field: fieldName,
@@ -69,7 +69,7 @@ export function validateRequired(value: unknown, fieldName: string): FieldValida
     return null;
 }
 
-export function validateCode(value: string, fieldName: string = 'Code'): FieldValidationError | null {
+function validateCode(value: string, fieldName: string = 'Code'): FieldValidationError | null {
     if (isEmpty(value)) return null;
 
     if (!CODE_PATTERN.test(value)) {
@@ -108,7 +108,7 @@ export function validateUrl(value: string, fieldName: string = 'URL'): FieldVali
     return null;
 }
 
-export function validateCron(value: string, fieldName: string = 'Cron expression'): FieldValidationError | null {
+function validateCron(value: string, fieldName: string = 'Cron expression'): FieldValidationError | null {
     if (isEmpty(value)) return null;
 
     const parts = value.trim().split(/\s+/);
@@ -203,7 +203,7 @@ export function validatePort(value: string | number, fieldName: string = 'Port')
     return null;
 }
 
-export function validateNumber(
+function validateNumber(
     value: unknown,
     fieldName: string = 'Value',
     options?: { min?: number; max?: number }

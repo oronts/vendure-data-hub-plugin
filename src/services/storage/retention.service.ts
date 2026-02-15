@@ -6,6 +6,7 @@ import { PipelineRun } from '../../entities/pipeline';
 import { DataHubRecordError } from '../../entities/data';
 import { DataHubSettingsService } from '../config/settings.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @Injectable()
 export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
@@ -31,12 +32,13 @@ export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
         this.handle = setInterval(() => this.purge().catch(err => {
             this.logger.error('Scheduled retention purge failed', err instanceof Error ? err : new Error(String(err)));
         }), SCHEDULER.RETENTION_PURGE_INTERVAL_MS);
+        this.handle.unref();
 
         // Also run once at startup
         this.logger.debug('Running initial retention purge on startup');
         await this.purge().catch(err => {
             this.logger.warn('Initial retention purge failed', {
-                error: err instanceof Error ? err.message : String(err),
+                error: getErrorMessage(err),
             });
         });
     }

@@ -31,7 +31,7 @@ export {
     COMPRESSION_TYPE,
     XML_DEFAULTS,
     DEFAULT_ENCODING,
-} from './constants';
+} from './Constants';
 
 export type {
     ImportSourceType,
@@ -51,7 +51,7 @@ export type {
     TransformTypeId,
     CleanupStrategy,
     CompressionType,
-} from './constants';
+} from './Constants';
 
 export type {
     WizardStep,
@@ -79,4 +79,4 @@ export type {
     ExportTriggerConfig,
     CacheConfig,
     ExportOptions,
-} from './types';
+} from './Types';

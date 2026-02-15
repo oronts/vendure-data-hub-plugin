@@ -7,7 +7,6 @@ export type {
 export { useAdapterCatalog } from './useAdapterCatalog';
 export type {
     AdapterMetadata,
-    AdapterCatalog,
 } from './useAdapterCatalog';
 
 export * from './api';

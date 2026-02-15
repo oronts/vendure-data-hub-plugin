@@ -9,6 +9,7 @@ import { LOGGER_CONTEXTS, FILE_STORAGE, SCHEDULER } from '../../constants/index'
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { StorageBackend } from './storage-backend.interface';
 import { createStorageBackendFromEnv } from './storage-backend.factory';
+import { getErrorMessage } from '../../utils/error.utils';
 
 export interface StoredFile {
     id: string;
@@ -150,7 +151,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
             });
             return {
                 success: false,
-                error: error instanceof Error ? error.message : 'Unknown error',
+                error: getErrorMessage(error),
             };
         }
     }
@@ -324,7 +325,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
             this.logger.warn(
                 'Failed to rebuild file index from storage backend',
                 {
-                    error: error instanceof Error ? error.message : String(error),
+                    error: getErrorMessage(error),
                 },
             );
         }
@@ -350,6 +351,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
         this.cleanupHandle = setInterval(() => {
             this.cleanupExpiredFiles();
         }, SCHEDULER.FILE_CLEANUP_INTERVAL_MS);
+        this.cleanupHandle.unref();
     }
 
     private async cleanupExpiredFiles() {

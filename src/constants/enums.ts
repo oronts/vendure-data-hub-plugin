@@ -863,7 +863,7 @@ export enum EventKind {
 /**
  * Validation error codes - re-exported from shared types
  */
-export { VALIDATION_ERROR_CODE, type ValidationErrorCode } from '../../shared/types/validation.types';
+export { VALIDATION_ERROR_CODE, type ValidationErrorCode } from '../../shared/types';
 
 /**
  * Math operations for numeric transforms
