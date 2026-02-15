@@ -733,7 +733,7 @@ const externalSyncPipeline = createPipeline()
 | **Numeric** | | |
 | `currency` | Format as currency string | `{ op: 'currency', args: { source: 'price', currency: 'EUR', target: 'formattedPrice' } }` |
 | `formatNumber` | Format number with locale rules | `{ op: 'formatNumber', args: { source: 'weight', decimals: 2, target: 'formattedWeight' } }` |
-| `math` | Arithmetic operations | `{ op: 'math', args: { source: 'price', operator: '*', operand: 100, target: 'priceInCents' } }` |
+| `math` | Arithmetic operations | `{ op: 'math', args: { source: 'price', operation: 'multiply', operand: 100, target: 'priceInCents' } }` |
 | `parseNumber` | Parse localized number string | `{ op: 'parseNumber', args: { source: 'priceStr', locale: 'de-DE', target: 'price' } }` |
 | `round` | Round a number | `{ op: 'round', args: { source: 'price', decimals: 2 } }` |
 | `toCents` | Convert decimal price to cents | `{ op: 'toCents', args: { source: 'price', target: 'priceInCents' } }` |
@@ -774,5 +774,4 @@ const externalSyncPipeline = createPipeline()
 
 ## Support
 
-- GitHub Issues: [oronts/data-hub-plugin](https://github.com/oronts/data-hub-plugin/issues)
-- Documentation: [oronts.com/data-hub/connectors/pimcore](https://oronts.com/data-hub/connectors/pimcore)
+For bug reports and feature requests, please open an issue in the project repository.

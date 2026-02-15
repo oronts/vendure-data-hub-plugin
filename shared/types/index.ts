@@ -1,6 +1,11 @@
 export { TRIGGER_TYPES } from './field-constants';
 export type { TriggerTypeValue } from './field-constants';
 
+export type {
+    TemplateCategory,
+    TemplateDifficulty,
+} from './template.types';
+
 export type { JsonValue, JsonObject } from './json.types';
 
 export type {

@@ -103,13 +103,6 @@ export function isRetryableError(error: unknown): boolean {
     return retryablePatterns.some(pattern => pattern.test(message));
 }
 
-export function isRetryableStatus(status: number): boolean {
-    if (status === 429) return true;
-    if (status >= 500 && status !== 501) return true;
-    if (status === 408) return true;
-    return false;
-}
-
 export function createRetryConfig(
     partial?: Partial<RetryConfig>,
     defaults: ResolvedRetryConfig = DEFAULT_RETRY_CONFIG,

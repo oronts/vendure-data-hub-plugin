@@ -20,9 +20,8 @@ import {
 } from 'lucide-react';
 import { Badge, Button } from '@vendure/dashboard';
 import { toast } from 'sonner';
-import { TOAST_TEMPLATE } from '../../constants/ToastMessages';
-
-type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';
+import { TOAST_TEMPLATE } from '../../constants';
+import type { TemplateDifficulty } from '../../../shared/types';
 
 interface ImportTemplate {
     id: string;

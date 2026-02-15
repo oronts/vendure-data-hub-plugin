@@ -11,8 +11,7 @@ import {
     Button,
 } from '@vendure/dashboard';
 import { Plus, Trash2 } from 'lucide-react';
-import { VALIDATION_MODES, ERROR_HANDLING_MODES } from '../../../constants/StepConfigs';
-import { PLACEHOLDERS } from '../../../constants/Placeholders';
+import { VALIDATION_MODES, ERROR_HANDLING_MODES, PLACEHOLDERS } from '../../../constants';
 
 interface ValidationRule {
     id?: string;

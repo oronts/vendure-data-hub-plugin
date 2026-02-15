@@ -1,15 +1,17 @@
 /**
  * Validation Patterns
  *
- * Centralized regex patterns for validation across the data-hub plugin.
- * This is the SINGLE SOURCE OF TRUTH for all validation patterns.
- *
- * Import patterns from here instead of defining them inline.
+ * Backend-specific regex patterns plus re-exports of shared patterns.
+ * Shared patterns (EMAIL, URL, PIPELINE_CODE) are canonical in shared/utils/validation.ts.
+ * Backend-only patterns (SECRET_CODE, IDENTIFIER, UUID, SKU, etc.) live here.
  */
 
 import {
     EMAIL_PATTERN as SHARED_EMAIL_PATTERN,
+    URL_PATTERN as SHARED_URL_PATTERN,
+    PIPELINE_CODE_PATTERN as SHARED_PIPELINE_CODE_PATTERN,
     isValidEmail as sharedIsValidEmail,
+    isValidPipelineCode as sharedIsValidPipelineCode,
 } from '../../shared';
 
 // ============================================================================
@@ -24,8 +26,9 @@ export const EMAIL_PATTERN = SHARED_EMAIL_PATTERN;
 
 /**
  * Pipeline code pattern (lowercase alphanumeric with dashes).
+ * Re-exported from shared/utils/validation.ts (canonical source).
  */
-export const PIPELINE_CODE_PATTERN = /^[a-z0-9-]+$/;
+export const PIPELINE_CODE_PATTERN = SHARED_PIPELINE_CODE_PATTERN;
 
 /**
  * Secret code pattern (alphanumeric with dashes and underscores).
@@ -53,8 +56,9 @@ export const ALPHANUMERIC_PATTERN = /^[A-Za-z0-9]+$/;
 
 /**
  * URL pattern (HTTP/HTTPS).
+ * Re-exported from shared/utils/validation.ts (canonical source).
  */
-export const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
+export const URL_PATTERN = SHARED_URL_PATTERN;
 
 // ============================================================================
 // Date and Time Patterns
@@ -227,9 +231,8 @@ export const isValidEmail = sharedIsValidEmail;
 
 /**
  * Validate pipeline code format.
+ * Re-exported from shared/utils/validation.ts (canonical source with empty check).
  */
-export function isValidPipelineCode(code: string): boolean {
-    return PIPELINE_CODE_PATTERN.test(code);
-}
+export const isValidPipelineCode = sharedIsValidPipelineCode;
 
 

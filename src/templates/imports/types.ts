@@ -6,25 +6,10 @@
  */
 
 import { UnifiedPipelineDefinition } from '../../types/index';
-import type { JsonObject } from '../../../shared/types';
+import type { JsonObject, TemplateCategory, TemplateDifficulty } from '../../../shared/types';
 
 export type { UnifiedPipelineDefinition } from '../../types/index';
-
-/**
- * Template category types
- */
-export type TemplateCategory =
-    | 'products'
-    | 'customers'
-    | 'inventory'
-    | 'orders'
-    | 'promotions'
-    | 'catalog';
-
-/**
- * Difficulty levels for templates
- */
-export type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';
+export type { TemplateCategory, TemplateDifficulty } from '../../../shared/types';
 
 /**
  * Supported file formats for templates

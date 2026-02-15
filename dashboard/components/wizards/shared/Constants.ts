@@ -36,7 +36,12 @@ export {
     COMPRESSION_TYPE,
     XML_DEFAULTS,
     DEFAULT_ENCODING,
-} from '../../../constants/WizardOptions';
+    CRON_PRESETS,
+    IMPORT_WIZARD_TRIGGERS,
+    EXPORT_WIZARD_TRIGGERS,
+    TRIGGER_ICONS,
+    TIMEZONES,
+} from '../../../constants';
 
 export type {
     ImportSourceType,
@@ -51,20 +56,9 @@ export type {
     ExportDestinationType,
     CleanupStrategy,
     CompressionType,
-} from '../../../constants/WizardOptions';
-
-export {
-    CRON_PRESETS,
-    IMPORT_WIZARD_TRIGGERS,
-    EXPORT_WIZARD_TRIGGERS,
-    TRIGGER_ICONS,
-    TIMEZONES,
-} from '../../../constants/Triggers';
-
-export type {
     CronPreset,
     WizardTriggerOption,
-} from '../../../constants/Triggers';
+} from '../../../constants';
 
 /**
  * Icon mappings for source types

@@ -1,5 +1,5 @@
 import type { TransformationType } from '../../shared/types';
-import type { FileType } from './ui-types';
+import type { FileType } from './UiTypes';
 
 export interface WizardStep {
     id: string;

@@ -12,13 +12,14 @@ export function applyIfElse(value: JsonValue, config: TransformConfig, record?: 
     return value;
 }
 
-function isEmpty(value: JsonValue): boolean {
+/** Lightweight nil-or-empty-string check for coalesce logic (intentionally narrower than shared isEmpty). */
+function isNilOrEmptyString(value: JsonValue): boolean {
     return value === null || value === undefined || value === '';
 }
 
 export function applyCoalesce(value: JsonValue, config: TransformConfig, record?: JsonObject): JsonValue {
     // Return current value if not empty
-    if (!isEmpty(value)) {
+    if (!isNilOrEmptyString(value)) {
         return value;
     }
 
@@ -26,7 +27,7 @@ export function applyCoalesce(value: JsonValue, config: TransformConfig, record?
     if (config.fields != null && record != null) {
         for (const field of config.fields) {
             const fieldValue = getNestedValue(record, field) ?? null;
-            if (!isEmpty(fieldValue)) {
+            if (!isNilOrEmptyString(fieldValue)) {
                 return fieldValue;
             }
         }
@@ -36,7 +37,7 @@ export function applyCoalesce(value: JsonValue, config: TransformConfig, record?
 }
 
 export function applyDefault(value: JsonValue, config: TransformConfig): JsonValue {
-    if (isEmpty(value)) {
+    if (isNilOrEmptyString(value)) {
         return config.defaultValue ?? null;
     }
     return value;

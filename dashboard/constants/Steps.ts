@@ -1,5 +1,5 @@
 import type { StepType } from '../../shared/types';
-import { STEP_TYPE_CANONICAL_COLORS } from './step-mappings';
+import { STEP_TYPE_CANONICAL_COLORS } from './StepMappings';
 
 export const STEP_TYPES = {
     TRIGGER: 'TRIGGER',

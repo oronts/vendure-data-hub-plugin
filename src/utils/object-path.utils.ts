@@ -121,24 +121,3 @@ export function deepClone<T extends JsonValue>(value: T): T {
     return result as T;
 }
 
-function getAllPaths(obj: JsonObject, prefix: string = '', maxDepth: number = 32): string[] {
-    if (maxDepth <= 0) {
-        return prefix ? [prefix] : [];
-    }
-
-    const paths: string[] = [];
-
-    for (const key of Object.keys(obj)) {
-        if (DANGEROUS_KEYS.has(key)) continue;
-        const currentPath = prefix ? `${prefix}.${key}` : key;
-        const value = obj[key];
-
-        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-            paths.push(...getAllPaths(value as JsonObject, currentPath, maxDepth - 1));
-        } else {
-            paths.push(currentPath);
-        }
-    }
-
-    return paths;
-}

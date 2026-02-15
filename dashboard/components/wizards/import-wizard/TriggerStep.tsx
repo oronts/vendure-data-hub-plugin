@@ -1,5 +1,5 @@
 import type { ImportConfiguration } from './Types';
-import { IMPORT_WIZARD_TRIGGERS, TRIGGER_TYPES } from '../../../constants/Triggers';
+import { IMPORT_WIZARD_TRIGGERS, TRIGGER_TYPES } from '../../../constants';
 import { WizardStepContainer } from '../shared';
 import { TriggerSelector, ScheduleConfig, WebhookConfig } from '../../shared/wizard-trigger';
 import { STEP_CONTENT } from './Constants';

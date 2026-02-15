@@ -37,19 +37,6 @@ export function buildUrlWithConnection(
     return url;
 }
 
-export async function buildUrlWithConnectionCode(
-    url: string,
-    connectionCode: string | undefined,
-    connectionResolver: ConnectionResolver,
-): Promise<string> {
-    if (!connectionCode) {
-        return url;
-    }
-
-    const connection = await connectionResolver(connectionCode);
-    return buildUrlWithConnection(url, connection);
-}
-
 export function isValidGraphQLUrl(url: string, hasConnection: boolean): boolean {
     if (!url) {
         return hasConnection; // Empty URL is ok if we have a connection

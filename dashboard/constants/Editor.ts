@@ -1,4 +1,4 @@
-import { PORTS, HTTP, BATCH, UI_TIMEOUTS, TIME_UNITS } from './defaults';
+import { PORTS, HTTP, BATCH, UI_TIMEOUTS, TIME_UNITS } from './Defaults';
 
 export const NODE_LAYOUT = {
     INITIAL_X: 120,

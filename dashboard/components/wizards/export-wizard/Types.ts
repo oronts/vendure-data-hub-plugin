@@ -11,7 +11,7 @@ import type { FilterCondition } from '../../../types';
 import type { HttpMethod } from '../../../../shared/types';
 import type {
     HttpAuthType as WizardHttpAuthType,
-} from '../../../constants/WizardOptions';
+} from '../../../constants';
 
 export interface ExportWizardProps {
     onComplete: (config: ExportConfiguration) => void;

@@ -18,7 +18,7 @@ import type {
     PipelineNode,
     PipelineNodeData,
     VisualPipelineDefinition,
-} from './pipeline';
+} from './Pipeline';
 import type { FileType } from '../utils';
 
 export type {
@@ -28,7 +28,7 @@ export type {
     VisualPipelineDefinition,
     VisualNodeCategory,
     PipelineNodeType,
-} from './pipeline';
+} from './Pipeline';
 
 export type { FileType };
 
@@ -432,10 +432,5 @@ export interface TriggersPanelOnChangeProps {
 
 export type TriggersPanelProps = TriggersPanelExplicitProps | TriggersPanelOnChangeProps;
 
-// TEMPLATE TYPES (canonical dashboard source - mirrors src/templates/imports/types.ts)
-
-/** Template categories for grouping import templates */
-export type TemplateCategory = 'products' | 'customers' | 'inventory' | 'orders' | 'promotions' | 'catalog';
-
-/** Template difficulty levels */
-export type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';
+// TEMPLATE TYPES (canonical source: shared/types/template.types.ts)
+export type { TemplateCategory, TemplateDifficulty } from '../../shared/types';
