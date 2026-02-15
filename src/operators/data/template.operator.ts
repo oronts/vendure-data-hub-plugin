@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import { TemplateOperatorConfig } from './types';
 import { applyTemplate } from './helpers';
 
@@ -46,7 +46,7 @@ export function applyTemplateOperator(
 export function templateOperator(
     records: readonly JsonObject[],
     config: TemplateOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record => applyTemplateOperator(record, config));
     return { records: results };

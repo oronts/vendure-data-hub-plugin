@@ -174,7 +174,7 @@ export function parseCsv(
             records: [],
             fields: [],
             totalRows: 0,
-            errors: [{ message: err instanceof Error ? err.message : 'Failed to parse CSV' }],
+            errors: [{ message: getErrorMessage(err) }],
             warnings: [],
         };
     }

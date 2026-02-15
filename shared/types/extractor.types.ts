@@ -291,15 +291,6 @@ export interface ExtractorPreviewResult {
 
 // HELPER TYPES FOR SPECIFIC EXTRACTORS
 
-export interface HttpRequestOptions {
-    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-    url: string;
-    headers?: Record<string, string>;
-    body?: JsonObject | string;
-    timeout?: number;
-    responseType?: 'json' | 'text' | 'buffer';
-}
-
 export interface HttpResponse {
     status: number;
     statusText: string;

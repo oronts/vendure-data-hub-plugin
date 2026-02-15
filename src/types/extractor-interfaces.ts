@@ -38,7 +38,6 @@ export type {
     ExtractorCategory,
     ConnectionTestResult,
     ExtractorPreviewResult,
-    HttpRequestOptions,
     HttpResponse,
     FtpFileInfo,
     S3ObjectInfo,

@@ -21,6 +21,7 @@ import {
 import { JsonObject } from '../../../types/index';
 import { AckMode, INTERNAL_TIMINGS } from '../../../constants';
 import { getErrorMessage } from '../../../utils/error.utils';
+import { isBlockedHostname } from '../../../utils/url-security.utils';
 
 /**
  * SQS-specific connection configuration
@@ -95,6 +96,7 @@ type GetQueueUrlCommand = {
 /**
  * Cache for SQS clients
  */
+const MAX_CLIENTS = 100;
 const clientCache = new Map<string, { client: SQSClient; lastUsed: number }>();
 
 /**
@@ -185,10 +187,41 @@ async function getClient(config: SqsConnectionConfig): Promise<SQSClient> {
     }
 
     if (config.endpoint) {
+        // SSRF validation for custom SQS endpoint URLs
+        try {
+            const endpointUrl = new URL(config.endpoint);
+            if (isBlockedHostname(endpointUrl.hostname)) {
+                throw new Error(`SSRF protection: endpoint hostname '${endpointUrl.hostname}' is blocked for security reasons`);
+            }
+        } catch (e) {
+            if (e instanceof Error && e.message.startsWith('SSRF protection:')) {
+                throw e;
+            }
+            throw new Error(`Invalid SQS endpoint URL: ${config.endpoint}`);
+        }
         clientConfig.endpoint = config.endpoint;
     }
 
     const client = new sqs.SQSClient(clientConfig) as unknown as SQSClient;
+
+    // Evict oldest client if cache is at capacity
+    if (clientCache.size >= MAX_CLIENTS) {
+        let oldestKey: string | null = null;
+        let oldestTime = Infinity;
+        for (const [k, entry] of clientCache.entries()) {
+            if (entry.lastUsed < oldestTime) {
+                oldestTime = entry.lastUsed;
+                oldestKey = k;
+            }
+        }
+        if (oldestKey) {
+            const stale = clientCache.get(oldestKey);
+            if (stale) {
+                stale.client.destroy();
+            }
+            clientCache.delete(oldestKey);
+        }
+    }
 
     clientCache.set(key, {
         client,

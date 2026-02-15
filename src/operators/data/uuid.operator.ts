@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import { UuidOperatorConfig } from './types';
 import { applyUuid } from './helpers';
 
@@ -64,7 +64,7 @@ export function applyUuidOperator(
 export function uuidOperator(
     records: readonly JsonObject[],
     config: UuidOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.target) {
         return { records: [...records] };

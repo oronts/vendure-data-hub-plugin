@@ -15,6 +15,7 @@ import { getAdapterCode } from '../../types/step-configs';
 import { ConnectionType } from '../../sdk/types/connection-types';
 import { CircuitBreakerService } from '../../services/runtime';
 import { assertUrlSafe } from '../../utils/url-security.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Common sink configuration
@@ -258,7 +259,7 @@ export class SinkExecutor {
                 }
             } catch (e: unknown) {
                 fail += batch.length;
-                const message = e instanceof Error ? e.message : `${serviceName} indexing failed`;
+                const message = getErrorMessage(e);
                 this.circuitBreaker.recordFailure(circuitKey);
                 if (onRecordError) await onRecordError(stepKey, message, {});
             }

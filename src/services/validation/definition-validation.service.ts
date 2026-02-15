@@ -13,7 +13,8 @@ import { Pipeline } from '../../entities/pipeline';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { validatePipelineDefinition } from '../../validation/pipeline-definition.validator';
 import { PipelineDefinitionError, PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
-import { getErrorMessage, DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { getErrorMessage } from '../../utils/error.utils';
 
 // Import specialized validators
 import { validateTrigger } from './trigger-validation';

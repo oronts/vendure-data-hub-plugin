@@ -50,9 +50,9 @@ All loaders are configured using the `.load()` step in the pipeline DSL:
 
 | Resolution | Description |
 |------------|-------------|
-| `source-wins` | Source data overwrites Vendure data for conflicts |
-| `vendure-wins` | Vendure data is preserved for conflicts |
-| `merge` | Deep merge source and Vendure data |
+| `SOURCE_WINS` | Source data overwrites Vendure data for conflicts |
+| `VENDURE_WINS` | Vendure data is preserved for conflicts |
+| `MERGE` | Deep merge source and Vendure data |
 
 ---
 
@@ -82,10 +82,7 @@ Create or update products with slug-based lookup, facets, and assets.
     entityType: 'PRODUCT',
     operation: 'UPSERT',
     lookupFields: ['slug'],
-    options: {
-        skipDuplicates: false,
-        conflictResolution: 'source-wins',
-    },
+    conflictResolution: 'SOURCE_WINS',
 })
 ```
 

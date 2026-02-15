@@ -3,6 +3,7 @@
  */
 
 import { RouteConditionOperator } from '../constants/index';
+import type { ComparisonOperator as SharedComparisonOperator } from '../../shared/types';
 
 export {
     OperatorResult,
@@ -12,24 +13,23 @@ export {
     OperatorCondition,
     SingleRecordOperatorFn,
     BatchOperatorFn,
-    ComparisonOperator as SharedComparisonOperator,
 } from '../../shared/types';
 
 /**
- * Extended comparison operator including route conditions
+ * Extended comparison operator including route conditions.
+ * Superset of SharedComparisonOperator with negation/emptiness/between operators.
  *
  * Uses standardized operator names:
  * - 'ne' for not-equal (aligned with RouteConditionOperator)
  * - 'notIn' for not-in-array (aligned with RouteConditionOperator)
+ *
+ * @see shared/types/operator.types.ts — base ComparisonOperator (subset)
  */
 export type ComparisonOperator =
+    | SharedComparisonOperator
     | RouteConditionOperator
-    | 'eq' | 'ne' | 'gt' | 'lt' | 'gte' | 'lte'
-    | 'in' | 'notIn' | 'contains' | 'notContains'
-    | 'startsWith' | 'endsWith' | 'regex' | 'matches'
-    | 'exists' | 'notExists' | 'isNull' | 'isNotNull'
+    | 'notExists' | 'isNotNull'
     | 'isEmpty' | 'isNotEmpty' | 'between';
 
-export { RouteConditionOperator } from '../constants/index';
-export type { AdapterDefinition, AdapterOperatorHelpers as OperatorHelpers } from '../sdk/types';
+export type { AdapterDefinition, AdapterOperatorHelpers } from '../sdk/types';
 export type { JsonValue, JsonObject } from '../types';

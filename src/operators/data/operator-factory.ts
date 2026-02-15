@@ -5,7 +5,7 @@
  * This eliminates the duplicated wrapper pattern seen in set, copy, rename, map, and remove operators.
  */
 
-import { JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 
 /**
  * Creates a record operator that applies a transform function to each record.
@@ -15,7 +15,7 @@ import { JsonObject, OperatorHelpers, OperatorResult } from '../types';
  * export function someOperator(
  *     records: readonly JsonObject[],
  *     config: SomeConfig,
- *     _helpers: OperatorHelpers,
+ *     _helpers: AdapterOperatorHelpers,
  * ): OperatorResult {
  *     const results = records.map(record => applySomeOperator(record, config));
  *     return { records: results };
@@ -32,7 +32,7 @@ import { JsonObject, OperatorHelpers, OperatorResult } from '../types';
  */
 export function createRecordOperator<TConfig>(
     applyFn: (record: JsonObject, config: TConfig) => JsonObject,
-): (records: readonly JsonObject[], config: TConfig, helpers: OperatorHelpers) => OperatorResult {
+): (records: readonly JsonObject[], config: TConfig, helpers: AdapterOperatorHelpers) => OperatorResult {
     return (records, config, _helpers) => ({
         records: records.map(record => applyFn(record, config)),
     });
@@ -47,8 +47,8 @@ export function createRecordOperator<TConfig>(
  * @returns An operator function that applies the transform to all records
  */
 export function createRecordOperatorWithHelpers<TConfig>(
-    applyFn: (record: JsonObject, config: TConfig, helpers: OperatorHelpers) => JsonObject,
-): (records: readonly JsonObject[], config: TConfig, helpers: OperatorHelpers) => OperatorResult {
+    applyFn: (record: JsonObject, config: TConfig, helpers: AdapterOperatorHelpers) => JsonObject,
+): (records: readonly JsonObject[], config: TConfig, helpers: AdapterOperatorHelpers) => OperatorResult {
     return (records, config, helpers) => ({
         records: records.map(record => applyFn(record, config, helpers)),
     });

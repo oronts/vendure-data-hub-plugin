@@ -140,7 +140,6 @@ export type {
     ExporterAdapter,
     ExportContext,
     ExportTargetType,
-    ExportFormat,
     FeedAdapter,
     FeedContext,
     FeedFormat,

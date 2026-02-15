@@ -8,9 +8,9 @@ export { DataHubRegistryService } from './registry.service';
 export {
     LoadStrategy,
     ChannelStrategy,
-    LanguageStrategy,
-    ValidationStrictness,
-    ConflictStrategy,
+    LanguageStrategyValue,
+    ValidationModeValue,
+    ConflictStrategyValue,
     TriggerType,
 } from './types/index';
 

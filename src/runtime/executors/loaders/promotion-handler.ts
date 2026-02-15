@@ -19,7 +19,7 @@ import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../.
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { safeJson } from '../../utils';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../services/logger/error-utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 /**
  * Configuration interface for the promotion handler step

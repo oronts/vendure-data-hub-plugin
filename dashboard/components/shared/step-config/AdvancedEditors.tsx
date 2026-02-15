@@ -4,6 +4,7 @@ import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select,
 import { COMPARISON_OPERATORS, getOperatorPlaceholder, MOVE_DIRECTION, ERROR_MESSAGES } from '../../../constants';
 import type { MoveDirection } from '../../../constants';
 import { OperatorCard, OperatorConfig, StepOperatorDefinition } from './OperatorCard';
+import { getErrorMessage } from '../../../../shared';
 import { useStableKeys } from '../../../hooks';
 
 export type { OperatorConfig, StepOperatorDefinition } from './OperatorCard';
@@ -481,7 +482,7 @@ const RuleGroupCard = React.memo(function RuleGroupCard({ group: g, groupIndex: 
                                                     onUpdateRule(ri, { value: txt });
                                                 }
                                             };
-                                            const regexError = cmp === 'regex' ? (() => { try { new RegExp(String(c.value ?? '')); return ''; } catch (err: unknown) { return err instanceof Error ? err.message : 'Invalid regex'; } })() : '';
+                                            const regexError = cmp === 'regex' ? (() => { try { new RegExp(String(c.value ?? '')); return ''; } catch (err: unknown) { return getErrorMessage(err); } })() : '';
                                             const inError = cmp === 'in' ? (Array.isArray(c.value) ? '' : 'Enter a JSON array for "in"') : '';
                                             return (
                                                 <>

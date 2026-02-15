@@ -1,5 +1,5 @@
 import { FieldDiff, FieldChange, RecordSample } from '../sandbox.service';
-import { FieldDiffChangeType, FieldChangeType, RecordOutcome } from '../../../constants/enums';
+import { FieldDiffChangeType, RecordOutcome } from '../../../constants/enums';
 
 /**
  * Helper for computing field-level diffs between records
@@ -105,11 +105,11 @@ export class FieldDiffCalculator {
     /**
      * Map diff change type to field change type
      */
-    private mapDiffChangeType(changeType: FieldDiffChangeType): FieldChangeType {
+    private mapDiffChangeType(changeType: FieldDiffChangeType): FieldDiffChangeType {
         switch (changeType) {
-            case FieldDiffChangeType.ADDED: return FieldChangeType.ADDED;
-            case FieldDiffChangeType.REMOVED: return FieldChangeType.REMOVED;
-            default: return FieldChangeType.MODIFIED;
+            case FieldDiffChangeType.ADDED: return FieldDiffChangeType.ADDED;
+            case FieldDiffChangeType.REMOVED: return FieldDiffChangeType.REMOVED;
+            default: return FieldDiffChangeType.MODIFIED;
         }
     }
 

@@ -70,7 +70,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
     pipeline.transform('transform-products', {
         operators: [
             { op: 'template', args: { template: nameTemplate, target: '_name' } },
-            { op: 'coalesce', args: { fields: [mapping?.product?.skuField ?? 'sku', 'itemNumber', 'key'], target: '_sku' } },
+            { op: 'coalesce', args: { paths: [mapping?.product?.skuField ?? 'sku', 'itemNumber', 'key'], target: '_sku' } },
             { op: 'slugify', args: { source: mapping?.product?.slugField ?? '_name', target: '_slug' } },
             { op: 'template', args: { template: 'pimcore:product:${id}', target: 'externalId' } },
             { op: 'set', args: { path: 'enabled', value: true } },
@@ -134,12 +134,12 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
 
         pipeline.transform('transform-variants', {
             operators: [
-                { op: 'coalesce', args: { fields: ['sku', 'itemNumber', 'key'], target: 'variantSku' } },
+                { op: 'coalesce', args: { paths: ['sku', 'itemNumber', 'key'], target: 'variantSku' } },
                 { op: 'template', args: { template: '${_parent._sku || _sku}-${variantSku || id}', target: 'variantSku' } },
                 { op: 'template', args: { template: 'pimcore:variant:${id}', target: 'variantExternalId' } },
                 { op: 'toNumber', args: { source: 'price' } },
                 { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100', target: 'priceInCents' } },
-                { op: 'coalesce', args: { fields: ['name', 'key', 'variantSku'], target: 'variantName' } },
+                { op: 'coalesce', args: { paths: ['name', 'key', 'variantSku'], target: 'variantName' } },
             ],
         });
 

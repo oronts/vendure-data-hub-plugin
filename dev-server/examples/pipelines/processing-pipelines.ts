@@ -265,7 +265,7 @@ export const orderAnalytics = createPipeline()
     .transform('extract-metrics', {
         operators: [
             {
-                op: 'formatDate',
+                op: 'dateFormat',
                 args: {
                     source: 'orderPlacedAt',
                     target: 'orderDate',
@@ -273,7 +273,7 @@ export const orderAnalytics = createPipeline()
                 },
             },
             {
-                op: 'formatDate',
+                op: 'dateFormat',
                 args: {
                     source: 'orderPlacedAt',
                     target: 'orderMonth',
@@ -281,7 +281,7 @@ export const orderAnalytics = createPipeline()
                 },
             },
             {
-                op: 'formatDate',
+                op: 'dateFormat',
                 args: {
                     source: 'orderPlacedAt',
                     target: 'orderWeek',
@@ -469,7 +469,7 @@ export const customerSegmentation = createPipeline()
     .transform('calculate-base-metrics', {
         operators: [
             { op: 'first', args: { source: 'orders', target: 'lastOrder' } },
-            { op: 'formatDate', args: { source: 'lastOrder.orderPlacedAt', target: 'lastOrderDate', format: 'YYYY-MM-DD' } },
+            { op: 'dateFormat', args: { source: 'lastOrder.orderPlacedAt', target: 'lastOrderDate', format: 'YYYY-MM-DD' } },
             { op: 'now', args: { target: 'today', format: 'YYYY-MM-DD' } },
             { op: 'aggregate', args: { op: 'sum', source: 'orders.*.totalWithTax', target: 'totalSpentRaw' } },
         ],
@@ -604,7 +604,7 @@ export const customerSegmentation = createPipeline()
                 args: {
                     conditions: [
                         { field: 'isHighValue', cmp: 'eq', value: true },
-                        { field: 'segment', cmp: 'neq', value: 'champion' },
+                        { field: 'segment', cmp: 'ne', value: 'champion' },
                     ],
                     action: 'keep',
                 },

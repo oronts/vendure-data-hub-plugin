@@ -16,6 +16,8 @@ export * from './extractors';
 export * from './transforms';
 export * from './pipelines';
 
+const DEFAULT_CHANNEL = '__default_channel__';
+
 export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorConfig> = {
     code: 'pimcore',
     name: 'Pimcore PIM/DAM',
@@ -30,7 +32,7 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
 
     defaultConfig: {
         enabled: true,
-        vendureChannel: '__default_channel__',
+        vendureChannel: DEFAULT_CHANNEL,
         defaultLanguage: 'en',
         languages: ['en'],
         sync: {

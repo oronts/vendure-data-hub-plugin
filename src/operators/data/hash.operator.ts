@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import { HashOperatorConfig } from './types';
 import { applyHash } from './helpers';
 
@@ -71,7 +71,7 @@ export function applyHashOperator(
 export function hashOperator(
     records: readonly JsonObject[],
     config: HashOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target) {
         return { records: [...records] };

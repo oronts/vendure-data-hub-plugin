@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Loader2 } from 'lucide-react';
 import { Card, CardContent } from '@vendure/dashboard';
 import type { LoadingStateProps } from '../../../types';
-import { LOADING_STATE_TYPE } from '../../../constants/UiTypes';
+import { LOADING_STATE_TYPE } from '../../../constants/ui-types';
 import { SKELETON_WIDTHS, ICON_SIZES } from '../../../constants';
 
 // Deterministic skeleton width based on index

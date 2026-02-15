@@ -1,5 +1,6 @@
 import { ParseResult, ParseError, XlsxParseOptions } from '../types';
 import { extractFields } from '../helpers/field-extraction';
+import { getErrorMessage } from '../../utils/error.utils';
 
 export async function parseExcel(
     content: Buffer,
@@ -98,7 +99,7 @@ export async function parseExcel(
             records: [],
             fields: [],
             totalRows: 0,
-            errors: [{ message: err instanceof Error ? err.message : 'Failed to parse Excel file' }],
+            errors: [{ message: getErrorMessage(err) }],
             warnings: [],
         };
     }

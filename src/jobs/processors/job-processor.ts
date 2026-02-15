@@ -44,7 +44,7 @@ export function createFailureResult(
 ): JobResult {
     return {
         success: false,
-        error: error instanceof Error ? error.message : error,
+        error: getErrorMessage(error),
         durationMs,
         metadata,
     };

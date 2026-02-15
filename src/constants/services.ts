@@ -115,3 +115,4 @@ export const FEED_FORMATS: readonly FeedFormatInfo[] = [
 ] as const;
 
 export const FEED_FORMAT_MAP = new Map(FEED_FORMATS.map(f => [f.code, f]));
+

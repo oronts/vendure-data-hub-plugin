@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import {
     SplitOperatorConfig,
     JoinOperatorConfig,
@@ -142,7 +142,7 @@ export const REPLACE_OPERATOR_DEFINITION: AdapterDefinition = {
 export function splitOperator(
     records: readonly JsonObject[],
     config: SplitOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record =>
         applySplit(record, config.source, config.target, config.delimiter, config.trim),
@@ -153,7 +153,7 @@ export function splitOperator(
 export function joinOperator(
     records: readonly JsonObject[],
     config: JoinOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record =>
         applyJoin(record, config.source, config.target, config.delimiter),
@@ -164,7 +164,7 @@ export function joinOperator(
 export function trimOperator(
     records: readonly JsonObject[],
     config: TrimOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record =>
         applyTrim(record, config.path, config.mode),
@@ -175,7 +175,7 @@ export function trimOperator(
 export function lowercaseOperator(
     records: readonly JsonObject[],
     config: CaseOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record => applyLowercase(record, config.path));
     return { records: results };
@@ -184,7 +184,7 @@ export function lowercaseOperator(
 export function uppercaseOperator(
     records: readonly JsonObject[],
     config: CaseOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record => applyUppercase(record, config.path));
     return { records: results };
@@ -193,7 +193,7 @@ export function uppercaseOperator(
 export function slugifyOperator(
     records: readonly JsonObject[],
     config: SlugifyOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record =>
         applySlugify(record, config.source, config.target, config.separator),
@@ -204,7 +204,7 @@ export function slugifyOperator(
 export function concatOperator(
     records: readonly JsonObject[],
     config: ConcatOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record =>
         applyConcat(record, config.sources, config.target, config.separator),
@@ -215,7 +215,7 @@ export function concatOperator(
 export function replaceOperator(
     records: readonly JsonObject[],
     config: ReplaceOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record =>
         applyReplace(record, config.path, config.search, config.replacement, config.all),
@@ -257,7 +257,7 @@ export const REPLACE_REGEX_OPERATOR_DEFINITION: AdapterDefinition = {
 export function extractRegexOperator(
     records: readonly JsonObject[],
     config: ExtractRegexOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target || !config.pattern) {
         return { records: [...records] };
@@ -279,7 +279,7 @@ export function extractRegexOperator(
 export function replaceRegexOperator(
     records: readonly JsonObject[],
     config: ReplaceRegexOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.path || !config.pattern || config.replacement === undefined) {
         return { records: [...records] };
@@ -328,7 +328,7 @@ export const TRUNCATE_OPERATOR_DEFINITION: AdapterDefinition = {
 export function stripHtmlOperator(
     records: readonly JsonObject[],
     config: StripHtmlOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };
@@ -343,7 +343,7 @@ export function stripHtmlOperator(
 export function truncateOperator(
     records: readonly JsonObject[],
     config: TruncateOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || config.length === undefined) {
         return { records: [...records] };

@@ -1,5 +1,6 @@
 import { Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Textarea } from '@vendure/dashboard';
 import * as React from 'react';
+import { getErrorMessage } from '../../../shared';
 import { useValidatePipelineDefinition } from '../../hooks';
 import type { PipelineDefinition } from '../../types';
 
@@ -27,7 +28,7 @@ export function PipelineImportDialog({ onImport }: Readonly<Props>) {
                 setErrors(result?.errors ?? ['Invalid definition']);
             }
         } catch (e) {
-            setErrors([e instanceof Error ? e.message : 'Invalid JSON']);
+            setErrors([getErrorMessage(e)]);
         }
     }
 

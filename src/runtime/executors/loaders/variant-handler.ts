@@ -29,7 +29,7 @@ import {
     resolveTaxCategoryId,
     resolveStockLevels,
 } from './shared-lookups';
-import { getErrorMessage } from '../../../services/logger/error-utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 import { getStringValue, getNumberValue, getObjectValue } from '../../../loaders/shared-helpers';
 
 /**

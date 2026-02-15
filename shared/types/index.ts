@@ -28,20 +28,11 @@ export type {
     LogicalOperator,
     FilterAction,
     FilterCondition,
-    FilterGroup,
     FilterConfig,
 } from './filter.types';
-export { isFilterGroup, isFilterCondition } from './filter.types';
 
 export type {
-    ValidationSeverity,
     ValidationError,
-    RecordValidationResult,
-    BatchValidationResult,
-    ValidationRuleType,
-    ValidationRule,
-    InvalidRecordAction,
-    ValidationConfig,
     ValidationErrorCode,
 } from './validation.types';
 export {
@@ -57,7 +48,6 @@ export type {
     RecordError,
     PipelineStepError,
 } from './error.types';
-export { ERROR_CODES, isRetriableError } from './error.types';
 // NOTE: getErrorSeverity is intentionally NOT exported from shared/types.
 // Import from src/constants/error-codes instead (authoritative implementation).
 
@@ -98,21 +88,16 @@ export type {
     HookStageValue,
     HookActionType,
     LogLevel,
-    HookActionBase,
     WebhookHookAction,
-    EmitHookAction,
-    TriggerPipelineHookAction,
     LogHookAction,
     InterceptorHookAction,
     ScriptHookAction,
     HookAction,
-    HookConfigType,
     HookConfig,
     PipelineHooksConfig,
     PipelineHooks,
     HookContext,
     HookHandler,
-    InterceptorHandler,
     InterceptorResult,
     HookRegistration,
     ScriptFunction,
@@ -199,7 +184,6 @@ export type {
 } from './trigger.types';
 
 export type {
-    PipelineRunMetrics,
     PipelineMetrics,
     LoadError,
     ExportError,
@@ -210,7 +194,6 @@ export type {
     SinkResult,
     ValidationResult,
     InvalidRecord,
-    ValidationErrorRecord,
 } from './execution.types';
 
 export type {
@@ -222,12 +205,9 @@ export type {
     FileFormat,
     DestinationType,
     FeedType,
-    LateEventPolicyType,
-    LateEventPolicy,
     ErrorHandlingConfig,
     CheckpointStrategy,
     CheckpointingConfig,
-    ChannelStrategyValue,
     ValidationModeValue,
     RunModeValue,
     LanguageStrategyValue,
@@ -237,35 +217,11 @@ export type {
     PipelineCheckpoint,
     CheckpointData,
     ExecutorContext,
-    OperatorContextData,
-    LoaderContextData,
-    ExtractorContextData,
     PipelineOptions,
     ExportFormatConfig,
-    TargetConfig,
     CsvDelimiter,
-    CsvQuote,
-    CsvEscape,
     FileEncoding,
-    CsvFormatOptions,
-    JsonFormatOptions,
-    XmlFormatOptions,
-    XlsxFormatOptions,
-    FileFormatConfig,
-    WebhookAuthMode,
-    WebhookResponseMode,
     HttpMethod,
-    PaginationTypeValue,
-    FileUploadSourceConfig,
-    WebhookSourceConfig,
-    HttpApiSourceConfig,
-    FtpSourceConfig,
-    S3SourceConfig,
-    DatabaseSourceConfig,
-    VendureQuerySourceConfig,
-    EventSourceConfig,
-    SourceTypeConfig,
-    SourceConfig,
     UnifiedPipelineDefinition,
     PipelineDefinition,
 } from './pipeline.types';
@@ -324,7 +280,6 @@ export type {
     ExtractorCategory,
     ConnectionTestResult,
     ExtractorPreviewResult,
-    HttpRequestOptions,
     HttpResponse,
     FtpFileInfo,
     S3ObjectInfo,

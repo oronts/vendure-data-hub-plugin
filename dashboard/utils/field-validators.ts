@@ -1,9 +1,7 @@
 import {
     isEmpty as sharedIsEmpty,
-    isValidEmail,
     isValidUrl,
-} from '../../shared/utils/validation';
+} from '../../shared';
 
 export const isEmpty = sharedIsEmpty;
-export const isEmail = isValidEmail;
 export const isURL = isValidUrl;

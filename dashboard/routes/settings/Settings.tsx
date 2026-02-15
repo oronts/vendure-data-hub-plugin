@@ -25,6 +25,7 @@ import { Save, Clock, Info, FileText } from 'lucide-react';
 import { DATAHUB_NAV_SECTION, LOG_PERSISTENCE_LEVELS, ROUTES, DATAHUB_PERMISSIONS, RETENTION, TOAST_SETTINGS, ERROR_MESSAGES } from '../../constants';
 import { FieldError } from '../../components/common';
 import { LoadingState, ErrorState } from '../../components/shared';
+import { getErrorMessage } from '../../../shared';
 import { useSettings, useUpdateSettings } from '../../hooks';
 
 export const settingsPage: DashboardRouteDefinition = {
@@ -161,7 +162,7 @@ function SettingsPage() {
                 <PageBlock column="main" blockId="error">
                     <ErrorState
                         title="Failed to load settings"
-                        message={error instanceof Error ? error.message : 'An unexpected error occurred'}
+                        message={getErrorMessage(error)}
                         onRetry={() => refetch()}
                     />
                 </PageBlock>

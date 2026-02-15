@@ -1,4 +1,5 @@
 import { toast } from 'sonner';
+import { getErrorMessage } from '../../../shared';
 
 interface MutationErrorOptions {
     showDetails?: boolean;
@@ -6,7 +7,7 @@ interface MutationErrorOptions {
 
 export function createMutationErrorHandler(action: string, options?: MutationErrorOptions) {
     return (error: unknown) => {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        const message = getErrorMessage(error);
         if (options?.showDetails) {
             toast.error(`Failed to ${action}`, { description: message });
         } else {
@@ -28,6 +29,6 @@ export function createMutationSuccessHandler(message: string, options?: Mutation
 }
 
 export function handleMutationError(action: string, error: unknown): void {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = getErrorMessage(error);
     toast.error(`Failed to ${action}`, { description: message });
 }

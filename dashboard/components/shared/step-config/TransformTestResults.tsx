@@ -2,7 +2,7 @@ import * as React from 'react';
 import { memo } from 'react';
 import { RecordsTable } from './ExtractTestResults';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
-import type { TestResult } from './StepTestHandlers';
+import type { TestResult } from './step-test-handlers';
 
 interface TransformTestResultsProps {
     result: TestResult;

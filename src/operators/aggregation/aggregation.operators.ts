@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import {
     AggregateOperatorConfig,
     CountOperatorConfig,
@@ -127,7 +127,7 @@ export const EXPAND_OPERATOR_DEFINITION: AdapterDefinition = {
 export function aggregateOperator(
     records: readonly JsonObject[],
     config: AggregateOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.op || !config.target) {
         return { records: [...records] };
@@ -140,7 +140,7 @@ export function aggregateOperator(
 export function countOperator(
     records: readonly JsonObject[],
     config: CountOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target) {
         return { records: [...records] };
@@ -155,7 +155,7 @@ export function countOperator(
 export function uniqueOperator(
     records: readonly JsonObject[],
     config: UniqueOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };
@@ -170,7 +170,7 @@ export function uniqueOperator(
 export function flattenOperator(
     records: readonly JsonObject[],
     config: FlattenOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };
@@ -185,7 +185,7 @@ export function flattenOperator(
 export function firstOperator(
     records: readonly JsonObject[],
     config: FirstLastOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target) {
         return { records: [...records] };
@@ -200,7 +200,7 @@ export function firstOperator(
 export function lastOperator(
     records: readonly JsonObject[],
     config: FirstLastOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target) {
         return { records: [...records] };
@@ -215,7 +215,7 @@ export function lastOperator(
 export function expandOperator(
     records: readonly JsonObject[],
     config: ExpandOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.path) {
         return { records: [...records] };

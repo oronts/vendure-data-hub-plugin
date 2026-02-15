@@ -12,7 +12,7 @@
  */
 
 import { JsonObject, JsonValue, Throughput } from '../../types/index';
-import { LoadStrategy, ChannelStrategy, LanguageStrategy, ValidationStrictness, ConflictStrategy, TriggerType, FeedFormat, FeedType, SinkType } from '../types/index';
+import { LoadStrategy, ChannelStrategy, LanguageStrategyValue, ValidationModeValue, ConflictStrategyValue, TriggerType, FeedFormat, FeedType, SinkType } from '../types/index';
 import { RouteOperator } from '../constants';
 import { AuthType } from '../../constants/enums';
 
@@ -202,9 +202,9 @@ export interface LoadStepConfig {
     channel?: string;
     channelStrategy?: ChannelStrategy;
     channels?: string[];
-    languageStrategy?: LanguageStrategy;
-    validationMode?: ValidationStrictness;
-    conflictStrategy?: ConflictStrategy;
+    languageStrategy?: LanguageStrategyValue;
+    validationMode?: ValidationModeValue;
+    conflictStrategy?: ConflictStrategyValue;
     nameField?: string;
     slugField?: string;
     descriptionField?: string;
@@ -252,14 +252,13 @@ export interface LoadStepConfig {
 // EXPORT STEP CONFIG
 
 import { ExportFormatType } from '../../constants/enums';
-export type ExportFormat = ExportFormatType;
 type ExportTarget = 'file' | 'api' | 'webhook' | 's3' | 'sftp' | 'email';
 
 export interface ExportStepConfig {
     adapterCode: string;
     // Target settings
     target?: ExportTarget;
-    format?: ExportFormat;
+    format?: ExportFormatType;
     // File output
     path?: string;
     filename?: string;

@@ -1,6 +1,7 @@
 import { ParseResult, ParseError, JsonParseOptions } from '../types';
 import { CODE_SECURITY } from '../../constants';
 import { extractFields } from '../helpers/field-extraction';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const MAX_PATH_LENGTH = CODE_SECURITY.MAX_CONDITION_LENGTH;
 const MAX_PATH_DEPTH = 50;
@@ -210,7 +211,7 @@ export function parseJsonLines(content: string): ParseResult {
         } catch (err) {
             errors.push({
                 row: i + 1,
-                message: err instanceof Error ? err.message : 'Invalid JSON',
+                message: getErrorMessage(err),
             });
         }
     }

@@ -1,5 +1,5 @@
 import type { JsonValue, JsonObject } from '../../shared/types';
-import { FILE_FORMAT } from '../constants/WizardOptions';
+import { FILE_FORMAT } from '../constants/wizard-options';
 
 export type FileType = 'CSV' | 'JSON' | 'XLSX' | 'XML' | null;
 

@@ -109,7 +109,7 @@ All adapters follow a common structure:
 ```typescript
 interface BaseAdapter {
     // Required
-    type: AdapterType;    // 'extractor' | 'operator' | 'loader' | 'sink' | etc.
+    type: AdapterType;    // 'EXTRACTOR' | 'OPERATOR' | 'LOADER' | 'SINK' | etc.
     code: string;         // Unique identifier
     schema: StepConfigSchema;  // Configuration form
 
@@ -355,7 +355,7 @@ Validators check records against rules and separate valid from invalid records.
 
 ```typescript
 interface ValidatorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'validator';
+    readonly type: 'VALIDATOR';
 
     validate(
         context: ValidateContext,
@@ -369,7 +369,7 @@ interface ValidateContext {
     readonly pipelineId: ID;
     readonly stepKey: string;
     readonly pipelineContext: PipelineCtx;
-    readonly mode: 'fail-fast' | 'accumulate';  // Stop on first error or collect all
+    readonly mode: 'FAIL_FAST' | 'ACCUMULATE';  // Stop on first error or collect all
     readonly logger: AdapterLogger;
 }
 
@@ -416,7 +416,7 @@ const schemaValidatorSchema: StepConfigSchema = {
 };
 
 export const schemaValidator: ValidatorAdapter<SchemaValidatorConfig> = {
-    type: 'validator',
+    type: 'VALIDATOR',
     code: 'schema-validator',
     name: 'Schema Validator',
     description: 'Validate records against a schema definition',
@@ -519,7 +519,7 @@ Enrichers add data to records from external sources (APIs, databases, lookups).
 
 ```typescript
 interface EnricherAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'enricher';
+    readonly type: 'ENRICHER';
 
     enrich(
         context: EnrichContext,
@@ -578,7 +578,7 @@ const apiLookupSchema: StepConfigSchema = {
 };
 
 export const apiLookupEnricher: EnricherAdapter<ApiLookupConfig> = {
-    type: 'enricher',
+    type: 'ENRICHER',
     code: 'api-lookup',
     name: 'API Lookup Enricher',
     description: 'Enrich records with data from an external API',
@@ -684,7 +684,7 @@ interface DbLookupConfig {
 }
 
 export const dbLookupEnricher: EnricherAdapter<DbLookupConfig> = {
-    type: 'enricher',
+    type: 'ENRICHER',
     code: 'db-lookup',
     name: 'Database Lookup Enricher',
     description: 'Enrich records with data from a database table',
@@ -763,7 +763,7 @@ Exporters send data to external systems (files, APIs, cloud storage, data wareho
 
 ```typescript
 interface ExporterAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'exporter';
+    readonly type: 'EXPORTER';
     readonly targetType: ExportTargetType;
     readonly formats?: readonly ExportFormat[];
 
@@ -777,15 +777,15 @@ interface ExporterAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
 }
 
 type ExportTargetType =
-    | 'file'        // CSV, JSON, XML files
-    | 'feed'        // Google Merchant, Meta, etc.
-    | 'api'         // REST/GraphQL endpoints
-    | 'search'      // Elasticsearch, MeiliSearch
-    | 'warehouse'   // BigQuery, Snowflake, Redshift
-    | 'messaging'   // RabbitMQ, Kafka
-    | 'storage';    // S3, GCS, Azure Blob
+    | 'FILE'        // CSV, JSON, XML files
+    | 'FEED'        // Google Merchant, Meta, etc.
+    | 'API'         // REST/GraphQL endpoints
+    | 'SEARCH'      // Elasticsearch, MeiliSearch
+    | 'WAREHOUSE'   // BigQuery, Snowflake, Redshift
+    | 'MESSAGING'   // RabbitMQ, Kafka
+    | 'STORAGE';    // S3, GCS, Azure Blob
 
-type ExportFormat = 'csv' | 'json' | 'ndjson' | 'xml' | 'parquet' | 'avro';
+type ExportFormat = 'CSV' | 'JSON' | 'NDJSON' | 'XML' | 'PARQUET' | 'AVRO';
 
 interface ExportContext {
     readonly ctx: RequestContext;
@@ -830,7 +830,7 @@ interface S3ExportConfig {
     connectionCode: string;
     bucket: string;
     keyTemplate: string;
-    format: 'json' | 'ndjson' | 'csv';
+    format: 'JSON' | 'NDJSON' | 'CSV';
     compress?: boolean;
 }
 
@@ -851,13 +851,13 @@ const s3ExportSchema: StepConfigSchema = {
 };
 
 export const s3Exporter: ExporterAdapter<S3ExportConfig> = {
-    type: 'exporter',
+    type: 'EXPORTER',
     code: 's3-export',
     name: 'S3 File Export',
     description: 'Export records to S3 bucket',
     category: 'external',
-    targetType: 'storage',
-    formats: ['json', 'ndjson', 'csv'],
+    targetType: 'STORAGE',
+    formats: ['JSON', 'NDJSON', 'CSV'],
     schema: s3ExportSchema,
 
     async export(
@@ -983,12 +983,12 @@ interface ApiExportConfig {
 }
 
 export const apiExporter: ExporterAdapter<ApiExportConfig> = {
-    type: 'exporter',
+    type: 'EXPORTER',
     code: 'api-export',
     name: 'REST API Export',
     description: 'Export records to a REST API endpoint',
     category: 'external',
-    targetType: 'api',
+    targetType: 'API',
     schema: {
         fields: [
             { key: 'endpoint', type: 'string', label: 'API Endpoint', required: true },

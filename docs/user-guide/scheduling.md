@@ -6,12 +6,12 @@ Automate pipeline execution with schedules, webhooks, and event triggers.
 
 | Type | Description |
 |------|-------------|
-| Manual | Run via UI or API |
-| Schedule | Cron-based timing |
-| Webhook | HTTP endpoint trigger |
-| Event | Vendure event trigger |
-| File | File arrival trigger |
-| Message | Message queue trigger |
+| `MANUAL` | Run via UI or API |
+| `SCHEDULE` | Cron-based timing |
+| `WEBHOOK` | HTTP endpoint trigger |
+| `EVENT` | Vendure event trigger |
+| `FILE` | File arrival trigger |
+| `MESSAGE` | Message queue trigger |
 
 ## Manual Triggers
 
@@ -22,7 +22,7 @@ The default trigger type. Run pipelines on demand:
 - Use the CLI
 
 ```typescript
-.trigger('start', { type: 'manual' })
+.trigger('start', { type: 'MANUAL' })
 ```
 
 ## Schedule Triggers
@@ -33,7 +33,7 @@ Run pipelines automatically based on cron expressions.
 
 ```typescript
 .trigger('schedule', {
-    type: 'schedule',
+    type: 'SCHEDULE',
     cron: '0 2 * * *',      // Daily at 2 AM
     timezone: 'UTC',
 })
@@ -71,7 +71,7 @@ Specify the timezone for schedule interpretation:
 
 ```typescript
 .trigger('schedule', {
-    type: 'schedule',
+    type: 'SCHEDULE',
     cron: '0 9 * * *',      // 9 AM in specified timezone
     timezone: 'America/New_York',
 })
@@ -93,10 +93,11 @@ Trigger pipelines via HTTP POST requests.
 
 ```typescript
 .trigger('webhook', {
-    type: 'webhook',
-    path: '/product-sync',
-    signature: 'hmac-sha256',
-    idempotencyKey: 'X-Request-ID',
+    type: 'WEBHOOK',
+    webhookPath: '/product-sync',
+    authentication: 'HMAC',
+    requireIdempotencyKey: true,
+    idempotencyKeyHeader: 'X-Request-ID',
 })
 ```
 
@@ -130,9 +131,9 @@ For security, enable HMAC signature verification:
 2. Configure the webhook:
    ```typescript
    .trigger('webhook', {
-       type: 'webhook',
-       signature: 'hmac-sha256',
-       signatureSecretCode: 'webhook-secret',
+       type: 'WEBHOOK',
+       authentication: 'HMAC',
+       secretCode: 'webhook-secret',
    })
    ```
 3. Include the signature in requests:
@@ -146,8 +147,9 @@ Prevent duplicate processing with idempotency keys:
 
 ```typescript
 .trigger('webhook', {
-    type: 'webhook',
-    idempotencyKey: 'X-Request-ID',
+    type: 'WEBHOOK',
+    requireIdempotencyKey: true,
+    idempotencyKeyHeader: 'X-Request-ID',
 })
 ```
 
@@ -166,7 +168,7 @@ Trigger pipelines when Vendure events occur.
 
 ```typescript
 .trigger('on-order', {
-    type: 'event',
+    type: 'EVENT',
     event: 'OrderPlacedEvent',
     filter: {
         state: 'ArrangingPayment',
@@ -192,7 +194,7 @@ Only trigger on specific conditions:
 
 ```typescript
 .trigger('on-completed-order', {
-    type: 'event',
+    type: 'EVENT',
     event: 'OrderStateTransitionEvent',
     filter: {
         toState: 'Delivered',

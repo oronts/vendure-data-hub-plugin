@@ -23,7 +23,8 @@ import {
 import { AnyRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { AlertCircle, Key, Server } from 'lucide-react';
-import { CODE_PATTERN } from '../../utils/FormValidation';
+import { getErrorMessage } from '../../../shared';
+import { CODE_PATTERN } from '../../utils/form-validation';
 import { DATAHUB_PERMISSIONS, ROUTES, SECRET_PROVIDER, SELECT_WIDTHS, TOAST_SECRET, ERROR_MESSAGES } from '../../constants';
 import { FieldError } from '../../components/common';
 import {
@@ -98,7 +99,7 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
         },
         onError: err => {
             toast.error(TOAST_SECRET.SAVE_ERROR, {
-                description: err instanceof Error ? err.message : 'Unknown error',
+                description: getErrorMessage(err),
             });
         },
     });

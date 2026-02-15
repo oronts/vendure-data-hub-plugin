@@ -6,7 +6,7 @@ Create operators to add new transform operations.
 
 ```typescript
 interface SingleRecordOperator<TConfig = JsonObject> {
-    type: 'operator';
+    type: 'OPERATOR';
     code: string;
     name: string;
     description?: string;
@@ -58,7 +58,7 @@ const EXCHANGE_RATES: Record<string, Record<string, number>> = {
 };
 
 export const currencyConvertOperator: SingleRecordOperator<CurrencyConvertConfig> = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'currencyConvert',
     name: 'Currency Convert',
     description: 'Convert currency values using exchange rates',
@@ -183,7 +183,7 @@ interface HttpLookupConfig {
 }
 
 export const httpLookupOperator: SingleRecordOperator<HttpLookupConfig> = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'httpLookup',
     name: 'HTTP Lookup',
     category: 'enrichment',
@@ -253,7 +253,7 @@ interface SlugConfig {
 }
 
 export const slugGeneratorOperator: SingleRecordOperator<SlugConfig> = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'customSlug',
     name: 'Custom Slug Generator',
     category: 'string',
@@ -301,7 +301,7 @@ interface PriceFormatConfig {
 }
 
 export const priceFormatterOperator: SingleRecordOperator<PriceFormatConfig> = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'formatPrice',
     name: 'Format Price',
     category: 'numeric',
@@ -344,7 +344,7 @@ interface ArrayFilterConfig {
 }
 
 export const arrayFilterOperator: SingleRecordOperator<ArrayFilterConfig> = {
-    type: 'operator',
+    type: 'OPERATOR',
     code: 'arrayFilter',
     name: 'Array Filter',
     category: 'json',

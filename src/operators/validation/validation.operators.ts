@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import {
     ValidateRequiredOperatorConfig,
     ValidateFormatOperatorConfig,
@@ -42,7 +42,7 @@ export const VALIDATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
 export function validateRequiredOperator(
     records: readonly JsonObject[],
     config: ValidateRequiredOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.fields || !Array.isArray(config.fields)) {
         return { records: [...records] };
@@ -63,7 +63,7 @@ export function validateRequiredOperator(
 export function validateFormatOperator(
     records: readonly JsonObject[],
     config: ValidateFormatOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.field || !config.pattern) {
         return { records: [...records] };

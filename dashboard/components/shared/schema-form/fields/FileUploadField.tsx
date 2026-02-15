@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Button } from '@vendure/dashboard';
 import { Upload, CheckCircle2, X, RefreshCw } from 'lucide-react';
 import type { AdapterSchemaField } from '../../../../types';
+import { getErrorMessage } from '../../../../../shared';
 import { DATAHUB_API_UPLOAD } from '../../../../constants';
 import { formatFileSize } from '../../../../utils';
 
@@ -51,7 +52,7 @@ export function FileUploadField({ field, value, onChange, compact, disabled }: F
             setUploadedFileName(uploadResult.file.originalName || file.name);
             onChange(fileId);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Upload failed');
+            setError(getErrorMessage(err));
             setSelectedFile(null);
         } finally {
             setUploading(false);

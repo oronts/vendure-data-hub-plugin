@@ -121,7 +121,7 @@ export class DataHubAnalyticsAdminResolver {
         return this.webhookRetryService.getDeliveries({
             status: args.status as WebhookDeliveryStatus | undefined,
             webhookId: args.webhookId,
-            limit: args.limit,
+            limit: Math.min(args.limit ?? 100, 1000),
         });
     }
 

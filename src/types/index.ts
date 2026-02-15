@@ -62,7 +62,7 @@ export type {
 } from '../../shared/types';
 export { DEFAULT_AUTO_SAVE_CONFIG } from '../../shared/types';
 
-export type { PipelineMetrics, PipelineRunMetrics } from '../../shared/types';
+export type { PipelineMetrics } from '../../shared/types';
 
 export type {
     HookAction,

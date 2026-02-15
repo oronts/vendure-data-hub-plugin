@@ -5,7 +5,7 @@ import { Upload, RefreshCw, CheckCircle2, X } from 'lucide-react';
 import type { FileType, FileDropzoneProps } from '../../../types';
 import { formatFileSize } from '../../../utils';
 import { FILE_TYPE_ICON_CONFIG, DROPZONE_DIMENSIONS, ICON_SIZES } from '../../../constants';
-import { FILE_FORMAT } from '../../../constants/WizardOptions';
+import { FILE_FORMAT } from '../../../constants/wizard-options';
 
 function getAcceptString(allowedTypes?: FileType[]): string {
     if (!allowedTypes) return '*';

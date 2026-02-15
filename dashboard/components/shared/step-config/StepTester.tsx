@@ -13,7 +13,8 @@ import {
 } from '@vendure/dashboard';
 import { PlayIcon, ChevronDown, ChevronUp } from 'lucide-react';
 import { STEP_TYPES, ADAPTER_TYPES, DEFAULT_SAMPLE_DATA, STEP_TEST_DESCRIPTIONS, PLACEHOLDERS } from '../../../constants';
-import { runStepTest, canTestStepType, type TestResult, type StepTestOptions } from './StepTestHandlers';
+import { createMutationErrorHandler } from '../../../hooks';
+import { runStepTest, canTestStepType, type TestResult, type StepTestOptions } from './step-test-handlers';
 import { ExtractTestResults } from './ExtractTestResults';
 import { TransformTestResults, ValidateTestResults } from './TransformTestResults';
 import { LoadTestResults, FeedTestResults, GenericTestResults } from './LoadTestResults';
@@ -51,6 +52,7 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
         mutationFn: ({ type, options }: { type: string; options: StepTestOptions }) =>
             runStepTest(type, options),
         onSuccess: (data) => setResult(data),
+        onError: createMutationErrorHandler('test step'),
     });
     const loading = stepTestMutation.isPending;
 

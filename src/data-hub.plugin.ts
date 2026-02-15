@@ -93,6 +93,7 @@ import { DataHubExtractorAdminResolver } from './api/resolvers/extractor.resolve
 import { EntitySchemaAdminResolver } from './api/resolvers/entity-schema.resolver';
 import { DataHubVersioningResolver } from './api/resolvers/versioning.resolver';
 import { DataHubSandboxResolver } from './api/resolvers/sandbox.resolver';
+import { DataHubSubscriptionResolver } from './api/resolvers/subscription.resolver';
 // Versioning Services
 import { DiffService, RevisionService, ImpactAnalysisService, RiskAssessmentService, SandboxService } from './services/versioning';
 // Runtime Services
@@ -264,6 +265,7 @@ import {
         EntitySchemaAdminResolver,
         DataHubVersioningResolver,
         DataHubSandboxResolver,
+        DataHubSubscriptionResolver,
         DataHubTestAdminResolver,
         // Versioning Services
         DiffService,
@@ -303,6 +305,7 @@ import {
             EntitySchemaAdminResolver,
             DataHubVersioningResolver,
             DataHubSandboxResolver,
+            DataHubSubscriptionResolver,
         ],
     },
     controllers: [DataHubWebhookController, DataHubFileUploadController],

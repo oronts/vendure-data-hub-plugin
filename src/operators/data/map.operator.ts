@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import { MapOperatorConfig } from './types';
 import { applyMapping } from './helpers';
 
@@ -39,7 +39,7 @@ export function applyMapOperator(
 export function mapOperator(
     records: readonly JsonObject[],
     config: MapOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record => applyMapOperator(record, config));
     return { records: results };

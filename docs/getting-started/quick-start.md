@@ -26,7 +26,7 @@ We'll build a pipeline that:
 1. In the pipeline editor, drag a **Trigger** node onto the canvas
 2. Configure:
    - Key: `start`
-   - Type: `Manual`
+   - Type: `MANUAL`
 
 ### Step 3: Add an Extract Step
 
@@ -55,7 +55,7 @@ We'll build a pipeline that:
 2. Configure:
    - Key: `create-products`
    - Loader: `Product`
-   - Strategy: `upsert`
+   - Strategy: `UPSERT`
    - Name Field: `name`
    - Slug Field: `slug`
 3. Connect the transform step to this step
@@ -79,7 +79,7 @@ const productImportPipeline = createPipeline()
     .name('Product Import')
     .description('Import products from Fake Store API')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('fetch-products', {
         adapterCode: 'httpApi',
         url: 'https://fakestoreapi.com/products',
@@ -97,9 +97,7 @@ const productImportPipeline = createPipeline()
         entityType: 'PRODUCT',
         operation: 'UPSERT',
         lookupFields: ['slug'],
-        options: {
-            conflictResolution: 'source-wins',
-        },
+        conflictResolution: 'SOURCE_WINS',
     })
     .edge('start', 'fetch-products')
     .edge('fetch-products', 'map-fields')
@@ -168,11 +166,11 @@ Check **Catalog > Products** to see the imported products.
 const csvImport = createPipeline()
     .name('CSV Import')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('parse-csv', {
         adapterCode: 'file',
         path: '/uploads/products.csv',
-        format: 'csv',
+        format: 'CSV',
         delimiter: ',',
         hasHeader: true,
     })
@@ -193,7 +191,7 @@ const scheduledSync = createPipeline()
     .name('Scheduled Sync')
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 2 * * *',  // Daily at 2 AM
         timezone: 'UTC',
     })
@@ -214,7 +212,7 @@ const scheduledSync = createPipeline()
 const productExport = createPipeline()
     .name('Product Export')
     .capabilities({ requires: ['ReadCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',

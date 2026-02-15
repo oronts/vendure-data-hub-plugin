@@ -1,6 +1,6 @@
 import type { JsonObject } from '../../shared/types';
 
-function parseCSVLine(line: string, delimiter = ','): string[] {
+export function parseCSVLine(line: string, delimiter = ','): string[] {
     const result: string[] = [];
     let current = '';
     let inQuotes = false;

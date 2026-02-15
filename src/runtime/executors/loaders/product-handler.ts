@@ -38,7 +38,7 @@ import {
 import { TRANSFORM_LIMITS, LOGGER_CONTEXTS } from '../../../constants/index';
 import { LoadStrategy, ConflictStrategy } from '../../../constants/enums';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { getErrorMessage } from '../../../services/logger/error-utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 import { getStringValue, getNumberValue, getObjectValue } from '../../../loaders/shared-helpers';
 
 /**

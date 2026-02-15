@@ -327,15 +327,20 @@ export class HookService implements OnModuleInit {
 
         const timeout = action.timeout ?? HOOK.INTERCEPTOR_TIMEOUT_MS;
 
-        // Execute with timeout
-        const result = await Promise.race([
-            Promise.resolve(scriptFn(records, context, action.args)),
-            new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error(`Script timeout after ${timeout}ms`)), timeout),
-            ),
-        ]);
-
-        return result;
+        // Execute with timeout, clearing the timer to prevent leaks
+        let timerId: NodeJS.Timeout;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+            timerId = setTimeout(() => reject(new Error(`Script timeout after ${timeout}ms`)), timeout);
+        });
+        try {
+            const result = await Promise.race([
+                Promise.resolve(scriptFn(records, context, action.args)),
+                timeoutPromise,
+            ]);
+            return result;
+        } finally {
+            clearTimeout(timerId!);
+        }
     }
 
     /**

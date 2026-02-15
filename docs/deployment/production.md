@@ -324,7 +324,7 @@ Protect external APIs:
 ```typescript
 .extract('api-call', {
     throughput: {
-        rateLimit: 10,  // Max 10 requests per second
+        rateLimitRps: 10,  // Max 10 requests per second
     },
 })
 ```

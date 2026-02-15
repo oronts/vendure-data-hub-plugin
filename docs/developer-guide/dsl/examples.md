@@ -14,7 +14,7 @@ export const productApiImport = createPipeline()
     .description('Import products from supplier REST API')
     .capabilities({ requires: ['UpdateCatalog'] })
 
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'httpApi',
@@ -26,7 +26,7 @@ export const productApiImport = createPipeline()
         bearerTokenSecretCode: 'supplier-api-key',
         dataPath: 'data.products',
         pagination: {
-            type: 'page',
+            type: 'PAGE',
             limit: 100,
             maxPages: 100,
         },
@@ -76,12 +76,12 @@ export const csvProductImport = createPipeline()
     .name('CSV Product Import')
     .capabilities({ requires: ['UpdateCatalog'] })
 
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('parse-csv', {
         adapterCode: 'file',
         path: '/uploads/products.csv',
-        format: 'csv',
+        format: 'CSV',
         delimiter: ',',
         hasHeader: true,
     })
@@ -119,7 +119,7 @@ export const deltaDatabaseSync = createPipeline()
     .capabilities({ requires: ['UpdateCatalog'], resumable: true })
 
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 */2 * * *',  // Every 2 hours
     })
 
@@ -129,7 +129,7 @@ export const deltaDatabaseSync = createPipeline()
         url: '/products',
         dataPath: 'data',
         pagination: {
-            type: 'offset',
+            type: 'OFFSET',
             limit: 5000,
         },
     })
@@ -168,14 +168,14 @@ export const ftpInventorySync = createPipeline()
     .capabilities({ requires: ['UpdateCatalog'] })
 
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 6 * * *',  // Daily at 6 AM
     })
 
     .extract('download-file', {
         adapterCode: 'file',
         path: '/exports/inventory.csv',
-        format: 'csv',
+        format: 'CSV',
         hasHeader: true,
     })
 
@@ -210,7 +210,7 @@ export const customerImport = createPipeline()
     .name('Customer Import')
     .capabilities({ requires: ['UpdateCustomer'] })
 
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-customers', {
         adapterCode: 'httpApi',
@@ -262,7 +262,7 @@ export const googleFeedPipeline = createPipeline()
     .capabilities({ requires: ['ReadCatalog'] })
 
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 4 * * *',  // Daily at 4 AM
     })
 
@@ -306,8 +306,8 @@ export const googleFeedPipeline = createPipeline()
 
     .feed('generate-feed', {
         adapterCode: 'feed-generator',
-        feedType: 'google-merchant',
-        format: 'xml',
+        feedType: 'GOOGLE_SHOPPING',
+        format: 'XML',
         outputPath: '/feeds/google-shopping.xml',
         targetCountry: 'US',
         contentLanguage: 'en',
@@ -331,7 +331,7 @@ export const elasticsearchIndex = createPipeline()
     .capabilities({ requires: ['ReadCatalog'] })
 
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 */4 * * *',  // Every 4 hours
     })
 
@@ -359,7 +359,7 @@ export const elasticsearchIndex = createPipeline()
 
     .sink('index-to-es', {
         adapterCode: 'search-sink',
-        sinkType: 'elasticsearch',
+        sinkType: 'ELASTICSEARCH',
         host: 'localhost',
         port: 9200,
         indexName: 'products',
@@ -384,7 +384,7 @@ export const categorizedProcessing = createPipeline()
     .name('Categorized Product Processing')
     .capabilities({ requires: ['UpdateCatalog'] })
 
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'httpApi',
@@ -451,10 +451,10 @@ export const orderWebhookSync = createPipeline()
     .capabilities({ requires: ['UpdateOrder'] })
 
     .trigger('webhook', {
-        type: 'webhook',
-        path: '/order-sync',
-        signature: 'hmac-sha256',
-        signatureSecretCode: 'order-webhook-secret',
+        type: 'WEBHOOK',
+        webhookPath: '/order-sync',
+        authentication: 'HMAC',
+        secretCode: 'order-webhook-secret',
     })
 
     .transform('map-order', {
@@ -498,7 +498,7 @@ export const productExport = createPipeline()
     .capabilities({ requires: ['ReadCatalog'] })
 
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 2 * * *',  // Daily at 2 AM
     })
 
@@ -540,7 +540,7 @@ export const customerExport = createPipeline()
     .description('Export customers to external CRM')
     .capabilities({ requires: ['ReadCustomer'] })
 
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('query', {
         adapterCode: 'vendureQuery',
@@ -583,7 +583,7 @@ export const orderExport = createPipeline()
     .capabilities({ requires: ['ReadOrder'] })
 
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '*/15 * * * *',  // Every 15 minutes
     })
 
@@ -627,7 +627,7 @@ export const validatedProductImport = createPipeline()
     .description('Import products with comprehensive validation')
     .capabilities({ requires: ['UpdateCatalog'] })
 
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'httpApi',
@@ -699,7 +699,7 @@ export const enrichedProductImport = createPipeline()
     .description('Import products with automatic enrichment')
     .capabilities({ requires: ['UpdateCatalog'] })
 
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
 
     .extract('fetch-products', {
         adapterCode: 'httpApi',
@@ -753,13 +753,13 @@ export const fullDataQualityPipeline = createPipeline()
     .capabilities({ requires: ['UpdateCustomer'] })
 
     .trigger('webhook', {
-        type: 'webhook',
-        path: '/customer-import',
+        type: 'WEBHOOK',
+        webhookPath: '/customer-import',
     })
 
     // Step 1: Validate required fields and format
     .validate('validate-input', {
-        mode: 'fail-fast',
+        mode: 'FAIL_FAST',
         rules: [
             { type: 'business', spec: { field: 'email', required: true } },
             { type: 'business', spec: { field: 'email', pattern: '^[^@]+@[^@]+\\.[^@]+$' } },
@@ -832,7 +832,7 @@ export const seoEnrichmentPipeline = createPipeline()
     .capabilities({ requires: ['UpdateCatalog'] })
 
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 3 * * *',  // Daily at 3 AM
     })
 

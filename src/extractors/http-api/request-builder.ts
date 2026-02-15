@@ -10,7 +10,7 @@ import { HttpMethod, PaginationType, HTTP_HEADERS, CONTENT_TYPES, PAGINATION_PAR
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 import { applyAuthentication, AuthConfig, createSecretResolver } from '../../utils/auth-helpers';
 import { buildUrlWithConnection } from '../../utils/url-helpers';
-import { isValidUrl as _isValidUrl } from '../../../shared/utils/validation';
+import { isValidUrl as _isValidUrl } from '../../../shared';
 
 /**
  * Build full URL from config, resolving connection base URL if needed

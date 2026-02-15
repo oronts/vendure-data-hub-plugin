@@ -14,7 +14,7 @@ import type { OrderState } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../services/logger/error-utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 import { getStringValue, getIdValue } from '../../../loaders/shared-helpers';
 
 // ============================================================================

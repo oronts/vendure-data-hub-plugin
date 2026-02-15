@@ -30,7 +30,7 @@ import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../exec
 import { toStringOrUndefined } from '../../utils';
 import { LoaderHandler } from './types';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { getErrorMessage } from '../../../services/logger/error-utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 import { getStringValue, getArrayValue } from '../../../loaders/shared-helpers';
 
 /**

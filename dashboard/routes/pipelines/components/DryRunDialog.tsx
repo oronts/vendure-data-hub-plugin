@@ -14,8 +14,9 @@ import {
 import { toast } from 'sonner';
 import { useDryRunPipeline } from '../../../hooks';
 import type { DryRunResult, DryRunMetrics, PipelineDefinition } from '../../../types';
-import { formatDiffValue } from '../../../utils/Formatters';
+import { formatDiffValue } from '../../../utils/formatters';
 import { DIFF_TYPE, DIALOG_DIMENSIONS, SCROLL_HEIGHTS, TOAST_PIPELINE } from '../../../constants';
+import { getErrorMessage } from '../../../../shared';
 
 export interface DryRunDialogProps {
     open: boolean;
@@ -43,14 +44,14 @@ export function DryRunDialog({
         };
     }, [dryRun.data]);
 
-    const dryRunError = dryRun.error instanceof Error ? dryRun.error.message : dryRun.error ? 'Unknown error' : null;
+    const dryRunError = dryRun.error ? getErrorMessage(dryRun.error) : null;
 
     const handleDryRun = React.useCallback(() => {
         if (!pipelineId) return;
         setHasAttempted(true);
         dryRun.mutate(undefined, {
             onError: (err) => {
-                const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+                const errorMessage = getErrorMessage(err);
                 toast.error(TOAST_PIPELINE.DRY_RUN_FAILED, { description: errorMessage });
             },
         });
@@ -70,7 +71,7 @@ export function DryRunDialog({
             setHasAttempted(false);
             setDryRunTab('summary');
         }
-    }, [open]);
+    }, [open, dryRun.reset]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>

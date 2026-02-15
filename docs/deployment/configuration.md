@@ -182,7 +182,7 @@ interface CodeFirstConnection {
 ```typescript
 interface AdapterDefinition {
     code: string;
-    type: 'extractor' | 'operator' | 'loader' | 'feed';
+    type: 'EXTRACTOR' | 'OPERATOR' | 'LOADER' | 'FEED';
     name: string;
     handler: any;
     schema?: object;
@@ -196,13 +196,13 @@ DataHubPlugin.init({
     adapters: [
         {
             code: 'my-extractor',
-            type: 'extractor',
+            type: 'EXTRACTOR',
             name: 'My Custom Extractor',
             handler: MyExtractorClass,
         },
         {
             code: 'currency-convert',
-            type: 'operator',
+            type: 'OPERATOR',
             name: 'Currency Converter',
             handler: currencyConvertOperator,
         },
@@ -401,9 +401,9 @@ pipelines:
       version: 1
       steps:
         - key: trigger
-          type: trigger
+          type: TRIGGER
           config:
-            type: schedule
+            type: SCHEDULE
             cron: "0 2 * * *"
 ```
 

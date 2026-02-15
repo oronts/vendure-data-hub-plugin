@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import { CopyOperatorConfig } from './types';
 import { applyCopy } from './helpers';
 
@@ -40,7 +40,7 @@ export function applyCopyOperator(
 export function copyOperator(
     records: readonly JsonObject[],
     config: CopyOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record => applyCopyOperator(record, config));
     return { records: results };

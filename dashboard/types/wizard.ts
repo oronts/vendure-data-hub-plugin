@@ -1,5 +1,5 @@
 import type { TransformationType } from '../../shared/types';
-import type { FileType } from './UiTypes';
+import type { FileType } from './ui-types';
 
 export interface WizardStep {
     id: string;
@@ -30,7 +30,7 @@ export interface ApiSourceConfig {
     headers?: Record<string, string>;
     body?: string;
     pagination?: {
-        type: 'offset' | 'cursor' | 'page';
+        type: 'OFFSET' | 'CURSOR' | 'PAGE';
         pageSize: number;
     };
 }

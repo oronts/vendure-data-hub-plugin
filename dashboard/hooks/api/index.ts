@@ -79,7 +79,7 @@ export {
     useUpdateSettings,
 } from './useSettings';
 
-export { createMutationErrorHandler, createMutationSuccessHandler, handleMutationError } from './MutationHelpers';
+export { createMutationErrorHandler, createMutationSuccessHandler, handleMutationError } from './mutation-helpers';
 
 export {
     previewExtract,

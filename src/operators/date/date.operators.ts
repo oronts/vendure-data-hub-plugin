@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import {
     DateFormatOperatorConfig,
     DateParseOperatorConfig,
@@ -70,7 +70,7 @@ export const DATE_ADD_OPERATOR_DEFINITION: AdapterDefinition = {
 export function dateFormatOperator(
     records: readonly JsonObject[],
     config: DateFormatOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target || !config.format) {
         return { records: [...records] };
@@ -92,7 +92,7 @@ export function dateFormatOperator(
 export function dateParseOperator(
     records: readonly JsonObject[],
     config: DateParseOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target || !config.format) {
         return { records: [...records] };
@@ -113,7 +113,7 @@ export function dateParseOperator(
 export function dateAddOperator(
     records: readonly JsonObject[],
     config: DateAddOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target || config.amount === undefined || !config.unit) {
         return { records: [...records] };
@@ -156,7 +156,7 @@ export const DATE_DIFF_OPERATOR_DEFINITION: AdapterDefinition = {
 export function dateDiffOperator(
     records: readonly JsonObject[],
     config: DateDiffOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.startDate || !config.endDate || !config.target || !config.unit) {
         return { records: [...records] };
@@ -203,7 +203,7 @@ export const NOW_OPERATOR_DEFINITION: AdapterDefinition = {
 export function nowOperator(
     records: readonly JsonObject[],
     config: NowOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.target) {
         return { records: [...records] };

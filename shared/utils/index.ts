@@ -6,3 +6,4 @@
  */
 
 export * from './validation';
+export { getErrorMessage } from './error';

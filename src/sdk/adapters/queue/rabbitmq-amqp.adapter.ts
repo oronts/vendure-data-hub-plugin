@@ -67,6 +67,7 @@ interface ConnectionEntry {
 /**
  * Connection pool for RabbitMQ connections
  */
+const MAX_CONNECTIONS = 100;
 const connectionPool = new Map<string, ConnectionEntry>();
 const connectingPromises = new Map<string, Promise<{ connection: AmqpConnection; channel: AmqpChannel }>>();
 
@@ -143,6 +144,26 @@ async function getConnection(config: QueueConnectionConfig): Promise<{
                 channel,
                 lastUsed: Date.now(),
             };
+
+            // Evict oldest connection if pool is at capacity
+            if (connectionPool.size >= MAX_CONNECTIONS) {
+                let oldestKey: string | null = null;
+                let oldestTime = Infinity;
+                for (const [k, e] of connectionPool.entries()) {
+                    if (e.lastUsed < oldestTime) {
+                        oldestTime = e.lastUsed;
+                        oldestKey = k;
+                    }
+                }
+                if (oldestKey) {
+                    const stale = connectionPool.get(oldestKey);
+                    if (stale) {
+                        stale.channel.close().catch(() => { /* ignore */ });
+                        stale.connection.close().catch(() => { /* ignore */ });
+                    }
+                    connectionPool.delete(oldestKey);
+                }
+            }
 
             connectionPool.set(key, entry);
             return { connection, channel };

@@ -5,6 +5,8 @@ import { JsonObject, JsonValue } from '../types/index';
 import { RecordObject } from './executor-types';
 import { UNIT_CONVERSIONS } from '../constants/index';
 import { slugify } from '../operators/helpers';
+import { evaluateCondition } from '../operators/logic/helpers';
+import { ComparisonOperator } from '../../shared/types';
 import { getErrorMessage } from '../utils/error.utils';
 import {
     getNestedValue,
@@ -128,20 +130,15 @@ export interface EvalConditionSpec {
 }
 
 /**
- * Evaluates a condition against a record
+ * Evaluates a condition against a record.
+ *
+ * Delegates to {@link evaluateCondition} from operators/logic/helpers.ts which
+ * supports the full set of 14+ comparison operators (eq, ne, gt, lt, gte, lte,
+ * in, notIn, contains, notContains, startsWith, endsWith, regex, exists, isNull).
  */
 export function evalCondition(rec: JsonObject, cond: EvalConditionSpec | null | undefined): boolean {
-    const { field, cmp, value } = cond || { field: '', cmp: '', value: null };
-    const cur = getPath(rec, field);
-    switch (cmp) {
-        case 'eq': return cur === value;
-        case 'ne': return cur !== value;
-        case 'gt': return Number(cur) > Number(value);
-        case 'lt': return Number(cur) < Number(value);
-        case 'in': return Array.isArray(value) ? value.includes(cur as JsonValue) : false;
-        case 'contains': return typeof cur === 'string' && String(cur).includes(String(value));
-        default: return false;
-    }
+    if (!cond || !cond.field) return false;
+    return evaluateCondition(rec, { field: cond.field, cmp: cond.cmp as ComparisonOperator, value: cond.value });
 }
 
 /**

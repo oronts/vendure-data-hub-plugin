@@ -19,8 +19,8 @@ import {
     getStepTypeIcon,
 } from '../../constants';
 import type { MoveDirection } from '../../constants';
-import { PIPELINE_EDITOR_PANEL } from '../../constants/UiStates';
-import type { PipelineEditorPanel } from '../../constants/UiStates';
+import { PIPELINE_EDITOR_PANEL } from '../../constants/ui-states';
+import type { PipelineEditorPanel } from '../../constants/ui-states';
 import { useAdapterCatalog } from '../../hooks';
 import type {
     StepType,

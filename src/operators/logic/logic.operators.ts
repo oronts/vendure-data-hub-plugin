@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import {
     WhenOperatorConfig,
     IfThenElseOperatorConfig,
@@ -110,7 +110,7 @@ export const DELTA_FILTER_OPERATOR_DEFINITION: AdapterDefinition = {
 export function whenOperator(
     records: readonly JsonObject[],
     config: WhenOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.conditions || !Array.isArray(config.conditions)) {
         return { records: [...records] };
@@ -126,7 +126,7 @@ export function whenOperator(
 export function ifThenElseOperator(
     records: readonly JsonObject[],
     config: IfThenElseOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.condition || !config.target) {
         return { records: [...records] };
@@ -147,7 +147,7 @@ export function ifThenElseOperator(
 export function switchOperator(
     records: readonly JsonObject[],
     config: SwitchOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.cases || !config.target) {
         return { records: [...records] };
@@ -168,7 +168,7 @@ export function switchOperator(
 export function deltaFilterOperator(
     records: readonly JsonObject[],
     config: DeltaFilterOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
     checkpoint?: Map<string, string>,
 ): OperatorResult {
     if (!config.idPath) {

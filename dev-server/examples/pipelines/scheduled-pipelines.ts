@@ -725,7 +725,7 @@ export const multiTriggerPipeline = createPipeline()
     .transform('merge-and-normalize', {
         operators: [
             { op: 'now', args: { target: 'syncedAt', format: 'ISO' } },
-            { op: 'coalesce', args: { fields: ['sku', 'productCode', 'itemId'], target: 'sku' } },
+            { op: 'coalesce', args: { paths: ['sku', 'productCode', 'itemId'], target: 'sku' } },
         ],
     })
 

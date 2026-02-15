@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@vendure/dashboard';
-import { FIELD_TYPE } from '../../../constants/UiTypes';
+import { FIELD_TYPE } from '../../../constants/ui-types';
 
 export interface OperatorSchemaField {
     key: string;

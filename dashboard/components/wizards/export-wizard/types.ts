@@ -6,12 +6,12 @@ import type {
     ExportTriggerConfig,
     CacheConfig,
     ExportOptions,
-} from '../../../types/Wizard';
+} from '../../../types/wizard';
 import type { FilterCondition } from '../../../types';
 import type { HttpMethod } from '../../../../shared/types';
 import type {
     HttpAuthType as WizardHttpAuthType,
-} from '../../../constants/WizardOptions';
+} from '../../../constants/wizard-options';
 
 export interface ExportWizardProps {
     onComplete: (config: ExportConfiguration) => void;
@@ -34,6 +34,7 @@ export interface ExportConfiguration {
 }
 
 export type QueryType = QueryConfig['type'];
+/** Derived from DestinationConfig - @see shared/types/pipeline.types.ts for canonical DestinationType */
 export type DestinationType = DestinationConfig['type'];
 export type { HttpMethod };
 export type HttpAuthType = WizardHttpAuthType;

@@ -45,8 +45,6 @@ export const DESTINATION_TYPE = {
     LOCAL: 'LOCAL',
 } as const;
 
-export type DestinationType = typeof DESTINATION_TYPE[keyof typeof DESTINATION_TYPE];
-
 /**
  * Export format type constants for type-safe comparisons.
  * Use these instead of hardcoded string literals.
@@ -191,15 +189,4 @@ export type ExportFormatType = typeof EXPORT_FORMAT_TYPES[number]['id'];
 export type ExistingRecordsStrategy = typeof EXISTING_RECORDS_STRATEGIES[number]['value'];
 export type NewRecordsStrategy = typeof NEW_RECORDS_STRATEGIES[number]['value'];
 export type ExportDestinationType = typeof EXPORT_DESTINATION_TYPES[number]['value'];
-/**
- * CsvDelimiter and FileEncoding are canonical in shared/types.
- * Re-exported here for backward-compatible imports from WizardOptions.
- */
-export type { CsvDelimiter, FileEncoding } from '../../shared/types';
-/**
- * Canonical HttpMethod type from shared - supports all HTTP methods.
- * The HTTP_METHODS array above is intentionally narrower (POST/PUT only)
- * for the export wizard UI, but the type should match the full shared definition.
- */
-export type { HttpMethod } from '../../shared/types';
 export type HttpAuthType = typeof HTTP_AUTH_TYPES[number]['value'];

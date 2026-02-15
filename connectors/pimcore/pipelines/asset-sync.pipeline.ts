@@ -3,6 +3,8 @@ import { PipelineDefinition } from '../../../src/types';
 import { PimcoreConnectorConfig } from '../types';
 import { buildSafePathFilter, buildSafeMimeTypeFilter, combineFilters } from '../utils/security.utils';
 
+const DEFAULT_ASSET_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
 export function createAssetSyncPipeline(config: PimcoreConnectorConfig): PipelineDefinition {
     const { connection, sync, pipelines } = config;
 
@@ -28,7 +30,7 @@ export function createAssetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
     pipeline.trigger('MANUAL', { type: 'MANUAL', enabled: true });
 
     const pathFilter = buildSafePathFilter(pipelineConfig.folderPath);
-    const mimeTypes = pipelineConfig.mimeTypes?.length ? pipelineConfig.mimeTypes : ['image/jpeg', 'image/png', 'image/webp'];
+    const mimeTypes = pipelineConfig.mimeTypes?.length ? pipelineConfig.mimeTypes : DEFAULT_ASSET_MIME_TYPES;
     const mimeFilter = buildSafeMimeTypeFilter(mimeTypes);
     const filter = combineFilters([pathFilter, mimeFilter]);
 

@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
-import { createMutationErrorHandler } from './MutationHelpers';
+import { createMutationErrorHandler } from './mutation-helpers';
 import { POLLING_INTERVALS } from '../../constants';
 import type { JsonObject } from '../../types';
 

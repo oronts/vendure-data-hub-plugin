@@ -6,7 +6,7 @@ Create sinks to index data to custom search engines or external systems.
 
 ```typescript
 interface SinkAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'sink';
+    readonly type: 'SINK';
     readonly sinkType: SinkType;
 
     index(context: SinkContext, config: TConfig, records: readonly JsonObject[]): Promise<SinkResult>;
@@ -14,7 +14,7 @@ interface SinkAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     refresh?(context: SinkContext, config: TConfig): Promise<void>;
 }
 
-type SinkType = 'elasticsearch' | 'opensearch' | 'meilisearch' | 'algolia' | 'typesense' | 'webhook' | 'custom';
+type SinkType = 'ELASTICSEARCH' | 'OPENSEARCH' | 'MEILISEARCH' | 'ALGOLIA' | 'TYPESENSE' | 'WEBHOOK' | 'CUSTOM';
 
 interface SinkContext {
     readonly ctx: RequestContext;
@@ -65,12 +65,12 @@ const mySearchSinkSchema: StepConfigSchema = {
 };
 
 export const mySearchSink: SinkAdapter<MySinkConfig> = {
-    type: 'sink',
+    type: 'SINK',
     code: 'my-search',
     name: 'My Search Engine',
     description: 'Index records to custom search engine',
     category: 'external',
-    sinkType: 'custom',
+    sinkType: 'CUSTOM',
     schema: mySearchSinkSchema,
     icon: 'search',
 
@@ -168,12 +168,12 @@ const openSearchSchema: StepConfigSchema = {
 };
 
 export const openSearchSink: SinkAdapter<OpenSearchSinkConfig> = {
-    type: 'sink',
+    type: 'SINK',
     code: 'opensearch',
     name: 'OpenSearch',
     description: 'Index records to OpenSearch cluster',
     category: 'external',
-    sinkType: 'custom',
+    sinkType: 'CUSTOM',
     schema: openSearchSchema,
     icon: 'search',
 
@@ -366,7 +366,7 @@ export class MySinksPlugin implements OnModuleInit {
     constructor(private registry: DataHubRegistryService) {}
 
     onModuleInit() {
-        this.registry.registerRuntime(openSearchSink);
+        this.registry.registerAdapter(openSearchSink);
     }
 }
 ```
@@ -401,7 +401,7 @@ const searchSyncPipeline = createPipeline()
         bulkSize: 200,
     })
     .trigger('sync', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         schedule: { cron: '0 */4 * * *' },
     })
     .build();

@@ -116,4 +116,3 @@ export const pimcoreAssetSchema: JsonObject = {
     },
 } as JsonObject;
 
-export default { pimcoreProductSchema, pimcoreCategorySchema, pimcoreAssetSchema };

@@ -265,7 +265,7 @@ Create collection with schema before indexing:
 createPipeline()
     .name('sync-to-search')
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 */4 * * *',  // Every 4 hours
     })
     .extract('query-products', {
@@ -297,7 +297,7 @@ createPipeline()
 createPipeline()
     .name('product-updated-sync')
     .trigger('vendure-event', {
-        type: 'event',
+        type: 'EVENT',
         event: 'ProductEvent',
     })
     .extract('get-product', {

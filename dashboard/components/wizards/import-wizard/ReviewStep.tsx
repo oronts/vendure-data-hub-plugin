@@ -12,11 +12,11 @@ import {
     Clock,
     ArrowRight,
 } from 'lucide-react';
-import { VENDURE_ENTITY_LIST } from '../../../../shared/vendure-schemas';
+import { VENDURE_ENTITY_LIST } from '../../../../shared';
 import { WizardStepContainer } from '../shared';
 import { ConfigurationNameCard, SummaryCard, SummaryCardGrid } from '../../shared/wizard';
-import { STEP_CONTENT, PLACEHOLDERS } from './Constants';
-import type { ImportConfiguration } from './Types';
+import { STEP_CONTENT, PLACEHOLDERS } from './constants';
+import type { ImportConfiguration } from './types';
 
 interface ReviewStepProps {
     config: Partial<ImportConfiguration>;

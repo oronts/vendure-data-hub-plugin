@@ -12,6 +12,7 @@ import { DataHubRegistryService } from '../../sdk/registry.service';
 import { FeedAdapter, FeedContext, ConnectionConfig, ConnectionType } from '../../sdk/types';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @Injectable()
 export class FeedExecutor {
@@ -111,7 +112,7 @@ export class FeedExecutor {
                     ok = items.length;
                 } catch (e: unknown) {
                     fail = input.length;
-                    const message = e instanceof Error ? e.message : 'Google Merchant feed failed';
+                    const message = getErrorMessage(e);
                     if (onRecordError) await onRecordError(step.key, message, {});
                 }
                 break;
@@ -137,7 +138,7 @@ export class FeedExecutor {
                     ok = items.length;
                 } catch (e: unknown) {
                     fail = input.length;
-                    const message = e instanceof Error ? e.message : 'Meta Catalog feed failed';
+                    const message = getErrorMessage(e);
                     if (onRecordError) await onRecordError(step.key, message, {});
                 }
                 break;
@@ -167,7 +168,7 @@ export class FeedExecutor {
                     ok = items.length;
                 } catch (e: unknown) {
                     fail = input.length;
-                    const message = e instanceof Error ? e.message : 'Amazon feed failed';
+                    const message = getErrorMessage(e);
                     if (onRecordError) await onRecordError(step.key, message, {});
                 }
                 break;
@@ -205,7 +206,7 @@ export class FeedExecutor {
                     ok = items.length;
                 } catch (e: unknown) {
                     fail = input.length;
-                    const message = e instanceof Error ? e.message : 'Custom feed failed';
+                    const message = getErrorMessage(e);
                     if (onRecordError) await onRecordError(step.key, message, {});
                 }
                 break;

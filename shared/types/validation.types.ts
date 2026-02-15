@@ -271,7 +271,7 @@ export const ERROR_MESSAGES = {
 // VALIDATION TYPES
 // ============================================================================
 
-export type ValidationSeverity = 'ERROR' | 'WARNING' | 'INFO';
+type ValidationSeverity = 'ERROR' | 'WARNING' | 'INFO';
 
 export interface ValidationError {
     field: string;
@@ -281,56 +281,6 @@ export interface ValidationError {
     severity?: ValidationSeverity;
     value?: unknown;
     context?: Record<string, unknown>;
-}
-
-export interface RecordValidationResult {
-    valid: boolean;
-    errors: ValidationError[];
-    warnings?: ValidationError[];
-}
-
-export interface BatchValidationResult {
-    total: number;
-    valid: number;
-    invalid: number;
-    errors: Map<number, ValidationError[]>;
-    allErrors: ValidationError[];
-}
-
-export type ValidationRuleType =
-    | 'REQUIRED'
-    | 'NOT_EMPTY'
-    | 'TYPE'
-    | 'MIN_LENGTH'
-    | 'MAX_LENGTH'
-    | 'MIN'
-    | 'MAX'
-    | 'PATTERN'
-    | 'EMAIL'
-    | 'URL'
-    | 'DATE'
-    | 'UUID'
-    | 'ENUM'
-    | 'UNIQUE'
-    | 'CUSTOM';
-
-export interface ValidationRule {
-    type: ValidationRuleType;
-    field: string;
-    params?: Record<string, unknown>;
-    message?: string;
-    code?: ValidationErrorCode;
-    enabled?: boolean;
-    severity?: ValidationSeverity;
-}
-
-export type InvalidRecordAction = 'DROP' | 'SKIP' | 'FAIL' | 'QUARANTINE';
-
-export interface ValidationConfig {
-    rules: ValidationRule[];
-    stopOnFirstError?: boolean;
-    mode?: 'STRICT' | 'LENIENT';
-    onInvalid?: InvalidRecordAction;
 }
 
 // ============================================================================

@@ -1,3 +1,5 @@
+import { getErrorMessage } from '../../shared';
+
 /**
  * Centralized toast message constants for the dashboard
  *
@@ -134,7 +136,7 @@ export const TOAST_SETTINGS = {
  * Helper to format error messages with details
  */
 export const formatParseError = (error: unknown): string => {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = getErrorMessage(error);
     return `${TOAST_FILE.PARSE_ERROR}: ${message}`;
 };
 

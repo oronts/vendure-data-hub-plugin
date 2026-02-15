@@ -260,7 +260,12 @@ export enum ConnectionType {
 }
 
 /**
- * Authentication types
+ * Authentication types for connections and HTTP requests.
+ *
+ * Structurally identical to ConnectionAuthType in the SDK — kept separate
+ * because the SDK must be independently packageable without importing from src/.
+ *
+ * @see src/sdk/types/connection-types.ts — ConnectionAuthType (same 7 values, SDK-facing)
  */
 export enum AuthType {
     NONE = 'NONE',
@@ -338,25 +343,6 @@ export enum GraphQLPaginationType {
     OFFSET = 'OFFSET',
     CURSOR = 'CURSOR',
     RELAY = 'RELAY',
-}
-
-/**
- * Pagination strategies for REST sources
- */
-export enum RestPaginationStrategy {
-    OFFSET = 'OFFSET',
-    CURSOR = 'CURSOR',
-    PAGE = 'PAGE',
-    LINK = 'LINK',
-}
-
-/**
- * Pagination styles for GraphQL sources
- */
-export enum GraphQLPaginationStyle {
-    RELAY = 'RELAY',
-    OFFSET = 'OFFSET',
-    CURSOR = 'CURSOR',
 }
 
 /**
@@ -484,7 +470,7 @@ export enum QueueType {
     RABBITMQ = 'RABBITMQ',
     RABBITMQ_AMQP = 'RABBITMQ_AMQP',
     SQS = 'SQS',
-    REDIS = 'REDIS_STREAMS',
+    REDIS_STREAMS = 'REDIS_STREAMS',
     INTERNAL = 'INTERNAL',
 }
 
@@ -590,17 +576,6 @@ export enum RecordOutcome {
  * Values use SCREAMING_SNAKE_CASE to match GraphQL DataHubSandboxFieldChangeType enum
  */
 export enum FieldDiffChangeType {
-    ADDED = 'ADDED',
-    REMOVED = 'REMOVED',
-    MODIFIED = 'MODIFIED',
-    UNCHANGED = 'UNCHANGED',
-    TYPE_CHANGED = 'TYPE_CHANGED',
-}
-
-/**
- * Field change types for aggregated changes
- */
-export enum FieldChangeType {
     ADDED = 'ADDED',
     REMOVED = 'REMOVED',
     MODIFIED = 'MODIFIED',
@@ -934,8 +909,14 @@ export const PIPELINE_VALIDATION_ERROR = {
 } as const;
 
 /**
- * Export destination types for file/data delivery
- * Use these constants instead of hardcoded string literals
+ * Export destination types for file/data delivery.
+ * Use these constants instead of hardcoded string literals.
+ *
+ * Subset of shared DestinationType (shared/types/pipeline.types.ts) which also
+ * includes 'DOWNLOAD'. This constant covers runtime delivery targets only.
+ *
+ * @see shared/types/pipeline.types.ts — canonical DestinationType union (superset)
+ * @see src/services/destinations/destination.types.ts — narrower DeliveryDestinationType subset
  */
 export const DESTINATION_TYPE = {
     FILE: 'FILE',
@@ -948,4 +929,10 @@ export const DESTINATION_TYPE = {
     LOCAL: 'LOCAL',
 } as const;
 
-export type DestinationType = typeof DESTINATION_TYPE[keyof typeof DESTINATION_TYPE];
+/**
+ * Runtime delivery destination type — derived from the canonical shared DestinationType
+ * by excluding 'DOWNLOAD' (which is UI-only and not a physical delivery target).
+ *
+ * @see shared/types/pipeline.types.ts — canonical DestinationType (superset)
+ */
+export type DestinationType = Exclude<import('../../shared/types').DestinationType, 'DOWNLOAD'>;

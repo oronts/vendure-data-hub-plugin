@@ -55,7 +55,7 @@ export interface FilterCondition {
 /**
  * Group of filter conditions combined with a logical operator
  */
-export interface FilterGroup {
+interface FilterGroup {
     /** Logical operator to combine conditions */
     logic: LogicalOperator;
     /** Nested conditions or groups */
@@ -74,16 +74,3 @@ export interface FilterConfig {
     action?: FilterAction;
 }
 
-/**
- * Type guard to check if a value is a FilterGroup
- */
-export function isFilterGroup(value: FilterCondition | FilterGroup): value is FilterGroup {
-    return 'logic' in value && 'conditions' in value && Array.isArray((value as FilterGroup).conditions);
-}
-
-/**
- * Type guard to check if a value is a FilterCondition
- */
-export function isFilterCondition(value: FilterCondition | FilterGroup): value is FilterCondition {
-    return 'field' in value && 'operator' in value;
-}

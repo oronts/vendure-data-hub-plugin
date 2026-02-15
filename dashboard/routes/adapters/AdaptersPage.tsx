@@ -39,6 +39,7 @@ import { ADAPTER_TYPE_INFO } from './constants';
 import { AdapterTypeSection } from './AdapterTypeSection';
 import { AdaptersTable } from './AdaptersTable';
 import { AdapterDetail } from './AdapterDetail';
+import { getErrorMessage } from '../../../shared';
 import type { DataHubAdapter } from '../../types';
 
 export const adaptersList: DashboardRouteDefinition = {
@@ -79,7 +80,7 @@ function AdaptersPage() {
                 <PageBlock column="main" blockId="error">
                     <ErrorState
                         title="Failed to load adapters"
-                        message={error instanceof Error ? error.message : 'An unknown error occurred'}
+                        message={getErrorMessage(error)}
                         onRetry={() => refetch()}
                     />
                 </PageBlock>

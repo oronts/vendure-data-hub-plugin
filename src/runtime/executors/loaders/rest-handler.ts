@@ -12,7 +12,7 @@ import { sleep, chunk } from '../../utils';
 import { LoaderHandler } from './types';
 import { TIME, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, AuthType, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { getErrorMessage } from '../../../services/logger/error-utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
 
 /**

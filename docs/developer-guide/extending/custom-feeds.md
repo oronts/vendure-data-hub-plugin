@@ -404,7 +404,7 @@ export class MyFeedsPlugin implements OnModuleInit {
 feedService.registerFeed({
     code: 'amazon-us',
     name: 'Amazon US Feed',
-    format: 'custom',
+    format: 'CUSTOM',
     customGeneratorCode: 'amazon-marketplace',
     channelToken: 'us-channel',
     filters: {
@@ -463,7 +463,7 @@ const amazonFeedPipeline = createPipeline()
         connectionCode: 's3-feeds', // Upload to S3
     })
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         schedule: { cron: '0 6 * * *' }, // Daily at 6 AM
     })
     .build();
@@ -477,7 +477,7 @@ Filter products before they reach the generator:
 const config: FeedConfig = {
     code: 'filtered-feed',
     name: 'Filtered Feed',
-    format: 'custom',
+    format: 'CUSTOM',
     customGeneratorCode: 'my-feed',
     filters: {
         enabled: true,           // Only enabled products
@@ -499,7 +499,7 @@ Map Vendure fields to feed fields:
 ```typescript
 const config: FeedConfig = {
     code: 'mapped-feed',
-    format: 'custom',
+    format: 'CUSTOM',
     customGeneratorCode: 'my-feed',
     fieldMappings: {
         // Simple mapping
@@ -599,7 +599,7 @@ describe('Amazon Marketplace Feed', () => {
         config: {
             code: 'test',
             name: 'Test',
-            format: 'custom',
+            format: 'CUSTOM',
             options: { currency: 'USD', baseUrl: 'https://example.com' },
         },
         products: [

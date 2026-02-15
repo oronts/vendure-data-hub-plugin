@@ -18,7 +18,7 @@ Fetch data from REST APIs with automatic pagination, authentication, and retry s
 | `body` | json | No | Request body for POST/PUT/PATCH (JSON) |
 | `connectionCode` | string | No | HTTP connection to use (optional) |
 | `dataPath` | string | No | JSON path to records array (e.g., "data.items") |
-| `pagination.type` | select | No | Pagination type: none, offset, cursor, page, link_header |
+| `pagination.type` | select | No | Pagination type: NONE, OFFSET, CURSOR, PAGE, LINK_HEADER |
 | `pagination.limit` | number | No | Page size (records per page) |
 | `pagination.maxPages` | number | No | Maximum pages to fetch |
 | `pagination.cursorPath` | string | No | JSON path to cursor (for cursor pagination) |
@@ -38,7 +38,7 @@ Fetch data from REST APIs with automatic pagination, authentication, and retry s
     },
     dataPath: 'data.products',
     pagination: {
-        type: 'page',
+        type: 'PAGE',
         limit: 100,
         maxPages: 50,
     },
@@ -51,7 +51,7 @@ Fetch data from REST APIs with automatic pagination, authentication, and retry s
 ```typescript
 {
     pagination: {
-        type: 'page',
+        type: 'PAGE',
         limit: 100,
     },
     dataPath: 'items',
@@ -62,7 +62,7 @@ Fetch data from REST APIs with automatic pagination, authentication, and retry s
 ```typescript
 {
     pagination: {
-        type: 'offset',
+        type: 'OFFSET',
         limit: 100,
     },
 }
@@ -72,7 +72,7 @@ Fetch data from REST APIs with automatic pagination, authentication, and retry s
 ```typescript
 {
     pagination: {
-        type: 'cursor',
+        type: 'CURSOR',
         cursorPath: 'meta.nextCursor',
     },
 }
@@ -91,7 +91,7 @@ Parse files in multiple formats (CSV, JSON, XML, XLSX, NDJSON, TSV).
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `path` | string | Yes | File path or glob pattern (e.g., /data/*.csv) |
-| `format` | select | No | File format: csv, json, xml, xlsx, ndjson, tsv (auto-detected if not specified) |
+| `format` | select | No | File format: CSV, JSON, XML, XLSX, NDJSON, TSV (auto-detected if not specified) |
 | `delimiter` | string | No | Field delimiter for CSV/TSV. Default: `,` for CSV, `\t` for TSV |
 | `hasHeader` | boolean | No | Whether first row is header (CSV/TSV). Default: `true` |
 | `encoding` | string | No | File encoding. Default: `utf-8` |
@@ -104,7 +104,7 @@ Parse files in multiple formats (CSV, JSON, XML, XLSX, NDJSON, TSV).
 .extract('parse-csv', {
     adapterCode: 'file',
     path: '/uploads/products.csv',
-    format: 'csv',
+    format: 'CSV',
     delimiter: ',',
     hasHeader: true,
 })
@@ -116,7 +116,7 @@ Parse files in multiple formats (CSV, JSON, XML, XLSX, NDJSON, TSV).
 .extract('parse-json', {
     adapterCode: 'file',
     path: '/data/products.json',
-    format: 'json',
+    format: 'JSON',
     dataPath: 'data.products',
 })
 ```
@@ -127,7 +127,7 @@ Parse files in multiple formats (CSV, JSON, XML, XLSX, NDJSON, TSV).
 .extract('parse-excel', {
     adapterCode: 'file',
     path: '/uploads/inventory.xlsx',
-    format: 'xlsx',
+    format: 'XLSX',
     sheet: 'Products',
 })
 ```
@@ -138,7 +138,7 @@ Parse files in multiple formats (CSV, JSON, XML, XLSX, NDJSON, TSV).
 .extract('parse-all-csv', {
     adapterCode: 'file',
     path: '/imports/*.csv',
-    format: 'csv',
+    format: 'CSV',
 })
 ```
 
@@ -160,7 +160,7 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
 | `headers` | json | No | Request headers (JSON object) |
 | `variables` | json | No | Query variables (JSON object) |
 | `dataPath` | string | No | JSON path to items in response |
-| `pagination.type` | select | No | Pagination type: none, offset, cursor, relay |
+| `pagination.type` | select | No | Pagination type: NONE, OFFSET, CURSOR, RELAY |
 | `pagination.limit` | number | No | Page size |
 | `pagination.maxPages` | number | No | Maximum pages to fetch |
 | `pagination.cursorPath` | string | No | JSON path to cursor in response |
@@ -204,7 +204,7 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
     `,
     dataPath: 'data.products.items',
     pagination: {
-        type: 'offset',
+        type: 'OFFSET',
         limit: 100,
     },
 })
@@ -234,7 +234,7 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
     `,
     dataPath: 'data.products.edges',
     pagination: {
-        type: 'relay',
+        type: 'RELAY',
         cursorPath: 'data.products.pageInfo.endCursor',
         hasNextPagePath: 'data.products.pageInfo.hasNextPage',
         cursorVariable: 'cursor',
@@ -328,7 +328,7 @@ Fetch and parse files from S3-compatible storage (AWS S3, MinIO, DigitalOcean Sp
 | `bucket` | string | Yes | S3 bucket name |
 | `key` | string | No | Object key (file path) |
 | `prefix` | string | No | Key prefix to list objects |
-| `format` | select | No | File format: csv, json, xml, xlsx, ndjson, tsv |
+| `format` | select | No | File format: CSV, JSON, XML, XLSX, NDJSON, TSV |
 | `dataPath` | string | No | JSON path to records (for JSON files) |
 
 ### Example
@@ -339,7 +339,7 @@ Fetch and parse files from S3-compatible storage (AWS S3, MinIO, DigitalOcean Sp
     connectionCode: 'aws-s3',
     bucket: 'product-feeds',
     key: 'imports/products.csv',
-    format: 'csv',
+    format: 'CSV',
 })
 ```
 
@@ -363,7 +363,7 @@ Fetch and parse files from FTP or SFTP servers.
 | `passwordSecretCode` | string | No | Secret code for password |
 | `remotePath` | string | Yes | Remote directory path |
 | `filePattern` | string | No | File name pattern (e.g., `*.csv`, `products-*.json`) |
-| `format` | select | No | File format: csv, json, xml, xlsx (auto-detected if not specified) |
+| `format` | select | No | File format: CSV, JSON, XML, XLSX (auto-detected if not specified) |
 | `deleteAfterProcess` | boolean | No | Delete files after processing |
 | `modifiedAfter` | string | No | Only process files modified after this date |
 | `maxFiles` | number | No | Maximum number of files to process |
@@ -379,7 +379,7 @@ Fetch and parse files from FTP or SFTP servers.
     passwordSecretCode: 'supplier-ftp-pass',
     remotePath: '/exports',
     filePattern: 'inventory-*.csv',
-    format: 'csv',
+    format: 'CSV',
 })
 ```
 
@@ -390,7 +390,7 @@ Fetch and parse files from FTP or SFTP servers.
     adapterCode: 'ftp',
     connectionCode: 'supplier-sftp',
     remotePath: '/data/products',
-    format: 'json',
+    format: 'JSON',
 })
 ```
 
@@ -408,7 +408,7 @@ Query SQL databases (PostgreSQL, MySQL, SQLite, MSSQL, Oracle) with pagination s
 |-------|------|----------|-------------|
 | `connectionCode` | string | Yes | Database connection code |
 | `query` | string | Yes | SQL query to execute |
-| `pagination.type` | select | No | Pagination type: none, offset, keyset |
+| `pagination.type` | select | No | Pagination type: NONE, OFFSET, KEYSET |
 | `pagination.limit` | number | No | Page size |
 | `incrementalColumn` | string | No | Column for incremental extraction |
 
@@ -420,7 +420,7 @@ Query SQL databases (PostgreSQL, MySQL, SQLite, MSSQL, Oracle) with pagination s
     connectionCode: 'supplier-db',
     query: 'SELECT * FROM products WHERE updated_at > :lastRun',
     pagination: {
-        type: 'offset',
+        type: 'OFFSET',
         limit: 1000,
     },
     incrementalColumn: 'updated_at',

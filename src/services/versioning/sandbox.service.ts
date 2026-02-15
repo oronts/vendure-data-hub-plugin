@@ -11,7 +11,6 @@ import {
     SandboxStepStatus,
     RecordOutcome,
     FieldDiffChangeType,
-    FieldChangeType,
     ValidationIssueSeverity,
     LineageOutcome,
     RecordProcessingState,
@@ -60,7 +59,7 @@ export interface FieldDiff {
 
 export interface FieldChange {
     field: string;
-    changeType: FieldChangeType;
+    changeType: FieldDiffChangeType;
     affectedCount: number;
     totalRecords: number;
     percentage: number;

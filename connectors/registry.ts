@@ -17,6 +17,12 @@ import { getErrorMessage } from '../src/utils/error.utils';
 /** Maximum number of registered connectors to prevent unbounded memory growth */
 const MAX_CONNECTORS = 1000;
 
+/** Maximum number of registered extractors across all connectors */
+const MAX_EXTRACTORS = 5000;
+
+/** Maximum number of registered loaders across all connectors */
+const MAX_LOADERS = 5000;
+
 /**
  * Registry for managing DataHub connectors
  */
@@ -83,18 +89,26 @@ export class ConnectorRegistry {
             };
         }
 
-        // Register extractors
+        // Register extractors (with size bound)
         if (connector.extractors) {
             for (const extractor of connector.extractors) {
                 const code = `${connector.code}:${extractor.code}`;
+                if (!this.extractors.has(code) && this.extractors.size >= MAX_EXTRACTORS) {
+                    errors.push(`Extractor registry is full (max ${MAX_EXTRACTORS}). Cannot register "${code}".`);
+                    continue;
+                }
                 this.extractors.set(code, { ...extractor, code });
             }
         }
 
-        // Register loaders
+        // Register loaders (with size bound)
         if (connector.loaders) {
             for (const loader of connector.loaders) {
                 const code = `${connector.code}:${loader.code}`;
+                if (!this.loaders.has(code) && this.loaders.size >= MAX_LOADERS) {
+                    errors.push(`Loader registry is full (max ${MAX_LOADERS}). Cannot register "${code}".`);
+                    continue;
+                }
                 this.loaders.set(code, { ...loader, code });
             }
         }
@@ -107,11 +121,12 @@ export class ConnectorRegistry {
         });
 
         return {
-            success: true,
+            success: errors.length === 0,
             connectorCode: connector.code,
             pipelineCount: pipelines.length,
             extractorCount: connector.extractors?.length ?? 0,
             loaderCount: connector.loaders?.length ?? 0,
+            ...(errors.length > 0 ? { errors } : {}),
         };
     }
 

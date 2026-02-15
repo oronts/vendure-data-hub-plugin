@@ -9,11 +9,8 @@ import {
     EMAIL_PATTERN,
     isValidEmail as sharedIsValidEmail,
     isValidUrl as sharedIsValidUrl,
-} from '../../shared/utils/validation';
-
-import {
     ERROR_MESSAGES as SHARED_ERROR_MESSAGES,
-} from '../../shared/types';
+} from '../../shared';
 
 export const EMAIL_REGEX = EMAIL_PATTERN;
 

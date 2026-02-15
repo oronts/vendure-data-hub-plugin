@@ -135,7 +135,7 @@ import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 
 const pipeline = createPipeline()
     .name('Product Sync')
-    .trigger('start', { type: 'schedule', cron: '0 2 * * *' })
+    .trigger('start', { type: 'SCHEDULE', cron: '0 2 * * *' })
     .extract('fetch', { adapterCode: 'httpApi', url: 'https://api.example.com/products' })
     .load('import', { entityType: 'PRODUCT', operation: 'UPSERT', lookupFields: ['slug'] })
     .edge('start', 'fetch')

@@ -45,7 +45,7 @@ import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 const pipeline = createPipeline()
     .name('Product Sync')
     .description('Sync products from ERP system')
-    .trigger('schedule', { type: 'schedule', cron: '0 2 * * *' })
+    .trigger('schedule', { type: 'SCHEDULE', cron: '0 2 * * *' })
     .extract('fetch-erp', {
         adapterCode: 'httpApi',
         connectionCode: 'erp-api',

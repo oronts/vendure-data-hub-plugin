@@ -1,1 +1,1 @@
-export { toVisualDefinition, toCanonicalDefinition, layoutDagNodes } from './PipelineConversion';
+export { toVisualDefinition, toCanonicalDefinition, layoutDagNodes } from './pipeline-conversion';

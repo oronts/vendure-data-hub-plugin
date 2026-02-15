@@ -96,7 +96,7 @@ Load steps create or update Vendure entities or send data externally.
    - **Order Transition** (`orderTransition`) - Change order states
    - **REST Post** (`restPost`) - Send data to external APIs
 3. Configure:
-   - **Strategy** - upsert, source-wins, vendure-wins, or merge
+   - **Strategy** - CREATE, UPDATE, UPSERT, SOFT_DELETE, or HARD_DELETE
    - **Field Mappings** - map source fields to entity fields
 4. Connect to the previous step
 
@@ -299,12 +299,12 @@ Send HTTP notifications to external systems:
 ```typescript
 .hooks({
     PIPELINE_COMPLETED: [{
-        type: 'webhook',
+        type: 'WEBHOOK',
         url: 'https://slack.example.com/webhook',
         headers: { 'Content-Type': 'application/json' },
     }],
     PIPELINE_FAILED: [{
-        type: 'webhook',
+        type: 'WEBHOOK',
         url: 'https://pagerduty.example.com/alert',
         secret: 'webhook-signing-secret',  // HMAC signature
         signatureHeader: 'X-Signature',

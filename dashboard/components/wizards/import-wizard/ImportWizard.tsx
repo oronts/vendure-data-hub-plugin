@@ -1,10 +1,10 @@
 import * as React from 'react';
 import { Play } from 'lucide-react';
 import { toast } from 'sonner';
-import { VENDURE_ENTITY_SCHEMAS } from '../../../../shared/vendure-schemas';
+import { VENDURE_ENTITY_SCHEMAS } from '../../../../shared';
 import type { EnhancedFieldDefinition } from '../../../types';
-import type { ImportWizardProps, ImportConfiguration, FieldMapping } from './Types';
-import { WIZARD_STEPS, WIZARD_STEPS_FROM_TEMPLATE, IMPORT_STEP_ID } from './Constants';
+import type { ImportWizardProps, ImportConfiguration, FieldMapping } from './types';
+import { WIZARD_STEPS, WIZARD_STEPS_FROM_TEMPLATE, IMPORT_STEP_ID } from './constants';
 import { TemplateStep } from './TemplateStep';
 import { SourceStep } from './SourceStep';
 import { PreviewStep } from './PreviewStep';
@@ -14,10 +14,10 @@ import { TransformStep } from './TransformStep';
 import { StrategyStep } from './StrategyStep';
 import { TriggerStep } from './TriggerStep';
 import { ReviewStep } from './ReviewStep';
-import { validateImportWizardStep } from '../../../utils/FormValidation';
+import { validateImportWizardStep } from '../../../utils/form-validation';
 import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../shared';
 import { BATCH_SIZES, UI_LIMITS, UI_DEFAULTS, TRIGGER_TYPES, FILE_FORMAT, SOURCE_TYPE, CLEANUP_STRATEGY, TOAST_WIZARD, formatParseError, formatParsedRecords } from '../../../constants';
-import { normalizeString } from '../../../utils';
+import { normalizeString, parseCSVLine } from '../../../utils';
 import { useImportTemplates } from '../../../hooks/useImportTemplates';
 
 type TemplateCategory = 'products' | 'customers' | 'inventory' | 'orders' | 'promotions' | 'catalog';
@@ -207,12 +207,12 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
                 const hasHeaders = hasHeadersRef.current;
 
                 const headers = hasHeaders
-                    ? lines[0].split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''))
-                    : lines[0].split(delimiter).map((_, i) => `column_${i + 1}`);
+                    ? parseCSVLine(lines[0], delimiter).map(h => h.replace(/^["']|["']$/g, ''))
+                    : parseCSVLine(lines[0], delimiter).map((_, i) => `column_${i + 1}`);
 
                 const dataLines = hasHeaders ? lines.slice(1) : lines;
                 const rows = dataLines.slice(0, UI_LIMITS.MAX_PREVIEW_ROWS).map(line => {
-                    const values = line.split(delimiter).map(v => v.trim().replace(/^["']|["']$/g, ''));
+                    const values = parseCSVLine(line, delimiter).map(v => v.replace(/^["']|["']$/g, ''));
                     const row: Record<string, unknown> = {};
                     headers.forEach((header, i) => {
                         row[header] = values[i] ?? '';

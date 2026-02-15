@@ -181,12 +181,12 @@ const orderProcessor = createPipeline()
     .name('order-queue-processor')
     .description('Process orders from message queue')
     .trigger('order-queue', {
-        type: 'message',
+        type: 'MESSAGE',
         message: {
             connectionCode: 'rabbitmq-main',
             queue: 'orders.created',
             batchSize: 10,
-            ackMode: 'manual',
+            ackMode: 'MANUAL',
             maxRetries: 3,
             deadLetterQueue: 'orders.dlq',
         },
@@ -219,7 +219,7 @@ const orderProcessor = createPipeline()
 | `connectionCode` | string | Reference to queue connection |
 | `queue` | string | Queue or topic name |
 | `batchSize` | number | Messages to process at once |
-| `ackMode` | 'auto' \| 'manual' | Acknowledgment mode |
+| `ackMode` | 'AUTO' \| 'MANUAL' | Acknowledgment mode |
 | `maxRetries` | number | Retries before DLQ |
 | `deadLetterQueue` | string | DLQ for failed messages |
 | `consumerGroup` | string | Consumer group (Kafka) |
@@ -233,7 +233,7 @@ const stockUpdatePipeline = createPipeline()
     .name('stock-to-queue')
     .description('Send stock updates to queue')
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         schedule: { cron: '*/5 * * * *' },
     })
     .extract('stock-changes', {
@@ -278,7 +278,7 @@ const stockUpdatePipeline = createPipeline()
 const externalOrderSync = createPipeline()
     .name('external-order-sync')
     .trigger('external-orders', {
-        type: 'message',
+        type: 'MESSAGE',
         message: {
             connectionCode: 'kafka-cluster',
             queue: 'ecommerce.orders',
@@ -305,7 +305,7 @@ const externalOrderSync = createPipeline()
 const warehouseStockSync = createPipeline()
     .name('warehouse-stock-sync')
     .trigger('warehouse-updates', {
-        type: 'message',
+        type: 'MESSAGE',
         message: {
             connectionCode: 'rabbitmq-main',
             queue: 'warehouse.stock',
@@ -328,7 +328,7 @@ const warehouseStockSync = createPipeline()
 const erpPriceSync = createPipeline()
     .name('erp-price-sync')
     .trigger('erp-prices', {
-        type: 'message',
+        type: 'MESSAGE',
         message: {
             connectionCode: 'sqs-queue',
             queue: 'erp-price-updates',
@@ -355,7 +355,7 @@ const erpPriceSync = createPipeline()
 const productChangeFanout = createPipeline()
     .name('product-change-fanout')
     .trigger('product-event', {
-        type: 'event',
+        type: 'EVENT',
         eventType: 'ProductEvent',
     })
     .extract('from-event', { adapterCode: 'inMemory' })
@@ -394,7 +394,7 @@ Configure DLQ for failed messages:
 
 ```typescript
 .trigger('order-queue', {
-    type: 'message',
+    type: 'MESSAGE',
     message: {
         connectionCode: 'rabbitmq-main',
         queue: 'orders.created',
@@ -412,7 +412,7 @@ Create a separate pipeline to handle dead letters:
 const dlqProcessor = createPipeline()
     .name('order-dlq-processor')
     .trigger('dlq', {
-        type: 'message',
+        type: 'MESSAGE',
         message: {
             connectionCode: 'rabbitmq-main',
             queue: 'orders.dead-letter',
@@ -530,7 +530,7 @@ Ensure messages are acknowledged before shutdown:
 
 ```typescript
 message: {
-    ackMode: 'manual',  // Ack only after successful processing
+    ackMode: 'MANUAL',  // Ack only after successful processing
 }
 ```
 

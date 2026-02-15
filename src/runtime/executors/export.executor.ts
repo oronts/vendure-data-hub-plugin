@@ -16,6 +16,7 @@ import { ExporterAdapter, ExportContext, ConnectionConfig, ConnectionType } from
 import { formatDate } from '../../transforms/field/date-transforms';
 import { getAdapterCode } from '../../types/step-configs';
 import { assertUrlSafe } from '../../utils/url-security.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Resolve output file path from directory path and filename pattern
@@ -149,7 +150,7 @@ export class ExportExecutor {
                     ok = records.length;
                 } catch (e: unknown) {
                     fail = input.length;
-                    const message = e instanceof Error ? e.message : 'CSV export failed';
+                    const message = getErrorMessage(e);
                     if (onRecordError) await onRecordError(step.key, message, {});
                 }
                 break;
@@ -175,7 +176,7 @@ export class ExportExecutor {
                     ok = records.length;
                 } catch (e: unknown) {
                     fail = input.length;
-                    const message = e instanceof Error ? e.message : 'JSON export failed';
+                    const message = getErrorMessage(e);
                     if (onRecordError) await onRecordError(step.key, message, {});
                 }
                 break;
@@ -207,7 +208,7 @@ export class ExportExecutor {
                     ok = records.length;
                 } catch (e: unknown) {
                     fail = input.length;
-                    const message = e instanceof Error ? e.message : 'XML export failed';
+                    const message = getErrorMessage(e);
                     if (onRecordError) await onRecordError(step.key, message, {});
                 }
                 break;
@@ -299,7 +300,7 @@ export class ExportExecutor {
                         ok += batch.length;
                     } catch (e: unknown) {
                         fail += batch.length;
-                        const message = e instanceof Error ? e.message : 'Webhook export failed';
+                        const message = getErrorMessage(e);
                         if (onRecordError) {
                             await onRecordError(step.key, message, {});
                         }

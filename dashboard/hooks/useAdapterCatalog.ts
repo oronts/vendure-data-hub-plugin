@@ -32,7 +32,7 @@ import { useAdapters } from './api/useAdapters';
 import { useConnectionCodes } from './api/useConnections';
 import { useSecrets } from './api/useSecrets';
 import { QUERY_LIMITS, FALLBACK_COLORS, UI_ADAPTER_CATEGORY } from '../constants';
-import { ADAPTER_TYPE_TO_NODE_TYPE, ADAPTER_TYPE_TO_CATEGORY } from '../constants/UiStates';
+import { ADAPTER_TYPE_TO_NODE_TYPE, ADAPTER_TYPE_TO_CATEGORY } from '../constants/ui-states';
 
 interface CatalogSchemaField {
     key: string;

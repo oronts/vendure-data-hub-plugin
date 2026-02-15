@@ -7,6 +7,7 @@ import {
     FlaskConical,
     Rocket,
 } from 'lucide-react';
+import { getErrorMessage } from '../../../../shared';
 import { PipelineImportDialog } from '../../../components/pipelines/PipelineImport';
 import { PipelineExportDialog } from '../../../components/pipelines/PipelineExport';
 import {
@@ -63,7 +64,7 @@ export function PipelineActionButtons({
             },
             onError: (err) => {
                 toast.error(TOAST_PIPELINE.RUN_START_ERROR, {
-                    description: err instanceof Error ? err.message : 'Unknown error',
+                    description: getErrorMessage(err),
                 });
             },
         });
@@ -105,14 +106,14 @@ export function PipelineActionButtons({
                         },
                         onError: (err) => {
                             toast.error(TOAST_PIPELINE.PUBLISH_ERROR, {
-                                description: err instanceof Error ? err.message : 'Unknown error',
+                                description: getErrorMessage(err),
                             });
                         },
                     });
                 },
                 onError: (err) => {
                     toast.error(TOAST_PIPELINE.PUBLISH_ERROR, {
-                        description: err instanceof Error ? err.message : 'Unknown error',
+                        description: getErrorMessage(err),
                     });
                 },
             },

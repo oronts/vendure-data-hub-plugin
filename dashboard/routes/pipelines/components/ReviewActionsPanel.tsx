@@ -21,6 +21,7 @@ import {
     Archive,
     Play,
 } from 'lucide-react';
+import { getErrorMessage } from '../../../../shared';
 import {
     PIPELINE_STATUS,
     TOAST_PIPELINE,
@@ -101,7 +102,7 @@ export function ReviewActionsPanel({
             },
             onError: (err) => {
                 toast.error(TOAST_PIPELINE.SUBMIT_ERROR, {
-                    description: err instanceof Error ? err.message : 'Unknown error',
+                    description: getErrorMessage(err),
                 });
             },
         });
@@ -117,7 +118,7 @@ export function ReviewActionsPanel({
             },
             onError: (err) => {
                 toast.error(TOAST_PIPELINE.APPROVE_ERROR, {
-                    description: err instanceof Error ? err.message : 'Unknown error',
+                    description: getErrorMessage(err),
                 });
             },
         });
@@ -134,7 +135,7 @@ export function ReviewActionsPanel({
             },
             onError: (err) => {
                 toast.error(TOAST_PIPELINE.REJECT_ERROR, {
-                    description: err instanceof Error ? err.message : 'Unknown error',
+                    description: getErrorMessage(err),
                 });
             },
         });
@@ -150,7 +151,7 @@ export function ReviewActionsPanel({
             },
             onError: (err) => {
                 toast.error(TOAST_PIPELINE.ARCHIVE_ERROR, {
-                    description: err instanceof Error ? err.message : 'Unknown error',
+                    description: getErrorMessage(err),
                 });
             },
         });

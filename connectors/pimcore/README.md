@@ -547,15 +547,16 @@ pipeline.transform('custom-transforms', {
     { op: 'slugify', args: { source: 'name', target: 'slug' } },
 
     // Coalesce: Use first non-empty value
-    { op: 'coalesce', args: { fields: ['slug', 'urlKey', 'key'], target: 'finalSlug' } },
+    { op: 'coalesce', args: { paths: ['slug', 'urlKey', 'key'], target: 'finalSlug' } },
 
-    // When: Conditional logic
+    // IfThenElse: Conditional value assignment
     {
-      op: 'when',
+      op: 'ifThenElse',
       args: {
-        conditions: [{ field: 'stock', cmp: 'lt', value: 10 }],
-        action: 'set',
-        setValue: { lowStock: true },
+        condition: { field: 'stock', cmp: 'lt', value: 10 },
+        thenValue: true,
+        elseValue: false,
+        target: 'lowStock',
       },
     },
 
@@ -705,8 +706,9 @@ const externalSyncPipeline = createPipeline()
 |----------|-------------|---------|
 | `template` | Build string from template | `{ op: 'template', args: { template: '${a}-${b}', target: 'c' } }` |
 | `slugify` | Create URL-safe slug | `{ op: 'slugify', args: { source: 'name', target: 'slug' } }` |
-| `coalesce` | First non-empty value | `{ op: 'coalesce', args: { fields: ['a', 'b'], target: 'c' } }` |
-| `when` | Conditional logic | `{ op: 'when', args: { conditions: [...], action: 'set' } }` |
+| `coalesce` | First non-empty value | `{ op: 'coalesce', args: { paths: ['a', 'b'], target: 'c' } }` |
+| `when` | Conditional filter (keep/drop) | `{ op: 'when', args: { conditions: [...], action: 'keep' } }` |
+| `ifThenElse` | Conditional value assignment | `{ op: 'ifThenElse', args: { condition: {...}, thenValue: 'x', elseValue: 'y', target: 'f' } }` |
 | `toNumber` | Convert to number | `{ op: 'toNumber', args: { source: 'price' } }` |
 | `map` | Restructure fields | `{ op: 'map', args: { mapping: { new: 'old' } } }` |
 | `rename` | Rename field | `{ op: 'rename', args: { from: 'old', to: 'new' } }` |

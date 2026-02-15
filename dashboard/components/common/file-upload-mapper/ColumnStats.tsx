@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { memo } from 'react';
 import { Card, CardContent, Badge } from '@vendure/dashboard';
-import type { ColumnStatsProps } from './Types';
+import type { ColumnStatsProps } from './types';
 
 function ColumnStatsComponent({ columns, rowCount }: ColumnStatsProps) {
     return (

@@ -65,7 +65,7 @@ Use the feed step to output the final file:
 ```typescript
 .feed('generate-google-feed', {
     adapterCode: 'googleMerchant',
-    format: 'xml',
+    format: 'XML',
     outputPath: '/feeds/google-shopping.xml',
     targetCountry: 'US',
     contentLanguage: 'en',
@@ -108,7 +108,7 @@ Use the feed step to output the final file:
 ```typescript
 .feed('google-feed', {
     adapterCode: 'googleMerchant',
-    format: 'xml',
+    format: 'XML',
     outputPath: '/feeds/google.xml',
 
     // Required settings
@@ -150,7 +150,7 @@ Use the feed step to output the final file:
 ```typescript
 .feed('meta-catalog', {
     adapterCode: 'metaCatalog',
-    format: 'csv',  // or 'xml'
+    format: 'CSV',  // or 'xml'
     outputPath: '/feeds/meta-catalog.csv',
     currency: 'USD',
 
@@ -202,7 +202,7 @@ Create feeds in any format for any platform.
 ```typescript
 .feed('custom-csv', {
     adapterCode: 'customFeed',
-    format: 'csv',
+    format: 'CSV',
     outputPath: '/feeds/products.csv',
 
     fieldMapping: {
@@ -219,7 +219,7 @@ Create feeds in any format for any platform.
 ```typescript
 .feed('custom-json', {
     adapterCode: 'customFeed',
-    format: 'json',
+    format: 'JSON',
     outputPath: '/feeds/products.json',
 })
 ```
@@ -229,7 +229,7 @@ Create feeds in any format for any platform.
 ```typescript
 .feed('custom-xml', {
     adapterCode: 'customFeed',
-    format: 'xml',
+    format: 'XML',
     outputPath: '/feeds/products.xml',
     rootElement: 'products',
     itemElement: 'product',
@@ -274,7 +274,7 @@ Generate feeds on a schedule:
 ```typescript
 const feedPipeline = createPipeline()
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 4 * * *',  // Daily at 4 AM
     })
     .extract('get-products', { ... })

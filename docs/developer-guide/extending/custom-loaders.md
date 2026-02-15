@@ -6,7 +6,7 @@ Create loaders to write data to new entity types or external systems.
 
 ```typescript
 interface LoaderAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'loader';
+    readonly type: 'LOADER';
     readonly code: string;
     readonly name: string;
     readonly description?: string;
@@ -46,12 +46,12 @@ import { LoaderAdapter, LoadContext, LoadResult, JsonObject } from '@oronts/vend
 interface CustomLoaderConfig {
     codeField: string;
     nameField: string;
-    strategy?: 'create' | 'update' | 'upsert';
+    strategy?: 'CREATE' | 'UPDATE' | 'UPSERT';
 }
 
 @Injectable()
 export class CustomEntityLoader implements LoaderAdapter<CustomLoaderConfig> {
-    readonly type = 'loader' as const;
+    readonly type = 'LOADER' as const;
     readonly code = 'custom-entity';
     readonly name = 'Custom Entity Loader';
 
@@ -93,7 +93,7 @@ export class CustomEntityLoader implements LoaderAdapter<CustomLoaderConfig> {
                     .findOne({ where: { code } });
 
                 if (existing) {
-                    if (config.strategy === 'create') {
+                    if (config.strategy === 'CREATE') {
                         results.skipped++;
                         continue;
                     }
@@ -102,7 +102,7 @@ export class CustomEntityLoader implements LoaderAdapter<CustomLoaderConfig> {
                     await this.connection.getRepository(ctx, CustomEntity).save(existing);
                     results.updated++;
                 } else {
-                    if (config.strategy === 'update') {
+                    if (config.strategy === 'UPDATE') {
                         results.skipped++;
                         continue;
                     }
@@ -154,14 +154,14 @@ Available conflict resolution strategies:
 
 ```typescript
 type LoadStrategy =
-    | 'create'        // Only create new, skip existing
-    | 'update'        // Only update existing, skip new
-    | 'upsert'        // Create or update
-    | 'merge'         // Merge fields intelligently
-    | 'source-wins'   // Source data wins conflicts
-    | 'vendure-wins'  // Existing Vendure data wins
-    | 'soft-delete'   // Mark as deleted
-    | 'hard-delete';  // Permanently delete
+    | 'CREATE'        // Only create new, skip existing
+    | 'UPDATE'        // Only update existing, skip new
+    | 'UPSERT'        // Create or update
+    | 'MERGE'         // Merge fields intelligently
+    | 'SOURCE_WINS'   // Source data wins conflicts
+    | 'VENDURE_WINS'  // Existing Vendure data wins
+    | 'SOFT_DELETE'   // Mark as deleted
+    | 'HARD_DELETE';  // Permanently delete
 ```
 
 ## Load Result
@@ -190,7 +190,7 @@ Inject Vendure services for entity operations:
 import { ProductService, TransactionalConnection } from '@vendure/core';
 
 @Injectable()
-export class MyProductLoader implements EntityLoader {
+export class MyProductLoader implements LoaderAdapter {
     constructor(
         private productService: ProductService,
         private connection: TransactionalConnection,
@@ -304,7 +304,7 @@ private validate(record: JsonObject, config: LoadConfig) {
 import { Injectable } from '@nestjs/common';
 import { RequestContext, TransactionalConnection, Tag } from '@vendure/core';
 import {
-    EntityLoader,
+    LoaderAdapter,
     LoadConfig,
     LoadContext,
     LoadResult,
@@ -312,13 +312,13 @@ import {
 } from '@oronts/vendure-data-hub-plugin';
 
 @Injectable()
-export class TagLoader implements EntityLoader {
+export class TagLoader implements LoaderAdapter {
     readonly code = 'tag';
     readonly name = 'Tag Loader';
     readonly entityType = 'Tag';
     readonly description = 'Create or update tags';
 
-    readonly configSchema: AdapterSchema = {
+    readonly schema: AdapterSchema = {
         fields: [
             { key: 'valueField', type: 'string', required: true, label: 'Value Field', default: 'value' },
         ],
@@ -354,14 +354,14 @@ export class TagLoader implements EntityLoader {
                 const existing = await repo.findOne({ where: { value } });
 
                 if (existing) {
-                    if (config.strategy === 'create') {
+                    if (config.strategy === 'CREATE') {
                         results.skipped++;
                         context.logger.debug(`Tag "${value}" exists, skipping`);
                         continue;
                     }
                     results.updated++;
                 } else {
-                    if (config.strategy === 'update') {
+                    if (config.strategy === 'UPDATE') {
                         results.skipped++;
                         context.logger.debug(`Tag "${value}" not found, skipping`);
                         continue;

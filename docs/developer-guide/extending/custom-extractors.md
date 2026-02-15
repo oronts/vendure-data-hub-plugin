@@ -6,7 +6,7 @@ Create extractors to pull data from new sources.
 
 ```typescript
 interface ExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'extractor';
+    readonly type: 'EXTRACTOR';
     readonly code: string;
     readonly name: string;
     readonly description?: string;
@@ -61,7 +61,7 @@ interface MyApiConfig {
 
 @Injectable()
 export class MyApiExtractor implements ExtractorAdapter<MyApiConfig> {
-    readonly type = 'extractor' as const;
+    readonly type = 'EXTRACTOR' as const;
     readonly code = 'my-api';
     readonly name = 'My API Extractor';
     readonly description = 'Fetches data from My API';
@@ -142,7 +142,7 @@ export class MyExtractorPlugin implements OnModuleInit {
 Define the configuration UI:
 
 ```typescript
-readonly configSchema: AdapterSchema = {
+readonly schema: AdapterSchema = {
     fields: [
         // Text input
         { key: 'url', type: 'string', required: true, label: 'URL' },
@@ -323,7 +323,7 @@ Access saved connections:
 import { ConnectionService } from '@oronts/vendure-data-hub-plugin';
 
 @Injectable()
-export class MyExtractor implements DataExtractor {
+export class MyExtractor implements ExtractorAdapter {
     constructor(private connectionService: ConnectionService) {}
 
     async *extract(ctx, config, context) {
@@ -351,7 +351,7 @@ Access secret values:
 import { SecretService } from '@oronts/vendure-data-hub-plugin';
 
 @Injectable()
-export class MyExtractor implements DataExtractor {
+export class MyExtractor implements ExtractorAdapter {
     constructor(private secretService: SecretService) {}
 
     async *extract(ctx, config, context) {
@@ -371,20 +371,20 @@ export class MyExtractor implements DataExtractor {
 import { Injectable } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import {
-    DataExtractor,
-    ExtractionContext,
+    ExtractorAdapter,
+    ExtractContext,
     AdapterSchema,
     SecretService,
     ExtractorError,
 } from '@oronts/vendure-data-hub-plugin';
 
 @Injectable()
-export class GraphQLExtractor implements DataExtractor {
+export class GraphQLExtractor implements ExtractorAdapter {
     readonly code = 'graphql-api';
     readonly name = 'GraphQL API';
     readonly description = 'Fetch data from GraphQL APIs';
 
-    readonly configSchema: AdapterSchema = {
+    readonly schema: AdapterSchema = {
         fields: [
             { key: 'endpoint', type: 'string', required: true, label: 'GraphQL Endpoint' },
             { key: 'query', type: 'text', required: true, label: 'Query' },
@@ -397,10 +397,9 @@ export class GraphQLExtractor implements DataExtractor {
     constructor(private secretService: SecretService) {}
 
     async *extract(
-        ctx: RequestContext,
+        context: ExtractContext,
         config: JsonObject,
-        context: ExtractionContext,
-    ): AsyncGenerator<JsonObject> {
+    ): AsyncGenerator<RecordEnvelope> {
         const { endpoint, query, variables, itemsPath, bearerToken } = config;
 
         const headers: Record<string, string> = {

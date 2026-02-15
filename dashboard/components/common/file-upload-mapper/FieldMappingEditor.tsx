@@ -27,7 +27,7 @@ import { Wand2, AlertCircle, X, Link2, Unlink } from 'lucide-react';
 import { toast } from 'sonner';
 import { computeAutoMappings } from '../../../utils';
 import { UI_LIMITS, SENTINEL_VALUES, formatAutoMapped } from '../../../constants';
-import type { FieldMappingEditorProps } from './Types';
+import type { FieldMappingEditorProps } from './types';
 
 export function FieldMappingEditor({ sourceColumns, targetSchema, mappings, onChange }: FieldMappingEditorProps) {
     const [showUnmapped, setShowUnmapped] = React.useState(true);

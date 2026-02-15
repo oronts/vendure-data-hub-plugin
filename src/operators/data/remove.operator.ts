@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import { RemoveOperatorConfig } from './types';
 import { applyRemove } from './helpers';
 
@@ -33,7 +33,7 @@ export function applyRemoveOperator(
 export function removeOperator(
     records: readonly JsonObject[],
     config: RemoveOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record => applyRemoveOperator(record, config));
     return { records: results };

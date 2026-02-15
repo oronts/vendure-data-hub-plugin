@@ -142,10 +142,8 @@ const ALLOWED_METHODS: Set<string> = new Set([
     ...ALLOWED_NUMBER_METHODS,
 ]);
 
-type CompiledFunction = (...args: unknown[]) => unknown;
-
 interface CacheEntry {
-    fn: CompiledFunction;
+    script: vm.Script;
     params: string[];
     lastUsed: number;
     useCount: number;
@@ -187,12 +185,12 @@ export class SafeEvaluator {
             // Validate the expression
             this.validateExpression(expression);
 
-            // Get or create the compiled function
-            const { fn, params } = this.getCompiledFunction(expression, Object.keys(context));
+            // Get or create the compiled script
+            const { script, params } = this.getCompiledScript(expression, Object.keys(context));
 
             // Execute with timeout
             const timeout = timeoutMs ?? this.config.defaultTimeoutMs;
-            const value = this.executeWithTimeout(fn, params, context, timeout);
+            const value = this.executeWithTimeout(script, params, context, timeout);
 
             return {
                 success: true,
@@ -230,11 +228,11 @@ export class SafeEvaluator {
             // Validate the expression
             this.validateExpression(expression);
 
-            // Get or create the compiled function
-            const { fn, params } = this.getCompiledFunction(expression, Object.keys(context));
+            // Get or create the compiled script
+            const { script, params } = this.getCompiledScript(expression, Object.keys(context));
 
-            // Execute with async timeout
-            const value = await this.executeWithTimeoutAsync(fn, params, context, timeout);
+            // Execute with timeout (uses vm.Script timeout for hard CPU enforcement)
+            const value = this.executeWithTimeout(script, params, context, timeout);
 
             return {
                 success: true,
@@ -310,10 +308,10 @@ export class SafeEvaluator {
         }
     }
 
-    private getCompiledFunction(
+    private getCompiledScript(
         expression: string,
         contextKeys: string[],
-    ): { fn: CompiledFunction; params: string[] } {
+    ): { script: vm.Script; params: string[] } {
         // Create cache key from expression and context keys
         const cacheKey = `${expression}|${contextKeys.sort().join(',')}`;
 
@@ -323,59 +321,49 @@ export class SafeEvaluator {
             if (cached) {
                 cached.lastUsed = Date.now();
                 cached.useCount++;
-                return { fn: cached.fn, params: cached.params };
+                return { script: cached.script, params: cached.params };
             }
         }
 
-        // Create the safe function
-        const { fn, params } = this.createSafeFunction(expression, contextKeys);
+        // Create the safe script
+        const { script, params } = this.createSafeScript(expression, contextKeys);
 
         // Cache if enabled
         if (this.config.enableCache) {
-            this.cacheFunction(cacheKey, fn, params);
+            this.cacheScript(cacheKey, script, params);
         }
 
-        return { fn, params };
+        return { script, params };
     }
 
     /**
-     * Create a safe function from an expression
+     * Create a safe vm.Script from an expression
      *
-     * Security: Uses Function constructor after validation:
+     * Security: Uses vm.Script + vm.createContext instead of Function constructor:
      * 1. Expression validated against dangerous patterns (semicolons, braces, backticks)
      * 2. Disallowed keywords blocked (eval, Function, constructor, __proto__, etc.)
      * 3. Prototype pollution patterns detected and blocked
      * 4. Expression complexity limited to prevent DoS
      * 5. Only whitelisted methods allowed
-     * 6. Function executes with frozen sandbox, no access to globals
+     * 6. Script executes in isolated vm context with hard CPU timeout
      */
-    private createSafeFunction(
+    private createSafeScript(
         expr: string,
         contextKeys: string[],
-    ): { fn: CompiledFunction; params: string[] } {
+    ): { script: vm.Script; params: string[] } {
         // Combine sandbox keys with context keys
         const sandboxKeys = Object.keys(this.sandbox);
         const allParams = [...sandboxKeys, ...contextKeys];
 
-        // Build the function body with strict mode and return
-        // The expression is wrapped to ensure it returns a value
-        const functionBody = `
-            "use strict";
-            return (${expr});
-        `;
+        // Build the script body with strict mode and expression evaluation
+        const scriptBody = `"use strict"; (${expr});`;
 
         try {
-            // Create the function with all parameters
-            // eslint-disable-next-line no-new-func
-            const fn = new Function(...allParams, functionBody) as CompiledFunction;
+            const script = new vm.Script(scriptBody, {
+                filename: 'safe-expression',
+            });
 
-            // Verify the function doesn't expose dangerous properties
-            // eslint-disable-next-line @typescript-eslint/ban-types
-            if ((fn as unknown as { constructor: Function }).constructor !== Function) {
-                throw new Error('Function prototype chain tampered');
-            }
-
-            return { fn, params: allParams };
+            return { script, params: allParams };
         } catch (error) {
             throw new Error(
                 `Failed to compile expression: ${getErrorMessage(error)}`,
@@ -383,14 +371,14 @@ export class SafeEvaluator {
         }
     }
 
-    private cacheFunction(key: string, fn: CompiledFunction, params: string[]): void {
+    private cacheScript(key: string, script: vm.Script, params: string[]): void {
         // Evict oldest entries if cache is full
         if (this.cache.size >= this.config.maxCacheSize) {
             this.evictOldestEntries(Math.ceil(this.config.maxCacheSize * SAFE_EVALUATOR.CACHE_EVICTION_PERCENT));
         }
 
         this.cache.set(key, {
-            fn,
+            script,
             params,
             lastUsed: Date.now(),
             useCount: 1,
@@ -410,32 +398,28 @@ export class SafeEvaluator {
     }
 
     private executeWithTimeout(
-        fn: CompiledFunction,
+        script: vm.Script,
         params: string[],
         context: Record<string, unknown>,
         timeoutMs: number,
     ): unknown {
-        // Build argument values in the same order as parameters
+        // Build the vm sandbox with sandbox values and context values
         const sandboxKeys = Object.keys(this.sandbox);
-        const args: unknown[] = [];
+        const vmSandbox: Record<string, unknown> = {};
 
         for (const param of params) {
             if (sandboxKeys.includes(param)) {
-                args.push(this.sandbox[param]);
+                vmSandbox[param] = this.sandbox[param];
             } else {
-                args.push(context[param]);
+                vmSandbox[param] = context[param];
             }
         }
 
-        // Use vm.runInNewContext for true timeout enforcement on synchronous code.
-        // The compiled function and args are injected into the VM sandbox,
-        // and vm enforces timeout at the V8 level (kills the microtask).
-        const vmSandbox: Record<string, unknown> = {
-            __fn__: fn,
-            __args__: args,
-        };
+        // Use vm.createContext + script.runInContext for hard CPU timeout enforcement.
+        // vm enforces timeout at the V8 level (kills the microtask).
+        const vmContext = vm.createContext(vmSandbox);
         try {
-            return vm.runInNewContext('__fn__(...__args__)', vmSandbox, { timeout: timeoutMs });
+            return script.runInContext(vmContext, { timeout: timeoutMs });
         } catch (error) {
             if (error instanceof Error) {
                 if (error.message.includes('Script execution timed out')) {
@@ -444,43 +428,6 @@ export class SafeEvaluator {
                 throw error;
             }
             throw new Error(String(error));
-        }
-    }
-
-    private async executeWithTimeoutAsync(
-        fn: CompiledFunction,
-        params: string[],
-        context: Record<string, unknown>,
-        timeoutMs: number,
-    ): Promise<unknown> {
-        // Build argument values
-        const sandboxKeys = Object.keys(this.sandbox);
-        const args: unknown[] = [];
-
-        for (const param of params) {
-            if (sandboxKeys.includes(param)) {
-                args.push(this.sandbox[param]);
-            } else {
-                args.push(context[param]);
-            }
-        }
-
-        // Execute with timeout using Promise.race with proper cleanup
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        try {
-            return await Promise.race([
-                Promise.resolve().then(() => fn(...args)),
-                new Promise<never>((_, reject) => {
-                    timeoutId = setTimeout(
-                        () => reject(new Error(`Expression timeout after ${timeoutMs}ms`)),
-                        timeoutMs,
-                    );
-                }),
-            ]);
-        } finally {
-            if (timeoutId !== undefined) {
-                clearTimeout(timeoutId);
-            }
         }
     }
 }

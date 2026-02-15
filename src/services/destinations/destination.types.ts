@@ -5,14 +5,19 @@
  */
 
 import { AuthType, DESTINATION_TYPE } from '../../constants/index';
+import type { DestinationType as SharedDestinationType } from '../../../shared/types';
 
 export { DESTINATION_TYPE };
 
 /**
- * Export destination types - derived from DESTINATION_TYPE constant
- * Includes: s3, sftp, ftp, http, local, email
+ * Delivery destination types - subset of the canonical DestinationType that
+ * represents actual physical delivery targets. Excludes 'FILE', 'DOWNLOAD',
+ * and 'WEBHOOK' which are handled at a higher level in the export pipeline.
+ *
+ * @see shared/types/pipeline.types.ts — canonical DestinationType (full superset)
+ * @see src/constants/enums.ts — DESTINATION_TYPE runtime constant
  */
-export type DestinationType = 'S3' | 'SFTP' | 'FTP' | 'HTTP' | 'LOCAL' | 'EMAIL';
+export type DestinationType = Extract<SharedDestinationType, 'S3' | 'SFTP' | 'FTP' | 'HTTP' | 'LOCAL' | 'EMAIL'>;
 
 /**
  * Base destination configuration

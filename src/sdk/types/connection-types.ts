@@ -1,11 +1,19 @@
-import { JsonObject } from '../../types/index';
 import {
-    SecretResolver as SharedSecretResolver,
-    AdapterLogger as SharedAdapterLogger,
+    JsonObject,
+    SecretResolver,
+    AdapterLogger,
 } from '../../../shared/types';
 
 export type ConnectionType = 'HTTP' | 'S3' | 'FTP' | 'SFTP' | 'DATABASE' | 'CUSTOM';
 
+/**
+ * Authentication types for SDK connection contracts.
+ *
+ * Structurally identical to AuthType in src/constants/enums.ts — kept separate
+ * because the SDK must be independently packageable without importing from src/.
+ *
+ * @see src/constants/enums.ts — AuthType (same 7 values, backend-facing)
+ */
 export enum ConnectionAuthType {
     NONE = 'NONE',
     BASIC = 'BASIC',
@@ -40,14 +48,12 @@ export interface ConnectionConfig {
     readonly config?: JsonObject;
 }
 
-export type SecretResolver = SharedSecretResolver;
+export type { SecretResolver, AdapterLogger };
 
 export interface ConnectionResolver {
     get(code: string): Promise<ConnectionConfig | undefined>;
     getRequired(code: string): Promise<ConnectionConfig>;
 }
-
-export type AdapterLogger = SharedAdapterLogger;
 
 export type MessengerType = 'JOB_QUEUE' | 'RABBITMQ';
 

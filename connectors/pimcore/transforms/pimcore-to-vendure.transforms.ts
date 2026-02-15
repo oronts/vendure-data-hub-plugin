@@ -10,7 +10,7 @@ import {
     VendureCategoryInput,
 } from '../types';
 import { JsonObject } from '../../../src/types';
-import { priceToCents } from '../utils/security.utils';
+import { priceToCents } from '../utils/math.utils';
 
 // ============================================================================
 // Type Guards
@@ -381,14 +381,3 @@ function getField(obj: Record<string, unknown>, path: string): unknown {
     return current;
 }
 
-export default {
-    isLocalizedField,
-    isStringOrLocalized,
-    extractLocalizedValue,
-    buildTranslations,
-    generateSlug,
-    transformProduct,
-    transformVariant,
-    transformCategory,
-    transformAsset,
-};

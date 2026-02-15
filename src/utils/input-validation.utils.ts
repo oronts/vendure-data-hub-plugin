@@ -4,7 +4,7 @@ import {
     isValidEmail as isValidEmailFromShared,
     isValidUrl as isValidUrlFromShared,
     isValidPipelineCode as isValidPipelineCodeFromShared,
-} from '../../shared/utils/validation';
+} from '../../shared';
 
 export const EMAIL_REGEX = EMAIL_PATTERN;
 export const isValidEmail = isValidEmailFromShared;

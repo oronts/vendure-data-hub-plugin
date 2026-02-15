@@ -48,6 +48,3 @@ export function extractErrorDetails(error: Error | unknown): ErrorDetails {
         category: 'unknown',
     };
 }
-
-// Re-export from canonical location for backwards compatibility
-export { getErrorMessage } from '../../utils/error.utils';

@@ -87,7 +87,7 @@ Pipeline lifecycle hooks using SCREAMING_SNAKE_CASE stage names:
 ```typescript
 .hooks({
     PIPELINE_COMPLETED: {
-        type: 'webhook',
+        type: 'WEBHOOK',
         url: 'https://api.example.com/notify',
         method: 'POST',
         retries: 3,
@@ -111,20 +111,20 @@ Define how the pipeline starts:
 
 ```typescript
 .trigger('start', {
-    type: 'manual' | 'schedule' | 'webhook' | 'event' | 'file' | 'message',
+    type: 'MANUAL' | 'SCHEDULE' | 'WEBHOOK' | 'EVENT' | 'FILE' | 'MESSAGE',
     // Type-specific options...
 })
 ```
 
 **Manual Trigger:**
 ```typescript
-.trigger('start', { type: 'manual' })
+.trigger('start', { type: 'MANUAL' })
 ```
 
 **Schedule Trigger:**
 ```typescript
 .trigger('schedule', {
-    type: 'schedule',
+    type: 'SCHEDULE',
     cron: '0 2 * * *',
     timezone: 'UTC',
 })
@@ -133,17 +133,18 @@ Define how the pipeline starts:
 **Webhook Trigger:**
 ```typescript
 .trigger('webhook', {
-    type: 'webhook',
-    path: '/product-sync',
-    signature: 'hmac-sha256',
-    idempotencyKey: 'X-Request-ID',
+    type: 'WEBHOOK',
+    webhookPath: '/product-sync',
+    authentication: 'HMAC',
+    requireIdempotencyKey: true,
+    idempotencyKeyHeader: 'X-Request-ID',
 })
 ```
 
 **Event Trigger:**
 ```typescript
 .trigger('on-order', {
-    type: 'event',
+    type: 'EVENT',
     event: 'OrderPlacedEvent',
     filter: { state: 'ArrangingPayment' },
 })
@@ -171,7 +172,7 @@ Pull data from external sources:
     headers: { 'Accept': 'application/json' },
     dataPath: 'data.items',
     pagination: {
-        type: 'page',
+        type: 'PAGE',
         limit: 100,
         maxPages: 10,
     },
@@ -194,7 +195,7 @@ Pull data from external sources:
 .extract('parse-file', {
     adapterCode: 'file',
     path: '/uploads/products.csv',
-    format: 'csv',
+    format: 'CSV',
     delimiter: ',',
     hasHeader: true,
 })
@@ -240,7 +241,7 @@ Validate records:
 
 ```typescript
 .validate('step-key', {
-    mode: 'fail-fast' | 'accumulate',
+    mode: 'FAIL_FAST' | 'ACCUMULATE',
     rules: ValidationRuleConfig[],
     schemaRef?: SchemaRefConfig,
     throughput?: Throughput,
@@ -304,9 +305,9 @@ Create or update Vendure entities:
 ```typescript
 .load('step-key', {
     adapterCode: string,
-    strategy?: 'create' | 'update' | 'upsert' | 'source-wins' | 'vendure-wins' | 'merge',
+    strategy?: 'CREATE' | 'UPDATE' | 'UPSERT' | 'SOFT_DELETE' | 'HARD_DELETE',
     channel?: string,
-    channelStrategy?: 'assign' | 'replace' | 'skip',
+    channelStrategy?: 'EXPLICIT' | 'INHERIT' | 'MULTI',
     validationMode?: ValidationMode,
     matchField?: string,
     nameField?: string,
@@ -337,9 +338,7 @@ Create or update Vendure entities:
     entityType: 'PRODUCT',
     operation: 'UPSERT',
     lookupFields: ['slug'],
-    options: {
-        conflictResolution: 'source-wins',
-    },
+    conflictResolution: 'SOURCE_WINS',
 })
 ```
 
@@ -359,8 +358,8 @@ Send data to external destinations:
 ```typescript
 .export('step-key', {
     adapterCode: string,
-    target?: 'file' | 'api' | 'webhook' | 's3' | 'sftp' | 'email',
-    format?: 'csv' | 'json' | 'xml' | 'xlsx' | 'ndjson',
+    target?: 'FILE' | 'API' | 'WEBHOOK' | 'S3' | 'SFTP' | 'EMAIL',
+    format?: 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON',
     // Target-specific options...
 })
 ```
@@ -369,8 +368,8 @@ Send data to external destinations:
 ```typescript
 .export('write-file', {
     adapterCode: 'file-export',
-    target: 'file',
-    format: 'csv',
+    target: 'FILE',
+    format: 'CSV',
     path: '/exports',
     filename: 'products.csv',
 })
@@ -380,10 +379,10 @@ Send data to external destinations:
 ```typescript
 .export('upload-s3', {
     adapterCode: 's3-export',
-    target: 's3',
+    target: 'S3',
     bucket: 'my-bucket',
     prefix: 'exports/',
-    format: 'json',
+    format: 'JSON',
     connectionCode: 'aws-s3',
 })
 ```
@@ -395,8 +394,8 @@ Generate product feeds:
 ```typescript
 .feed('step-key', {
     adapterCode: 'googleMerchant' | 'metaCatalog' | 'customFeed',
-    feedType?: 'google-merchant' | 'meta-catalog' | 'amazon' | 'pinterest' | 'bing' | 'custom',
-    format?: 'xml' | 'csv' | 'tsv' | 'json' | 'jsonl',
+    feedType?: 'GOOGLE_SHOPPING' | 'META_CATALOG' | 'AMAZON' | 'PINTEREST' | 'BING' | 'CUSTOM',
+    format?: 'XML' | 'CSV' | 'TSV' | 'JSON' | 'NDJSON',
     // Feed-specific options...
 })
 ```
@@ -405,8 +404,8 @@ Generate product feeds:
 ```typescript
 .feed('google-shopping', {
     adapterCode: 'feed-generator',
-    feedType: 'google-merchant',
-    format: 'xml',
+    feedType: 'GOOGLE_SHOPPING',
+    format: 'XML',
     outputPath: '/feeds/google.xml',
     targetCountry: 'US',
     contentLanguage: 'en',
@@ -425,7 +424,7 @@ Index data to search engines:
 ```typescript
 .sink('step-key', {
     adapterCode: 'search-sink',
-    sinkType?: 'elasticsearch' | 'opensearch' | 'meilisearch' | 'algolia' | 'typesense' | 'custom',
+    sinkType?: 'ELASTICSEARCH' | 'OPENSEARCH' | 'MEILISEARCH' | 'ALGOLIA' | 'TYPESENSE' | 'CUSTOM',
     indexName: string,
     // Sink-specific options...
 })
@@ -435,7 +434,7 @@ Index data to search engines:
 ```typescript
 .sink('index-products', {
     adapterCode: 'search-sink',
-    sinkType: 'elasticsearch',
+    sinkType: 'ELASTICSEARCH',
     host: 'localhost',
     port: 9200,
     indexName: 'products',
@@ -512,7 +511,7 @@ const productSync = createPipeline()
     .capabilities({ writes: ['CATALOG'], streamSafe: true })
 
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 2 * * *',
         timezone: 'UTC',
     })
@@ -548,9 +547,7 @@ const productSync = createPipeline()
         entityType: 'PRODUCT',
         operation: 'UPSERT',
         lookupFields: ['slug'],
-        options: {
-            conflictResolution: 'source-wins',
-        },
+        conflictResolution: 'SOURCE_WINS',
         throughput: { batchSize: 50, concurrency: 2 },
     })
 

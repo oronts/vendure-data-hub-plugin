@@ -8,12 +8,12 @@ Data Hub supports several built-in trigger types:
 
 | Type | Description | Status |
 |------|-------------|--------|
-| `manual` | Triggered via UI or API | ✅ Implemented |
-| `schedule` | Cron-based scheduling | ✅ Implemented |
-| `webhook` | HTTP webhook endpoint | ✅ Implemented |
-| `event` | Vendure event subscription | ✅ Implemented |
-| `file` | File watch (FTP/S3) | ⚠️ Defined, partial |
-| `message` | Queue/messaging | ❌ Not implemented |
+| `MANUAL` | Triggered via UI or API | ✅ Implemented |
+| `SCHEDULE` | Cron-based scheduling | ✅ Implemented |
+| `WEBHOOK` | HTTP webhook endpoint | ✅ Implemented |
+| `EVENT` | Vendure event subscription | ✅ Implemented |
+| `FILE` | File watch (FTP/S3) | ⚠️ Defined, partial |
+| `MESSAGE` | Queue/messaging | ❌ Not implemented |
 
 This guide covers how to implement custom trigger handlers, including the `message` trigger type for queue-based systems.
 
@@ -45,7 +45,7 @@ export interface MessageTriggerConfig {
     /** Batch size for consuming messages */
     batchSize?: number;
     /** Acknowledgment mode */
-    ackMode?: 'auto' | 'manual';
+    ackMode?: 'AUTO' | 'MANUAL';
     /** Dead letter queue for failed messages */
     deadLetterQueue?: string;
     /** Max retries before DLQ */
@@ -203,7 +203,7 @@ export class MessageTriggerHandler implements OnModuleInit, OnModuleDestroy {
 
             // Create trigger payload
             const triggerPayload = {
-                type: 'message' as const,
+                type: 'MESSAGE' as const,
                 timestamp: new Date().toISOString(),
                 data: message.body,
                 meta: {
@@ -426,7 +426,7 @@ export class RabbitMQConsumer implements QueueConsumer {
                     this.channel?.nack(msg, false, true);
                 }
             },
-            { noAck: this.triggerConfig.ackMode === 'auto' },
+            { noAck: this.triggerConfig.ackMode === 'AUTO' },
         );
     }
 
@@ -487,12 +487,12 @@ const orderSyncPipeline = createPipeline()
     .name('order-queue-sync')
     .description('Process orders from message queue')
     .trigger('queue-trigger', {
-        type: 'message',
+        type: 'MESSAGE',
         message: {
             connectionCode: 'rabbitmq-main',
             queue: 'orders.created',
             batchSize: 10,
-            ackMode: 'manual',
+            ackMode: 'MANUAL',
             deadLetterQueue: 'orders.dead-letter',
             maxRetries: 3,
         },
@@ -564,7 +564,7 @@ const fullQueuePipeline = createPipeline()
     .description('Consume from one queue, process, produce to another')
     // Consume from input queue
     .trigger('input-queue', {
-        type: 'message',
+        type: 'MESSAGE',
         message: {
             connectionCode: 'rabbitmq-main',
             queue: 'orders.pending',
@@ -594,10 +594,10 @@ const fullQueuePipeline = createPipeline()
 import { SinkAdapter, SinkContext, SinkResult } from '@oronts/vendure-data-hub-plugin';
 
 export const queueProducerSink: SinkAdapter = {
-    type: 'sink',
+    type: 'SINK',
     code: 'queue-producer',
     name: 'Queue Producer',
-    sinkType: 'custom',
+    sinkType: 'CUSTOM',
     schema: {
         fields: [
             { key: 'connectionCode', type: 'string', required: true, label: 'Connection' },
@@ -623,7 +623,7 @@ export const queueProducerSink: SinkAdapter = {
 
 ```typescript
 trigger('queue-trigger', {
-    type: 'message',
+    type: 'MESSAGE',
     message: {
         connectionCode: 'rabbitmq-main',
         queue: 'orders',
@@ -639,7 +639,7 @@ trigger('queue-trigger', {
 const dlqProcessingPipeline = createPipeline()
     .name('dlq-processor')
     .trigger('dlq-trigger', {
-        type: 'message',
+        type: 'MESSAGE',
         message: {
             connectionCode: 'rabbitmq-main',
             queue: 'orders.dlq',
@@ -687,7 +687,7 @@ describe('MessageTriggerHandler', () => {
             'test-pipeline',
             expect.objectContaining({
                 triggerPayload: expect.objectContaining({
-                    type: 'message',
+                    type: 'MESSAGE',
                     data: { orderId: '123' },
                 }),
             }),

@@ -40,7 +40,7 @@ Generate product feeds for Google Merchant Center / Google Shopping.
 ```typescript
 .feed('google-feed', {
     adapterCode: 'googleMerchant',
-    format: 'xml',
+    format: 'XML',
     targetCountry: 'US',
     contentLanguage: 'en',
     currency: 'USD',
@@ -109,7 +109,7 @@ Generate product catalogs for Meta Commerce (Facebook/Instagram).
 ```typescript
 .feed('meta-catalog', {
     adapterCode: 'metaCatalog',
-    format: 'csv',
+    format: 'CSV',
     currency: 'USD',
     brandField: 'customFields.brand',
     categoryField: 'customFields.googleCategory',
@@ -161,7 +161,7 @@ Generate custom product feeds with flexible field mapping and templates.
 ```typescript
 .feed('custom-json', {
     adapterCode: 'customFeed',
-    format: 'json',
+    format: 'JSON',
     fieldMapping: {
         id: 'sku',
         name: 'name',
@@ -178,7 +178,7 @@ Generate custom product feeds with flexible field mapping and templates.
 ```typescript
 .feed('custom-xml', {
     adapterCode: 'customFeed',
-    format: 'xml',
+    format: 'XML',
     rootElement: 'catalog',
     itemElement: 'product',
     fieldMapping: {
@@ -195,7 +195,7 @@ Generate custom product feeds with flexible field mapping and templates.
 ```typescript
 .feed('templated-feed', {
     adapterCode: 'customFeed',
-    format: 'csv',
+    format: 'CSV',
     template: '{{sku}},{{name}},{{#if inStock}}Available{{else}}Out of Stock{{/if}}',
     outputPath: '/feeds/custom.csv',
 })
@@ -260,7 +260,7 @@ Schedule automatic feed generation using pipeline triggers:
 createPipeline()
     .name('daily-google-feed')
     .trigger('schedule', {
-        type: 'schedule',
+        type: 'SCHEDULE',
         cron: '0 2 * * *',  // Daily at 2 AM
     })
     .extract('query-products', {
@@ -277,7 +277,7 @@ createPipeline()
     })
     .feed('google-feed', {
         adapterCode: 'googleMerchant',
-        format: 'xml',
+        format: 'XML',
         targetCountry: 'US',
         contentLanguage: 'en',
         currency: 'USD',

@@ -33,16 +33,16 @@ Steps are the building blocks of a pipeline. Each step has:
 
 | Type | Purpose |
 |------|---------|
-| `trigger` | Defines how the pipeline starts (manual, schedule, webhook, event) |
-| `extract` | Pulls data from external sources |
-| `transform` | Modifies, validates, or enriches data |
-| `validate` | Validates records against rules or schemas |
-| `enrich` | Adds data from external lookups |
-| `route` | Splits data flow based on conditions |
-| `load` | Creates or updates Vendure entities |
-| `export` | Sends data to external destinations |
-| `feed` | Generates product feeds (Google, Meta, etc.) |
-| `sink` | Indexes data to search engines |
+| `TRIGGER` | Defines how the pipeline starts (MANUAL, SCHEDULE, WEBHOOK, EVENT) |
+| `EXTRACT` | Pulls data from external sources |
+| `TRANSFORM` | Modifies, validates, or enriches data |
+| `VALIDATE` | Validates records against rules or schemas |
+| `ENRICH` | Adds data from external lookups |
+| `ROUTE` | Splits data flow based on conditions |
+| `LOAD` | Creates or updates Vendure entities |
+| `EXPORT` | Sends data to external destinations |
+| `FEED` | Generates product feeds (Google, Meta, etc.) |
+| `SINK` | Indexes data to search engines |
 
 ## Edges
 
@@ -147,11 +147,11 @@ Control how records flow through steps:
 ```typescript
 {
     throughput: {
-        batchSize: 100,      // Process 100 records at a time
-        concurrency: 4,      // Process 4 batches in parallel
-        rateLimit: 10,       // Max 10 operations per second
-        retryCount: 3,       // Retry failed records 3 times
-        retryDelay: 1000,    // Wait 1 second between retries
+        batchSize: 100,         // Process 100 records at a time
+        concurrency: 4,         // Process 4 batches in parallel
+        rateLimitRps: 10,       // Max 10 requests per second
+        pauseOnErrorRate: 0.5,  // Pause if error rate exceeds 50%
+        drainStrategy: 'BACKOFF', // 'BACKOFF' | 'SHED' | 'QUEUE'
     }
 }
 ```
@@ -162,9 +162,9 @@ When loading entities, choose a strategy:
 
 | Strategy | Behavior |
 |----------|----------|
-| `create` | Only create new records; skip if exists |
-| `update` | Only update existing records; skip if not found |
-| `upsert` | Create new or update existing records |
+| `CREATE` | Only create new records; skip if exists |
+| `UPDATE` | Only update existing records; skip if not found |
+| `UPSERT` | Create new or update existing records |
 
 ## Channel Strategy
 
@@ -172,9 +172,9 @@ When loading to Vendure, control channel assignment:
 
 | Strategy | Behavior |
 |----------|----------|
-| `assign` | Add to specified channel(s) |
-| `replace` | Remove from all channels, add to specified |
-| `skip` | Don't modify channel assignments |
+| `EXPLICIT` | Add to specified channel(s) |
+| `INHERIT` | Inherit channel from parent entity |
+| `MULTI` | Assign to multiple channels |
 
 ## Validation
 

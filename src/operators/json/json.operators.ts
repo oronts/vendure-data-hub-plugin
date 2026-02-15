@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import {
     ParseJsonOperatorConfig,
     StringifyJsonOperatorConfig,
@@ -66,7 +66,7 @@ export const OMIT_OPERATOR_DEFINITION: AdapterDefinition = {
 export function parseJsonOperator(
     records: readonly JsonObject[],
     config: ParseJsonOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };
@@ -81,7 +81,7 @@ export function parseJsonOperator(
 export function stringifyJsonOperator(
     records: readonly JsonObject[],
     config: StringifyJsonOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };
@@ -96,7 +96,7 @@ export function stringifyJsonOperator(
 export function pickOperator(
     records: readonly JsonObject[],
     config: PickOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.fields || !Array.isArray(config.fields)) {
         return { records: [...records] };
@@ -109,7 +109,7 @@ export function pickOperator(
 export function omitOperator(
     records: readonly JsonObject[],
     config: OmitOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.fields || !Array.isArray(config.fields)) {
         return { records: [...records] };

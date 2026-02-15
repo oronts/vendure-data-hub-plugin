@@ -153,7 +153,7 @@ export { isValidEmailFromPatterns as isValidEmail };
  * Check if a string is a valid URL.
  * Delegates to the canonical isValidUrl from shared/utils/validation.
  */
-export { isValidUrl } from '../../shared/utils/validation';
+export { isValidUrl } from '../../shared';
 
 // Re-export from shared constants (single source of truth) - imported at top of file
 export { CONFIDENCE_THRESHOLDS };
@@ -161,5 +161,5 @@ export { CONFIDENCE_THRESHOLDS };
 // Re-export MatchConfidence type and conversion functions from shared (single source of truth).
 // These were moved to shared/utils/validation.ts so dashboard can import without
 // crossing the src/ boundary.
-export type { MatchConfidence } from '../../shared/utils/validation';
-export { scoreToConfidence, confidenceToMinScore } from '../../shared/utils/validation';
+export type { MatchConfidence } from '../../shared';
+export { scoreToConfidence, confidenceToMinScore } from '../../shared';

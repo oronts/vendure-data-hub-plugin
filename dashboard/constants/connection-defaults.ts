@@ -1,5 +1,5 @@
-import { PORTS, HTTP, DEFAULT_HOSTS, SEARCH_SERVICE_PORTS } from './Defaults';
-import { CONNECTION_TYPE } from './ConnectionTypes';
+import { PORTS, HTTP, DEFAULT_HOSTS, SEARCH_SERVICE_PORTS } from './defaults';
+import { CONNECTION_TYPE } from './connection-types';
 
 export const CONNECTION_PORTS = {
     POSTGRESQL: PORTS.POSTGRESQL,

@@ -123,12 +123,3 @@ function isPrivateIp(hostname: string): boolean {
 
     return false;
 }
-
-export function priceToCents(price: number | string | null | undefined): number {
-    if (price == null) return 0;
-
-    const num = typeof price === 'string' ? parseFloat(price) : price;
-    if (!isFinite(num)) return 0;
-
-    return Math.round(Math.round(num * 100) / 100 * 100);
-}

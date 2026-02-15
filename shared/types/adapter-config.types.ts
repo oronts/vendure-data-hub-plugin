@@ -65,7 +65,7 @@ export interface HttpApiExtractorConfig {
     dataPath?: string;
     /** Pagination configuration */
     pagination?: {
-        type: 'none' | 'offset' | 'cursor' | 'page' | 'link-header';
+        type: 'NONE' | 'OFFSET' | 'CURSOR' | 'PAGE' | 'LINK_HEADER';
         /** For offset pagination: offset parameter name */
         offsetParam?: string;
         /** For offset/cursor/page: limit parameter name */

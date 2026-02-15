@@ -13,9 +13,9 @@ import {
     TableRow,
 } from '@vendure/dashboard';
 import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
-import { formatCellValue } from '../../../utils/Formatters';
-import { TEST_STATUS } from '../../../constants/UiStates';
-import type { TestResult } from './StepTestHandlers';
+import { formatCellValue } from '../../../utils/formatters';
+import { TEST_STATUS } from '../../../constants/ui-states';
+import type { TestResult } from './step-test-handlers';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
 
 interface ExtractTestResultsProps {

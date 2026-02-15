@@ -6,12 +6,12 @@ import {
     CardDescription,
     Badge,
 } from '@vendure/dashboard';
-import { VENDURE_ENTITY_LIST } from '../../../../shared/vendure-schemas';
+import { VENDURE_ENTITY_LIST } from '../../../../shared';
 import type { EnhancedFieldDefinition } from '../../../types';
 import { WizardStepContainer } from '../shared';
 import { EntitySelector } from '../../shared/entity-selector';
-import { STEP_CONTENT } from './Constants';
-import type { ImportConfiguration } from './Types';
+import { STEP_CONTENT } from './constants';
+import type { ImportConfiguration } from './types';
 
 interface TargetStepProps {
     config: Partial<ImportConfiguration>;

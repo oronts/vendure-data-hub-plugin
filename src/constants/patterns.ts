@@ -10,7 +10,7 @@
 import {
     EMAIL_PATTERN as SHARED_EMAIL_PATTERN,
     isValidEmail as sharedIsValidEmail,
-} from '../../shared/utils/validation';
+} from '../../shared';
 
 // ============================================================================
 // Core Identifier Patterns

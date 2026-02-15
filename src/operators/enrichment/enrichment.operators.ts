@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import {
     LookupOperatorConfig,
     EnrichOperatorConfig,
@@ -89,7 +89,7 @@ export const DEFAULT_OPERATOR_DEFINITION: AdapterDefinition = {
 export function lookupOperator(
     records: readonly JsonObject[],
     config: LookupOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.map || !config.target) {
         return { records: [...records] };
@@ -104,7 +104,7 @@ export function lookupOperator(
 export function enrichOperator(
     records: readonly JsonObject[],
     config: EnrichOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record =>
         applyEnrich(record, config.set, config.defaults),
@@ -115,7 +115,7 @@ export function enrichOperator(
 export function coalesceOperator(
     records: readonly JsonObject[],
     config: CoalesceOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.paths || !config.target) {
         return { records: [...records] };
@@ -130,7 +130,7 @@ export function coalesceOperator(
 export function defaultOperator(
     records: readonly JsonObject[],
     config: DefaultOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.path) {
         return { records: [...records] };
@@ -178,7 +178,7 @@ export const HTTP_LOOKUP_OPERATOR_DEFINITION: AdapterDefinition = {
 export async function httpLookupOperator(
     records: readonly JsonObject[],
     config: HttpLookupOperatorConfig,
-    helpers: OperatorHelpers,
+    helpers: AdapterOperatorHelpers,
 ): Promise<OperatorResult> {
     if (!config.url || !config.target) {
         return { records: [...records] };

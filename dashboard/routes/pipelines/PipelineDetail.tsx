@@ -15,6 +15,7 @@ import {
 import { AnyRoute, useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { getErrorMessage } from '../../../shared';
 import { DATAHUB_PERMISSIONS, ROUTES, TOAST_PIPELINE } from '../../constants';
 import {
     createPipelineDocument,
@@ -85,7 +86,7 @@ function PipelineDetailPage({ route }: { route: AnyRoute }) {
         },
         onError: err => {
             toast.error(TOAST_PIPELINE.SAVE_ERROR, {
-                description: err instanceof Error ? err.message : 'Unknown error',
+                description: getErrorMessage(err),
             });
         },
     });

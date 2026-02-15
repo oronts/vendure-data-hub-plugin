@@ -17,7 +17,7 @@ import {
 import { ColumnDef, SortingState } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { ErrorState, LoadingState } from '../../components/shared';
-import { formatDateTime } from '../../utils/Formatters';
+import { formatDateTime } from '../../utils/formatters';
 import { QUERY_LIMITS, RUN_STATUS, FILTER_VALUES, SELECT_WIDTHS, TOAST_PIPELINE } from '../../constants';
 import {
     usePipelineRuns,
@@ -26,6 +26,7 @@ import {
     handleMutationError,
 } from '../../hooks';
 import { RunDetailsPanel } from './RunDetailsPanel';
+import { getErrorMessage } from '../../../shared';
 import type { RunRow } from '../../types';
 
 export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
@@ -151,7 +152,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             <PageBlock column="main" blockId="runs-error">
                 <ErrorState
                     title="Failed to load pipeline runs"
-                    message={error instanceof Error ? error.message : 'An unknown error occurred'}
+                    message={getErrorMessage(error)}
                     onRetry={() => refetch()}
                 />
             </PageBlock>

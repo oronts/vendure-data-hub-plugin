@@ -6,7 +6,7 @@ import {
 } from '@vendure/dashboard';
 import { AlertTriangle } from 'lucide-react';
 import { DATAHUB_PERMISSIONS, ITEMS_PER_PAGE } from '../../constants';
-import type { DeadLetter } from './Types';
+import type { DeadLetter } from './types';
 
 // Memoized row component for dead letters
 const DeadLetterRow = React.memo(function DeadLetterRow({

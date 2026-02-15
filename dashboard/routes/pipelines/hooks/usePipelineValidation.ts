@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { validatePipelineDefinitionDocument } from '../../../hooks';
 import type { PipelineValidationResult, ValidationIssue } from '../../../types';
+import { getErrorMessage } from '../../../../shared';
 import type { ValidationState } from '../components';
 
 /** Debounce delay (ms) before triggering validation after definition changes. */
@@ -95,8 +96,7 @@ export function usePipelineValidation(definition: unknown): {
                     count: 1,
                     issues: [
                         {
-                            message:
-                                e instanceof Error ? e.message : 'Validation failed',
+                            message: getErrorMessage(e),
                         },
                     ],
                     warnings: [],

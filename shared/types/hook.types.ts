@@ -37,7 +37,7 @@ export type HookActionType = 'WEBHOOK' | 'EMIT' | 'TRIGGER_PIPELINE' | 'LOG' | '
 
 export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
-export interface HookActionBase {
+interface HookActionBase {
     type: HookActionType;
     name?: string;
 }
@@ -56,12 +56,12 @@ export interface WebhookHookAction extends HookActionBase {
     };
 }
 
-export interface EmitHookAction extends HookActionBase {
+interface EmitHookAction extends HookActionBase {
     type: 'EMIT';
     event: string;
 }
 
-export interface TriggerPipelineHookAction extends HookActionBase {
+interface TriggerPipelineHookAction extends HookActionBase {
     type: 'TRIGGER_PIPELINE';
     pipelineCode: string;
 }
@@ -95,7 +95,7 @@ export type HookAction =
     | InterceptorHookAction
     | ScriptHookAction;
 
-export type HookConfigType = 'WEBHOOK' | 'EMIT' | 'LOG';
+type HookConfigType = 'WEBHOOK' | 'EMIT' | 'LOG';
 
 export interface HookConfig {
     type: HookConfigType;
@@ -127,7 +127,7 @@ export interface HookContext {
 
 export type HookHandler = (context: HookContext) => Promise<void>;
 
-export type InterceptorHandler = (
+type InterceptorHandler = (
     records: readonly JsonObject[],
     context: HookContext,
 ) => Promise<JsonObject[] | undefined>;

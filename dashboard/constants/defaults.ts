@@ -21,5 +21,5 @@ export {
 /**
  * Match confidence type and conversion function - re-exported from shared
  */
-export type { MatchConfidence } from '../../shared/utils/validation';
-export { scoreToConfidence } from '../../shared/utils/validation';
+export type { MatchConfidence } from '../../shared';
+export { scoreToConfidence } from '../../shared';

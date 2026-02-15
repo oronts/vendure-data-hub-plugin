@@ -1,8 +1,8 @@
-import type { ImportConfiguration } from './Types';
-import { IMPORT_WIZARD_TRIGGERS, TRIGGER_TYPES } from '../../../constants/Triggers';
+import type { ImportConfiguration } from './types';
+import { IMPORT_WIZARD_TRIGGERS, TRIGGER_TYPES } from '../../../constants/triggers';
 import { WizardStepContainer } from '../shared';
 import { TriggerSelector, ScheduleConfig, WebhookConfig } from '../../shared/wizard-trigger';
-import { STEP_CONTENT } from './Constants';
+import { STEP_CONTENT } from './constants';
 
 interface TriggerStepProps {
     config: Partial<ImportConfiguration>;

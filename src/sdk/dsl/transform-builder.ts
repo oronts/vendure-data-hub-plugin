@@ -72,10 +72,10 @@ export const operators = {
     },
 
     /** `operators.template('Product: {{name}} ({{sku}})', 'displayName')` */
-    template(template: string, target: string, missingAsEmpty = false): OperatorConfig {
+    template(template: string, target: string, options?: { missingAsEmpty?: boolean; skipIfEmpty?: boolean }): OperatorConfig {
         validateNonEmptyString(template, 'Template');
         validateNonEmptyString(target, 'Target');
-        return { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template, target, missingAsEmpty } };
+        return { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template, target, ...options } };
     },
 
     /** `operators.hash('sku', 'skuHash')` or `operators.hash(['sku', 'name'], 'compositeHash', 'sha256')` */
@@ -516,10 +516,13 @@ export const operators = {
         return { op: TRANSFORM_OPERATOR.UNIQUE, args: { source, target, by } };
     },
 
-    /** `operators.flatten('variants', 'flatVariants')` */
-    flatten(sourcePath: string, targetPath?: string, depth?: number): OperatorConfig {
+    /** `operators.flatten('variants', 'flatVariants')` or `operators.flatten('variants', { preserveParent: true, parentFields: ['sku'] })` */
+    flatten(sourcePath: string, targetOrOptions?: string | { target?: string; depth?: number; preserveParent?: boolean; parentFields?: string[] }, depth?: number): OperatorConfig {
         validateNonEmptyString(sourcePath, 'Source path');
-        return { op: TRANSFORM_OPERATOR.FLATTEN, args: { source: sourcePath, target: targetPath, depth } };
+        if (typeof targetOrOptions === 'object') {
+            return { op: TRANSFORM_OPERATOR.FLATTEN, args: { source: sourcePath, ...targetOrOptions } };
+        }
+        return { op: TRANSFORM_OPERATOR.FLATTEN, args: { source: sourcePath, target: targetOrOptions, depth } };
     },
 
     /** `operators.first('items', 'firstItem')` */

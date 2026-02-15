@@ -11,25 +11,6 @@ import { StepMetrics, StepError } from './step.types';
 /**
  * Metrics for a complete pipeline run
  */
-export interface PipelineRunMetrics {
-    /** Total number of records in the input */
-    totalRecords: number;
-    /** Number of records processed */
-    processed: number;
-    /** Number of successfully processed records */
-    succeeded: number;
-    /** Number of failed records */
-    failed: number;
-    /** Number of skipped records */
-    skipped: number;
-    /** Number of new records created */
-    created: number;
-    /** Number of existing records updated */
-    updated: number;
-    /** Total duration in milliseconds */
-    durationMs: number;
-}
-
 /**
  * Pipeline metrics that can be updated during runtime.
  * Supports additional custom metric keys beyond the standard ones.
@@ -186,7 +167,7 @@ export interface InvalidRecord {
 /**
  * Validation error for a specific field in a record
  */
-export interface ValidationErrorRecord {
+interface ValidationErrorRecord {
     /** Field that failed validation */
     readonly field?: string;
     /** Validation rule that failed */

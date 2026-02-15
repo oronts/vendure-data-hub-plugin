@@ -108,7 +108,7 @@ export const SINK_ADAPTERS: AdapterDefinition[] = [
                         { value: QueueType.RABBITMQ_AMQP, label: 'RabbitMQ (AMQP) - Recommended' },
                         { value: QueueType.RABBITMQ, label: 'RabbitMQ (HTTP API)' },
                         { value: QueueType.SQS, label: 'Amazon SQS' },
-                        { value: QueueType.REDIS, label: 'Redis Streams' },
+                        { value: QueueType.REDIS_STREAMS, label: 'Redis Streams' },
                     ],
                 },
                 {

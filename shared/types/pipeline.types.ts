@@ -57,7 +57,12 @@ export type SourceType =
 /** Supported file formats */
 export type FileFormat = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'TSV' | 'PARQUET';
 
-/** Type of export destination */
+/**
+ * Type of export destination (canonical definition).
+ *
+ * @see src/constants/enums.ts — DESTINATION_TYPE runtime constant (subset, excludes 'DOWNLOAD')
+ * @see src/services/destinations/destination.types.ts — DeliveryDestinationType (narrower subset for physical delivery)
+ */
 export type DestinationType = 'FILE' | 'DOWNLOAD' | 'S3' | 'FTP' | 'SFTP' | 'HTTP' | 'EMAIL' | 'WEBHOOK' | 'LOCAL';
 
 /** Type of product feed for e-commerce platforms */
@@ -75,16 +80,11 @@ export type FeedType =
 
 // CONTEXT TYPES
 
-/** Policy for handling late-arriving events */
-export type LateEventPolicyType = 'DROP' | 'BUFFER';
+/** Policy for handling late-arriving events (internal, used by PipelineContext) */
+type LateEventPolicyType = 'DROP' | 'BUFFER';
 
-/**
- * Configuration for handling late-arriving events in streaming pipelines
- */
-export interface LateEventPolicy {
-    /** How to handle late events */
+interface LateEventPolicy {
     policy: LateEventPolicyType;
-    /** Buffer duration in milliseconds for BUFFER policy */
     bufferMs?: number;
 }
 
@@ -131,9 +131,6 @@ export interface CheckpointingConfig {
  * These types match the enum values in src/constants/enums.ts
  */
 
-// ChannelStrategyValue is canonical as ChannelStrategy in step.types.ts
-export type ChannelStrategyValue = ChannelStrategy;
-
 // ValidationModeValue is canonical as ValidationModeType in step.types.ts
 export type ValidationModeValue = ValidationModeType;
 
@@ -172,7 +169,7 @@ export interface PipelineContext {
     /** Default language code for content */
     contentLanguage?: string;
     /** Strategy for handling channels */
-    channelStrategy?: ChannelStrategyValue;
+    channelStrategy?: ChannelStrategy;
     /** Specific channel IDs to operate on */
     channelIds?: string[];
     /** Validation mode */
@@ -221,46 +218,6 @@ export interface ExecutorContext {
     cpDirty: boolean;
     /** Mark checkpoint as needing to be saved */
     markCheckpointDirty: () => void;
-}
-
-/**
- * Context data passed to operators during execution
- */
-export interface OperatorContextData {
-    /** Pipeline execution context */
-    pipelineContext: PipelineContext;
-    /** Key of the current step */
-    stepKey: string;
-}
-
-/**
- * Context data passed to loaders during execution
- */
-export interface LoaderContextData extends OperatorContextData {
-    /** Whether this is a dry run (no actual changes) */
-    dryRun: boolean;
-    /** Channel strategy to use */
-    channelStrategy: ChannelStrategyValue;
-    /** Channel codes to operate on */
-    channels: readonly string[];
-    /** Language strategy for translations */
-    languageStrategy: LanguageStrategyValue;
-    /** Validation mode */
-    validationMode: ValidationModeValue;
-    /** Conflict resolution strategy */
-    conflictStrategy: ConflictStrategyValue;
-}
-
-/**
- * Context data passed to extractors during execution
- */
-export interface ExtractorContextData {
-    /** Key of the current step */
-    stepKey: string;
-    /** Checkpoint data for resumable extraction */
-    checkpoint: PipelineCheckpoint;
-    /** Function to update checkpoint data */
-    setCheckpoint: (data: JsonObject) => void;
 }
 
 // OPTIONS TYPES
@@ -333,7 +290,7 @@ export interface ExportFormatConfig {
     };
 }
 
-export interface TargetConfig {
+interface TargetConfig {
     entity?: VendureEntityType;
     operation?: TargetOperation;
     lookupFields?: string[];
@@ -344,14 +301,16 @@ export interface TargetConfig {
     feedType?: FeedType;
 }
 
-// SOURCE TYPES
+// SOURCE TYPES (internal, used by UnifiedPipelineDefinition)
 
 export type CsvDelimiter = ',' | ';' | '\t' | '|';
-export type CsvQuote = '"' | "'";
-export type CsvEscape = '\\' | '"';
 export type FileEncoding = 'utf-8' | 'utf-16' | 'iso-8859-1' | 'windows-1252';
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
-export interface CsvFormatOptions {
+type CsvQuote = '"' | "'";
+type CsvEscape = '\\' | '"';
+
+interface CsvFormatOptions {
     delimiter?: CsvDelimiter;
     quote?: CsvQuote;
     escape?: CsvEscape;
@@ -361,23 +320,23 @@ export interface CsvFormatOptions {
     trimWhitespace?: boolean;
 }
 
-export interface JsonFormatOptions {
+interface JsonFormatOptions {
     recordsPath?: string;
     flatten?: boolean;
 }
 
-export interface XmlFormatOptions {
+interface XmlFormatOptions {
     recordPath?: string;
     attributePrefix?: string;
 }
 
-export interface XlsxFormatOptions {
+interface XlsxFormatOptions {
     sheet?: string | number;
     range?: string;
     headerRow?: boolean;
 }
 
-export interface FileFormatConfig {
+interface FileFormatConfig {
     format: FileFormat;
     csv?: CsvFormatOptions;
     json?: JsonFormatOptions;
@@ -385,18 +344,17 @@ export interface FileFormatConfig {
     xlsx?: XlsxFormatOptions;
 }
 
-export type WebhookAuthMode = 'NONE' | 'API_KEY' | 'HMAC' | 'JWT' | 'BASIC';
-export type WebhookResponseMode = 'SYNC' | 'ASYNC';
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-export type PaginationTypeValue = 'NONE' | 'OFFSET' | 'CURSOR' | 'PAGE' | 'LINK_HEADER';
+type WebhookAuthMode = 'NONE' | 'API_KEY' | 'HMAC' | 'JWT' | 'BASIC';
+type WebhookResponseMode = 'SYNC' | 'ASYNC';
+type PaginationTypeValue = 'NONE' | 'OFFSET' | 'CURSOR' | 'PAGE' | 'LINK_HEADER';
 
-export interface FileUploadSourceConfig {
+interface FileUploadSourceConfig {
     type: 'FILE_UPLOAD';
     maxSize?: number;
     allowedExtensions?: string[];
 }
 
-export interface WebhookSourceConfig {
+interface WebhookSourceConfig {
     type: 'WEBHOOK';
     authentication?: WebhookAuthMode;
     secretCode?: string;
@@ -404,7 +362,7 @@ export interface WebhookSourceConfig {
     responseMode?: WebhookResponseMode;
 }
 
-export interface HttpApiSourceConfig {
+interface HttpApiSourceConfig {
     type: 'HTTP_API';
     method?: HttpMethod;
     path?: string;
@@ -425,7 +383,7 @@ export interface HttpApiSourceConfig {
     };
 }
 
-export interface FtpSourceConfig {
+interface FtpSourceConfig {
     type: 'FTP';
     remotePath: string;
     filePattern?: string;
@@ -433,7 +391,7 @@ export interface FtpSourceConfig {
     archivePath?: string;
 }
 
-export interface S3SourceConfig {
+interface S3SourceConfig {
     type: 'S3';
     bucket?: string;
     key?: string;
@@ -441,14 +399,14 @@ export interface S3SourceConfig {
     deleteAfterProcess?: boolean;
 }
 
-export interface DatabaseSourceConfig {
+interface DatabaseSourceConfig {
     type: 'DATABASE';
     query: string;
     incrementalColumn?: string;
     batchSize?: number;
 }
 
-export interface VendureQuerySourceConfig {
+interface VendureQuerySourceConfig {
     type: 'VENDURE_QUERY';
     entity: VendureEntityType;
     filters?: FilterCondition[];
@@ -459,13 +417,13 @@ export interface VendureQuerySourceConfig {
     relations?: string[];
 }
 
-export interface EventSourceConfig {
+interface EventSourceConfig {
     type: 'EVENT';
     eventType: string;
     filter?: string;
 }
 
-export type SourceTypeConfig =
+type SourceTypeConfig =
     | FileUploadSourceConfig
     | WebhookSourceConfig
     | HttpApiSourceConfig
@@ -475,7 +433,7 @@ export type SourceTypeConfig =
     | VendureQuerySourceConfig
     | EventSourceConfig;
 
-export interface SourceConfig {
+interface SourceConfig {
     type: SourceType;
     connectionCode?: string;
     format?: FileFormatConfig;

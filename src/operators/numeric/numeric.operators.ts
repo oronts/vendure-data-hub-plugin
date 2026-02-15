@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import {
     MathOperatorConfig,
     CurrencyOperatorConfig,
@@ -133,7 +133,7 @@ export const TO_STRING_OPERATOR_DEFINITION: AdapterDefinition = {
 export function mathOperator(
     records: readonly JsonObject[],
     config: MathOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.operation || !config.source || !config.target) {
         return { records: [...records] };
@@ -148,7 +148,7 @@ export function mathOperator(
 export function currencyOperator(
     records: readonly JsonObject[],
     config: CurrencyOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target || config.decimals === undefined) {
         return { records: [...records] };
@@ -163,7 +163,7 @@ export function currencyOperator(
 export function unitOperator(
     records: readonly JsonObject[],
     config: UnitOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target || !config.from || !config.to) {
         return { records: [...records] };
@@ -178,7 +178,7 @@ export function unitOperator(
 export function toNumberOperator(
     records: readonly JsonObject[],
     config: ToNumberOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };
@@ -193,7 +193,7 @@ export function toNumberOperator(
 export function toStringOperator(
     records: readonly JsonObject[],
     config: ToStringOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };
@@ -250,7 +250,7 @@ export const FORMAT_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
 export function parseNumberOperator(
     records: readonly JsonObject[],
     config: ParseNumberOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };
@@ -271,7 +271,7 @@ export function parseNumberOperator(
 export function formatNumberOperator(
     records: readonly JsonObject[],
     config: FormatNumberOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target) {
         return { records: [...records] };
@@ -334,7 +334,7 @@ export const ROUND_OPERATOR_DEFINITION: AdapterDefinition = {
 export function toCentsOperator(
     records: readonly JsonObject[],
     config: ToCentsOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source || !config.target) {
         return { records: [...records] };
@@ -349,7 +349,7 @@ export function toCentsOperator(
 export function roundOperator(
     records: readonly JsonObject[],
     config: RoundOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     if (!config.source) {
         return { records: [...records] };

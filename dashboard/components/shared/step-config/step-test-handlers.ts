@@ -6,10 +6,7 @@ import {
     previewFeed,
 } from '../../../hooks';
 import { STEP_TYPES } from '../../../constants';
-
-function getErrorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-}
+import { getErrorMessage } from '../../../../shared';
 
 /**
  * Result from running a step test
@@ -73,7 +70,7 @@ async function testTransformStep(options: StepTestOptions): Promise<TestResult> 
     } catch (e) {
         return {
             status: 'error',
-            message: `Invalid sample input: ${e instanceof Error ? e.message : 'Parse error'}`,
+            message: `Invalid sample input: ${getErrorMessage(e)}`,
         };
     }
 
@@ -104,7 +101,7 @@ async function testValidateStep(options: StepTestOptions): Promise<TestResult> {
     } catch (e) {
         return {
             status: 'error',
-            message: `Invalid sample input: ${e instanceof Error ? e.message : 'Parse error'}`,
+            message: `Invalid sample input: ${getErrorMessage(e)}`,
         };
     }
 
@@ -134,7 +131,7 @@ async function testLoadStep(options: StepTestOptions): Promise<TestResult> {
     } catch (e) {
         return {
             status: 'error',
-            message: `Invalid sample input: ${e instanceof Error ? e.message : 'Parse error'}`,
+            message: `Invalid sample input: ${getErrorMessage(e)}`,
         };
     }
 

@@ -1,4 +1,5 @@
 import { HTTP, WEBHOOK } from '../constants/index';
+import { getErrorMessage } from './error.utils';
 
 export interface RetryConfig {
     maxAttempts: number;
@@ -101,7 +102,7 @@ export async function executeWithRetryOrNull<T>(
 export function isRetryableError(error: unknown): boolean {
     if (!error) return false;
 
-    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+    const message = getErrorMessage(error).toLowerCase();
 
     const retryablePatterns = [
         /timeout/i,

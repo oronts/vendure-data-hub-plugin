@@ -1,5 +1,5 @@
 import { LogPersistenceLevel } from '../gql/graphql';
-import { type MatchConfidence } from './Defaults';
+import { type MatchConfidence } from './defaults';
 
 // Re-use from defaults to avoid duplication
 export type { MatchConfidence };
@@ -91,7 +91,7 @@ const PIPELINE_STATUS_VARIANTS = {
 export type PipelineStatus = keyof typeof PIPELINE_STATUS_VARIANTS;
 export type BadgeVariant = typeof PIPELINE_STATUS_VARIANTS[PipelineStatus];
 
-export { scoreToConfidence } from './Defaults';
+export { scoreToConfidence } from './defaults';
 
 export function getStatusBadgeVariant(status: string): BadgeVariant {
     return PIPELINE_STATUS_VARIANTS[status as PipelineStatus] ?? 'secondary';

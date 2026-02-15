@@ -246,13 +246,13 @@ interface Record {
 
 ### Custom Extractors
 
-Implement the `DataExtractor` interface:
+Implement the `ExtractorAdapter` interface:
 
 ```typescript
-interface DataExtractor {
+interface ExtractorAdapter {
     code: string;
     name: string;
-    extract(ctx: RequestContext, config: JsonObject): AsyncGenerator<JsonObject>;
+    extract(context: ExtractContext, config: JsonObject): AsyncGenerator<RecordEnvelope>;
 }
 ```
 
@@ -273,10 +273,10 @@ interface OperatorDefinition {
 Implement entity loading:
 
 ```typescript
-interface EntityLoader {
+interface LoaderAdapter {
     code: string;
     entityType: string;
-    load(ctx: RequestContext, records: JsonObject[], config: LoadConfig): Promise<LoadResult>;
+    load(context: LoadContext, config: LoadConfig, records: readonly JsonObject[]): Promise<LoadResult>;
 }
 ```
 

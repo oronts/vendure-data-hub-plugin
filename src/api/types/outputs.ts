@@ -1,124 +1,16 @@
 /**
- * DataHub GraphQL Output Types
+ * DataHub GraphQL Output Types — Extractor Resolver
  *
- * Common output types used across DataHub resolvers.
- * These types define the structure of query/mutation responses.
+ * These types define the GraphQL response shapes for extractor queries.
+ * Used by extractor.resolver.ts to type resolver return values.
+ *
+ * Note: Other resolver output types live in their respective service modules:
+ * - Analytics: src/services/analytics/analytics.types.ts
+ * - Webhooks: src/services/webhooks/webhook.types.ts
+ * - Validation: src/validation/rules/types.ts
+ * - Feeds: local interfaces in feed.resolver.ts
+ * - Queues: local interface in queue.resolver.ts
  */
-
-import { ID } from '@vendure/core';
-
-// PIPELINE OUTPUTS
-
-/**
- * Pipeline validation result
- */
-export interface PipelineValidationResult {
-    isValid: boolean;
-    errors: string[];
-}
-
-// ANALYTICS OUTPUTS
-
-/**
- * Analytics overview
- */
-export interface AnalyticsOverview {
-    totalPipelines: number;
-    activePipelines: number;
-    totalRuns: number;
-    successfulRuns: number;
-    failedRuns: number;
-    averageDuration: number;
-}
-
-/**
- * Error analytics
- */
-export interface ErrorAnalytics {
-    totalErrors: number;
-    errorsByType: Array<{ type: string; count: number }>;
-    errorsByStep: Array<{ stepKey: string; count: number }>;
-    recentErrors: Array<{ id: ID; message: string; createdAt: Date }>;
-}
-
-/**
- * Throughput metrics
- */
-export interface ThroughputMetrics {
-    recordsPerMinute: number;
-    recordsPerHour: number;
-    peakThroughput: number;
-    currentThroughput: number;
-}
-
-/**
- * Real-time stats
- */
-export interface RealTimeStats {
-    activeRuns: number;
-    queuedRuns: number;
-    recordsInFlight: number;
-    errorsLastHour: number;
-}
-
-// QUEUE OUTPUTS
-
-/**
- * Queue statistics
- */
-export interface QueueStats {
-    pending: number;
-    running: number;
-    failed: number;
-    completedToday: number;
-    byPipeline: Array<{ code: string; pending: number; running: number }>;
-    recentFailed: Array<{ id: ID; code: string; finishedAt: Date; error?: string }>;
-}
-
-// WEBHOOK OUTPUTS
-
-/**
- * Webhook stats
- */
-export interface WebhookStats {
-    totalDeliveries: number;
-    successfulDeliveries: number;
-    failedDeliveries: number;
-    pendingDeliveries: number;
-    deadLetterCount: number;
-}
-
-// FEED OUTPUTS
-
-/**
- * Feed generation result
- */
-export interface FeedGenerationResult {
-    success: boolean;
-    itemCount: number;
-    generatedAt: Date;
-    downloadUrl?: string;
-    errors: string[];
-    warnings: string[];
-}
-
-/**
- * Feed preview result
- */
-export interface FeedPreviewResult {
-    content: string;
-    contentType: string;
-    itemCount: number;
-}
-
-/**
- * Feed format info
- */
-export interface FeedFormatInfo {
-    code: string;
-    label: string;
-    description: string;
-}
 
 // EXTRACTOR OUTPUTS
 
@@ -185,4 +77,3 @@ export interface ExtractorsByCategoryOutput {
     label: string;
     extractors: ExtractorOutput[];
 }
-

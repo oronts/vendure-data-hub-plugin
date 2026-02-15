@@ -15,7 +15,7 @@ import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 
 const pipeline = createPipeline()
     .name('My Pipeline')
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('fetch', { adapterCode: 'httpApi', url: 'https://api.example.com/products' })
     .transform('process', { operators: [...] })
     .load('save', { entityType: 'PRODUCT', operation: 'UPSERT', lookupFields: ['slug'] })

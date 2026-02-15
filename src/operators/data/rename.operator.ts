@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, OperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import { RenameOperatorConfig } from './types';
 import { applyRename } from './helpers';
 
@@ -40,7 +40,7 @@ export function applyRenameOperator(
 export function renameOperator(
     records: readonly JsonObject[],
     config: RenameOperatorConfig,
-    _helpers: OperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
     const results = records.map(record => applyRenameOperator(record, config));
     return { records: results };

@@ -348,7 +348,7 @@ export const customerImportCsv = createPipeline()
             {
                 op: 'when',
                 args: {
-                    conditions: [{ field: 'address_line1', cmp: 'isNotEmpty', value: true }],
+                    conditions: [{ field: 'address_line1', cmp: 'exists', value: true }],
                     action: 'keep',
                 },
             },
@@ -720,7 +720,7 @@ export const priceUpdateCsv = createPipeline()
             {
                 op: 'when',
                 args: {
-                    conditions: [{ field: 'sale_price', cmp: 'isNotEmpty', value: true }],
+                    conditions: [{ field: 'sale_price', cmp: 'exists', value: true }],
                     action: 'keep',
                 },
             },

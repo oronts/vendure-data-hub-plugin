@@ -26,15 +26,16 @@ import {
 } from '../shared';
 import { SelectableCard, SelectableCardGrid } from '../../shared/selectable-card';
 import { FileDropzone } from '../../shared/file-dropzone';
-import { SOURCE_TYPES, FILE_FORMATS, STEP_CONTENT, PLACEHOLDERS } from './Constants';
+import { SOURCE_TYPES, FILE_FORMATS, STEP_CONTENT, PLACEHOLDERS } from './constants';
+import { getErrorMessage } from '../../../../shared';
 import { CSV_DELIMITERS, TOAST_WIZARD, TOAST_CONNECTION } from '../../../constants';
-import { TEST_STATUS } from '../../../constants/UiStates';
+import { TEST_STATUS } from '../../../constants/ui-states';
 import type {
     ImportConfiguration,
     SourceType,
     FileFormat,
     ApiMethod,
-} from './Types';
+} from './types';
 
 interface SourceStepProps {
     config: Partial<ImportConfiguration>;
@@ -234,7 +235,7 @@ function ApiConfig({ config, updateConfig }: ApiConfigProps) {
         } catch (err) {
             setTestStatus(TEST_STATUS.ERROR);
             toast.error(TOAST_CONNECTION.TEST_FAILED, {
-                description: err instanceof Error ? err.message : 'Unknown error',
+                description: getErrorMessage(err),
             });
         }
     };

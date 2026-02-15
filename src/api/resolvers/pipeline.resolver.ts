@@ -91,7 +91,7 @@ export class DataHubPipelineAdminResolver {
             return {
                 definition: { nodes: [], edges: [] },
                 success: false,
-                issues: [e instanceof Error ? e.message : 'Format conversion failed'],
+                issues: [getErrorMessage(e)],
             };
         }
     }
@@ -119,7 +119,7 @@ export class DataHubPipelineAdminResolver {
             return {
                 definition: { version: 1, steps: [] },
                 success: false,
-                issues: [e instanceof Error ? e.message : 'Format conversion failed'],
+                issues: [getErrorMessage(e)],
             };
         }
     }
@@ -198,6 +198,7 @@ export class DataHubPipelineAdminResolver {
     }
 
     @Mutation()
+    @Transaction()
     @Allow(DataHubPipelinePermission.Read)
     async validateDataHubPipelineDefinition(@Args() args: ValidationInput) {
         try {

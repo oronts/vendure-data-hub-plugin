@@ -51,7 +51,7 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
         operators: [
             { op: 'template', args: { template: 'pimcore:facet:${key}', target: 'externalId' } },
             { op: 'slugify', args: { source: 'key', target: 'code' } },
-            { op: 'coalesce', args: { fields: ['title', 'key'], target: 'name' } },
+            { op: 'coalesce', args: { paths: ['title', 'key'], target: 'name' } },
             {
                 op: 'map',
                 args: {
@@ -75,7 +75,7 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
     pipeline.transform('transform-facet-values', {
         operators: [
             { op: 'slugify', args: { source: 'key', target: 'valueCode' } },
-            { op: 'coalesce', args: { fields: ['value', 'key'], target: 'valueName' } },
+            { op: 'coalesce', args: { paths: ['value', 'key'], target: 'valueName' } },
             {
                 op: 'map',
                 args: {

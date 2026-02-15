@@ -89,8 +89,6 @@ export const CRON_PRESETS: readonly CronPreset[] = [
     { label: 'Monthly on 1st', cron: '0 0 1 * *', description: 'Runs on the 1st of each month' },
 ] as const;
 
-export type { QueueTypeValue as QueueType };
-
 interface QueueTypeConfig {
     readonly type: QueueTypeValue;
     readonly label: string;

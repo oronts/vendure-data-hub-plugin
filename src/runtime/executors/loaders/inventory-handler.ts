@@ -14,7 +14,7 @@ import { StockLevelInput, UpdateProductVariantInput } from '@vendure/common/lib/
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../services/logger/error-utils';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 /**
  * Configuration for the stock adjustment handler

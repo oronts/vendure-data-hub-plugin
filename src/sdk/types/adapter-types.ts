@@ -25,8 +25,8 @@ import {
     FeedType,
 } from '../../../shared/types';
 
-// Re-export from shared types (ChannelStrategy canonical in shared/types/step.types.ts)
-export type { AdapterType, AdapterCategory, TriggerType, ChannelStrategy } from '../../../shared/types';
+// Re-export canonical types from shared
+export type { AdapterType, AdapterCategory, TriggerType, ChannelStrategy, LanguageStrategyValue, ValidationModeValue, ConflictStrategyValue } from '../../../shared/types';
 
 // BASE ADAPTER INTERFACE
 
@@ -221,15 +221,7 @@ export interface SingleRecordOperator<TConfig = JsonObject> extends BaseAdapter<
 // LOADER ADAPTER
 
 // ChannelStrategy is imported and re-exported from shared/types/step.types.ts above
-
-// LanguageStrategy is canonical as LanguageStrategyValue in shared/types/pipeline.types.ts
-export type LanguageStrategy = LanguageStrategyValue;
-
-// ValidationStrictness is canonical as ValidationModeValue in shared/types/pipeline.types.ts
-export type ValidationStrictness = ValidationModeValue;
-
-// ConflictStrategy is canonical as ConflictStrategyValue in shared/types/pipeline.types.ts
-export type ConflictStrategy = ConflictStrategyValue;
+// LanguageStrategyValue, ValidationModeValue, ConflictStrategyValue are canonical in shared/types/pipeline.types.ts
 
 export type LoadStrategy =
     | 'CREATE' | 'UPDATE' | 'UPSERT' | 'MERGE' | 'SOFT_DELETE' | 'HARD_DELETE';
@@ -251,11 +243,11 @@ export interface LoadContext {
     /** Target channel IDs */
     readonly channels: readonly ID[];
     /** Language handling strategy */
-    readonly languageStrategy: LanguageStrategy;
+    readonly languageStrategy: LanguageStrategyValue;
     /** Validation strictness mode */
-    readonly validationMode: ValidationStrictness;
+    readonly validationMode: ValidationModeValue;
     /** Conflict resolution strategy */
-    readonly conflictStrategy: ConflictStrategy;
+    readonly conflictStrategy: ConflictStrategyValue;
     /** Secret resolver */
     readonly secrets: SecretResolver;
     /** Connection resolver */
@@ -346,8 +338,6 @@ export type ExportTargetType =
     | 'MESSAGING'   // RabbitMQ
     | 'STORAGE';    // S3, GCS, Azure Blob
 
-export type ExportFormat = ExportFormatType;
-
 /**
  * Context provided to exporter adapters
  */
@@ -382,7 +372,7 @@ export interface ExportContext {
 export interface ExporterAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'EXPORTER';
     readonly targetType: ExportTargetType;
-    readonly formats?: readonly ExportFormat[];
+    readonly formats?: readonly ExportFormatType[];
     export(context: ExportContext, config: TConfig, records: readonly JsonObject[]): Promise<ExportResult>;
     finalize?(context: ExportContext, config: TConfig): Promise<void>;
 }
@@ -520,7 +510,7 @@ export interface TriggerPayload {
  * Trigger adapter for initiating pipelines
  */
 export interface TriggerAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'EXTRACTOR';
+    readonly type: 'TRIGGER';
     readonly triggerType: TriggerType;
     initialize?(context: TriggerContext, config: TConfig): Promise<void>;
     shutdown?(): Promise<void>;
@@ -542,7 +532,8 @@ export type DataHubAdapter =
     | EnricherAdapter
     | ExporterAdapter
     | FeedAdapter
-    | SinkAdapter;
+    | SinkAdapter
+    | TriggerAdapter;
 
 /**
  * Adapter registration with priority

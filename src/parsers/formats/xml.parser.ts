@@ -1,6 +1,7 @@
 import { ParseResult, ParseError, XmlParseOptions } from '../types';
 import { XML_PARSER } from '../../constants';
 import { extractFields } from '../helpers/field-extraction';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const DEFAULT_RECORD_TAGS: readonly string[] = XML_PARSER.DEFAULT_RECORD_TAGS;
 const DEFAULT_ATTR_PREFIX = XML_PARSER.DEFAULT_ATTR_PREFIX;
@@ -167,7 +168,7 @@ export function parseXml(
             records: [],
             fields: [],
             totalRows: 0,
-            errors: [{ message: err instanceof Error ? err.message : 'Failed to parse XML' }],
+            errors: [{ message: getErrorMessage(err) }],
             warnings: [],
         };
     }

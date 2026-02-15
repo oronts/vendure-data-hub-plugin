@@ -47,7 +47,7 @@ export function createFailureResult(
     size: number,
     error: string | Error,
 ): DeliveryResult {
-    const errorMessage = error instanceof Error ? error.message : error;
+    const errorMessage = getErrorMessage(error);
 
     return {
         success: false,

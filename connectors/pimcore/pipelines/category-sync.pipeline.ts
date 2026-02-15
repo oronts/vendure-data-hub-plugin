@@ -71,12 +71,12 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
     pipeline.transform('transform-categories', {
         operators: [
             { op: 'template', args: { template: nameTemplate, target: '_name' } },
-            { op: 'coalesce', args: { fields: [mapping?.category?.slugField ?? 'slug', 'key'], target: '_slugSource' } },
+            { op: 'coalesce', args: { paths: [mapping?.category?.slugField ?? 'slug', 'key'], target: '_slugSource' } },
             { op: 'slugify', args: { source: '_slugSource', target: '_slug' } },
             { op: 'template', args: { template: 'pimcore:category:${id}', target: 'externalId' } },
             { op: 'ifThenElse', args: { condition: { field: `${mapping?.category?.parentField ?? 'parent'}.id`, operator: 'ne', value: null }, thenValue: true, elseValue: false, target: '_hasParent' } },
             { op: 'template', args: { template: 'pimcore:category:${parent.id}', target: 'parentExternalId', skipIfEmpty: true } },
-            { op: 'coalesce', args: { fields: [mapping?.category?.positionField ?? 'position', 'index'], target: '_position' } },
+            { op: 'coalesce', args: { paths: [mapping?.category?.positionField ?? 'position', 'index'], target: '_position' } },
             { op: 'toNumber', args: { source: '_position' } },
             {
                 op: 'map',

@@ -116,7 +116,7 @@ function validateMessageTrigger(
         QueueType.RABBITMQ,
         QueueType.RABBITMQ_AMQP,
         QueueType.SQS,
-        QueueType.REDIS,
+        QueueType.REDIS_STREAMS,
         QueueType.INTERNAL,
     ]);
 

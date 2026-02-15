@@ -74,6 +74,7 @@ type RedisClient = {
 /**
  * Cache for Redis clients
  */
+const MAX_CLIENTS = 100;
 const clientCache = new Map<string, { client: RedisClient; lastUsed: number }>();
 
 /**
@@ -152,6 +153,25 @@ async function getClient(config: RedisConnectionConfig): Promise<RedisClient> {
         },
         maxRetriesPerRequest: 3,
     }) as unknown as RedisClient;
+
+    // Evict oldest client if cache is at capacity
+    if (clientCache.size >= MAX_CLIENTS) {
+        let oldestKey: string | null = null;
+        let oldestTime = Infinity;
+        for (const [k, entry] of clientCache.entries()) {
+            if (entry.lastUsed < oldestTime) {
+                oldestTime = entry.lastUsed;
+                oldestKey = k;
+            }
+        }
+        if (oldestKey) {
+            const stale = clientCache.get(oldestKey);
+            if (stale) {
+                stale.client.quit().catch(() => { /* ignore */ });
+            }
+            clientCache.delete(oldestKey);
+        }
+    }
 
     clientCache.set(key, {
         client,
