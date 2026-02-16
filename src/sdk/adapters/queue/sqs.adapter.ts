@@ -123,12 +123,19 @@ function getCacheKey(config: SqsConnectionConfig): string {
  * Build queue URL from config and queue name
  */
 function buildQueueUrl(config: SqsConnectionConfig, queueName: string): string {
+    if (!config.accountId) {
+        throw new Error(
+            'SQS accountId is required in connection config. ' +
+            'Provide your AWS account ID (e.g., "123456789012") to construct the queue URL.',
+        );
+    }
+    const accountId = config.accountId;
+
     if (config.endpoint) {
         // LocalStack or custom endpoint
-        return `${config.endpoint}/000000000000/${queueName}`;
+        return `${config.endpoint}/${accountId}/${queueName}`;
     }
     const region = config.region ?? 'us-east-1';
-    const accountId = config.accountId ?? '000000000000';
     return `https://sqs.${region}.amazonaws.com/${accountId}/${queueName}`;
 }
 

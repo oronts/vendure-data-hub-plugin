@@ -41,11 +41,6 @@ export interface PromotionInput extends InputRecord {
     customFields?: Record<string, unknown>;
 }
 
-export interface ConfigurableOperationInput {
-    code: string;
-    arguments: Array<{ name: string; value: string }>;
-}
-
 export const PROMOTION_LOADER_METADATA = {
     entityType: VendureEntityType.PROMOTION,
     name: 'Promotion Loader',

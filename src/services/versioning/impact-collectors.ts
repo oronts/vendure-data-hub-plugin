@@ -16,6 +16,7 @@ import {
 } from '../../constants/enums';
 import { getAdapterCode } from '../../types/step-configs';
 import { trackFieldChanges } from './field-detection';
+import { isEmpty } from '../../../shared/utils/validation';
 
 /**
  * Internal collector type for aggregating entity impacts during analysis
@@ -247,9 +248,6 @@ function inferEntityTypeFromSample(
 function inferOperation(
     sample: { before: Record<string, unknown>; after: Record<string, unknown> },
 ): SandboxLoadResultType {
-    const isEmpty = (obj: Record<string, unknown>) =>
-        !obj || Object.keys(obj).length === 0;
-
     if (isEmpty(sample.before) && !isEmpty(sample.after)) {
         return SandboxLoadResultType.CREATE;
     }
