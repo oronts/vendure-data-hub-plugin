@@ -417,11 +417,11 @@ export class FeedGeneratorService implements OnModuleInit {
      * Get filtered products for feed generation
      */
     private async getFilteredProducts(
-        _ctx: RequestContext,
+        ctx: RequestContext,
         filters?: FeedFilters,
     ): Promise<VariantWithCustomFields[]> {
-        const queryBuilder = this.connection.rawConnection
-            .getRepository(ProductVariant)
+        const queryBuilder = this.connection
+            .getRepository(ctx, ProductVariant)
             .createQueryBuilder('variant')
             .leftJoinAndSelect('variant.product', 'product')
             .leftJoinAndSelect('variant.options', 'options')

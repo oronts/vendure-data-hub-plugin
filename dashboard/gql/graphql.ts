@@ -3655,8 +3655,6 @@ export type DataHubValidationIssue = {
 /** Result of pipeline definition validation */
 export type DataHubValidationResult = {
   __typename?: 'DataHubValidationResult';
-  /** List of error messages (deprecated, use issues) */
-  errors: Array<Scalars['String']['output']>;
   /** Whether the definition passed validation */
   isValid: Scalars['Boolean']['output'];
   /** Detailed validation issues */
@@ -10240,7 +10238,7 @@ export type ValidateDataHubPipelineDefinitionApiQueryVariables = Exact<{
 }>;
 
 
-export type ValidateDataHubPipelineDefinitionApiQuery = { __typename?: 'Query', validateDataHubPipelineDefinition: { __typename?: 'DataHubValidationResult', isValid: boolean, errors: Array<string>, level?: string | null, issues: Array<{ __typename?: 'DataHubValidationIssue', message: string, stepKey?: string | null, reason?: string | null, field?: string | null }>, warnings?: Array<{ __typename?: 'DataHubValidationIssue', message: string, stepKey?: string | null, reason?: string | null, field?: string | null }> | null } };
+export type ValidateDataHubPipelineDefinitionApiQuery = { __typename?: 'Query', validateDataHubPipelineDefinition: { __typename?: 'DataHubValidationResult', isValid: boolean, level?: string | null, issues: Array<{ __typename?: 'DataHubValidationIssue', message: string, stepKey?: string | null, reason?: string | null, field?: string | null }>, warnings?: Array<{ __typename?: 'DataHubValidationIssue', message: string, stepKey?: string | null, reason?: string | null, field?: string | null }> | null } };
 
 export type DryRunDataHubPipelineApiMutationVariables = Exact<{
   pipelineId: Scalars['ID']['input'];

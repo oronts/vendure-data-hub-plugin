@@ -3649,8 +3649,6 @@ export type DataHubValidationIssue = {
 /** Result of pipeline definition validation */
 export type DataHubValidationResult = {
   __typename?: 'DataHubValidationResult';
-  /** List of error messages (deprecated, use issues) */
-  errors: Array<Scalars['String']['output']>;
   /** Whether the definition passed validation */
   isValid: Scalars['Boolean']['output'];
   /** Detailed validation issues */

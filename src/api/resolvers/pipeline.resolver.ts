@@ -212,7 +212,6 @@ export class DataHubPipelineAdminResolver {
             });
             return {
                 isValid: result.isValid,
-                errors: result.issues.map(issue => issue.message),
                 issues: result.issues,
                 warnings: result.warnings,
                 level: result.level,
@@ -221,18 +220,16 @@ export class DataHubPipelineAdminResolver {
             if (e instanceof PipelineDefinitionError) {
                 return {
                     isValid: false,
-                    errors: e.issues.map(issue => issue.message),
                     issues: e.issues,
                     warnings: [],
                     level: ValidationLevel.FULL,
                 };
             }
             const msg = getErrorMessage(e);
-            const errors = msg.split('\n').map(l => l.trim()).filter(Boolean);
+            const messages = msg.split('\n').map(l => l.trim()).filter(Boolean);
             return {
                 isValid: false,
-                errors,
-                issues: errors.map(message => ({ message })),
+                issues: messages.map(message => ({ message })),
                 warnings: [],
                 level: ValidationLevel.FULL,
             };

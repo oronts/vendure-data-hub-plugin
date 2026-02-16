@@ -221,11 +221,68 @@ export class RedisStreamsAdapter implements QueueAdapter {
     readonly name = 'Redis Streams';
     readonly description = 'Redis Streams for high-performance message queuing with consumer groups';
 
+    private cleanupHandle?: ReturnType<typeof setInterval>;
+
+    /**
+     * Start the periodic cleanup interval for idle clients and stale pending entries.
+     * Called automatically on first use; safe to call multiple times.
+     */
+    startCleanup(): void {
+        if (this.cleanupHandle) return;
+        this.cleanupHandle = setInterval(async () => {
+            const now = Date.now();
+
+            for (const [key, entry] of clientCache.entries()) {
+                if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
+                    try {
+                        await entry.client.quit();
+                    } catch {
+                        // Ignore quit errors
+                    }
+                    clientCache.delete(key);
+                }
+            }
+
+            // Cleanup stale pending entries
+            for (const [key, pending] of pendingEntries.entries()) {
+                if (now - pending.createdAt > INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS) {
+                    pendingEntries.delete(key);
+                }
+            }
+        }, INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
+
+        if (typeof this.cleanupHandle.unref === 'function') {
+            this.cleanupHandle.unref();
+        }
+    }
+
+    /**
+     * Stop the periodic cleanup interval and close all cached clients.
+     * Call during graceful shutdown to prevent the interval from keeping the process alive.
+     */
+    async destroy(): Promise<void> {
+        if (this.cleanupHandle) {
+            clearInterval(this.cleanupHandle);
+            this.cleanupHandle = undefined;
+        }
+
+        for (const [key, entry] of clientCache.entries()) {
+            try {
+                await entry.client.quit();
+            } catch {
+                // Ignore quit errors during shutdown
+            }
+            clientCache.delete(key);
+        }
+        pendingEntries.clear();
+    }
+
     async publish(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
         messages: QueueMessage[],
     ): Promise<PublishResult[]> {
+        this.startCleanup();
         const config = connectionConfig as RedisConnectionConfig;
         const client = await getClient(config);
         const streamKey = `stream:${queueName}`;
@@ -280,6 +337,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
             prefetch?: number;
         },
     ): Promise<ConsumeResult[]> {
+        this.startCleanup();
         const config = connectionConfig as RedisConnectionConfig;
         const client = await getClient(config);
         const streamKey = `stream:${queueName}`;
@@ -412,6 +470,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
     }
 
     async testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean> {
+        this.startCleanup();
         try {
             const config = connectionConfig as RedisConnectionConfig;
             const client = await getClient(config);
@@ -505,35 +564,6 @@ export class RedisStreamsAdapter implements QueueAdapter {
 
         return client.xtrim(streamKey, 'MAXLEN', '~', maxLen);
     }
-}
-
-/**
- * Cleanup old clients periodically
- */
-const cleanupInterval = setInterval(async () => {
-    const now = Date.now();
-
-    for (const [key, entry] of clientCache.entries()) {
-        if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
-            try {
-                await entry.client.quit();
-            } catch {
-                // Ignore quit errors
-            }
-            clientCache.delete(key);
-        }
-    }
-
-    // Cleanup stale pending entries
-    for (const [key, pending] of pendingEntries.entries()) {
-        if (now - pending.createdAt > INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS) {
-            pendingEntries.delete(key);
-        }
-    }
-}, INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
-
-if (typeof cleanupInterval.unref === 'function') {
-    cleanupInterval.unref();
 }
 
 export const redisStreamsAdapter = new RedisStreamsAdapter();

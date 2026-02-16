@@ -27,9 +27,7 @@ function parseValidationResult(out: PipelineValidationResult | undefined): Valid
               reason: i.reason ?? null,
               field: i.field ?? null,
           }))
-        : (Array.isArray(out?.errors) ? out.errors : []).map((m) => ({
-              message: String(m),
-          }));
+        : [];
 
     const warnings: ValidationIssue[] = Array.isArray(out?.warnings)
         ? out.warnings.map((i) => ({

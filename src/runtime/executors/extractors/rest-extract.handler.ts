@@ -36,9 +36,7 @@ import { assertUrlSafe } from '../../../utils/url-security.utils';
 
 interface RestExtractConfig {
     connectionCode?: string;
-    /** URL (preferred) or endpoint - supports both for compatibility */
     url?: string;
-    endpoint?: string;
     method?: string;
     headers?: Record<string, unknown>;
     query?: Record<string, unknown>;
@@ -115,8 +113,7 @@ export class RestExtractHandler implements ExtractHandler {
         const cfg = getExtractConfig<RestExtractConfig>(step);
 
         const connectionConfig = await this.resolveConnectionConfig(ctx, cfg.connectionCode);
-        // Support both 'url' (preferred) and 'endpoint' for backwards compatibility
-        const endpoint = this.buildEndpoint(connectionConfig?.baseUrl, cfg.url ?? cfg.endpoint);
+        const endpoint = this.buildEndpoint(connectionConfig?.baseUrl, cfg.url);
         const method = (cfg.method ?? HttpMethod.GET).toUpperCase();
         const baseHeaders = this.mergeHeaders(connectionConfig?.headers, cfg.headers);
         const retryConfig = this.buildRetryConfig(cfg, executorCtx.errorHandling);

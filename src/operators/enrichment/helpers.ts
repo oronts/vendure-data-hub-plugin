@@ -670,3 +670,21 @@ export function applyDefault(
 
     return result;
 }
+
+/**
+ * Clear all enrichment module state (cache, circuit breakers, rate limiters).
+ * Useful for testing and graceful shutdown.
+ */
+export function resetEnrichmentState(): void {
+    httpLookupCache.clear();
+    circuitBreakers.clear();
+    rateLimiters.clear();
+}
+
+/**
+ * Stop the periodic cleanup interval. Call during graceful shutdown
+ * to prevent the interval from keeping the process alive.
+ */
+export function destroyEnrichmentCleanup(): void {
+    clearInterval(cleanupInterval);
+}

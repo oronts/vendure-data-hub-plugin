@@ -239,11 +239,63 @@ export class SqsAdapter implements QueueAdapter {
     readonly name = 'AWS SQS';
     readonly description = 'AWS Simple Queue Service adapter';
 
+    private cleanupHandle?: ReturnType<typeof setInterval>;
+
+    /**
+     * Start the periodic cleanup interval for idle clients and stale pending receipts.
+     * Called automatically on first use; safe to call multiple times.
+     */
+    startCleanup(): void {
+        if (this.cleanupHandle) return;
+        this.cleanupHandle = setInterval(() => {
+            const now = Date.now();
+            for (const [key, entry] of clientCache.entries()) {
+                if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
+                    entry.client.destroy();
+                    clientCache.delete(key);
+                }
+            }
+
+            // Cleanup stale pending receipts
+            for (const [key, pending] of pendingReceipts.entries()) {
+                if (now - pending.createdAt > INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS) {
+                    pendingReceipts.delete(key);
+                }
+            }
+        }, INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
+
+        if (typeof this.cleanupHandle.unref === 'function') {
+            this.cleanupHandle.unref();
+        }
+    }
+
+    /**
+     * Stop the periodic cleanup interval and destroy all cached clients.
+     * Call during graceful shutdown to prevent the interval from keeping the process alive.
+     */
+    destroy(): void {
+        if (this.cleanupHandle) {
+            clearInterval(this.cleanupHandle);
+            this.cleanupHandle = undefined;
+        }
+
+        for (const [key, entry] of clientCache.entries()) {
+            try {
+                entry.client.destroy();
+            } catch {
+                // Ignore destroy errors during shutdown
+            }
+            clientCache.delete(key);
+        }
+        pendingReceipts.clear();
+    }
+
     async publish(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
         messages: QueueMessage[],
     ): Promise<PublishResult[]> {
+        this.startCleanup();
         const config = connectionConfig as SqsConnectionConfig;
         const client = await getClient(config);
         const queueUrl = buildQueueUrl(config, queueName);
@@ -344,6 +396,7 @@ export class SqsAdapter implements QueueAdapter {
             prefetch?: number;
         },
     ): Promise<ConsumeResult[]> {
+        this.startCleanup();
         const config = connectionConfig as SqsConnectionConfig;
         const client = await getClient(config);
         const queueUrl = buildQueueUrl(config, queueName);
@@ -502,6 +555,7 @@ export class SqsAdapter implements QueueAdapter {
     }
 
     async testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean> {
+        this.startCleanup();
         try {
             const config = connectionConfig as SqsConnectionConfig;
             const client = await getClient(config);
@@ -523,30 +577,6 @@ export class SqsAdapter implements QueueAdapter {
             return false;
         }
     }
-}
-
-/**
- * Cleanup old clients periodically
- */
-const cleanupInterval = setInterval(() => {
-    const now = Date.now();
-    for (const [key, entry] of clientCache.entries()) {
-        if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
-            entry.client.destroy();
-            clientCache.delete(key);
-        }
-    }
-
-    // Cleanup stale pending receipts
-    for (const [key, pending] of pendingReceipts.entries()) {
-        if (now - pending.createdAt > INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS) {
-            pendingReceipts.delete(key);
-        }
-    }
-}, INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
-
-if (typeof cleanupInterval.unref === 'function') {
-    cleanupInterval.unref();
 }
 
 export const sqsAdapter = new SqsAdapter();

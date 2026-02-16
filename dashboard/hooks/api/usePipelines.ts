@@ -90,7 +90,6 @@ export const validatePipelineDefinitionDocument = graphql(`
     query ValidateDataHubPipelineDefinitionApi($definition: JSON!, $level: String) {
         validateDataHubPipelineDefinition(definition: $definition, level: $level) {
             isValid
-            errors
             issues {
                 message
                 stepKey

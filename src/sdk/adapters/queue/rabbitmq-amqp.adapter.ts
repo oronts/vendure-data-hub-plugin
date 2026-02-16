@@ -210,11 +210,89 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
     readonly name = 'RabbitMQ (AMQP)';
     readonly description = 'RabbitMQ message broker using native AMQP 0-9-1 protocol';
 
+    private connectionCleanupHandle?: ReturnType<typeof setInterval>;
+    private pendingMessagesCleanupHandle?: ReturnType<typeof setInterval>;
+
+    /**
+     * Start the periodic cleanup intervals for idle connections and stale pending messages.
+     * Called automatically on first use; safe to call multiple times.
+     */
+    startCleanup(): void {
+        if (!this.connectionCleanupHandle) {
+            this.connectionCleanupHandle = setInterval(() => {
+                const now = Date.now();
+                for (const [key, entry] of connectionPool.entries()) {
+                    if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
+                        entry.channel.close().catch((err) => {
+                            logger.warn('RabbitMQ: Failed to close channel during cleanup', { error: err?.message ?? err });
+                        });
+                        entry.connection.close().catch((err) => {
+                            logger.warn('RabbitMQ: Failed to close connection during cleanup', { error: err?.message ?? err });
+                        });
+                        connectionPool.delete(key);
+                    }
+                }
+            }, 60_000);
+
+            if (typeof this.connectionCleanupHandle.unref === 'function') {
+                this.connectionCleanupHandle.unref();
+            }
+        }
+
+        if (!this.pendingMessagesCleanupHandle) {
+            const maxAgeMs = INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS;
+            this.pendingMessagesCleanupHandle = setInterval(() => {
+                const now = Date.now();
+                let cleanedCount = 0;
+                for (const [key, entry] of pendingMessages.entries()) {
+                    if (now - entry.createdAt > maxAgeMs) {
+                        pendingMessages.delete(key);
+                        cleanedCount++;
+                    }
+                }
+                if (cleanedCount > 0) {
+                    logger.debug('RabbitMQ: Cleaned up stale pending messages', { cleanedCount });
+                }
+            }, INTERNAL_TIMINGS.PENDING_MESSAGES_CLEANUP_INTERVAL_MS ?? 60_000);
+
+            if (typeof this.pendingMessagesCleanupHandle.unref === 'function') {
+                this.pendingMessagesCleanupHandle.unref();
+            }
+        }
+    }
+
+    /**
+     * Stop the periodic cleanup intervals and close all pooled connections.
+     * Call during graceful shutdown to prevent intervals from keeping the process alive.
+     */
+    async destroy(): Promise<void> {
+        if (this.connectionCleanupHandle) {
+            clearInterval(this.connectionCleanupHandle);
+            this.connectionCleanupHandle = undefined;
+        }
+        if (this.pendingMessagesCleanupHandle) {
+            clearInterval(this.pendingMessagesCleanupHandle);
+            this.pendingMessagesCleanupHandle = undefined;
+        }
+
+        for (const [key, entry] of connectionPool.entries()) {
+            try {
+                await entry.channel.close();
+                await entry.connection.close();
+            } catch {
+                // Ignore close errors during shutdown
+            }
+            connectionPool.delete(key);
+        }
+        pendingMessages.clear();
+    }
+
     async publish(
         connectionConfig: QueueConnectionConfig,
         queueName: string,
         messages: QueueMessage[],
     ): Promise<PublishResult[]> {
+        this.startCleanup();
         const { channel } = await getConnection(connectionConfig);
         const results: PublishResult[] = [];
 
@@ -281,6 +359,7 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             prefetch?: number;
         },
     ): Promise<ConsumeResult[]> {
+        this.startCleanup();
         const { channel } = await getConnection(connectionConfig);
         const results: ConsumeResult[] = [];
 
@@ -399,6 +478,7 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
     }
 
     async testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean> {
+        this.startCleanup();
         try {
             const { connection } = await getConnection(connectionConfig);
             return connection !== null;
@@ -414,55 +494,6 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
     async close(connectionConfig: QueueConnectionConfig): Promise<void> {
         await closeConnection(connectionConfig);
     }
-}
-
-/**
- * Cleanup old connections periodically
- * Uses configurable value from INTERNAL_TIMINGS for consistency
- */
-const cleanupInterval = setInterval(() => {
-    const now = Date.now();
-    for (const [key, entry] of connectionPool.entries()) {
-        if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
-            entry.channel.close().catch((err) => {
-                logger.warn('RabbitMQ: Failed to close channel during cleanup', { error: err?.message ?? err });
-            });
-            entry.connection.close().catch((err) => {
-                logger.warn('RabbitMQ: Failed to close connection during cleanup', { error: err?.message ?? err });
-            });
-            connectionPool.delete(key);
-        }
-    }
-}, 60_000);
-
-// Allow process to exit
-if (typeof cleanupInterval.unref === 'function') {
-    cleanupInterval.unref();
-}
-
-/**
- * Cleanup stale pending messages to prevent memory leaks
- * Messages that have been pending for too long are likely from closed connections
- */
-const PENDING_MESSAGES_MAX_AGE_MS = INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS;
-
-const pendingMessagesCleanupInterval = setInterval(() => {
-    const now = Date.now();
-    let cleanedCount = 0;
-    for (const [key, entry] of pendingMessages.entries()) {
-        if (now - entry.createdAt > PENDING_MESSAGES_MAX_AGE_MS) {
-            pendingMessages.delete(key);
-            cleanedCount++;
-        }
-    }
-    if (cleanedCount > 0) {
-        logger.debug('RabbitMQ: Cleaned up stale pending messages', { cleanedCount });
-    }
-}, INTERNAL_TIMINGS.PENDING_MESSAGES_CLEANUP_INTERVAL_MS ?? 60_000);
-
-// Allow process to exit
-if (typeof pendingMessagesCleanupInterval.unref === 'function') {
-    pendingMessagesCleanupInterval.unref();
 }
 
 export const rabbitmqAmqpAdapter = new RabbitMQAmqpAdapter();

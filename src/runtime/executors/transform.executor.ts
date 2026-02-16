@@ -454,8 +454,6 @@ export class TransformExecutor {
             fields?: Record<string, unknown>;
             rules?: Array<{ type?: string; spec: Record<string, unknown> }>;
             errorHandlingMode?: string;
-            /** @deprecated Use errorHandlingMode instead */
-            mode?: string;
         };
 
         // Convert rules to fields format if rules are provided
@@ -489,7 +487,7 @@ export class TransformExecutor {
             fields = cfg.fields as Record<string, import('../utils').FieldSpec>;
         }
 
-        const mode = (cfg.errorHandlingMode as string | undefined) ?? (cfg.mode as string | undefined) ?? ValidationMode.FAIL_FAST;
+        const mode = (cfg.errorHandlingMode as string | undefined) ?? ValidationMode.FAIL_FAST;
 
         // If no fields defined, pass through all records
         if (Object.keys(fields).length === 0) return input;

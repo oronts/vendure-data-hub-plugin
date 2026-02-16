@@ -1,3 +1,12 @@
+/**
+ * Module-level adapter registry — Public SDK surface
+ *
+ * These functions provide a simple, DI-free API for registering and querying
+ * adapters from external plugins, standalone scripts, and test setups.
+ *
+ * Internal services should use the Injectable DataHubRegistryService
+ * (src/sdk/registry.service.ts) which is managed by NestJS DI.
+ */
 import { AdapterDefinition, AdapterType } from '../sdk/types';
 import { DataHubLogger } from '../services/logger/datahub-logger';
 

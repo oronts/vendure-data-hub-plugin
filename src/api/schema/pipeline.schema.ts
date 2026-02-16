@@ -260,8 +260,6 @@ export const pipelineSchema = `
     type DataHubValidationResult {
         "Whether the definition passed validation"
         isValid: Boolean!
-        "List of error messages (deprecated, use issues)"
-        errors: [String!]!
         "Detailed validation issues"
         issues: [DataHubValidationIssue!]!
         "Non-blocking warnings"

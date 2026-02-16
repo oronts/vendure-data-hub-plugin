@@ -4,7 +4,7 @@
  * Shared utility functions for feed generators
  */
 
-import { Product, ProductVariant, RequestContext } from '@vendure/core';
+import { Collection, Product, ProductVariant, RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
 import { VariantWithCustomFields } from './feed-types';
 import {
@@ -154,28 +154,28 @@ export function extractFacetValue(
  * Get product type from collections
  */
 export async function getProductType(
-    _ctx: RequestContext,
+    ctx: RequestContext,
     product: Product | undefined,
     connection: TransactionalConnection,
 ): Promise<string | undefined> {
     if (!product) return undefined;
 
-    // Get product type from collections
+    // Get product type from collections using channel-scoped repository
     try {
-        const collections = await connection.rawConnection
-            .createQueryBuilder()
-            .select('c.name', 'name')
-            .from('collection', 'c')
-            .innerJoin('product_channels_channel', 'pcc', 'pcc.productId = :productId', {
-                productId: product.id,
-            })
+        const collections = await connection.getRepository(ctx, Collection)
+            .createQueryBuilder('c')
             .innerJoin(
                 'collection_product_variants_product_variant',
                 'cpv',
-                'cpv.productVariantId IN (SELECT id FROM product_variant WHERE productId = :productId)',
+                'cpv.collectionId = c.id',
+            )
+            .innerJoin(
+                'product_variant',
+                'pv',
+                'pv.id = cpv.productVariantId AND pv.productId = :productId',
                 { productId: product.id },
             )
-            .where('c.id = cpv.collectionId')
+            .select('c.name', 'name')
             .getRawMany();
 
         if (collections.length > 0) {

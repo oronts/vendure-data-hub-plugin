@@ -423,7 +423,7 @@ export const webhookOrderSync = createPipeline()
         ],
     })
 
-    // Note: orderCreate loader is not yet implemented
+    // Note: uses the built-in order loader for creating/updating orders
     // For now, this example demonstrates logging the transformed order data
     // In production, you would use Vendure's order APIs or create a custom loader
     .load('log-orders', {
