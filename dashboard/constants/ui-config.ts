@@ -99,6 +99,21 @@ export function getStatusBadgeVariant(status: string): BadgeVariant {
     return PIPELINE_STATUS_VARIANTS[status as PipelineStatus] ?? 'secondary';
 }
 
+const RUN_STATUS_VARIANTS: Record<string, string> = {
+    COMPLETED: 'default',
+    RUNNING: 'outline',
+    PENDING: 'secondary',
+    PAUSED: 'outline',
+    FAILED: 'destructive',
+    CANCELLED: 'secondary',
+    CANCEL_REQUESTED: 'secondary',
+    TIMEOUT: 'destructive',
+};
+
+export function getRunStatusBadgeVariant(status: string): string {
+    return RUN_STATUS_VARIANTS[status] ?? 'secondary';
+}
+
 const OPERATOR_PLACEHOLDERS: Record<string, string> = {
     in: 'JSON array, e.g. ["A","B"]',
     regex: 'regex pattern',

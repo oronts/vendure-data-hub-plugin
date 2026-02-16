@@ -45,7 +45,12 @@ export const logsPage: DashboardRouteDefinition = {
  * Logs page with tabbed layout: Overview, Log Explorer, Real-time Feed.
  */
 function LogsPage() {
-    const [activeTab, setActiveTab] = React.useState('overview');
+    const initialRunId = React.useMemo(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('runId') ?? undefined;
+    }, []);
+
+    const [activeTab, setActiveTab] = React.useState(initialRunId ? 'logs' : 'overview');
 
     return (
         <Page pageId="data-hub-logs">
@@ -75,7 +80,7 @@ function LogsPage() {
                     </TabsContent>
 
                     <TabsContent value="logs">
-                        <LogExplorerTab />
+                        <LogExplorerTab initialRunId={initialRunId} />
                     </TabsContent>
 
                     <TabsContent value="realtime">

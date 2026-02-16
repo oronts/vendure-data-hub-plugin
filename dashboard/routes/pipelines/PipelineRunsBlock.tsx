@@ -1,5 +1,6 @@
 import * as React from 'react';
 import {
+    Badge,
     Button,
     DataTable,
     PageBlock,
@@ -9,17 +10,32 @@ import {
     SelectItem,
     SelectTrigger,
     SelectValue,
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
     Drawer,
     DrawerContent,
     DrawerHeader,
     DrawerTitle,
     DrawerDescription,
 } from '@vendure/dashboard';
+import { Link } from '@tanstack/react-router';
 import { ColumnDef, SortingState } from '@tanstack/react-table';
 import { toast } from 'sonner';
+import { Eye, ScrollText, Play, XCircle, ShieldCheck } from 'lucide-react';
 import { ErrorState, LoadingState } from '../../components/shared';
 import { formatDateTime } from '../../utils';
-import { DATAHUB_PERMISSIONS, QUERY_LIMITS, RUN_STATUS, FILTER_VALUES, SELECT_WIDTHS, TOAST_PIPELINE } from '../../constants';
+import {
+    DATAHUB_PERMISSIONS,
+    QUERY_LIMITS,
+    ROUTES,
+    RUN_STATUS,
+    FILTER_VALUES,
+    SELECT_WIDTHS,
+    TOAST_PIPELINE,
+    getRunStatusBadgeVariant,
+} from '../../constants';
 import {
     usePipelineRuns,
     useCancelRun,
@@ -29,6 +45,8 @@ import {
 import { RunDetailsPanel } from './RunDetailsPanel';
 import { getErrorMessage } from '../../../shared';
 import type { RunRow } from '../../types';
+
+const FINISHED_STATUSES = [RUN_STATUS.COMPLETED, RUN_STATUS.FAILED, RUN_STATUS.CANCELLED, RUN_STATUS.TIMEOUT] as string[];
 
 export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
     const [page, setPage] = React.useState(1);
@@ -73,8 +91,8 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
         if (!open) setSelectedRun(null);
     }, []);
 
-    const handleOnRerun = React.useCallback((pipelineId: string) => {
-        runPipeline.mutate(pipelineId, {
+    const handleOnRerun = React.useCallback((id: string) => {
+        runPipeline.mutate(id, {
             onSuccess: () => toast.success(TOAST_PIPELINE.RUN_STARTED),
             onError: (err) => handleMutationError('start pipeline run', err),
         });
@@ -85,26 +103,34 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             id: 'id',
             header: 'ID',
             accessorFn: row => row.id,
-            cell: ({ row }) => {
-                const handleClick = () => handleSelectRun(row.original);
-                return (
-                    <button
-                        type="button"
-                        className="font-mono text-muted-foreground underline-offset-2 hover:underline"
-                        onClick={handleClick}
-                        aria-label={`View run ${row.original.id}`}
-                    >
-                        {row.original.id}
-                    </button>
-                );
-            },
+            cell: ({ row }) => (
+                <button
+                    type="button"
+                    className="font-mono text-muted-foreground underline-offset-2 hover:underline"
+                    onClick={() => handleSelectRun(row.original)}
+                    aria-label={`View run ${row.original.id}`}
+                >
+                    {row.original.id}
+                </button>
+            ),
             enableSorting: false,
         },
         {
             id: 'status',
             header: 'Status',
             accessorFn: row => row.status,
-            cell: ({ row }) => row.original.status,
+            cell: ({ row }) => {
+                const st = row.original.status;
+                const isPaused = st === RUN_STATUS.PAUSED;
+                return (
+                    <Badge
+                        variant={getRunStatusBadgeVariant(st) as 'default' | 'secondary' | 'destructive' | 'outline'}
+                        className={isPaused ? 'border-amber-400 text-amber-700 bg-amber-50' : undefined}
+                    >
+                        {isPaused ? 'AWAITING APPROVAL' : st}
+                    </Badge>
+                );
+            },
         },
         {
             id: 'startedAt',
@@ -130,25 +156,74 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             header: 'Actions',
             cell: ({ row }) => {
                 const st = row.original.status;
+                const isFinished = FINISHED_STATUSES.includes(st);
                 const canCancel = st === RUN_STATUS.RUNNING || st === RUN_STATUS.PENDING;
-                const handleClick = () => handleCancelRun(row.original.id);
-                return canCancel ? (
-                    <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleClick}
-                        disabled={cancelRun.isPending}
-                        data-testid="datahub-run-cancel-button"
-                    >
-                        Cancel
-                    </Button>
-                ) : (
-                    <span className="text-muted-foreground">—</span>
+                const isPaused = st === RUN_STATUS.PAUSED;
+
+                return (
+                    <div className="flex items-center gap-0.5">
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSelectRun(row.original)} aria-label="View details">
+                                    <Eye className="h-3.5 w-3.5" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>View details</TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                                    <Link to={`${ROUTES.LOGS}?runId=${row.original.id}`} aria-label="View logs">
+                                        <ScrollText className="h-3.5 w-3.5" />
+                                    </Link>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>View logs</TooltipContent>
+                        </Tooltip>
+
+                        {isPaused && (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600" onClick={() => handleSelectRun(row.original)} aria-label="Approve gate">
+                                        <ShieldCheck className="h-3.5 w-3.5" />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Approve gate</TooltipContent>
+                            </Tooltip>
+                        )}
+
+                        {isFinished && pipelineId && (
+                            <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOnRerun(pipelineId)} aria-label="Re-run pipeline">
+                                            <Play className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Re-run pipeline</TooltipContent>
+                                </Tooltip>
+                            </PermissionGuard>
+                        )}
+
+                        {canCancel && (
+                            <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleCancelRun(row.original.id)} disabled={cancelRun.isPending} aria-label="Cancel run">
+                                            <XCircle className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Cancel run</TooltipContent>
+                                </Tooltip>
+                            </PermissionGuard>
+                        )}
+                    </div>
                 );
             },
             enableSorting: false,
         },
-    ], [handleSelectRun, handleCancelRun, cancelRun.isPending]);
+    ], [handleSelectRun, handleCancelRun, handleOnRerun, cancelRun.isPending, pipelineId]);
 
     let content: React.ReactNode;
 
@@ -183,6 +258,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                                     <SelectItem value={FILTER_VALUES.ALL}>All</SelectItem>
                                     <SelectItem value={RUN_STATUS.PENDING}>Pending</SelectItem>
                                     <SelectItem value={RUN_STATUS.RUNNING}>Running</SelectItem>
+                                    <SelectItem value={RUN_STATUS.PAUSED}>Paused (awaiting approval)</SelectItem>
                                     <SelectItem value={RUN_STATUS.COMPLETED}>Completed</SelectItem>
                                     <SelectItem value={RUN_STATUS.FAILED}>Failed</SelectItem>
                                     <SelectItem value={RUN_STATUS.CANCEL_REQUESTED}>Cancel requested</SelectItem>
@@ -194,20 +270,22 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                             </Button>
                         </div>
                     </div>
-                    <DataTable
-                        columns={columns}
-                        data={runs}
-                        totalItems={totalItems}
-                        isLoading={isLoading}
-                        page={page}
-                        itemsPerPage={itemsPerPage}
-                        sorting={sorting}
-                        onPageChange={setPage}
-                        onSortChange={setSorting}
-                        onRefresh={refetch}
-                        disableViewOptions
-                        data-testid="datahub-run-history-table"
-                    />
+                    <TooltipProvider>
+                        <DataTable
+                            columns={columns}
+                            data={runs}
+                            totalItems={totalItems}
+                            isLoading={isLoading}
+                            page={page}
+                            itemsPerPage={itemsPerPage}
+                            sorting={sorting}
+                            onPageChange={setPage}
+                            onSortChange={setSorting}
+                            onRefresh={refetch}
+                            disableViewOptions
+                            data-testid="datahub-run-history-table"
+                        />
+                    </TooltipProvider>
                 </PageBlock>
                 <Drawer open={!!selectedRun} onOpenChange={handleCloseDrawer}>
                     <DrawerContent>

@@ -4,9 +4,11 @@ import {
     PermissionGuard,
     Json,
 } from '@vendure/dashboard';
+import { Link } from '@tanstack/react-router';
 import { toast } from 'sonner';
+import { ScrollText } from 'lucide-react';
 import { formatDateTime } from '../../utils';
-import { DATAHUB_PERMISSIONS, RUN_STATUS, TOAST_PIPELINE } from '../../constants';
+import { DATAHUB_PERMISSIONS, RUN_STATUS, ROUTES, TOAST_PIPELINE } from '../../constants';
 import {
     usePipelineRun,
     useRunErrors,
@@ -107,7 +109,15 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
                 </Button>
             </div>
             <div className="text-sm text-muted-foreground">{summary}</div>
-            <div className="text-xs text-muted-foreground">Started by: {run?.startedByUserId ?? '—'}</div>
+            <div className="flex items-center justify-between">
+                <div className="text-xs text-muted-foreground">Started by: {run?.startedByUserId ?? '—'}</div>
+                <Button variant="outline" size="sm" className="gap-1.5" asChild>
+                    <Link to={`${ROUTES.LOGS}?runId=${runId}`} aria-label="View logs for this run">
+                        <ScrollText className="h-3.5 w-3.5" />
+                        View Logs
+                    </Link>
+                </Button>
+            </div>
 
             {status === RUN_STATUS.PAUSED && pausedGateStepKey && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2" data-testid="datahub-gate-approval-panel">

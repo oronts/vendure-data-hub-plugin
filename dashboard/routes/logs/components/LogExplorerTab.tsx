@@ -19,8 +19,10 @@ import {
     ChevronRight,
     Download,
     Filter,
+    Hash,
     RefreshCw,
     Search,
+    X,
 } from 'lucide-react';
 import {
     useLogs,
@@ -36,7 +38,8 @@ import type { DataHubLogListOptions, DataHubLog } from '../../../types';
  * Log explorer tab with filters, table, and export functionality.
  * Allows filtering by pipeline, level, date range, and message search.
  */
-export function LogExplorerTab() {
+export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
+    const [runId, setRunId] = React.useState<string>(initialRunId ?? '');
     const [pipelineId, setPipelineId] = React.useState<string>('');
     const [level, setLevel] = React.useState<string>('');
     const [search, setSearch] = React.useState<string>('');
@@ -50,6 +53,9 @@ export function LogExplorerTab() {
 
     const filter = React.useMemo((): DataHubLogListOptions['filter'] => {
         const f: DataHubLogListOptions['filter'] = {};
+        if (runId) {
+            f.runId = { eq: runId };
+        }
         if (pipelineId) {
             f.pipelineId = { eq: pipelineId };
         }
@@ -66,7 +72,7 @@ export function LogExplorerTab() {
             f.createdAt = { ...(f.createdAt || {}), before: new Date(endDate).toISOString() };
         }
         return Object.keys(f).length > 0 ? f : undefined;
-    }, [pipelineId, level, search, startDate, endDate]);
+    }, [runId, pipelineId, level, search, startDate, endDate]);
 
     const logsQuery = useLogs({
         filter,
@@ -81,6 +87,16 @@ export function LogExplorerTab() {
     const pipelines = pipelinesQuery.data?.items ?? [];
 
     const handleRefetch = React.useCallback(() => logsQuery.refetch(), [logsQuery.refetch]);
+
+    const handleRunIdChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        setRunId(e.target.value);
+        setPage(1);
+    }, []);
+
+    const handleClearRunId = React.useCallback(() => {
+        setRunId('');
+        setPage(1);
+    }, []);
 
     const handlePipelineChange = React.useCallback((v: string) => {
         setPipelineId(v === FILTER_VALUES.ALL ? '' : v);
@@ -167,7 +183,29 @@ export function LogExplorerTab() {
                         <Filter className="w-4 h-4 text-muted-foreground" />
                         <span className="text-sm font-medium">Filters</span>
                     </div>
-                    <div className="grid grid-cols-6 gap-3" data-testid="datahub-logs-filters">
+                    {runId && (
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xs text-muted-foreground">Filtered by Run ID:</span>
+                            <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-mono">
+                                {runId}
+                                <button type="button" onClick={handleClearRunId} className="ml-1 hover:text-destructive" aria-label="Clear run ID filter">
+                                    <X className="h-3 w-3" />
+                                </button>
+                            </span>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-7 gap-3" data-testid="datahub-logs-filters">
+                        <div className="relative">
+                            <Hash className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                value={runId}
+                                onChange={handleRunIdChange}
+                                placeholder="Run ID..."
+                                className="pl-9"
+                                data-testid="datahub-logs-filter-run-id"
+                                aria-label="Filter by run ID"
+                            />
+                        </div>
                         <Select value={pipelineId || FILTER_VALUES.ALL} onValueChange={handlePipelineChange}>
                             <SelectTrigger data-testid="datahub-logs-filter-pipeline">
                                 <SelectValue placeholder="All Pipelines" />
