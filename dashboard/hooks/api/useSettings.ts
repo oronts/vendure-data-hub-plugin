@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
-import { createMutationErrorHandler, createMutationSuccessHandler } from './mutationHelpers';
+import { createMutationErrorHandler, createMutationSuccessHandler } from './mutation-helpers';
 import type { DataHubSettingsInput } from '../../types';
 
 const settingsKeys = {

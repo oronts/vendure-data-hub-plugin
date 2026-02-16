@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
-import { createMutationErrorHandler } from './mutationHelpers';
+import { createMutationErrorHandler } from './mutation-helpers';
 import { POLLING_INTERVALS, RUN_STATUS } from '../../constants';
 import { queueKeys } from './useQueues';
 import type { DataHubPipelineRunListOptions, JsonObject } from '../../types';

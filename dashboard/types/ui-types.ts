@@ -96,12 +96,6 @@ export interface ErrorStateProps {
     className?: string;
 }
 
-interface AdaptersByCategory {
-    category: string;
-    label: string;
-    adapters: DataHubAdapter[];
-}
-
 export type ValidationIssue = DataHubValidationIssue;
 
 export interface ValidationState {

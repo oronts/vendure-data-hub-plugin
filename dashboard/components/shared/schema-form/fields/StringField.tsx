@@ -2,10 +2,7 @@ import * as React from 'react';
 import { useCallback } from 'react';
 import { Input } from '@vendure/dashboard';
 import type { AdapterSchemaField } from '../../../../types';
-
-function normalizeFieldType(type: string): string {
-    return type.toLowerCase();
-}
+import { normalizeFieldType } from '../utils';
 
 export interface StringFieldProps {
     field: AdapterSchemaField;

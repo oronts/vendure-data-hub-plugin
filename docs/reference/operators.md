@@ -70,19 +70,6 @@ Transform records via field mapping.
 { op: 'map', args: { mapping: { name: 'title', price: 'cost' }, passthrough: true } }
 ```
 
-### enrich
-
-Set or default fields on records.
-
-| Arg | Type | Required | Description |
-|-----|------|----------|-------------|
-| `set` | object | No | Fields to set (overwrites) |
-| `defaults` | object | No | Fields to set if currently missing |
-
-```typescript
-{ op: 'enrich', args: { set: { source: 'import' }, defaults: { enabled: true } } }
-```
-
 ### template
 
 Render a string template and set it at target path.
@@ -892,8 +879,6 @@ This operator changes the record count. For example, 1 product with 3 variants b
 
 ---
 
----
-
 ## Aggregation Operators
 
 ### aggregate
@@ -1169,7 +1154,8 @@ The code receives `records` array and `context`. Return the modified array.
 | Logic (4) | `when`, `ifThenElse`, `switch`, `deltaFilter` |
 | JSON (4) | `pick`, `omit`, `parseJson`, `stringifyJson` |
 | Enrichment (5) | `lookup`, `enrich`, `coalesce`, `default`, `httpLookup` |
-| Aggregation (8) | `aggregate`, `multiJoin`, `count`, `unique`, `flatten`, `first`, `last`, `expand` |
+| Array (6) | `flatten`, `count`, `unique`, `first`, `last`, `expand` |
+| Aggregation (2) | `aggregate`, `multiJoin` |
 | File (3) | `imageResize`, `imageConvert`, `pdfGenerate` |
 | Validation (2) | `validateRequired`, `validateFormat` |
 | Advanced (1) | `script` |

@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { TransactionalConnection } from '@vendure/core';
 import { DataHubLoggerFactory, DataHubLogger } from '../logger';
@@ -62,7 +63,7 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger('DistributedLockService');
-        this.instanceId = `instance-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+        this.instanceId = `instance-${crypto.randomUUID()}`;
     }
 
     async onModuleInit(): Promise<void> {

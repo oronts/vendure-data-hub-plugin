@@ -6,5 +6,4 @@
  */
 
 export * from './validation';
-export type { MatchConfidence } from './validation';
 export { getErrorMessage } from './error';

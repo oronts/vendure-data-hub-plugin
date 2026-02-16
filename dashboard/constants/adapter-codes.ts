@@ -8,5 +8,3 @@ export const TRANSFORM_ADAPTER_CODE = {
     FILTER: 'filter',
     SCRIPT: 'script',
 } as const;
-
-type TransformAdapterCode = typeof TRANSFORM_ADAPTER_CODE[keyof typeof TRANSFORM_ADAPTER_CODE];

@@ -16,7 +16,6 @@ export {
     getAdapterOrThrow,
     hasAdapter,
     getAllAdapters,
-    getRegisteredAdapters,
     getAdaptersByType,
     getAdapterCodesByType,
     getExtractors,

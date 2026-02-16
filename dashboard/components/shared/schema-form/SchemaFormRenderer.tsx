@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useCallback, useMemo } from 'react';
 import { Label } from '@vendure/dashboard';
 import type { AdapterSchemaField, SchemaFieldType, SchemaFormRendererProps } from '../../../types';
+import { normalizeFieldType } from './utils';
 import {
     StringField,
     NumberField,
@@ -36,10 +37,6 @@ function evaluateDependency(
         default:
             return true;
     }
-}
-
-function normalizeFieldType(type: SchemaFieldType): string {
-    return type.toLowerCase();
 }
 
 export function SchemaFormRenderer({

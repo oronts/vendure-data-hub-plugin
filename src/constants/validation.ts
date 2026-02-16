@@ -88,9 +88,7 @@ export const FIELD_LIMITS = {
  */
 export {
     ERROR_MESSAGES,
-    VALIDATION_ERROR_CODE,
 } from '../../shared/types';
-export type { ValidationErrorCode } from '../../shared/types';
 
 /**
  * Validate a value against a pattern

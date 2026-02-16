@@ -3,9 +3,6 @@
  *
  * Pre-built connectors for external systems:
  * - Pimcore PIM
- * - SAP (coming soon)
- * - Akeneo (coming soon)
- * - Shopify (coming soon)
  *
  * @example
  * ```typescript

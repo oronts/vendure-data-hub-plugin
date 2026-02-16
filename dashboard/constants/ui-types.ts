@@ -79,8 +79,6 @@ export const FIELD_TYPE = {
     FLOAT: 'float',
 } as const;
 
-export type FieldType = typeof FIELD_TYPE[keyof typeof FIELD_TYPE];
-
 /** UI adapter categories for pipeline organization */
 export const UI_ADAPTER_CATEGORY = {
     SOURCES: 'SOURCES',

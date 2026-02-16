@@ -206,48 +206,6 @@ export class SafeEvaluator {
         }
     }
 
-    async evaluateAsync<T = unknown>(
-        expression: string,
-        context: Record<string, unknown>,
-        timeoutMs?: number,
-    ): Promise<EvaluationResult<T>> {
-        const startTime = Date.now();
-
-        // Check if script operators are enabled
-        if (!this.config.scriptOperatorsEnabled) {
-            return {
-                success: false,
-                error: 'Script operators are disabled in this environment',
-                executionTimeMs: Date.now() - startTime,
-            };
-        }
-
-        const timeout = timeoutMs ?? this.config.defaultTimeoutMs;
-
-        try {
-            // Validate the expression
-            this.validateExpression(expression);
-
-            // Get or create the compiled script
-            const { script, params } = this.getCompiledScript(expression, Object.keys(context));
-
-            // Execute with timeout (uses vm.Script timeout for hard CPU enforcement)
-            const value = this.executeWithTimeout(script, params, context, timeout);
-
-            return {
-                success: true,
-                value: value as T,
-                executionTimeMs: Date.now() - startTime,
-            };
-        } catch (error) {
-            return {
-                success: false,
-                error: getErrorMessage(error),
-                executionTimeMs: Date.now() - startTime,
-            };
-        }
-    }
-
     validate(expression: string): { valid: boolean; error?: string } {
         try {
             this.validateExpression(expression);
@@ -262,20 +220,6 @@ export class SafeEvaluator {
 
     clearCache(): void {
         this.cache.clear();
-    }
-
-    getCacheStats(): { size: number; maxSize: number; hitRate: number } {
-        let totalUseCount = 0;
-        this.cache.forEach((entry) => {
-            totalUseCount += entry.useCount;
-        });
-        const hitRate = this.cache.size > 0 ? (totalUseCount - this.cache.size) / totalUseCount : 0;
-
-        return {
-            size: this.cache.size,
-            maxSize: this.config.maxCacheSize,
-            hitRate: Math.max(0, hitRate),
-        };
     }
 
     private validateExpression(expr: string): void {

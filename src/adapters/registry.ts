@@ -252,10 +252,6 @@ export function getAdapterCodes(): string[] {
     return Array.from(adapterRegistry.keys());
 }
 
-export function getRegisteredAdapters(): AdapterDefinition[] {
-    return getAllAdapters();
-}
-
 export function getExtractors(): AdapterDefinition[] {
     return getAdaptersByType('EXTRACTOR');
 }

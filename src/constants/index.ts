@@ -116,7 +116,6 @@ export {
     VALIDATION_PATTERNS,
     FIELD_LIMITS,
     ERROR_MESSAGES,
-    VALIDATION_ERROR_CODE,
     CONFIDENCE_THRESHOLDS,
     matchesPattern,
     isValidEmail,
@@ -124,7 +123,7 @@ export {
     scoreToConfidence,
     confidenceToMinScore,
 } from './validation';
-export type { MatchConfidence, ValidationErrorCode } from './validation';
+export type { MatchConfidence } from './validation';
 
 export { EXTRACTOR_CODE, LOADER_CODE, EXPORTER_CODE, FEED_CODE } from './adapters';
 export type { ExtractorCode, LoaderCode, ExporterCode, FeedCode } from './adapters';
