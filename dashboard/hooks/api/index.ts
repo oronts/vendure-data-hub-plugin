@@ -26,6 +26,8 @@ export {
     useErrorAudits,
     useCancelRun,
     useRetryError,
+    useApproveGate,
+    useRejectGate,
 } from './use-pipeline-runs';
 
 export {

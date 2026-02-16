@@ -11,6 +11,8 @@ import {
     usePipelineRun,
     useRunErrors,
     useRetryError,
+    useApproveGate,
+    useRejectGate,
     handleMutationError,
 } from '../../hooks';
 import { StepCounters } from './StepCounters';
@@ -18,13 +20,25 @@ import { StepSummaryTable } from './StepSummaryTable';
 import { RunErrorsList } from './RunErrorsList';
 import type {
     IndividualRunMetrics,
+    StepMetricsDetail,
     RunDetailsPanelProps,
 } from '../../types';
+
+function findPausedGateStep(metrics: IndividualRunMetrics): string | undefined {
+    const details = metrics.details;
+    if (!Array.isArray(details)) return undefined;
+    const gateStep = details.find(
+        (d: StepMetricsDetail) => d.type === 'GATE' && (d as Record<string, unknown>).paused === true,
+    );
+    return gateStep?.stepKey;
+}
 
 export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCancelling }: RunDetailsPanelProps) {
     const { data: runData, refetch, isFetching } = usePipelineRun(runId);
     const { data: errors } = useRunErrors(runId);
     const retryError = useRetryError();
+    const approveGate = useApproveGate();
+    const rejectGate = useRejectGate();
 
     const run = runData;
     const status = run?.status ?? initialData.status;
@@ -33,6 +47,8 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
     const succeeded = Number(metrics.succeeded ?? 0);
     const failed = Number(metrics.failed ?? 0);
     const summary = `${processed} processed • ${succeeded} succeeded • ${failed} failed`;
+
+    const pausedGateStepKey = status === RUN_STATUS.PAUSED ? findPausedGateStep(metrics) : undefined;
 
     const handleRetry = React.useCallback(async (errorId: string, patch: Record<string, unknown>) => {
         try {
@@ -54,6 +70,34 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
         }
     }, [onRerun, run]);
 
+    const handleApproveGate = React.useCallback(async () => {
+        if (!pausedGateStepKey) return;
+        try {
+            const result = await approveGate.mutateAsync({ runId: run?.id ?? runId, stepKey: pausedGateStepKey });
+            if (result?.success) {
+                toast.success(TOAST_PIPELINE.GATE_APPROVED);
+            } else {
+                toast.error(result?.message ?? TOAST_PIPELINE.GATE_APPROVE_ERROR);
+            }
+        } catch (err) {
+            handleMutationError('approve gate', err);
+        }
+    }, [approveGate, run?.id, runId, pausedGateStepKey]);
+
+    const handleRejectGate = React.useCallback(async () => {
+        if (!pausedGateStepKey) return;
+        try {
+            const result = await rejectGate.mutateAsync({ runId: run?.id ?? runId, stepKey: pausedGateStepKey });
+            if (result?.success) {
+                toast.success(TOAST_PIPELINE.GATE_REJECTED);
+            } else {
+                toast.error(result?.message ?? TOAST_PIPELINE.GATE_REJECT_ERROR);
+            }
+        } catch (err) {
+            handleMutationError('reject gate', err);
+        }
+    }, [rejectGate, run?.id, runId, pausedGateStepKey]);
+
     return (
         <div className="p-4 space-y-4" data-testid="datahub-run-details-panel">
             <div className="flex items-center justify-between">
@@ -64,6 +108,36 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
             </div>
             <div className="text-sm text-muted-foreground">{summary}</div>
             <div className="text-xs text-muted-foreground">Started by: {run?.startedByUserId ?? '—'}</div>
+
+            {status === RUN_STATUS.PAUSED && pausedGateStepKey && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2" data-testid="datahub-gate-approval-panel">
+                    <div className="text-sm font-medium text-amber-800">
+                        Gate step "{pausedGateStepKey}" is awaiting approval
+                    </div>
+                    <div className="flex gap-2">
+                        <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
+                            <Button
+                                variant="default"
+                                size="sm"
+                                onClick={handleApproveGate}
+                                disabled={approveGate.isPending || rejectGate.isPending}
+                                data-testid="datahub-gate-approve-button"
+                            >
+                                {approveGate.isPending ? 'Approving...' : 'Approve & Resume'}
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={handleRejectGate}
+                                disabled={approveGate.isPending || rejectGate.isPending}
+                                data-testid="datahub-gate-reject-button"
+                            >
+                                {rejectGate.isPending ? 'Rejecting...' : 'Reject & Cancel'}
+                            </Button>
+                        </PermissionGuard>
+                    </div>
+                </div>
+            )}
 
             <StepCounters metrics={metrics} />
             <StepSummaryTable metrics={metrics} />

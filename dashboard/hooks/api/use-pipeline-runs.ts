@@ -77,6 +77,32 @@ const retryErrorDocument = graphql(`
     }
 `);
 
+const approveGateDocument = graphql(`
+    mutation ApproveDataHubGateApi($runId: ID!, $stepKey: String!) {
+        approveDataHubGate(runId: $runId, stepKey: $stepKey) {
+            success
+            message
+            run {
+                id
+                status
+            }
+        }
+    }
+`);
+
+const rejectGateDocument = graphql(`
+    mutation RejectDataHubGateApi($runId: ID!, $stepKey: String!) {
+        rejectDataHubGate(runId: $runId, stepKey: $stepKey) {
+            success
+            message
+            run {
+                id
+                status
+            }
+        }
+    }
+`);
+
 const errorAuditsDocument = graphql(`
     query DataHubRecordRetryAuditsApi($errorId: ID!) {
         dataHubRecordRetryAudits(errorId: $errorId) {
@@ -109,7 +135,8 @@ export function usePipelineRun(id: string | undefined) {
         enabled: !!id,
         refetchInterval: (query) => {
             const status = query.state.data?.status;
-            return status === RUN_STATUS.RUNNING || status === RUN_STATUS.PENDING ? POLLING_INTERVALS.ACTIVE_RUN : false;
+            return status === RUN_STATUS.RUNNING || status === RUN_STATUS.PENDING || status === RUN_STATUS.PAUSED
+                ? POLLING_INTERVALS.ACTIVE_RUN : false;
         },
     });
 }
@@ -159,5 +186,37 @@ export function useRetryError() {
             queryClient.invalidateQueries({ queryKey: queueKeys.all });
         },
         onError: createMutationErrorHandler('retry record'),
+    });
+}
+
+export function useApproveGate() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({ runId, stepKey }: { runId: string; stepKey: string }) =>
+            api.mutate(approveGateDocument, { runId, stepKey }).then((res) => res.approveDataHubGate),
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: runKeys.lists() });
+            if (data?.run?.id) {
+                queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) });
+            }
+        },
+        onError: createMutationErrorHandler('approve gate'),
+    });
+}
+
+export function useRejectGate() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({ runId, stepKey }: { runId: string; stepKey: string }) =>
+            api.mutate(rejectGateDocument, { runId, stepKey }).then((res) => res.rejectDataHubGate),
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: runKeys.lists() });
+            if (data?.run?.id) {
+                queryClient.invalidateQueries({ queryKey: runKeys.detail(String(data.run.id)) });
+            }
+        },
+        onError: createMutationErrorHandler('reject gate'),
     });
 }

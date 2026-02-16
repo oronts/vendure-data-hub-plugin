@@ -35,6 +35,10 @@ export const TOAST_PIPELINE = {
     DUPLICATED: 'Pipeline duplicated',
     DRY_RUN_FAILED: 'Dry run failed',
     HISTORY_LOAD_ERROR: 'Failed to load version history',
+    GATE_APPROVED: 'Gate approved, resuming pipeline',
+    GATE_APPROVE_ERROR: 'Failed to approve gate',
+    GATE_REJECTED: 'Gate rejected, pipeline cancelled',
+    GATE_REJECT_ERROR: 'Failed to reject gate',
 } as const;
 
 /**
