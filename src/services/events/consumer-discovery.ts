@@ -46,13 +46,13 @@ export class ConsumerDiscovery {
     async discoverActiveConfigs(): Promise<Map<string, MessageConsumerConfig>> {
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
         const repo = this.connection.getRepository(ctx, Pipeline);
-        const pipelines = await repo.find();
+        const pipelines = await repo.find({
+            where: { status: PipelineStatus.PUBLISHED, enabled: true },
+        });
 
         const activeConfigs = new Map<string, MessageConsumerConfig>();
 
         for (const pipeline of pipelines) {
-            if (pipeline.status !== PipelineStatus.PUBLISHED) continue;
-            if (!pipeline.enabled) continue;
 
             const configs = this.extractMessageConfigs(pipeline);
             for (const config of configs) {

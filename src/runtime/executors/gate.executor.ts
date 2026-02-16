@@ -237,25 +237,29 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         const previewCount = config.previewCount ?? DEFAULT_PREVIEW_COUNT;
         const previewJson = JSON.stringify(records.slice(0, previewCount), null, 2);
 
-        await transporter.sendMail({
-            from: smtpConfig.from || smtpConfig.auth?.user || 'datahub@localhost',
-            to: email,
-            subject: `[DataHub] Gate "${stepKey}" requires approval`,
-            text: [
-                `Pipeline gate "${stepKey}" has been reached and requires approval.`,
-                '',
-                `Approval type: ${config.approvalType}`,
-                `Records pending: ${records.length}`,
-                config.approvalType === 'TIMEOUT' && config.timeoutSeconds
-                    ? `Auto-approves in: ${config.timeoutSeconds} seconds`
-                    : '',
-                '',
-                `Preview (first ${Math.min(records.length, previewCount)} records):`,
-                previewJson,
-            ].filter(Boolean).join('\n'),
-        });
+        try {
+            await transporter.sendMail({
+                from: smtpConfig.from || smtpConfig.auth?.user || 'datahub@localhost',
+                to: email,
+                subject: `[DataHub] Gate "${stepKey}" requires approval`,
+                text: [
+                    `Pipeline gate "${stepKey}" has been reached and requires approval.`,
+                    '',
+                    `Approval type: ${config.approvalType}`,
+                    `Records pending: ${records.length}`,
+                    config.approvalType === 'TIMEOUT' && config.timeoutSeconds
+                        ? `Auto-approves in: ${config.timeoutSeconds} seconds`
+                        : '',
+                    '',
+                    `Preview (first ${Math.min(records.length, previewCount)} records):`,
+                    previewJson,
+                ].filter(Boolean).join('\n'),
+            });
 
-        logger.log(`GATE "${stepKey}": email notification sent to ${email}`);
+            logger.log(`GATE "${stepKey}": email notification sent to ${email}`);
+        } finally {
+            transporter.close();
+        }
     }
 
     // ──────────────────────────────────────────────────────────────

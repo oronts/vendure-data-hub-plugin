@@ -91,6 +91,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                         type="button"
                         className="font-mono text-muted-foreground underline-offset-2 hover:underline"
                         onClick={handleClick}
+                        aria-label={`View run ${row.original.id}`}
                     >
                         {row.original.id}
                     </button>

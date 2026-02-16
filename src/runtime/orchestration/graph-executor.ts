@@ -459,6 +459,12 @@ async function executeParallel(
         }
     }
 
+    // Drain remaining in-flight promises to prevent resource leaks
+    if (inFlight.size > 0) {
+        await Promise.allSettled(inFlight.values());
+        inFlight.clear();
+    }
+
     // Handle collected errors based on policy
     if (errors.length > 0) {
         if (parallelConfig.errorPolicy === 'BEST_EFFORT') {
