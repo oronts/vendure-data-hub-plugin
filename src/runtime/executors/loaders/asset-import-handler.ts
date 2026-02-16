@@ -11,7 +11,7 @@ import { LoaderHandler } from './types';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
 import { HTTP } from '../../../../shared/constants';
-import { extractFileExtension } from '../../../extractors/shared/file-format.utils';
+import { getMimeType } from '../../../loaders/asset/helpers';
 
 interface AssetImportConfig {
     channel?: string;
@@ -120,21 +120,6 @@ function extractFilename(url: string): string {
     }
 }
 
-function getMimeType(url: string): string {
-    const ext = extractFileExtension(url);
-    const mimeMap: Record<string, string> = {
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        png: 'image/png',
-        gif: 'image/gif',
-        webp: 'image/webp',
-        svg: 'image/svg+xml',
-        pdf: 'application/pdf',
-        mp4: 'video/mp4',
-        webm: 'video/webm',
-    };
-    return mimeMap[ext] || 'application/octet-stream';
-}
 
 async function downloadFile(url: string): Promise<Buffer | null> {
     await assertUrlSafe(url);

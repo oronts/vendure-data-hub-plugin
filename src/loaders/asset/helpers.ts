@@ -4,6 +4,7 @@ import * as path from 'path';
 import { Readable } from 'stream';
 import { MIME_TYPES } from './types';
 import { HTTP, HTTP_STATUS } from '../../constants/index';
+import { extractFileExtension } from '../../extractors/shared/file-format.utils';
 
 export { shouldUpdateField, isRecoverableError } from '../shared-helpers';
 
@@ -72,8 +73,8 @@ export function extractFilenameFromUrl(url: string): string {
 }
 
 export function getMimeType(url: string): string {
-    const ext = path.extname(url).toLowerCase();
-    return MIME_TYPES[ext] || 'application/octet-stream';
+    const ext = extractFileExtension(url);
+    return MIME_TYPES[`.${ext}`] || 'application/octet-stream';
 }
 
 export function createReadStreamFromBuffer(data: Buffer): NodeJS.ReadableStream {
