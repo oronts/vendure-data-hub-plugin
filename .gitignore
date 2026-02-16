@@ -16,6 +16,7 @@ vendure.sqlite
 analytics/
 exports/
 feeds/
+imports/errors/
 
 # Test output
 coverage/
