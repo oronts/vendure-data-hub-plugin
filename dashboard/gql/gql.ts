@@ -334,7 +334,7 @@ export function graphql(source: "\n    mutation SimulateDataHubValidateApi($step
 export function graphql(source: "\n    mutation PreviewDataHubFeedApi($feedCode: String!, $limit: Int) {\n        previewDataHubFeed(feedCode: $feedCode, limit: $limit) { content contentType itemCount }\n    }\n"): (typeof documents)["\n    mutation PreviewDataHubFeedApi($feedCode: String!, $limit: Int) {\n        previewDataHubFeed(feedCode: $feedCode, limit: $limit) { content contentType itemCount }\n    }\n"];
 
 export function graphql(source: string) {
-  return (documents as Record<string, DocumentNode>)[source] ?? {};
+  return (documents as any)[source] ?? {};
 }
 
 export type DocumentType<TDocumentNode extends DocumentNode<any, any>> = TDocumentNode extends DocumentNode<  infer TType,  any>  ? TType  : never;
