@@ -219,11 +219,6 @@ export class ConnectorRegistry {
 }
 
 /**
- * Global connector registry instance
- */
-export const connectorRegistry = new ConnectorRegistry();
-
-/**
  * Helper to create a connector factory function
  */
 export function defineConnector<TConfig extends BaseConnectorConfig>(

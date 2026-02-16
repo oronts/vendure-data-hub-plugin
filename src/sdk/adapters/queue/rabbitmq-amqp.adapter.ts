@@ -444,7 +444,7 @@ if (typeof cleanupInterval.unref === 'function') {
  * Cleanup stale pending messages to prevent memory leaks
  * Messages that have been pending for too long are likely from closed connections
  */
-const PENDING_MESSAGES_MAX_AGE_MS = INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS ?? 10 * 60 * 1000; // 10 minutes default
+const PENDING_MESSAGES_MAX_AGE_MS = INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS;
 
 const pendingMessagesCleanupInterval = setInterval(() => {
     const now = Date.now();

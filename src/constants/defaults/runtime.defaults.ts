@@ -53,14 +53,6 @@ export const DOMAIN_EVENTS = {
 } as const;
 
 /**
- * Event trigger defaults
- */
-export const EVENT_TRIGGER = {
-    /** Maximum events in backpressure queue */
-    MAX_QUEUE_SIZE: 1000,
-} as const;
-
-/**
  * Risk assessment thresholds
  */
 export const RISK_THRESHOLDS = {

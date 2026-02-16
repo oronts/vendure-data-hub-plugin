@@ -22,6 +22,12 @@ import { AckMode, INTERNAL_TIMINGS } from '../../../constants';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 
+/** Maximum delay between Redis connection retries */
+const REDIS_RETRY_MAX_DELAY_MS = 3000;
+
+/** Timeout for blocking read operations on Redis streams */
+const REDIS_BLOCK_TIMEOUT_MS = 5000;
+
 /**
  * Redis-specific connection configuration
  */
@@ -149,7 +155,7 @@ async function getClient(config: RedisConnectionConfig): Promise<RedisClient> {
         db: config.db ?? 0,
         retryStrategy: (times: number) => {
             if (times > 10) return null;
-            return Math.min(times * 100, 3000);
+            return Math.min(times * 100, REDIS_RETRY_MAX_DELAY_MS);
         },
         maxRetriesPerRequest: 3,
     }) as unknown as RedisClient;
@@ -287,7 +293,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
         const response = await client.xreadgroup(
             'GROUP', groupName, consumerName,
             'COUNT', options.count,
-            'BLOCK', 5000, // 5 second timeout
+            'BLOCK', REDIS_BLOCK_TIMEOUT_MS,
             'STREAMS', streamKey, '>',
         );
 
@@ -520,7 +526,7 @@ const cleanupInterval = setInterval(async () => {
 
     // Cleanup stale pending entries
     for (const [key, pending] of pendingEntries.entries()) {
-        if (now - pending.createdAt > 10 * 60 * 1000) { // 10 minutes
+        if (now - pending.createdAt > INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS) {
             pendingEntries.delete(key);
         }
     }
