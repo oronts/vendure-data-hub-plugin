@@ -75,7 +75,7 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
             type: effectiveType,
             options: { config: configRef.current, sampleInput, limit },
         });
-    }, [effectiveType, sampleInput, limit, stepTestMutation]);
+    }, [effectiveType, sampleInput, limit, stepTestMutation.mutate]);
 
     const renderInputSection = () => {
         if (effectiveType === STEP_TYPES.EXTRACT || effectiveType === STEP_TYPES.FEED) {

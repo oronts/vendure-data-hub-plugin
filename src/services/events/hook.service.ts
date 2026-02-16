@@ -397,7 +397,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
                     },
                     enabled: true,
                 };
-                this.webhookRetryService.registerWebhook(config);
+                await this.webhookRetryService.registerWebhook(config);
                 this.registeredWebhooks.add(webhookId);
             }
 

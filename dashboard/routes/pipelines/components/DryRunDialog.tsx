@@ -54,7 +54,7 @@ export function DryRunDialog({
                 toast.error(TOAST_PIPELINE.DRY_RUN_FAILED, { description: errorMessage });
             },
         });
-    }, [pipelineId, dryRun]);
+    }, [pipelineId, dryRun.mutate]);
 
     // Run dry run when dialog opens (only once)
     React.useEffect(() => {

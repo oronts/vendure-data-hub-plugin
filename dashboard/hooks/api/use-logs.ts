@@ -24,6 +24,11 @@ const logsDocument = graphql(`
                 context
                 metadata
                 pipelineId
+                pipeline {
+                    id
+                    code
+                    name
+                }
                 runId
                 durationMs
                 recordsProcessed
@@ -60,6 +65,11 @@ const recentLogsDocument = graphql(`
             message
             stepKey
             pipelineId
+            pipeline {
+                id
+                code
+                name
+            }
             runId
             durationMs
             recordsProcessed

@@ -4,7 +4,7 @@ import { useErrorAudits } from '../../hooks';
 import { formatDateTime } from '../../utils';
 
 export function ErrorAuditList({ errorId }: { errorId: string }) {
-    const { data: audits, isFetching } = useErrorAudits(errorId);
+    const { data: audits } = useErrorAudits(errorId);
 
     if (!audits?.length) return null;
 

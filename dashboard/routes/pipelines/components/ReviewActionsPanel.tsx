@@ -94,14 +94,14 @@ export function ReviewActionsPanel({
 
     const createMutationHandler = React.useCallback(
         (
-            mutationFn: { mutate: (id: string, options: { onSuccess: () => void; onError: (err: unknown) => void }) => void },
+            mutateFn: (id: string, options: { onSuccess: () => void; onError: (err: unknown) => void }) => void,
             successMessage: string,
             errorMessage: string,
             closeDialog: React.Dispatch<React.SetStateAction<boolean>>,
             onAfterSuccess?: () => void,
         ) => () => {
             if (!entityId) return;
-            mutationFn.mutate(entityId, {
+            mutateFn(entityId, {
                 onSuccess: () => {
                     toast.success(successMessage);
                     closeDialog(false);
@@ -119,23 +119,23 @@ export function ReviewActionsPanel({
     );
 
     const handleSubmitForReview = React.useMemo(
-        () => createMutationHandler(submitForReview, TOAST_PIPELINE.SUBMITTED_FOR_REVIEW, TOAST_PIPELINE.SUBMIT_ERROR, setSubmitDialogOpen),
-        [createMutationHandler, submitForReview],
+        () => createMutationHandler(submitForReview.mutate, TOAST_PIPELINE.SUBMITTED_FOR_REVIEW, TOAST_PIPELINE.SUBMIT_ERROR, setSubmitDialogOpen),
+        [createMutationHandler, submitForReview.mutate],
     );
 
     const handleApprove = React.useMemo(
-        () => createMutationHandler(approve, TOAST_PIPELINE.APPROVED, TOAST_PIPELINE.APPROVE_ERROR, setApproveDialogOpen),
-        [createMutationHandler, approve],
+        () => createMutationHandler(approve.mutate, TOAST_PIPELINE.APPROVED, TOAST_PIPELINE.APPROVE_ERROR, setApproveDialogOpen),
+        [createMutationHandler, approve.mutate],
     );
 
     const handleReject = React.useMemo(
-        () => createMutationHandler(reject, TOAST_PIPELINE.REJECTED, TOAST_PIPELINE.REJECT_ERROR, setRejectDialogOpen, () => setRejectReason('')),
-        [createMutationHandler, reject],
+        () => createMutationHandler(reject.mutate, TOAST_PIPELINE.REJECTED, TOAST_PIPELINE.REJECT_ERROR, setRejectDialogOpen, () => setRejectReason('')),
+        [createMutationHandler, reject.mutate],
     );
 
     const handleArchive = React.useMemo(
-        () => createMutationHandler(archive, TOAST_PIPELINE.ARCHIVED, TOAST_PIPELINE.ARCHIVE_ERROR, setArchiveDialogOpen),
-        [createMutationHandler, archive],
+        () => createMutationHandler(archive.mutate, TOAST_PIPELINE.ARCHIVED, TOAST_PIPELINE.ARCHIVE_ERROR, setArchiveDialogOpen),
+        [createMutationHandler, archive.mutate],
     );
 
     if (!entityId) return null;

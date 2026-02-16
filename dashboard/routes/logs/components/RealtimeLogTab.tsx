@@ -25,7 +25,7 @@ export function RealtimeLogTab() {
     const recentLogsQuery = useRecentLogs(UI_LIMITS.REALTIME_LOG_LIMIT);
     const logs = recentLogsQuery.data ?? [];
 
-    const handleRefetch = React.useCallback(() => recentLogsQuery.refetch(), [recentLogsQuery]);
+    const handleRefetch = React.useCallback(() => recentLogsQuery.refetch(), [recentLogsQuery.refetch]);
 
     if (recentLogsQuery.isError) {
         return (
