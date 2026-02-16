@@ -326,6 +326,12 @@ export function StepConfigPanel({
             );
         }
 
+        // Steps with built-in config editors don't need the adapter selector empty state
+        const hasBuiltInConfig = stepType === STEP_TYPES.VALIDATE
+            || stepType === STEP_TYPES.GATE
+            || stepType === STEP_TYPES.ROUTE;
+        if (hasBuiltInConfig && availableAdapters.length === 0) return null;
+
         return (
             <div className={compact ? 'space-y-2' : 'space-y-3'}>
                 <div className="flex items-center justify-between">
@@ -341,16 +347,6 @@ export function StepConfigPanel({
                     <div className="p-3 bg-muted rounded-md">
                         <p className="text-sm text-muted-foreground">
                             Loading {getAdapterTypeLabel(adapterType).toLowerCase()}s...
-                        </p>
-                    </div>
-                )}
-
-                {availableAdapters.length === 0 && !isLoadingCatalog && (
-                    <div className="p-3 bg-muted rounded-md border border-dashed">
-                        <p className="text-sm text-muted-foreground">
-                            No {getAdapterTypeLabel(adapterType).toLowerCase()}s available.
-                            {adapterType === ADAPTER_TYPES.VALIDATOR && ' Configure validation mode below, or register custom validators for field-level validation.'}
-                            {adapterType === ADAPTER_TYPES.ENRICHER && ' Register custom enrichers to add data enrichment capabilities.'}
                         </p>
                     </div>
                 )}

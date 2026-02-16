@@ -149,11 +149,7 @@ export class MemoryExtractHandler implements ExtractHandler {
     }
 
     private generateUuid(): string {
-        if (typeof crypto.randomUUID === 'function') {
-            return crypto.randomUUID();
-        }
-        // Fallback for older Node versions
-        return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        return crypto.randomUUID();
     }
 
     private generateRandom(generator: string): number {

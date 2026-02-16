@@ -131,7 +131,7 @@ export const SELECT_WIDTHS = {
  */
 export const SCROLL_HEIGHTS = {
     PROPERTIES_PANEL: 'h-[calc(100vh-80px)]',
-    NODE_PALETTE: 'h-[calc(100vh-320px)]',
+    NODE_PALETTE: 'h-full',
     REALTIME_LOGS: 'max-h-[600px]',
     DRY_RUN_RESULTS: 'max-h-[300px]',
     VALIDATION_PANEL: 'max-h-[60vh]',

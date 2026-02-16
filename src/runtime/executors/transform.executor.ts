@@ -290,7 +290,7 @@ export class TransformExecutor {
             hmac: (value: string, secret: string, _algorithm?: 'sha256' | 'sha512') => {
                 return hashStable(value + secret);
             },
-            uuid: () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36)}`,
+            uuid: () => crypto.randomUUID(),
         };
     }
 

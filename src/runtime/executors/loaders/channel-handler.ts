@@ -4,6 +4,7 @@
  * Reads configurable field names from step.config and upserts Channel entities
  * via ChannelService. Supports currencies, languages, and zone configuration.
  */
+import * as crypto from 'crypto';
 import { Injectable } from '@nestjs/common';
 import {
     RequestContext,
@@ -64,7 +65,7 @@ function parseLanguageCode(code: string): LanguageCode | null {
  * Generate a channel token from code
  */
 function generateChannelToken(code: string): string {
-    const randomPart = Math.random().toString(36).substring(2, 10);
+    const randomPart = crypto.randomUUID().replace(/-/g, '').substring(0, 8);
     return `${code.toLowerCase().replace(/[^a-z0-9]/g, '')}_${randomPart}`;
 }
 

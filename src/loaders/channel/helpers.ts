@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import { ID, RequestContext, ZoneService, CurrencyCode, LanguageCode } from '@vendure/core';
 
 export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
@@ -92,7 +93,7 @@ export function parseLanguageCodes(codes: string[]): LanguageCode[] {
  * Generate a unique channel token
  */
 export function generateChannelToken(code: string): string {
-    const randomPart = Math.random().toString(36).substring(2, 10);
+    const randomPart = crypto.randomUUID().replace(/-/g, '').substring(0, 8);
     return `${code.toLowerCase().replace(/[^a-z0-9]/g, '')}_${randomPart}`;
 }
 

@@ -5,6 +5,7 @@
  * Compatible with OpenTelemetry patterns for future instrumentation.
  */
 
+import * as crypto from 'crypto';
 import { SpanData, SpanStatus } from './logger.types';
 import { MetricsRegistry } from './metrics';
 import { SPAN_TRACKER } from '../../constants/index';
@@ -13,7 +14,7 @@ import { SPAN_TRACKER } from '../../constants/index';
  * Generate a unique span ID (simplified UUID-like)
  */
 export function generateSpanId(): string {
-    return `span_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
+    return `span_${Date.now().toString(36)}_${crypto.randomUUID().replace(/-/g, '').substring(0, 7)}`;
 }
 
 /**

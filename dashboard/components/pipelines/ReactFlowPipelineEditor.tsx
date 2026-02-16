@@ -503,14 +503,14 @@ function NodePaletteDynamic({ adapters, onDragStart, onAddNode }: { adapters: Ad
     ].filter(s => s.items.length > 0), [sources, transforms, enrichers, validation, routing, destinations, feeds, exports, sinks]);
 
     return (
-        <Card className={`${PANEL_WIDTHS.NODE_PALETTE} h-full overflow-hidden`}>
+        <Card className={`${PANEL_WIDTHS.NODE_PALETTE} h-full overflow-hidden flex flex-col`}>
             <CardHeader className="py-3">
                 <CardTitle className="text-sm flex items-center gap-2">
                     <Layers className="w-4 h-4" />
                     Node Palette
                 </CardTitle>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="p-0 flex-1 overflow-hidden">
                 <ScrollArea className={SCROLL_HEIGHTS.NODE_PALETTE}>
                     <div className="space-y-1 p-2">
                         {sections.map(section => (

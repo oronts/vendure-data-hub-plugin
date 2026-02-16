@@ -91,13 +91,14 @@ export class DataHubFeedAdminResolver {
         @Args('feedCode') feedCode: string,
         @Args('limit') limit: number = PAGINATION.FEED_PREVIEW_LIMIT,
     ): Promise<FeedPreviewResult> {
+        const validatedLimit = Math.min(Math.max(limit || PAGINATION.FEED_PREVIEW_LIMIT, 1), PAGINATION.FEED_PREVIEW_LIMIT * 100);
         const result = await this.feedGenerator.generateFeed(ctx, feedCode);
         let previewContent = typeof result.content === 'string'
             ? result.content
             : result.content.toString('utf-8');
 
         const lines = previewContent.split('\n');
-        const previewLineLimit = limit + 10;
+        const previewLineLimit = validatedLimit + 10;
         if (lines.length > previewLineLimit) {
             previewContent = lines.slice(0, previewLineLimit).join('\n') + '\n...(truncated)';
         }

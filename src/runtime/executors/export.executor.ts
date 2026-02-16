@@ -38,7 +38,7 @@ function resolveOutputPath(basePath: string, filenamePattern?: string, defaultFi
             return formatDate(now, format);
         })
         .replace(/\$\{timestamp\}/g, String(Date.now()))
-        .replace(/\$\{uuid\}/g, crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        .replace(/\$\{uuid\}/g, crypto.randomUUID());
 
     return pathLib.join(basePath, filename);
 }

@@ -187,7 +187,7 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
     }
 
     private generateToken(): string {
-        return `${this.instanceId}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+        return `${this.instanceId}-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').substring(0, 9)}`;
     }
 
     private async createFailedResult(key: string): Promise<LockResult> {

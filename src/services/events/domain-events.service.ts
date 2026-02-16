@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
 import { EventBus } from '@vendure/core';
 import { Subject, Observable } from 'rxjs';
@@ -138,7 +139,7 @@ export class DomainEventsService implements OnModuleDestroy {
         },
     ): void {
         this.publish('LogAdded', {
-            id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            id: `log_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 6)}`,
             timestamp: new Date(),
             level,
             message,
