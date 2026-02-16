@@ -8,5 +8,5 @@ export function priceToCents(price: number | string | null | undefined): number 
     const num = typeof price === 'string' ? parseFloat(price) : price;
     if (!isFinite(num)) return 0;
 
-    return Math.round(Math.round(num * 100) / 100 * 100);
+    return Math.round(num * 100);
 }
