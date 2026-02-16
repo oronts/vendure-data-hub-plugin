@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://oronts.com">
-    <img src="https://oronts.com/assets/images/logo/favicon.png" alt="Oronts" width="60" height="60">
+    <img src="https://oronts.com/_next/image?url=%2Fimages%2Flogo%2FLogo-white.png&w=256&q=75" alt="Oronts" width="60" height="60">
   </a>
 </p>
 
@@ -107,7 +107,7 @@ Contact **office@oronts.com** for commercial licensing.
 
 <p align="center">
   <a href="https://oronts.com">
-    <img src="https://oronts.com/assets/images/logo/favicon.png" alt="Oronts" width="40" height="40">
+    <img src="https://oronts.com/_next/image?url=%2Fimages%2Flogo%2FLogo-white.png&w=256&q=75" alt="Oronts" width="40" height="40">
   </a>
 </p>
 
