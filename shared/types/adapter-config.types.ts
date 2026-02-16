@@ -5,6 +5,20 @@
  * runtime errors through compile-time validation.
  */
 
+/**
+ * Authentication types for connections.
+ * Shared between dashboard, SDK, and backend.
+ */
+export enum ConnectionAuthType {
+    NONE = 'NONE',
+    BASIC = 'BASIC',
+    BEARER = 'BEARER',
+    API_KEY = 'API_KEY',
+    OAUTH2 = 'OAUTH2',
+    HMAC = 'HMAC',
+    JWT = 'JWT',
+}
+
 // EXTRACTOR CONFIGS
 
 /** CSV Extractor - Parse CSV files */

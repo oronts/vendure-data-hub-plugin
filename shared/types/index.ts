@@ -368,4 +368,4 @@ export type {
     UpdateDataHubSettingsLoaders,
     LoaderAdapterCode,
 } from './adapter-config.types';
-export { LOADER_PERMISSIONS } from './adapter-config.types';
+export { LOADER_PERMISSIONS, ConnectionAuthType } from './adapter-config.types';

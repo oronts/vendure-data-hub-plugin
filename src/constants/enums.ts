@@ -263,23 +263,14 @@ export enum ConnectionType {
     CUSTOM = 'CUSTOM',
 }
 
+import { ConnectionAuthType } from '../../shared/types';
+
 /**
- * Authentication types for connections and HTTP requests.
- *
- * Structurally identical to ConnectionAuthType in the SDK — kept separate
- * because the SDK must be independently packageable without importing from src/.
- *
- * @see src/sdk/types/connection-types.ts — ConnectionAuthType (same 7 values, SDK-facing)
+ * Backend alias for ConnectionAuthType (canonical source: shared/types).
+ * Preserved as `AuthType` to avoid widespread backend renames.
  */
-export enum AuthType {
-    NONE = 'NONE',
-    BASIC = 'BASIC',
-    BEARER = 'BEARER',
-    API_KEY = 'API_KEY',
-    OAUTH2 = 'OAUTH2',
-    HMAC = 'HMAC',
-    JWT = 'JWT',
-}
+export const AuthType = ConnectionAuthType;
+export type AuthType = ConnectionAuthType;
 
 /**
  * Secret provider types

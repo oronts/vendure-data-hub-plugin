@@ -2,27 +2,12 @@ import {
     JsonObject,
     SecretResolver,
     AdapterLogger,
+    ConnectionAuthType,
 } from '../../../shared/types';
 
-export type ConnectionType = 'HTTP' | 'S3' | 'FTP' | 'SFTP' | 'DATABASE' | 'CUSTOM';
+export { ConnectionAuthType };
 
-/**
- * Authentication types for SDK connection contracts.
- *
- * Structurally identical to AuthType in src/constants/enums.ts — kept separate
- * because the SDK must be independently packageable without importing from src/.
- *
- * @see src/constants/enums.ts — AuthType (same 7 values, backend-facing)
- */
-export enum ConnectionAuthType {
-    NONE = 'NONE',
-    BASIC = 'BASIC',
-    BEARER = 'BEARER',
-    API_KEY = 'API_KEY',
-    OAUTH2 = 'OAUTH2',
-    HMAC = 'HMAC',
-    JWT = 'JWT',
-}
+export type ConnectionType = 'HTTP' | 'S3' | 'FTP' | 'SFTP' | 'DATABASE' | 'CUSTOM';
 
 export interface ConnectionAuth {
     readonly type: ConnectionAuthType;

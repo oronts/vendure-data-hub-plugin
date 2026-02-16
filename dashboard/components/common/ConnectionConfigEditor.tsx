@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Button, Input, Switch, Label } from '@vendure/dashboard';
 import { PlusCircle, Trash2 } from 'lucide-react';
-import { ConnectionAuthType } from '../../../sdk/types/connection-types';
+import { ConnectionAuthType } from '../../../shared/types';
 import {
     CONNECTION_PORTS,
     CONNECTION_HOSTS,

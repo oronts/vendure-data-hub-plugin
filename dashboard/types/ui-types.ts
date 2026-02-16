@@ -3,8 +3,8 @@ import type {
     PipelineTrigger,
     PipelineDefinition,
     AdapterSchema,
+    ConnectionAuthType,
 } from '../../shared/types';
-import type { ConnectionAuthType } from '../../sdk/types/connection-types';
 import type {
     DataHubPipeline,
     DataHubAdapter,
