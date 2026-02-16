@@ -256,7 +256,8 @@ export function applyTruncate(
         if (value.length <= length) {
             setNestedValue(result, targetPath, value);
         } else {
-            const truncated = value.slice(0, length - suffix.length) + suffix;
+            const effectiveLength = Math.max(0, length - suffix.length);
+            const truncated = value.slice(0, effectiveLength) + suffix;
             setNestedValue(result, targetPath, truncated);
         }
     }

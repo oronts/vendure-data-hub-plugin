@@ -63,9 +63,11 @@ export function applyMath(
         case 'modulo':
             computedValue = operandValue !== null && operandValue !== 0 ? sourceValue % operandValue : sourceValue;
             break;
-        case 'power':
-            computedValue = operandValue !== null ? Math.pow(sourceValue, operandValue) : sourceValue;
+        case 'power': {
+            const powered = operandValue !== null ? Math.pow(sourceValue, operandValue) : sourceValue;
+            computedValue = isFinite(powered) ? powered : sourceValue;
             break;
+        }
         case 'round':
             computedValue = Math.round(sourceValue);
             break;
@@ -240,7 +242,7 @@ export function applyParseNumber(
             // Remove grouping separators and normalize decimal separator
             cleanedValue = cleanedValue.split(groupSep).join('');
             if (decimalSep !== '.') {
-                cleanedValue = cleanedValue.replace(decimalSep, '.');
+                cleanedValue = cleanedValue.split(decimalSep).join('.');
             }
         } else {
             // Default: remove commas (common thousand separator)

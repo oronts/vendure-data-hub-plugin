@@ -113,8 +113,8 @@ export function DryRunDialog({
                                         </div>
                                     </div>
                                     <div className="mt-4 flex justify-center">
-                                        <Button variant="outline" size="sm" onClick={handleDryRun} data-testid="datahub-dryrun-retry-btn">
-                                            Retry Dry Run
+                                        <Button variant="outline" size="sm" onClick={handleDryRun} disabled={dryRun.isPending} data-testid="datahub-dryrun-retry-btn">
+                                            {dryRun.isPending ? 'Running...' : 'Retry Dry Run'}
                                         </Button>
                                     </div>
                                 </div>
