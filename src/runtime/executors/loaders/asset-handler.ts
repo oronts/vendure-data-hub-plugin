@@ -61,7 +61,11 @@ export class AssetAttachHandler implements LoaderHandler {
                 const slug = record[slugField] as string | undefined;
                 const assetId = record[assetIdField] as ID | undefined;
 
-                if (!entity || !slug || !assetId) { fail++; continue; }
+                if (!entity || !slug || !assetId) {
+                    if (onRecordError) await onRecordError(step.key, `Missing required field: ${!entity ? 'entity' : !slug ? slugField : assetIdField}`, rec as JsonObject);
+                    fail++;
+                    continue;
+                }
 
                 let opCtx = ctx;
                 const channel = cfg.channel;
@@ -73,13 +77,22 @@ export class AssetAttachHandler implements LoaderHandler {
                 if (entity === 'product') {
                     const list = await this.productService.findAll(opCtx, { filter: { slug: { eq: slug } }, take: 1 });
                     const product = list.items[0];
-                    if (!product) { fail++; continue; }
+                    if (!product) {
+                        if (onRecordError) await onRecordError(step.key, `Product not found: ${slug}`, rec as JsonObject);
+                        fail++;
+                        continue;
+                    }
                     await this.assetService.updateFeaturedAsset(opCtx, product as unknown as EntityWithAssets, { featuredAssetId: assetId });
                 } else if (entity === 'collection') {
                     const existing = await this.collectionService.findOneBySlug(opCtx, slug);
-                    if (!existing) { fail++; continue; }
+                    if (!existing) {
+                        if (onRecordError) await onRecordError(step.key, `Collection not found: ${slug}`, rec as JsonObject);
+                        fail++;
+                        continue;
+                    }
                     await this.assetService.updateFeaturedAsset(opCtx, existing as unknown as EntityWithAssets, { featuredAssetId: assetId });
                 } else {
+                    if (onRecordError) await onRecordError(step.key, `Unsupported entity type: ${entity}`, rec as JsonObject);
                     fail++;
                     continue;
                 }

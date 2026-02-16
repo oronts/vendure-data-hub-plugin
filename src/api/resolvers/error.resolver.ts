@@ -12,10 +12,8 @@ import { RecordErrorService, RecordRetryAuditService, ErrorReplayService } from 
 import { PipelineRun, Pipeline } from '../../entities/pipeline';
 import { DataHubRecordRetryAudit, DataHubRecordError } from '../../entities/data';
 import { deepClone } from '../../utils';
-import { DataHubLogger } from '../../services/logger';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { getErrorMessage } from '../../utils/error.utils';
-
-const logger = new DataHubLogger(LOGGER_CONTEXTS.ERROR_RESOLVER);
 
 /** Extended pipeline definition that may include security settings */
 interface PipelineDefinitionWithSecurity extends PipelineDefinition {
@@ -26,12 +24,17 @@ interface PipelineDefinitionWithSecurity extends PipelineDefinition {
 
 @Resolver()
 export class DataHubErrorAdminResolver {
+    private readonly logger: DataHubLogger;
+
     constructor(
         private recordErrors: RecordErrorService,
         private errorReplay: ErrorReplayService,
         private connection: TransactionalConnection,
         private retryAudits: RecordRetryAuditService,
-    ) {}
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.ERROR_RESOLVER);
+    }
 
     @Query()
     @Allow(ViewDataHubQuarantinePermission.Permission)
@@ -51,7 +54,7 @@ export class DataHubErrorAdminResolver {
             const definition = run?.pipeline?.definition as PipelineDefinitionWithSecurity | undefined;
             return this.extractMaskFields(definition);
         } catch (error) {
-            logger.debug(`Failed to retrieve mask fields for run ${runId}`, { error });
+            this.logger.debug(`Failed to retrieve mask fields for run ${runId}`, { error });
             return [];
         }
     }
@@ -89,7 +92,7 @@ export class DataHubErrorAdminResolver {
             if (!err) return [];
             return this.getMaskFieldsForRun(ctx, err.runId ?? err.run?.id);
         } catch (error) {
-            logger.debug(`Failed to retrieve error record ${errorId} for mask fields lookup`, { error });
+            this.logger.debug(`Failed to retrieve error record ${errorId} for mask fields lookup`, { error });
             return [];
         }
     }
@@ -131,7 +134,7 @@ export class DataHubErrorAdminResolver {
                 map.set(run.id, maskFields);
             }
         } catch (error) {
-            logger.debug(`Failed to batch-retrieve mask fields for runs`, { error });
+            this.logger.debug(`Failed to batch-retrieve mask fields for runs`, { error });
         }
 
         return map;
@@ -167,7 +170,7 @@ export class DataHubErrorAdminResolver {
         await this.errorReplay.replayRecord(ctx, pipeline.definition, rec.stepKey, payload);
 
         await this.retryAudits.record(ctx, rec, payloadBefore, cleanPatch, payload).catch((err: unknown) => {
-            logger.warn(`Failed to record retry audit for record ${args.errorId}`, { error: getErrorMessage(err) });
+            this.logger.warn(`Failed to record retry audit for record ${args.errorId}`, { error: getErrorMessage(err) });
         });
 
         return true;

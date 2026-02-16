@@ -12,6 +12,7 @@ import {
     RequestContext,
 } from '@vendure/core';
 import { LOGGER_CONTEXTS, CONTENT_TYPES, FEED_FORMAT_MAP, FIELD_LIMITS, VALIDATION_PATTERNS } from '../constants/index';
+import { isValidCron } from '../../shared/utils/validation';
 import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
 
 import {
@@ -231,11 +232,9 @@ export class FeedGeneratorService implements OnModuleInit {
 
         // Validate schedule cron expression if provided
         if (config.schedule?.enabled && config.schedule.cron) {
-            // Basic cron validation - must have 5 or 6 space-separated parts
-            const cronParts = config.schedule.cron.trim().split(/\s+/);
-            if (cronParts.length < 5 || cronParts.length > 6) {
+            if (!isValidCron(config.schedule.cron)) {
                 throw new FeedConfigValidationError(
-                    'Invalid cron expression: must have 5 or 6 space-separated parts',
+                    'Invalid cron expression: must be a valid 5-field cron (minute hour day month weekday)',
                     'schedule.cron',
                     config.schedule.cron,
                 );

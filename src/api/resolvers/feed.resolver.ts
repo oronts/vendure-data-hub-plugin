@@ -4,10 +4,8 @@ import { FeedGeneratorService, FeedConfig } from '../../feeds/feed-generator.ser
 import { ManageDataHubFeedsPermission } from '../../permissions';
 import { PAGINATION, FEED_FORMATS, LOGGER_CONTEXTS } from '../../constants/index';
 import type { FeedFormatInfo } from '../../constants/index';
-import { DataHubLogger } from '../../services/logger';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { getErrorMessage } from '../../utils/error.utils';
-
-const logger = new DataHubLogger(LOGGER_CONTEXTS.FEED_RESOLVER);
 
 /** Result of feed generation operation */
 interface FeedGenerationResult {
@@ -28,9 +26,14 @@ interface FeedPreviewResult {
 
 @Resolver()
 export class DataHubFeedAdminResolver {
+    private readonly logger: DataHubLogger;
+
     constructor(
         private feedGenerator: FeedGeneratorService,
-    ) {}
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FEED_RESOLVER);
+    }
 
     @Query()
     @Allow(ManageDataHubFeedsPermission.Permission)
@@ -72,7 +75,7 @@ export class DataHubFeedAdminResolver {
                 warnings: result.warnings,
             };
         } catch (error) {
-            logger.warn('Feed generation failed', { feedCode, error });
+            this.logger.warn('Feed generation failed', { feedCode, error });
             return {
                 success: false,
                 itemCount: 0,

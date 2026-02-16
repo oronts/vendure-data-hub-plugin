@@ -46,6 +46,8 @@ export const CIRCUIT_BREAKER = {
     CLEANUP_INTERVAL_MS: 5 * 60 * 1000,
     /** Maximum number of circuits to track */
     MAX_CIRCUITS: 1000,
+    /** Maximum number of registered webhooks to cache (prevents unbounded memory growth) */
+    MAX_REGISTERED_WEBHOOKS: 1000,
 } as const;
 
 /**
@@ -60,6 +62,8 @@ export const DISTRIBUTED_LOCK = {
     MAX_RETRY_DELAY_MS: 3000,
     /** Maximum iterations for scan operations */
     MAX_SCAN_ITERATIONS: 1000,
+    /** Maximum number of in-memory lock entries (prevents unbounded growth) */
+    MAX_MEMORY_LOCKS: 1000,
     /** Lock cleanup interval in milliseconds (default: 30 seconds) */
     CLEANUP_INTERVAL_MS: 30_000,
     /** Default lock TTL in milliseconds (default: 30 seconds) */

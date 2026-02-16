@@ -24,6 +24,8 @@ export function ThroughputSettingsComponent({
                 type="button"
                 onClick={() => setExpanded(!expanded)}
                 className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+                aria-expanded={expanded}
+                aria-label="Toggle advanced settings"
             >
                 <span>{expanded ? '▼' : '▶'}</span>
                 <span>Advanced Settings</span>

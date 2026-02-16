@@ -18,14 +18,11 @@ import { ModuleRef } from '@nestjs/core';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { WebhookRetryService, WebhookConfig } from '../webhooks/webhook-retry.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK, TRUNCATION } from '../../constants/index';
+import { LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK, TRUNCATION, CIRCUIT_BREAKER } from '../../constants/index';
 import { HookActionType } from '../../constants/enums';
 import { validateUserCode } from '../../utils/code-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { assertUrlSafe, validateUrlSafety } from '../../utils/url-security.utils';
-
-/** Maximum number of registered webhook IDs to prevent unbounded memory growth */
-const MAX_REGISTERED_WEBHOOKS = 1000;
 
 @Injectable()
 export class HookService implements OnModuleInit, OnModuleDestroy {
@@ -381,7 +378,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
 
             // Register webhook config if not already registered
             if (!this.registeredWebhooks.has(webhookId)) {
-                if (this.registeredWebhooks.size >= MAX_REGISTERED_WEBHOOKS) {
+                if (this.registeredWebhooks.size >= CIRCUIT_BREAKER.MAX_REGISTERED_WEBHOOKS) {
                     this.logger.debug('Registered webhooks cache full, clearing');
                     this.registeredWebhooks.clear();
                 }

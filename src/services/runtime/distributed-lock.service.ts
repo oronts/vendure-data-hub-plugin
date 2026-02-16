@@ -46,8 +46,6 @@ export interface LockResult {
  * - DATAHUB_REDIS_URL: Redis connection URL (e.g., redis://localhost:6379)
  * - DATAHUB_LOCK_BACKEND: Force a specific backend ('redis', 'postgres', 'memory')
  */
-/** Maximum number of in-memory lock entries to prevent unbounded growth */
-const MAX_MEMORY_LOCKS = 1000;
 
 @Injectable()
 export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
@@ -100,7 +98,7 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
         let shouldContinue = true;
 
         // Evict expired or oldest entries if the map exceeds the bound
-        if (this.memoryLocks.size >= MAX_MEMORY_LOCKS) {
+        if (this.memoryLocks.size >= DISTRIBUTED_LOCK.MAX_MEMORY_LOCKS) {
             const now = Date.now();
             // First pass: remove expired entries
             for (const [k, entry] of this.memoryLocks) {
@@ -109,7 +107,7 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
                 }
             }
             // If still at capacity, evict the oldest entry
-            if (this.memoryLocks.size >= MAX_MEMORY_LOCKS) {
+            if (this.memoryLocks.size >= DISTRIBUTED_LOCK.MAX_MEMORY_LOCKS) {
                 const oldestKey = this.memoryLocks.keys().next().value;
                 if (oldestKey) this.memoryLocks.delete(oldestKey);
             }
