@@ -7,7 +7,7 @@ import { TransformExecutor } from '../../runtime/executors/transform.executor';
 import { LoadExecutor } from '../../runtime/executors/load.executor';
 import { RecordObject } from '../../runtime/executor-types';
 
-interface ExtractPreviewResult {
+export interface ExtractPreviewResult {
     records: RecordObject[];
     totalCount: number;
     notes: string[];
@@ -15,7 +15,7 @@ interface ExtractPreviewResult {
 
 type TransformSimulationResult = RecordObject[];
 
-interface ValidateSimulationResult {
+export interface ValidateSimulationResult {
     records: RecordObject[];
     summary: {
         input: number;
