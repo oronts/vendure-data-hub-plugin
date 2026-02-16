@@ -6,7 +6,6 @@ import {
     PageActionBar,
     PageActionBarRight,
     PageBlock,
-    PageLayout,
     PageTitle,
     PermissionGuard,
     detailPageRouteLoader,
@@ -161,7 +160,7 @@ function PipelineDetailPage({ route }: { route: AnyRoute }) {
                         />
                     </PageActionBarRight>
                 </PageActionBar>
-                <PageLayout>
+                <div className="w-full space-y-4">
                     <PageBlock column="main" blockId="main-form">
                         <PipelineFormFields
                             form={form}
@@ -185,14 +184,8 @@ function PipelineDetailPage({ route }: { route: AnyRoute }) {
                         <PipelineEditorToggle form={form} issues={validation.issues} />
                         <PipelineWebhookInfo definition={() => form.getValues('definition') as PipelineDefinition | undefined} />
                     </PageBlock>
-                </PageLayout>
-                {!creating && (
-                    <PermissionGuard requires={[DATAHUB_PERMISSIONS.VIEW_RUNS]}>
-                        <div id="runs" className="mt-4">
-                            <PipelineRunsBlock pipelineId={entity?.id} />
-                        </div>
-                    </PermissionGuard>
-                )}
+                    {!creating && <PipelineRunsBlock pipelineId={entity?.id} />}
+                </div>
             </Page>
 
             <ValidationPanel

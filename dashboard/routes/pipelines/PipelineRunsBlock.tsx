@@ -3,6 +3,7 @@ import {
     Button,
     DataTable,
     PageBlock,
+    PermissionGuard,
     Select,
     SelectContent,
     SelectItem,
@@ -149,8 +150,10 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
         },
     ], [handleSelectRun, handleCancelRun, cancelRun.isPending]);
 
+    let content: React.ReactNode;
+
     if (isError && !data) {
-        return (
+        content = (
             <PageBlock column="main" blockId="runs-error">
                 <ErrorState
                     title="Failed to load pipeline runs"
@@ -159,75 +162,81 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                 />
             </PageBlock>
         );
-    }
-
-    if (isLoading && runs.length === 0) {
-        return (
+    } else if (isLoading && runs.length === 0) {
+        content = (
             <PageBlock column="main" blockId="runs-loading">
                 <LoadingState type="table" rows={5} message="Loading pipeline runs..." />
             </PageBlock>
         );
+    } else {
+        content = (
+            <>
+                <PageBlock column="main" blockId="runs">
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-base font-semibold">Runs</h3>
+                        <div className="flex items-center gap-2">
+                            <Select value={status || FILTER_VALUES.ALL} onValueChange={handleStatusChange}>
+                                <SelectTrigger className={SELECT_WIDTHS.RUN_STATUS} data-testid="datahub-run-status-filter">
+                                    <SelectValue placeholder="All statuses" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={FILTER_VALUES.ALL}>All</SelectItem>
+                                    <SelectItem value={RUN_STATUS.PENDING}>Pending</SelectItem>
+                                    <SelectItem value={RUN_STATUS.RUNNING}>Running</SelectItem>
+                                    <SelectItem value={RUN_STATUS.COMPLETED}>Completed</SelectItem>
+                                    <SelectItem value={RUN_STATUS.FAILED}>Failed</SelectItem>
+                                    <SelectItem value={RUN_STATUS.CANCEL_REQUESTED}>Cancel requested</SelectItem>
+                                    <SelectItem value={RUN_STATUS.CANCELLED}>Cancelled</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Button variant="ghost" onClick={() => refetch()} disabled={isLoading} data-testid="datahub-run-history-refresh-button">
+                                Refresh
+                            </Button>
+                        </div>
+                    </div>
+                    <DataTable
+                        columns={columns}
+                        data={runs}
+                        totalItems={totalItems}
+                        isLoading={isLoading}
+                        page={page}
+                        itemsPerPage={itemsPerPage}
+                        sorting={sorting}
+                        onPageChange={setPage}
+                        onSortChange={setSorting}
+                        onRefresh={refetch}
+                        disableViewOptions
+                        data-testid="datahub-run-history-table"
+                    />
+                </PageBlock>
+                <Drawer open={!!selectedRun} onOpenChange={handleCloseDrawer}>
+                    <DrawerContent>
+                        <DrawerHeader>
+                            <DrawerTitle>Run details</DrawerTitle>
+                            <DrawerDescription>
+                                {selectedRun ? `Run ${selectedRun.id}` : 'Details'}
+                            </DrawerDescription>
+                        </DrawerHeader>
+                        {selectedRun && (
+                            <RunDetailsPanel
+                                runId={selectedRun.id}
+                                initialData={selectedRun}
+                                onCancel={handleCancelRun}
+                                onRerun={handleOnRerun}
+                                isCancelling={cancelRun.isPending}
+                            />
+                        )}
+                    </DrawerContent>
+                </Drawer>
+            </>
+        );
     }
 
     return (
-        <>
-            <PageBlock column="main" blockId="runs">
-                <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-base font-semibold">Runs</h3>
-                    <div className="flex items-center gap-2">
-                        <Select value={status || FILTER_VALUES.ALL} onValueChange={handleStatusChange}>
-                            <SelectTrigger className={SELECT_WIDTHS.RUN_STATUS} data-testid="datahub-run-status-filter">
-                                <SelectValue placeholder="All statuses" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value={FILTER_VALUES.ALL}>All</SelectItem>
-                                <SelectItem value={RUN_STATUS.PENDING}>Pending</SelectItem>
-                                <SelectItem value={RUN_STATUS.RUNNING}>Running</SelectItem>
-                                <SelectItem value={RUN_STATUS.COMPLETED}>Completed</SelectItem>
-                                <SelectItem value={RUN_STATUS.FAILED}>Failed</SelectItem>
-                                <SelectItem value={RUN_STATUS.CANCEL_REQUESTED}>Cancel requested</SelectItem>
-                                <SelectItem value={RUN_STATUS.CANCELLED}>Cancelled</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <Button variant="ghost" onClick={() => refetch()} disabled={isLoading} data-testid="datahub-run-history-refresh-button">
-                            Refresh
-                        </Button>
-                    </div>
-                </div>
-                <DataTable
-                    columns={columns}
-                    data={runs}
-                    totalItems={totalItems}
-                    isLoading={isLoading}
-                    page={page}
-                    itemsPerPage={itemsPerPage}
-                    sorting={sorting}
-                    onPageChange={setPage}
-                    onSortChange={setSorting}
-                    onRefresh={refetch}
-                    disableViewOptions
-                    data-testid="datahub-run-history-table"
-                />
-            </PageBlock>
-            <Drawer open={!!selectedRun} onOpenChange={handleCloseDrawer}>
-                <DrawerContent>
-                    <DrawerHeader>
-                        <DrawerTitle>Run details</DrawerTitle>
-                        <DrawerDescription>
-                            {selectedRun ? `Run ${selectedRun.id}` : 'Details'}
-                        </DrawerDescription>
-                    </DrawerHeader>
-                    {selectedRun && (
-                        <RunDetailsPanel
-                            runId={selectedRun.id}
-                            initialData={selectedRun}
-                            onCancel={handleCancelRun}
-                            onRerun={handleOnRerun}
-                            isCancelling={cancelRun.isPending}
-                        />
-                    )}
-                </DrawerContent>
-            </Drawer>
-        </>
+        <PermissionGuard requires={[DATAHUB_PERMISSIONS.VIEW_RUNS]}>
+            <div id="runs">
+                {content}
+            </div>
+        </PermissionGuard>
     );
 }
