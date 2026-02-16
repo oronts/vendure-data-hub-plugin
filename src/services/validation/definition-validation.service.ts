@@ -4,7 +4,7 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import { TransactionalConnection } from '@vendure/core';
+import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { In } from 'typeorm';
 import { PipelineDefinition, StepType } from '../../types/index';
 import { StepType as StepTypeEnum } from '../../constants/enums';
@@ -124,7 +124,7 @@ export class DefinitionValidationService {
     /**
      * Asynchronously validates a pipeline definition with database checks.
      */
-    async validateAsync(definition: PipelineDefinition, options: ValidationOptions = {}): Promise<DefinitionValidationResult> {
+    async validateAsync(definition: PipelineDefinition, options: ValidationOptions = {}, ctx?: RequestContext): Promise<DefinitionValidationResult> {
         const level = options.level ?? ValidationLevel.FULL;
         const result = this.validateSync(definition, { ...options, level: ValidationLevel.SEMANTIC });
 
@@ -132,7 +132,7 @@ export class DefinitionValidationService {
             return { ...result, level };
         }
 
-        await this.validateDependsOnAsync(definition, result);
+        await this.validateDependsOnAsync(definition, result, ctx);
 
         return {
             isValid: result.issues.length === 0,
@@ -177,6 +177,7 @@ export class DefinitionValidationService {
     private async validateDependsOnAsync(
         definition: PipelineDefinition,
         result: DefinitionValidationResult,
+        ctx?: RequestContext,
     ): Promise<void> {
         if (!definition.dependsOn || !Array.isArray(definition.dependsOn)) {
             return;
@@ -188,7 +189,9 @@ export class DefinitionValidationService {
         }
 
         try {
-            const repo = this.connection.getRepository(Pipeline);
+            const repo = ctx
+                ? this.connection.getRepository(ctx, Pipeline)
+                : this.connection.rawConnection.getRepository(Pipeline);
             const foundPipelines = await repo.find({
                 where: { code: In(dependsOnCodes) },
                 select: { code: true },

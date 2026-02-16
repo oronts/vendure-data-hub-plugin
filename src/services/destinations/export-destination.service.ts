@@ -115,17 +115,17 @@ export class ExportDestinationService implements OnModuleInit, OnModuleDestroy {
         try {
             switch (destination.type) {
                 case DESTINATION_TYPE.S3:
-                    return deliverToS3(destination as S3DestinationConfig, buffer, filename, options);
+                    return await deliverToS3(destination as S3DestinationConfig, buffer, filename, options);
                 case DESTINATION_TYPE.SFTP:
-                    return deliverToSFTP(destination as SFTPDestinationConfig, buffer, filename, options);
+                    return await deliverToSFTP(destination as SFTPDestinationConfig, buffer, filename, options);
                 case DESTINATION_TYPE.FTP:
-                    return deliverToFTP(destination as FTPDestinationConfig, buffer, filename, options);
+                    return await deliverToFTP(destination as FTPDestinationConfig, buffer, filename, options);
                 case DESTINATION_TYPE.HTTP:
-                    return deliverToHTTP(destination as HTTPDestinationConfig, buffer, filename, options);
+                    return await deliverToHTTP(destination as HTTPDestinationConfig, buffer, filename, options);
                 case DESTINATION_TYPE.LOCAL:
-                    return deliverToLocal(destination as LocalDestinationConfig, buffer, filename, options);
+                    return await deliverToLocal(destination as LocalDestinationConfig, buffer, filename, options);
                 case DESTINATION_TYPE.EMAIL:
-                    return deliverToEmail(destination as EmailDestinationConfig, buffer, filename, options);
+                    return await deliverToEmail(destination as EmailDestinationConfig, buffer, filename, options);
                 default: {
                     const unknownDest = destination as { type?: string };
                     const destType = unknownDest.type ?? 'unknown';

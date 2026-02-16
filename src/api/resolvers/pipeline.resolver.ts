@@ -199,7 +199,7 @@ export class DataHubPipelineAdminResolver {
 
     @Query()
     @Allow(DataHubPipelinePermission.Read)
-    async validateDataHubPipelineDefinition(@Args() args: ValidationInput) {
+    async validateDataHubPipelineDefinition(@Ctx() ctx: RequestContext, @Args() args: ValidationInput) {
         try {
             // Convert to canonical format if in visual format
             let definition = args.definition;
@@ -209,7 +209,7 @@ export class DataHubPipelineAdminResolver {
             const level = args.level?.toUpperCase() as ValidationLevel | undefined;
             const result = await this.definitionValidator.validateAsync(definition as PipelineDefinition, {
                 level,
-            });
+            }, ctx);
             return {
                 isValid: result.isValid,
                 issues: result.issues,

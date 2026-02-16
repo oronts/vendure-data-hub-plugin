@@ -3,7 +3,7 @@ import { RequestContext, RequestContextService, TransactionalConnection } from '
 import type { Request } from 'express';
 import * as crypto from 'crypto';
 import type { PipelineTrigger, PipelineDefinition, JsonValue } from '../../types/index';
-import { LOGGER_CONTEXTS, INTERNAL_TIMINGS, PipelineStatus } from '../../constants';
+import { LOGGER_CONTEXTS, INTERNAL_TIMINGS, PipelineStatus, WEBHOOK, DEFAULT_WEBHOOK_CONFIG, AUTH_SCHEMES } from '../../constants';
 import { Pipeline } from '../../entities/pipeline';
 import { PipelineService } from '../../services';
 import { SecretService } from '../../services/config/secret.service';
@@ -140,7 +140,7 @@ export class DataHubWebhookController {
             }
         }
 
-        const authType = cfg.authentication || 'none';
+        const authType = cfg.authentication || 'NONE';
 
         const records: JsonValue[] = Array.isArray(body)
             ? (body as JsonValue[])
@@ -168,14 +168,14 @@ export class DataHubWebhookController {
         req: Request,
         cfg: Partial<PipelineTrigger>,
     ): Promise<void> {
-        const headerName = (cfg.apiKeyHeaderName ?? 'x-api-key').toLowerCase();
+        const headerName = (cfg.apiKeyHeaderName ?? DEFAULT_WEBHOOK_CONFIG.apiKeyHeaderName!).toLowerCase();
         const apiKey = req.headers[headerName] as string | undefined;
 
         if (!apiKey) {
             throw new HttpException('Missing API key', HttpStatus.UNAUTHORIZED);
         }
 
-        if (apiKey.length > 512) {
+        if (apiKey.length > WEBHOOK.MAX_API_KEY_LENGTH) {
             throw new HttpException('Invalid API key format', HttpStatus.BAD_REQUEST);
         }
 
@@ -206,14 +206,14 @@ export class DataHubWebhookController {
         body: Record<string, unknown> | unknown[],
         cfg: Partial<PipelineTrigger>,
     ): Promise<void> {
-        const headerName = cfg.hmacHeaderName ?? 'x-datahub-signature';
+        const headerName = cfg.hmacHeaderName ?? DEFAULT_WEBHOOK_CONFIG.hmacHeaderName!;
         const sig = (req.headers[headerName.toLowerCase()] as string | undefined);
 
         if (!sig) {
             throw new HttpException('Missing signature', HttpStatus.UNAUTHORIZED);
         }
 
-        if (sig.length > 256) {
+        if (sig.length > WEBHOOK.MAX_SIGNATURE_LENGTH) {
             throw new HttpException('Invalid signature format', HttpStatus.BAD_REQUEST);
         }
 
@@ -228,9 +228,8 @@ export class DataHubWebhookController {
             throw new HttpException('HMAC secret not found', HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
-        const ALLOWED_HMAC_ALGORITHMS = ['sha256', 'sha512'] as const;
         const algorithm = cfg.hmacAlgorithm?.toLowerCase() ?? 'sha256';
-        if (!(ALLOWED_HMAC_ALGORITHMS as readonly string[]).includes(algorithm)) {
+        if (!WEBHOOK.ALLOWED_HMAC_ALGORITHMS.includes(algorithm)) {
             throw new HttpException('Unsupported HMAC algorithm', HttpStatus.BAD_REQUEST);
         }
         const expectedHash = crypto.createHmac(algorithm, secretValue)
@@ -253,11 +252,12 @@ export class DataHubWebhookController {
             throw new HttpException('Missing Authorization header', HttpStatus.UNAUTHORIZED);
         }
 
-        if (!authHeader.startsWith('Basic ')) {
+        const basicPrefix = `${AUTH_SCHEMES.BASIC} `;
+        if (!authHeader.startsWith(basicPrefix)) {
             throw new HttpException('Invalid Authorization header format', HttpStatus.UNAUTHORIZED);
         }
 
-        const credentials = authHeader.slice(6);
+        const credentials = authHeader.slice(basicPrefix.length);
         let decoded: string;
         try {
             decoded = Buffer.from(credentials, 'base64').toString('utf8');
@@ -298,19 +298,19 @@ export class DataHubWebhookController {
         req: Request,
         cfg: Partial<PipelineTrigger>,
     ): Promise<void> {
-        const headerName = cfg.jwtHeaderName ?? 'authorization';
+        const headerName = cfg.jwtHeaderName ?? DEFAULT_WEBHOOK_CONFIG.jwtHeaderName!;
         const authHeader = req.headers[headerName.toLowerCase()] as string | undefined;
 
         if (!authHeader) {
             throw new HttpException('Missing Authorization header', HttpStatus.UNAUTHORIZED);
         }
 
-        if (authHeader.length > 16384) {
+        if (authHeader.length > WEBHOOK.MAX_AUTH_HEADER_LENGTH) {
             throw new HttpException('Authorization header too large', HttpStatus.BAD_REQUEST);
         }
 
         const parts = authHeader.split(' ');
-        if (parts[0]?.toLowerCase() !== 'bearer' || !parts[1]) {
+        if (parts[0]?.toLowerCase() !== AUTH_SCHEMES.BEARER.toLowerCase() || !parts[1]) {
             throw new HttpException('Invalid Authorization header format', HttpStatus.UNAUTHORIZED);
         }
 
@@ -328,7 +328,7 @@ export class DataHubWebhookController {
         }
 
         const jwtParts = token.split('.');
-        if (jwtParts.length !== 3) {
+        if (jwtParts.length !== WEBHOOK.JWT_PARTS_COUNT) {
             throw new HttpException('Invalid JWT format', HttpStatus.UNAUTHORIZED);
         }
 
@@ -338,7 +338,7 @@ export class DataHubWebhookController {
         try {
             const headerJson = Buffer.from(headerB64, 'base64url').toString('utf8');
             const header = JSON.parse(headerJson);
-            if (header.alg !== 'HS256') {
+            if (header.alg !== WEBHOOK.REQUIRED_JWT_ALGORITHM) {
                 throw new HttpException(
                     `Unsupported JWT algorithm: '${header.alg}'. Only HS256 is accepted.`,
                     HttpStatus.UNAUTHORIZED,
