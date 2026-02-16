@@ -1,6 +1,6 @@
 /** Prevents PII and credentials from being logged. */
 
-import { EMAIL_REGEX } from '../../utils/input-validation.utils';
+import { EMAIL_PATTERN } from '../../constants';
 
 // Fields that should be completely redacted (case-insensitive matching)
 const SENSITIVE_FIELDS = [
@@ -96,7 +96,7 @@ export function maskPhone(phone: string): string {
 }
 
 function isEmail(value: string): boolean {
-    return EMAIL_REGEX.test(value);
+    return EMAIL_PATTERN.test(value);
 }
 
 function isPhone(value: string): boolean {

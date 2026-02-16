@@ -6,7 +6,7 @@ import {
     isValidPipelineCode as isValidPipelineCodeFromShared,
 } from '../../shared';
 
-export const EMAIL_REGEX = EMAIL_PATTERN;
+
 export const isValidEmail = isValidEmailFromShared;
 export function isValidUrl(url: string, requireHttps: boolean = false): boolean {
     return isValidUrlFromShared(url, { requireHttps });

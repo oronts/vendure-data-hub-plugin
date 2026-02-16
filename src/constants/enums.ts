@@ -185,6 +185,9 @@ export enum HookActionType {
 
 /**
  * Route condition comparison operators
+ *
+ * Values use lowercase for single words (eq, ne, gt) and
+ * camelCase for multi-word codes (notIn, startsWith, endsWith)
  */
 export enum RouteConditionOperator {
     EQ = 'eq',

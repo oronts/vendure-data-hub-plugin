@@ -6,7 +6,7 @@ import type {
     ExportTriggerConfig,
     CacheConfig,
     ExportOptions,
-} from '../../../types/Wizard';
+} from '../../../types/wizard';
 import type { FilterCondition } from '../../../types';
 import type { HttpMethod } from '../../../../shared/types';
 import type {

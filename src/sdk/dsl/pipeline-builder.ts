@@ -46,6 +46,7 @@ import {
     GateStepConfig,
 } from './step-configs';
 import { DEFAULT_TRIGGER_TYPE } from '../constants';
+import { validateNonEmptyString, validateUniqueKey, validateVersion } from './validation-helpers';
 
 // PIPELINE BUILDER INTERFACE
 
@@ -92,26 +93,6 @@ function createEdge(from: string, to: string, branch?: string): PipelineEdge {
     const e: PipelineEdge = { from, to };
     if (branch) e.branch = branch;
     return e;
-}
-
-// VALIDATION HELPERS
-
-function validateNonEmptyString(value: string, fieldName: string): void {
-    if (!value || value.trim().length === 0) {
-        throw new Error(`${fieldName} must be a non-empty string`);
-    }
-}
-
-function validateUniqueKey(steps: PipelineStepDefinition[], key: string): void {
-    if (steps.some(s => s.key === key)) {
-        throw new Error(`Duplicate step key: "${key}". Step keys must be unique within a pipeline.`);
-    }
-}
-
-function validateVersion(version: number): void {
-    if (!Number.isInteger(version) || version < 1) {
-        throw new Error(`Version must be a positive integer, got: ${version}`);
-    }
 }
 
 // CREATE PIPELINE FUNCTION

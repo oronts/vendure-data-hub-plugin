@@ -12,7 +12,7 @@ import {
 } from '@vendure/dashboard';
 import { formatCellValue } from '../../../utils';
 import { COMPONENT_HEIGHTS, COMPONENT_WIDTHS } from '../../../constants';
-import type { DataPreviewProps } from './Types';
+import type { DataPreviewProps } from './types';
 
 function DataPreviewComponent({ data, columns, maxRows = 10 }: DataPreviewProps) {
     const previewData = data.slice(0, maxRows);

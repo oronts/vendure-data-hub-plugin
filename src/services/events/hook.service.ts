@@ -266,7 +266,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
             }),
             Object: Object.freeze({
                 keys: Object.keys, values: Object.values, entries: Object.entries,
-                assign: (target: any, ...sources: any[]) => Object.assign({}, target, ...sources),
+                assign: (target: Record<string, unknown>, ...sources: Record<string, unknown>[]) => Object.assign({}, target, ...sources),
                 freeze: Object.freeze, fromEntries: Object.fromEntries,
             }),
             String: Object.freeze({ fromCharCode: String.fromCharCode }),

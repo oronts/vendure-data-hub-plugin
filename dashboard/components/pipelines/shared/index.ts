@@ -18,8 +18,8 @@ export {
 } from '../../shared/step-config';
 export type { StepConfigData, StepConfigPanelProps } from '../../shared/step-config';
 
-export { VISUAL_NODE_CONFIGS, getVisualNodeConfig } from './VisualNodeConfig';
-export type { VisualNodeConfig } from './VisualNodeConfig';
+export { VISUAL_NODE_CONFIGS, getVisualNodeConfig } from './visual-node-config';
+export type { VisualNodeConfig } from './visual-node-config';
 
 export {
     createPipelineNode,

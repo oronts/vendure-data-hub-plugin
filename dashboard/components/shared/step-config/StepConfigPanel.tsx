@@ -22,7 +22,7 @@ import {
     GateConfigComponent,
 } from './index';
 import { TriggerForm } from '../trigger-config';
-import { OperatorCheatSheetButton } from './OperatorCheatsheet';
+import { OperatorCheatSheetButton } from './OperatorCheatSheetButton';
 import {
     AdvancedMapEditor,
     AdvancedTemplateEditor,

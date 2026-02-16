@@ -1,35 +1,12 @@
 import { JsonObject, JsonValue } from '../../types/index';
 import { OperatorConfig, RouteConditionConfig } from './step-configs';
 import { TRANSFORM_OPERATOR } from '../constants';
-
-// VALIDATION HELPERS
-
-function validateNonEmptyString(value: string, fieldName: string): void {
-    if (!value || typeof value !== 'string' || value.trim().length === 0) {
-        throw new Error(`${fieldName} must be a non-empty string`);
-    }
-}
-
-function validateMapping(mapping: Record<string, string>, fieldName: string): void {
-    if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) {
-        throw new Error(`${fieldName} must be an object`);
-    }
-    if (Object.keys(mapping).length === 0) {
-        throw new Error(`${fieldName} must have at least one entry`);
-    }
-}
-
-function validateNonEmptyArray<T>(arr: T[], fieldName: string): void {
-    if (!Array.isArray(arr) || arr.length === 0) {
-        throw new Error(`${fieldName} must be a non-empty array`);
-    }
-}
-
-function validatePositiveNumber(value: number, fieldName: string): void {
-    if (typeof value !== 'number' || value <= 0) {
-        throw new Error(`${fieldName} must be a positive number`);
-    }
-}
+import {
+    validateNonEmptyString,
+    validateNonEmptyArray,
+    validateMapping,
+    validatePositiveNumber,
+} from './validation-helpers';
 
 // OPERATOR BUILDERS
 

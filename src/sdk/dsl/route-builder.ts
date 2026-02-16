@@ -1,20 +1,7 @@
 import { JsonValue } from '../../types/index';
 import { RouteConditionConfig } from './step-configs';
 import { ROUTE_OPERATOR } from '../constants';
-
-// VALIDATION HELPERS
-
-function validateNonEmptyString(value: string, fieldName: string): void {
-    if (!value || typeof value !== 'string' || value.trim().length === 0) {
-        throw new Error(`${fieldName} must be a non-empty string`);
-    }
-}
-
-function validateNonEmptyArray<T>(arr: T[], fieldName: string): void {
-    if (!Array.isArray(arr) || arr.length === 0) {
-        throw new Error(`${fieldName} must be a non-empty array`);
-    }
-}
+import { validateNonEmptyString, validateNonEmptyArray } from './validation-helpers';
 
 export const conditions = {
     /** `conditions.eq('status', 'active')` */

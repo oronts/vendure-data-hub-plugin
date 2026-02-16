@@ -33,7 +33,7 @@ export type {
     PipelineNode,
     VisualPipelineDefinition,
     VisualNodeCategory,
-} from './Pipeline';
+} from './pipeline';
 
 export type {
     AdapterListItem,
@@ -81,7 +81,7 @@ export type {
     TriggersPanelOnChangeProps,
     TemplateCategory,
     TemplateDifficulty,
-} from './UiTypes';
+} from './ui-types';
 
 export type {
     ParsedColumn,
@@ -90,9 +90,9 @@ export type {
 export type {
     UIFieldMapping,
     ParsedFile,
-} from '../components/common/file-upload-mapper/Types';
+} from '../components/common/file-upload-mapper/types';
 
 export type {
     WizardStep,
     ParsedData,
-} from './Wizard';
+} from './wizard';

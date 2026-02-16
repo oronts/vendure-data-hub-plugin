@@ -58,7 +58,7 @@ const TRANSFORM_OPERATORS: TransformOperatorDefinition[] = [
     { code: 'sort', label: 'Sort', description: 'Sort records by field', category: 'record', configFields: ['field', 'order'] },
     { code: 'aggregate', label: 'Aggregate', description: 'Group and aggregate records', category: 'aggregate', configFields: ['key', 'aggregations'] },
     { code: 'lookup', label: 'Lookup', description: 'Enrich from external source', category: 'field', configFields: ['source', 'map'] },
-    { code: 'enrich', label: 'Enrich', description: 'Add or enhance data fields', category: 'field', configFields: ['enrichments'] },
+    { code: 'enrich', label: 'Enrich', description: 'Add or enrich data fields', category: 'field', configFields: ['enrichments'] },
     { code: 'script', label: 'Script', description: 'Execute custom transformation script', category: 'control', configFields: ['code', 'language'] },
     { code: 'multiJoin', label: 'Multi-Source Join', description: 'Join two datasets by matching key fields', category: 'aggregate', configFields: ['leftKey', 'rightKey', 'type'] },
     { code: 'imageResize', label: 'Image Resize', description: 'Resize images referenced in record fields', category: 'file', configFields: ['field', 'width', 'height'] },

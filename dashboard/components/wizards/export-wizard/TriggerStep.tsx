@@ -16,8 +16,8 @@ import {
 import { EXPORT_WIZARD_TRIGGERS, TRIGGER_TYPES, UI_DEFAULTS, COMPRESSION_OPTIONS, COMPRESSION_TYPE } from '../../../constants';
 import { WizardStepContainer } from '../shared';
 import { TriggerSelector, ScheduleConfig } from '../../shared/wizard-trigger';
-import { STEP_CONTENT } from './Constants';
-import type { ExportConfiguration, ExportTriggerType, CompressionType } from './Types';
+import { STEP_CONTENT } from './constants';
+import type { ExportConfiguration, ExportTriggerType, CompressionType } from './types';
 
 interface TriggerStepProps {
     config: Partial<ExportConfiguration>;

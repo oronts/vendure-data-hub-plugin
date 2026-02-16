@@ -60,7 +60,7 @@ export {
     interceptorHooksPipeline,
     scriptHooksPipeline,
     scriptOperatorPipeline,
-    comprehensiveAdvancedPipeline,
+    advancedValidationPipeline,
     allHookStagesPipeline,
     customAdapterPipeline,
     examplePipelines,

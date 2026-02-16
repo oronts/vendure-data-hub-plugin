@@ -18,7 +18,7 @@ import type {
     PipelineNode,
     PipelineNodeData,
     VisualPipelineDefinition,
-} from './Pipeline';
+} from './pipeline';
 import type { FileType } from '../utils';
 
 export type {
@@ -27,7 +27,7 @@ export type {
     PipelineNode,
     VisualPipelineDefinition,
     VisualNodeCategory,
-} from './Pipeline';
+} from './pipeline';
 
 export type { FileType };
 

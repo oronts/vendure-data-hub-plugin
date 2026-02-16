@@ -69,7 +69,7 @@ const ADAPTER_CATEGORY_CONFIGS: Record<UIAdapterCategory, UIAdapterCategoryConfi
     [ADAPTER_CATEGORIES.ENRICHMENT]: {
         category: ADAPTER_CATEGORIES.ENRICHMENT,
         label: 'Enrichment',
-        description: 'Add or enhance data',
+        description: 'Add or enrich data',
         icon: 'Sparkles',
     },
     [ADAPTER_CATEGORIES.AGGREGATION]: {

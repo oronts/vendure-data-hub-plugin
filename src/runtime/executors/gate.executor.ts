@@ -47,9 +47,8 @@ export class GateExecutor {
      *
      * For MANUAL mode the pipeline always pauses.
      *
-     * TIMEOUT mode: stores the intended timeout expiry in checkpoint metadata
-     * but currently behaves like MANUAL. Auto-approval on timeout requires a
-     * background worker (planned feature).
+     * TIMEOUT mode: stores expiry in checkpoint but currently falls back to
+     * MANUAL (background worker not yet implemented).
      */
     async execute(
         _ctx: RequestContext,
@@ -78,36 +77,30 @@ export class GateExecutor {
         }
 
         // --- TIMEOUT mode ---
-        // Stores the timeout expiry timestamp in the checkpoint for future
-        // background-worker based auto-approval. For now, behaves like MANUAL.
-        // TODO: Implement background worker to auto-approve TIMEOUT gates
-        //       when the expiry timestamp is reached.
+        // TODO: Add background worker to auto-approve TIMEOUT gates on expiry
         if (config.approvalType === 'TIMEOUT' && config.timeoutSeconds) {
             const expiresAt = new Date(Date.now() + config.timeoutSeconds * 1000).toISOString();
             this.saveTimeoutToCheckpoint(step.key, expiresAt, executorCtx);
-            logger.log(
-                `GATE step "${step.key}": TIMEOUT mode with ${config.timeoutSeconds}s timeout ` +
-                `(expires at ${expiresAt}). Auto-approval requires background worker (not yet implemented). ` +
-                `Behaving as MANUAL pause.`,
+            logger.warn(
+                `GATE "${step.key}": TIMEOUT auto-approval not yet implemented ` +
+                `(expires ${expiresAt}). Falling back to MANUAL pause.`,
             );
         }
 
         // --- Save checkpoint for paused gate ---
         this.saveGateCheckpoint(step.key, config, input, executorCtx);
 
-        // --- Notification logging ---
-        // TODO: Implement actual webhook call via HttpService when notification infrastructure is available.
+        // --- Notifications (planned) ---
+        // TODO: Dispatch webhook via HttpService
         if (config.notifyWebhook) {
-            logger.log(
-                `GATE step "${step.key}": Notification intent - webhook URL: ${config.notifyWebhook} ` +
-                `(not dispatched - webhook delivery not yet implemented)`,
+            logger.warn(
+                `GATE "${step.key}": Webhook notification not yet available (url: ${config.notifyWebhook})`,
             );
         }
-        // TODO: Implement actual email sending via mailer service when notification infrastructure is available.
+        // TODO: Send email via mailer service
         if (config.notifyEmail) {
-            logger.log(
-                `GATE step "${step.key}": Notification intent - email: ${config.notifyEmail} ` +
-                `(not dispatched - email delivery not yet implemented)`,
+            logger.warn(
+                `GATE "${step.key}": Email notification not yet available (to: ${config.notifyEmail})`,
             );
         }
 

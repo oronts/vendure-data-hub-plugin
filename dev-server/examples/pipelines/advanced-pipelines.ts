@@ -388,8 +388,8 @@ export const scriptOperatorPipeline = createPipeline()
  * - Use script hook for final enrichment
  * - Export to multiple formats
  */
-export const comprehensiveAdvancedPipeline = createPipeline()
-    .name('Comprehensive Advanced Pipeline')
+export const advancedValidationPipeline = createPipeline()
+    .name('Advanced Validation Pipeline')
     .description('Real-world example combining hooks, scripts, and custom logic')
     .capabilities({ requires: ['ReadOrder', 'ReadCustomer'] })
     .trigger('start', { type: 'MANUAL' })

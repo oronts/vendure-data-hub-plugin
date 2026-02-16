@@ -1,5 +1,5 @@
 import type { StepType } from '../../shared/types';
-import { STEP_TYPE_CANONICAL_COLORS } from './StepMappings';
+import { STEP_TYPE_CANONICAL_COLORS } from './step-mappings';
 
 export const STEP_TYPES = {
     TRIGGER: 'TRIGGER',
@@ -82,7 +82,7 @@ export const STEP_CONFIGS: Record<StepType, StepConfig> = {
     ENRICH: {
         type: 'ENRICH',
         label: 'Enrich',
-        description: 'Add or enhance data fields',
+        description: 'Add or enrich data fields',
         icon: 'Sparkles',
         color: STEP_TYPE_CANONICAL_COLORS.ENRICH,
         bgColor: '#ecfdf5',

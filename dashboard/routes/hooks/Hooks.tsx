@@ -42,8 +42,8 @@ import {
     handleMutationError,
 } from '../../hooks';
 import { ErrorState, LoadingState } from '../../components/shared';
-import { HOOK_STAGES } from './HookStages';
-import type { HookStage } from './HookStages';
+import { HOOK_STAGES } from './hook-stages';
+import type { HookStage } from './hook-stages';
 
 export const hooksPage: DashboardRouteDefinition = {
     navMenuItem: {

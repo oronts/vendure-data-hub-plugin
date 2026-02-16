@@ -33,7 +33,7 @@ Complete reference documentation for all Data Hub adapters.
 | `cdc` | Change Data Capture - poll database tables for changes |
 | `webhook` | Incoming webhook payloads |
 
-### Loaders (17)
+### Loaders (18)
 
 | Entity Type | Description |
 |-------------|-------------|
@@ -53,6 +53,7 @@ Complete reference documentation for all Data Hub adapters.
 | `TAX_RATE` | Create/update tax rates with category and zone |
 | `PAYMENT_METHOD` | Create/update payment methods with handlers |
 | `CHANNEL` | Create/update channels with currencies and languages |
+| `REST_POST` | POST data to custom REST endpoints |
 | `GRAPHQL_MUTATION` | Send records as GraphQL mutations to external APIs |
 
 ### Operator Categories (61 operators)

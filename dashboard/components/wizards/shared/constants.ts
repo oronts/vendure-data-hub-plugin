@@ -120,7 +120,7 @@ export const TRANSFORM_TYPES = [
     { id: 'sort', label: 'Sort', description: 'Sort records by field' },
     { id: 'template', label: 'Template', description: 'Generate fields using templates' },
     { id: 'typecast', label: 'Type Cast', description: 'Convert field data types' },
-    { id: 'enrich', label: 'Enrich', description: 'Add or enhance data fields' },
+    { id: 'enrich', label: 'Enrich', description: 'Add or enrich data fields' },
     { id: 'script', label: 'Script', description: 'Execute custom transformation script' },
 ] as const;
 

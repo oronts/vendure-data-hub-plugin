@@ -34,7 +34,7 @@ export type { RetrySettingsComponentProps, RetrySettings } from './RetrySettings
 
 export { StepTester } from './StepTester';
 
-export { OperatorCheatSheetButton } from './OperatorCheatsheet';
+export { OperatorCheatSheetButton } from './OperatorCheatSheetButton';
 
 export { TestResultContainer, JsonDisplay } from './TestResultContainer';
 export type { TestResultContainerProps } from './TestResultContainer';

@@ -1,4 +1,4 @@
-import { DATAHUB_ROUTE_BASE, DATAHUB_API_BASE } from './Navigation';
+import { DATAHUB_ROUTE_BASE, DATAHUB_API_BASE } from './navigation';
 
 export const ROUTES = {
     PIPELINES: DATAHUB_ROUTE_BASE,

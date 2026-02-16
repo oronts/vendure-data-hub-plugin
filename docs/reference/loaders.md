@@ -1,6 +1,6 @@
 # Loaders Reference
 
-Complete reference for all entity loaders (17 total).
+Complete reference for all entity loaders (18 total).
 
 ## Common Configuration
 
@@ -32,6 +32,9 @@ All loaders are configured using the `.load()` step in the pipeline DSL:
 | `orderNote` | Order | Add notes to orders |
 | `orderTransition` | Order | Transition order states |
 | `applyCoupon` | Order | Apply coupon codes to orders |
+| `taxRateUpsert` | Tax Rate | Tax rates with zone and category mappings |
+| `paymentMethodUpsert` | Payment Method | Payment methods with handler configuration |
+| `channelUpsert` | Channel | Channels with currency and language settings |
 | `restPost` | Custom | POST data to REST endpoints |
 | `graphqlMutation` | GraphQL | Send records as GraphQL mutations to external APIs |
 

@@ -17,7 +17,7 @@ import {
     Badge,
 } from '@vendure/dashboard';
 import { WizardStepContainer } from '../shared';
-import type { ImportConfiguration, ImportStrategies } from './Types';
+import type { ImportConfiguration, ImportStrategies } from './types';
 import {
     EXISTING_RECORDS_STRATEGIES,
     NEW_RECORDS_STRATEGIES,
@@ -25,7 +25,7 @@ import {
     UI_DEFAULTS,
 } from '../../../constants';
 import type { ExistingRecordsStrategy, NewRecordsStrategy, CleanupStrategy } from '../../../constants';
-import { STEP_CONTENT } from './Constants';
+import { STEP_CONTENT } from './constants';
 
 type CleanupStrategy = ImportStrategies['cleanupStrategy'];
 

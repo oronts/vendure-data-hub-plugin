@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { UI_DEFAULTS, TEXTAREA_HEIGHTS, TOAST_ADAPTER } from '../../constants';
-import { ADAPTER_TYPE_INFO, guessExampleValue } from './Constants';
+import { ADAPTER_TYPE_INFO, guessExampleValue } from './constants';
 import type { DataHubAdapter } from '../../types';
 
 export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>) {

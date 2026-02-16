@@ -203,7 +203,7 @@ export const ftpInventorySync = createPipeline()
 
 ## Customer Import with Validation
 
-Import customers with comprehensive validation:
+Import customers with strict validation:
 
 ```typescript
 export const customerImport = createPipeline()
@@ -617,14 +617,14 @@ export const orderExport = createPipeline()
 
 ## Validation and Enrichment
 
-### Comprehensive Data Validation
+### Strict Data Validation
 
 Validate incoming records with multiple rule types:
 
 ```typescript
 export const validatedProductImport = createPipeline()
     .name('Validated Product Import')
-    .description('Import products with comprehensive validation')
+    .description('Import products with strict validation')
     .capabilities({ requires: ['UpdateCatalog'] })
 
     .trigger('start', { type: 'MANUAL' })

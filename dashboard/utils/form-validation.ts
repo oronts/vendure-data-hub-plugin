@@ -1,4 +1,4 @@
-import { isEmpty, isURL as checkIsURL } from './FieldValidators';
+import { isEmpty, isURL as checkIsURL } from './field-validators';
 import { SOURCE_TYPE, DESTINATION_TYPE } from '../constants';
 import { CODE_PATTERN } from '../../shared';
 

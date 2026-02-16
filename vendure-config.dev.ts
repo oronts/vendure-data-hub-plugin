@@ -51,7 +51,7 @@ import {
     interceptorHooksPipeline,
     scriptHooksPipeline,
     scriptOperatorPipeline,
-    comprehensiveAdvancedPipeline,
+    advancedValidationPipeline,
     allHookStagesPipeline,
     customAdapterPipeline,
     // Architectural gap pipelines
@@ -502,7 +502,7 @@ export const config: VendureConfig = {
                 { code: 'interceptor-hooks', name: 'Interceptor Hooks Example', definition: interceptorHooksPipeline, enabled: true },
                 { code: 'script-hooks', name: 'Script Hooks Example', definition: scriptHooksPipeline, enabled: true },
                 { code: 'script-operator', name: 'Script Operator Example', definition: scriptOperatorPipeline, enabled: true },
-                { code: 'comprehensive-advanced', name: 'Comprehensive Advanced Pipeline', definition: comprehensiveAdvancedPipeline, enabled: true },
+                { code: 'advanced-validation', name: 'Advanced Validation Pipeline', definition: advancedValidationPipeline, enabled: true },
                 { code: 'all-hook-stages', name: 'All 18 Hook Stages Demo', definition: allHookStagesPipeline, enabled: true },
                 { code: 'custom-adapter-sdk', name: 'Custom Adapter SDK Example', definition: customAdapterPipeline, enabled: true },
 
