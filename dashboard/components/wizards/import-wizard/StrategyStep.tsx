@@ -257,8 +257,9 @@ function AdvancedOptionsCard({ strategies, updateConfig }: AdvancedOptionsCardPr
             <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <Label>Batch Size</Label>
+                        <Label htmlFor="strategy-batch-size">Batch Size</Label>
                         <Input
+                            id="strategy-batch-size"
                             type="number"
                             value={strategies.batchSize}
                             onChange={e => updateConfig({
@@ -267,8 +268,9 @@ function AdvancedOptionsCard({ strategies, updateConfig }: AdvancedOptionsCardPr
                         />
                     </div>
                     <div>
-                        <Label>Error Threshold (%)</Label>
+                        <Label htmlFor="strategy-error-threshold">Error Threshold (%)</Label>
                         <Input
+                            id="strategy-error-threshold"
                             type="number"
                             value={strategies.errorThreshold}
                             onChange={e => updateConfig({

@@ -12,7 +12,7 @@ import {
     Badge,
 } from '@vendure/dashboard';
 import { PlayIcon, ChevronDown, ChevronUp } from 'lucide-react';
-import { STEP_TYPES, ADAPTER_TYPES, DEFAULT_SAMPLE_DATA, STEP_TEST_DESCRIPTIONS, PLACEHOLDERS } from '../../../constants';
+import { STEP_TYPES, ADAPTER_TYPES, DEFAULT_SAMPLE_DATA, STEP_TEST_DESCRIPTIONS, PLACEHOLDERS, UI_LIMITS } from '../../../constants';
 import { createMutationErrorHandler } from '../../../hooks';
 import { runStepTest, canTestStepType, type TestResult, type StepTestOptions } from './StepTestHandlers';
 import { ExtractTestResults } from './ExtractTestResults';
@@ -42,7 +42,7 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
     const [expanded, setExpanded] = React.useState(false);
     const [result, setResult] = React.useState<TestResult | null>(null);
     const [sampleInput, setSampleInput] = React.useState(DEFAULT_SAMPLE_DATA);
-    const [limit, setLimit] = React.useState(10);
+    const [limit, setLimit] = React.useState(UI_LIMITS.PREVIEW_ROW_LIMIT);
     const [resultView, setResultView] = React.useState<'table' | 'json'>('table');
 
     const effectiveType = getEffectiveStepType(stepType, adapterType);
@@ -82,8 +82,8 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
             return (
                 <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                        <Label className="text-xs">Record limit</Label>
-                        <Input type="number" value={limit} onChange={e => setLimit(Math.max(1, parseInt(e.target.value) || 10))} className="w-20 h-8" min={1} max={100} />
+                        <Label htmlFor="step-tester-limit" className="text-xs">Record limit</Label>
+                        <Input id="step-tester-limit" type="number" value={limit} onChange={e => setLimit(Math.max(1, parseInt(e.target.value) || UI_LIMITS.PREVIEW_ROW_LIMIT))} className="w-20 h-8" min={1} max={UI_LIMITS.MAX_PREVIEW_ROWS} />
                     </div>
                     <p className="text-xs text-muted-foreground">
                         {effectiveType === STEP_TYPES.EXTRACT ? STEP_TEST_DESCRIPTIONS.EXTRACT : 'Generates feed output using the configured feed adapter.'}

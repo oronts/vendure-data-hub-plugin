@@ -251,7 +251,7 @@ Validate records:
 **Example:**
 ```typescript
 .validate('check-data', {
-    mode: 'accumulate',
+    mode: 'ACCUMULATE',
     rules: [
         { type: 'business', spec: { field: 'sku', required: true } },
         { type: 'business', spec: { field: 'price', min: 0 } },
@@ -335,19 +335,19 @@ Create or update Vendure entities:
 **Product Loader:**
 ```typescript
 .load('import-products', {
-    entityType: 'PRODUCT',
-    operation: 'UPSERT',
-    lookupFields: ['slug'],
-    conflictResolution: 'SOURCE_WINS',
+    adapterCode: 'productUpsert',
+    strategy: 'UPSERT',
+    matchField: 'slug',
+    conflictStrategy: 'SOURCE_WINS',
 })
 ```
 
 **Variant Loader:**
 ```typescript
 .load('import-variants', {
-    entityType: 'PRODUCT_VARIANT',
-    operation: 'UPDATE',
-    lookupFields: ['sku'],
+    adapterCode: 'variantUpsert',
+    strategy: 'UPDATE',
+    matchField: 'sku',
 })
 ```
 
@@ -535,7 +535,7 @@ const productSync = createPipeline()
     })
 
     .validate('check-data', {
-        mode: 'accumulate',
+        mode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'name', required: true } },
             { type: 'business', spec: { field: 'sku', required: true } },
@@ -544,10 +544,10 @@ const productSync = createPipeline()
     })
 
     .load('upsert-products', {
-        entityType: 'PRODUCT',
-        operation: 'UPSERT',
-        lookupFields: ['slug'],
-        conflictResolution: 'SOURCE_WINS',
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'slug',
+        conflictStrategy: 'SOURCE_WINS',
         throughput: { batchSize: 50, concurrency: 2 },
     })
 

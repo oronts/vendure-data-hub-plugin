@@ -334,7 +334,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         const timeout = action.timeout ?? HOOK.INTERCEPTOR_TIMEOUT_MS;
 
         // Execute with timeout, clearing the timer to prevent leaks
-        let timerId: NodeJS.Timeout;
+        let timerId: NodeJS.Timeout | undefined;
         const timeoutPromise = new Promise<never>((_, reject) => {
             timerId = setTimeout(() => reject(new Error(`Script timeout after ${timeout}ms`)), timeout);
         });
@@ -345,7 +345,9 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
             ]);
             return result;
         } finally {
-            clearTimeout(timerId!);
+            if (timerId !== undefined) {
+                clearTimeout(timerId);
+            }
         }
     }
 

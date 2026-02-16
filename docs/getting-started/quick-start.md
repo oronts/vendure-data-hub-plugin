@@ -94,10 +94,10 @@ const productImportPipeline = createPipeline()
         ],
     })
     .load('create-products', {
-        entityType: 'PRODUCT',
-        operation: 'UPSERT',
-        lookupFields: ['slug'],
-        conflictResolution: 'SOURCE_WINS',
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'slug',
+        conflictStrategy: 'SOURCE_WINS',
     })
     .edge('start', 'fetch-products')
     .edge('fetch-products', 'map-fields')
@@ -175,9 +175,9 @@ const csvImport = createPipeline()
         hasHeader: true,
     })
     .load('import', {
-        entityType: 'PRODUCT',
-        operation: 'UPSERT',
-        lookupFields: ['slug'],
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'slug',
     })
     .edge('start', 'parse-csv')
     .edge('parse-csv', 'import')
@@ -197,9 +197,9 @@ const scheduledSync = createPipeline()
     })
     .extract('fetch', { adapterCode: 'httpApi', url: 'https://api.example.com/products' })
     .load('sync', {
-        entityType: 'PRODUCT',
-        operation: 'UPSERT',
-        lookupFields: ['slug'],
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'slug',
     })
     .edge('schedule', 'fetch')
     .edge('fetch', 'sync')

@@ -62,7 +62,7 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger('DistributedLockService');
-        this.instanceId = `instance-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        this.instanceId = `instance-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     }
 
     async onModuleInit(): Promise<void> {
@@ -186,7 +186,7 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
     }
 
     private generateToken(): string {
-        return `${this.instanceId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        return `${this.instanceId}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     }
 
     private async createFailedResult(key: string): Promise<LockResult> {

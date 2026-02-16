@@ -204,7 +204,6 @@ function PipelineDetailPage({ route }: { route: AnyRoute }) {
                 open={dryRunOpen}
                 onOpenChange={setDryRunOpen}
                 pipelineId={entity?.id}
-                definition={form.getValues('definition') as PipelineDefinition | undefined}
             />
 
             <VersionHistoryDialog

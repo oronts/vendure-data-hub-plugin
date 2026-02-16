@@ -341,9 +341,9 @@ const erpPriceSync = createPipeline()
         target: 'priceInCents',
     })
     .load('update-variant', {
-        entityType: 'PRODUCT_VARIANT',
-        operation: 'UPDATE',
-        lookupFields: ['sku'],
+        adapterCode: 'variantUpsert',
+        strategy: 'UPDATE',
+        matchField: 'sku',
     })
     .build();
 ```

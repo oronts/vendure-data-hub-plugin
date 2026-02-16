@@ -60,9 +60,9 @@ const pipeline = createPipeline()
         ],
     })
     .load('upsert-products', {
-        entityType: 'PRODUCT',
-        operation: 'UPSERT',
-        lookupFields: ['slug'],
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'slug',
     })
     .edge('schedule', 'fetch-erp')
     .edge('fetch-erp', 'map-fields')

@@ -137,7 +137,7 @@ const pipeline = createPipeline()
     .name('Product Sync')
     .trigger('start', { type: 'SCHEDULE', cron: '0 2 * * *' })
     .extract('fetch', { adapterCode: 'httpApi', url: 'https://api.example.com/products' })
-    .load('import', { entityType: 'PRODUCT', operation: 'UPSERT', lookupFields: ['slug'] })
+    .load('import', { adapterCode: 'productUpsert', strategy: 'UPSERT', matchField: 'slug' })
     .edge('start', 'fetch')
     .edge('fetch', 'import')
     .build();

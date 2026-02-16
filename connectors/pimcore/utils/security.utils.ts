@@ -31,31 +31,6 @@ export function combineFilters(filters: (FilterObject | undefined)[]): FilterObj
     return { $and: valid };
 }
 
-export function buildSafeAssetUrl(baseUrl: string, assetPath: string): string | null {
-    if (!baseUrl || !assetPath) return null;
-
-    if (
-        assetPath.includes('..') ||
-        assetPath.includes('://') ||
-        assetPath.startsWith('//') ||
-        assetPath.includes('\\')
-    ) {
-        return null;
-    }
-
-    try {
-        const base = new URL(baseUrl);
-        const path = assetPath.startsWith('/') ? assetPath : '/' + assetPath;
-        const url = new URL(path, base.origin);
-
-        if (url.origin !== base.origin) return null;
-
-        return url.toString();
-    } catch {
-        return null;
-    }
-}
-
 export function validateEndpointUrl(
     endpoint: string,
     options: {

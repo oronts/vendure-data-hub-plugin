@@ -13,16 +13,15 @@ import {
 } from '@vendure/dashboard';
 import { toast } from 'sonner';
 import { useDryRunPipeline } from '../../../hooks';
-import type { DryRunResult, DryRunMetrics, PipelineDefinition } from '../../../types';
+import type { DryRunResult, DryRunMetrics } from '../../../types';
 import { formatDiffValue } from '../../../utils';
-import { DIFF_TYPE, DIALOG_DIMENSIONS, SCROLL_HEIGHTS, TOAST_PIPELINE } from '../../../constants';
+import { DIFF_TYPE, DIALOG_DIMENSIONS, SCROLL_HEIGHTS, TOAST_PIPELINE, UI_LIMITS } from '../../../constants';
 import { getErrorMessage } from '../../../../shared';
 
 export interface DryRunDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     pipelineId: string | undefined;
-    definition: PipelineDefinition | undefined;
 }
 
 export function DryRunDialog({
@@ -131,7 +130,7 @@ export function DryRunDialog({
                                                     <ul className="list-disc pl-5 text-sm text-red-700">
                                                         {/* Static display list, using content-based key */}
                                                         {dryRunResult.notes.filter(n => n.startsWith('Error:')).map((n) => (
-                                                            <li key={`error-${n.slice(0, 50)}`}>{n.replace('Error: ', '')}</li>
+                                                            <li key={`error-${n.slice(0, UI_LIMITS.TRUNCATE_LENGTH)}`}>{n.replace('Error: ', '')}</li>
                                                         ))}
                                                     </ul>
                                                 </div>
@@ -142,7 +141,7 @@ export function DryRunDialog({
                                                     <ul className="list-disc pl-5 text-sm text-amber-700">
                                                         {/* Static display list, using content-based key */}
                                                         {dryRunResult.notes.filter(n => !n.startsWith('Error:')).map((n) => (
-                                                            <li key={`note-${n.slice(0, 50)}`}>{n}</li>
+                                                            <li key={`note-${n.slice(0, UI_LIMITS.TRUNCATE_LENGTH)}`}>{n}</li>
                                                         ))}
                                                     </ul>
                                                 </div>

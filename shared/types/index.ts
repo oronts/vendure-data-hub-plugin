@@ -61,15 +61,6 @@ export type {
     TransformStep,
     AggregationFunction,
     AggregationConfig,
-    FormulaField,
-    SortDirection,
-    NullsPosition,
-    SortConfig,
-    DedupeStrategy,
-    DedupeConfig,
-    LookupConfig,
-    TemplateConfig,
-    SplitConfig,
 } from './transform.types';
 
 export type {

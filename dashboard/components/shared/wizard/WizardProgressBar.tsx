@@ -37,6 +37,7 @@ const ProgressStepButton = memo(function ProgressStepButton({
     return (
         <React.Fragment>
             <button
+                type="button"
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${styleClass}`}
                 onClick={handleClick}
                 disabled={index > currentStep}

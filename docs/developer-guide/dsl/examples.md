@@ -46,7 +46,7 @@ export const productApiImport = createPipeline()
     })
 
     .validate('check-required', {
-        mode: 'accumulate',
+        mode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'name', required: true } },
             { type: 'business', spec: { field: 'price', min: 0 } },
@@ -54,9 +54,9 @@ export const productApiImport = createPipeline()
     })
 
     .load('create-products', {
-        entityType: 'PRODUCT',
-        operation: 'UPSERT',
-        lookupFields: ['slug'],
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'slug',
     })
 
     .edge('start', 'fetch-products')
@@ -97,9 +97,9 @@ export const csvProductImport = createPipeline()
     })
 
     .load('import', {
-        entityType: 'PRODUCT_VARIANT',
-        operation: 'UPDATE',
-        lookupFields: ['sku'],
+        adapterCode: 'variantUpsert',
+        strategy: 'UPDATE',
+        matchField: 'sku',
     })
 
     .edge('start', 'parse-csv')
@@ -146,9 +146,9 @@ export const deltaDatabaseSync = createPipeline()
     })
 
     .load('upsert', {
-        entityType: 'PRODUCT_VARIANT',
-        operation: 'UPDATE',
-        lookupFields: ['sku'],
+        adapterCode: 'variantUpsert',
+        strategy: 'UPDATE',
+        matchField: 'sku',
     })
 
     .edge('schedule', 'query-changes')
@@ -189,9 +189,9 @@ export const ftpInventorySync = createPipeline()
     })
 
     .load('update-stock', {
-        entityType: 'INVENTORY',
-        operation: 'UPDATE',
-        lookupFields: ['sku'],
+        adapterCode: 'stockAdjust',
+        strategy: 'UPDATE',
+        matchField: 'sku',
     })
 
     .edge('schedule', 'download-file')
@@ -229,7 +229,7 @@ export const customerImport = createPipeline()
     })
 
     .validate('validate-customers', {
-        mode: 'accumulate',
+        mode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'email', required: true } },
             { type: 'business', spec: { field: 'email', pattern: '^[^@]+@[^@]+\\.[^@]+$' } },
@@ -239,9 +239,9 @@ export const customerImport = createPipeline()
     })
 
     .load('create-customers', {
-        entityType: 'CUSTOMER',
-        operation: 'UPSERT',
-        lookupFields: ['emailAddress'],
+        adapterCode: 'customerUpsert',
+        strategy: 'UPSERT',
+        matchField: 'emailAddress',
     })
 
     .edge('start', 'fetch-customers')
@@ -424,9 +424,9 @@ export const categorizedProcessing = createPipeline()
 
     // Merge back
     .load('import-all', {
-        entityType: 'PRODUCT',
-        operation: 'UPSERT',
-        lookupFields: ['slug'],
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'slug',
     })
 
     .edge('start', 'fetch-products')
@@ -636,7 +636,7 @@ export const validatedProductImport = createPipeline()
     })
 
     .validate('validate-data', {
-        mode: 'accumulate',  // Collect all errors vs fail-fast
+        mode: 'ACCUMULATE',  // Collect all errors vs fail-fast
         rules: [
             // Required field validation
             { type: 'business', spec: { field: 'sku', required: true } },
@@ -677,9 +677,9 @@ export const validatedProductImport = createPipeline()
     })
 
     .load('import-products', {
-        entityType: 'PRODUCT',
-        operation: 'UPSERT',
-        lookupFields: ['sku'],
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'sku',
     })
 
     .edge('start', 'fetch-products')
@@ -730,9 +730,9 @@ export const enrichedProductImport = createPipeline()
     })
 
     .load('import-products', {
-        entityType: 'PRODUCT',
-        operation: 'UPSERT',
-        lookupFields: ['sku'],
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'sku',
     })
 
     .edge('start', 'fetch-products')
@@ -797,7 +797,7 @@ export const fullDataQualityPipeline = createPipeline()
 
     // Step 4: Final validation after enrichment
     .validate('validate-output', {
-        mode: 'accumulate',
+        mode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'fullName', minLength: 3 } },
             { type: 'business', spec: { field: 'country', oneOf: ['US', 'CA', 'UK', 'DE', 'FR'] } },
@@ -805,9 +805,9 @@ export const fullDataQualityPipeline = createPipeline()
     })
 
     .load('create-customer', {
-        entityType: 'CUSTOMER',
-        operation: 'UPSERT',
-        lookupFields: ['emailAddress'],
+        adapterCode: 'customerUpsert',
+        strategy: 'UPSERT',
+        matchField: 'emailAddress',
     })
 
     .edge('webhook', 'validate-input')
@@ -843,7 +843,7 @@ export const seoEnrichmentPipeline = createPipeline()
 
     // Validate products have required SEO fields
     .validate('validate-seo-ready', {
-        mode: 'accumulate',
+        mode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'name', required: true, minLength: 10 } },
             { type: 'business', spec: { field: 'description', required: true, minLength: 50 } },
@@ -870,9 +870,9 @@ export const seoEnrichmentPipeline = createPipeline()
     })
 
     .load('update-products', {
-        entityType: 'PRODUCT',
-        operation: 'UPDATE',
-        lookupFields: ['id'],
+        adapterCode: 'productUpsert',
+        strategy: 'UPDATE',
+        matchField: 'id',
     })
 
     .edge('schedule', 'query-products')

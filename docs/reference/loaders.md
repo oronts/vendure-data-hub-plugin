@@ -8,57 +8,56 @@ All loaders are configured using the `.load()` step in the pipeline DSL:
 
 ```typescript
 .load('step-name', {
-    entityType: 'PRODUCT',          // Entity type (see list below)
-    operation: 'UPSERT',            // CREATE, UPDATE, UPSERT, MERGE, DELETE
-    lookupFields: ['slug'],         // Fields to match existing records
-    options: { /* loader-specific */ },
+    adapterCode: 'productUpsert',   // Loader adapter code (see list below)
+    strategy: 'UPSERT',             // CREATE, UPDATE, UPSERT, MERGE, DELETE
+    matchField: 'slug',             // Field to match existing records
+    conflictStrategy: 'SOURCE_WINS', // Conflict resolution strategy (optional)
 })
 ```
 
-### Entity Types
+### Loader Adapter Codes
 
-| Entity Type | Description |
-|-------------|-------------|
-| `PRODUCT` | Products with name, slug, description, facets, assets |
-| `PRODUCT_VARIANT` | Product variants with SKU, prices, stock |
-| `CUSTOMER` | Customers with email, addresses, groups |
-| `CUSTOMER_GROUP` | Customer groups with member assignments |
-| `ORDER` | Orders with line items and addresses |
-| `COLLECTION` | Collections with parent relationships |
-| `FACET` | Facets for product categorization |
-| `FACET_VALUE` | Facet values within facets |
-| `ASSET` | Assets and attachments to entities |
-| `PROMOTION` | Promotions with conditions and actions |
-| `SHIPPING_METHOD` | Shipping methods with calculators |
-| `STOCK_LOCATION` | Stock locations for inventory |
-| `INVENTORY` | Inventory levels by SKU and location |
-| `TAX_RATE` | Tax rates by name with category and zone |
-| `PAYMENT_METHOD` | Payment methods with handlers |
-| `CHANNEL` | Channels with currencies and languages |
+| Adapter Code | Entity Type | Description |
+|--------------|-------------|-------------|
+| `productUpsert` | Product | Products with name, slug, description, facets, assets |
+| `variantUpsert` | Product Variant | Product variants with SKU, prices, stock |
+| `customerUpsert` | Customer | Customers with email, addresses, groups |
+| `collectionUpsert` | Collection | Collections with parent relationships |
+| `facetUpsert` | Facet | Facets for product categorization |
+| `facetValueUpsert` | Facet Value | Facet values within facets |
+| `assetImport` | Asset | Import assets from URLs |
+| `assetAttach` | Asset | Attach existing assets to entities |
+| `promotionUpsert` | Promotion | Promotions with conditions and actions |
+| `stockAdjust` | Inventory | Adjust stock levels by SKU and location |
+| `orderNote` | Order | Add notes to orders |
+| `orderTransition` | Order | Transition order states |
+| `applyCoupon` | Order | Apply coupon codes to orders |
+| `restPost` | Custom | POST data to REST endpoints |
 
-### Operations
+### Load Strategies
 
-| Operation | Description |
+| Strategy | Description |
 |----------|-------------|
 | `CREATE` | Create only (skip if exists) |
 | `UPDATE` | Update only (skip if not found) |
-| `UPSERT` | Create or Update |
+| `UPSERT` | Create or Update (default) |
 | `MERGE` | Merge source with existing data |
 | `DELETE` | Delete matching records |
 
-### Conflict Resolution
+### Conflict Strategies
 
-| Resolution | Description |
-|------------|-------------|
+| Strategy | Description |
+|----------|-------------|
 | `SOURCE_WINS` | Source data overwrites Vendure data for conflicts |
 | `VENDURE_WINS` | Vendure data is preserved for conflicts |
 | `MERGE` | Deep merge source and Vendure data |
+| `MANUAL_QUEUE` | Queue conflicts for manual resolution |
 
 ---
 
 ## Product Loader
 
-Entity Type: `PRODUCT`
+Adapter Code: `productUpsert`
 
 Create or update products with slug-based lookup, facets, and assets.
 
@@ -79,22 +78,22 @@ Create or update products with slug-based lookup, facets, and assets.
 
 ```typescript
 .load('import-products', {
-    entityType: 'PRODUCT',
-    operation: 'UPSERT',
-    lookupFields: ['slug'],
-    conflictResolution: 'SOURCE_WINS',
+    adapterCode: 'productUpsert',
+    strategy: 'UPSERT',
+    matchField: 'slug',
+    conflictStrategy: 'SOURCE_WINS',
 })
 ```
 
-### Lookup Fields
+### Match Fields
 
-Products are matched by: `slug`, `id`, or `customFields.externalId`
+Products can be matched by: `slug`, `id`, or `customFields.externalId`
 
 ---
 
 ## Product Variant Loader
 
-Entity Type: `PRODUCT_VARIANT`
+Adapter Code: `variantUpsert`
 
 Update product variants by SKU with multi-currency prices.
 
@@ -114,21 +113,21 @@ Update product variants by SKU with multi-currency prices.
 
 ```typescript
 .load('import-variants', {
-    entityType: 'PRODUCT_VARIANT',
-    operation: 'UPDATE',
-    lookupFields: ['sku'],
+    adapterCode: 'variantUpsert',
+    strategy: 'UPDATE',
+    matchField: 'sku',
 })
 ```
 
-### Lookup Fields
+### Match Fields
 
-Variants are matched by: `sku`
+Variants can be matched by: `sku`
 
 ---
 
 ## Customer Loader
 
-Entity Type: `CUSTOMER`
+Adapter Code: `customerUpsert`
 
 Create or update customers with addresses and group memberships.
 
@@ -147,21 +146,21 @@ Create or update customers with addresses and group memberships.
 
 ```typescript
 .load('import-customers', {
-    entityType: 'CUSTOMER',
-    operation: 'UPSERT',
-    lookupFields: ['emailAddress'],
+    adapterCode: 'customerUpsert',
+    strategy: 'UPSERT',
+    matchField: 'emailAddress',
 })
 ```
 
-### Lookup Fields
+### Match Fields
 
-Customers are matched by: `emailAddress`
+Customers can be matched by: `emailAddress`
 
 ---
 
 ## Collection Loader
 
-Entity Type: `COLLECTION`
+Adapter Code: `collectionUpsert`
 
 Create or update collections with parent relationships.
 
@@ -179,9 +178,9 @@ Create or update collections with parent relationships.
 
 ```typescript
 .load('import-collections', {
-    entityType: 'COLLECTION',
-    operation: 'UPSERT',
-    lookupFields: ['slug'],
+    adapterCode: 'collectionUpsert',
+    strategy: 'UPSERT',
+    matchField: 'slug',
 })
 ```
 
@@ -189,7 +188,7 @@ Create or update collections with parent relationships.
 
 ## Inventory Loader
 
-Entity Type: `INVENTORY`
+Adapter Code: `stockAdjust`
 
 Update stock levels for product variants by SKU.
 
@@ -207,9 +206,9 @@ Update stock levels for product variants by SKU.
 
 ```typescript
 .load('update-stock', {
-    entityType: 'INVENTORY',
-    operation: 'UPDATE',
-    lookupFields: ['sku'],
+    adapterCode: 'stockAdjust',
+    strategy: 'UPDATE',
+    matchField: 'sku',
 })
 ```
 
@@ -266,33 +265,31 @@ For sending data to external systems (REST APIs, search engines, message queues)
 
 ## Quick Reference
 
-| Entity Type | Description |
-|-------------|-------------|
-| `PRODUCT` | Create/update products with name, slug, description, facets, assets |
-| `PRODUCT_VARIANT` | Update variants by SKU with prices and stock |
-| `CUSTOMER` | Create/update customers with addresses and groups |
-| `CUSTOMER_GROUP` | Create/update customer groups with member assignments |
-| `ORDER` | Create/update orders with line items |
-| `COLLECTION` | Create/update collections with parent relationships |
-| `FACET` | Create/update facets for product categorization |
-| `FACET_VALUE` | Create/update facet values within facets |
-| `ASSET` | Create/update assets and attach to entities |
-| `PROMOTION` | Create/update promotions with conditions and actions |
-| `SHIPPING_METHOD` | Create/update shipping methods with calculators |
-| `STOCK_LOCATION` | Create/update stock locations for inventory |
-| `INVENTORY` | Adjust inventory levels by SKU and stock location |
-| `TAX_RATE` | Create/update tax rates with category and zone |
-| `PAYMENT_METHOD` | Create/update payment methods with handlers |
-| `CHANNEL` | Create/update channels with currencies and languages |
+| Adapter Code | Entity Type | Description |
+|--------------|-------------|-------------|
+| `productUpsert` | Product | Create/update products with name, slug, description, facets, assets |
+| `variantUpsert` | Product Variant | Update variants by SKU with prices and stock |
+| `customerUpsert` | Customer | Create/update customers with addresses and groups |
+| `collectionUpsert` | Collection | Create/update collections with parent relationships |
+| `facetUpsert` | Facet | Create/update facets for product categorization |
+| `facetValueUpsert` | Facet Value | Create/update facet values within facets |
+| `assetImport` | Asset | Import assets from URLs |
+| `assetAttach` | Asset | Attach existing assets to entities |
+| `promotionUpsert` | Promotion | Create/update promotions with conditions and actions |
+| `stockAdjust` | Inventory | Adjust inventory levels by SKU and stock location |
+| `orderNote` | Order | Add notes to orders |
+| `orderTransition` | Order | Transition order states |
+| `applyCoupon` | Order | Apply coupon codes to orders |
+| `restPost` | Custom | POST data to REST endpoints |
 
 ### Required Permissions
 
 Each loader requires specific Vendure permissions:
 
-| Entity Type | Required Permission |
-|-------------|---------------------|
-| `PRODUCT`, `PRODUCT_VARIANT`, `INVENTORY`, `COLLECTION`, `ASSET`, `FACET`, `FACET_VALUE` | `UpdateCatalog` |
-| `CUSTOMER`, `CUSTOMER_GROUP` | `UpdateCustomer` |
-| `ORDER` | `UpdateOrder` |
-| `PROMOTION` | `UpdatePromotion` |
-| `SHIPPING_METHOD`, `TAX_RATE`, `PAYMENT_METHOD`, `CHANNEL`, `STOCK_LOCATION` | `UpdateSettings` |
+| Adapter Code | Required Permission |
+|--------------|---------------------|
+| `productUpsert`, `variantUpsert`, `collectionUpsert`, `facetUpsert`, `facetValueUpsert`, `assetImport`, `assetAttach`, `stockAdjust` | `UpdateCatalog` |
+| `customerUpsert` | `UpdateCustomer` |
+| `orderNote`, `orderTransition`, `applyCoupon` | `UpdateOrder` |
+| `promotionUpsert` | `UpdatePromotion` |
+| `restPost` | No specific permission (depends on endpoint) |
