@@ -4,7 +4,7 @@
  * Utility functions for error extraction and categorization.
  */
 
-import { ErrorDetails, LogMetadata } from './logger.types';
+import { ErrorDetails } from './logger.types';
 
 /**
  * Error with cause (ES2022+)

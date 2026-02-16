@@ -122,16 +122,6 @@ interface SpanEvent {
 }
 
 /**
- * Metrics types
- */
-interface MetricValue {
-    name: string;
-    value: number;
-    labels: Record<string, string>;
-    timestamp: number;
-}
-
-/**
  * Counter metric for tracking counts
  */
 export interface Counter {

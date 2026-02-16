@@ -22,11 +22,6 @@ export type { BaseWebhookTriggerConfig as WebhookTriggerConfig };
 /**
  * Extended webhook config for adapter schema (includes webhookCode)
  */
-interface WebhookAdapterConfig extends BaseWebhookTriggerConfig {
-    /** Unique webhook endpoint code (auto-generated from pipeline code) */
-    webhookCode: string;
-}
-
 /**
  * Webhook trigger schema fields for UI generation
  */

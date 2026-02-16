@@ -108,7 +108,7 @@ export class DataHubLogger {
         try {
             this.nestLogger.debug(this.formatMessage(message, metadata));
         } catch (e) {
-            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ }
+            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ } // eslint-disable-line no-console
         }
     }
 
@@ -119,7 +119,7 @@ export class DataHubLogger {
         try {
             this.nestLogger.log(this.formatMessage(message, metadata));
         } catch (e) {
-            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ }
+            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ } // eslint-disable-line no-console
         }
     }
 
@@ -137,7 +137,7 @@ export class DataHubLogger {
         try {
             this.nestLogger.warn(this.formatMessage(message, metadata));
         } catch (e) {
-            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ }
+            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ } // eslint-disable-line no-console
         }
     }
 
@@ -176,7 +176,7 @@ export class DataHubLogger {
                 });
             }
         } catch (e) {
-            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ }
+            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ } // eslint-disable-line no-console
         }
     }
 

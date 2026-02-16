@@ -24,7 +24,7 @@ import { Subscription } from 'rxjs';
 import { Pipeline, PipelineRun } from '../../entities/pipeline';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { RuntimeConfigService } from '../runtime/runtime-config.service';
-import { LOGGER_CONTEXTS, PipelineStatus, RunStatus, EventKind, EVENT_TRIGGER } from '../../constants/index';
+import { LOGGER_CONTEXTS, PipelineStatus, RunStatus, EventKind } from '../../constants/index';
 import type { PipelineDefinition } from '../../types/index';
 import type { EventTriggerServiceConfig } from '../../types/plugin-options';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';

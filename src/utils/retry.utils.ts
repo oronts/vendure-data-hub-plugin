@@ -25,7 +25,7 @@ export function calculateBackoff(attempt: number, config: ResolvedRetryConfig): 
     return Math.min(baseDelay + jitter, config.maxDelayMs);
 }
 
-interface ExecuteWithRetryOptions<T = unknown> {
+interface ExecuteWithRetryOptions {
     config: ResolvedRetryConfig;
     onRetry?: (attempt: number, error: Error, delayMs: number) => void;
     isRetryable?: (error: unknown) => boolean;
@@ -38,7 +38,7 @@ interface ExecuteWithRetryOptions<T = unknown> {
 
 export async function executeWithRetry<T>(
     fn: () => Promise<T>,
-    options: ExecuteWithRetryOptions<T>,
+    options: ExecuteWithRetryOptions,
 ): Promise<T> {
     const { config, onRetry, isRetryable = isRetryableError, logger, context } = options;
     let lastError: Error | undefined;

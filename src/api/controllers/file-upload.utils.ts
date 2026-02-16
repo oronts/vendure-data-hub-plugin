@@ -3,7 +3,7 @@
  */
 
 import { StoredFile } from '../../services';
-import { ParseFormatType, FileFormat } from '../../constants/enums';
+import { ParseFormatType } from '../../constants/enums';
 import { extractFileExtension } from '../../extractors/shared/file-format.utils';
 
 export type FileFormatAlias = ParseFormatType;

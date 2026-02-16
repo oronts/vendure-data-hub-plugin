@@ -32,7 +32,6 @@ import type {
     DeliveryResult,
     ConnectionTestResult,
 } from '../../services/destinations/destination.types';
-import { ConnectionType } from '../../constants/enums';
 import { PAGINATION } from '../../constants/index';
 
 /** Redacted destination config for API responses */

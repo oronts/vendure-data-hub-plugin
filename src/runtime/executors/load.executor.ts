@@ -40,7 +40,6 @@ import {
 } from './loaders';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { LoaderAdapter, LoadContext, ChannelStrategy, LanguageStrategyValue, ValidationModeType, ConflictStrategyValue } from '../../sdk/types';
-import { ChannelStrategy as ChannelStrategyEnum, LanguageStrategy as LanguageStrategyEnum, ConflictStrategy as ConflictStrategyEnum, ValidationStrictness as ValidationStrictnessEnum } from '../../constants/enums';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { getAdapterCode } from '../../types/step-configs';
