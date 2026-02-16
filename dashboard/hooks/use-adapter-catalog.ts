@@ -28,9 +28,9 @@ import {
     FileOutput,
     LucideIcon,
 } from 'lucide-react';
-import { useAdapters } from './api/useAdapters';
-import { useConnectionCodes } from './api/useConnections';
-import { useSecrets } from './api/useSecrets';
+import { useAdapters } from './api/use-adapters';
+import { useConnectionCodes } from './api/use-connections';
+import { useSecrets } from './api/use-secrets';
 import { QUERY_LIMITS, FALLBACK_COLORS, UI_ADAPTER_CATEGORY, ADAPTER_TYPE_TO_NODE_TYPE, ADAPTER_TYPE_TO_CATEGORY } from '../constants';
 
 interface CatalogSchemaField {

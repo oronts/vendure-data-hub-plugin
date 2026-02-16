@@ -4,7 +4,7 @@ import {
     Badge,
 } from '@vendure/dashboard';
 import { ColumnDef } from '@tanstack/react-table';
-import { ADAPTER_TYPE_INFO, ADAPTERS_TABLE_PAGE_SIZE } from './constants';
+import { ADAPTER_TYPE_INFO, ADAPTERS_TABLE_PAGE_SIZE } from './AdapterConstants';
 import type { DataHubAdapter } from '../../types';
 
 export function AdaptersTable({

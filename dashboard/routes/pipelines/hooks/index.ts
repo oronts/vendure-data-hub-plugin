@@ -1,1 +1,1 @@
-export { usePipelineValidation } from './usePipelineValidation';
+export { usePipelineValidation } from './use-pipeline-validation';

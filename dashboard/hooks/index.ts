@@ -1,17 +1,17 @@
-export { useJsonValidation } from './useJsonValidation';
+export { useJsonValidation } from './use-json-validation';
 export type {
     JsonValidationError,
     UseJsonValidationOptions,
-} from './useJsonValidation';
+} from './use-json-validation';
 
-export { useAdapterCatalog } from './useAdapterCatalog';
+export { useAdapterCatalog } from './use-adapter-catalog';
 export type {
     AdapterMetadata,
-} from './useAdapterCatalog';
+} from './use-adapter-catalog';
 
 export * from './api';
 
-export { useStableKeys } from './useStableKeys';
+export { useStableKeys } from './use-stable-keys';
 
-export { useImportTemplates } from './useImportTemplates';
-export type { UseImportTemplatesResult } from './useImportTemplates';
+export { useImportTemplates } from './use-import-templates';
+export type { UseImportTemplatesResult } from './use-import-templates';

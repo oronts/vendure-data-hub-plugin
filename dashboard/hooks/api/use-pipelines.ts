@@ -5,7 +5,7 @@ import { createMutationErrorHandler } from './mutation-helpers';
 import type {
     DataHubPipelineListOptions,
 } from '../../types';
-import { runKeys } from './usePipelineRuns';
+import { runKeys } from './use-pipeline-runs';
 
 export const pipelineKeys = {
     all: ['pipelines'] as const,

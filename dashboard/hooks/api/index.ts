@@ -16,7 +16,7 @@ export {
     useRejectPipeline,
     usePublishPipeline,
     useArchivePipeline,
-} from './usePipelines';
+} from './use-pipelines';
 
 export {
     runKeys,
@@ -26,7 +26,7 @@ export {
     useErrorAudits,
     useCancelRun,
     useRetryError,
-} from './usePipelineRuns';
+} from './use-pipeline-runs';
 
 export {
     secretsListDocument,
@@ -35,7 +35,7 @@ export {
     updateSecretDocument,
     deleteSecretDocument,
     useSecrets,
-} from './useSecrets';
+} from './use-secrets';
 
 export {
     connectionsListDocument,
@@ -45,18 +45,18 @@ export {
     deleteConnectionDocument,
     useConnections,
     useConnectionCodes,
-} from './useConnections';
+} from './use-connections';
 
 export {
     useAdapters,
     useAdaptersByType,
-} from './useAdapters';
+} from './use-adapters';
 
 export {
     useLogs,
     useLogStats,
     useRecentLogs,
-} from './useLogs';
+} from './use-logs';
 
 export {
     queueKeys,
@@ -66,18 +66,18 @@ export {
     useStartConsumer,
     useStopConsumer,
     useMarkDeadLetter,
-} from './useQueues';
+} from './use-queues';
 
 export {
     usePipelineHooks,
     useEvents,
     useTestHook,
-} from './useHooks';
+} from './use-hooks';
 
 export {
     useSettings,
     useUpdateSettings,
-} from './useSettings';
+} from './use-settings';
 
 export { createMutationErrorHandler, createMutationSuccessHandler, handleMutationError } from './mutation-helpers';
 
@@ -87,4 +87,4 @@ export {
     simulateLoad,
     simulateValidate,
     previewFeed,
-} from './useStepTester';
+} from './use-step-tester';

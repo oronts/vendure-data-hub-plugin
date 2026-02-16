@@ -17,7 +17,7 @@ import { ReviewStep } from './ReviewStep';
 import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../shared';
 import { BATCH_SIZES, UI_LIMITS, UI_DEFAULTS, TRIGGER_TYPES, FILE_FORMAT, SOURCE_TYPE, CLEANUP_STRATEGY, TOAST_WIZARD, formatParseError, formatParsedRecords } from '../../../constants';
 import { normalizeString, parseCSVLine, validateImportWizardStep } from '../../../utils';
-import { useImportTemplates } from '../../../hooks/useImportTemplates';
+import { useImportTemplates } from '../../../hooks/use-import-templates';
 import type { TemplateCategory, TemplateDifficulty } from '../../../types';
 
 interface ImportTemplateLocal {

@@ -3,7 +3,7 @@ import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { createMutationErrorHandler } from './mutation-helpers';
 import { POLLING_INTERVALS, RUN_STATUS } from '../../constants';
-import { queueKeys } from './useQueues';
+import { queueKeys } from './use-queues';
 import type { DataHubPipelineRunListOptions, JsonObject } from '../../types';
 
 export const runKeys = {
