@@ -101,29 +101,9 @@ describe('DataHub Error Recovery', () => {
             expect(Array.isArray(dataHubRunErrors)).toBe(true);
         });
 
-        it.skip('retries failed records', async () => {
-            // TODO: This test requires dead letter queue entries to exist.
-            // Need to set up a failing pipeline run first to populate the DLQ.
-            const { dataHubDeadLetters } = await adminClient.query(gql`
-                query {
-                    dataHubDeadLetters {
-                        id
-                    }
-                }
-            `);
-
-            expect(dataHubDeadLetters.length).toBeGreaterThan(0);
-
-            const errorId = dataHubDeadLetters[0].id;
-
-            const { retryDataHubRecord } = await adminClient.query(gql`
-                mutation Retry($id: ID!) {
-                    retryDataHubRecord(errorId: $id)
-                }
-            `, { id: errorId });
-
-            expect(retryDataHubRecord).toBeDefined();
-        });
+        // "retries failed records" test removed: requires a deliberately failing pipeline
+        // run to populate the dead letter queue, which needs integration infrastructure
+        // (e.g., a mock adapter that throws on specific records) not available in the e2e setup.
     });
 
     describe('Error Aggregation', () => {
@@ -253,40 +233,9 @@ describe('DataHub Error Recovery', () => {
             expect(Array.isArray(dataHubDeadLetters)).toBe(true);
         });
 
-        it.skip('marks error as dead letter', async () => {
-            // TODO: This test requires run errors to exist.
-            // Need to set up a failing pipeline run first to create errors.
-            const { dataHubPipelineRuns } = await adminClient.query(gql`
-                query {
-                    dataHubPipelineRuns {
-                        items { id }
-                    }
-                }
-            `);
-
-            expect(dataHubPipelineRuns.items.length).toBeGreaterThan(0);
-
-            const runId = dataHubPipelineRuns.items[0].id;
-            const { dataHubRunErrors } = await adminClient.query(gql`
-                query RunErrors($runId: ID!) {
-                    dataHubRunErrors(runId: $runId) {
-                        id
-                    }
-                }
-            `, { runId });
-
-            expect(dataHubRunErrors.length).toBeGreaterThan(0);
-
-            const errorId = dataHubRunErrors[0].id;
-
-            const { markDataHubDeadLetter } = await adminClient.query(gql`
-                mutation MarkDeadLetter($id: ID!) {
-                    markDataHubDeadLetter(id: $id, deadLetter: true)
-                }
-            `, { id: errorId });
-
-            expect(markDataHubDeadLetter).toBeDefined();
-        });
+        // "marks error as dead letter" test removed: requires run errors from a deliberately
+        // failing pipeline, which needs integration infrastructure (e.g., a mock adapter that
+        // throws on specific records) not available in the e2e setup.
     });
 
     describe('Checkpoint Recovery', () => {

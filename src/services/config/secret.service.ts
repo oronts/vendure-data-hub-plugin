@@ -8,7 +8,6 @@ import { SecretProvider } from '../../constants/enums';
 import {
     encryptSecret,
     decryptSecret,
-    isEncrypted,
     isEncryptionConfigured,
     getMasterKey,
 } from '../../utils/encryption.utils';
@@ -225,18 +224,15 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /** Handles both encrypted and plaintext values gracefully */
     private decryptValue(value: string | null): string | null {
         if (value === null) {
             return null;
         }
 
-        // Plaintext values pass through without decryption
-        if (!isEncrypted(value)) {
+        if (!this.encryptionEnabled) {
             return value;
         }
 
-        // Decrypt encrypted value
         const masterKey = getMasterKey();
         if (!masterKey) {
             this.logger.error('Cannot decrypt secret: DATAHUB_MASTER_KEY not configured');

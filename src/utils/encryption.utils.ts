@@ -57,8 +57,7 @@ export function decryptSecret(encryptedValue: string, masterKey: string): string
     }
 
     if (!isEncrypted(encryptedValue)) {
-        // Return as-is if not encrypted (for backward compatibility)
-        return encryptedValue;
+        throw new Error('Cannot decrypt value: not in encrypted format. All secrets must be encrypted with enc:v1: prefix.');
     }
 
     // Remove prefix and decode
