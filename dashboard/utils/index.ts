@@ -57,5 +57,5 @@ export {
 
 export {
     isEmpty,
-    isURL,
-} from './field-validators';
+    isValidUrl,
+} from '../../shared';

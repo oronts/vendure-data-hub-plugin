@@ -318,7 +318,7 @@ export {
 export type { CodeSecurityConfig } from './utils/code-security.utils';
 
 // Security configuration type exports
-export type { ScriptSecurityConfig, SecurityConfig } from './types/plugin-options';
+export type { ScriptSecurityConfig, SecurityConfig, NotificationSmtpConfig } from './types/plugin-options';
 
 // Import templates exports
 export {

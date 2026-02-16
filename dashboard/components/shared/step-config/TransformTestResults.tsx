@@ -2,7 +2,7 @@ import * as React from 'react';
 import { memo } from 'react';
 import { RecordsTable } from './ExtractTestResults';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
-import { UI_LIMITS } from '../../../constants';
+import { UI_LIMITS, COMPONENT_HEIGHTS } from '../../../constants';
 import type { TestResult } from './step-test-handlers';
 
 interface TransformTestResultsProps {
@@ -30,13 +30,13 @@ const BeforeAfterDiff = memo(function BeforeAfterDiff({
                     <div className="grid grid-cols-2 divide-x">
                         <div className="p-2">
                             <div className="text-xs text-muted-foreground mb-1">Before</div>
-                            <pre className="text-[10px] bg-red-50 dark:bg-red-950/30 p-2 rounded overflow-auto max-h-[120px]">
+                            <pre className={`text-[10px] bg-red-50 dark:bg-red-950/30 p-2 rounded overflow-auto ${COMPONENT_HEIGHTS.SCROLL_AREA_XXS}`}>
                                 {JSON.stringify(pair.before, null, 2)}
                             </pre>
                         </div>
                         <div className="p-2">
                             <div className="text-xs text-muted-foreground mb-1">After</div>
-                            <pre className="text-[10px] bg-green-50 dark:bg-green-950/30 p-2 rounded overflow-auto max-h-[120px]">
+                            <pre className={`text-[10px] bg-green-50 dark:bg-green-950/30 p-2 rounded overflow-auto ${COMPONENT_HEIGHTS.SCROLL_AREA_XXS}`}>
                                 {JSON.stringify(pair.after, null, 2)}
                             </pre>
                         </div>

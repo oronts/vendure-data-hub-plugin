@@ -1,6 +1,6 @@
 # External Integrations
 
-Data Hub includes enterprise-grade integrations for external services with built-in fault tolerance.
+Data Hub includes integrations for external services with built-in fault tolerance.
 
 ## Search Engine Sinks
 
@@ -12,7 +12,7 @@ Index your data to search engines with automatic circuit breaker protection.
 |--------|--------------|----------|
 | MeiliSearch | `meilisearch` | Full-text search, faceting |
 | Elasticsearch | `elasticsearch` | Advanced querying, analytics |
-| OpenSearch | `opensearch` | AWS-compatible, scalable |
+| OpenSearch | `elasticsearch` | AWS-compatible (uses Elasticsearch adapter) |
 | Algolia | `algolia` | Instant search, relevance tuning |
 | Typesense | `typesense` | Typo-tolerant, fast |
 

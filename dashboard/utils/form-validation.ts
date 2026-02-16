@@ -1,4 +1,4 @@
-import { isEmpty, isURL as checkIsURL } from './field-validators';
+import { isEmpty, isValidUrl } from '../../shared';
 import { SOURCE_TYPE, DESTINATION_TYPE } from '../constants';
 import { CODE_PATTERN } from '../../shared';
 
@@ -47,7 +47,7 @@ function validateRequired(value: unknown, fieldName: string): FieldValidationErr
 export function validateUrl(value: string, fieldName: string = 'URL'): FieldValidationError | null {
     if (isEmpty(value)) return null;
 
-    if (!checkIsURL(value)) {
+    if (!isValidUrl(value)) {
         return {
             field: fieldName,
             message: ERROR_MESSAGES.invalidUrl,

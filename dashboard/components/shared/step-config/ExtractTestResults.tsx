@@ -14,7 +14,7 @@ import {
 } from '@vendure/dashboard';
 import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { formatCellValue } from '../../../utils';
-import { TEST_STATUS, UI_LIMITS } from '../../../constants';
+import { TEST_STATUS, UI_LIMITS, COMPONENT_HEIGHTS } from '../../../constants';
 import type { TestResult } from './step-test-handlers';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
 
@@ -61,7 +61,7 @@ export const RecordsTable = memo(function RecordsTable({ records }: { records: A
     const allKeys = Array.from(new Set(records.flatMap(r => Object.keys(r)))).slice(0, UI_LIMITS.TABLE_PREVIEW_COLUMNS);
 
     return (
-        <div className="border rounded overflow-auto max-h-[300px]">
+        <div className={`border rounded overflow-auto ${COMPONENT_HEIGHTS.SCROLL_AREA_SM}`}>
             <Table>
                 <TableHeader>
                     <TableRow>

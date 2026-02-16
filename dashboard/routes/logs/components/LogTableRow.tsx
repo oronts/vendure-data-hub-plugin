@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { formatSmartDateTime } from '../../../utils';
+import { COMPONENT_WIDTHS } from '../../../constants';
 import { LogLevelBadge } from './LogLevelBadge';
 import type { DataHubLog } from '../../../types';
 
@@ -44,7 +45,7 @@ export const LogTableRow = React.memo(function LogTableRow({
             <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
                 {log.stepKey ?? '—'}
             </td>
-            <td className="px-3 py-2 max-w-[300px] truncate" title={log.message}>
+            <td className={`px-3 py-2 ${COMPONENT_WIDTHS.TABLE_CELL_MAX_SM} truncate`} title={log.message}>
                 {log.message}
             </td>
             <td className="px-3 py-2 text-right text-muted-foreground">

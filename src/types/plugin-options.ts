@@ -62,6 +62,18 @@ export interface ScriptSecurityConfig {
 }
 
 /**
+ * SMTP configuration for plugin-level notifications (e.g. gate approval emails)
+ */
+export interface NotificationSmtpConfig {
+    host: string;
+    port: number;
+    secure?: boolean;
+    auth?: { user: string; pass: string };
+    /** Sender address for notification emails */
+    from?: string;
+}
+
+/**
  * Security configuration options
  */
 export interface SecurityConfig {
@@ -97,4 +109,11 @@ export interface DataHubPluginOptions {
      * Configure SSRF protection, URL validation, and other security features
      */
     security?: SecurityConfig;
+    /**
+     * Notification configuration for gate approvals and pipeline alerts
+     */
+    notifications?: {
+        /** SMTP settings for gate approval notification emails */
+        smtp?: NotificationSmtpConfig;
+    };
 }

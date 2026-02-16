@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { formatKey, formatValue } from '../../../utils';
+import { COMPONENT_HEIGHTS } from '../../../constants';
 import { TestResultContainer, JsonDisplay } from './TestResultContainer';
 import type { TestResult } from './step-test-handlers';
 
@@ -51,7 +52,7 @@ export function FeedPreview({ feedContent }: FeedPreviewProps) {
                     <strong>Type:</strong> {feedContent.contentType}
                 </span>
             </div>
-            <pre className="text-xs bg-muted p-3 rounded overflow-auto max-h-[300px] whitespace-pre-wrap">
+            <pre className={`text-xs bg-muted p-3 rounded overflow-auto ${COMPONENT_HEIGHTS.SCROLL_AREA_SM} whitespace-pre-wrap`}>
                 {feedContent.content || '(empty)'}
             </pre>
         </div>

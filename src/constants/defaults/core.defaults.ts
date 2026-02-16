@@ -56,4 +56,6 @@ export const INTERNAL_TIMINGS = {
     PENDING_MESSAGES_MAX_AGE_MS: 10 * 60 * 1000, // 10 minutes
     /** Maximum number of pending (unacknowledged) messages before rejecting new ones */
     MAX_PENDING_MESSAGES: 10_000,
+    /** Interval for checking expired GATE timeouts (ms) */
+    GATE_TIMEOUT_CHECK_INTERVAL_MS: 30_000,
 } as const;

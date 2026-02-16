@@ -41,6 +41,11 @@ DataHubPlugin.init({
         ssrf: { /* SSRF protection settings */ },
         script: { enabled: true },
     },
+
+    // Notification settings (for gate approval emails)
+    notifications: {
+        smtp: { host: 'smtp.example.com', port: 587, /* ... */ },
+    },
 })
 ```
 
@@ -325,6 +330,41 @@ DataHubPlugin.init({
     },
 })
 ```
+
+### notifications
+
+| | |
+|---|---|
+| Type | `{ smtp?: NotificationSmtpConfig }` |
+| Default | `undefined` |
+| Description | SMTP settings for gate approval notification emails |
+
+```typescript
+interface NotificationSmtpConfig {
+    host: string;
+    port: number;
+    secure?: boolean;               // Defaults to true for port 465
+    auth?: { user: string; pass: string };
+    from?: string;                   // Sender address
+}
+```
+
+Example:
+
+```typescript
+DataHubPlugin.init({
+    notifications: {
+        smtp: {
+            host: 'smtp.example.com',
+            port: 587,
+            auth: { user: 'notifications@example.com', pass: process.env.SMTP_PASS! },
+            from: 'DataHub <notifications@example.com>',
+        },
+    },
+})
+```
+
+When configured, GATE steps with `notifyEmail` will send approval notification emails via this SMTP server. Without this configuration, email notifications are skipped with a warning.
 
 ### configPath
 
