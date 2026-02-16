@@ -98,7 +98,6 @@ export {
 } from './services';
 export {
     FeedGeneratorService,
-    FeedFormat as CustomFeedFormat,
     FeedConfig,
     FeedFilters,
     FeedFieldMapping,

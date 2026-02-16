@@ -5,7 +5,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { ConnectionType } from '../../constants/enums';
 import type { JsonObject } from '../../types/index';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, isDuplicateEntryError } from '../../utils/error.utils';
 
 @Injectable()
 export class ConnectionService {
@@ -52,11 +52,7 @@ export class ConnectionService {
             saved = await this.connection.getRepository(ctx, DataHubConnection).save(entity);
         } catch (error: unknown) {
             const msg = getErrorMessage(error);
-            if (
-                msg.includes('UNIQUE') || msg.includes('unique') ||
-                msg.includes('duplicate') || msg.includes('Duplicate') ||
-                msg.includes('ER_DUP_ENTRY') || msg.includes('23505')
-            ) {
+            if (isDuplicateEntryError(msg)) {
                 throw new Error(`Connection code "${input.code}" already exists`);
             }
             throw error;

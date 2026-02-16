@@ -18,8 +18,3 @@ export {
     UI_TIMEOUTS,
 } from '../../shared/constants';
 
-/**
- * Match confidence type and conversion function - re-exported from shared
- */
-export type { MatchConfidence } from '../../shared';
-export { scoreToConfidence } from '../../shared';

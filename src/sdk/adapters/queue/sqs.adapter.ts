@@ -528,12 +528,10 @@ export class SqsAdapter implements QueueAdapter {
 /**
  * Cleanup old clients periodically
  */
-const CLIENT_MAX_IDLE_MS = 5 * 60 * 1000; // 5 minutes
-
 const cleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const [key, entry] of clientCache.entries()) {
-        if (now - entry.lastUsed > CLIENT_MAX_IDLE_MS) {
+        if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
             entry.client.destroy();
             clientCache.delete(key);
         }
@@ -541,11 +539,11 @@ const cleanupInterval = setInterval(() => {
 
     // Cleanup stale pending receipts
     for (const [key, pending] of pendingReceipts.entries()) {
-        if (now - pending.createdAt > 10 * 60 * 1000) { // 10 minutes
+        if (now - pending.createdAt > INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS) {
             pendingReceipts.delete(key);
         }
     }
-}, 60_000);
+}, INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
 
 if (typeof cleanupInterval.unref === 'function') {
     cleanupInterval.unref();

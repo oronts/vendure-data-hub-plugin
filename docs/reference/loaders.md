@@ -364,6 +364,9 @@ For sending data to external systems (REST APIs, search engines, message queues)
 | `orderNote` | Order | Add notes to orders |
 | `orderTransition` | Order | Transition order states |
 | `applyCoupon` | Order | Apply coupon codes to orders |
+| `taxRateUpsert` | Tax Rate | Create/update tax rates with category and zone |
+| `paymentMethodUpsert` | Payment Method | Create/update payment methods with handlers |
+| `channelUpsert` | Channel | Create/update channels with currencies and languages |
 | `restPost` | Custom | POST data to REST endpoints |
 | `graphqlMutation` | GraphQL | Send records as GraphQL mutations to external APIs |
 

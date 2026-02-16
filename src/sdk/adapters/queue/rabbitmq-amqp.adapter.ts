@@ -420,12 +420,10 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
  * Cleanup old connections periodically
  * Uses configurable value from INTERNAL_TIMINGS for consistency
  */
-const CONNECTION_MAX_IDLE_MS = INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS ?? 5 * 60 * 1000; // 5 minutes default
-
 const cleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const [key, entry] of connectionPool.entries()) {
-        if (now - entry.lastUsed > CONNECTION_MAX_IDLE_MS) {
+        if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
             entry.channel.close().catch((err) => {
                 logger.warn('RabbitMQ: Failed to close channel during cleanup', { error: err?.message ?? err });
             });

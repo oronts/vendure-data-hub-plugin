@@ -28,6 +28,8 @@ export const TRANSFORM_LIMITS = {
     CURRENCY_DECIMAL_PLACES: 2,
     /** Default description truncation for feeds */
     DESCRIPTION_TRUNCATE_LENGTH: 500,
+    /** Maximum rows returned in extractor preview queries */
+    MAX_PREVIEW_LIMIT: 1000,
 } as const;
 
 /**

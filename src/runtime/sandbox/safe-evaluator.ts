@@ -161,10 +161,6 @@ export class SafeEvaluator {
         this.sandbox = createCodeSandbox();
     }
 
-    get isEnabled(): boolean {
-        return this.config.scriptOperatorsEnabled;
-    }
-
     evaluate<T = unknown>(
         expression: string,
         context: Record<string, unknown>,
@@ -216,10 +212,6 @@ export class SafeEvaluator {
                 error: getErrorMessage(error),
             };
         }
-    }
-
-    clearCache(): void {
-        this.cache.clear();
     }
 
     private validateExpression(expr: string): void {

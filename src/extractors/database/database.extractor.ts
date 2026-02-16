@@ -12,7 +12,7 @@ import {
     ExtractorCategory,
 } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
-import { DatabaseType, DatabasePaginationType, PAGINATION, HTTP, CONNECTION_POOL } from '../../constants/index';
+import { DatabaseType, DatabasePaginationType, PAGINATION, HTTP, CONNECTION_POOL, TRANSFORM_LIMITS } from '../../constants/index';
 import {
     DatabaseExtractorConfig,
     DATABASE_TEST_QUERIES,
@@ -512,8 +512,7 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
             const records: RecordEnvelope[] = [];
 
             try {
-                const MAX_PREVIEW_LIMIT = 1000;
-                const safeLimit = Math.max(1, Math.min(Math.floor(limit), MAX_PREVIEW_LIMIT));
+                const safeLimit = Math.max(1, Math.min(Math.floor(limit), TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT));
                 const previewQuery = hasLimitClause(config.query)
                     ? config.query
                     : `${config.query} LIMIT ${safeLimit}`;

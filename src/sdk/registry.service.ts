@@ -86,8 +86,5 @@ export class DataHubRegistryService {
         return this.runtimeAdapters.get(`${type}:${code}`);
     }
 
-    hasRuntime(type: AdapterType, code: string): boolean {
-        return this.runtimeAdapters.has(`${type}:${code}`);
-    }
 }
 

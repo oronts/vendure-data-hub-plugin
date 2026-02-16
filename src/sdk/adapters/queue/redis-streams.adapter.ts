@@ -504,13 +504,11 @@ export class RedisStreamsAdapter implements QueueAdapter {
 /**
  * Cleanup old clients periodically
  */
-const CLIENT_MAX_IDLE_MS = 5 * 60 * 1000; // 5 minutes
-
 const cleanupInterval = setInterval(async () => {
     const now = Date.now();
 
     for (const [key, entry] of clientCache.entries()) {
-        if (now - entry.lastUsed > CLIENT_MAX_IDLE_MS) {
+        if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
             try {
                 await entry.client.quit();
             } catch {
@@ -526,7 +524,7 @@ const cleanupInterval = setInterval(async () => {
             pendingEntries.delete(key);
         }
     }
-}, 60_000);
+}, INTERNAL_TIMINGS.CLEANUP_INTERVAL_MS);
 
 if (typeof cleanupInterval.unref === 'function') {
     cleanupInterval.unref();

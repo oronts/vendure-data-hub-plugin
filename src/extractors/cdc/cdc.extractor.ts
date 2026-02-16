@@ -13,7 +13,7 @@ import {
     ExtractorCategory,
 } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
-import { DatabaseType } from '../../constants/index';
+import { DatabaseType, TRANSFORM_LIMITS } from '../../constants/index';
 import { CdcExtractorConfig, CDC_DEFAULTS, CdcOperation } from './types';
 import {
     createDatabaseClient,
@@ -550,8 +550,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
             const client = await createDatabaseClient(context, dbConfig);
 
             try {
-                const MAX_PREVIEW_LIMIT = 1000;
-                const safeLimit = Math.max(1, Math.min(Math.floor(limit), MAX_PREVIEW_LIMIT));
+                const safeLimit = Math.max(1, Math.min(Math.floor(limit), TRANSFORM_LIMITS.MAX_PREVIEW_LIMIT));
 
                 const columnList = buildColumnList(config);
                 const escapedTable = escapeSqlIdentifier(config.table);

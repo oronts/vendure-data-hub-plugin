@@ -21,7 +21,7 @@ import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { PipelineQueueRequestEvent } from '../events/pipeline-events';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, isDuplicateEntryError } from '../../utils/error.utils';
 import { escapeLikePattern } from '../../utils/sql-security.utils';
 
 export interface CreatePipelineInput {
@@ -121,11 +121,7 @@ export class PipelineService {
         } catch (error: unknown) {
             // Handle unique constraint violation from concurrent inserts (TOCTOU race)
             const msg = getErrorMessage(error);
-            if (
-                msg.includes('UNIQUE') || msg.includes('unique') ||
-                msg.includes('duplicate') || msg.includes('Duplicate') ||
-                msg.includes('ER_DUP_ENTRY') || msg.includes('23505')
-            ) {
+            if (isDuplicateEntryError(msg)) {
                 throw new Error(`Pipeline code "${input.code}" already exists`);
             }
             throw error;
