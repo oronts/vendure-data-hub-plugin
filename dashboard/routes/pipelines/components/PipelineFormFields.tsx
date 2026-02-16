@@ -8,7 +8,7 @@ import {
 } from '@vendure/dashboard';
 import type { UseFormReturn, FieldValues } from 'react-hook-form';
 import { FieldError } from '../../../components/common';
-import { PIPELINE_STATUS, getStatusBadgeVariant, ERROR_MESSAGES } from '../../../constants';
+import { PIPELINE_STATUS, getStatusBadgeVariant, ERROR_MESSAGES, PLACEHOLDERS } from '../../../constants';
 import { CODE_PATTERN, formatDateTime } from '../../../utils';
 import type { PipelineEntity, ValidationState } from '../../../types';
 import { ValidationStatusBadge } from './ValidationPanel';
@@ -57,7 +57,7 @@ export function PipelineFormFields({
                     <div>
                         <Input
                             {...field}
-                            placeholder="My Pipeline"
+                            placeholder={PLACEHOLDERS.PIPELINE_NAME}
                             className={
                                 fieldState.error
                                     ? 'border-destructive focus-visible:ring-destructive'
@@ -87,7 +87,7 @@ export function PipelineFormFields({
                     <div>
                         <Input
                             {...field}
-                            placeholder="my-pipeline-code"
+                            placeholder={PLACEHOLDERS.PIPELINE_CODE}
                             className={
                                 fieldState.error
                                     ? 'border-destructive focus-visible:ring-destructive'

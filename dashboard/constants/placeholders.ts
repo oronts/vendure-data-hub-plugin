@@ -41,7 +41,8 @@ export const PLACEHOLDERS = {
     HEADER_VALUE: 'header-value',
 
     // Codes and identifiers
-    PIPELINE_CODE: 'my-pipeline',
+    PIPELINE_NAME: 'My Pipeline',
+    PIPELINE_CODE: 'my-pipeline-code',
     SECRET_CODE: 'my-secret',
     CONNECTION_CODE: 'my-connection',
 

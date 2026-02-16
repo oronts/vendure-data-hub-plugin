@@ -41,6 +41,21 @@ export const PIPELINE_CHECKPOINT_DEFAULTS = {
     MIN_INTERVAL_MS: TIME_UNITS.SECOND,
 } as const;
 
+export const STEP_CONFIG_DEFAULTS = {
+    THROUGHPUT_BATCH_SIZE: 50,
+    THROUGHPUT_CONCURRENCY: 10,
+    RETRY_MAX_ATTEMPTS: 3,
+    RETRY_DELAY_MS: 1000,
+    GATE_TIMEOUT_SECONDS: 300,
+    GATE_MIN_APPROVERS: 5,
+    GATE_THRESHOLD_PERCENT: 10,
+} as const;
+
+export const RETENTION_DEFAULTS = {
+    RUNS_DAYS: 7,
+    ERROR_DAYS: 30,
+} as const;
+
 /** Default edge style for ReactFlow pipeline connections */
 export const EDGE_STYLE = {
     STROKE_WIDTH: 2,

@@ -9,6 +9,7 @@ import {
     SelectValue,
     Input,
 } from '@vendure/dashboard';
+import { STEP_CONFIG_DEFAULTS } from '../../../constants';
 
 export interface GateConfigComponentProps {
     readonly config: Record<string, unknown>;
@@ -83,7 +84,7 @@ export function GateConfigComponent({
                             const val = e.target.value ? Number(e.target.value) : undefined;
                             updateField('timeoutSeconds', val);
                         }}
-                        placeholder="300"
+                        placeholder={String(STEP_CONFIG_DEFAULTS.GATE_TIMEOUT_SECONDS)}
                         min={1}
                         data-testid="datahub-gate-timeout-input"
                     />
@@ -103,7 +104,7 @@ export function GateConfigComponent({
                             const val = e.target.value ? Number(e.target.value) : undefined;
                             updateField('errorThresholdPercent', val);
                         }}
-                        placeholder="5"
+                        placeholder={String(STEP_CONFIG_DEFAULTS.GATE_MIN_APPROVERS)}
                         min={0}
                         max={100}
                         data-testid="datahub-gate-threshold-input"
@@ -150,7 +151,7 @@ export function GateConfigComponent({
                         const val = e.target.value ? Number(e.target.value) : undefined;
                         updateField('previewCount', val);
                     }}
-                    placeholder="10"
+                    placeholder={String(STEP_CONFIG_DEFAULTS.GATE_THRESHOLD_PERCENT)}
                     min={1}
                     data-testid="datahub-gate-preview-count-input"
                 />

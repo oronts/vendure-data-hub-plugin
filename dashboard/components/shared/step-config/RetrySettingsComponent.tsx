@@ -8,6 +8,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@vendure/dashboard';
+import { STEP_CONFIG_DEFAULTS } from '../../../constants';
 
 export interface RetrySettings {
     maxRetries?: number;
@@ -56,7 +57,7 @@ export function RetrySettingsComponent({
                                 const val = e.target.value ? Number(e.target.value) : undefined;
                                 onChange({ ...retrySettings, maxRetries: val });
                             }}
-                            placeholder="3"
+                            placeholder={String(STEP_CONFIG_DEFAULTS.RETRY_MAX_ATTEMPTS)}
                             min={0}
                             data-testid="datahub-retry-max-retries-input"
                         />
@@ -74,7 +75,7 @@ export function RetrySettingsComponent({
                                 const val = e.target.value ? Number(e.target.value) : undefined;
                                 onChange({ ...retrySettings, retryDelayMs: val });
                             }}
-                            placeholder="1000"
+                            placeholder={String(STEP_CONFIG_DEFAULTS.RETRY_DELAY_MS)}
                             min={0}
                             data-testid="datahub-retry-delay-input"
                         />

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Switch, Input, Label } from '@vendure/dashboard';
 import type { Throughput } from '../../../types';
+import { STEP_CONFIG_DEFAULTS } from '../../../constants';
 
 export interface ThroughputSettingsComponentProps {
     readonly async?: boolean;
@@ -48,7 +49,7 @@ export function ThroughputSettingsComponent({
                                     const val = e.target.value ? Number(e.target.value) : undefined;
                                     onChange(async, { ...throughput, batchSize: val });
                                 }}
-                                placeholder="50"
+                                placeholder={String(STEP_CONFIG_DEFAULTS.THROUGHPUT_BATCH_SIZE)}
                             />
                         </div>
                         <div className="space-y-1">
@@ -60,7 +61,7 @@ export function ThroughputSettingsComponent({
                                     const val = e.target.value ? Number(e.target.value) : undefined;
                                     onChange(async, { ...throughput, rateLimitRps: val });
                                 }}
-                                placeholder="10"
+                                placeholder={String(STEP_CONFIG_DEFAULTS.THROUGHPUT_CONCURRENCY)}
                             />
                         </div>
                     </div>

@@ -22,7 +22,7 @@ import {
 } from '@vendure/dashboard';
 import { toast } from 'sonner';
 import { Save, Clock, Info, FileText } from 'lucide-react';
-import { DATAHUB_NAV_SECTION, LOG_PERSISTENCE_LEVELS, ROUTES, DATAHUB_PERMISSIONS, RETENTION, TOAST_SETTINGS, ERROR_MESSAGES } from '../../constants';
+import { DATAHUB_NAV_SECTION, LOG_PERSISTENCE_LEVELS, ROUTES, DATAHUB_PERMISSIONS, RETENTION, TOAST_SETTINGS, ERROR_MESSAGES, RETENTION_DEFAULTS } from '../../constants';
 import { FieldError } from '../../components/common';
 import { LoadingState, ErrorState } from '../../components/shared';
 import { getErrorMessage } from '../../../shared';
@@ -214,7 +214,7 @@ function SettingsPage() {
                                         type="number"
                                         min="1"
                                         max={String(RETENTION.MAX_DAYS)}
-                                        placeholder="7"
+                                        placeholder={String(RETENTION_DEFAULTS.RUNS_DAYS)}
                                         value={runsDays}
                                         onChange={e => handleRunsDaysChange(e.target.value)}
                                         onBlur={() => handleBlur('runsDays')}
@@ -235,7 +235,7 @@ function SettingsPage() {
                                         type="number"
                                         min="1"
                                         max={String(RETENTION.MAX_DAYS)}
-                                        placeholder="30"
+                                        placeholder={String(RETENTION_DEFAULTS.ERROR_DAYS)}
                                         value={errorsDays}
                                         onChange={e => handleErrorsDaysChange(e.target.value)}
                                         onBlur={() => handleBlur('errorsDays')}
@@ -308,7 +308,7 @@ function SettingsPage() {
                                         type="number"
                                         min="1"
                                         max={String(RETENTION.MAX_DAYS)}
-                                        placeholder="30"
+                                        placeholder={String(RETENTION_DEFAULTS.ERROR_DAYS)}
                                         value={logsDays}
                                         onChange={e => handleLogsDaysChange(e.target.value)}
                                         onBlur={() => handleBlur('logsDays')}
