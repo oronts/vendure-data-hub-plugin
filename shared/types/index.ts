@@ -41,7 +41,6 @@ export type {
     ValidationErrorCode,
 } from './validation.types';
 export {
-    VALIDATION_PATTERNS,
     ERROR_MESSAGES,
     VALIDATION_ERROR_CODE,
 } from './validation.types';

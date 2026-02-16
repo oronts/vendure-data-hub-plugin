@@ -48,7 +48,7 @@ export const operators = {
         return { op: TRANSFORM_OPERATOR.COPY, args: { source, target } };
     },
 
-    /** `operators.template('Product: {{name}} ({{sku}})', 'displayName')` */
+    /** `operators.template('Product: ${name} (${sku})', 'displayName')` */
     template(template: string, target: string, options?: { missingAsEmpty?: boolean; skipIfEmpty?: boolean }): OperatorConfig {
         validateNonEmptyString(template, 'Template');
         validateNonEmptyString(target, 'Target');

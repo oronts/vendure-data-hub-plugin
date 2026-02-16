@@ -6,12 +6,12 @@ import { StoredFile } from '../../services';
 import { ParseFormatType } from '../../constants/enums';
 import { extractFileExtension } from '../../extractors/shared/file-format.utils';
 
-export type FileFormatAlias = ParseFormatType;
+type FileFormatAlias = ParseFormatType;
 
 /**
  * MIME type to file extension mapping
  */
-export const MIME_TYPE_MAP: Record<string, string> = {
+const MIME_TYPE_MAP: Record<string, string> = {
     csv: 'text/csv',
     json: 'application/json',
     xml: 'application/xml',
@@ -23,12 +23,12 @@ export const MIME_TYPE_MAP: Record<string, string> = {
 /**
  * Default MIME type for unknown file types
  */
-export const DEFAULT_MIME_TYPE = 'application/octet-stream';
+const DEFAULT_MIME_TYPE = 'application/octet-stream';
 
 /**
  * Base path for DataHub file endpoints - used to construct download/preview URLs
  */
-export const DATAHUB_FILES_PATH = '/data-hub/files';
+const DATAHUB_FILES_PATH = '/data-hub/files';
 
 /**
  * Format a stored file for API response

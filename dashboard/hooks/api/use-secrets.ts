@@ -73,12 +73,4 @@ export function useSecrets(options?: DataHubSecretListOptions) {
     });
 }
 
-export function useSecret(id: string | undefined) {
-    return useQuery({
-        queryKey: secretKeys.detail(id ?? ''),
-        queryFn: () =>
-            api.query(secretDetailDocument, { id: id! }).then((res) => res.dataHubSecret),
-        enabled: !!id,
-    });
-}
 

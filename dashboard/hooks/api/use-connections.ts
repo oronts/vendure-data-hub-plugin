@@ -73,15 +73,6 @@ export function useConnections(options?: DataHubConnectionListOptions) {
     });
 }
 
-export function useConnection(id: string | undefined) {
-    return useQuery({
-        queryKey: connectionKeys.detail(id ?? ''),
-        queryFn: () =>
-            api.query(connectionDetailDocument, { id: id! }).then((res) => res.dataHubConnection),
-        enabled: !!id,
-    });
-}
-
 export function useConnectionCodes() {
     return useQuery({
         queryKey: connectionKeys.codes(),

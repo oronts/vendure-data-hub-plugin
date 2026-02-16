@@ -60,11 +60,3 @@ export function useAdaptersByType(type: string) {
     return { ...rest, data: filtered };
 }
 
-export function useAdapter(code: string | undefined) {
-    const { data: adapters, ...rest } = useAdapters();
-    const adapter = React.useMemo(
-        () => (code ? adapters?.find((a) => a.code === code) : undefined),
-        [adapters, code]
-    );
-    return { ...rest, data: adapter };
-}

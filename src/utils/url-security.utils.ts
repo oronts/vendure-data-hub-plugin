@@ -356,16 +356,6 @@ export function validateUrlSafetySync(
     return { safe: true };
 }
 
-export function createUrlValidator(config: UrlSecurityConfig): {
-    validate: (url: string) => Promise<UrlSafetyResult>;
-    validateSync: (url: string) => UrlSafetyResult;
-} {
-    return {
-        validate: (url: string) => validateUrlSafety(url, config),
-        validateSync: (url: string) => validateUrlSafetySync(url, config),
-    };
-}
-
 export async function assertUrlSafe(url: string, config?: UrlSecurityConfig): Promise<void> {
     const result = await validateUrlSafety(url, config);
     if (!result.safe) {
@@ -373,9 +363,3 @@ export async function assertUrlSafe(url: string, config?: UrlSecurityConfig): Pr
     }
 }
 
-export function assertUrlSafeSync(url: string, config?: UrlSecurityConfig): void {
-    const result = validateUrlSafetySync(url, config);
-    if (!result.safe) {
-        throw new Error(`SSRF protection: ${result.reason}`);
-    }
-}

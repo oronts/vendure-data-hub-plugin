@@ -185,12 +185,14 @@ function PipelineDetailPage({ route }: { route: AnyRoute }) {
                         <PipelineEditorToggle form={form} issues={validation.issues} />
                         <PipelineWebhookInfo definition={() => form.getValues('definition') as PipelineDefinition | undefined} />
                     </PageBlock>
+                </PageLayout>
+                {!creating && (
                     <PermissionGuard requires={[DATAHUB_PERMISSIONS.VIEW_RUNS]}>
-                        <div id="runs">
+                        <div id="runs" className="mt-4">
                             <PipelineRunsBlock pipelineId={entity?.id} />
                         </div>
                     </PermissionGuard>
-                </PageLayout>
+                )}
             </Page>
 
             <ValidationPanel
