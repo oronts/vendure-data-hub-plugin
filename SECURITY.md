@@ -60,7 +60,7 @@ Expression evaluation is sandboxed in `src/runtime/sandbox/safe-evaluator.ts`:
 
 ### Permission Model
 
-The plugin uses Vendure's permission system with 23 granular permissions:
+The plugin uses Vendure's permission system with 27 granular permissions:
 
 - **Read permissions**: View pipelines, secrets, connections, runs, logs
 - **Write permissions**: Create, update, delete pipelines, secrets, connections

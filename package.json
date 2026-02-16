@@ -43,11 +43,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/oronts/data-hub-plugin.git"
+    "url": "https://github.com/oronts/vendure-data-hub-plugin.git"
   },
   "homepage": "https://oronts.com",
   "bugs": {
-    "url": "https://github.com/oronts/data-hub-plugin/issues"
+    "url": "https://github.com/oronts/vendure-data-hub-plugin/issues"
   },
   "scripts": {
     "dev": "npm run build:dev && npm run start",

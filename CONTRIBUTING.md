@@ -20,8 +20,8 @@ Thank you for your interest in contributing to the Data Hub plugin for Vendure!
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/oronts/data-hub-plugin.git
-cd data-hub-plugin
+git clone https://github.com/oronts/vendure-data-hub-plugin.git
+cd vendure-data-hub-plugin
 ```
 
 2. Install dependencies:
@@ -100,7 +100,7 @@ npm run lint
 
 ## Pull Request Process
 
-1. Fork the repository and create a new branch from `master`
+1. Fork the repository and create a new branch from `main`
 2. Make your changes following the coding guidelines
 3. Add or update tests as needed
 4. Ensure all tests pass
@@ -141,14 +141,14 @@ Types:
 ### Adding an Extractor
 
 1. Create a new file in `src/extractors/`
-2. Implement the `DataExtractor` interface
+2. Implement the `ExtractorAdapter` interface
 3. Register it in `src/extractors/index.ts`
 4. Add tests in `src/extractors/__tests__/`
 
 ### Adding a Loader
 
 1. Create a new file in `src/loaders/`
-2. Implement the `EntityLoader` interface
+2. Implement the `LoaderAdapter` interface
 3. Register it in `src/loaders/registry.ts`
 4. Add tests
 

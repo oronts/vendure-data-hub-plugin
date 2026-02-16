@@ -7,5 +7,5 @@ contact_links:
     url: https://oronts.com
     about: Need custom extractors, loaders, or integrations? Contact us.
   - name: Documentation
-    url: https://github.com/oronts/data-hub-plugin/tree/main/docs
+    url: https://github.com/oronts/vendure-data-hub-plugin/tree/main/docs
     about: Check the documentation before opening an issue

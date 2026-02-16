@@ -195,7 +195,7 @@ Configure authentication for incoming webhook requests in the pipeline trigger c
 | `rateLimit` | 100 | Requests per minute per IP (0 = unlimited) |
 | `apiKeyHeaderName` | `x-api-key` | Header name for API key authentication |
 | `hmacHeaderName` | `x-datahub-signature` | Header name for HMAC signature |
-| `hmacAlgorithm` | `sha256` | Hash algorithm (`sha256` or `sha512`) |
+| `hmacAlgorithm` | `SHA256` | Hash algorithm (`SHA256` or `SHA512`) |
 | `jwtHeaderName` | `authorization` | Header name for JWT token |
 | `requireIdempotencyKey` | `false` | Require X-Idempotency-Key header |
 

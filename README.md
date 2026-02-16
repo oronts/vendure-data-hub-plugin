@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/oronts/data-hub-plugin/actions/workflows/ci.yml"><img src="https://github.com/oronts/data-hub-plugin/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/oronts/vendure-data-hub-plugin/actions/workflows/ci.yml"><img src="https://github.com/oronts/vendure-data-hub-plugin/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://www.npmjs.com/package/@oronts/vendure-data-hub-plugin"><img src="https://img.shields.io/npm/v/@oronts/vendure-data-hub-plugin.svg" alt="npm version"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-Commercial-red.svg" alt="License"></a>
   <a href="https://www.vendure.io/"><img src="https://img.shields.io/badge/vendure-%5E3.0.0-blue" alt="Vendure version"></a>
@@ -36,11 +36,11 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
 
 - **Visual Pipeline Builder** - Drag-and-drop workflow editor with live validation
 - **Code-First DSL** - TypeScript API for defining pipelines programmatically
-- **8 Data Extractors** - HTTP/REST API, GraphQL, Vendure Query, File (CSV/JSON/XML/XLSX/NDJSON/TSV), Database (SQL), S3, FTP/SFTP, Webhook
-- **16 Entity Loaders** - Products, Variants, Customers, Customer Groups, Collections, Facets, Facet Values, Promotions, Orders, Shipping Methods, Stock Locations, Inventory, Assets, Tax Rates, Payment Methods, Channels
-- **59 Transform Operators** - String (12), Date (6), Numeric (9), Logic (4), JSON (4), Data (8), Enrichment (6), Aggregation (7), Validation (2), Script (1) - **includes HTTP Lookup with caching, circuit breaker, and rate limiting**
-- **5 Feed Generators** - Google Shopping, Meta/Facebook Catalog (CSV/XML), Custom CSV, JSON Feed, XML Feed
-- **7 Search & Integration Sinks** - Elasticsearch, MeiliSearch, Algolia, Typesense, Queue Producer (RabbitMQ/SQS/Redis), Webhook
+- **9 Data Extractors** - HTTP/REST API, GraphQL, Vendure Query, File (CSV/JSON/XML/XLSX/NDJSON/TSV), Database (SQL), S3, FTP/SFTP, Webhook, CDC (Change Data Capture)
+- **18 Entity Loaders** - Products, Variants, Customers, Customer Groups, Collections, Facets, Facet Values, Promotions, Orders (notes, transitions, coupons), Shipping Methods, Stock/Inventory, Assets, Tax Rates, Payment Methods, Channels, REST POST
+- **61 Transform Operators** - String (12), Date (5), Numeric (9), Logic (4), JSON (4), Data (8), Enrichment (5), Aggregation (8), Validation (2), Script (1), File (3) - **includes HTTP Lookup with caching, circuit breaker, and rate limiting**
+- **6 Feed Generators** - Google Shopping, Meta/Facebook Catalog (CSV/XML), Amazon Seller Central, Custom CSV, JSON Feed, XML Feed
+- **6 Search & Integration Sinks** - Elasticsearch, MeiliSearch, Algolia, Typesense, Queue Producer (RabbitMQ/SQS/Redis), Webhook
 - **18 Hook Stages** - Interceptors and scripts to modify data at any pipeline stage
 - **7 Connection Types** - HTTP/REST, S3, FTP, SFTP, Database (PostgreSQL/MySQL/SQLite/MSSQL/Oracle), Message Queue (RabbitMQ/SQS/Redis), Custom
 - **6 Trigger Types** - Manual, Scheduled (cron), Webhook, Vendure Events, File Watch, **Message Queue Consumer**
@@ -214,6 +214,11 @@ export const config: VendureConfig = {
 | Vendure Query | `vendureQuery` | Query Vendure entities (Product, ProductVariant, Customer, Order, Collection, Facet, FacetValue, Promotion, Asset) |
 | CSV File | `csv` | Parse CSV files with custom delimiters and encoding |
 | JSON File | `json` | Parse JSON files with path extraction |
+| Database | `database` | Query PostgreSQL, MySQL, MSSQL, SQLite with parameterized queries |
+| S3 | `s3` | Read files from AWS S3 and S3-compatible storage (MinIO, DigitalOcean Spaces) |
+| FTP/SFTP | `ftp` | Download files from FTP/SFTP servers with SSH key support |
+| Webhook | `webhook` | Receive incoming webhook data with HMAC signature verification |
+| CDC | `cdc` | Polling-based change data capture with checkpoint tracking |
 | In-Memory | `inMemory` | Extract from in-memory data (webhooks, inline) |
 | Generator | `generator` | Generate test records with configurable fields |
 
@@ -427,6 +432,10 @@ Execute custom JavaScript for complex transformations:
 | Tax Rate Loader | `taxRateUpsert` | Create/update tax rates by name with category and zone |
 | Payment Method Loader | `paymentMethodUpsert` | Create/update payment methods with handler and checker |
 | Channel Loader | `channelUpsert` | Create/update channels with currencies, languages, and zones |
+| Facet Loader | `facetUpsert` | Create/update facets with translations |
+| Facet Value Loader | `facetValueUpsert` | Create/update facet values with translations |
+| Customer Group Loader | `customerGroupUpsert` | Create/update customer groups and assign members |
+| Shipping Method Loader | `shippingMethodUpsert` | Create/update shipping methods with calculator and checker |
 | REST POST Loader | `restPost` | POST/PUT records to external REST endpoints |
 
 ### Product Loader
@@ -1049,10 +1058,18 @@ const webhookNotify: LoaderAdapter<WebhookNotifyConfig> = {
 | `ManageDataHubAdapters` | Configure adapters |
 | `ViewDataHubRuns` | View execution history |
 | `RetryDataHubRecord` | Retry failed records |
-| `ViewQuarantine` | View dead letter queue |
-| `EditQuarantine` | Manage quarantined records |
-| `ReplayRecord` | Replay processed records |
+| `ViewDataHubQuarantine` | View dead letter queue |
+| `EditDataHubQuarantine` | Manage quarantined records |
+| `ReplayDataHubRecord` | Replay processed records |
 | `UpdateDataHubSettings` | Modify plugin settings |
+| `ViewDataHubAnalytics` | View analytics dashboard |
+| `ManageDataHubWebhooks` | Configure webhook endpoints |
+| `ManageDataHubDestinations` | Manage export destinations |
+| `ManageDataHubFeeds` | Manage product feeds |
+| `ViewDataHubEntitySchemas` | View entity schemas |
+| `SubscribeDataHubEvents` | Subscribe to pipeline events |
+| `ManageDataHubFiles` | Upload and manage files |
+| `ReadDataHubFiles` | Read uploaded files |
 
 ---
 

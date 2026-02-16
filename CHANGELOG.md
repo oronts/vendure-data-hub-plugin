@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Core Features
 - **Pipeline DSL Builder**: Fluent TypeScript API for defining ETL pipelines
 - **Visual Pipeline Editor**: React Flow-based drag-and-drop pipeline designer
-- **Step Types**: EXTRACT, TRANSFORM, VALIDATE, ENRICH, ROUTE, LOAD, EXPORT, FEED, SINK
-- **59 Built-in Operators**: Data transformation operators for common ETL tasks
+- **Step Types**: TRIGGER, EXTRACT, TRANSFORM, VALIDATE, ENRICH, ROUTE, LOAD, EXPORT, FEED, SINK, GATE
+- **61 Built-in Operators**: Data transformation operators for common ETL tasks
 - **Adapter Registry**: Extensible adapter system for custom extractors, loaders, and operators
 
 #### Enterprise Features
@@ -31,11 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Webhook Authentication**: API key, HMAC, Basic Auth, and JWT support
 
 #### Integrations
-- **Vendure Loaders**: Product, Variant, Customer, Collection, Facet, Asset, Order, Stock management
+- **Vendure Loaders**: Product, Variant, Customer, Collection, Facet, FacetValue, Asset, Order, Stock, Promotion, TaxRate, PaymentMethod, Channel, CustomerGroup, ShippingMethod management
 - **File Extractors**: CSV, JSON, XML with streaming support
 - **API Extractors**: REST, GraphQL with pagination
-- **Feed Generators**: Google Merchant, Meta Catalog, Amazon, custom feeds
-- **Sink Adapters**: Elasticsearch, Meilisearch, Algolia, Typesense
+- **Data Source Extractors**: Database, S3, FTP/SFTP, Webhook, CDC (Change Data Capture)
+- **Feed Generators**: Google Merchant, Meta Catalog, Amazon Seller Central, Custom CSV/JSON/XML
+- **Sink Adapters**: Elasticsearch, Meilisearch, Algolia, Typesense, Queue Producer, Webhook
 
 #### Dashboard
 - **Pipeline Management**: Create, edit, clone, version pipelines
@@ -102,6 +103,6 @@ If upgrading from a pre-release version:
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/your-org/vendure-data-hub/issues)
+- **Issues**: [GitHub Issues](https://github.com/oronts/vendure-data-hub-plugin/issues)
 - **Documentation**: See \`/docs\` folder
 - **Examples**: See \`/dev-server/examples\` folder
