@@ -123,9 +123,11 @@ export class DataHubFileUploadController {
         @Query('offset') offset?: string,
         @Query('mimeType') mimeType?: string,
     ) {
+        const parsedLimit = limit ? parseInt(limit, 10) : NaN;
+        const parsedOffset = offset ? parseInt(offset, 10) : NaN;
         const result = await this.fileStorage.listFiles({
-            limit: limit ? parseInt(limit, 10) : PAGINATION.LIST_PAGE_SIZE,
-            offset: offset ? parseInt(offset, 10) : 0,
+            limit: Math.min(PAGINATION.MAX_QUERY_LIMIT, Math.max(1, isNaN(parsedLimit) ? PAGINATION.LIST_PAGE_SIZE : parsedLimit)),
+            offset: Math.max(0, isNaN(parsedOffset) ? 0 : parsedOffset),
             filter: mimeType ? { mimeType } : undefined,
         });
 
@@ -256,7 +258,7 @@ export class DataHubFileUploadController {
             // Use file parser to analyze the file
             const preview = await this.fileParser.preview(content, {
                 format,
-            }, rows ? parseInt(rows, 10) : PAGINATION.FILE_PREVIEW_ROWS);
+            }, Math.min(PAGINATION.MAX_QUERY_LIMIT, Math.max(1, parseInt(rows ?? '', 10) || PAGINATION.FILE_PREVIEW_ROWS)));
 
             return res.json({
                 success: true,

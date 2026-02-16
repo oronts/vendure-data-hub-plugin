@@ -84,11 +84,18 @@ export class ConsumerLifecycle {
             });
         }
 
-        // Validate connection exists
-        const ctx = await this.requestContextService.create({ apiType: 'admin' });
-        const conn = await this.connectionService.getByCode(ctx, config.connectionCode);
+        // Validate connection exists - release lock on any failure
+        let conn;
+        try {
+            const ctx = await this.requestContextService.create({ apiType: 'admin' });
+            conn = await this.connectionService.getByCode(ctx, config.connectionCode);
+        } catch (error) {
+            if (lockToken && this.distributedLock) {
+                await this.distributedLock.release(lockKey, lockToken);
+            }
+            throw error;
+        }
         if (!conn) {
-            // Release lock if we can't start
             if (lockToken && this.distributedLock) {
                 await this.distributedLock.release(lockKey, lockToken);
             }

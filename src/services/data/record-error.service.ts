@@ -89,7 +89,7 @@ export class RecordErrorService {
                   })
                 : null;
             const def = run?.pipeline?.definition;
-            if (def) {
+            if (def && run) {
                 await this.hooks.run(ctx, def, value ? HookStage.ON_DEAD_LETTER : HookStage.ON_RETRY, undefined, ent.payload, run.id);
             }
         } catch (error) {
