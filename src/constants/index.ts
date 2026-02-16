@@ -13,7 +13,6 @@ export * from './enums';
 export {
     // Core defaults
     RETENTION,
-    NUMERIC,
     DEFAULT_HOSTS,
     PORTS,
     TRANSFORM_LIMITS,
@@ -96,7 +95,6 @@ export {
 } from './units';
 
 export {
-    SEARCH_SERVICE_URLS,
     EXAMPLE_URLS,
     SERVICE_DEFAULTS,
     FEED_NAMESPACES,

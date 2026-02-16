@@ -85,7 +85,7 @@ export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
         }
 
         // Fallback: by name (exact match)
-        if (record.name) {
+        if (record.name && lookupFields.includes('name')) {
             const products = await this.productService.findAll(ctx, {
                 filter: { name: { eq: record.name } },
             });

@@ -47,10 +47,6 @@ export {
 
 export type {
     ErrorSeverity,
-    PipelineErrorStage,
-    PipelineError,
-    RecordError,
-    PipelineStepError,
 } from './error.types';
 // NOTE: getErrorSeverity is intentionally NOT exported from shared/types.
 // Import from src/constants/error-codes instead (authoritative implementation).
@@ -63,16 +59,10 @@ export type {
 } from './transform.types';
 
 export type {
-    FieldTransformType,
-    MathOperation,
-    TransformOptions,
     FieldTransform,
     TransformType,
-    PadPosition,
-    LookupType,
     TransformConfig,
     Transform,
-    MappingCondition,
     FieldMapping,
     MappingConfig,
     MappingResult,

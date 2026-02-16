@@ -57,7 +57,7 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
         } catch (err) {
             handleMutationError('retry record', err);
         }
-    }, [retryError]);
+    }, [retryError.mutateAsync]);
 
     const handleCancel = React.useCallback(() => {
         onCancel(run?.id ?? runId);
@@ -82,7 +82,7 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
         } catch (err) {
             handleMutationError('approve gate', err);
         }
-    }, [approveGate, run?.id, runId, pausedGateStepKey]);
+    }, [approveGate.mutateAsync, run?.id, runId, pausedGateStepKey]);
 
     const handleRejectGate = React.useCallback(async () => {
         if (!pausedGateStepKey) return;
@@ -96,7 +96,7 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
         } catch (err) {
             handleMutationError('reject gate', err);
         }
-    }, [rejectGate, run?.id, runId, pausedGateStepKey]);
+    }, [rejectGate.mutateAsync, run?.id, runId, pausedGateStepKey]);
 
     return (
         <div className="p-4 space-y-4" data-testid="datahub-run-details-panel">

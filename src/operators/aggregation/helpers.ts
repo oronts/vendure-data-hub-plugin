@@ -15,9 +15,9 @@ export function computeAggregate(values: number[], op: AggregationOp): number | 
         case 'avg':
             return values.reduce((a, b) => a + b, 0) / values.length;
         case 'min':
-            return Math.min(...values);
+            return values.reduce((a, b) => Math.min(a, b), Infinity);
         case 'max':
-            return Math.max(...values);
+            return values.reduce((a, b) => Math.max(a, b), -Infinity);
         case 'first':
             return values[0];
         case 'last':

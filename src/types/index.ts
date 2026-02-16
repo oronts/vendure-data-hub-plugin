@@ -86,7 +86,5 @@ export type {
     TransformConfig,
     TransformStep,
     FieldTransform,
-    FieldTransformType,
-    TransformOptions,
 } from '../../shared/types';
 

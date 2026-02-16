@@ -5,16 +5,21 @@ import { Readable } from 'stream';
 import { MIME_TYPES } from './types';
 import { HTTP, HTTP_STATUS } from '../../constants/index';
 import { extractFileExtension } from '../../extractors/shared/file-format.utils';
+import { assertUrlSafe } from '../../utils/url-security.utils';
 
 export { shouldUpdateField, isRecoverableError } from '../shared-helpers';
 
+const MAX_REDIRECTS = 5;
+
 /**
  * Downloads a file from a URL.
+ * Validates the URL against SSRF attacks before making the request.
  *
  * @param url - URL to download from
+ * @param redirectCount - Internal counter for redirect depth limiting
  * @returns Buffer containing the file data, or null if download failed
  */
-export async function downloadFile(url: string): Promise<Buffer | null> {
+export async function downloadFile(url: string, redirectCount = 0): Promise<Buffer | null> {
     // Input validation
     if (!url || typeof url !== 'string') {
         return null;
@@ -27,6 +32,18 @@ export async function downloadFile(url: string): Promise<Buffer | null> {
         return null;
     }
 
+    // SSRF protection
+    try {
+        await assertUrlSafe(url);
+    } catch {
+        return null;
+    }
+
+    // Redirect depth limit
+    if (redirectCount >= MAX_REDIRECTS) {
+        return null;
+    }
+
     return new Promise((resolve) => {
         const protocol = url.startsWith('https') ? https : http;
         const request = protocol.get(url, { timeout: HTTP.TIMEOUT_MS }, (response) => {
@@ -35,7 +52,7 @@ export async function downloadFile(url: string): Promise<Buffer | null> {
                 if (redirectUrl) {
                     response.resume();
                     request.destroy();
-                    downloadFile(redirectUrl).then(resolve).catch(() => resolve(null));
+                    downloadFile(redirectUrl, redirectCount + 1).then(resolve).catch(() => resolve(null));
                     return;
                 }
             }

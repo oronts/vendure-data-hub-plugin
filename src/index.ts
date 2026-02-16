@@ -42,7 +42,6 @@ export {
     RATE_LIMIT,
     FILE_STORAGE,
     TRUNCATION,
-    NUMERIC,
     PORTS,
     DOMAIN_EVENTS,
     CONNECTION_POOL,
