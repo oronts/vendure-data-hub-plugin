@@ -238,27 +238,27 @@ export class ExportExecutor {
                 const finalHeaders: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...headers };
 
                 if (bearerSecret) {
-                    try {
-                        const token = await this.secretService.resolve(ctx, bearerSecret);
-                        if (token) finalHeaders[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${token}`;
-                    } catch (error) {
-                        this.logger.warn('Failed to resolve bearer token secret for webhook export', {
-                            stepKey: step.key,
-                            endpoint,
-                            error: (error as Error)?.message,
-                        });
+                    const token = await this.secretService.resolve(ctx, bearerSecret);
+                    if (token) {
+                        finalHeaders[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${token}`;
+                    } else {
+                        fail = records.length;
+                        if (onRecordError) {
+                            await onRecordError(step.key, `Bearer token secret "${bearerSecret}" could not be resolved`, {});
+                        }
+                        break;
                     }
                 }
                 if (basicSecret) {
-                    try {
-                        const creds = await this.secretService.resolve(ctx, basicSecret);
-                        if (creds) finalHeaders[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${Buffer.from(creds).toString('base64')}`;
-                    } catch (error) {
-                        this.logger.warn('Failed to resolve basic auth secret for webhook export', {
-                            stepKey: step.key,
-                            endpoint,
-                            error: (error as Error)?.message,
-                        });
+                    const creds = await this.secretService.resolve(ctx, basicSecret);
+                    if (creds) {
+                        finalHeaders[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${Buffer.from(creds).toString('base64')}`;
+                    } else {
+                        fail = records.length;
+                        if (onRecordError) {
+                            await onRecordError(step.key, `Basic auth secret "${basicSecret}" could not be resolved`, {});
+                        }
+                        break;
                     }
                 }
 

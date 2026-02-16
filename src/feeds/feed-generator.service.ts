@@ -11,7 +11,7 @@ import {
     ProductVariant,
     RequestContext,
 } from '@vendure/core';
-import { LOGGER_CONTEXTS, CONTENT_TYPES, FEED_FORMAT_MAP, FIELD_LIMITS, VALIDATION_PATTERNS } from '../constants/index';
+import { LOGGER_CONTEXTS, CONTENT_TYPES, FEED_FORMAT_MAP, FIELD_LIMITS, VALIDATION_PATTERNS, TRANSFORM_LIMITS } from '../constants/index';
 import { isValidCron } from '../../shared/utils/validation';
 import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
 
@@ -448,13 +448,13 @@ export class FeedGeneratorService implements OnModuleInit {
 
         if (filters?.minPrice) {
             queryBuilder.andWhere('variant.priceWithTax >= :minPrice', {
-                minPrice: filters.minPrice * 100,
+                minPrice: filters.minPrice * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER,
             });
         }
 
         if (filters?.maxPrice) {
             queryBuilder.andWhere('variant.priceWithTax <= :maxPrice', {
-                maxPrice: filters.maxPrice * 100,
+                maxPrice: filters.maxPrice * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER,
             });
         }
 
