@@ -24,24 +24,6 @@ export const HOOK_ACTION = {
 export type HookAction = typeof HOOK_ACTION[keyof typeof HOOK_ACTION];
 
 /**
- * Run modes for pipeline execution.
- * Determines how the pipeline processes records.
- */
-export const SDK_RUN_MODE = {
-    /** Process all records synchronously in a single transaction */
-    SYNC: 'SYNC',
-    /** Process records asynchronously via job queue */
-    ASYNC: 'ASYNC',
-    /** Process records in batches */
-    BATCH: 'BATCH',
-    /** Process records as a continuous stream */
-    STREAM: 'STREAM',
-} as const;
-
-/** Run mode type - union of all SDK_RUN_MODE values */
-export type SdkRunMode = typeof SDK_RUN_MODE[keyof typeof SDK_RUN_MODE];
-
-/**
  * Default trigger type used when no trigger config is provided.
  * @default 'manual'
  */

@@ -113,7 +113,6 @@ export function FilterConditionsEditor({
                         <FilterConditionRow
                             key={conditionKeys[index]}
                             condition={condition}
-                            index={index}
                             fields={fields}
                             logic={logic}
                             showLogicBadge={showLogicSelector && index > 0}
@@ -132,7 +131,6 @@ export function FilterConditionsEditor({
 
 interface FilterConditionRowProps {
     condition: FilterCondition;
-    index: number;
     fields: string[];
     logic: 'AND' | 'OR';
     showLogicBadge: boolean;

@@ -23,7 +23,7 @@ function detectColumnType(values: JsonValue[]): ParsedColumn['type'] {
     for (const val of nonNullValues) {
         const str = String(val).trim().toLowerCase();
 
-        if (['true', 'false', '1', '0', 'yes', 'no'].includes(str)) {
+        if (['true', 'false', 'yes', 'no'].includes(str)) {
             booleanCount++;
             continue;
         }

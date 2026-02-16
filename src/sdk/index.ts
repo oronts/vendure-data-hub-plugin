@@ -37,11 +37,10 @@ export type {
 
 export {
     HOOK_ACTION,
-    SDK_RUN_MODE,
     DEFAULT_TRIGGER_TYPE,
     ROUTE_OPERATOR,
     TRANSFORM_OPERATOR,
 } from './constants';
-export type { HookAction, RouteOperator, TransformOperator, SdkRunMode } from './constants';
+export type { HookAction, RouteOperator, TransformOperator } from './constants';
 
 export { context, throughput, capabilities, hooks } from './dsl/context-builder';

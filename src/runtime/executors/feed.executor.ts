@@ -89,7 +89,7 @@ export class FeedExecutor {
                     xml += `<rss version="2.0" xmlns:g="${FEED_NAMESPACES.GOOGLE_PRODUCT}">\n`;
                     xml += '  <channel>\n';
                     xml += `    <title>Product Feed</title>\n`;
-                    xml += `    <link>${shopUrl}</link>\n`;
+                    xml += `    <link>${xmlEscape(String(shopUrl))}</link>\n`;
                     xml += `    <description>Google Merchant Center Product Feed</description>\n`;
                     for (const item of items) {
                         xml += '    <item>\n';
@@ -102,7 +102,7 @@ export class FeedExecutor {
                         xml += `      <g:brand>${xmlEscape(item.brand)}</g:brand>\n`;
                         xml += `      <g:gtin>${xmlEscape(item.gtin)}</g:gtin>\n`;
                         xml += `      <g:availability>${xmlEscape(item.availability)}</g:availability>\n`;
-                        xml += `      <g:condition>${item.condition}</g:condition>\n`;
+                        xml += `      <g:condition>${xmlEscape(item.condition)}</g:condition>\n`;
                         xml += '    </item>\n';
                     }
                     xml += '  </channel>\n';

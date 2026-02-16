@@ -288,6 +288,7 @@ export type ExtractorCategory =
 
 export interface ConnectionTestResult {
     success: boolean;
+    message?: string;
     error?: string;
     details?: JsonObject;
     latencyMs?: number;

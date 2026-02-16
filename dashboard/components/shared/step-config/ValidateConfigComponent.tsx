@@ -236,11 +236,13 @@ const ValidationRuleRow = memo(function ValidationRuleRow({
     }, [index, rule.spec.field, updateRule]);
 
     const handleMinChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        updateRule(index, { ...rule.spec, min: parseFloat(e.target.value) || 0 });
+        const val = parseFloat(e.target.value);
+        updateRule(index, { ...rule.spec, min: isNaN(val) ? undefined : val });
     }, [index, rule.spec, updateRule]);
 
     const handleMaxChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        updateRule(index, { ...rule.spec, max: parseFloat(e.target.value) || undefined });
+        const val = parseFloat(e.target.value);
+        updateRule(index, { ...rule.spec, max: isNaN(val) ? undefined : val });
     }, [index, rule.spec, updateRule]);
 
     const handlePatternChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

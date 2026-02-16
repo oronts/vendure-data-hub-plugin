@@ -259,8 +259,8 @@ export class CustomerHandler implements LoaderHandler {
         }
         const obj = result as Record<string, unknown>;
         return (
-            typeof obj.message === 'string' ||
-            obj.errorCode === 'EMAIL_ADDRESS_CONFLICT_ERROR'
+            obj.errorCode === 'EMAIL_ADDRESS_CONFLICT_ERROR' ||
+            (typeof obj.message === 'string' && typeof obj.errorCode === 'string')
         );
     }
 

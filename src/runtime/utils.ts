@@ -285,7 +285,7 @@ export function deepClone<T extends JsonValue>(obj: T): T {
  * Escapes a value for CSV output
  */
 export function csvEscape(val: string, delimiter: string): string {
-    if (val.includes(delimiter) || val.includes('"') || val.includes('\n')) {
+    if (val.includes(delimiter) || val.includes('"') || val.includes('\n') || val.includes('\r')) {
         return `"${val.replace(/"/g, '""')}"`;
     }
     return val;
@@ -295,7 +295,7 @@ export function csvEscape(val: string, delimiter: string): string {
  * Escapes a value for XML output
  */
 export function xmlEscape(val: string): string {
-    return val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
 /**
@@ -316,18 +316,30 @@ export function recordsToCsv(records: RecordObject[], delimiter: string, include
 }
 
 /**
+ * Sanitizes a string to be a valid XML element name.
+ */
+function toXmlElementName(key: string): string {
+    let name = key.replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (/^[^a-zA-Z_]/.test(name)) {
+        name = '_' + name;
+    }
+    return name || '_field';
+}
+
+/**
  * Converts an array of records to XML format
  */
 export function recordsToXml(records: JsonObject[], rootElement: string, itemElement: string): string {
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-    xml += `<${rootElement}>\n`;
+    xml += `<${toXmlElementName(rootElement)}>\n`;
     for (const rec of records) {
-        xml += `  <${itemElement}>\n`;
+        xml += `  <${toXmlElementName(itemElement)}>\n`;
         for (const [k, v] of Object.entries(rec)) {
-            xml += `    <${k}>${xmlEscape(String(v ?? ''))}</${k}>\n`;
+            const tag = toXmlElementName(k);
+            xml += `    <${tag}>${xmlEscape(String(v ?? ''))}</${tag}>\n`;
         }
-        xml += `  </${itemElement}>\n`;
+        xml += `  </${toXmlElementName(itemElement)}>\n`;
     }
-    xml += `</${rootElement}>`;
+    xml += `</${toXmlElementName(rootElement)}>`;
     return xml;
 }

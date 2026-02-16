@@ -8,16 +8,9 @@ import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-er
 // Type Definitions
 // ============================================================================
 
-/**
- * Validation-specific OperatorConfig variant.
- * Uses `params` (not `args`) because the validation layer normalizes
- * operator arguments into a typed JsonObject for schema-based validation,
- * distinct from the runtime `args: Record<string, unknown>` in the
- * canonical OperatorConfig (shared/types/step.types.ts).
- */
 export interface OperatorConfig {
     op: string;
-    params?: JsonObject;
+    args?: Record<string, unknown>;
 }
 
 export interface TransformStepConfig {
@@ -38,9 +31,9 @@ export function isOperatorConfig(value: unknown): value is OperatorConfig {
     if (typeof cfg.op !== 'string' || cfg.op.trim() === '') {
         return false;
     }
-    // params, if present, must be an object (not array)
-    if (cfg.params !== undefined) {
-        if (typeof cfg.params !== 'object' || cfg.params === null || Array.isArray(cfg.params)) {
+    // args, if present, must be an object (not array)
+    if (cfg.args !== undefined) {
+        if (typeof cfg.args !== 'object' || cfg.args === null || Array.isArray(cfg.args)) {
             return false;
         }
     }

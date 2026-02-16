@@ -5,7 +5,7 @@
  */
 
 import { AuthType, DESTINATION_TYPE } from '../../constants/index';
-import type { DestinationType as SharedDestinationType } from '../../../shared/types';
+import type { DestinationType as SharedDestinationType, ConnectionTestResult } from '../../../shared/types';
 
 export { DESTINATION_TYPE };
 
@@ -153,11 +153,4 @@ export interface DeliveryOptions {
     metadata?: Record<string, unknown>;
 }
 
-/**
- * Connection test result
- */
-export interface ConnectionTestResult {
-    success: boolean;
-    message: string;
-    latencyMs?: number;
-}
+export type { ConnectionTestResult };

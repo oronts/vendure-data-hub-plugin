@@ -171,7 +171,7 @@ function extractPriceFields(
     let priceByCurrency: Record<string, number> | undefined;
 
     if (typeof priceRaw === 'number') {
-        priceMinor = Math.round(priceRaw);
+        priceMinor = Math.round(priceRaw * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
     } else if (typeof priceRaw === 'string') {
         const num = Number(priceRaw);
         if (!Number.isNaN(num)) {
