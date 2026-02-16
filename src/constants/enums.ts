@@ -63,6 +63,7 @@ export enum StepType {
     EXPORT = 'EXPORT',
     FEED = 'FEED',
     SINK = 'SINK',
+    GATE = 'GATE',
 }
 
 /**

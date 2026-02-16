@@ -231,6 +231,8 @@ export const TRANSFORM_OPERATOR = {
     LAST: 'last',
     /** Expand array field into multiple records */
     EXPAND: 'expand',
+    /** Join two datasets by matching key fields */
+    MULTI_JOIN: 'multiJoin',
 
     // Validation operators
     /** Validate required fields are present */
@@ -241,6 +243,14 @@ export const TRANSFORM_OPERATOR = {
     // Script operator
     /** Execute inline JavaScript code */
     SCRIPT: 'script',
+
+    // File operators
+    /** Resize images referenced in record fields */
+    IMAGE_RESIZE: 'imageResize',
+    /** Convert image format (JPEG, PNG, WebP, AVIF, GIF) */
+    IMAGE_CONVERT: 'imageConvert',
+    /** Generate PDF from HTML template with record data */
+    PDF_GENERATE: 'pdfGenerate',
 } as const;
 
 /** Transform operator type - union of all TRANSFORM_OPERATOR values */

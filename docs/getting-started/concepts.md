@@ -39,6 +39,7 @@ Steps are the building blocks of a pipeline. Each step has:
 | `VALIDATE` | Validates records against rules or schemas |
 | `ENRICH` | Adds data from external lookups |
 | `ROUTE` | Splits data flow based on conditions |
+| `GATE` | Pauses pipeline execution for human approval. Supports MANUAL, THRESHOLD, and TIMEOUT approval types |
 | `LOAD` | Creates or updates Vendure entities |
 | `EXPORT` | Sends data to external destinations |
 | `FEED` | Generates product feeds (Google, Meta, etc.) |

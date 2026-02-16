@@ -19,6 +19,7 @@ import {
     ValidateConfigComponent,
     RouteConfigComponent,
     EnrichConfigComponent,
+    GateConfigComponent,
 } from './index';
 import { TriggerForm } from '../trigger-config';
 import { OperatorCheatSheetButton } from './OperatorCheatsheet';
@@ -29,6 +30,8 @@ import {
     MultiOperatorEditor,
 } from './AdvancedEditors';
 import { StepTester } from './StepTester';
+import { RetrySettingsComponent } from './RetrySettingsComponent';
+import type { RetrySettings } from './RetrySettingsComponent';
 import { useAdapterCatalog, AdapterMetadata } from '../../../hooks';
 import { getAdapterTypeLabel, prepareDynamicFields, normalizeStepType, getAdapterTypeForStep } from '../../../utils';
 import {
@@ -480,7 +483,45 @@ export function StepConfigPanel({
             );
         }
 
+        if (stepType === STEP_TYPES.GATE) {
+            return (
+                <GateConfigComponent
+                    config={data.config}
+                    onChange={updateConfigBatch}
+                />
+            );
+        }
+
         return null;
+    };
+
+    const handleRetryChange = useCallback((retrySettings: RetrySettings | undefined) => {
+        onChange({
+            ...data,
+            config: {
+                ...data.config,
+                retryMaxRetries: retrySettings?.maxRetries,
+                retryDelayMs: retrySettings?.retryDelayMs,
+                retryBackoff: retrySettings?.backoff,
+            },
+        });
+    }, [onChange, data]);
+
+    const renderRetrySettings = () => {
+        if (stepType !== STEP_TYPES.TRANSFORM) return null;
+
+        const retrySettings: RetrySettings = {
+            maxRetries: data.config?.retryMaxRetries as number | undefined,
+            retryDelayMs: data.config?.retryDelayMs as number | undefined,
+            backoff: data.config?.retryBackoff as RetrySettings['backoff'],
+        };
+
+        return (
+            <RetrySettingsComponent
+                retrySettings={retrySettings}
+                onChange={handleRetryChange}
+            />
+        );
     };
 
     const renderStepTester = () => {
@@ -516,6 +557,7 @@ export function StepConfigPanel({
             {renderSchemaForm()}
             {renderSpecialConfigs()}
             {renderAdvancedEditors()}
+            {renderRetrySettings()}
             {renderStepTester()}
         </div>
     );

@@ -21,6 +21,7 @@ import {
     ExportExecutor,
     FeedExecutor,
     SinkExecutor,
+    GateExecutor,
 } from '../../executors';
 import { HookService } from '../../../services/events/hook.service';
 import { DomainEventsService } from '../../../services/events/domain-events.service';
@@ -41,6 +42,7 @@ import { LoadStepStrategy, LoadWithThroughputFn, ApplyIdempotencyFn } from './lo
 import { ExportStepStrategy } from './export-step.strategy';
 import { FeedStepStrategy } from './feed-step.strategy';
 import { SinkStepStrategy } from './sink-step.strategy';
+import { GateStepStrategy } from './gate-step.strategy';
 
 const logger = new Logger('DataHub:StepDispatcher');
 
@@ -54,6 +56,7 @@ export interface StepDispatcherDeps {
     exportExecutor: ExportExecutor;
     feedExecutor: FeedExecutor;
     sinkExecutor: SinkExecutor;
+    gateExecutor: GateExecutor;
     loadWithThroughput: LoadWithThroughputFn;
     applyIdempotency: ApplyIdempotencyFn;
 }
@@ -92,6 +95,7 @@ export class StepDispatcher {
     private exportStrategy: ExportStepStrategy;
     private feedStrategy: FeedStepStrategy;
     private sinkStrategy: SinkStepStrategy;
+    private gateStrategy: GateStepStrategy;
 
     constructor(deps: StepDispatcherDeps) {
         this.extractStrategy = new ExtractStepStrategy(deps.extractExecutor);
@@ -103,6 +107,7 @@ export class StepDispatcher {
         this.exportStrategy = new ExportStepStrategy(deps.exportExecutor);
         this.feedStrategy = new FeedStepStrategy(deps.feedExecutor);
         this.sinkStrategy = new SinkStepStrategy(deps.sinkExecutor);
+        this.gateStrategy = new GateStepStrategy(deps.gateExecutor);
     }
 
     /**
@@ -142,6 +147,9 @@ export class StepDispatcher {
 
             case StepType.SINK:
                 return this.executeWithStrategy(this.sinkStrategy, context, true);
+
+            case StepType.GATE:
+                return this.executeWithStrategy(this.gateStrategy, context);
 
             default:
                 return this.executeUnhandled(step, key, input);

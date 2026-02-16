@@ -23,6 +23,7 @@ import {
     ExportExecutor,
     FeedExecutor,
     SinkExecutor,
+    GateExecutor,
 } from '../executors';
 import { HookService } from '../../services/events/hook.service';
 import { DomainEventsService } from '../../services/events/domain-events.service';
@@ -44,6 +45,7 @@ import { LoadStepStrategy, LoadWithThroughputFn, ApplyIdempotencyFn } from './st
 import { ExportStepStrategy } from './step-strategies/export-step.strategy';
 import { FeedStepStrategy } from './step-strategies/feed-step.strategy';
 import { SinkStepStrategy } from './step-strategies/sink-step.strategy';
+import { GateStepStrategy } from './step-strategies/gate-step.strategy';
 
 const logger = new Logger('DataHub:LinearExecutor');
 
@@ -56,6 +58,10 @@ export interface LinearExecutionResult {
     failed: number;
     details: Array<import('../../types/index').JsonObject>;
     counters: Record<string, number>;
+    /** True when pipeline paused at a GATE step awaiting approval */
+    paused?: boolean;
+    /** The step key where the pipeline paused */
+    pausedAtStep?: string;
 }
 
 /**
@@ -73,6 +79,7 @@ export interface LinearExecutorParams {
     exportExecutor: ExportExecutor;
     feedExecutor: FeedExecutor;
     sinkExecutor: SinkExecutor;
+    gateExecutor: GateExecutor;
     loadWithThroughput: LoadWithThroughputFn;
     applyIdempotency: ApplyIdempotencyFn;
     onCancelRequested?: () => Promise<boolean>;
@@ -116,6 +123,7 @@ function buildStrategyRegistry(params: LinearExecutorParams): StepStrategyRegist
     registry.register(StepType.EXPORT, new ExportStepStrategy(params.exportExecutor));
     registry.register(StepType.FEED, new FeedStepStrategy(params.feedExecutor));
     registry.register(StepType.SINK, new SinkStepStrategy(params.sinkExecutor));
+    registry.register(StepType.GATE, new GateStepStrategy(params.gateExecutor));
 
     return registry;
 }
@@ -131,6 +139,10 @@ interface ExecutionState {
     details: Array<import('../../types/index').JsonObject>;
     counters: Record<string, number>;
     cancelled: boolean;
+    /** True when pipeline is paused at a GATE step */
+    paused: boolean;
+    /** The step key where the pipeline paused */
+    pausedAtStep?: string;
 }
 
 /**
@@ -153,6 +165,7 @@ function createInitialState(): ExecutionState {
             rejected: 0,
         },
         cancelled: false,
+        paused: false,
     };
 }
 
@@ -315,6 +328,36 @@ async function executeStep(
 }
 
 /**
+ * Check if a step result indicates the pipeline should pause (GATE step with shouldPause)
+ */
+function checkGatePause(
+    step: PipelineStepDefinition,
+    state: ExecutionState,
+    params: LinearExecutorParams,
+): boolean {
+    if (step.type !== StepType.GATE) return false;
+
+    // The most recent detail entry is the one just pushed by the GATE step
+    const lastDetail = state.details[state.details.length - 1];
+    if (lastDetail && lastDetail['shouldPause'] === true) {
+        state.paused = true;
+        state.pausedAtStep = step.key;
+
+        logger.log(`Pipeline paused at GATE step "${step.key}" - awaiting approval`);
+
+        safePublish(params.domainEvents, 'PipelinePaused', {
+            pipelineId: params.pipelineId,
+            runId: params.runId,
+            stepKey: step.key,
+            pausedAt: new Date().toISOString(),
+        }, logger);
+
+        return true;
+    }
+    return false;
+}
+
+/**
  * Main orchestration loop
  */
 async function executeSteps(
@@ -330,6 +373,11 @@ async function executeSteps(
 
         // Execute the step
         await executeStep(params, registry, step, state);
+
+        // Check if a GATE step requested a pause
+        if (checkGatePause(step, state, params)) {
+            break;
+        }
     }
 }
 
@@ -378,6 +426,8 @@ export async function executeLinear(params: LinearExecutorParams): Promise<Linea
         failed: state.failed,
         details: state.details,
         counters: state.counters,
+        paused: state.paused || undefined,
+        pausedAtStep: state.pausedAtStep,
     };
 }
 
@@ -504,8 +554,8 @@ async function executeStepWithRecovery(
     step: PipelineStepDefinition,
     state: SeededExecutionState,
 ): Promise<void> {
-    // Skip trigger and extract steps - using seed records
-    if (step.type === StepType.TRIGGER || step.type === StepType.EXTRACT) {
+    // Skip trigger, extract, and gate steps - using seed records
+    if (step.type === StepType.TRIGGER || step.type === StepType.EXTRACT || step.type === StepType.GATE) {
         return;
     }
 

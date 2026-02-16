@@ -61,6 +61,16 @@ export {
     customAdapterPipeline,
 } from './advanced-pipelines';
 
+export {
+    joinDemoPipeline,
+    parallelDemoPipeline,
+    retryDemoPipeline,
+    gateDemoPipeline,
+    cdcDemoPipeline,
+    graphqlMutationDemoPipeline,
+    fileTransformDemoPipeline,
+} from './architectural-gaps';
+
 import {
     productExportFull,
     customerExportFull,
@@ -110,6 +120,16 @@ import {
     customAdapterPipeline,
 } from './advanced-pipelines';
 
+import {
+    joinDemoPipeline,
+    parallelDemoPipeline,
+    retryDemoPipeline,
+    gateDemoPipeline,
+    cdcDemoPipeline,
+    graphqlMutationDemoPipeline,
+    fileTransformDemoPipeline,
+} from './architectural-gaps';
+
 /**
  * All example pipelines grouped by category
  */
@@ -157,6 +177,15 @@ export const examplePipelines = {
         allHookStagesPipeline,
         customAdapterPipeline,
     },
+    architecturalGaps: {
+        joinDemoPipeline,
+        parallelDemoPipeline,
+        retryDemoPipeline,
+        gateDemoPipeline,
+        cdcDemoPipeline,
+        graphqlMutationDemoPipeline,
+        fileTransformDemoPipeline,
+    },
 };
 
 /**
@@ -194,4 +223,11 @@ export const allExamplePipelines = [
     comprehensiveAdvancedPipeline,
     allHookStagesPipeline,
     customAdapterPipeline,
+    joinDemoPipeline,
+    parallelDemoPipeline,
+    retryDemoPipeline,
+    gateDemoPipeline,
+    cdcDemoPipeline,
+    graphqlMutationDemoPipeline,
+    fileTransformDemoPipeline,
 ];

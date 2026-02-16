@@ -11,6 +11,7 @@ import {
     FileSpreadsheet,
     FileJson,
     FileText,
+    DatabaseZap,
     type LucideIcon,
 } from 'lucide-react';
 
@@ -68,6 +69,7 @@ export const SOURCE_TYPE_ICONS: Record<string, LucideIcon> = {
     API: Globe,
     DATABASE: Database,
     WEBHOOK: Webhook,
+    CDC: DatabaseZap,
 };
 
 /**

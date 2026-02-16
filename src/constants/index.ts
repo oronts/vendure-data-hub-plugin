@@ -98,9 +98,6 @@ export {
 export type { WeightUnit, LengthUnit, VolumeUnit } from './units';
 
 export {
-    SEARCH_SERVICE_PORTS,
-    SEARCH_SERVICE_ENV_VARS,
-    getSearchServiceUrl,
     SEARCH_SERVICE_URLS,
     EXAMPLE_URLS,
     SERVICE_DEFAULTS,
@@ -129,8 +126,8 @@ export {
 } from './validation';
 export type { MatchConfidence, ValidationErrorCode } from './validation';
 
-export { EXTRACTOR_CODE, LOADER_CODE, EXPORTER_CODE } from './adapters';
-export type { ExtractorCode, LoaderCode, ExporterCode } from './adapters';
+export { EXTRACTOR_CODE, LOADER_CODE, EXPORTER_CODE, FEED_CODE } from './adapters';
+export type { ExtractorCode, LoaderCode, ExporterCode, FeedCode } from './adapters';
 
 // Export patterns as the canonical source for all regex patterns
 export {

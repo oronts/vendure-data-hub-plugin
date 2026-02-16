@@ -41,7 +41,7 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
     });
 
     pipeline.validate('validate-facets', {
-        mode: 'ACCUMULATE',
+        errorHandlingMode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'key', required: true, error: 'Facet key required' } },
         ],

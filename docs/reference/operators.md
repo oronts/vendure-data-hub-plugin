@@ -914,6 +914,137 @@ Compute aggregates over records.
 { op: 'aggregate', args: { op: 'max', source: 'price', target: 'highestPrice' } }
 ```
 
+### multiJoin
+
+Merge records from two datasets by matching on key fields. Supports INNER, LEFT, RIGHT, and FULL join types with optional prefix and field selection.
+
+| Arg | Type | Required | Description |
+|-----|------|----------|-------------|
+| `leftKey` | string | Yes | Key field path in the current (left) dataset |
+| `rightKey` | string | Yes | Key field path in the right dataset |
+| `rightDataPath` | string | Yes | JSON path to the right dataset (e.g., `$.steps.prices.output`) |
+| `type` | select | No | Join type: `INNER`, `LEFT`, `RIGHT`, `FULL` (default: `INNER`) |
+| `prefix` | string | No | Prefix for joined fields from right dataset (e.g., `price_`) |
+| `select` | array | No | Specific fields to include from the right dataset. If omitted, all fields are included |
+
+```typescript
+// Inner join products with prices by product ID
+{ op: 'multiJoin', args: {
+    leftKey: 'productId',
+    rightKey: 'id',
+    rightDataPath: '$.steps.prices.output',
+    type: 'INNER',
+} }
+
+// Left join with prefix to avoid field name collisions
+{ op: 'multiJoin', args: {
+    leftKey: 'sku',
+    rightKey: 'sku',
+    rightDataPath: '$.steps.inventory.output',
+    type: 'LEFT',
+    prefix: 'inv_',
+} }
+
+// Join with specific fields from right dataset
+{ op: 'multiJoin', args: {
+    leftKey: 'id',
+    rightKey: 'productId',
+    rightDataPath: '$.steps.reviews.output',
+    type: 'LEFT',
+    select: ['rating', 'reviewCount'],
+} }
+```
+
+---
+
+## File Operators
+
+### imageResize
+
+Resize base64-encoded images using sharp. Supports width, height, fit modes, output format, and quality settings.
+
+| Arg | Type | Required | Description |
+|-----|------|----------|-------------|
+| `sourceField` | string | Yes | Field path containing the base64-encoded image |
+| `targetField` | string | No | Target field path (defaults to source) |
+| `width` | number | No | Target width in pixels |
+| `height` | number | No | Target height in pixels |
+| `fit` | select | No | Resize fit mode: `cover`, `contain`, `fill`, `inside`, `outside` (default: `cover`) |
+| `format` | select | No | Output format: `jpeg`, `png`, `webp`, `avif` |
+| `quality` | number | No | Output quality (1-100). Default varies by format |
+
+```typescript
+// Resize to specific dimensions
+{ op: 'imageResize', args: { sourceField: 'photo', width: 800, height: 600, fit: 'cover' } }
+
+// Resize and convert to WebP
+{ op: 'imageResize', args: { sourceField: 'image', width: 400, format: 'webp', quality: 85 } }
+
+// Resize to fit within bounds
+{ op: 'imageResize', args: { sourceField: 'banner', targetField: 'thumbnail', width: 200, height: 200, fit: 'inside' } }
+```
+
+**Note**: Requires the `sharp` package to be installed.
+
+### imageConvert
+
+Convert image format (JPEG, PNG, WebP, AVIF, GIF). Reads a base64-encoded image and re-encodes it in the target format.
+
+| Arg | Type | Required | Description |
+|-----|------|----------|-------------|
+| `sourceField` | string | Yes | Field path containing the base64-encoded image |
+| `targetField` | string | No | Target field path (defaults to source) |
+| `format` | select | Yes | Target format: `jpeg`, `png`, `webp`, `avif`, `gif` |
+| `quality` | number | No | Output quality (1-100). Default varies by format |
+
+```typescript
+// Convert to WebP for smaller file sizes
+{ op: 'imageConvert', args: { sourceField: 'image', format: 'webp', quality: 90 } }
+
+// Convert to JPEG with quality setting
+{ op: 'imageConvert', args: { sourceField: 'photo', targetField: 'jpegPhoto', format: 'jpeg', quality: 80 } }
+
+// Convert to AVIF for modern browsers
+{ op: 'imageConvert', args: { sourceField: 'image', format: 'avif', quality: 75 } }
+```
+
+**Note**: Requires the `sharp` package to be installed.
+
+### pdfGenerate
+
+Generate a PDF document from an HTML template with `{{field}}` placeholders using pdf-lib. Each record produces a base64-encoded PDF stored in the target field. You can provide the template as a static string (`template`) or read it from a record field (`templateField`).
+
+| Arg | Type | Required | Description |
+|-----|------|----------|-------------|
+| `template` | string | No | Static HTML template with `{{field}}` placeholders (use this or `templateField`) |
+| `templateField` | string | No | Record field containing the HTML template (use this or `template`) |
+| `targetField` | string | Yes | Field path to store the generated base64-encoded PDF |
+| `pageSize` | select | No | Page size: `A4`, `LETTER`, `A3` (default: `A4`) |
+| `orientation` | select | No | Page orientation: `PORTRAIT`, `LANDSCAPE` (default: `PORTRAIT`) |
+
+```typescript
+// Generate a simple invoice PDF
+{ op: 'pdfGenerate', args: {
+    template: '<h1>Invoice #{{invoiceNumber}}</h1><p>Customer: {{customerName}}</p><p>Total: {{total}}</p>',
+    targetField: 'invoice_pdf',
+} }
+
+// Generate a product label in landscape
+{ op: 'pdfGenerate', args: {
+    template: '<h2>{{name}}</h2><p>SKU: {{sku}}</p><p>{{description}}</p>',
+    targetField: 'label_pdf',
+    pageSize: 'LETTER',
+    orientation: 'LANDSCAPE',
+} }
+
+// Use a template stored in a record field
+{ op: 'pdfGenerate', args: {
+    templateField: 'htmlTemplate',
+    targetField: 'document_pdf',
+    pageSize: 'A3',
+} }
+```
+
 ---
 
 ## Validation Operators
@@ -1038,6 +1169,7 @@ The code receives `records` array and `context`. Return the modified array.
 | Logic (4) | `when`, `ifThenElse`, `switch`, `deltaFilter` |
 | JSON (4) | `pick`, `omit`, `parseJson`, `stringifyJson` |
 | Enrichment (5) | `lookup`, `enrich`, `coalesce`, `default`, `httpLookup` |
-| Aggregation (7) | `aggregate`, `count`, `unique`, `flatten`, `first`, `last`, `expand` |
+| Aggregation (8) | `aggregate`, `multiJoin`, `count`, `unique`, `flatten`, `first`, `last`, `expand` |
+| File (3) | `imageResize`, `imageConvert`, `pdfGenerate` |
 | Validation (2) | `validateRequired`, `validateFormat` |
 | Advanced (1) | `script` |

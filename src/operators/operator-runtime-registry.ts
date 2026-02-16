@@ -3,6 +3,7 @@
  */
 
 import { OperatorAdapter, AdapterOperatorHelpers, AdapterDefinition } from '../sdk/types';
+import { DataHubRegistryService } from '../sdk/registry.service';
 import { JsonObject } from '../types';
 
 import {
@@ -61,9 +62,10 @@ import {
 import {
     aggregateOperator, countOperator, uniqueOperator, flattenOperator,
     firstOperator, lastOperator, expandOperator,
+    multiJoinOperator,
     AGGREGATE_OPERATOR_DEFINITION, COUNT_OPERATOR_DEFINITION, UNIQUE_OPERATOR_DEFINITION,
     FLATTEN_OPERATOR_DEFINITION, FIRST_OPERATOR_DEFINITION, LAST_OPERATOR_DEFINITION,
-    EXPAND_OPERATOR_DEFINITION,
+    EXPAND_OPERATOR_DEFINITION, MULTI_JOIN_OPERATOR_DEFINITION,
 } from './aggregation';
 
 import {
@@ -74,6 +76,12 @@ import {
 import {
     scriptOperator, SCRIPT_OPERATOR_DEFINITION,
 } from './script';
+
+import {
+    imageResizeOperator, IMAGE_RESIZE_OPERATOR_DEFINITION,
+    imageConvertOperator, IMAGE_CONVERT_OPERATOR_DEFINITION,
+    pdfGenerateOperator, PDF_GENERATE_OPERATOR_DEFINITION,
+} from './file';
 
 import { OperatorResult } from './types';
 
@@ -179,6 +187,7 @@ const OPERATOR_REGISTRY: Record<string, OperatorRegistryEntry> = {
     first: { definition: FIRST_OPERATOR_DEFINITION, fn: op(firstOperator) },
     last: { definition: LAST_OPERATOR_DEFINITION, fn: op(lastOperator) },
     expand: { definition: EXPAND_OPERATOR_DEFINITION, fn: op(expandOperator) },
+    multiJoin: { definition: MULTI_JOIN_OPERATOR_DEFINITION, fn: op(multiJoinOperator) },
 
     // Validation
     validateRequired: { definition: VALIDATE_REQUIRED_OPERATOR_DEFINITION, fn: op(validateRequiredOperator) },
@@ -186,6 +195,11 @@ const OPERATOR_REGISTRY: Record<string, OperatorRegistryEntry> = {
 
     // Advanced/Script
     script: { definition: SCRIPT_OPERATOR_DEFINITION, fn: op(scriptOperator) },
+
+    // File
+    imageResize: { definition: IMAGE_RESIZE_OPERATOR_DEFINITION, fn: op(imageResizeOperator) },
+    imageConvert: { definition: IMAGE_CONVERT_OPERATOR_DEFINITION, fn: op(imageConvertOperator) },
+    pdfGenerate: { definition: PDF_GENERATE_OPERATOR_DEFINITION, fn: op(pdfGenerateOperator) },
 };
 
 function convertToSdkResult(result: OperatorResult): import('../sdk/types').OperatorResult {
@@ -239,6 +253,18 @@ export function getOperatorRuntime(code: string): OperatorAdapter | undefined {
     const entry = OPERATOR_REGISTRY[code];
     if (!entry) return undefined;
     return createOperatorAdapter(entry);
+}
+
+export function getCustomOperatorRuntime(
+    registry: DataHubRegistryService | undefined,
+    code: string,
+): OperatorAdapter | undefined {
+    if (!registry) return undefined;
+    const adapter = registry.getRuntime('OPERATOR', code);
+    if (adapter && 'apply' in adapter) {
+        return adapter as OperatorAdapter;
+    }
+    return undefined;
 }
 
 export function hasOperator(code: string): boolean {

@@ -195,6 +195,32 @@ export interface CryptoHelpers {
 }
 
 /**
+ * Join type for multi-source join operations.
+ */
+export type JoinType = 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
+
+/**
+ * Configuration for the multi-source join operator.
+ * Merges records from two datasets by matching on key fields.
+ */
+export interface JoinOperatorConfig extends BaseOperatorConfig {
+    /** Field path in left (primary) records to join on */
+    leftKey: string;
+    /** Field path in right records to join on */
+    rightKey: string;
+    /** Static right-side dataset provided inline */
+    rightData?: JsonObject[];
+    /** Dot-path to right-side data from pipeline context */
+    rightDataPath?: string;
+    /** Join type (default: LEFT) */
+    type?: JoinType;
+    /** Prefix for right-side field names to avoid collisions */
+    prefix?: string;
+    /** Which right-side fields to include (default: all) */
+    select?: string[];
+}
+
+/**
  * Helper utilities provided to operators during execution
  */
 export interface OperatorHelpers {

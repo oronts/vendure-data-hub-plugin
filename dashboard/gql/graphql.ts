@@ -21,7 +21,7 @@ export type Scalars = {
   /** The `Money` scalar type represents monetary values and supports signed double-precision fractional values as specified by [IEEE 754](https://en.wikipedia.org/wiki/IEEE_floating_point). */
   Money: { input: number; output: number; }
   /** The `Upload` scalar type represents a file upload. */
-  Upload: { input: any; output: any; }
+  Upload: { input: File; output: File; }
 };
 
 export type AddFulfillmentToOrderResult = CreateFulfillmentError | EmptyOrderLineSelectionError | Fulfillment | FulfillmentStateTransitionError | InsufficientStockOnHandError | InvalidFulfillmentHandlerError | ItemsAlreadyFulfilledError;
@@ -842,11 +842,17 @@ export type CreateDataHubJobInput = {
   type?: InputMaybe<DataHubJobType>;
 };
 
+/** Input for creating a new pipeline */
 export type CreateDataHubPipelineInput = {
+  /** Unique identifier for webhook/API access (lowercase alphanumeric with hyphens) */
   code: Scalars['String']['input'];
+  /** Pipeline definition: { version: number, steps: Step[], edges?: Edge[], trigger?: Trigger } */
   definition: Scalars['JSON']['input'];
+  /** Whether the pipeline can be triggered (default: true) */
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
+  /** Human-readable pipeline name */
   name: Scalars['String']['input'];
+  /** Schema version for definition format (default: 1) */
   version?: InputMaybe<Scalars['Int']['input']>;
 };
 
@@ -1671,9 +1677,11 @@ export type DataHubAutoMapperScoringWeightsInput = {
   typeCompatibility?: InputMaybe<Scalars['Float']['input']>;
 };
 
+/** Persistent checkpoint for resumable pipeline execution */
 export type DataHubCheckpoint = Node & {
   __typename?: 'DataHubCheckpoint';
   createdAt: Scalars['DateTime']['output'];
+  /** Checkpoint state data: { cursor, lastId, processedCount, customState } */
   data: Scalars['JSON']['output'];
   id: Scalars['ID']['output'];
   pipeline: DataHubPipeline;
@@ -1681,9 +1689,9 @@ export type DataHubCheckpoint = Node & {
 };
 
 export enum DataHubConfidenceLevel {
-  high = 'high',
-  low = 'low',
-  medium = 'medium'
+  HIGH = 'HIGH',
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM'
 }
 
 export type DataHubConnection = Node & {
@@ -1766,12 +1774,14 @@ export type DataHubDestinationTestResult = {
 
 /** Export Destinations API - S3, SFTP, HTTP, etc. */
 export enum DataHubDestinationType {
-  email = 'email',
-  ftp = 'ftp',
-  http = 'http',
-  local = 'local',
-  s3 = 's3',
-  sftp = 'sftp'
+  DOWNLOAD = 'DOWNLOAD',
+  EMAIL = 'EMAIL',
+  FTP = 'FTP',
+  GCS = 'GCS',
+  HTTP = 'HTTP',
+  LOCAL = 'LOCAL',
+  S3 = 'S3',
+  SFTP = 'SFTP'
 }
 
 /** Diff entry showing a single change between revisions */
@@ -1790,12 +1800,12 @@ export type DataHubDiffEntry = {
 };
 
 export enum DataHubDiffType {
-  config = 'config',
-  edge = 'edge',
-  hook = 'hook',
-  meta = 'meta',
-  step = 'step',
-  trigger = 'trigger'
+  CONFIG = 'CONFIG',
+  EDGE = 'EDGE',
+  HOOK = 'HOOK',
+  META = 'META',
+  STEP = 'STEP',
+  TRIGGER = 'TRIGGER'
 }
 
 export type DataHubDryRunError = {
@@ -1811,17 +1821,25 @@ export type DataHubDryRunRecord = {
   success: Scalars['Boolean']['output'];
 };
 
+/** Result of a dry run execution */
 export type DataHubDryRunResult = {
   __typename?: 'DataHubDryRunResult';
+  /** Execution metrics: { recordsProcessed, duration, stepMetrics } */
   metrics: Scalars['JSON']['output'];
+  /** Informational notes about the dry run */
   notes: Array<Scalars['String']['output']>;
+  /** Sample records showing transformation at each step */
   sampleRecords?: Maybe<Array<DataHubDryRunSampleRecord>>;
 };
 
+/** Sample record transformation for dry run preview */
 export type DataHubDryRunSampleRecord = {
   __typename?: 'DataHubDryRunSampleRecord';
+  /** Record state after this step */
   after: Scalars['JSON']['output'];
+  /** Record state before this step */
   before: Scalars['JSON']['output'];
+  /** Step key where transformation occurred */
   step: Scalars['String']['output'];
 };
 
@@ -1885,9 +1903,9 @@ export type DataHubErrorAnalytics = {
 };
 
 export enum DataHubEstimateBasis {
-  estimate = 'estimate',
-  historical = 'historical',
-  sampling = 'sampling'
+  ESTIMATE = 'ESTIMATE',
+  HISTORICAL = 'HISTORICAL',
+  SAMPLING = 'SAMPLING'
 }
 
 export type DataHubEvent = {
@@ -1968,14 +1986,14 @@ export type DataHubExtractor = {
 
 /** Extractor API - List and inspect data extractors */
 export enum DataHubExtractorCategory {
-  api = 'api',
-  cloud_storage = 'cloud_storage',
-  custom = 'custom',
-  data_source = 'data_source',
-  database = 'database',
-  file_system = 'file_system',
-  vendure = 'vendure',
-  webhook = 'webhook'
+  API = 'API',
+  CLOUD_STORAGE = 'CLOUD_STORAGE',
+  CUSTOM = 'CUSTOM',
+  DATABASE = 'DATABASE',
+  DATA_SOURCE = 'DATA_SOURCE',
+  FILE_SYSTEM = 'FILE_SYSTEM',
+  VENDURE = 'VENDURE',
+  WEBHOOK = 'WEBHOOK'
 }
 
 export type DataHubExtractorConfigField = {
@@ -2013,24 +2031,32 @@ export type DataHubExtractorsByCategory = {
 };
 
 /** Feeds API - Export feeds for Google Shopping, Facebook, etc. */
-export type DataHubFeed = {
+export type DataHubFeed = Node & {
   __typename?: 'DataHubFeed';
   channelToken?: Maybe<Scalars['String']['output']>;
   code: Scalars['String']['output'];
+  createdAt: Scalars['DateTime']['output'];
   fieldMappings?: Maybe<Scalars['JSON']['output']>;
   filters?: Maybe<Scalars['JSON']['output']>;
   format: DataHubFeedFormat;
+  id: Scalars['ID']['output'];
   name: Scalars['String']['output'];
   options?: Maybe<Scalars['JSON']['output']>;
   schedule?: Maybe<DataHubFeedSchedule>;
+  updatedAt: Scalars['DateTime']['output'];
 };
 
 export enum DataHubFeedFormat {
-  csv = 'csv',
-  facebook_catalog = 'facebook_catalog',
-  google_shopping = 'google_shopping',
-  json = 'json',
-  xml = 'xml'
+  AMAZON = 'AMAZON',
+  BING_SHOPPING = 'BING_SHOPPING',
+  CSV = 'CSV',
+  CUSTOM = 'CUSTOM',
+  GOOGLE_SHOPPING = 'GOOGLE_SHOPPING',
+  JSON = 'JSON',
+  META_CATALOG = 'META_CATALOG',
+  PINTEREST = 'PINTEREST',
+  TIKTOK = 'TIKTOK',
+  XML = 'XML'
 }
 
 export type DataHubFeedFormatInfo = {
@@ -2090,10 +2116,10 @@ export type DataHubFieldChangePreview = {
 };
 
 export enum DataHubFieldChangeType {
-  remove = 'remove',
-  set = 'set',
-  transform = 'transform',
-  update = 'update'
+  REMOVE = 'REMOVE',
+  SET = 'SET',
+  TRANSFORM = 'TRANSFORM',
+  UPDATE = 'UPDATE'
 }
 
 export type DataHubFieldDependency = {
@@ -2144,6 +2170,17 @@ export type DataHubFormatConversionResult = {
   success: Scalars['Boolean']['output'];
 };
 
+/** Result of a gate approval or rejection action */
+export type DataHubGateActionResult = {
+  __typename?: 'DataHubGateActionResult';
+  /** Error message if the action failed */
+  message?: Maybe<Scalars['String']['output']>;
+  /** The updated pipeline run after the gate action */
+  run?: Maybe<DataHubPipelineRun>;
+  /** Whether the action was successful */
+  success: Scalars['Boolean']['output'];
+};
+
 /** Complete impact analysis result */
 export type DataHubImpactAnalysis = {
   __typename?: 'DataHubImpactAnalysis';
@@ -2189,7 +2226,7 @@ export type DataHubJob = Node & {
   enabled: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
   lastRunAt?: Maybe<Scalars['DateTime']['output']>;
-  lastRunStatus?: Maybe<Scalars['String']['output']>;
+  lastRunStatus?: Maybe<DataHubJobRunStatus>;
   name: Scalars['String']['output'];
   publishedAt?: Maybe<Scalars['DateTime']['output']>;
   publishedByUserId?: Maybe<Scalars['String']['output']>;
@@ -2341,7 +2378,6 @@ export type DataHubJobSortParameter = {
   description?: InputMaybe<SortOrder>;
   id?: InputMaybe<SortOrder>;
   lastRunAt?: InputMaybe<SortOrder>;
-  lastRunStatus?: InputMaybe<SortOrder>;
   name?: InputMaybe<SortOrder>;
   publishedAt?: InputMaybe<SortOrder>;
   publishedByUserId?: InputMaybe<SortOrder>;
@@ -2412,19 +2448,19 @@ export type DataHubLoaderField = {
 
 /** Supported field types for loader entity schemas */
 export enum DataHubLoaderFieldType {
-  array = 'array',
-  asset = 'asset',
-  boolean = 'boolean',
-  date = 'date',
-  enum = 'enum',
-  id = 'id',
-  json = 'json',
-  localized_string = 'localized_string',
-  money = 'money',
-  number = 'number',
-  object = 'object',
-  relation = 'relation',
-  string = 'string'
+  ARRAY = 'ARRAY',
+  ASSET = 'ASSET',
+  BOOLEAN = 'BOOLEAN',
+  DATE = 'DATE',
+  ENUM = 'ENUM',
+  ID = 'ID',
+  JSON = 'JSON',
+  LOCALIZED_STRING = 'LOCALIZED_STRING',
+  MONEY = 'MONEY',
+  NUMBER = 'NUMBER',
+  OBJECT = 'OBJECT',
+  RELATION = 'RELATION',
+  STRING = 'STRING'
 }
 
 /** Validation rules for a loader entity field */
@@ -2547,18 +2583,29 @@ export type DataHubOption = {
   value: Scalars['String']['output'];
 };
 
+/** A data pipeline configuration defining steps, triggers, and execution flow */
 export type DataHubPipeline = Node & {
   __typename?: 'DataHubPipeline';
+  /** Unique identifier for webhook/API access */
   code: Scalars['String']['output'];
   createdAt: Scalars['DateTime']['output'];
+  /**
+   * Pipeline definition containing steps, edges, triggers, and context.
+   * Structure: { version: number, steps: Step[], edges?: Edge[], trigger?: Trigger, context?: Record<string, any> }
+   */
   definition: Scalars['JSON']['output'];
+  /** Whether the pipeline can be triggered */
   enabled: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
+  /** Human-readable pipeline name */
   name: Scalars['String']['output'];
+  /** When the pipeline was last published */
   publishedAt?: Maybe<Scalars['DateTime']['output']>;
+  /** User ID who published the pipeline */
   publishedByUserId?: Maybe<Scalars['String']['output']>;
-  status: Scalars['String']['output'];
+  status: DataHubPipelineStatus;
   updatedAt: Scalars['DateTime']['output'];
+  /** Schema version for definition format */
   version: Scalars['Int']['output'];
 };
 
@@ -2590,10 +2637,15 @@ export type DataHubPipelineList = PaginatedList & {
 };
 
 export type DataHubPipelineListOptions = {
+  /** Filter configuration for field-based filtering */
   filter?: InputMaybe<Scalars['JSON']['input']>;
+  /** Logical operator for combining filters */
   filterOperator?: InputMaybe<LogicalOperator>;
+  /** Number of items to skip */
   skip?: InputMaybe<Scalars['Int']['input']>;
+  /** Sort configuration: { field: 'asc' | 'desc' } */
   sort?: InputMaybe<Scalars['JSON']['input']>;
+  /** Number of items to return */
   take?: InputMaybe<Scalars['Int']['input']>;
 };
 
@@ -2615,17 +2667,21 @@ export type DataHubPipelinePerformance = {
   totalRecordsProcessed: Scalars['Int']['output'];
 };
 
+/** Historical snapshot of a pipeline definition for version control */
 export type DataHubPipelineRevision = Node & {
   __typename?: 'DataHubPipelineRevision';
+  /** User ID who created this revision */
   authorUserId?: Maybe<Scalars['String']['output']>;
   createdAt: Scalars['DateTime']['output'];
+  /** Complete pipeline definition at this revision */
   definition: Scalars['JSON']['output'];
   id: Scalars['ID']['output'];
   updatedAt: Scalars['DateTime']['output'];
+  /** Revision version number */
   version: Scalars['Int']['output'];
 };
 
-/** Enhanced pipeline revision with versioning metadata */
+/** Pipeline revision with author, commit message, and change tracking */
 export type DataHubPipelineRevisionExtended = Node & {
   __typename?: 'DataHubPipelineRevisionExtended';
   /** Display name of the author */
@@ -2650,18 +2706,25 @@ export type DataHubPipelineRevisionExtended = Node & {
   version: Scalars['Int']['output'];
 };
 
+/** A single execution instance of a pipeline */
 export type DataHubPipelineRun = Node & {
   __typename?: 'DataHubPipelineRun';
+  /** Checkpoint data for resumable pipelines: { lastProcessedId, cursor, state } */
   checkpoint?: Maybe<Scalars['JSON']['output']>;
   createdAt: Scalars['DateTime']['output'];
+  /** Error message if run failed */
   error?: Maybe<Scalars['String']['output']>;
   finishedAt?: Maybe<Scalars['DateTime']['output']>;
   id: Scalars['ID']['output'];
+  /** Execution metrics: { recordsProcessed, recordsFailed, stepMetrics, duration, etc. } */
   metrics?: Maybe<Scalars['JSON']['output']>;
   pipeline: DataHubPipeline;
   startedAt?: Maybe<Scalars['DateTime']['output']>;
+  /** User ID who started the run (null for automated triggers) */
   startedByUserId?: Maybe<Scalars['String']['output']>;
   status: DataHubRunStatus;
+  /** Trigger source identifier (e.g., 'manual', 'webhook:key', 'schedule:key', 'event:key') */
+  triggeredBy?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['DateTime']['output'];
 };
 
@@ -2675,6 +2738,7 @@ export type DataHubPipelineRunFilterParameter = {
   startedAt?: InputMaybe<DateOperators>;
   startedByUserId?: InputMaybe<StringOperators>;
   status?: InputMaybe<StringOperators>;
+  triggeredBy?: InputMaybe<StringOperators>;
   updatedAt?: InputMaybe<DateOperators>;
 };
 
@@ -2704,6 +2768,7 @@ export type DataHubPipelineRunSortParameter = {
   id?: InputMaybe<SortOrder>;
   startedAt?: InputMaybe<SortOrder>;
   startedByUserId?: InputMaybe<SortOrder>;
+  triggeredBy?: InputMaybe<SortOrder>;
   updatedAt?: InputMaybe<SortOrder>;
 };
 
@@ -2730,10 +2795,21 @@ export type DataHubPipelineSortParameter = {
   name?: InputMaybe<SortOrder>;
   publishedAt?: InputMaybe<SortOrder>;
   publishedByUserId?: InputMaybe<SortOrder>;
-  status?: InputMaybe<SortOrder>;
   updatedAt?: InputMaybe<SortOrder>;
   version?: InputMaybe<SortOrder>;
 };
+
+/** Pipeline lifecycle status for workflow management */
+export enum DataHubPipelineStatus {
+  /** Pipeline is deactivated but preserved for history */
+  ARCHIVED = 'ARCHIVED',
+  /** Initial state - pipeline is being designed */
+  DRAFT = 'DRAFT',
+  /** Pipeline is live and can be triggered */
+  PUBLISHED = 'PUBLISHED',
+  /** Pipeline submitted for review before publishing */
+  REVIEW = 'REVIEW'
+}
 
 export type DataHubPreviewField = {
   __typename?: 'DataHubPreviewField';
@@ -2804,39 +2880,48 @@ export type DataHubRecordDetail = {
   warnings: Array<Scalars['String']['output']>;
 };
 
+/** A record that failed processing during pipeline execution */
 export type DataHubRecordError = Node & {
   __typename?: 'DataHubRecordError';
   createdAt: Scalars['DateTime']['output'];
   id: Scalars['ID']['output'];
+  /** Error message description */
   message: Scalars['String']['output'];
+  /** The record data that failed to process */
   payload: Scalars['JSON']['output'];
   run: DataHubPipelineRun;
+  /** The step key where the error occurred */
   stepKey: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
 };
 
 export enum DataHubRecordOperation {
-  create = 'create',
-  delete = 'delete',
-  skip = 'skip',
-  update = 'update'
+  CREATE = 'CREATE',
+  DELETE = 'DELETE',
+  SKIP = 'SKIP',
+  UPDATE = 'UPDATE'
 }
 
 export enum DataHubRecordOutcome {
-  error = 'error',
-  filtered = 'filtered',
-  success = 'success'
+  ERROR = 'ERROR',
+  FILTERED = 'FILTERED',
+  SUCCESS = 'SUCCESS'
 }
 
+/** Audit trail for retry attempts on failed records */
 export type DataHubRecordRetryAudit = Node & {
   __typename?: 'DataHubRecordRetryAudit';
   createdAt: Scalars['DateTime']['output'];
   error: DataHubRecordError;
   id: Scalars['ID']['output'];
+  /** JSON Patch operations applied */
   patch: Scalars['JSON']['output'];
+  /** Record state before the retry patch */
   previousPayload: Scalars['JSON']['output'];
+  /** Record state after applying the patch */
   resultingPayload: Scalars['JSON']['output'];
   updatedAt: Scalars['DateTime']['output'];
+  /** User ID who performed the retry */
   userId?: Maybe<Scalars['ID']['output']>;
 };
 
@@ -2898,16 +2983,16 @@ export type DataHubRiskAssessment = {
 };
 
 export enum DataHubRiskLevel {
-  critical = 'critical',
-  high = 'high',
-  low = 'low',
-  medium = 'medium'
+  CRITICAL = 'CRITICAL',
+  HIGH = 'HIGH',
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM'
 }
 
 export enum DataHubRiskSeverity {
-  danger = 'danger',
-  info = 'info',
-  warning = 'warning'
+  DANGER = 'DANGER',
+  INFO = 'INFO',
+  WARNING = 'WARNING'
 }
 
 /** Risk warning with details */
@@ -2922,18 +3007,31 @@ export type DataHubRiskWarning = {
 };
 
 export enum DataHubRunOutcome {
-  failed = 'failed',
-  partial = 'partial',
-  success = 'success'
+  FAILED = 'FAILED',
+  PARTIAL = 'PARTIAL',
+  SUCCESS = 'SUCCESS'
 }
 
+/** Pipeline run execution status */
 export enum DataHubRunStatus {
+  /** Run was cancelled */
   CANCELLED = 'CANCELLED',
+  /** Cancellation requested, awaiting confirmation */
   CANCEL_REQUESTED = 'CANCEL_REQUESTED',
+  /** Run finished successfully */
   COMPLETED = 'COMPLETED',
+  /** Run failed with error */
   FAILED = 'FAILED',
+  /** Run paused (resumable) */
+  PAUSED = 'PAUSED',
+  /** Run created but not yet started */
   PENDING = 'PENDING',
-  RUNNING = 'RUNNING'
+  /** Run queued for execution */
+  QUEUED = 'QUEUED',
+  /** Run currently executing */
+  RUNNING = 'RUNNING',
+  /** Run exceeded time limit */
+  TIMEOUT = 'TIMEOUT'
 }
 
 /** Flow of a record through the pipeline */
@@ -3015,11 +3113,11 @@ export type DataHubSandboxError = {
 
 /** Type of field change detected in sandbox diff */
 export enum DataHubSandboxFieldChangeType {
-  added = 'added',
-  modified = 'modified',
-  removed = 'removed',
-  type_changed = 'type_changed',
-  unchanged = 'unchanged'
+  ADDED = 'ADDED',
+  MODIFIED = 'MODIFIED',
+  REMOVED = 'REMOVED',
+  TYPE_CHANGED = 'TYPE_CHANGED',
+  UNCHANGED = 'UNCHANGED'
 }
 
 /** Field-level diff showing exactly what changed */
@@ -3139,10 +3237,10 @@ export type DataHubSandboxRecordLineage = {
 
 /** Outcome of a record transformation in sandbox */
 export enum DataHubSandboxRecordOutcome {
-  error = 'error',
-  filtered = 'filtered',
-  transformed = 'transformed',
-  unchanged = 'unchanged'
+  ERROR = 'ERROR',
+  FILTERED = 'FILTERED',
+  SUCCESS = 'SUCCESS',
+  UNCHANGED = 'UNCHANGED'
 }
 
 /** Sample record showing before/after state with diffs */
@@ -3204,9 +3302,9 @@ export type DataHubSandboxResult = {
 
 /** Overall status of sandbox execution */
 export enum DataHubSandboxStatus {
-  error = 'error',
-  success = 'success',
-  warning = 'warning'
+  ERROR = 'ERROR',
+  SUCCESS = 'SUCCESS',
+  WARNING = 'WARNING'
 }
 
 /** Comparison of a single step between two runs */
@@ -3261,10 +3359,10 @@ export type DataHubSandboxStepResult = {
 
 /** Status of a step execution in sandbox */
 export enum DataHubSandboxStepStatus {
-  error = 'error',
-  skipped = 'skipped',
-  success = 'success',
-  warning = 'warning'
+  ERROR = 'ERROR',
+  SKIPPED = 'SKIPPED',
+  SUCCESS = 'SUCCESS',
+  WARNING = 'WARNING'
 }
 
 /** Validation issue found during sandbox processing */
@@ -3288,8 +3386,8 @@ export type DataHubSandboxValidationIssue = {
 
 /** Severity of validation issues in sandbox */
 export enum DataHubSandboxValidationSeverity {
-  error = 'error',
-  warning = 'warning'
+  ERROR = 'ERROR',
+  WARNING = 'WARNING'
 }
 
 /** Warning collected during sandbox execution */
@@ -3453,12 +3551,12 @@ export type DataHubStorageStats = {
 };
 
 /** File Storage API - Upload and manage files */
-export type DataHubStoredFile = {
+export type DataHubStoredFile = Node & {
   __typename?: 'DataHubStoredFile';
   downloadUrl: Scalars['String']['output'];
   expiresAt?: Maybe<Scalars['DateTime']['output']>;
   hash: Scalars['String']['output'];
-  id: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
   mimeType: Scalars['String']['output'];
   originalName: Scalars['String']['output'];
   previewUrl: Scalars['String']['output'];
@@ -3466,7 +3564,7 @@ export type DataHubStoredFile = {
   uploadedAt: Scalars['DateTime']['output'];
 };
 
-export type DataHubStoredFileList = {
+export type DataHubStoredFileList = PaginatedList & {
   __typename?: 'DataHubStoredFileList';
   items: Array<DataHubStoredFile>;
   totalItems: Scalars['Int']['output'];
@@ -3541,20 +3639,31 @@ export type DataHubValidateResult = {
   summary: DataHubValidationSummary;
 };
 
+/** A validation issue found in pipeline definition */
 export type DataHubValidationIssue = {
   __typename?: 'DataHubValidationIssue';
+  /** Specific field that caused the issue */
   field?: Maybe<Scalars['String']['output']>;
+  /** Human-readable issue description */
   message: Scalars['String']['output'];
+  /** Technical reason code for the issue */
   reason?: Maybe<Scalars['String']['output']>;
+  /** Step key where issue was found (if applicable) */
   stepKey?: Maybe<Scalars['String']['output']>;
 };
 
+/** Result of pipeline definition validation */
 export type DataHubValidationResult = {
   __typename?: 'DataHubValidationResult';
+  /** List of error messages (deprecated, use issues) */
   errors: Array<Scalars['String']['output']>;
+  /** Whether the definition passed validation */
   isValid: Scalars['Boolean']['output'];
+  /** Detailed validation issues */
   issues: Array<DataHubValidationIssue>;
+  /** Validation level used: SYNTAX | SEMANTIC | FULL */
   level?: Maybe<Scalars['String']['output']>;
+  /** Non-blocking warnings */
   warnings?: Maybe<Array<DataHubValidationIssue>>;
 };
 
@@ -4877,8 +4986,11 @@ export type Mutation = {
   adjustDraftOrderLine: UpdateOrderItemsResult;
   /** Applies the given coupon code to the draft Order */
   applyCouponCodeToDraftOrder: ApplyCouponCodeResult;
+  /** Approve a GATE step, resuming the paused pipeline run */
+  approveDataHubGate: DataHubGateActionResult;
   approveDataHubPipeline: DataHubPipeline;
   archiveDataHubJob: DataHubJob;
+  archiveDataHubPipeline: DataHubPipeline;
   /** Assign assets to channel */
   assignAssetsToChannel: Array<Asset>;
   /** Assigns Collections to the specified Channel */
@@ -4923,6 +5035,7 @@ export type Mutation = {
   /** Create a new CustomerGroup */
   createCustomerGroup: CustomerGroup;
   createDataHubConnection: DataHubConnection;
+  createDataHubFeed: DataHubFeed;
   createDataHubJob: DataHubJob;
   createDataHubPipeline: DataHubPipeline;
   createDataHubSecret: DataHubSecret;
@@ -5104,8 +5217,9 @@ export type Mutation = {
   previewDataHubFile: DataHubFilePreview;
   publishDataHubPipeline: DataHubPipeline;
   refundOrder: RefundOrderResult;
-  registerDataHubFeed: DataHubFeed;
   reindex: Job;
+  /** Reject a GATE step, cancelling the paused pipeline run */
+  rejectDataHubGate: DataHubGateActionResult;
   rejectDataHubPipelineReview: DataHubPipeline;
   /** Removes Collections from the specified Channel */
   removeCollectionsFromChannel: Array<Collection>;
@@ -5148,8 +5262,6 @@ export type Mutation = {
   runPendingSearchIndexUpdates: Success;
   runScheduledTask: Success;
   setCustomerForDraftOrder: SetCustomerForDraftOrderResult;
-  setDataHubCheckpoint: DataHubCheckpoint;
-  setDataHubSettings: DataHubSettings;
   /** Sets the billing address for a draft Order */
   setDraftOrderBillingAddress: Order;
   /** Allows any custom fields to be set for the active order */
@@ -5208,10 +5320,12 @@ export type Mutation = {
   updateCustomerNote: HistoryEntry;
   /** Update AutoMapper configuration (global or per-pipeline) */
   updateDataHubAutoMapperConfig: DataHubAutoMapperConfig;
+  updateDataHubCheckpoint: DataHubCheckpoint;
   updateDataHubConnection: DataHubConnection;
   updateDataHubJob: DataHubJob;
   updateDataHubPipeline: DataHubPipeline;
   updateDataHubSecret: DataHubSecret;
+  updateDataHubSettings: DataHubSettings;
   /** Update an existing Facet */
   updateFacet: Facet;
   /** Update a single FacetValue */
@@ -5253,8 +5367,6 @@ export type Mutation = {
   updateTaxRate: TaxRate;
   /** Update an existing Zone */
   updateZone: Zone;
-  /** Validate AutoMapper configuration without saving */
-  validateDataHubAutoMapperConfig: DataHubAutoMapperConfigValidation;
   validateDataHubMappings: DataHubMappingValidation;
 };
 
@@ -5320,12 +5432,23 @@ export type MutationApplyCouponCodeToDraftOrderArgs = {
 };
 
 
+export type MutationApproveDataHubGateArgs = {
+  runId: Scalars['ID']['input'];
+  stepKey: Scalars['String']['input'];
+};
+
+
 export type MutationApproveDataHubPipelineArgs = {
   id: Scalars['ID']['input'];
 };
 
 
 export type MutationArchiveDataHubJobArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationArchiveDataHubPipelineArgs = {
   id: Scalars['ID']['input'];
 };
 
@@ -5456,6 +5579,11 @@ export type MutationCreateCustomerGroupArgs = {
 
 export type MutationCreateDataHubConnectionArgs = {
   input: CreateDataHubConnectionInput;
+};
+
+
+export type MutationCreateDataHubFeedArgs = {
+  input: DataHubFeedInput;
 };
 
 
@@ -5975,8 +6103,9 @@ export type MutationRefundOrderArgs = {
 };
 
 
-export type MutationRegisterDataHubFeedArgs = {
-  input: DataHubFeedInput;
+export type MutationRejectDataHubGateArgs = {
+  runId: Scalars['ID']['input'];
+  stepKey: Scalars['String']['input'];
 };
 
 
@@ -6094,17 +6223,6 @@ export type MutationSetCustomerForDraftOrderArgs = {
   customerId?: InputMaybe<Scalars['ID']['input']>;
   input?: InputMaybe<CreateCustomerInput>;
   orderId: Scalars['ID']['input'];
-};
-
-
-export type MutationSetDataHubCheckpointArgs = {
-  data: Scalars['JSON']['input'];
-  pipelineId: Scalars['ID']['input'];
-};
-
-
-export type MutationSetDataHubSettingsArgs = {
-  input: DataHubSettingsInput;
 };
 
 
@@ -6301,6 +6419,12 @@ export type MutationUpdateDataHubAutoMapperConfigArgs = {
 };
 
 
+export type MutationUpdateDataHubCheckpointArgs = {
+  data: Scalars['JSON']['input'];
+  pipelineId: Scalars['ID']['input'];
+};
+
+
 export type MutationUpdateDataHubConnectionArgs = {
   input: UpdateDataHubConnectionInput;
 };
@@ -6318,6 +6442,11 @@ export type MutationUpdateDataHubPipelineArgs = {
 
 export type MutationUpdateDataHubSecretArgs = {
   input: UpdateDataHubSecretInput;
+};
+
+
+export type MutationUpdateDataHubSettingsArgs = {
+  input: DataHubSettingsInput;
 };
 
 
@@ -6436,20 +6565,9 @@ export type MutationUpdateZoneArgs = {
 };
 
 
-export type MutationValidateDataHubAutoMapperConfigArgs = {
-  input: DataHubAutoMapperConfigInput;
-};
-
-
 export type MutationValidateDataHubMappingsArgs = {
   mappings: Scalars['JSON']['input'];
   targetEntity: Scalars['String']['input'];
-};
-
-
-export type MutationValidateDataHubPipelineDefinitionArgs = {
-  definition: Scalars['JSON']['input'];
-  level?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type NativeAuthInput = {
@@ -7091,12 +7209,20 @@ export enum Permission {
   DeleteTaxRate = 'DeleteTaxRate',
   /** Grants permission to delete Zone */
   DeleteZone = 'DeleteZone',
-  /** Grants permissions on EditQuarantine operations */
-  EditQuarantine = 'EditQuarantine',
+  /** Grants permissions on EditDataHubQuarantine operations */
+  EditDataHubQuarantine = 'EditDataHubQuarantine',
   /** Grants permissions on ManageDataHubAdapters operations */
   ManageDataHubAdapters = 'ManageDataHubAdapters',
   /** Grants permissions on ManageDataHubConnections operations */
   ManageDataHubConnections = 'ManageDataHubConnections',
+  /** Grants permissions on ManageDataHubDestinations operations */
+  ManageDataHubDestinations = 'ManageDataHubDestinations',
+  /** Grants permissions on ManageDataHubFeeds operations */
+  ManageDataHubFeeds = 'ManageDataHubFeeds',
+  /** Grants permissions on ManageDataHubFiles operations */
+  ManageDataHubFiles = 'ManageDataHubFiles',
+  /** Grants permissions on ManageDataHubWebhooks operations */
+  ManageDataHubWebhooks = 'ManageDataHubWebhooks',
   /** Owner means the user owns this entity, e.g. a Customer's own Order */
   Owner = 'Owner',
   /** Public means any unauthenticated user may perform the operation */
@@ -7121,6 +7247,8 @@ export enum Permission {
   ReadCustomerGroup = 'ReadCustomerGroup',
   /** Grants permission to read DashboardGlobalViews */
   ReadDashboardGlobalViews = 'ReadDashboardGlobalViews',
+  /** Grants permissions on ReadDataHubFiles operations */
+  ReadDataHubFiles = 'ReadDataHubFiles',
   /** Grants permission to read DataHubPipeline */
   ReadDataHubPipeline = 'ReadDataHubPipeline',
   /** Grants permission to read DataHubSecret */
@@ -7153,14 +7281,16 @@ export enum Permission {
   ReadTaxRate = 'ReadTaxRate',
   /** Grants permission to read Zone */
   ReadZone = 'ReadZone',
-  /** Grants permissions on ReplayRecord operations */
-  ReplayRecord = 'ReplayRecord',
+  /** Grants permissions on ReplayDataHubRecord operations */
+  ReplayDataHubRecord = 'ReplayDataHubRecord',
   /** Grants permissions on RetryDataHubRecord operations */
   RetryDataHubRecord = 'RetryDataHubRecord',
   /** Grants permissions on ReviewDataHubPipeline operations */
   ReviewDataHubPipeline = 'ReviewDataHubPipeline',
   /** Grants permissions on RunDataHubPipeline operations */
   RunDataHubPipeline = 'RunDataHubPipeline',
+  /** Grants permissions on SubscribeDataHubEvents operations */
+  SubscribeDataHubEvents = 'SubscribeDataHubEvents',
   /** SuperAdmin has unrestricted access to all operations */
   SuperAdmin = 'SuperAdmin',
   /** Grants permission to update Administrator */
@@ -7215,10 +7345,14 @@ export enum Permission {
   UpdateTaxRate = 'UpdateTaxRate',
   /** Grants permission to update Zone */
   UpdateZone = 'UpdateZone',
+  /** Grants permissions on ViewDataHubAnalytics operations */
+  ViewDataHubAnalytics = 'ViewDataHubAnalytics',
+  /** Grants permissions on ViewDataHubEntitySchemas operations */
+  ViewDataHubEntitySchemas = 'ViewDataHubEntitySchemas',
+  /** Grants permissions on ViewDataHubQuarantine operations */
+  ViewDataHubQuarantine = 'ViewDataHubQuarantine',
   /** Grants permissions on ViewDataHubRuns operations */
   ViewDataHubRuns = 'ViewDataHubRuns',
-  /** Grants permissions on ViewQuarantine operations */
-  ViewQuarantine = 'ViewQuarantine',
   /** Grants permission to write DashboardGlobalViews */
   WriteDashboardGlobalViews = 'WriteDashboardGlobalViews'
 }
@@ -7826,7 +7960,7 @@ export type Query = {
   dataHubRunErrors: Array<DataHubRecordError>;
   dataHubRunLogs: Array<DataHubLog>;
   /**
-   * Execute a full sandbox/dry run for a pipeline
+   * Execute a sandbox/dry run for a pipeline
    * Returns detailed step-by-step results with record samples and field diffs
    */
   dataHubSandbox: DataHubSandboxResult;
@@ -7848,7 +7982,6 @@ export type Query = {
   dataHubToCanonicalFormat: DataHubFormatConversionResult;
   /** Convert canonical (step-based) definition to visual (nodes/edges) format */
   dataHubToVisualFormat: DataHubFormatConversionResult;
-  validateDataHubPipelineDefinition: DataHubValidationResult;
   dataHubVendureSchema?: Maybe<DataHubVendureEntitySchema>;
   dataHubVendureSchemas: Array<DataHubVendureEntitySchema>;
   dataHubWebhookDeliveries: Array<DataHubWebhookDelivery>;
@@ -7923,6 +8056,9 @@ export type Query = {
   taxRates: TaxRateList;
   testEligibleShippingMethods: Array<ShippingMethodQuote>;
   testShippingMethod: TestShippingMethodResult;
+  /** Validate AutoMapper configuration without saving */
+  validateDataHubAutoMapperConfig: DataHubAutoMapperConfigValidation;
+  validateDataHubPipelineDefinition: DataHubValidationResult;
   zone?: Maybe<Zone>;
   zones: ZoneList;
 };
@@ -8261,12 +8397,6 @@ export type QueryDataHubToVisualFormatArgs = {
 };
 
 
-export type QueryValidateDataHubPipelineDefinitionArgs = {
-  definition: Scalars['JSON']['input'];
-  level?: InputMaybe<Scalars['String']['input']>;
-};
-
-
 export type QueryDataHubVendureSchemaArgs = {
   entity: Scalars['String']['input'];
 };
@@ -8515,6 +8645,17 @@ export type QueryTestEligibleShippingMethodsArgs = {
 
 export type QueryTestShippingMethodArgs = {
   input: TestShippingMethodInput;
+};
+
+
+export type QueryValidateDataHubAutoMapperConfigArgs = {
+  input: DataHubAutoMapperConfigInput;
+};
+
+
+export type QueryValidateDataHubPipelineDefinitionArgs = {
+  definition: Scalars['JSON']['input'];
+  level?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -9633,12 +9774,19 @@ export type UpdateDataHubJobInput = {
   type?: InputMaybe<DataHubJobType>;
 };
 
+/** Input for updating an existing pipeline */
 export type UpdateDataHubPipelineInput = {
+  /** New unique code (optional) */
   code?: InputMaybe<Scalars['String']['input']>;
+  /** Updated pipeline definition (optional) */
   definition?: InputMaybe<Scalars['JSON']['input']>;
+  /** Enable/disable pipeline (optional) */
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
+  /** Pipeline ID to update */
   id: Scalars['ID']['input'];
+  /** New display name (optional) */
   name?: InputMaybe<Scalars['String']['input']>;
+  /** Schema version (optional) */
   version?: InputMaybe<Scalars['Int']['input']>;
 };
 
@@ -9921,11 +10069,6 @@ export type DataHubAdaptersApiQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type DataHubAdaptersApiQuery = { __typename?: 'Query', dataHubAdapters: Array<{ __typename?: 'DataHubAdapter', type: string, code: string, name?: string | null, description?: string | null, category?: string | null, icon?: string | null, color?: string | null, pure?: boolean | null, async?: boolean | null, batchable?: boolean | null, requires?: Array<string> | null, schema: { __typename?: 'DataHubStepConfigSchema', fields: Array<{ __typename?: 'DataHubStepConfigSchemaField', key: string, label?: string | null, description?: string | null, type: string, required?: boolean | null, defaultValue?: Record<string, unknown> | null, placeholder?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> } }> };
 
-export type DataHubVendureSchemasApiQueryVariables = Exact<{ [key: string]: never; }>;
-
-
-export type DataHubVendureSchemasApiQuery = { __typename?: 'Query', dataHubVendureSchemas: Array<{ __typename?: 'DataHubVendureEntitySchema', entity: string, label: string, description?: string | null, lookupFields: Array<string>, importable: boolean, exportable: boolean, fields: Array<{ __typename?: 'DataHubEntityField', key: string, type: string, required: boolean, readonly: boolean, description?: string | null }> }> };
-
 export type DataHubConnectionsForListQueryVariables = Exact<{
   options?: InputMaybe<DataHubConnectionListOptions>;
 }>;
@@ -10054,14 +10197,14 @@ export type DataHubPipelinesForListQueryVariables = Exact<{
 }>;
 
 
-export type DataHubPipelinesForListQuery = { __typename?: 'Query', dataHubPipelines: { __typename?: 'DataHubPipelineList', totalItems: number, items: Array<{ __typename?: 'DataHubPipeline', id: string | number, code: string, name: string, enabled: boolean, status: string, updatedAt: string }> } };
+export type DataHubPipelinesForListQuery = { __typename?: 'Query', dataHubPipelines: { __typename?: 'DataHubPipelineList', totalItems: number, items: Array<{ __typename?: 'DataHubPipeline', id: string | number, code: string, name: string, enabled: boolean, status: DataHubPipelineStatus, updatedAt: string }> } };
 
 export type DataHubPipelineDetailQueryVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type DataHubPipelineDetailQuery = { __typename?: 'Query', dataHubPipeline?: { __typename?: 'DataHubPipeline', id: string | number, createdAt: string, updatedAt: string, code: string, name: string, enabled: boolean, status: string, version: number, publishedAt?: string | null, definition: Record<string, unknown> } | null };
+export type DataHubPipelineDetailQuery = { __typename?: 'Query', dataHubPipeline?: { __typename?: 'DataHubPipeline', id: string | number, createdAt: string, updatedAt: string, code: string, name: string, enabled: boolean, status: DataHubPipelineStatus, version: number, publishedAt?: string | null, definition: Record<string, unknown> } | null };
 
 export type CreateDataHubPipelineApiMutationVariables = Exact<{
   input: CreateDataHubPipelineInput;
@@ -10106,13 +10249,6 @@ export type DryRunDataHubPipelineApiMutationVariables = Exact<{
 
 export type DryRunDataHubPipelineApiMutation = { __typename?: 'Mutation', startDataHubPipelineDryRun: { __typename?: 'DataHubDryRunResult', metrics: Record<string, unknown>, notes: Array<string>, sampleRecords?: Array<{ __typename?: 'DataHubDryRunSampleRecord', step: string, before: Record<string, unknown>, after: Record<string, unknown> }> | null } };
 
-export type StartDataHubPipelineRunApiMutationVariables = Exact<{
-  pipelineId: Scalars['ID']['input'];
-}>;
-
-
-export type StartDataHubPipelineRunApiMutation = { __typename?: 'Mutation', startDataHubPipelineRun: { __typename?: 'DataHubPipelineRun', id: string | number, status: DataHubRunStatus } };
-
 export type DataHubPipelineTimelineApiQueryVariables = Exact<{
   pipelineId: Scalars['ID']['input'];
   limit?: InputMaybe<Scalars['Int']['input']>;
@@ -10126,35 +10262,35 @@ export type SubmitDataHubPipelineForReviewApiMutationVariables = Exact<{
 }>;
 
 
-export type SubmitDataHubPipelineForReviewApiMutation = { __typename?: 'Mutation', submitDataHubPipelineForReview: { __typename?: 'DataHubPipeline', id: string | number, status: string } };
+export type SubmitDataHubPipelineForReviewApiMutation = { __typename?: 'Mutation', submitDataHubPipelineForReview: { __typename?: 'DataHubPipeline', id: string | number, status: DataHubPipelineStatus } };
 
 export type ApproveDataHubPipelineApiMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type ApproveDataHubPipelineApiMutation = { __typename?: 'Mutation', approveDataHubPipeline: { __typename?: 'DataHubPipeline', id: string | number, status: string } };
+export type ApproveDataHubPipelineApiMutation = { __typename?: 'Mutation', approveDataHubPipeline: { __typename?: 'DataHubPipeline', id: string | number, status: DataHubPipelineStatus } };
 
 export type RejectDataHubPipelineReviewApiMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type RejectDataHubPipelineReviewApiMutation = { __typename?: 'Mutation', rejectDataHubPipelineReview: { __typename?: 'DataHubPipeline', id: string | number, status: string } };
+export type RejectDataHubPipelineReviewApiMutation = { __typename?: 'Mutation', rejectDataHubPipelineReview: { __typename?: 'DataHubPipeline', id: string | number, status: DataHubPipelineStatus } };
 
 export type PublishDataHubPipelineApiMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type PublishDataHubPipelineApiMutation = { __typename?: 'Mutation', publishDataHubPipeline: { __typename?: 'DataHubPipeline', id: string | number, status: string, publishedAt?: string | null } };
+export type PublishDataHubPipelineApiMutation = { __typename?: 'Mutation', publishDataHubPipeline: { __typename?: 'DataHubPipeline', id: string | number, status: DataHubPipelineStatus, publishedAt?: string | null } };
 
 export type ArchiveDataHubPipelineApiMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type ArchiveDataHubPipelineApiMutation = { __typename?: 'Mutation', archiveDataHubPipeline: { __typename?: 'DataHubPipeline', id: string | number, status: string } };
+export type ArchiveDataHubPipelineApiMutation = { __typename?: 'Mutation', archiveDataHubPipeline: { __typename?: 'DataHubPipeline', id: string | number, status: DataHubPipelineStatus } };
 
 export type DataHubQueueStatsApiQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -10192,14 +10328,6 @@ export type MarkDataHubDeadLetterApiMutationVariables = Exact<{
 
 
 export type MarkDataHubDeadLetterApiMutation = { __typename?: 'Mutation', markDataHubDeadLetter: boolean };
-
-export type RetryDataHubRecordFromQueueApiMutationVariables = Exact<{
-  errorId: Scalars['ID']['input'];
-  patch?: InputMaybe<Scalars['JSON']['input']>;
-}>;
-
-
-export type RetryDataHubRecordFromQueueApiMutation = { __typename?: 'Mutation', retryDataHubRecord: boolean };
 
 export type DataHubSecretsForListQueryVariables = Exact<{
   options?: InputMaybe<DataHubSecretListOptions>;
@@ -10241,16 +10369,55 @@ export type DataHubSettingsApiQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type DataHubSettingsApiQuery = { __typename?: 'Query', dataHubSettings: { __typename?: 'DataHubSettings', retentionDaysRuns?: number | null, retentionDaysErrors?: number | null, retentionDaysLogs?: number | null, logPersistenceLevel: LogPersistenceLevel } };
 
-export type SetDataHubSettingsApiMutationVariables = Exact<{
+export type UpdateDataHubSettingsApiMutationVariables = Exact<{
   input: DataHubSettingsInput;
 }>;
 
 
-export type SetDataHubSettingsApiMutation = { __typename?: 'Mutation', setDataHubSettings: { __typename?: 'DataHubSettings', retentionDaysRuns?: number | null, retentionDaysErrors?: number | null, retentionDaysLogs?: number | null, logPersistenceLevel: LogPersistenceLevel } };
+export type UpdateDataHubSettingsApiMutation = { __typename?: 'Mutation', updateDataHubSettings: { __typename?: 'DataHubSettings', retentionDaysRuns?: number | null, retentionDaysErrors?: number | null, retentionDaysLogs?: number | null, logPersistenceLevel: LogPersistenceLevel } };
+
+export type PreviewDataHubExtractApiMutationVariables = Exact<{
+  step: Scalars['JSON']['input'];
+  limit?: InputMaybe<Scalars['Int']['input']>;
+}>;
+
+
+export type PreviewDataHubExtractApiMutation = { __typename?: 'Mutation', previewDataHubExtract: { __typename?: 'DataHubPreviewResult', records: Array<Record<string, unknown>> } };
+
+export type SimulateDataHubTransformApiMutationVariables = Exact<{
+  step: Scalars['JSON']['input'];
+  records: Scalars['JSON']['input'];
+}>;
+
+
+export type SimulateDataHubTransformApiMutation = { __typename?: 'Mutation', simulateDataHubTransform: Array<Record<string, unknown>> };
+
+export type SimulateDataHubLoadApiMutationVariables = Exact<{
+  step: Scalars['JSON']['input'];
+  records: Scalars['JSON']['input'];
+}>;
+
+
+export type SimulateDataHubLoadApiMutation = { __typename?: 'Mutation', simulateDataHubLoad: Record<string, unknown> };
+
+export type SimulateDataHubValidateApiMutationVariables = Exact<{
+  step: Scalars['JSON']['input'];
+  records: Scalars['JSON']['input'];
+}>;
+
+
+export type SimulateDataHubValidateApiMutation = { __typename?: 'Mutation', simulateDataHubValidate: { __typename?: 'DataHubValidateResult', records: Array<Record<string, unknown>>, summary: { __typename?: 'DataHubValidationSummary', input: number, passed: number, failed: number, passRate: number } } };
+
+export type PreviewDataHubFeedApiMutationVariables = Exact<{
+  feedCode: Scalars['String']['input'];
+  limit?: InputMaybe<Scalars['Int']['input']>;
+}>;
+
+
+export type PreviewDataHubFeedApiMutation = { __typename?: 'Mutation', previewDataHubFeed: { __typename?: 'DataHubFeedPreview', content: string, contentType: string, itemCount: number } };
 
 
 export const DataHubAdaptersApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubAdaptersApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubAdapters"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"category"}},{"kind":"Field","name":{"kind":"Name","value":"schema"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"color"}},{"kind":"Field","name":{"kind":"Name","value":"pure"}},{"kind":"Field","name":{"kind":"Name","value":"async"}},{"kind":"Field","name":{"kind":"Name","value":"batchable"}},{"kind":"Field","name":{"kind":"Name","value":"requires"}}]}}]}}]} as unknown as DocumentNode<DataHubAdaptersApiQuery, DataHubAdaptersApiQueryVariables>;
-export const DataHubVendureSchemasApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubVendureSchemasApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubVendureSchemas"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"entity"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"readonly"}},{"kind":"Field","name":{"kind":"Name","value":"description"}}]}},{"kind":"Field","name":{"kind":"Name","value":"lookupFields"}},{"kind":"Field","name":{"kind":"Name","value":"importable"}},{"kind":"Field","name":{"kind":"Name","value":"exportable"}}]}}]}}]} as unknown as DocumentNode<DataHubVendureSchemasApiQuery, DataHubVendureSchemasApiQueryVariables>;
 export const DataHubConnectionsForListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubConnectionsForList"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"options"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubConnectionListOptions"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubConnections"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"options"},"value":{"kind":"Variable","name":{"kind":"Name","value":"options"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"type"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}}]}}]}}]} as unknown as DocumentNode<DataHubConnectionsForListQuery, DataHubConnectionsForListQueryVariables>;
 export const DataHubConnectionDetailApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubConnectionDetailApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubConnection"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"config"}}]}}]}}]} as unknown as DocumentNode<DataHubConnectionDetailApiQuery, DataHubConnectionDetailApiQueryVariables>;
 export const CreateDataHubConnectionApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateDataHubConnectionApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreateDataHubConnectionInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createDataHubConnection"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}}]}}]}}]} as unknown as DocumentNode<CreateDataHubConnectionApiMutation, CreateDataHubConnectionApiMutationVariables>;
@@ -10276,7 +10443,6 @@ export const DeleteDataHubPipelineApiDocument = {"kind":"Document","definitions"
 export const RunDataHubPipelineApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RunDataHubPipelineApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"startDataHubPipelineRun"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<RunDataHubPipelineApiMutation, RunDataHubPipelineApiMutationVariables>;
 export const ValidateDataHubPipelineDefinitionApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"ValidateDataHubPipelineDefinitionApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"definition"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"level"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"validateDataHubPipelineDefinition"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"definition"},"value":{"kind":"Variable","name":{"kind":"Name","value":"definition"}}},{"kind":"Argument","name":{"kind":"Name","value":"level"},"value":{"kind":"Variable","name":{"kind":"Name","value":"level"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"isValid"}},{"kind":"Field","name":{"kind":"Name","value":"errors"}},{"kind":"Field","name":{"kind":"Name","value":"issues"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"stepKey"}},{"kind":"Field","name":{"kind":"Name","value":"reason"}},{"kind":"Field","name":{"kind":"Name","value":"field"}}]}},{"kind":"Field","name":{"kind":"Name","value":"warnings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"stepKey"}},{"kind":"Field","name":{"kind":"Name","value":"reason"}},{"kind":"Field","name":{"kind":"Name","value":"field"}}]}},{"kind":"Field","name":{"kind":"Name","value":"level"}}]}}]}}]} as unknown as DocumentNode<ValidateDataHubPipelineDefinitionApiQuery, ValidateDataHubPipelineDefinitionApiQueryVariables>;
 export const DryRunDataHubPipelineApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DryRunDataHubPipelineApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"startDataHubPipelineDryRun"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"metrics"}},{"kind":"Field","name":{"kind":"Name","value":"notes"}},{"kind":"Field","name":{"kind":"Name","value":"sampleRecords"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"step"}},{"kind":"Field","name":{"kind":"Name","value":"before"}},{"kind":"Field","name":{"kind":"Name","value":"after"}}]}}]}}]}}]} as unknown as DocumentNode<DryRunDataHubPipelineApiMutation, DryRunDataHubPipelineApiMutationVariables>;
-export const StartDataHubPipelineRunApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"StartDataHubPipelineRunApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"startDataHubPipelineRun"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<StartDataHubPipelineRunApiMutation, StartDataHubPipelineRunApiMutationVariables>;
 export const DataHubPipelineTimelineApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubPipelineTimelineApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubPipelineTimeline"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}}},{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"revision"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"version"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"commitMessage"}},{"kind":"Field","name":{"kind":"Name","value":"authorName"}},{"kind":"Field","name":{"kind":"Name","value":"changesSummary"}},{"kind":"Field","name":{"kind":"Name","value":"isLatest"}},{"kind":"Field","name":{"kind":"Name","value":"isCurrent"}}]}},{"kind":"Field","name":{"kind":"Name","value":"runCount"}},{"kind":"Field","name":{"kind":"Name","value":"lastRunAt"}},{"kind":"Field","name":{"kind":"Name","value":"lastRunStatus"}}]}}]}}]} as unknown as DocumentNode<DataHubPipelineTimelineApiQuery, DataHubPipelineTimelineApiQueryVariables>;
 export const SubmitDataHubPipelineForReviewApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SubmitDataHubPipelineForReviewApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"submitDataHubPipelineForReview"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<SubmitDataHubPipelineForReviewApiMutation, SubmitDataHubPipelineForReviewApiMutationVariables>;
 export const ApproveDataHubPipelineApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"ApproveDataHubPipelineApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"approveDataHubPipeline"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<ApproveDataHubPipelineApiMutation, ApproveDataHubPipelineApiMutationVariables>;
@@ -10289,11 +10455,15 @@ export const DataHubConsumersApiDocument = {"kind":"Document","definitions":[{"k
 export const StartDataHubConsumerApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"StartDataHubConsumerApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"startDataHubConsumer"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineCode"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}}}]}]}}]} as unknown as DocumentNode<StartDataHubConsumerApiMutation, StartDataHubConsumerApiMutationVariables>;
 export const StopDataHubConsumerApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"StopDataHubConsumerApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"stopDataHubConsumer"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineCode"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}}}]}]}}]} as unknown as DocumentNode<StopDataHubConsumerApiMutation, StopDataHubConsumerApiMutationVariables>;
 export const MarkDataHubDeadLetterApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"MarkDataHubDeadLetterApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"deadLetter"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"Boolean"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"markDataHubDeadLetter"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"Argument","name":{"kind":"Name","value":"deadLetter"},"value":{"kind":"Variable","name":{"kind":"Name","value":"deadLetter"}}}]}]}}]} as unknown as DocumentNode<MarkDataHubDeadLetterApiMutation, MarkDataHubDeadLetterApiMutationVariables>;
-export const RetryDataHubRecordFromQueueApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RetryDataHubRecordFromQueueApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"errorId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"patch"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"retryDataHubRecord"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"errorId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"errorId"}}},{"kind":"Argument","name":{"kind":"Name","value":"patch"},"value":{"kind":"Variable","name":{"kind":"Name","value":"patch"}}}]}]}}]} as unknown as DocumentNode<RetryDataHubRecordFromQueueApiMutation, RetryDataHubRecordFromQueueApiMutationVariables>;
 export const DataHubSecretsForListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSecretsForList"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"options"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubSecretListOptions"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSecrets"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"options"},"value":{"kind":"Variable","name":{"kind":"Name","value":"options"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"provider"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}}]}}]}}]} as unknown as DocumentNode<DataHubSecretsForListQuery, DataHubSecretsForListQueryVariables>;
 export const DataHubSecretDetailApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSecretDetailApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSecret"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"provider"}},{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"metadata"}}]}}]}}]} as unknown as DocumentNode<DataHubSecretDetailApiQuery, DataHubSecretDetailApiQueryVariables>;
 export const CreateDataHubSecretApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateDataHubSecretApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreateDataHubSecretInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createDataHubSecret"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}}]}}]}}]} as unknown as DocumentNode<CreateDataHubSecretApiMutation, CreateDataHubSecretApiMutationVariables>;
 export const UpdateDataHubSecretApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateDataHubSecretApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UpdateDataHubSecretInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateDataHubSecret"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}}]}}]}}]} as unknown as DocumentNode<UpdateDataHubSecretApiMutation, UpdateDataHubSecretApiMutationVariables>;
 export const DeleteDataHubSecretApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeleteDataHubSecretApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deleteDataHubSecret"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"result"}}]}}]}}]} as unknown as DocumentNode<DeleteDataHubSecretApiMutation, DeleteDataHubSecretApiMutationVariables>;
 export const DataHubSettingsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSettingsApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSettings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"retentionDaysRuns"}},{"kind":"Field","name":{"kind":"Name","value":"retentionDaysErrors"}},{"kind":"Field","name":{"kind":"Name","value":"retentionDaysLogs"}},{"kind":"Field","name":{"kind":"Name","value":"logPersistenceLevel"}}]}}]}}]} as unknown as DocumentNode<DataHubSettingsApiQuery, DataHubSettingsApiQueryVariables>;
-export const SetDataHubSettingsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SetDataHubSettingsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubSettingsInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"setDataHubSettings"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"retentionDaysRuns"}},{"kind":"Field","name":{"kind":"Name","value":"retentionDaysErrors"}},{"kind":"Field","name":{"kind":"Name","value":"retentionDaysLogs"}},{"kind":"Field","name":{"kind":"Name","value":"logPersistenceLevel"}}]}}]}}]} as unknown as DocumentNode<SetDataHubSettingsApiMutation, SetDataHubSettingsApiMutationVariables>;
+export const UpdateDataHubSettingsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateDataHubSettingsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubSettingsInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateDataHubSettings"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"retentionDaysRuns"}},{"kind":"Field","name":{"kind":"Name","value":"retentionDaysErrors"}},{"kind":"Field","name":{"kind":"Name","value":"retentionDaysLogs"}},{"kind":"Field","name":{"kind":"Name","value":"logPersistenceLevel"}}]}}]}}]} as unknown as DocumentNode<UpdateDataHubSettingsApiMutation, UpdateDataHubSettingsApiMutationVariables>;
+export const PreviewDataHubExtractApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"PreviewDataHubExtractApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"step"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"previewDataHubExtract"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"step"},"value":{"kind":"Variable","name":{"kind":"Name","value":"step"}}},{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"records"}}]}}]}}]} as unknown as DocumentNode<PreviewDataHubExtractApiMutation, PreviewDataHubExtractApiMutationVariables>;
+export const SimulateDataHubTransformApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SimulateDataHubTransformApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"step"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"records"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"simulateDataHubTransform"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"step"},"value":{"kind":"Variable","name":{"kind":"Name","value":"step"}}},{"kind":"Argument","name":{"kind":"Name","value":"records"},"value":{"kind":"Variable","name":{"kind":"Name","value":"records"}}}]}]}}]} as unknown as DocumentNode<SimulateDataHubTransformApiMutation, SimulateDataHubTransformApiMutationVariables>;
+export const SimulateDataHubLoadApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SimulateDataHubLoadApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"step"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"records"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"simulateDataHubLoad"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"step"},"value":{"kind":"Variable","name":{"kind":"Name","value":"step"}}},{"kind":"Argument","name":{"kind":"Name","value":"records"},"value":{"kind":"Variable","name":{"kind":"Name","value":"records"}}}]}]}}]} as unknown as DocumentNode<SimulateDataHubLoadApiMutation, SimulateDataHubLoadApiMutationVariables>;
+export const SimulateDataHubValidateApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SimulateDataHubValidateApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"step"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"records"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"simulateDataHubValidate"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"step"},"value":{"kind":"Variable","name":{"kind":"Name","value":"step"}}},{"kind":"Argument","name":{"kind":"Name","value":"records"},"value":{"kind":"Variable","name":{"kind":"Name","value":"records"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"records"}},{"kind":"Field","name":{"kind":"Name","value":"summary"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"input"}},{"kind":"Field","name":{"kind":"Name","value":"passed"}},{"kind":"Field","name":{"kind":"Name","value":"failed"}},{"kind":"Field","name":{"kind":"Name","value":"passRate"}}]}}]}}]}}]} as unknown as DocumentNode<SimulateDataHubValidateApiMutation, SimulateDataHubValidateApiMutationVariables>;
+export const PreviewDataHubFeedApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"PreviewDataHubFeedApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"feedCode"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"previewDataHubFeed"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"feedCode"},"value":{"kind":"Variable","name":{"kind":"Name","value":"feedCode"}}},{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"content"}},{"kind":"Field","name":{"kind":"Name","value":"contentType"}},{"kind":"Field","name":{"kind":"Name","value":"itemCount"}}]}}]}}]} as unknown as DocumentNode<PreviewDataHubFeedApiMutation, PreviewDataHubFeedApiMutationVariables>;

@@ -18,6 +18,7 @@ import {
     ExportExecutor,
     FeedExecutor,
     SinkExecutor,
+    GateExecutor,
 } from './executors';
 import { getPath } from './utils';
 import {
@@ -53,6 +54,7 @@ export class AdapterRuntimeService {
         private exportExecutor: ExportExecutor,
         private feedExecutor: FeedExecutor,
         private sinkExecutor: SinkExecutor,
+        private gateExecutor: GateExecutor,
         private executionLogger: ExecutionLogger,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -99,7 +101,7 @@ export class AdapterRuntimeService {
         pipelineId?: ID,
         runId?: ID,
         options?: { resume?: boolean },
-    ): Promise<{ processed: number; succeeded: number; failed: number; details?: JsonObject[] }> {
+    ): Promise<{ processed: number; succeeded: number; failed: number; details?: JsonObject[]; paused?: boolean; pausedAtStep?: string }> {
         // If graph edges are defined, use graph-aware execution
         if (Array.isArray(definition.edges) && definition.edges.length > 0) {
             return this.executePipelineGraph(ctx, definition, onCancelRequested, onRecordError, pipelineId, runId, options);
@@ -123,6 +125,7 @@ export class AdapterRuntimeService {
             exportExecutor: this.exportExecutor,
             feedExecutor: this.feedExecutor,
             sinkExecutor: this.sinkExecutor,
+            gateExecutor: this.gateExecutor,
             loadWithThroughput: this.createLoadWithThroughput(),
             applyIdempotency: this.applyIdempotency.bind(this),
             onCancelRequested,
@@ -165,6 +168,7 @@ export class AdapterRuntimeService {
             exportExecutor: this.exportExecutor,
             feedExecutor: this.feedExecutor,
             sinkExecutor: this.sinkExecutor,
+            gateExecutor: this.gateExecutor,
             loadWithThroughput: this.createLoadWithThroughput(),
             applyIdempotency: this.applyIdempotency.bind(this),
             onCancelRequested,

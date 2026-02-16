@@ -68,6 +68,13 @@ export interface TransformStepConfig {
     condition?: string;
     thenSet?: Record<string, unknown>;
     elseSet?: Record<string, unknown>;
+    /** Per-record retry configuration for transform operators */
+    retryPerRecord?: {
+        maxRetries: number;
+        retryDelayMs?: number;
+        backoff?: 'FIXED' | 'EXPONENTIAL';
+        retryableErrors?: string[];
+    };
 }
 
 export function isTransformStepConfig(config: unknown): config is TransformStepConfig {

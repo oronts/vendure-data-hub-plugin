@@ -417,6 +417,62 @@ export class PipelineService {
         });
     }
 
+    async approveGate(ctx: RequestContext, runId: ID, stepKey: string): Promise<PipelineRun> {
+        const repo = this.connection.getRepository(ctx, PipelineRun);
+        const run = await repo.findOne({
+            where: { id: runId },
+            relations: { pipeline: true },
+        });
+        if (!run) {
+            throw new Error(`Pipeline run not found: ${runId}`);
+        }
+        if (run.status !== RunStatus.PAUSED) {
+            throw new Error(`Cannot approve gate: run is not paused (current status: ${run.status})`);
+        }
+
+        // Set status to RUNNING so the runner picks it up
+        run.status = RunStatus.RUNNING;
+        await repo.save(run, { reload: false });
+
+        this.logger.info('Gate approved, resuming pipeline run', {
+            runId,
+            stepKey,
+            pipelineId: run.pipeline?.id,
+            userId: ctx.activeUserId,
+        });
+
+        // Dispatch the run for continued execution via the job queue.
+        // The runner accepts RUNNING status for gate-resume re-execution.
+        const pipelineId = run.pipeline?.id ?? run.pipelineId;
+        if (pipelineId) {
+            this.eventBus.publish(new PipelineQueueRequestEvent(
+                runId,
+                pipelineId,
+                ctx.activeUserId ? `gate-approve:${ctx.activeUserId}` : 'gate-approve',
+            ));
+        }
+
+        return assertFound(this.runById(ctx, run.id));
+    }
+
+    async rejectGate(ctx: RequestContext, runId: ID, stepKey: string): Promise<PipelineRun> {
+        const repo = this.connection.getRepository(ctx, PipelineRun);
+        const run = await this.connection.getEntityOrThrow(ctx, PipelineRun, runId);
+        if (run.status !== RunStatus.PAUSED) {
+            throw new Error(`Cannot reject gate: run is not paused (current status: ${run.status})`);
+        }
+        run.status = RunStatus.CANCELLED;
+        run.finishedAt = new Date();
+        run.error = `Gate step "${stepKey}" rejected by user`;
+        await repo.save(run, { reload: false });
+        this.logger.info('Gate rejected, cancelling pipeline run', {
+            runId,
+            stepKey,
+            userId: ctx.activeUserId,
+        });
+        return assertFound(this.runById(ctx, run.id));
+    }
+
     private async assertCodeAvailable(ctx: RequestContext, code: string, excludeId?: ID): Promise<void> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         const existing = await repo.findOne({ where: { code } });

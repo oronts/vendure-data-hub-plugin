@@ -13,6 +13,7 @@ import {
 } from '../utils';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { OperatorAdapter, SingleRecordOperator, AdapterOperatorHelpers, OperatorContext } from '../../sdk/types';
+import { getOperatorRuntime, getCustomOperatorRuntime } from '../../operators/operator-runtime-registry';
 import { OperatorSecretResolver } from '../../sdk/types/transform-types';
 import { hashStable } from '../utils';
 import { SecretService } from '../../services/config/secret.service';
@@ -105,12 +106,13 @@ export class TransformExecutor {
         executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
     ): Promise<RecordObject[]> {
-        // Look up operator in registry
-        if (!this.registry) {
-            throw new Error('DataHubRegistryService is not available. Cannot execute operators.');
+        // Try built-in first
+        let operator: OperatorAdapter<unknown> | SingleRecordOperator<unknown> | undefined =
+            getOperatorRuntime(adapterCode);
+        // Fallback to custom registry
+        if (!operator) {
+            operator = getCustomOperatorRuntime(this.registry, adapterCode);
         }
-
-        const operator = this.registry.getRuntime('OPERATOR', adapterCode);
         if (!operator) {
             throw new OperatorNotFoundError(adapterCode, step.key);
         }
@@ -315,13 +317,46 @@ export class TransformExecutor {
     }
 
     /**
-     * Execute operator in sandboxed environment with proper error handling
+     * Retry a function with configurable backoff.
+     * Used for per-record retry in single-record operators.
+     */
+    private async executeWithRetry<T>(
+        fn: () => Promise<T>,
+        retryConfig: { maxRetries: number; retryDelayMs?: number; backoff?: 'FIXED' | 'EXPONENTIAL'; retryableErrors?: string[] },
+    ): Promise<T> {
+        for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
+            try {
+                return await fn();
+            } catch (error) {
+                if (attempt === retryConfig.maxRetries) throw error;
+
+                // Check if error is retryable
+                if (retryConfig.retryableErrors?.length) {
+                    const errorMsg = getErrorMessage(error);
+                    const isRetryable = retryConfig.retryableErrors.some(pattern => errorMsg.includes(pattern));
+                    if (!isRetryable) throw error;
+                }
+
+                const delay = retryConfig.retryDelayMs ?? 100;
+                const waitMs = retryConfig.backoff === 'EXPONENTIAL'
+                    ? delay * Math.pow(2, attempt)
+                    : delay * (attempt + 1);
+                await new Promise(r => setTimeout(r, waitMs));
+            }
+        }
+        throw new Error('Unreachable: retry loop exited without returning or throwing');
+    }
+
+    /**
+     * Execute operator in sandboxed environment with proper error handling.
+     * Supports optional per-record retry for single-record operators.
      */
     private async executeInSandbox(
         operator: OperatorAdapter<unknown> | SingleRecordOperator<unknown>,
         input: RecordObject[],
         cfg: JsonObject,
         helpers: AdapterOperatorHelpers,
+        retryConfig?: { maxRetries: number; retryDelayMs?: number; backoff?: 'FIXED' | 'EXPONENTIAL'; retryableErrors?: string[] },
     ): Promise<RecordObject[]> {
         // Check if it's a batch operator
         if ('apply' in operator && typeof (operator as OperatorAdapter<unknown>).apply === 'function') {
@@ -335,7 +370,12 @@ export class TransformExecutor {
             const singleOperator = operator as SingleRecordOperator<unknown>;
             const results: RecordObject[] = [];
             for (const record of input) {
-                const result = await singleOperator.applyOne(record as JsonObject, cfg, helpers);
+                const processFn = async () => singleOperator.applyOne(record as JsonObject, cfg, helpers);
+
+                const result = retryConfig
+                    ? await this.executeWithRetry(processFn, retryConfig)
+                    : await processFn();
+
                 if (result !== null) {
                     results.push(result as RecordObject);
                 }
@@ -384,11 +424,15 @@ export class TransformExecutor {
         // Phase 2: Load operator helpers
         const helpers = this.loadCustomOperator(ctx, operatorCtx);
 
-        // Phase 3: Execute in sandbox with error handling
+        // Phase 3: Resolve per-record retry config from step config
+        const stepCfg = step.config as TransformStepConfig | undefined;
+        const retryConfig = stepCfg?.retryPerRecord;
+
+        // Phase 4: Execute in sandbox with error handling
         try {
-            return await this.executeInSandbox(operator, input, cfg, helpers);
+            return await this.executeInSandbox(operator, input, cfg, helpers, retryConfig);
         } catch (error) {
-            // Phase 4: Validate output / handle errors
+            // Phase 5: Validate output / handle errors
             this.validateCustomOutput(error, operator, step.key);
         }
     }
@@ -409,6 +453,8 @@ export class TransformExecutor {
         const cfg = (step.config ?? {}) as {
             fields?: Record<string, unknown>;
             rules?: Array<{ type?: string; spec: Record<string, unknown> }>;
+            errorHandlingMode?: string;
+            /** @deprecated Use errorHandlingMode instead */
             mode?: string;
         };
 
@@ -443,7 +489,7 @@ export class TransformExecutor {
             fields = cfg.fields as Record<string, import('../utils').FieldSpec>;
         }
 
-        const mode = (cfg.mode as string | undefined) ?? ValidationMode.FAIL_FAST;
+        const mode = (cfg.errorHandlingMode as string | undefined) ?? (cfg.mode as string | undefined) ?? ValidationMode.FAIL_FAST;
 
         // If no fields defined, pass through all records
         if (Object.keys(fields).length === 0) return input;

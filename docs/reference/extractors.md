@@ -452,6 +452,84 @@ Receive data from webhook payloads. Used when pipelines are triggered via webhoo
 
 ---
 
+## CDC (Change Data Capture) Extractor
+
+Code: `cdc`
+
+Poll a database table for changes using a timestamp or version column. Tracks INSERT, UPDATE, and DELETE operations with checkpointing for incremental extraction.
+
+### Configuration
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `connectionCode` | string | Yes | Database connection code |
+| `table` | string | Yes | Table name to monitor for changes |
+| `trackingColumn` | string | Yes | Timestamp or version column used to detect changes (e.g., `updated_at`, `version`) |
+| `trackingType` | select | No | Column type: `TIMESTAMP` or `VERSION` (default: `TIMESTAMP`) |
+| `primaryKey` | string | Yes | Primary key column name |
+| `databaseType` | select | Yes | Database type: `POSTGRESQL` or `MYSQL` |
+| `columns` | array | No | Specific columns to select (omit for all columns) |
+| `batchSize` | number | No | Number of records per batch (default: 1000) |
+| `pollIntervalMs` | number | No | Polling interval in milliseconds (default: 5000) |
+| `includeDeletes` | boolean | No | Whether to track soft-deletes |
+| `deleteColumn` | string | No | Column that indicates deletion timestamp (required when `includeDeletes` is true) |
+
+### Example - Track Product Changes
+
+```typescript
+.extract('product-changes', {
+    adapterCode: 'cdc',
+    connectionCode: 'main-db',
+    table: 'products',
+    trackingColumn: 'updated_at',
+    trackingType: 'TIMESTAMP',
+    databaseType: 'POSTGRESQL',
+    primaryKey: 'id',
+    columns: ['id', 'name', 'price', 'updated_at'],
+    batchSize: 500,
+})
+```
+
+### Example - Version-Based Tracking
+
+```typescript
+.extract('inventory-changes', {
+    adapterCode: 'cdc',
+    connectionCode: 'warehouse-db',
+    table: 'inventory',
+    trackingColumn: 'version',
+    trackingType: 'VERSION',
+    databaseType: 'MYSQL',
+    primaryKey: 'id',
+    batchSize: 1000,
+})
+```
+
+### Example - With Soft-Delete Tracking
+
+```typescript
+.extract('product-changes-with-deletes', {
+    adapterCode: 'cdc',
+    connectionCode: 'main-db',
+    table: 'products',
+    trackingColumn: 'updated_at',
+    trackingType: 'TIMESTAMP',
+    databaseType: 'POSTGRESQL',
+    primaryKey: 'id',
+    includeDeletes: true,
+    deleteColumn: 'deleted_at',
+})
+```
+
+### How It Works
+
+1. On first run, the extractor reads all rows from the table
+2. It stores a checkpoint with the highest value of the tracking column
+3. On subsequent runs, it queries only rows where the tracking column exceeds the checkpoint
+4. DELETE tracking requires `includeDeletes: true` and a `deleteColumn` that indicates when a row was soft-deleted
+
+---
+
 ## Quick Reference
 
 | Code | Source Type | Use Case |
@@ -463,6 +541,7 @@ Receive data from webhook payloads. Used when pipelines are triggered via webhoo
 | `s3` | S3 Storage | Fetch and parse files from S3-compatible storage |
 | `ftp` | FTP/SFTP | Fetch files from FTP or SFTP servers |
 | `database` | SQL Database | Query PostgreSQL, MySQL, SQLite, MSSQL, Oracle databases |
+| `cdc` | CDC | Poll database tables for changes using timestamp or version tracking |
 | `webhook` | Webhook | Receive data from webhook payloads |
 
 ### Authentication Options

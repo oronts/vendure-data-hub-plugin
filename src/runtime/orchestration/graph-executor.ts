@@ -23,6 +23,7 @@ import {
     ExportExecutor,
     FeedExecutor,
     SinkExecutor,
+    GateExecutor,
 } from '../executors';
 import { HookService } from '../../services/events/hook.service';
 import { DomainEventsService } from '../../services/events/domain-events.service';
@@ -59,6 +60,7 @@ export interface ExecuteGraphParams {
     exportExecutor: ExportExecutor;
     feedExecutor: FeedExecutor;
     sinkExecutor: SinkExecutor;
+    gateExecutor: GateExecutor;
     loadWithThroughput: (
         ctx: RequestContext,
         step: PipelineStepDefinition,
@@ -235,6 +237,7 @@ function createDispatcher(params: ExecuteGraphParams): StepDispatcher {
         exportExecutor: params.exportExecutor,
         feedExecutor: params.feedExecutor,
         sinkExecutor: params.sinkExecutor,
+        gateExecutor: params.gateExecutor,
         loadWithThroughput: params.loadWithThroughput,
         applyIdempotency: params.applyIdempotency,
     });

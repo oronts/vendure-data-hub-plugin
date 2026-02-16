@@ -126,6 +126,8 @@ export type {
     ConversionHelpers,
     CryptoHelpers,
     OperatorHelpers,
+    JoinOperatorConfig,
+    JoinType,
 } from './operator.types';
 
 export type {
@@ -319,6 +321,7 @@ export type {
     VendureQueryExtractorConfig,
     WebhookExtractorConfig,
     DatabaseExtractorConfig,
+    CdcExtractorConfig,
     GenericExtractorConfig,
     TypedExtractorConfig,
     MapOperatorConfig,

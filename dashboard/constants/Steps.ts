@@ -12,6 +12,7 @@ export const STEP_TYPES = {
     EXPORT: 'EXPORT',
     FEED: 'FEED',
     SINK: 'SINK',
+    GATE: 'GATE',
 } as const satisfies Record<string, StepType>;
 
 export type { StepType } from '../../shared/types';
@@ -143,5 +144,16 @@ export const STEP_CONFIGS: Record<StepType, StepConfig> = {
         borderColor: '#bef264',
         inputs: 1,
         outputs: 0,
+    },
+    GATE: {
+        type: 'GATE',
+        label: 'Gate',
+        description: 'Pause for human approval before continuing',
+        icon: 'ShieldCheck',
+        color: STEP_TYPE_CANONICAL_COLORS.GATE,
+        bgColor: '#fffbeb',
+        borderColor: '#fbbf24',
+        inputs: 1,
+        outputs: 1,
     },
 };

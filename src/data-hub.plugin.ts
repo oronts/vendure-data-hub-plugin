@@ -89,11 +89,13 @@ import { FtpExtractor } from './extractors/ftp';
 import { S3Extractor } from './extractors/s3';
 import { DatabaseExtractor } from './extractors/database';
 import { GraphQLExtractor } from './extractors/graphql';
+import { CdcExtractor } from './extractors/cdc';
 import { DataHubExtractorAdminResolver } from './api/resolvers/extractor.resolver';
 import { EntitySchemaAdminResolver } from './api/resolvers/entity-schema.resolver';
 import { DataHubVersioningResolver } from './api/resolvers/versioning.resolver';
 import { DataHubSandboxResolver } from './api/resolvers/sandbox.resolver';
 import { DataHubSubscriptionResolver } from './api/resolvers/subscription.resolver';
+import { DataHubGateAdminResolver } from './api/resolvers/gate.resolver';
 // Versioning Services
 import { DiffService, RevisionService, ImpactAnalysisService, RiskAssessmentService, SandboxService } from './services/versioning';
 // Runtime Services
@@ -105,6 +107,8 @@ import { LoadExecutor } from './runtime/executors/load.executor';
 import { ExportExecutor } from './runtime/executors/export.executor';
 import { FeedExecutor } from './runtime/executors/feed.executor';
 import { SinkExecutor } from './runtime/executors/sink.executor';
+import { GateExecutor } from './runtime/executors/gate.executor';
+import { GateStepStrategy } from './runtime/orchestration/step-strategies';
 // Loader Handlers (used by LoadExecutor)
 import {
     ProductHandler,
@@ -121,6 +125,10 @@ import {
     FacetHandler,
     FacetValueHandler,
     RestPostHandler,
+    GraphqlMutationHandler,
+    TaxRateHandler,
+    PaymentMethodHandler,
+    ChannelHandler,
 } from './runtime/executors/loaders';
 
 /**
@@ -185,6 +193,8 @@ import {
         ExportExecutor,
         FeedExecutor,
         SinkExecutor,
+        GateExecutor,
+        GateStepStrategy,
         // Loader Handlers (used by LoadExecutor)
         ProductHandler,
         VariantHandler,
@@ -200,6 +210,10 @@ import {
         FacetHandler,
         FacetValueHandler,
         RestPostHandler,
+        GraphqlMutationHandler,
+        TaxRateHandler,
+        PaymentMethodHandler,
+        ChannelHandler,
         // Entity Loaders - Products
         ProductVariantLoader,
         ProductLoader,
@@ -241,6 +255,7 @@ import {
         S3Extractor,
         DatabaseExtractor,
         GraphQLExtractor,
+        CdcExtractor,
         // DataHub services
         FileStorageService,
         WebhookRetryService,
@@ -267,6 +282,7 @@ import {
         DataHubSandboxResolver,
         DataHubSubscriptionResolver,
         DataHubTestAdminResolver,
+        DataHubGateAdminResolver,
         // Versioning Services
         DiffService,
         RevisionService,
@@ -306,6 +322,7 @@ import {
             DataHubVersioningResolver,
             DataHubSandboxResolver,
             DataHubSubscriptionResolver,
+            DataHubGateAdminResolver,
         ],
     },
     controllers: [DataHubWebhookController, DataHubFileUploadController],

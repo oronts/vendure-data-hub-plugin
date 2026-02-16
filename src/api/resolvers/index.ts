@@ -17,3 +17,4 @@ export * from './entity-schema.resolver';
 export * from './test.resolver';
 export * from './versioning.resolver';
 export * from './sandbox.resolver';
+export * from './gate.resolver';

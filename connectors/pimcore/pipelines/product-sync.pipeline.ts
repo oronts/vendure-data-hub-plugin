@@ -54,7 +54,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
     });
 
     pipeline.validate('validate-products', {
-        mode: 'ACCUMULATE',
+        errorHandlingMode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'id', required: true, error: 'Product ID required' } },
             { type: 'business', spec: { field: mapping?.product?.skuField ?? 'sku', required: true, error: 'SKU required' } },

@@ -9,11 +9,22 @@ export interface WizardStep {
 }
 
 export interface ImportSourceConfig {
-    type: 'FILE' | 'API' | 'DATABASE' | 'WEBHOOK';
+    type: 'FILE' | 'API' | 'DATABASE' | 'WEBHOOK' | 'CDC';
     fileConfig?: FileSourceConfig;
     apiConfig?: ApiSourceConfig;
     databaseConfig?: DatabaseSourceConfig;
     webhookConfig?: WebhookSourceConfig;
+    cdcConfig?: CdcSourceConfig;
+}
+
+export interface CdcSourceConfig {
+    connectionId: string;
+    table: string;
+    trackingColumn: string;
+    trackingType: 'TIMESTAMP' | 'VERSION';
+    columns?: string[];
+    pollIntervalMs?: number;
+    batchSize?: number;
 }
 
 export interface FileSourceConfig {

@@ -155,6 +155,31 @@ export interface DatabaseExtractorConfig {
     params?: unknown[];
 }
 
+/** CDC Extractor - Poll for database changes via timestamp or version column */
+export interface CdcExtractorConfig {
+    adapterCode: 'cdc';
+    /** Database type */
+    databaseType: 'POSTGRESQL' | 'MYSQL';
+    /** Connection code */
+    connectionCode: string;
+    /** Table to poll */
+    table: string;
+    /** Column used to detect changes */
+    trackingColumn: string;
+    /** Tracking type */
+    trackingType: 'TIMESTAMP' | 'VERSION';
+    /** Primary key column */
+    primaryKey: string;
+    /** Specific columns to select */
+    columns?: string[];
+    /** Batch size */
+    batchSize?: number;
+    /** Track soft-deletes */
+    includeDeletes?: boolean;
+    /** Delete timestamp column */
+    deleteColumn?: string;
+}
+
 /** Generic config for custom extractor adapters */
 export interface GenericExtractorConfig {
     adapterCode: string;
@@ -171,6 +196,7 @@ export type TypedExtractorConfig =
     | VendureQueryExtractorConfig
     | WebhookExtractorConfig
     | DatabaseExtractorConfig
+    | CdcExtractorConfig
     | GenericExtractorConfig;
 
 // OPERATOR (TRANSFORM) CONFIGS
@@ -337,7 +363,7 @@ export interface CustomerUpsertLoaderConfig {
     /** Field containing group codes */
     groupsField?: string;
     /** Groups mode */
-    groupsMode?: 'REPLACE' | 'ADD' | 'REMOVE';
+    groupsMode?: 'add' | 'set';
 }
 
 /** Stock Adjust Loader */
@@ -405,7 +431,7 @@ export interface OrderTransitionLoaderConfig {
     /** Field containing order code */
     orderCodeField?: string;
     /** Target state */
-    toState: string;
+    state: string;
 }
 
 /** Collection Upsert Loader */
@@ -429,7 +455,7 @@ export interface AssetAttachLoaderConfig {
     /** Entity type to attach asset to */
     entity: 'PRODUCT' | 'COLLECTION';
     /** Field containing entity slug */
-    entitySlugField: string;
+    slugField: string;
     /** Field containing asset ID */
     assetIdField: string;
 }
@@ -442,7 +468,7 @@ export interface ApplyCouponLoaderConfig {
     /** Field containing order code */
     orderCodeField?: string;
     /** Field containing coupon code */
-    couponCodeField: string;
+    couponField: string;
 }
 
 /** Promotion Upsert Loader */

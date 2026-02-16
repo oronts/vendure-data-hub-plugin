@@ -5,7 +5,7 @@ import { JsonValue, JsonObject, PipelineStepDefinition, PipelineContext } from '
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, FeedExecutionResult } from '../executor-types';
 import { getPath, recordsToCsv, recordsToXml, xmlEscape, ensureDirectoryExistsAsync } from '../utils';
-import { FEED_NAMESPACES, EXAMPLE_URLS, getOutputPath, LOGGER_CONTEXTS } from '../../constants/index';
+import { FEED_NAMESPACES, EXAMPLE_URLS, getOutputPath, LOGGER_CONTEXTS, FEED_CODE } from '../../constants/index';
 import { FileFormat } from '../../constants/enums';
 import { BaseFeedConfig } from '../config-types';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -79,7 +79,7 @@ export class FeedExecutor {
         };
 
         switch (adapterCode) {
-            case 'googleMerchant': {
+            case FEED_CODE.GOOGLE_MERCHANT: {
                 try {
                     const filePath = cfg.outputPath ?? getOutputPath('google-merchant', 'xml');
                     outputPath = filePath;
@@ -117,7 +117,7 @@ export class FeedExecutor {
                 }
                 break;
             }
-            case 'metaCatalog': {
+            case FEED_CODE.META_CATALOG: {
                 try {
                     const filePath = cfg.outputPath ?? getOutputPath('meta-catalog', 'csv');
                     outputPath = filePath;
@@ -143,7 +143,7 @@ export class FeedExecutor {
                 }
                 break;
             }
-            case 'amazonFeed': {
+            case FEED_CODE.AMAZON: {
                 try {
                     const filePath = cfg.outputPath ?? getOutputPath('amazon', 'txt');
                     outputPath = filePath;
@@ -173,7 +173,7 @@ export class FeedExecutor {
                 }
                 break;
             }
-            case 'customFeed': {
+            case FEED_CODE.CUSTOM: {
                 try {
                     const filePath = cfg.outputPath ?? getOutputPath('custom-feed', 'json');
                     outputPath = filePath;

@@ -140,4 +140,30 @@ export const EXTRACTOR_ADAPTERS: AdapterDefinition[] = [
             ],
         },
     },
+    {
+        type: 'EXTRACTOR',
+        code: 'cdc',
+        description: 'Poll a database table for changes using a timestamp or version column (Change Data Capture).',
+        schema: {
+            fields: [
+                { key: 'connectionCode', label: 'Connection', type: 'connection', required: true, description: 'Saved database connection' },
+                { key: 'databaseType', label: 'Database Type', type: 'select', required: true, options: [
+                    { value: 'POSTGRESQL', label: 'PostgreSQL' },
+                    { value: 'MYSQL', label: 'MySQL / MariaDB' },
+                ] },
+                { key: 'table', label: 'Table', type: 'string', required: true, description: 'Table to poll for changes' },
+                { key: 'primaryKey', label: 'Primary Key Column', type: 'string', required: true, description: 'Primary key column' },
+                { key: 'trackingColumn', label: 'Tracking Column', type: 'string', required: true, description: 'Column used to detect changes (e.g., updated_at)' },
+                { key: 'trackingType', label: 'Tracking Type', type: 'select', required: true, options: [
+                    { value: 'TIMESTAMP', label: 'Timestamp' },
+                    { value: 'VERSION', label: 'Version / Sequence Number' },
+                ] },
+                { key: 'columns', label: 'Columns (comma-separated)', type: 'string', description: 'Specific columns to select. Leave empty for all.' },
+                { key: 'includeDeletes', label: 'Track Deletes', type: 'boolean', description: 'Query a soft-delete column for deleted rows' },
+                { key: 'deleteColumn', label: 'Delete Column', type: 'string', description: 'Timestamp column indicating when a row was deleted' },
+                { key: 'batchSize', label: 'Batch Size', type: 'number', description: 'Maximum rows per extraction (default: 1000)' },
+                { key: 'pollIntervalMs', label: 'Poll Interval (ms)', type: 'number', description: 'Milliseconds between polls (default: 5000)' },
+            ],
+        },
+    },
 ];

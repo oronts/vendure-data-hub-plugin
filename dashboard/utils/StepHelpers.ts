@@ -11,6 +11,7 @@ const STEP_TO_ADAPTER_TYPE: Record<StepType, string | null> = {
     EXPORT: ADAPTER_TYPES.EXPORTER,
     FEED: ADAPTER_TYPES.FEED,
     SINK: ADAPTER_TYPES.SINK,
+    GATE: null,
 };
 
 function getAdapterType(stepType: StepType): string | null {

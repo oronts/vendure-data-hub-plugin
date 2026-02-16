@@ -100,6 +100,13 @@ export interface TransformStepConfig {
     operators: OperatorConfig[];
     throughput?: Throughput;
     async?: boolean;
+    /** Per-record retry configuration for transform operators */
+    retryPerRecord?: {
+        maxRetries: number;
+        retryDelayMs?: number;
+        backoff?: 'FIXED' | 'EXPONENTIAL';
+        retryableErrors?: string[];
+    };
 }
 
 export type { OperatorConfig };
@@ -111,8 +118,6 @@ export interface ValidateStepConfig {
     errorHandlingMode?: 'FAIL_FAST' | 'ACCUMULATE';
     /** Validation mode: STRICT requires all rules to pass, LENIENT allows warnings */
     validationMode?: 'STRICT' | 'LENIENT';
-    /** Legacy mode field (alias for errorHandlingMode) */
-    mode?: 'FAIL_FAST' | 'ACCUMULATE';
     /** Validation rules to apply */
     rules?: ValidationRuleConfig[];
     /** Reference to a schema for schema-based validation */
@@ -363,6 +368,23 @@ export interface FeedStepConfig {
     // Additional config
     config?: JsonObject;
     throughput?: Throughput;
+}
+
+// GATE STEP CONFIG
+
+export interface GateStepConfig {
+    /** Approval type: MANUAL requires human approval, THRESHOLD auto-approves below error rate, TIMEOUT auto-approves after delay */
+    approvalType: 'MANUAL' | 'THRESHOLD' | 'TIMEOUT';
+    /** Timeout in seconds for TIMEOUT approval type */
+    timeoutSeconds?: number;
+    /** Error rate threshold (0-100) for THRESHOLD approval type */
+    errorThresholdPercent?: number;
+    /** Webhook URL to notify when gate is reached */
+    notifyWebhook?: string;
+    /** Email address to notify when gate is reached */
+    notifyEmail?: string;
+    /** Number of preview records to include in the gate result (default: 10) */
+    previewCount?: number;
 }
 
 // SINK STEP CONFIG

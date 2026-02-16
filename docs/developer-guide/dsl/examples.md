@@ -882,3 +882,278 @@ export const seoEnrichmentPipeline = createPipeline()
 
     .build();
 ```
+
+## Advanced Features
+
+Examples demonstrating new pipeline capabilities: parallel execution, multi-source joins, per-record retry, GATE approval steps, and image/PDF processing.
+
+### Parallel Execution
+
+Run pipeline steps concurrently for improved throughput:
+
+```typescript
+import { createPipeline, operators } from '@oronts/vendure-data-hub-plugin';
+
+export const parallelPipeline = createPipeline()
+    .name('Parallel Pipeline')
+    .description('Process data with parallel step execution')
+    .parallel({ maxConcurrentSteps: 4, errorPolicy: 'CONTINUE' })
+
+    .trigger('start', { type: 'MANUAL' })
+
+    .extract('data', { adapterCode: 'file', path: '/data/products.csv', format: 'CSV' })
+
+    .transform('process', {
+        operators: [
+            operators.trim('name'),
+            operators.map({ productName: 'name', productSku: 'sku' }),
+        ],
+    })
+
+    .load('save', { adapterCode: 'productUpsert', strategy: 'UPSERT', matchField: 'slug' })
+
+    .edge('start', 'data')
+    .edge('data', 'process')
+    .edge('process', 'save')
+
+    .build();
+```
+
+### Multi-Source Join
+
+Merge records from two extract steps using the `multiJoin` operator:
+
+```typescript
+export const joinPipeline = createPipeline()
+    .name('Product Price Join')
+    .description('Join products with pricing data from a second source')
+
+    .trigger('start', { type: 'MANUAL' })
+
+    .extract('products', {
+        adapterCode: 'httpApi',
+        url: 'https://api.example.com/products',
+        dataPath: 'data',
+    })
+
+    .extract('prices', {
+        adapterCode: 'httpApi',
+        url: 'https://api.example.com/prices',
+        dataPath: 'data',
+    })
+
+    .transform('merge', {
+        operators: [
+            operators.multiJoin({
+                leftKey: 'productId',
+                rightKey: 'id',
+                rightDataPath: '$.steps.prices.output',
+                type: 'LEFT',
+                prefix: 'price_',
+            }),
+        ],
+    })
+
+    .load('save', {
+        adapterCode: 'variantUpsert',
+        strategy: 'UPDATE',
+        matchField: 'sku',
+    })
+
+    .edge('start', 'products')
+    .edge('start', 'prices')
+    .edge('products', 'merge')
+    .edge('prices', 'merge')
+    .edge('merge', 'save')
+
+    .build();
+```
+
+### Per-Record Retry
+
+Add retry logic at the record level for resilient transforms:
+
+```typescript
+export const resilientPipeline = createPipeline()
+    .name('Resilient Import')
+    .description('Import with per-record retry on transient failures')
+
+    .trigger('start', { type: 'MANUAL' })
+
+    .extract('fetch', {
+        adapterCode: 'httpApi',
+        url: 'https://api.supplier.com/products',
+        dataPath: 'products',
+    })
+
+    .transform('resilient', {
+        operators: [
+            { op: 'httpLookup', args: {
+                url: 'https://api.pricing.com/lookup/{{sku}}',
+                target: 'externalPrice',
+                default: null,
+            }},
+        ],
+        retryPerRecord: {
+            maxRetries: 3,
+            retryDelayMs: 200,
+            backoff: 'EXPONENTIAL',
+        },
+    })
+
+    .load('save', {
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'slug',
+    })
+
+    .edge('start', 'fetch')
+    .edge('fetch', 'resilient')
+    .edge('resilient', 'save')
+
+    .build();
+```
+
+### GATE Approval Step
+
+Pause pipeline execution for human approval before loading:
+
+```typescript
+export const gatedImport = createPipeline()
+    .name('Gated Product Import')
+    .description('Import products with manual review before loading')
+
+    .trigger('start', { type: 'MANUAL' })
+
+    .extract('fetch', {
+        adapterCode: 'httpApi',
+        url: 'https://api.supplier.com/products',
+        dataPath: 'products',
+    })
+
+    .transform('prepare', {
+        operators: [
+            { op: 'slugify', args: { source: 'name', target: 'slug' } },
+            { op: 'toCents', args: { source: 'price', target: 'priceInCents' } },
+        ],
+    })
+
+    .gate('review', {
+        approvalType: 'MANUAL',
+        notifyWebhook: 'https://hooks.slack.com/services/...',
+        previewCount: 20,
+    })
+
+    .load('import', {
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'slug',
+    })
+
+    .edge('start', 'fetch')
+    .edge('fetch', 'prepare')
+    .edge('prepare', 'review')
+    .edge('review', 'import')
+
+    .build();
+```
+
+The GATE step supports three approval types:
+
+- **MANUAL** - A human must explicitly approve or reject the run via the dashboard
+- **THRESHOLD** - Automatically approves if validation error rate is below a threshold
+- **TIMEOUT** - Automatically approves after a configurable timeout period if not rejected
+
+### Image Processing
+
+Resize and convert images as part of a product pipeline:
+
+```typescript
+export const imageProcessingPipeline = createPipeline()
+    .name('Product Image Processing')
+    .description('Resize and convert product images to optimized formats')
+
+    .trigger('start', { type: 'MANUAL' })
+
+    .extract('fetch', {
+        adapterCode: 'httpApi',
+        url: 'https://api.supplier.com/products',
+        dataPath: 'products',
+    })
+
+    .transform('process-images', {
+        operators: [
+            // Resize the main product photo
+            operators.imageResize({
+                sourceField: 'photo',
+                width: 800,
+                height: 600,
+                fit: 'cover',
+                format: 'webp',
+                quality: 85,
+            }),
+
+            // Convert an additional image to WebP
+            operators.imageConvert({
+                sourceField: 'image',
+                format: 'webp',
+                quality: 90,
+            }),
+        ],
+    })
+
+    .load('save', {
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        matchField: 'slug',
+    })
+
+    .edge('start', 'fetch')
+    .edge('fetch', 'process-images')
+    .edge('process-images', 'save')
+
+    .build();
+```
+
+### PDF Generation
+
+Generate PDF documents from record data using HTML templates:
+
+```typescript
+export const invoicePipeline = createPipeline()
+    .name('Invoice PDF Generation')
+    .description('Generate PDF invoices from order data')
+
+    .trigger('schedule', {
+        type: 'SCHEDULE',
+        cron: '0 8 * * *',  // Daily at 8 AM
+    })
+
+    .extract('get-orders', {
+        adapterCode: 'vendureQuery',
+        entity: 'ORDER',
+        relations: 'lines,customer',
+        batchSize: 50,
+    })
+
+    .transform('generate-pdfs', {
+        operators: [
+            operators.pdfGenerate({
+                template: '<h1>Invoice #{{code}}</h1><p>Customer: {{customer.firstName}} {{customer.lastName}}</p><p>Total: {{total}}</p>',
+                targetField: 'invoice_pdf',
+            }),
+        ],
+    })
+
+    .load('export', {
+        adapterCode: 'restPost',
+        endpoint: 'https://storage.example.com/invoices',
+        method: 'POST',
+    })
+
+    .edge('schedule', 'get-orders')
+    .edge('get-orders', 'generate-pdfs')
+    .edge('generate-pdfs', 'export')
+
+    .build();
+```

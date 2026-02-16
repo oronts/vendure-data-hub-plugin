@@ -10,15 +10,16 @@ Complete reference documentation for all Data Hub adapters.
 
 ## Contents
 
-1. [Extractors](./extractors.md) - All data extractors
-2. [Loaders](./loaders.md) - All entity loaders
-3. [Operators](./operators.md) - All transform operators
-4. [Feed Generators](./feeds.md) - Product feed generators
-5. [Search Sinks](./sinks.md) - Search engine integrations
+1. [Step Types](./step-types.md) - All pipeline step types
+2. [Extractors](./extractors.md) - All data extractors
+3. [Loaders](./loaders.md) - All entity loaders
+4. [Operators](./operators.md) - All transform operators
+5. [Feed Generators](./feeds.md) - Product feed generators
+6. [Search Sinks](./sinks.md) - Search engine integrations
 
 ## Quick Reference
 
-### Extractors (8)
+### Extractors (9)
 
 | Code | Description |
 |------|-------------|
@@ -29,9 +30,10 @@ Complete reference documentation for all Data Hub adapters.
 | `database` | SQL databases (PostgreSQL, MySQL, SQLite, MSSQL, Oracle) |
 | `s3` | S3-compatible storage (AWS, MinIO, DigitalOcean Spaces) |
 | `ftp` | FTP/SFTP servers |
+| `cdc` | Change Data Capture - poll database tables for changes |
 | `webhook` | Incoming webhook payloads |
 
-### Loaders (16)
+### Loaders (17)
 
 | Entity Type | Description |
 |-------------|-------------|
@@ -51,8 +53,9 @@ Complete reference documentation for all Data Hub adapters.
 | `TAX_RATE` | Create/update tax rates with category and zone |
 | `PAYMENT_METHOD` | Create/update payment methods with handlers |
 | `CHANNEL` | Create/update channels with currencies and languages |
+| `GRAPHQL_MUTATION` | Send records as GraphQL mutations to external APIs |
 
-### Operator Categories (57 operators)
+### Operator Categories (61 operators)
 
 | Category | Operators |
 |----------|-----------|
@@ -63,7 +66,8 @@ Complete reference documentation for all Data Hub adapters.
 | Logic (4) | `when`, `ifThenElse`, `switch`, `deltaFilter` |
 | JSON (4) | `pick`, `omit`, `parseJson`, `stringifyJson` |
 | Enrichment (5) | `lookup`, `enrich`, `coalesce`, `default`, `httpLookup` |
-| Aggregation (7) | `aggregate`, `count`, `unique`, `flatten`, `first`, `last`, `expand` |
+| Aggregation (8) | `aggregate`, `multiJoin`, `count`, `unique`, `flatten`, `first`, `last`, `expand` |
+| File (3) | `imageResize`, `imageConvert`, `pdfGenerate` |
 | Validation (2) | `validateRequired`, `validateFormat` |
 | Advanced (1) | `script` |
 

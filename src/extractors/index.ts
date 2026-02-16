@@ -43,3 +43,6 @@ export { WebhookExtractorConfig } from './webhook';
 
 export { GraphQLExtractor } from './graphql';
 export { GraphQLExtractorConfig, GraphQLPaginationConfig } from './graphql';
+
+export { CdcExtractor } from './cdc';
+export { CdcExtractorConfig } from './cdc';

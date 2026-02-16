@@ -35,7 +35,7 @@ interface TransformOperatorDefinition {
     code: string;
     label: string;
     description: string;
-    category: 'field' | 'record' | 'aggregate' | 'filter' | 'control';
+    category: 'field' | 'record' | 'aggregate' | 'filter' | 'control' | 'file';
     configFields?: string[];
 }
 
@@ -60,5 +60,9 @@ const TRANSFORM_OPERATORS: TransformOperatorDefinition[] = [
     { code: 'lookup', label: 'Lookup', description: 'Enrich from external source', category: 'field', configFields: ['source', 'map'] },
     { code: 'enrich', label: 'Enrich', description: 'Add or enhance data fields', category: 'field', configFields: ['enrichments'] },
     { code: 'script', label: 'Script', description: 'Execute custom transformation script', category: 'control', configFields: ['code', 'language'] },
+    { code: 'multiJoin', label: 'Multi-Source Join', description: 'Join two datasets by matching key fields', category: 'aggregate', configFields: ['leftKey', 'rightKey', 'type'] },
+    { code: 'imageResize', label: 'Image Resize', description: 'Resize images referenced in record fields', category: 'file', configFields: ['field', 'width', 'height'] },
+    { code: 'imageConvert', label: 'Image Convert', description: 'Convert image format (JPEG, PNG, WebP, AVIF, GIF)', category: 'file', configFields: ['field', 'format'] },
+    { code: 'pdfGenerate', label: 'PDF Generate', description: 'Generate PDF from HTML template with record data', category: 'file', configFields: ['template', 'outputField'] },
 ];
 

@@ -42,6 +42,35 @@ createPipeline()
 })
 ```
 
+### .parallel(config)
+
+Enables parallel step execution for the pipeline. When enabled, independent steps
+(those without data dependencies) run concurrently.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| maxConcurrentSteps | number | No | Maximum steps to run concurrently (default: 4, range: 2-16) |
+| errorPolicy | string | No | `'FAIL_FAST'` \| `'CONTINUE'` \| `'BEST_EFFORT'`. Default: `'FAIL_FAST'` |
+
+**Error policies:**
+- `FAIL_FAST` -- Stop all steps on first error (default)
+- `CONTINUE` -- Continue other parallel steps, fail at end
+- `BEST_EFFORT` -- Continue all steps, collect all errors
+
+```typescript
+createPipeline()
+    .name('Parallel Import')
+    .parallel({ maxConcurrentSteps: 4, errorPolicy: 'CONTINUE' })
+    .extract('fetch-products', { /* ... */ })
+    .extract('fetch-prices', { /* ... */ })
+    .transform('merge', { /* ... */ })
+    .load('upsert', { /* ... */ })
+    .edge('fetch-products', 'merge')
+    .edge('fetch-prices', 'merge')
+    .edge('merge', 'upsert')
+    .build();
+```
+
 ### Dependencies
 
 ```typescript
@@ -221,6 +250,7 @@ Modify records:
     operators: OperatorConfig[],
     throughput?: Throughput,
     async?: boolean,
+    retryPerRecord?: RetryPerRecordConfig,
 })
 ```
 
@@ -232,6 +262,33 @@ Modify records:
         { op: 'set', args: { path: 'enabled', value: true } },
         { op: 'slugify', args: { source: 'name', target: 'slug' } },
     ],
+})
+```
+
+#### retryPerRecord (optional)
+
+Per-record retry configuration for transform operators. When set, individual
+records that fail during transformation are retried independently rather than
+failing the entire batch.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `maxRetries` | number | Yes | Max retries per record (default: 0) |
+| `retryDelayMs` | number | No | Delay between retries in ms (default: 100) |
+| `backoff` | string | No | `'FIXED'` \| `'EXPONENTIAL'` (default: `'FIXED'`) |
+| `retryableErrors` | string[] | No | Error message patterns to retry (optional, retries all errors if omitted) |
+
+```typescript
+.transform('enrich-products', {
+    operators: [
+        { op: 'httpLookup', args: { url: 'https://api.example.com/{{sku}}', target: 'extra' } },
+    ],
+    retryPerRecord: {
+        maxRetries: 3,
+        retryDelayMs: 500,
+        backoff: 'EXPONENTIAL',
+        retryableErrors: ['ETIMEDOUT', 'ECONNRESET'],
+    },
 })
 ```
 
@@ -440,6 +497,59 @@ Index data to search engines:
     indexName: 'products',
     idField: 'id',
     bulkSize: 500,
+})
+```
+
+### gate
+
+Add a human-in-the-loop approval gate step. Gates pause pipeline execution until
+approval is granted -- either manually, automatically when errors fall below a
+threshold, or after a timeout.
+
+```typescript
+.gate('step-key', {
+    approvalType: 'MANUAL' | 'THRESHOLD' | 'TIMEOUT',
+    timeoutSeconds?: number,
+    errorThresholdPercent?: number,
+    notifyWebhook?: string,
+    notifyEmail?: string,
+    previewCount?: number,
+})
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `approvalType` | string | Yes | `'MANUAL'` \| `'THRESHOLD'` \| `'TIMEOUT'` |
+| `timeoutSeconds` | number | No | Auto-approve after N seconds (`TIMEOUT` mode) |
+| `errorThresholdPercent` | number | No | Auto-approve if error rate below threshold, 0-100 (`THRESHOLD` mode) |
+| `notifyWebhook` | string | No | Webhook URL for gate notifications |
+| `notifyEmail` | string | No | Email address for gate notifications |
+| `previewCount` | number | No | Number of records to preview (default: 10) |
+
+**Manual Gate:**
+```typescript
+.gate('review-import', {
+    approvalType: 'MANUAL',
+    notifyEmail: 'admin@example.com',
+    previewCount: 25,
+})
+```
+
+**Threshold Gate:**
+```typescript
+.gate('error-check', {
+    approvalType: 'THRESHOLD',
+    errorThresholdPercent: 5,
+    notifyWebhook: 'https://hooks.example.com/gate',
+})
+```
+
+**Timeout Gate:**
+```typescript
+.gate('timed-review', {
+    approvalType: 'TIMEOUT',
+    timeoutSeconds: 3600,
+    notifyEmail: 'team@example.com',
 })
 ```
 

@@ -1,4 +1,4 @@
-import { BaseOperatorConfig } from '../types';
+import { BaseOperatorConfig, JsonObject } from '../types';
 
 export type AggregationOp = 'count' | 'sum' | 'avg' | 'min' | 'max' | 'first' | 'last';
 
@@ -38,4 +38,24 @@ export interface ExpandOperatorConfig extends BaseOperatorConfig {
     readonly mergeParent?: boolean;
     /** Map of parent fields to include: { targetField: sourceFieldPath } */
     readonly parentFields?: Record<string, string>;
+}
+
+/** Join type for multi-source join */
+export type JoinType = 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
+
+export interface MultiJoinOperatorConfig extends BaseOperatorConfig {
+    /** Field path in left (primary) records to join on */
+    readonly leftKey: string;
+    /** Field path in right records to join on */
+    readonly rightKey: string;
+    /** Static right-side dataset provided inline */
+    readonly rightData?: JsonObject[];
+    /** Dot-path to right-side data from pipeline context */
+    readonly rightDataPath?: string;
+    /** Join type: INNER, LEFT, RIGHT, or FULL (default: LEFT) */
+    readonly type?: JoinType;
+    /** Prefix for right-side field names to avoid collisions */
+    readonly prefix?: string;
+    /** Which right-side fields to include (default: all) */
+    readonly select?: string[];
 }

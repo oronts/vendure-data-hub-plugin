@@ -17,3 +17,7 @@ export { AssetAttachHandler } from './asset-handler';
 export { AssetImportHandler } from './asset-import-handler';
 export { FacetHandler, FacetValueHandler } from './facet-handler';
 export { RestPostHandler } from './rest-handler';
+export { GraphqlMutationHandler } from './graphql-mutation-handler';
+export { TaxRateHandler } from './tax-rate-handler';
+export { PaymentMethodHandler } from './payment-method-handler';
+export { ChannelHandler } from './channel-handler';

@@ -10,6 +10,7 @@
  * - promotion-handler.ts: Promotion upsert
  * - asset-handler.ts: Asset attachment
  * - rest-handler.ts: REST POST to external endpoints
+ * - graphql-mutation-handler.ts: GraphQL mutations to external endpoints
  */
 import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
@@ -32,6 +33,10 @@ import {
     FacetHandler,
     FacetValueHandler,
     RestPostHandler,
+    GraphqlMutationHandler,
+    TaxRateHandler,
+    PaymentMethodHandler,
+    ChannelHandler,
 } from './loaders';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { LoaderAdapter, LoadContext, ChannelStrategy, LanguageStrategyValue, ValidationModeType, ConflictStrategyValue } from '../../sdk/types';
@@ -73,6 +78,10 @@ export class LoadExecutor {
         private facetHandler: FacetHandler,
         private facetValueHandler: FacetValueHandler,
         private restPostHandler: RestPostHandler,
+        private graphqlMutationHandler: GraphqlMutationHandler,
+        private taxRateHandler: TaxRateHandler,
+        private paymentMethodHandler: PaymentMethodHandler,
+        private channelHandler: ChannelHandler,
         private secretService: SecretService,
         private connectionService: ConnectionService,
         loggerFactory: DataHubLoggerFactory,
@@ -94,6 +103,10 @@ export class LoadExecutor {
             [LOADER_CODE.FACET_VALUE_UPSERT]: (ctx, step, input, onErr, err) => this.facetValueHandler.execute(ctx, step, input, onErr, err),
             [LOADER_CODE.ORDER_TRANSITION]: (ctx, step, input, onErr, err) => this.orderTransitionHandler.execute(ctx, step, input, onErr, err),
             [LOADER_CODE.REST_POST]: (ctx, step, input, onErr, err) => this.restPostHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.GRAPHQL_MUTATION]: (ctx, step, input, onErr, err) => this.graphqlMutationHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.TAX_RATE_UPSERT]: (ctx, step, input, onErr, err) => this.taxRateHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.PAYMENT_METHOD_UPSERT]: (ctx, step, input, onErr, err) => this.paymentMethodHandler.execute(ctx, step, input, onErr, err),
+            [LOADER_CODE.CHANNEL_UPSERT]: (ctx, step, input, onErr, err) => this.channelHandler.execute(ctx, step, input, onErr, err),
         };
     }
 

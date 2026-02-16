@@ -19,6 +19,7 @@ export const EXTRACTOR_CODE = {
     XML: 'xml',
     IN_MEMORY: 'inMemory',
     GENERATOR: 'generator',
+    CDC: 'cdc',
 } as const;
 
 /** Type representing valid extractor adapter codes */
@@ -40,6 +41,7 @@ export const LOADER_CODE = {
     FACET_VALUE_UPSERT: 'facetValueUpsert',
     ORDER_TRANSITION: 'orderTransition',
     REST_POST: 'restPost',
+    GRAPHQL_MUTATION: 'graphqlMutation',
     TAX_RATE_UPSERT: 'taxRateUpsert',
     PAYMENT_METHOD_UPSERT: 'paymentMethodUpsert',
     CHANNEL_UPSERT: 'channelUpsert',
@@ -53,11 +55,20 @@ export const EXPORTER_CODE = {
     CSV: 'csvExport',
     JSON: 'jsonExport',
     XML: 'xmlExport',
-    XLSX: 'xlsxExport',
-    PARQUET: 'parquetExport',
     REST_POST: 'restPostExport',
     WEBHOOK: 'webhookExport',
 } as const;
 
 /** Type representing valid exporter adapter codes */
 export type ExporterCode = typeof EXPORTER_CODE[keyof typeof EXPORTER_CODE];
+
+/** Feed adapter codes */
+export const FEED_CODE = {
+    GOOGLE_MERCHANT: 'googleMerchant',
+    META_CATALOG: 'metaCatalog',
+    AMAZON: 'amazonFeed',
+    CUSTOM: 'customFeed',
+} as const;
+
+/** Type representing valid feed adapter codes */
+export type FeedCode = typeof FEED_CODE[keyof typeof FEED_CODE];

@@ -15,6 +15,7 @@ import { FtpExtractor } from './ftp';
 import { S3Extractor } from './s3';
 import { DatabaseExtractor } from './database';
 import { GraphQLExtractor } from './graphql';
+import { CdcExtractor } from './cdc';
 import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
 import { LOGGER_CONTEXTS } from '../constants/index';
 
@@ -57,6 +58,7 @@ export class ExtractorRegistryService implements OnModuleInit {
         @Optional() private readonly s3Extractor?: S3Extractor,
         @Optional() private readonly databaseExtractor?: DatabaseExtractor,
         @Optional() private readonly graphqlExtractor?: GraphQLExtractor,
+        @Optional() private readonly cdcExtractor?: CdcExtractor,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.EXTRACTOR_REGISTRY);
     }
@@ -104,6 +106,7 @@ export class ExtractorRegistryService implements OnModuleInit {
             this.s3Extractor,
             this.databaseExtractor,
             this.graphqlExtractor,
+            this.cdcExtractor,
         ];
 
         for (const extractor of builtInExtractors) {

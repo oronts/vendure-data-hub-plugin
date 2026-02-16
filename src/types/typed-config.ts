@@ -156,7 +156,7 @@ interface TypedFeedStep extends BaseStep {
     config: TypedFeedConfig;
 }
 
-type TypedStep =
+export type TypedStep =
     | TypedExtractStep
     | TypedTransformStep
     | TypedValidateStep

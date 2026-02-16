@@ -32,6 +32,7 @@ export type {
     OperatorConfig,
     RouteConditionConfig,
     RouteBranchConfig,
+    GateStepConfig,
 } from './dsl/step-configs';
 
 export {

@@ -12,4 +12,5 @@ export * from './load-step.strategy';
 export * from './export-step.strategy';
 export * from './feed-step.strategy';
 export * from './sink-step.strategy';
+export * from './gate-step.strategy';
 export * from './step-dispatcher';

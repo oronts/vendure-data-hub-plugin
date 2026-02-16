@@ -8,7 +8,7 @@
  */
 
 import { bootstrap, mergeConfig, VendureConfig } from '@vendure/core';
-import { printSchema } from 'graphql';
+import { printSchema, GraphQLSchema } from 'graphql';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -60,7 +60,7 @@ async function generateSchema() {
         process.exit(1);
     }
 
-    const schemaString = printSchema(schema);
+    const schemaString = printSchema(schema as GraphQLSchema);
     const outputPath = path.join(__dirname, '..', 'schema.graphql');
 
     fs.writeFileSync(outputPath, schemaString, 'utf-8');

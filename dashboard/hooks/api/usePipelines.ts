@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
-import { ArchiveDataHubPipelineApiDocument } from '../../gql/graphql';
 import { createMutationErrorHandler } from './mutationHelpers';
 import type {
     DataHubPipelineListOptions,
@@ -177,7 +176,14 @@ const publishPipelineDocument = graphql(`
     }
 `);
 
-const archivePipelineDocument = ArchiveDataHubPipelineApiDocument;
+const archivePipelineDocument = graphql(`
+    mutation ArchiveDataHubPipelineApi($id: ID!) {
+        archiveDataHubPipeline(id: $id) {
+            id
+            status
+        }
+    }
+`);
 
 export function usePipelines(options?: DataHubPipelineListOptions) {
     return useQuery({

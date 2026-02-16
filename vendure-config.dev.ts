@@ -54,6 +54,14 @@ import {
     comprehensiveAdvancedPipeline,
     allHookStagesPipeline,
     customAdapterPipeline,
+    // Architectural gap pipelines
+    joinDemoPipeline,
+    parallelDemoPipeline,
+    retryDemoPipeline,
+    gateDemoPipeline,
+    cdcDemoPipeline,
+    graphqlMutationDemoPipeline,
+    fileTransformDemoPipeline,
 } from './dev-server/examples/pipelines';
 
 const PORT = process.env.PORT ? +process.env.PORT : 3000;
@@ -497,6 +505,17 @@ export const config: VendureConfig = {
                 { code: 'comprehensive-advanced', name: 'Comprehensive Advanced Pipeline', definition: comprehensiveAdvancedPipeline, enabled: true },
                 { code: 'all-hook-stages', name: 'All 18 Hook Stages Demo', definition: allHookStagesPipeline, enabled: true },
                 { code: 'custom-adapter-sdk', name: 'Custom Adapter SDK Example', definition: customAdapterPipeline, enabled: true },
+
+                // =====================================================================
+                // ARCHITECTURAL GAPS (multi-join, parallel, retry, gate, CDC, GraphQL, file)
+                // =====================================================================
+                { code: 'join-demo', name: 'Multi-Source Join Demo', definition: joinDemoPipeline, enabled: true },
+                { code: 'parallel-demo', name: 'Parallel Execution Demo', definition: parallelDemoPipeline, enabled: true },
+                { code: 'retry-demo', name: 'Per-Record Retry Demo', definition: retryDemoPipeline, enabled: true },
+                { code: 'gate-demo', name: 'Gate Approval Workflow Demo', definition: gateDemoPipeline, enabled: true },
+                { code: 'cdc-demo', name: 'CDC Extraction Demo', definition: cdcDemoPipeline, enabled: true },
+                { code: 'graphql-mutation-demo', name: 'GraphQL Mutation Loading Demo', definition: graphqlMutationDemoPipeline, enabled: true },
+                { code: 'file-transform-demo', name: 'File Transformation Demo', definition: fileTransformDemoPipeline, enabled: true },
 
                 // =====================================================================
                 // PIMCORE CONNECTOR PIPELINES

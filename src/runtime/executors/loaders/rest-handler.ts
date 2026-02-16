@@ -10,10 +10,11 @@ import { SecretService } from '../../../services/config/secret.service';
 import { CircuitBreakerService } from '../../../services/runtime/circuit-breaker.service';
 import { sleep, chunk } from '../../utils';
 import { LoaderHandler } from './types';
-import { TIME, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, AuthType, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
+import { TIME, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, AuthType, HttpMethod, HTTP_HEADERS, CONTENT_TYPES } from '../../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
+import { resolveAuthHeaders } from './shared-http-auth';
 
 /**
  * Configuration for REST POST loader step
@@ -82,17 +83,7 @@ export class RestPostHandler implements LoaderHandler {
         const maxBatchSize = Math.max(0, Number(cfg.maxBatchSize ?? 0) || 0);
 
         try {
-            const auth = String(cfg.auth ?? AuthType.NONE);
-            if (auth === AuthType.BEARER && cfg.bearerTokenSecretCode) {
-                const token = await this.secretService.resolve(ctx, String(cfg.bearerTokenSecretCode));
-                if (token) headers = { ...headers, [HTTP_HEADERS.AUTHORIZATION]: `${AUTH_SCHEMES.BEARER} ${token}` };
-            } else if (auth === AuthType.BASIC && cfg.basicSecretCode) {
-                const credentials = await this.secretService.resolve(ctx, String(cfg.basicSecretCode));
-                if (credentials && credentials.includes(':')) {
-                    const token = Buffer.from(credentials).toString('base64');
-                    headers = { ...headers, [HTTP_HEADERS.AUTHORIZATION]: `${AUTH_SCHEMES.BASIC} ${token}` };
-                }
-            }
+            headers = await resolveAuthHeaders(ctx, this.secretService, cfg, headers);
         } catch (error) {
             this.logger.warn('Failed to resolve authentication secrets for REST loader', {
                 stepKey: step.key,

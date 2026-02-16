@@ -1,4 +1,5 @@
 import { SEARCH_SERVICE_PORTS } from '../../shared/constants';
+import { FeedFormat } from './enums';
 export { SEARCH_SERVICE_PORTS };
 
 export const SEARCH_SERVICE_ENV_VARS = {
@@ -107,11 +108,11 @@ export interface FeedFormatInfo {
 }
 
 export const FEED_FORMATS: readonly FeedFormatInfo[] = [
-    { code: 'google_shopping', label: 'Google Shopping', description: 'Google Merchant Center XML feed', contentType: CONTENT_TYPES.XML, extension: 'xml' },
-    { code: 'facebook_catalog', label: 'Facebook Catalog', description: 'Facebook/Instagram product catalog (CSV)', contentType: CONTENT_TYPES.CSV, extension: 'csv' },
-    { code: 'csv', label: 'CSV', description: 'Generic CSV export', contentType: CONTENT_TYPES.CSV, extension: 'csv' },
-    { code: 'json', label: 'JSON', description: 'Generic JSON export', contentType: CONTENT_TYPES.JSON, extension: 'json' },
-    { code: 'xml', label: 'XML', description: 'Generic XML export', contentType: CONTENT_TYPES.XML, extension: 'xml' },
+    { code: FeedFormat.GOOGLE_SHOPPING, label: 'Google Shopping', description: 'Google Merchant Center XML feed', contentType: CONTENT_TYPES.XML, extension: 'xml' },
+    { code: FeedFormat.META_CATALOG, label: 'Meta Catalog', description: 'Facebook/Instagram product catalog (CSV)', contentType: CONTENT_TYPES.CSV, extension: 'csv' },
+    { code: FeedFormat.CSV, label: 'CSV', description: 'Generic CSV export', contentType: CONTENT_TYPES.CSV, extension: 'csv' },
+    { code: FeedFormat.JSON, label: 'JSON', description: 'Generic JSON export', contentType: CONTENT_TYPES.JSON, extension: 'json' },
+    { code: FeedFormat.XML, label: 'XML', description: 'Generic XML export', contentType: CONTENT_TYPES.XML, extension: 'xml' },
 ] as const;
 
 export const FEED_FORMAT_MAP = new Map(FEED_FORMATS.map(f => [f.code, f]));

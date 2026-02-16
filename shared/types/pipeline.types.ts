@@ -51,6 +51,7 @@ export type SourceType =
     | 'FTP'
     | 'S3'
     | 'DATABASE'
+    | 'CDC'
     | 'VENDURE_QUERY'
     | 'EVENT';
 

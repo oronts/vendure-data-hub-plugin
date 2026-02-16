@@ -17,6 +17,7 @@ export type {
     ApiSourceConfig,
     DatabaseSourceConfig,
     WebhookSourceConfig,
+    CdcSourceConfig,
     ImportFieldMapping,
     ImportStrategies,
     ImportTriggerConfig,

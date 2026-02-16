@@ -545,6 +545,21 @@ export const operators = {
         return { op: TRANSFORM_OPERATOR.EXPAND, args: { path, mergeParent, parentFields } };
     },
 
+    /** `operators.multiJoin({ leftKey: 'categoryId', rightKey: 'id', rightData: [...], type: 'LEFT' })` */
+    multiJoin(config: {
+        leftKey: string;
+        rightKey: string;
+        rightDataPath?: string;
+        rightData?: JsonObject[];
+        type?: 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
+        prefix?: string;
+        select?: string[];
+    }): OperatorConfig {
+        validateNonEmptyString(config.leftKey, 'Left key');
+        validateNonEmptyString(config.rightKey, 'Right key');
+        return { op: TRANSFORM_OPERATOR.MULTI_JOIN, args: { ...config, type: config.type ?? 'LEFT' } };
+    },
+
     // =========================================================================
     // VALIDATION OPERATORS
     // =========================================================================
@@ -582,5 +597,46 @@ export const operators = {
     ): OperatorConfig {
         validateNonEmptyString(code, 'Code');
         return { op: TRANSFORM_OPERATOR.SCRIPT, args: { code, ...options } };
+    },
+
+    // =========================================================================
+    // FILE OPERATORS
+    // =========================================================================
+
+    /** `operators.imageResize({ sourceField: 'image', width: 800, height: 600, format: 'webp' })` */
+    imageResize(config: {
+        sourceField: string;
+        targetField?: string;
+        width?: number;
+        height?: number;
+        fit?: 'cover' | 'contain' | 'fill' | 'inside' | 'outside';
+        format?: 'jpeg' | 'png' | 'webp' | 'avif';
+        quality?: number;
+    }): OperatorConfig {
+        validateNonEmptyString(config.sourceField, 'Source field');
+        return { op: TRANSFORM_OPERATOR.IMAGE_RESIZE, args: { ...config } };
+    },
+
+    /** `operators.imageConvert({ sourceField: 'image', format: 'webp', quality: 80 })` */
+    imageConvert(config: {
+        sourceField: string;
+        targetField?: string;
+        format: 'jpeg' | 'png' | 'webp' | 'avif' | 'gif';
+        quality?: number;
+    }): OperatorConfig {
+        validateNonEmptyString(config.sourceField, 'Source field');
+        return { op: TRANSFORM_OPERATOR.IMAGE_CONVERT, args: { ...config } };
+    },
+
+    /** `operators.pdfGenerate({ template: '<h1>{{name}}</h1>', targetField: 'pdfData' })` */
+    pdfGenerate(config: {
+        template?: string;
+        templateField?: string;
+        targetField: string;
+        pageSize?: 'A4' | 'LETTER' | 'A3';
+        orientation?: 'PORTRAIT' | 'LANDSCAPE';
+    }): OperatorConfig {
+        validateNonEmptyString(config.targetField, 'Target field');
+        return { op: TRANSFORM_OPERATOR.PDF_GENERATE, args: { ...config } };
     },
 };

@@ -88,7 +88,13 @@ export class PipelineRunnerService {
 
         try {
             const metrics = await this.executeSteps(execCtx);
-            await this.handleCompletion(execCtx, metrics);
+
+            // If the pipeline paused at a GATE step, set PAUSED status instead of COMPLETED
+            if (metrics.paused) {
+                await this.handlePaused(execCtx, metrics);
+            } else {
+                await this.handleCompletion(execCtx, metrics);
+            }
         } catch (e) {
             await this.handleFailure(execCtx, e);
         } finally {
@@ -141,8 +147,9 @@ export class PipelineRunnerService {
             userId: run.startedByUserId ?? undefined,
         });
 
-        if (run.status !== RunStatus.PENDING) {
-            runLogger.debug('Skipping run - not in PENDING status', { currentStatus: run.status });
+        // Accept PENDING (normal start) or RUNNING (gate resume) status
+        if (run.status !== RunStatus.PENDING && run.status !== RunStatus.RUNNING) {
+            runLogger.debug('Skipping run - not in PENDING or RUNNING status', { currentStatus: run.status });
             return { valid: false };
         }
 
@@ -255,6 +262,30 @@ export class PipelineRunnerService {
         pipelineSpan.setAttribute('records.succeeded', metrics.succeeded ?? 0);
         pipelineSpan.setAttribute('records.failed', metrics.failed ?? 0);
         pipelineSpan.end((metrics.failed ?? 0) > 0 ? 'error' : 'ok');
+    }
+
+    /**
+     * Updates run status to PAUSED when a GATE step requests human approval.
+     * The pipeline will resume when approveGate() is called.
+     */
+    private async handlePaused(execCtx: ExecutionContext, metrics: PipelineMetrics): Promise<void> {
+        const { run, runRepo, runLogger, pipelineSpan } = execCtx;
+
+        const pausedAtStep = typeof metrics.pausedAtStep === 'string' ? metrics.pausedAtStep : 'unknown';
+
+        run.status = RunStatus.PAUSED;
+        run.metrics = metrics;
+        await runRepo.save(run, { reload: false });
+
+        runLogger.info('Pipeline paused at GATE step, awaiting approval', {
+            pausedAtStep,
+            totalRecords: metrics.totalRecords ?? 0,
+            succeeded: metrics.succeeded ?? 0,
+            failed: metrics.failed ?? 0,
+        });
+
+        pipelineSpan.addEvent('pipeline.paused', { stepKey: pausedAtStep });
+        pipelineSpan.end('ok');
     }
 
     /**
@@ -398,7 +429,7 @@ export class PipelineRunnerService {
             throughput: calculateThroughput(result.processed, durationMs),
         });
 
-        const resultWithDetails = result as { processed: number; succeeded: number; failed: number; details?: JsonObject[] };
+        const resultWithDetails = result as { processed: number; succeeded: number; failed: number; details?: JsonObject[]; paused?: boolean; pausedAtStep?: string };
         return {
             totalRecords: result.processed,
             processed: result.processed,
@@ -406,6 +437,8 @@ export class PipelineRunnerService {
             failed: result.failed,
             durationMs,
             details: resultWithDetails.details,
+            paused: resultWithDetails.paused,
+            pausedAtStep: resultWithDetails.pausedAtStep,
         };
     }
 }

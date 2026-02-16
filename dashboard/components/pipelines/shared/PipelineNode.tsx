@@ -139,6 +139,7 @@ export const FeedNode = createPipelineNode('feed');
 export const ExportNode = createPipelineNode('export');
 export const SinkNode = createPipelineNode('sink');
 export const FilterNode = createPipelineNode('filter');
+export const GateNode = createPipelineNode('gate');
 
 export const ConditionNode = ConditionNodeComponent;
 
@@ -154,4 +155,5 @@ export const pipelineNodeTypes = {
     export: ExportNode,
     sink: SinkNode,
     enrich: EnrichNode,
+    gate: GateNode,
 };

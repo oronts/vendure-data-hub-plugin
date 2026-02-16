@@ -26,6 +26,7 @@ export const SOURCE_TYPE = {
     API: 'API',
     DATABASE: 'DATABASE',
     WEBHOOK: 'WEBHOOK',
+    CDC: 'CDC',
 } as const;
 
 /**
@@ -164,6 +165,7 @@ export const IMPORT_SOURCE_TYPES = [
     { id: 'API' as const, label: 'REST API', description: 'Fetch from HTTP endpoint' },
     { id: 'DATABASE' as const, label: 'Database', description: 'Query external database' },
     { id: 'WEBHOOK' as const, label: 'Webhook', description: 'Receive push data' },
+    { id: 'CDC' as const, label: 'Change Data Capture', description: 'Poll database for changes' },
 ] as const;
 
 export const IMPORT_FILE_FORMATS = [

@@ -22,9 +22,9 @@ import { ListQueryOptions } from '@vendure/core/dist/common/types/common-types';
 import {
     PipelineStepDefinition,
     ErrorHandlingConfig,
-    CustomerUpsertLoaderConfig,
     JsonObject,
 } from '../../../types/index';
+import type { CustomerUpsertLoaderConfig } from '../../../../shared/types';
 import { LOGGER_CONTEXTS } from '../../../constants/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { toStringOrUndefined } from '../../utils';
@@ -44,7 +44,7 @@ interface CustomerStepConfig {
     phoneNumberField?: string;
     addressesField?: string;
     groupsField?: string;
-    groupsMode?: 'REPLACE' | 'ADD' | 'REMOVE';
+    groupsMode?: 'add' | 'set';
 }
 
 /**
@@ -232,13 +232,13 @@ export class CustomerHandler implements LoaderHandler {
     private extractConfig(stepConfig: JsonObject): CustomerStepConfig {
         if (hasCustomerLoaderConfigShape(stepConfig)) {
             return {
-                emailField: stepConfig.emailField ?? 'email',
-                firstNameField: stepConfig.firstNameField,
-                lastNameField: stepConfig.lastNameField,
-                phoneNumberField: stepConfig.phoneNumberField,
-                addressesField: stepConfig.addressesField,
-                groupsField: stepConfig.groupsField,
-                groupsMode: stepConfig.groupsMode,
+                emailField: (stepConfig.emailField as string | undefined) ?? 'email',
+                firstNameField: stepConfig.firstNameField as string | undefined,
+                lastNameField: stepConfig.lastNameField as string | undefined,
+                phoneNumberField: stepConfig.phoneNumberField as string | undefined,
+                addressesField: stepConfig.addressesField as string | undefined,
+                groupsField: stepConfig.groupsField as string | undefined,
+                groupsMode: stepConfig.groupsMode as CustomerStepConfig['groupsMode'],
             };
         }
         // Return defaults if config is invalid

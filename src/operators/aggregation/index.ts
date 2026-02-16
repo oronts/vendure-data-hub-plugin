@@ -1,6 +1,7 @@
 export * from './types';
 export * from './helpers';
 export * from './aggregation.operators';
+export * from './join.operator';
 
 import {
     AGGREGATE_OPERATOR_DEFINITION,
@@ -11,6 +12,7 @@ import {
     LAST_OPERATOR_DEFINITION,
     EXPAND_OPERATOR_DEFINITION,
 } from './aggregation.operators';
+import { MULTI_JOIN_OPERATOR_DEFINITION } from './join.operator';
 import { AdapterDefinition } from '../types';
 
 export const AGGREGATION_OPERATOR_DEFINITIONS: AdapterDefinition[] = [
@@ -21,4 +23,5 @@ export const AGGREGATION_OPERATOR_DEFINITIONS: AdapterDefinition[] = [
     FIRST_OPERATOR_DEFINITION,
     LAST_OPERATOR_DEFINITION,
     EXPAND_OPERATOR_DEFINITION,
+    MULTI_JOIN_OPERATOR_DEFINITION,
 ];

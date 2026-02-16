@@ -12,6 +12,7 @@ import {
     Search,
     Rss,
     Filter,
+    ShieldCheck,
 } from 'lucide-react';
 import type { VisualNodeCategory } from '../../../types';
 import { CATEGORY_COLORS } from '../../../constants/index';
@@ -111,6 +112,14 @@ export const VISUAL_NODE_CONFIGS: Record<VisualNodeCategory, VisualNodeConfig> =
         icon: Filter,
         label: 'Filter',
         description: 'Filter data',
+        hasSourceHandle: true,
+        hasTargetHandle: true,
+    },
+    gate: {
+        color: CATEGORY_COLORS.gate,
+        icon: ShieldCheck,
+        label: 'Gate',
+        description: 'Pause for human approval',
         hasSourceHandle: true,
         hasTargetHandle: true,
     },

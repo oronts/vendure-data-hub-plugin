@@ -1,4 +1,4 @@
-export type { JsonValue, JsonObject } from '../../shared/types';
+export type { JsonValue, JsonObject, ValidationError } from '../../shared/types';
 
 export * from './pipeline';
 
@@ -90,11 +90,3 @@ export type {
     TransformOptions,
 } from '../../shared/types';
 
-export {
-    TRIGGER_TYPES,
-} from '../../shared/types';
-
-export type {
-    TriggerTypeValue,
-    ValidationError,
-} from '../../shared/types';

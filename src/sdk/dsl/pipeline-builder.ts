@@ -43,6 +43,7 @@ import {
     FeedStepConfig,
     SinkStepConfig,
     RouteStepConfig,
+    GateStepConfig,
 } from './step-configs';
 import { DEFAULT_TRIGGER_TYPE } from '../constants';
 
@@ -60,6 +61,7 @@ export interface PipelineBuilder {
     capabilities(capabilities: PipelineCapabilities): this;
     dependsOn(...codes: string[]): this;
     hooks(hooks: PipelineHooks): this;
+    parallel(config?: { maxConcurrentSteps?: number; errorPolicy?: 'FAIL_FAST' | 'CONTINUE' | 'BEST_EFFORT' }): this;
     trigger(key: string, config?: TriggerConfig): this;
     extract(key: string, config: ExtractStepConfig): this;
     transform(key: string, config: TransformStepConfig): this;
@@ -70,6 +72,7 @@ export interface PipelineBuilder {
     export(key: string, config: ExportStepConfig): this;
     feed(key: string, config: FeedStepConfig): this;
     sink(key: string, config: SinkStepConfig): this;
+    gate(key: string, config: GateStepConfig): this;
     edge(from: string, to: string, branch?: string): this;
     build(): PipelineDefinition;
 }
@@ -163,6 +166,17 @@ export function createPipeline(): PipelineBuilder {
             state.hooks = hooks;
             return this;
         },
+        parallel(config?: { maxConcurrentSteps?: number; errorPolicy?: 'FAIL_FAST' | 'CONTINUE' | 'BEST_EFFORT' }) {
+            if (!state.context) {
+                state.context = {};
+            }
+            state.context.parallelExecution = {
+                enabled: true,
+                maxConcurrentSteps: config?.maxConcurrentSteps,
+                errorPolicy: config?.errorPolicy,
+            };
+            return this;
+        },
         trigger(key: string, config: TriggerConfig = { type: DEFAULT_TRIGGER_TYPE }) {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
@@ -246,6 +260,12 @@ export function createPipeline(): PipelineBuilder {
             state.steps.push(createStep(key, StepType.SINK, rest as unknown as JsonObject, { throughput, async: asyncFlag }));
             return this;
         },
+        gate(key: string, config: GateStepConfig) {
+            validateNonEmptyString(key, 'Step key');
+            validateUniqueKey(state.steps, key);
+            state.steps.push(createStep(key, StepType.GATE, config as unknown as JsonObject));
+            return this;
+        },
         edge(from: string, to: string, branch?: string) {
             validateNonEmptyString(from, 'Edge "from" step');
             validateNonEmptyString(to, 'Edge "to" step');
@@ -326,6 +346,8 @@ export const steps = {
         step(key, StepType.FEED, config, extras),
     sink: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
         step(key, StepType.SINK, config, extras),
+    gate: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
+        step(key, StepType.GATE, config, extras),
 };
 
 export function edge(from: string, to: string, branch?: string): PipelineEdge {

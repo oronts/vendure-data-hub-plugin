@@ -260,6 +260,35 @@ export const LOADER_ADAPTERS: AdapterDefinition[] = [
     },
     {
         type: 'LOADER',
+        code: 'graphqlMutation',
+        description: 'Send records as GraphQL mutations to an external API endpoint. Supports variable mapping, auth, batching, and retries.',
+        requires: ['UpdateDataHubSettings'],
+        schema: {
+            fields: [
+                { key: 'endpoint', label: 'Endpoint URL', type: 'string', required: true },
+                { key: 'mutation', label: 'GraphQL mutation', type: 'code', required: true, description: 'The GraphQL mutation string (e.g. mutation CreateProduct($input: ProductInput!) { createProduct(input: $input) { id } })' },
+                { key: 'variableMapping', label: 'Variable mapping (JSON)', type: 'json', required: true, description: 'Maps GraphQL variable paths to record field paths (e.g. {"input.name": "productName", "input.sku": "sku"})' },
+                { key: 'headers', label: 'Headers (JSON)', type: 'json' },
+                { key: 'auth', label: 'Auth preset', type: 'select', options: [
+                    { value: AuthType.NONE, label: 'None' },
+                    { value: AuthType.BEARER, label: 'Bearer' },
+                    { value: AuthType.BASIC, label: 'Basic' },
+                ] },
+                { key: 'bearerTokenSecretCode', label: 'Bearer token secret code', type: 'string' },
+                { key: 'basicSecretCode', label: 'Basic auth secret code', type: 'string' },
+                { key: 'batchMode', label: 'Batch mode', type: 'select', options: [
+                    { value: 'single', label: 'single (one mutation per record)' },
+                    { value: 'batch', label: 'batch (records as input array)' },
+                ] },
+                { key: 'maxBatchSize', label: 'Max batch size', type: 'number', description: 'Chunk size when batchMode=batch' },
+                { key: 'retries', label: 'Retries', type: 'number', description: 'Number of retries for failed requests' },
+                { key: 'retryDelayMs', label: 'Retry delay (ms)', type: 'number', description: 'Delay between retries' },
+                { key: 'timeoutMs', label: 'Timeout (ms)', type: 'number', description: 'Request timeout in milliseconds' },
+            ],
+        },
+    },
+    {
+        type: 'LOADER',
         code: 'taxRateUpsert',
         description: 'Upsert TaxRate by name; resolves tax category and zone by code.',
         requires: ['UpdateSettings'],

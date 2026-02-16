@@ -47,4 +47,5 @@ export type VisualNodeCategory =
     | 'export'
     | 'sink'
     | 'enrich'
-    | 'filter';
+    | 'filter'
+    | 'gate';

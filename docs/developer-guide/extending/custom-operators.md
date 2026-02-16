@@ -120,6 +120,72 @@ export class MyOperatorPlugin implements OnModuleInit {
 }
 ```
 
+## Runtime Registration via DataHubRegistryService
+
+In addition to the `adapters` array and `registerOperator()` method shown above, you can register custom operators at runtime using `DataHubRegistryService.registerRuntime()`. This approach is useful for dynamically registering operators from other plugins or modules.
+
+```typescript
+import { VendurePlugin, OnModuleInit } from '@vendure/core';
+import { DataHubPlugin, DataHubRegistryService } from '@oronts/vendure-data-hub-plugin';
+
+@VendurePlugin({
+    imports: [DataHubPlugin],
+})
+export class MyCustomOperatorPlugin implements OnModuleInit {
+    constructor(private registry: DataHubRegistryService) {}
+
+    onModuleInit() {
+        this.registry.registerRuntime({
+            type: 'OPERATOR',
+            code: 'myCustomOp',
+            name: 'My Custom Operator',
+            description: 'Custom processing logic',
+            category: 'CUSTOM',
+            async apply(records, config, helpers) {
+                return {
+                    records: records.map(r => ({ ...r, processed: true })),
+                };
+            },
+        });
+    }
+}
+```
+
+### How Runtime Registration Works
+
+Custom operators registered via `registerRuntime()` are discovered automatically by the transform executor. When the executor encounters an operator code that is not found in the built-in operator registry, it falls back to the runtime registry where custom operators are stored.
+
+This means:
+- No changes to the core plugin are needed
+- Custom operators are available immediately after registration
+- They appear alongside built-in operators in the pipeline editor
+- They can be used in DSL pipelines exactly like built-in operators
+
+### Using a Runtime-Registered Operator in a Pipeline
+
+```typescript
+export const customPipeline = createPipeline()
+    .name('Pipeline with Custom Operator')
+
+    .trigger('start', { type: 'MANUAL' })
+
+    .extract('fetch', { adapterCode: 'httpApi', url: 'https://api.example.com/data' })
+
+    .transform('custom-step', {
+        operators: [
+            { op: 'myCustomOp', args: { /* operator-specific config */ } },
+        ],
+    })
+
+    .load('save', { adapterCode: 'productUpsert', strategy: 'UPSERT', matchField: 'slug' })
+
+    .edge('start', 'fetch')
+    .edge('fetch', 'custom-step')
+    .edge('custom-step', 'save')
+
+    .build();
+```
+
 ## Operator Categories
 
 Use standard categories for consistency:
@@ -135,6 +201,8 @@ Use standard categories for consistency:
 | `validation` | Data validation |
 | `aggregation` | Aggregation operations |
 | `enrichment` | External data enrichment |
+| `file` | File and media processing |
+| `custom` | Custom operator category for runtime-registered operators |
 
 ## Return Values
 

@@ -12,6 +12,7 @@ import {
     Upload,
     Rss,
     Search,
+    ShieldCheck,
 } from 'lucide-react';
 
 export const NODE_CATEGORIES = {
@@ -26,6 +27,7 @@ export const NODE_CATEGORIES = {
     FEED: 'feed',
     SINK: 'sink',
     FILTER: 'filter',
+    GATE: 'gate',
 } as const satisfies Record<string, VisualNodeCategory>;
 
 export const ADAPTER_TYPES = {
@@ -52,6 +54,7 @@ export const STEP_TYPE_TO_CATEGORY: Record<string, VisualNodeCategory> = {
     EXPORT: 'export',
     FEED: 'feed',
     SINK: 'sink',
+    GATE: 'gate',
 };
 
 export const CATEGORY_TO_STEP_TYPE: Record<string, StepType> = {
@@ -65,6 +68,7 @@ export const CATEGORY_TO_STEP_TYPE: Record<string, StepType> = {
     export: 'EXPORT',
     feed: 'FEED',
     sink: 'SINK',
+    gate: 'GATE',
 };
 
 export const CATEGORY_TO_ADAPTER_TYPE: Record<string, string> = {
@@ -100,6 +104,7 @@ export const STEP_TYPE_CANONICAL_COLORS: Record<string, string> = {
     EXPORT: '#ec4899',
     FEED: '#06b6d4',
     SINK: '#84cc16',
+    GATE: '#d97706',
 };
 
 /** Category colors derived from canonical step type colors for consistency. */
@@ -115,6 +120,7 @@ export const CATEGORY_COLORS: Record<VisualNodeCategory, string> = {
     feed: STEP_TYPE_CANONICAL_COLORS.FEED,
     sink: STEP_TYPE_CANONICAL_COLORS.SINK,
     filter: STEP_TYPE_CANONICAL_COLORS.TRANSFORM,
+    gate: STEP_TYPE_CANONICAL_COLORS.GATE,
 };
 
 export function mapStepTypeToCategory(stepType: string): VisualNodeCategory {
@@ -137,6 +143,7 @@ const STEP_TYPE_ICONS: Record<string, LucideIcon> = {
     EXPORT: Upload,
     FEED: Rss,
     SINK: Search,
+    GATE: ShieldCheck,
 };
 
 export function getStepTypeIcon(stepType: string): LucideIcon | undefined {

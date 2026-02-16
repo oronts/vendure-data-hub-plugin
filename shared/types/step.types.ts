@@ -29,7 +29,8 @@ export type StepType =
     | 'LOAD'
     | 'EXPORT'
     | 'FEED'
-    | 'SINK';
+    | 'SINK'
+    | 'GATE';
 
 /** Execution status of a pipeline node/step */
 export type NodeStatus =

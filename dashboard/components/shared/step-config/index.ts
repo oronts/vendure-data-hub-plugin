@@ -19,12 +19,18 @@ export type { ValidateConfigComponentProps } from './ValidateConfigComponent';
 export { EnrichConfigComponent } from './EnrichConfigComponent';
 export type { EnrichConfigComponentProps } from './EnrichConfigComponent';
 
+export { GateConfigComponent } from './GateConfigComponent';
+export type { GateConfigComponentProps } from './GateConfigComponent';
+
 export {
     AdvancedMapEditor,
     AdvancedTemplateEditor,
     AdvancedWhenEditor,
     MultiOperatorEditor,
 } from './AdvancedEditors';
+
+export { RetrySettingsComponent } from './RetrySettingsComponent';
+export type { RetrySettingsComponentProps, RetrySettings } from './RetrySettingsComponent';
 
 export { StepTester } from './StepTester';
 

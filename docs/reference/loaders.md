@@ -1,6 +1,6 @@
 # Loaders Reference
 
-Complete reference for all entity loaders (16 total).
+Complete reference for all entity loaders (17 total).
 
 ## Common Configuration
 
@@ -33,6 +33,7 @@ All loaders are configured using the `.load()` step in the pipeline DSL:
 | `orderTransition` | Order | Transition order states |
 | `applyCoupon` | Order | Apply coupon codes to orders |
 | `restPost` | Custom | POST data to REST endpoints |
+| `graphqlMutation` | GraphQL | Send records as GraphQL mutations to external APIs |
 
 ### Load Strategies
 
@@ -253,6 +254,86 @@ Create/update channels with currencies and languages.
 
 ---
 
+## GraphQL Mutation Loader
+
+Adapter Code: `graphqlMutation`
+
+Send records as GraphQL mutations to external APIs. Supports variable mapping, authentication, batch mode, retry with exponential backoff, and circuit breaker.
+
+### Input Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `endpoint` | string | Yes | GraphQL endpoint URL |
+| `mutation` | string | Yes | GraphQL mutation string |
+| `variableMapping` | object | No | Map record fields to mutation variables (e.g., `{ "input.name": "name", "input.sku": "sku" }`) |
+| `headers` | json | No | Request headers (JSON object) |
+| `auth` | string | No | Authentication type: `BEARER`, `BASIC`, `NONE` (default: `NONE`) |
+| `bearerTokenSecretCode` | string | No | Secret code for Bearer token (when auth is `BEARER`) |
+| `basicSecretCode` | string | No | Secret code for Basic auth credentials (when auth is `BASIC`) |
+| `batchMode` | string | No | `single` or `batch`. If `batch`, send multiple records in a single mutation (default: `single`) |
+| `maxBatchSize` | number | No | Maximum records per batch when batchMode is `batch` |
+| `retries` | number | No | Maximum retry attempts on failure (default: 0) |
+| `retryDelayMs` | number | No | Initial retry delay in milliseconds |
+| `maxRetryDelayMs` | number | No | Maximum retry delay in milliseconds (caps exponential backoff) |
+| `backoffMultiplier` | number | No | Multiplier for exponential backoff between retries |
+| `timeoutMs` | number | No | Request timeout in milliseconds |
+
+### Example - Single Record Mutation
+
+```typescript
+.load('sync-to-cms', {
+    adapterCode: 'graphqlMutation',
+    endpoint: 'https://cms.example.com/graphql',
+    mutation: `
+        mutation UpsertProduct($input: ProductInput!) {
+            upsertProduct(input: $input) {
+                id
+                status
+            }
+        }
+    `,
+    variableMapping: {
+        'input.name': 'name',
+        'input.sku': 'sku',
+        'input.price': 'price',
+        'input.description': 'description',
+    },
+    auth: 'BEARER',
+    bearerTokenSecretCode: 'cms-api-token',
+    retries: 3,
+    retryDelayMs: 1000,
+    backoffMultiplier: 2,
+})
+```
+
+### Example - Batch Mutation
+
+```typescript
+.load('bulk-update', {
+    adapterCode: 'graphqlMutation',
+    endpoint: 'https://api.example.com/graphql',
+    mutation: `
+        mutation BulkUpdateInventory($input: [InventoryInput!]!) {
+            bulkUpdateInventory(input: $input) {
+                updated
+                failed
+            }
+        }
+    `,
+    variableMapping: {
+        'sku': 'sku',
+        'quantity': 'stockOnHand',
+    },
+    batchMode: 'batch',
+    maxBatchSize: 100,
+    auth: 'BASIC',
+    basicSecretCode: 'inventory-api-creds',
+})
+```
+
+---
+
 ## Using Sinks for External Systems
 
 For sending data to external systems (REST APIs, search engines, message queues), use **Sinks** instead of loaders. See [Sinks Reference](./sinks.md) for details on:
@@ -281,6 +362,7 @@ For sending data to external systems (REST APIs, search engines, message queues)
 | `orderTransition` | Order | Transition order states |
 | `applyCoupon` | Order | Apply coupon codes to orders |
 | `restPost` | Custom | POST data to REST endpoints |
+| `graphqlMutation` | GraphQL | Send records as GraphQL mutations to external APIs |
 
 ### Required Permissions
 
@@ -293,3 +375,4 @@ Each loader requires specific Vendure permissions:
 | `orderNote`, `orderTransition`, `applyCoupon` | `UpdateOrder` |
 | `promotionUpsert` | `UpdatePromotion` |
 | `restPost` | No specific permission (depends on endpoint) |
+| `graphqlMutation` | No specific permission (depends on endpoint) |
