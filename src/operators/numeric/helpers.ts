@@ -8,6 +8,14 @@ import {
     convertUnit,
 } from '../../constants/units';
 
+function applyRoundingMode(value: number, mode: string): number {
+    switch (mode) {
+        case 'floor': return Math.floor(value);
+        case 'ceil': return Math.ceil(value);
+        default: return Math.round(value);
+    }
+}
+
 const UNIT_CATEGORIES: Record<string, UnitType[]> = {
     weight: Object.values(WEIGHT_UNITS) as UnitType[],
     length: Object.values(LENGTH_UNITS) as UnitType[],
@@ -109,18 +117,7 @@ export function applyCurrency(
     }
 
     const factor = Math.pow(10, decimals);
-    let minorUnits: number;
-
-    switch (round) {
-        case 'floor':
-            minorUnits = Math.floor(value * factor);
-            break;
-        case 'ceil':
-            minorUnits = Math.ceil(value * factor);
-            break;
-        default:
-            minorUnits = Math.round(value * factor);
-    }
+    const minorUnits = applyRoundingMode(value * factor, round);
 
     setNestedValue(result, target, minorUnits);
     return result;
@@ -327,19 +324,7 @@ export function applyToCents(
         return result;
     }
 
-    const cents = value * 100;
-    let roundedCents: number;
-
-    switch (round) {
-        case 'floor':
-            roundedCents = Math.floor(cents);
-            break;
-        case 'ceil':
-            roundedCents = Math.ceil(cents);
-            break;
-        default:
-            roundedCents = Math.round(cents);
-    }
+    const roundedCents = applyRoundingMode(value * 100, round);
 
     setNestedValue(result, target, roundedCents);
     return result;
@@ -364,18 +349,7 @@ export function applyRound(
     }
 
     const factor = Math.pow(10, decimals);
-    let rounded: number;
-
-    switch (mode) {
-        case 'floor':
-            rounded = Math.floor(value * factor) / factor;
-            break;
-        case 'ceil':
-            rounded = Math.ceil(value * factor) / factor;
-            break;
-        default:
-            rounded = Math.round(value * factor) / factor;
-    }
+    const rounded = applyRoundingMode(value * factor, mode) / factor;
 
     setNestedValue(result, targetPath, rounded);
     return result;

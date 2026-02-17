@@ -46,7 +46,7 @@ export const productApiImport = createPipeline()
     })
 
     .validate('check-required', {
-        mode: 'ACCUMULATE',
+        errorHandlingMode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'name', required: true } },
             { type: 'business', spec: { field: 'price', min: 0 } },
@@ -229,7 +229,7 @@ export const customerImport = createPipeline()
     })
 
     .validate('validate-customers', {
-        mode: 'ACCUMULATE',
+        errorHandlingMode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'email', required: true } },
             { type: 'business', spec: { field: 'email', pattern: '^[^@]+@[^@]+\\.[^@]+$' } },
@@ -636,7 +636,7 @@ export const validatedProductImport = createPipeline()
     })
 
     .validate('validate-data', {
-        mode: 'ACCUMULATE',  // Collect all errors vs fail-fast
+        errorHandlingMode: 'ACCUMULATE',  // Collect all errors vs fail-fast
         rules: [
             // Required field validation
             { type: 'business', spec: { field: 'sku', required: true } },
@@ -759,7 +759,7 @@ export const fullDataQualityPipeline = createPipeline()
 
     // Step 1: Validate required fields and format
     .validate('validate-input', {
-        mode: 'FAIL_FAST',
+        errorHandlingMode: 'FAIL_FAST',
         rules: [
             { type: 'business', spec: { field: 'email', required: true } },
             { type: 'business', spec: { field: 'email', pattern: '^[^@]+@[^@]+\\.[^@]+$' } },
@@ -797,7 +797,7 @@ export const fullDataQualityPipeline = createPipeline()
 
     // Step 4: Final validation after enrichment
     .validate('validate-output', {
-        mode: 'ACCUMULATE',
+        errorHandlingMode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'fullName', minLength: 3 } },
             { type: 'business', spec: { field: 'country', oneOf: ['US', 'CA', 'UK', 'DE', 'FR'] } },
@@ -843,7 +843,7 @@ export const seoEnrichmentPipeline = createPipeline()
 
     // Validate products have required SEO fields
     .validate('validate-seo-ready', {
-        mode: 'ACCUMULATE',
+        errorHandlingMode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'name', required: true, minLength: 10 } },
             { type: 'business', spec: { field: 'description', required: true, minLength: 50 } },

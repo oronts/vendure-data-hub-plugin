@@ -101,7 +101,7 @@ function ConnectionDetailPage({ route }: { route: AnyRoute }) {
             },
             { keepDirty: false, keepTouched: false },
         );
-    }, [entity?.id]);
+    }, [entity?.id, form]);
 
     const watchedType = useWatch({ control: form.control, name: 'type', defaultValue: entity?.type || CONNECTION_DEFAULT_TYPE });
     const connectionType = (watchedType || entity?.type || CONNECTION_DEFAULT_TYPE) as UIConnectionType;

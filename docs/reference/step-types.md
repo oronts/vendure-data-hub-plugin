@@ -87,11 +87,11 @@ See [Pipeline Builder - route](../developer-guide/dsl/pipeline-builder.md#route)
 
 ## LOAD
 
-Creates, updates, or deletes Vendure entities. Supports 17 entity types
+Creates, updates, or deletes Vendure entities. Supports 20 entity types
 including products, variants, customers, collections, facets, orders,
 promotions, assets, and more.
 
-**Strategies:** `CREATE`, `UPDATE`, `UPSERT`, `SOFT_DELETE`, `HARD_DELETE`
+**Strategies:** `CREATE`, `UPDATE`, `UPSERT`, `MERGE`, `SOFT_DELETE`, `HARD_DELETE`
 
 See [Loaders Reference](./loaders.md) for all loader adapters and their configuration.
 
@@ -113,7 +113,7 @@ See [Pipeline Builder - export](../developer-guide/dsl/pipeline-builder.md#expor
 
 Generates product feeds for marketing platforms.
 
-**Feed types:** `GOOGLE_SHOPPING`, `META_CATALOG`, `AMAZON`, `PINTEREST`, `BING`, `CUSTOM`
+**Feed types:** `GOOGLE_SHOPPING`, `META_CATALOG`, `AMAZON`, `PINTEREST`, `TIKTOK`, `BING_SHOPPING`, `CUSTOM`
 
 See [Feed Generators Reference](./feeds.md) for all feed adapters and their configuration.
 
@@ -208,7 +208,7 @@ createPipeline()
     .trigger('start', { type: 'MANUAL' })
     .extract('fetch-erp', { adapterCode: 'httpApi', /* ... */ })
     .transform('map-fields', { operators: [ /* ... */ ] })
-    .validate('check-data', { mode: 'ACCUMULATE', rules: [ /* ... */ ] })
+    .validate('check-data', { errorHandlingMode: 'ACCUMULATE', rules: [ /* ... */ ] })
     .gate('review-before-load', {
         approvalType: 'MANUAL',
         notifyEmail: 'data-team@example.com',

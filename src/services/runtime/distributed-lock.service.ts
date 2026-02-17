@@ -2,9 +2,10 @@ import * as crypto from 'crypto';
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { TransactionalConnection } from '@vendure/core';
 import { DataHubLoggerFactory, DataHubLogger } from '../logger';
-import { LockBackend, LockState, MemoryLockEntry, LockBackendFactory } from './lock-backends';
+import { LockBackend, MemoryLockEntry, LockBackendFactory } from './lock-backends';
 import { DISTRIBUTED_LOCK } from '../../constants/index';
 import { sleep } from '../../utils/retry.utils';
+import { getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Lock configuration options
@@ -165,20 +166,10 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
         return this.backend.cleanup();
     }
 
-    /** Get all active locks (for monitoring) */
-    getActiveLocks(): Promise<LockState[]> {
-        return this.backend.getActiveLocks?.() ?? Promise.resolve([]);
-    }
-
-    /** Get current backend name (for monitoring) */
-    getBackendName(): string {
-        return this.backend.name;
-    }
-
     private startCleanupInterval(): void {
         this.cleanupInterval = setInterval(() => {
             if (!this.isShuttingDown) {
-                this.cleanup().catch(err => this.logger.warn('Lock cleanup failed', { error: err.message }));
+                this.cleanup().catch(err => this.logger.warn('Lock cleanup failed', { error: getErrorMessage(err) }));
             }
         }, DISTRIBUTED_LOCK.CLEANUP_INTERVAL_MS);
         this.cleanupInterval.unref?.();

@@ -443,17 +443,4 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    /**
-     * Get webhook delivery statistics
-     */
-    getWebhookStats(): { total: number; delivered: number; failed: number; retrying: number } | null {
-        if (!this.webhookRetryService) return null;
-        const stats = this.webhookRetryService.getStats();
-        return {
-            total: stats.total,
-            delivered: stats.delivered,
-            failed: stats.failed + stats.deadLetter,
-            retrying: stats.retrying,
-        };
-    }
 }

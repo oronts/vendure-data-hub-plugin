@@ -1,6 +1,6 @@
 # Loaders Reference
 
-Complete reference for all entity loaders (18 total).
+Complete reference for all entity loaders (20 total).
 
 ## Common Configuration
 
@@ -9,7 +9,7 @@ All loaders are configured using the `.load()` step in the pipeline DSL:
 ```typescript
 .load('step-name', {
     adapterCode: 'productUpsert',   // Loader adapter code (see list below)
-    strategy: 'UPSERT',             // CREATE, UPDATE, UPSERT, MERGE, DELETE
+    strategy: 'UPSERT',             // CREATE, UPDATE, UPSERT, MERGE, SOFT_DELETE, HARD_DELETE
     matchField: 'slug',             // Field to match existing records
     conflictStrategy: 'SOURCE_WINS', // Conflict resolution strategy (optional)
 })
@@ -46,7 +46,8 @@ All loaders are configured using the `.load()` step in the pipeline DSL:
 | `UPDATE` | Update only (skip if not found) |
 | `UPSERT` | Create or Update (default) |
 | `MERGE` | Merge source with existing data |
-| `DELETE` | Delete matching records |
+| `SOFT_DELETE` | Mark as deleted / logical delete |
+| `HARD_DELETE` | Permanently remove from database |
 
 ### Conflict Strategies
 

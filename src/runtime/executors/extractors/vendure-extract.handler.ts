@@ -27,6 +27,7 @@ import {
     updateCheckpoint,
     getCheckpointValue,
 } from './extract-handler.interface';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 interface VendureExtractConfig {
     entity?: string;
@@ -276,7 +277,7 @@ export class VendureExtractHandler implements ExtractHandler {
     }
 
     private formatQueryError(error: unknown, entityType: string): string {
-        const errorMsg = (error as Error).message || String(error);
+        const errorMsg = getErrorMessage(error);
 
         if (errorMsg.includes('Relation with property path') && errorMsg.includes('was not found')) {
             const match = errorMsg.match(/Relation with property path ([^\s]+)/);

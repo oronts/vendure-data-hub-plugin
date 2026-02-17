@@ -51,6 +51,9 @@ export { VALIDATION_OPERATOR_DEFINITIONS } from './validation';
 export * from './script';
 export { SCRIPT_OPERATOR_DEFINITION } from './script';
 
+export * from './file';
+export { FILE_OPERATOR_DEFINITIONS } from './file';
+
 import { AdapterDefinition } from './types';
 import { DATA_OPERATOR_DEFINITIONS } from './data';
 import { STRING_OPERATOR_DEFINITIONS } from './string';
@@ -62,10 +65,7 @@ import { DATE_OPERATOR_DEFINITIONS } from './date';
 import { JSON_OPERATOR_DEFINITIONS } from './json';
 import { VALIDATION_OPERATOR_DEFINITIONS } from './validation';
 import { SCRIPT_OPERATOR_DEFINITION } from './script';
-
-export const SCRIPT_OPERATOR_DEFINITIONS: AdapterDefinition[] = [
-    SCRIPT_OPERATOR_DEFINITION,
-];
+import { FILE_OPERATOR_DEFINITIONS } from './file';
 
 export const ALL_OPERATOR_DEFINITIONS: AdapterDefinition[] = [
     ...DATA_OPERATOR_DEFINITIONS,
@@ -77,5 +77,6 @@ export const ALL_OPERATOR_DEFINITIONS: AdapterDefinition[] = [
     ...DATE_OPERATOR_DEFINITIONS,
     ...JSON_OPERATOR_DEFINITIONS,
     ...VALIDATION_OPERATOR_DEFINITIONS,
-    ...SCRIPT_OPERATOR_DEFINITIONS,
+    SCRIPT_OPERATOR_DEFINITION,
+    ...FILE_OPERATOR_DEFINITIONS,
 ];

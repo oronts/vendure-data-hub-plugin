@@ -117,7 +117,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
         adapterCode: 'productUpsert',
         channel: vendureChannel,
         strategy: 'UPSERT',
-        conflictResolution: 'SOURCE_WINS',
+        conflictStrategy: 'SOURCE_WINS',
         skuField: 'sku',
         nameField: 'name',
         slugField: 'slug',

@@ -8,6 +8,7 @@ import * as crypto from 'crypto';
 import { S3DestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 import { assertUrlSafe } from '../../utils/url-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
+import { createSuccessResult, createFailureResult } from './delivery-utils';
 
 /**
  * Deliver content to S3 or S3-compatible storage
@@ -82,35 +83,31 @@ export async function deliverToS3(
 
         if (!response.ok) {
             const errorText = await response.text().catch(() => '');
-            return {
-                success: false,
-                destinationId: config.id,
-                destinationType: DESTINATION_TYPE.S3,
+            return createFailureResult(
+                config.id,
+                DESTINATION_TYPE.S3,
                 filename,
-                size: content.length,
-                error: `S3 upload failed: ${response.status} ${errorText}`,
-            };
+                content.length,
+                `S3 upload failed: ${response.status} ${errorText}`,
+            );
         }
 
-        return {
-            success: true,
-            destinationId: config.id,
-            destinationType: DESTINATION_TYPE.S3,
+        return createSuccessResult(
+            config.id,
+            DESTINATION_TYPE.S3,
             filename,
-            size: content.length,
-            deliveredAt: new Date(),
-            location: url,
-            metadata: { bucket: config.bucket, key },
-        };
+            content.length,
+            url,
+            { bucket: config.bucket, key },
+        );
     } catch (error) {
         const errorMessage = getErrorMessage(error);
-        return {
-            success: false,
-            destinationId: config.id,
-            destinationType: DESTINATION_TYPE.S3,
+        return createFailureResult(
+            config.id,
+            DESTINATION_TYPE.S3,
             filename,
-            size: content.length,
-            error: errorMessage,
-        };
+            content.length,
+            errorMessage,
+        );
     }
 }

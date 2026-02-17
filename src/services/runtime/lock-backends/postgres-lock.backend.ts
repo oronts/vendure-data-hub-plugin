@@ -1,6 +1,7 @@
 import { TransactionalConnection } from '@vendure/core';
 import { LockBackend, LockState, LockStatus, MemoryLockEntry } from './lock-backend.interface';
 import { DataHubLogger } from '../../logger';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 /**
  * PostgreSQL lock backend with in-memory fallback
@@ -159,7 +160,7 @@ export class PostgresLockBackend implements LockBackend {
             this.logger.debug('Using memory-only locks (data_hub_lock table not found)');
         } else {
             this.logger.warn('Database lock failed, using memory fallback', {
-                error: (error as Error).message,
+                error: getErrorMessage(error),
             });
         }
 

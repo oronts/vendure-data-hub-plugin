@@ -298,7 +298,7 @@ Validate records:
 
 ```typescript
 .validate('step-key', {
-    mode: 'FAIL_FAST' | 'ACCUMULATE',
+    errorHandlingMode: 'FAIL_FAST' | 'ACCUMULATE',
     rules: ValidationRuleConfig[],
     schemaRef?: SchemaRefConfig,
     throughput?: Throughput,
@@ -308,7 +308,7 @@ Validate records:
 **Example:**
 ```typescript
 .validate('check-data', {
-    mode: 'ACCUMULATE',
+    errorHandlingMode: 'ACCUMULATE',
     rules: [
         { type: 'business', spec: { field: 'sku', required: true } },
         { type: 'business', spec: { field: 'price', min: 0 } },
@@ -362,7 +362,7 @@ Create or update Vendure entities:
 ```typescript
 .load('step-key', {
     adapterCode: string,
-    strategy?: 'CREATE' | 'UPDATE' | 'UPSERT' | 'SOFT_DELETE' | 'HARD_DELETE',
+    strategy?: 'CREATE' | 'UPDATE' | 'UPSERT' | 'MERGE' | 'SOFT_DELETE' | 'HARD_DELETE',
     channel?: string,
     channelStrategy?: 'EXPLICIT' | 'INHERIT' | 'MULTI',
     validationMode?: ValidationMode,
@@ -451,7 +451,7 @@ Generate product feeds:
 ```typescript
 .feed('step-key', {
     adapterCode: 'googleMerchant' | 'metaCatalog' | 'customFeed',
-    feedType?: 'GOOGLE_SHOPPING' | 'META_CATALOG' | 'AMAZON' | 'PINTEREST' | 'BING' | 'CUSTOM',
+    feedType?: 'GOOGLE_SHOPPING' | 'META_CATALOG' | 'AMAZON' | 'PINTEREST' | 'TIKTOK' | 'BING_SHOPPING' | 'CUSTOM',
     format?: 'XML' | 'CSV' | 'TSV' | 'JSON' | 'NDJSON',
     // Feed-specific options...
 })
@@ -645,7 +645,7 @@ const productSync = createPipeline()
     })
 
     .validate('check-data', {
-        mode: 'ACCUMULATE',
+        errorHandlingMode: 'ACCUMULATE',
         rules: [
             { type: 'business', spec: { field: 'name', required: true } },
             { type: 'business', spec: { field: 'sku', required: true } },

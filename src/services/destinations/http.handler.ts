@@ -8,6 +8,7 @@ import { AuthType, HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES, TRUNCATION } from 
 import { HTTPDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
+import { createSuccessResult, createFailureResult } from './delivery-utils';
 
 /**
  * Deliver content to HTTP endpoint
@@ -60,40 +61,36 @@ export async function deliverToHTTP(
 
         if (!response.ok) {
             const errorText = await response.text().catch(() => '');
-            return {
-                success: false,
-                destinationId: config.id,
-                destinationType: DESTINATION_TYPE.HTTP,
+            return createFailureResult(
+                config.id,
+                DESTINATION_TYPE.HTTP,
                 filename,
-                size: content.length,
-                error: `HTTP delivery failed: ${response.status} ${errorText}`,
-            };
+                content.length,
+                `HTTP delivery failed: ${response.status} ${errorText}`,
+            );
         }
 
         const responseBody = await response.text().catch(() => '');
 
-        return {
-            success: true,
-            destinationId: config.id,
-            destinationType: DESTINATION_TYPE.HTTP,
+        return createSuccessResult(
+            config.id,
+            DESTINATION_TYPE.HTTP,
             filename,
-            size: content.length,
-            deliveredAt: new Date(),
-            location: config.url,
-            metadata: {
+            content.length,
+            config.url,
+            {
                 responseStatus: response.status,
                 responseBody: responseBody.slice(0, TRUNCATION.RESPONSE_BODY_MAX_LENGTH),
             },
-        };
+        );
     } catch (error) {
         const errorMessage = getErrorMessage(error);
-        return {
-            success: false,
-            destinationId: config.id,
-            destinationType: DESTINATION_TYPE.HTTP,
+        return createFailureResult(
+            config.id,
+            DESTINATION_TYPE.HTTP,
             filename,
-            size: content.length,
-            error: errorMessage,
-        };
+            content.length,
+            errorMessage,
+        );
     }
 }

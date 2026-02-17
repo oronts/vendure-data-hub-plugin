@@ -4,7 +4,7 @@ Integration for syncing products, categories, assets, and facets from **Pimcore 
 
 ## Overview
 
-The Pimcore Connector provides pre-built, production-ready pipelines for synchronizing your Pimcore product information management system with Vendure's commerce engine.
+The Pimcore Connector provides pre-built pipelines for synchronizing your Pimcore product information management system with Vendure's commerce engine.
 
 ### Architecture
 
@@ -486,19 +486,23 @@ PimcoreConnector({
 Add custom validation to your sync pipelines:
 
 ```typescript
-import { createCategorySyncPipeline } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
 import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 
-// Extend the base category sync with custom validation
-const config = { /* your config */ };
-const basePipeline = createCategorySyncPipeline(config);
-
-const extendedPipeline = createPipeline()
-  .from(basePipeline)
+// Build a custom pipeline with additional validation using createPipeline() directly.
+// Each pipeline should be built with the factory function; there is no .from() method.
+const customPipeline = createPipeline()
+  .name('Custom Category Sync')
+  .description('Category sync with additional validation')
+  .trigger('MANUAL', { type: 'MANUAL' })
+  .extract('fetch-categories', {
+    adapterCode: 'pimcoreGraphQL',
+    'connection.endpoint': 'https://pimcore.example.com/datahub/shop',
+    'connection.apiKeySecretCode': 'pimcore-api-key',
+    entityType: 'category',
+  })
   .validate('custom-validation', {
-    mode: 'accumulate',
+    errorHandlingMode: 'ACCUMULATE',
     rules: [
-      // Require SEO title for top-level categories
       {
         type: 'business',
         spec: {
@@ -508,7 +512,6 @@ const extendedPipeline = createPipeline()
           error: 'Top-level categories require SEO title',
         },
       },
-      // Validate slug format
       {
         type: 'format',
         spec: {
@@ -517,18 +520,16 @@ const extendedPipeline = createPipeline()
           error: 'Slug must be lowercase alphanumeric with dashes',
         },
       },
-      // Validate price range
-      {
-        type: 'range',
-        spec: {
-          field: 'price',
-          min: 0,
-          max: 1000000,
-          error: 'Price must be between 0 and 1,000,000',
-        },
-      },
     ],
   })
+  .load('upsert-categories', {
+    adapterCode: 'collectionUpsert',
+    strategy: 'UPSERT',
+    matchField: 'slug',
+  })
+  .edge('MANUAL', 'fetch-categories')
+  .edge('fetch-categories', 'custom-validation')
+  .edge('custom-validation', 'upsert-categories')
   .build();
 ```
 
@@ -614,16 +615,16 @@ const pipeline = createProductSyncPipeline(config);
 // Add event trigger
 pipeline.trigger('on-product-event', {
   type: 'EVENT',
-  eventType: 'ProductEvent',
+  event: 'ProductEvent',
   filter: { action: 'created' },
 });
 
-// Add additional webhook with JWT auth
+// Add additional webhook with HMAC signature verification
 pipeline.trigger('secure-webhook', {
   type: 'WEBHOOK',
   webhookCode: 'pimcore-secure-sync',
-  authentication: 'JWT',
-  jwtSecretCode: 'pimcore-jwt-secret',
+  signature: 'hmac-sha256',
+  hmacSecretCode: 'pimcore-webhook-secret',
 });
 ```
 

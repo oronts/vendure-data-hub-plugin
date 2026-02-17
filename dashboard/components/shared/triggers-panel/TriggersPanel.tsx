@@ -151,8 +151,13 @@ export function TriggersPanel(props: TriggersPanelProps) {
         variant = 'full',
     } = props;
 
+    const onChange = 'onChange' in props ? props.onChange : undefined;
+    const addTrigger = 'addTrigger' in props ? props.addTrigger : undefined;
+    const updateTrigger = 'updateTrigger' in props ? props.updateTrigger : undefined;
+    const removeTrigger = 'removeTrigger' in props ? props.removeTrigger : undefined;
+
     const triggerKeys = useStableKeys(triggers, 'trigger');
-    const isOnChangeMode = 'onChange' in props && typeof props.onChange === 'function';
+    const isOnChangeMode = typeof onChange === 'function';
 
     const handleAddTrigger = useCallback((type: TriggerType = TRIGGER_TYPES.MANUAL) => {
         if (isOnChangeMode) {
@@ -160,29 +165,29 @@ export function TriggersPanel(props: TriggersPanelProps) {
             if (type === TRIGGER_TYPES.SCHEDULE) {
                 newTrigger.cron = '0 0 * * *';
             }
-            (props as { onChange: (triggers: PipelineTrigger[]) => void }).onChange([...triggers, newTrigger]);
+            onChange!([...triggers, newTrigger]);
         } else {
-            (props as { addTrigger: () => void }).addTrigger();
+            addTrigger!();
         }
-    }, [isOnChangeMode, triggers, props]);
+    }, [isOnChangeMode, triggers, onChange, addTrigger]);
 
     const handleUpdateTrigger = useCallback((index: number, trigger: PipelineTrigger) => {
         if (isOnChangeMode) {
             const newTriggers = [...triggers];
             newTriggers[index] = trigger;
-            (props as { onChange: (triggers: PipelineTrigger[]) => void }).onChange(newTriggers);
+            onChange!(newTriggers);
         } else {
-            (props as { updateTrigger: (index: number, trigger: PipelineTrigger) => void }).updateTrigger(index, trigger);
+            updateTrigger!(index, trigger);
         }
-    }, [isOnChangeMode, triggers, props]);
+    }, [isOnChangeMode, triggers, onChange, updateTrigger]);
 
     const handleRemoveTrigger = useCallback((index: number) => {
         if (isOnChangeMode) {
-            (props as { onChange: (triggers: PipelineTrigger[]) => void }).onChange(triggers.filter((_, i) => i !== index));
+            onChange!(triggers.filter((_, i) => i !== index));
         } else {
-            (props as { removeTrigger: (index: number) => void }).removeTrigger(index);
+            removeTrigger!(index);
         }
-    }, [isOnChangeMode, triggers, props]);
+    }, [isOnChangeMode, triggers, onChange, removeTrigger]);
 
     // Memoized handler for empty state action
     const handleAddDefaultTrigger = useCallback(() => {

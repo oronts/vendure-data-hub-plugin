@@ -1,7 +1,7 @@
 import { ID, RequestContext, CollectionService } from '@vendure/core';
-import { CollectionInput, ConfigurableOperationInput } from './types';
+import { CollectionInput } from './types';
 
-export { slugify, isRecoverableError, shouldUpdateField } from '../shared-helpers';
+export { slugify, isRecoverableError, shouldUpdateField, buildConfigurableOperation } from '../shared-helpers';
 
 export function sortByHierarchy(records: CollectionInput[]): CollectionInput[] {
     const roots: CollectionInput[] = [];
@@ -44,16 +44,3 @@ export async function resolveParentId(
     const parent = await findParentCollection(ctx, collectionService, record);
     return parent?.id;
 }
-
-export function buildFilterOperation(
-    filter: { code: string; args: Record<string, unknown> },
-): ConfigurableOperationInput {
-    return {
-        code: filter.code,
-        arguments: Object.entries(filter.args || {}).map(([name, value]) => ({
-            name,
-            value: JSON.stringify(value),
-        })),
-    };
-}
-

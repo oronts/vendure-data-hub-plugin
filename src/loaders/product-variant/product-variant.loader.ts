@@ -35,7 +35,7 @@ import {
     resolveFacetValueIds,
     slugify,
     shouldUpdateField,
-} from './helpers';
+} from '../shared-helpers';
 
 /**
  * ProductVariantLoader - Refactored to extend BaseEntityLoader

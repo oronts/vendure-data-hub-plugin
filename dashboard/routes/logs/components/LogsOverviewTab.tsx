@@ -76,7 +76,7 @@ export function LogsOverviewTab() {
         setDisplayCount(c => c + PIPELINE_HEALTH_PAGE_SIZE);
     }, []);
 
-    const handleRefetch = React.useCallback(() => statsQuery.refetch(), [statsQuery]);
+    const handleRefetch = React.useCallback(() => statsQuery.refetch(), [statsQuery.refetch]);
 
     if (statsQuery.isError) {
         return (

@@ -26,7 +26,7 @@ import {
     sortByHierarchy,
     findParentCollection,
     resolveParentId,
-    buildFilterOperation,
+    buildConfigurableOperation,
     slugify,
     shouldUpdateField,
 } from './helpers';
@@ -233,7 +233,7 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
         const filters: ConfigurableOperationInput[] = [];
         if (record.filters && Array.isArray(record.filters)) {
             for (const filter of record.filters) {
-                filters.push(buildFilterOperation(filter));
+                filters.push(buildConfigurableOperation(filter));
             }
         }
 
@@ -296,7 +296,7 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
         }
 
         if (record.filters && shouldUpdateField('filters', options.updateOnlyFields)) {
-            updateInput.filters = record.filters.map(f => buildFilterOperation(f));
+            updateInput.filters = record.filters.map(f => buildConfigurableOperation(f));
         }
 
         await this.collectionService.update(ctx, updateInput as Parameters<typeof this.collectionService.update>[1]);

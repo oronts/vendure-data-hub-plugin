@@ -519,27 +519,27 @@ export function MultiOperatorEditor({ operators, availableOperators, onChange }:
     const [addingNew, setAddingNew] = React.useState(false);
     const operatorKeys = useStableKeys(operators, 'op');
 
-    const updateOperator = (index: number, updates: Partial<OperatorConfig>) => {
+    const updateOperator = useCallback((index: number, updates: Partial<OperatorConfig>) => {
         const newOps = [...operators];
         newOps[index] = { ...newOps[index], ...updates };
         onChange(newOps);
-    };
+    }, [operators, onChange]);
 
-    const updateOperatorArg = (index: number, key: string, value: unknown) => {
+    const updateOperatorArg = useCallback((index: number, key: string, value: unknown) => {
         const newOps = [...operators];
         newOps[index] = {
             ...newOps[index],
             args: { ...newOps[index].args, [key]: value },
         };
         onChange(newOps);
-    };
+    }, [operators, onChange]);
 
-    const removeOperator = (index: number) => {
+    const removeOperator = useCallback((index: number) => {
         onChange(operators.filter((_, i) => i !== index));
         if (expandedIndex === index) setExpandedIndex(null);
-    };
+    }, [operators, onChange, expandedIndex]);
 
-    const addOperator = (opCode: string) => {
+    const addOperator = useCallback((opCode: string) => {
         const operatorDef = availableOperators.find(a => a.code === opCode);
         const initialArgs: Record<string, unknown> = {};
 
@@ -556,16 +556,16 @@ export function MultiOperatorEditor({ operators, availableOperators, onChange }:
         onChange([...operators, { op: opCode, args: initialArgs }]);
         setAddingNew(false);
         setExpandedIndex(operators.length);
-    };
+    }, [operators, onChange, availableOperators]);
 
-    const moveOperator = (index: number, direction: MoveDirection) => {
+    const moveOperator = useCallback((index: number, direction: MoveDirection) => {
         const newIndex = direction === MOVE_DIRECTION.UP ? index - 1 : index + 1;
         if (newIndex < 0 || newIndex >= operators.length) return;
         const newOps = [...operators];
         [newOps[index], newOps[newIndex]] = [newOps[newIndex], newOps[index]];
         onChange(newOps);
         setExpandedIndex(newIndex);
-    };
+    }, [operators, onChange]);
 
     return (
         <Card>

@@ -19,7 +19,7 @@ import {
 import { DataHubLogger } from '../logger';
 import { isBlockedHostname } from '../../utils/url-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
-import { normalizeRemotePath } from './delivery-utils';
+import { normalizeRemotePath, createSuccessResult, createFailureResult } from './delivery-utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.FTP_HANDLER);
 
@@ -53,7 +53,7 @@ export async function deliverToSFTP(
 
         const remoteDir = path.dirname(remotePath);
         await sftp.mkdir(remoteDir, true).catch((err) => {
-            logger.warn(`SFTP: Failed to create directory ${remoteDir}`, { error: err?.message ?? err });
+            logger.warn(`SFTP: Failed to create directory ${remoteDir}`, { error: getErrorMessage(err) });
         });
 
         // Upload file
@@ -62,30 +62,27 @@ export async function deliverToSFTP(
 
         logger.info(`SFTP: Delivered ${filename}`, { host: config.host, remotePath });
 
-        return {
-            success: true,
-            destinationId: config.id,
-            destinationType: DESTINATION_TYPE.SFTP,
+        return createSuccessResult(
+            config.id,
+            DESTINATION_TYPE.SFTP,
             filename,
-            size: content.length,
-            deliveredAt: new Date(),
-            location: `sftp://${config.host}:${port}${remotePath}`,
-        };
+            content.length,
+            `sftp://${config.host}:${port}${remotePath}`,
+        );
     } catch (error) {
         const errorMessage = getErrorMessage(error);
         logger.error(`SFTP: Failed to deliver ${filename}`, undefined, { error: errorMessage });
 
-        return {
-            success: false,
-            destinationId: config.id,
-            destinationType: DESTINATION_TYPE.SFTP,
+        return createFailureResult(
+            config.id,
+            DESTINATION_TYPE.SFTP,
             filename,
-            size: content.length,
-            error: errorMessage,
-        };
+            content.length,
+            errorMessage,
+        );
     } finally {
         await sftp.end().catch((err) => {
-            logger.warn('SFTP: Failed to close connection', { error: err?.message ?? err });
+            logger.warn('SFTP: Failed to close connection', { error: getErrorMessage(err) });
         });
     }
 }
@@ -120,7 +117,7 @@ export async function deliverToFTP(
 
         const remoteDir = path.dirname(remotePath);
         await client.ensureDir(remoteDir).catch((err) => {
-            logger.warn(`FTP: Failed to ensure directory ${remoteDir}`, { error: err?.message ?? err });
+            logger.warn(`FTP: Failed to ensure directory ${remoteDir}`, { error: getErrorMessage(err) });
         });
 
         // Upload file
@@ -129,27 +126,24 @@ export async function deliverToFTP(
 
         logger.info(`FTP: Delivered ${filename}`, { host: config.host, remotePath });
 
-        return {
-            success: true,
-            destinationId: config.id,
-            destinationType: DESTINATION_TYPE.FTP,
+        return createSuccessResult(
+            config.id,
+            DESTINATION_TYPE.FTP,
             filename,
-            size: content.length,
-            deliveredAt: new Date(),
-            location: `ftp://${config.host}:${port}${remotePath}`,
-        };
+            content.length,
+            `ftp://${config.host}:${port}${remotePath}`,
+        );
     } catch (error) {
         const errorMessage = getErrorMessage(error);
         logger.error(`FTP: Failed to deliver ${filename}`, undefined, { error: errorMessage });
 
-        return {
-            success: false,
-            destinationId: config.id,
-            destinationType: DESTINATION_TYPE.FTP,
+        return createFailureResult(
+            config.id,
+            DESTINATION_TYPE.FTP,
             filename,
-            size: content.length,
-            error: errorMessage,
-        };
+            content.length,
+            errorMessage,
+        );
     } finally {
         client.close();
     }
