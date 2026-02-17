@@ -97,7 +97,7 @@ export class VendureExtractHandler implements ExtractHandler {
             return await this.executeQuery(ctx, step, executorCtx, cfg, entityClass, relations);
         } catch (error) {
             const errorMsg = this.formatQueryError(error, entityType);
-            this.logger.error('vendureQuery: extraction failed', error as Error, { stepKey: step.key, entity: entityType });
+            this.logger.error('vendureQuery: extraction failed', error instanceof Error ? error : undefined, { stepKey: step.key, entity: entityType, error: getErrorMessage(error) });
             await this.reportError(onRecordError, step.key, errorMsg, { entity: entityType });
             return [];
         }

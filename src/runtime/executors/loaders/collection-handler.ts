@@ -161,7 +161,7 @@ export class CollectionHandler implements LoaderHandler {
             const updateInput: UpdateCollectionInput = {
                 id: existing.id,
                 translations: [{
-                    languageCode: LanguageCode.en,
+                    languageCode: opCtx.languageCode as LanguageCode,
                     name,
                     slug,
                     description,
@@ -184,7 +184,7 @@ export class CollectionHandler implements LoaderHandler {
             parentId,
             filters: [], // Required field - empty array for manual collections
             translations: [{
-                languageCode: LanguageCode.en,
+                languageCode: opCtx.languageCode as LanguageCode,
                 name,
                 slug,
                 description: description ?? '',

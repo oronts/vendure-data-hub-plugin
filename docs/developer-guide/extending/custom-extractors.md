@@ -8,19 +8,14 @@ Create extractors to pull data from new sources.
 interface ExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'EXTRACTOR';
     readonly code: string;
-    readonly name: string;
+    readonly name?: string;
     readonly description?: string;
-    readonly schema: AdapterSchema;
+    readonly schema: StepConfigSchema;
 
     extract(
         context: ExtractContext,
         config: TConfig,
     ): AsyncGenerator<RecordEnvelope>;
-
-    // Optional methods
-    getSchema?(context: ExtractContext, config: TConfig): Promise<JsonObject | undefined>;
-    testConnection?(context: ExtractContext, config: TConfig): Promise<ConnectionTestResult>;
-    preview?(context: ExtractContext, config: TConfig, limit?: number): Promise<ExtractorPreviewResult>;
 }
 
 // Alternative: batch extraction
@@ -32,18 +27,16 @@ interface ExtractContext {
     ctx: RequestContext;
     pipelineId: ID;
     stepKey: string;
-    pipelineContext: PipelineCtx;
+    checkpoint: PipelineCheckpoint;
     secrets: SecretResolver;
     connections: ConnectionResolver;
     logger: AdapterLogger;
-    checkpoint: PipelineCheckpoint;
     setCheckpoint(data: JsonObject): void;
-    isCancelled(): Promise<boolean>;
 }
 
 interface RecordEnvelope {
     data: JsonObject;
-    meta?: JsonObject;
+    meta?: RecordMeta;
 }
 ```
 
@@ -51,7 +44,7 @@ interface RecordEnvelope {
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { ExtractorAdapter, ExtractContext, AdapterSchema, RecordEnvelope } from '@oronts/vendure-data-hub-plugin';
+import { ExtractorAdapter, ExtractContext, StepConfigSchema, RecordEnvelope } from '@oronts/vendure-data-hub-plugin';
 
 interface MyApiConfig {
     apiUrl: string;
@@ -66,7 +59,7 @@ export class MyApiExtractor implements ExtractorAdapter<MyApiConfig> {
     readonly name = 'My API Extractor';
     readonly description = 'Fetches data from My API';
 
-    readonly schema: AdapterSchema = {
+    readonly schema: StepConfigSchema = {
         fields: [
             { key: 'apiUrl', type: 'string', required: true, label: 'API URL' },
             { key: 'apiKeySecretCode', type: 'string', required: true, label: 'API Key Secret' },
@@ -142,7 +135,7 @@ export class MyExtractorPlugin implements OnModuleInit {
 Define the configuration UI:
 
 ```typescript
-readonly schema: AdapterSchema = {
+readonly schema: StepConfigSchema = {
     fields: [
         // Text input
         { key: 'url', type: 'string', required: true, label: 'URL' },
@@ -182,13 +175,11 @@ interface ExtractContext {
     ctx: RequestContext;            // Vendure request context
     pipelineId: ID;                 // Current pipeline ID
     stepKey: string;                // Current step key
-    pipelineContext: PipelineCtx;   // Pipeline-wide context
+    checkpoint: PipelineCheckpoint; // Resume data
     secrets: SecretResolver;        // Resolve secret values
     connections: ConnectionResolver; // Resolve connections
     logger: AdapterLogger;          // Logging
-    checkpoint: PipelineCheckpoint; // Resume data
     setCheckpoint(data: JsonObject): void;  // Save progress
-    isCancelled(): Promise<boolean>;        // Check cancellation
 }
 ```
 
@@ -373,7 +364,7 @@ import { RequestContext } from '@vendure/core';
 import {
     ExtractorAdapter,
     ExtractContext,
-    AdapterSchema,
+    StepConfigSchema,
     SecretService,
     ExtractorError,
 } from '@oronts/vendure-data-hub-plugin';
@@ -384,7 +375,7 @@ export class GraphQLExtractor implements ExtractorAdapter {
     readonly name = 'GraphQL API';
     readonly description = 'Fetch data from GraphQL APIs';
 
-    readonly schema: AdapterSchema = {
+    readonly schema: StepConfigSchema = {
         fields: [
             { key: 'endpoint', type: 'string', required: true, label: 'GraphQL Endpoint' },
             { key: 'query', type: 'text', required: true, label: 'Query' },

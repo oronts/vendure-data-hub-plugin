@@ -12,6 +12,7 @@ import {
 import { WebhookExtractorConfig } from './types';
 import { getNestedValue } from '../../operators/helpers';
 import { validateSignature } from './helpers';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @Injectable()
 export class WebhookExtractor implements BatchDataExtractor<WebhookExtractorConfig> {
@@ -174,7 +175,7 @@ export class WebhookExtractor implements BatchDataExtractor<WebhookExtractorConf
                 },
             };
         } catch (error) {
-            context.logger.error('Webhook processing failed', error as Error);
+            context.logger.error('Webhook processing failed', error instanceof Error ? error : undefined, { error: getErrorMessage(error) });
             throw error;
         }
     }

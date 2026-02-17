@@ -98,9 +98,9 @@ export const productImportCsv = createPipeline()
     .transform('transform-fields', {
         operators: [
             // Trim whitespace from all string fields
-            { op: 'trim', args: { source: 'name' } },
-            { op: 'trim', args: { source: 'description' } },
-            { op: 'trim', args: { source: 'sku' } },
+            { op: 'trim', args: { path: 'name' } },
+            { op: 'trim', args: { path: 'description' } },
+            { op: 'trim', args: { path: 'sku' } },
 
             // Generate slug from name
             { op: 'slugify', args: { source: 'name', target: 'slug' } },
@@ -193,7 +193,7 @@ export const productImportCsv = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'SOURCE_WINS',
+        conflictStrategy: 'SOURCE_WINS',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
@@ -278,23 +278,25 @@ export const customerImportCsv = createPipeline()
     .transform('transform-fields', {
         operators: [
             // Normalize email to lowercase
-            { op: 'lowercase', args: { source: 'email' } },
+            { op: 'lowercase', args: { path: 'email' } },
 
             // Trim whitespace
-            { op: 'trim', args: { source: 'first_name' } },
-            { op: 'trim', args: { source: 'last_name' } },
-            { op: 'trim', args: { source: 'phone' } },
+            { op: 'trim', args: { path: 'first_name' } },
+            { op: 'trim', args: { path: 'last_name' } },
+            { op: 'trim', args: { path: 'phone' } },
 
             // Format phone number (strip non-numeric, add country code if needed)
             {
                 op: 'replaceRegex',
                 args: {
-                    source: 'phone',
-                    target: 'phoneClean',
+                    path: 'phone',
                     pattern: '[^0-9+]',
                     replacement: '',
                 },
             },
+
+            // Copy cleaned phone to phoneClean for downstream use
+            { op: 'copy', args: { source: 'phone', target: 'phoneClean' } },
 
             // Normalize country code
             {
@@ -472,8 +474,8 @@ export const stockUpdateCsv = createPipeline()
 
     .transform('transform-data', {
         operators: [
-            { op: 'trim', args: { source: 'sku' } },
-            { op: 'uppercase', args: { source: 'sku' } },
+            { op: 'trim', args: { path: 'sku' } },
+            { op: 'uppercase', args: { path: 'sku' } },
             { op: 'toNumber', args: { source: 'stock_quantity' } },
             { op: 'toNumber', args: { source: 'reorder_point' } },
         ],
@@ -686,7 +688,7 @@ export const priceUpdateCsv = createPipeline()
     .transform('transform-prices', {
         operators: [
             // Trim SKU
-            { op: 'trim', args: { source: 'sku' } },
+            { op: 'trim', args: { path: 'sku' } },
 
             // Set default currency
             {
@@ -698,16 +700,16 @@ export const priceUpdateCsv = createPipeline()
                 },
             },
 
-            // Convert price string to number
+            // Convert price string to number: strip non-numeric chars, then copy to priceClean
             {
                 op: 'replaceRegex',
                 args: {
-                    source: 'price',
-                    target: 'priceClean',
+                    path: 'price',
                     pattern: '[^0-9.]',
                     replacement: '',
                 },
             },
+            { op: 'copy', args: { source: 'price', target: 'priceClean' } },
             { op: 'toNumber', args: { source: 'priceClean' } },
 
             // Convert to cents using currency operator
@@ -727,12 +729,12 @@ export const priceUpdateCsv = createPipeline()
             {
                 op: 'replaceRegex',
                 args: {
-                    source: 'sale_price',
-                    target: 'salePriceClean',
+                    path: 'sale_price',
                     pattern: '[^0-9.]',
                     replacement: '',
                 },
             },
+            { op: 'copy', args: { source: 'sale_price', target: 'salePriceClean' } },
             { op: 'toNumber', args: { source: 'salePriceClean' } },
             {
                 op: 'currency',

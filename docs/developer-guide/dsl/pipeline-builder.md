@@ -163,10 +163,9 @@ Define how the pipeline starts:
 ```typescript
 .trigger('webhook', {
     type: 'WEBHOOK',
-    webhookPath: '/product-sync',
-    authentication: 'HMAC',
-    requireIdempotencyKey: true,
-    idempotencyKeyHeader: 'X-Request-ID',
+    path: '/product-sync',
+    signature: 'hmac-sha256',
+    idempotencyKey: 'X-Request-ID',
 })
 ```
 

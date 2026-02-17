@@ -77,14 +77,16 @@ export function applyMath(
             break;
         }
         case 'round':
-            computedValue = Math.round(sourceValue);
-            break;
         case 'floor':
-            computedValue = Math.floor(sourceValue);
+        case 'ceil': {
+            if (decimals !== undefined && decimals >= 0) {
+                const factor = Math.pow(10, decimals);
+                computedValue = applyRoundingMode(sourceValue * factor, operation) / factor;
+            } else {
+                computedValue = applyRoundingMode(sourceValue, operation);
+            }
             break;
-        case 'ceil':
-            computedValue = Math.ceil(sourceValue);
-            break;
+        }
         case 'abs':
             computedValue = Math.abs(sourceValue);
             break;
@@ -92,8 +94,8 @@ export function applyMath(
             computedValue = sourceValue;
     }
 
-    // Apply decimal rounding if specified
-    if (decimals !== undefined && decimals >= 0) {
+    // Apply decimal rounding if specified (for non-rounding operations)
+    if (decimals !== undefined && decimals >= 0 && operation !== 'round' && operation !== 'floor' && operation !== 'ceil') {
         const factor = Math.pow(10, decimals);
         computedValue = Math.round(computedValue * factor) / factor;
     }

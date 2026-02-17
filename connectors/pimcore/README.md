@@ -47,7 +47,7 @@ import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pim
 export const config: VendureConfig = {
   plugins: [
     DataHubPlugin.init({
-      connectors: [
+      pipelines: [
         PimcoreConnector({
           connection: {
             // Pimcore DataHub GraphQL endpoint
@@ -238,7 +238,7 @@ DataHubPlugin.init({
     { code: 'pimcore-api-key', provider: 'env', value: 'PIMCORE_API_KEY' },
     { code: 'pimcore-webhook-key', provider: 'env', value: 'PIMCORE_WEBHOOK_KEY' },
   ],
-  connectors: [PimcoreConnector({ /* ... */ })],
+  pipelines: [PimcoreConnector({ /* ... */ })],
 })
 ```
 
@@ -428,8 +428,8 @@ Error: Product name is required
 
 ```typescript
 DataHubPlugin.init({
-  logLevel: 'debug',
-  connectors: [/* ... */],
+  debug: true,
+  pipelines: [/* ... */],
 })
 ```
 
@@ -607,25 +607,39 @@ PimcoreConnector({
   },
 })
 
-// For custom triggers, extend the pipeline:
-import { createProductSyncPipeline } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
+// For custom triggers, build a new pipeline with createPipeline():
+import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 
-const pipeline = createProductSyncPipeline(config);
+const customPipeline = createPipeline()
+  .name('Custom Pimcore Product Sync')
+  .description('Product sync with custom triggers')
+  .capabilities({ requires: ['UpdateCatalog'] })
 
-// Add event trigger
-pipeline.trigger('on-product-event', {
-  type: 'EVENT',
-  event: 'ProductEvent',
-  filter: { action: 'created' },
-});
+  // Event trigger
+  .trigger('on-product-event', {
+    type: 'EVENT',
+    event: 'ProductEvent',
+    filter: { action: 'created' },
+  })
 
-// Add additional webhook with HMAC signature verification
-pipeline.trigger('secure-webhook', {
-  type: 'WEBHOOK',
-  webhookCode: 'pimcore-secure-sync',
-  signature: 'hmac-sha256',
-  hmacSecretCode: 'pimcore-webhook-secret',
-});
+  // Webhook trigger with HMAC signature verification
+  .trigger('secure-webhook', {
+    type: 'WEBHOOK',
+    webhookCode: 'pimcore-secure-sync',
+    signature: 'hmac-sha256',
+    hmacSecretCode: 'pimcore-webhook-secret',
+  })
+
+  .extract('fetch-products', {
+    adapterCode: 'pimcoreGraphQL',
+    'connection.endpoint': 'https://pimcore.example.com/datahub/shop',
+    'connection.apiKeySecretCode': 'pimcore-api-key',
+    entityType: 'product',
+  })
+  // ... rest of pipeline steps
+  .edge('on-product-event', 'fetch-products')
+  .edge('secure-webhook', 'fetch-products')
+  .build();
 ```
 
 ### Custom GraphQL Queries

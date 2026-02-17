@@ -242,7 +242,7 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
                 totalFetched,
             });
         } catch (error) {
-            context.logger.error('HTTP API extraction failed', error as Error);
+            context.logger.error('HTTP API extraction failed', error instanceof Error ? error : undefined, { error: getErrorMessage(error) });
             throw error;
         }
     }

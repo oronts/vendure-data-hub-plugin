@@ -12,6 +12,7 @@ import {
 } from '../../types/index';
 import { VendureQueryExtractorConfig } from './types';
 import { getEntityClass, applyFilter, entityToRecord, EntityLike, validateFieldName } from './helpers';
+import { getErrorMessage } from '../../utils/error.utils';
 
 interface EntityWithMeta {
     id: ID;
@@ -201,7 +202,7 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
                 lastOffset: offset,
             });
         } catch (error) {
-            context.logger.error('Vendure entity extraction failed', error as Error);
+            context.logger.error('Vendure entity extraction failed', error instanceof Error ? error : undefined, { error: getErrorMessage(error) });
             throw error;
         }
     }

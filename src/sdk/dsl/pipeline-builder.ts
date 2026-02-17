@@ -6,7 +6,7 @@
  * const pipeline = createPipeline()
  *   .name('Product Import')
  *   .description('Import products from CSV')
- *   .trigger('start', { type: 'manual' })
+ *   .trigger('start', { type: 'MANUAL' })
  *   .extract('csv', { adapterCode: 'csv', csvPath: '/data/products.csv' })
  *   .transform('map', {
  *     operators: [

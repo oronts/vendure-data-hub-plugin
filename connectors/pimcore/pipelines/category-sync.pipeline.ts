@@ -38,8 +38,8 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
     pipeline.trigger('WEBHOOK', {
         type: 'WEBHOOK',
         webhookCode: 'pimcore-category-sync',
-        authentication: 'API_KEY',
-        apiKeySecretCode: 'pimcore-webhook-key',
+        signature: 'hmac-sha256',
+        hmacSecretCode: 'pimcore-webhook-key',
         rateLimit: 50,
     });
 

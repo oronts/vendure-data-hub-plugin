@@ -35,6 +35,7 @@ import {
 } from './types';
 import { buildTopology, gatherInput } from './helpers';
 import { createStepDispatcher, StepDispatcher, StepExecutionParams } from './step-strategies';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const logger = new Logger('DataHub:GraphExecutor');
 
@@ -392,7 +393,7 @@ async function executeParallel(
 
     // Track in-flight step executions
     const inFlight = new Map<string, Promise<{ key: string; stepResult: StepExecutionResult; durationMs: number }>>();
-    const errors: Array<{ key: string; error: Error }> = [];
+    const errors: Array<{ key: string; error: unknown }> = [];
     let cancelled = false;
 
     while (queue.length > 0 || inFlight.size > 0) {
@@ -426,7 +427,7 @@ async function executeParallel(
                 ctx, definition, step, key, input, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog,
             })
                 .then(({ stepResult, durationMs }) => ({ key, stepResult, durationMs }))
-                .catch((error: Error) => {
+                .catch((error: unknown) => {
                     errors.push({ key, error });
                     // Return empty result on error
                     return {
@@ -436,7 +437,7 @@ async function executeParallel(
                             processed: 0,
                             succeeded: 0,
                             failed: 0,
-                            detail: { error: error.message },
+                            detail: { error: getErrorMessage(error) },
                             counters: {},
                         } as StepExecutionResult,
                         durationMs: 0,
@@ -509,12 +510,12 @@ async function executeParallel(
         if (parallelConfig.errorPolicy === 'BEST_EFFORT') {
             // Log errors but don't throw
             for (const { key, error } of errors) {
-                logger.warn(`[Parallel] Step ${key} failed (best-effort mode): ${error.message}`);
+                logger.warn(`[Parallel] Step ${key} failed (best-effort mode): ${getErrorMessage(error)}`);
             }
         } else {
             // Throw the first error
             const firstError = errors[0];
-            throw new Error(`Parallel execution failed at step "${firstError.key}": ${firstError.error.message}`);
+            throw new Error(`Parallel execution failed at step "${firstError.key}": ${getErrorMessage(firstError.error)}`);
         }
     }
 

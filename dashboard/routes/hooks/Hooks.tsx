@@ -124,6 +124,11 @@ function HooksPage() {
     const hasError = pipelinesQuery.isError || eventsQuery.isError;
     const errorMessage = pipelinesQuery.error?.message || eventsQuery.error?.message;
 
+    const handleRetry = React.useCallback(() => {
+        pipelinesQuery.refetch();
+        eventsQuery.refetch();
+    }, [pipelinesQuery.refetch, eventsQuery.refetch]);
+
     const runTest = React.useCallback((stage: HookStage) => {
         if (!pipelineId) {
             toast.error(TOAST_HOOK.SELECT_PIPELINE_FIRST);
@@ -171,10 +176,7 @@ function HooksPage() {
                     <ErrorState
                         title="Failed to load data"
                         message={errorMessage || 'An unexpected error occurred'}
-                        onRetry={() => {
-                            pipelinesQuery.refetch();
-                            eventsQuery.refetch();
-                        }}
+                        onRetry={handleRetry}
                     />
                 </PageBlock>
             )}

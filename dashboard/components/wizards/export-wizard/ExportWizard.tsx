@@ -54,7 +54,7 @@ export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWiza
         const stepId = WIZARD_STEPS[currentStep].id;
         const validation = validateExportWizardStep(stepId, config);
         return validation;
-    }, [currentStep, configSignature]);
+    }, [currentStep, config]);
 
     const { canProceed } = React.useMemo(() => {
         const validation = validateCurrentStep();

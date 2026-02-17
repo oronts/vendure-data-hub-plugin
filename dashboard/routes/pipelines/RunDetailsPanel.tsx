@@ -70,7 +70,7 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
         if (pipelineId) {
             onRerun(String(pipelineId));
         }
-    }, [onRerun, run]);
+    }, [onRerun, run?.pipeline?.id]);
 
     const handleApproveGate = React.useCallback(async () => {
         if (!pausedGateStepKey) return;

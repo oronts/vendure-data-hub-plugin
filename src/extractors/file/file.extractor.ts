@@ -341,7 +341,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 filesProcessed,
             });
         } catch (error) {
-            context.logger.error('File extraction failed', error as Error);
+            context.logger.error('File extraction failed', error instanceof Error ? error : undefined, { error: getErrorMessage(error) });
             throw error;
         }
     }

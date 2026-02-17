@@ -137,7 +137,7 @@ export class VariantHandler implements LoaderHandler {
                 if (existingVariant) {
                     const update: UpdateProductVariantInput = {
                         id: String(existingVariant.id),
-                        translations: [{ languageCode: LanguageCode.en, name }],
+                        translations: [{ languageCode: opCtx.languageCode as LanguageCode, name }],
                     };
 
                     if (prices && prices.length > 0) {

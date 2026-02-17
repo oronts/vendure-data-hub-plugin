@@ -357,7 +357,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                 totalFetched,
             });
         } catch (error) {
-            context.logger.error('GraphQL extraction failed', error as Error);
+            context.logger.error('GraphQL extraction failed', error instanceof Error ? error : undefined, { error: getErrorMessage(error) });
             throw error;
         }
     }

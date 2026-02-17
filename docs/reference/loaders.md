@@ -1,6 +1,6 @@
 # Loaders Reference
 
-Complete reference for all entity loaders (20 total).
+Complete reference for all entity loaders (18 total).
 
 ## Common Configuration
 

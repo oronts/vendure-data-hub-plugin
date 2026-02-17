@@ -401,7 +401,7 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
 
             if (adjustment !== 0) {
                 // Use stock adjustment to set the desired quantity
-                await this.stockMovementService.adjustProductVariantStock(ctx, variantId, quantity);
+                await this.stockMovementService.adjustProductVariantStock(ctx, variantId, adjustment);
             }
         } catch (error) {
             this.logger.warn(`Failed to update stock for variant ${variantId}: ${error}`);

@@ -207,7 +207,7 @@ function convertToSdkResult(result: OperatorResult): import('../sdk/types').Oper
         records: result.records,
         dropped: result.dropped,
         errors: result.errors?.map(err => ({
-            record: {} as JsonObject,
+            record: err.record ?? ({} as JsonObject),
             message: err.message,
             field: err.field,
         })),

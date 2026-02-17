@@ -132,7 +132,7 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
         }
         const validation = validateImportWizardStep(stepId, config, uploadedFile);
         return validation;
-    }, [currentStep, configSignature, uploadedFile, activeSteps]);
+    }, [currentStep, config, uploadedFile, activeSteps]);
 
     const { canProceed, validationErrors } = React.useMemo(() => {
         const validation = validateCurrentStep();
@@ -274,7 +274,7 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
                     mappings: autoMappings,
                     targetSchema: schema,
                     strategies: {
-                        ...prev.strategies!,
+                        ...(prev.strategies ?? {}),
                         lookupFields: schema.primaryKey
                             ? (Array.isArray(schema.primaryKey) ? schema.primaryKey : [schema.primaryKey])
                             : [],
