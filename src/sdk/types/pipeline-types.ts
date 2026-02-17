@@ -64,18 +64,6 @@ export interface HookContext {
  */
 export type HookHandler = (context: HookContext) => Promise<void>;
 
-/**
- * Hook registration configuration
- */
-export interface HookRegistration {
-    /** Hook stage to listen to */
-    readonly stage: HookStage;
-    /** Handler function */
-    readonly handler: HookHandler;
-    /** Priority (higher = runs first) */
-    readonly priority?: number;
-}
-
 // PIPELINE RUN TYPES
 
 /**

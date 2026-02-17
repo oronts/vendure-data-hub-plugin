@@ -104,7 +104,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
                                 stage,
                                 pipelineCode: action.pipelineCode,
                                 runId,
-                                error: (error as Error)?.message,
+                                error: getErrorMessage(error),
                             });
                         }
                         break;
@@ -438,7 +438,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         } catch (error) {
             this.logger.warn('Simple webhook fetch failed', {
                 url,
-                error: (error as Error)?.message,
+                error: getErrorMessage(error),
             });
         }
     }

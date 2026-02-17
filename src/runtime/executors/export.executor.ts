@@ -7,7 +7,7 @@ import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult, ExecutorContext } from '../executor-types';
-import { getPath, setPath, recordsToCsv, chunk, ensureDirectoryExists, deepClone } from '../utils';
+import { getPath, setPath, recordsToCsv, chunk, ensureDirectoryExists, deepClone, xmlEscape } from '../utils';
 import { executeWithRetry, createRetryConfig, ResolvedRetryConfig } from '../../utils/retry.utils';
 import { BATCH, LOGGER_CONTEXTS, HTTP, FILE_STORAGE, TRUNCATION, HttpMethod, EXPORTER_CODE, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../constants/index';
 import { FileFormat } from '../../constants/enums';
@@ -196,7 +196,7 @@ export class ExportExecutor {
                     for (const rec of records) {
                         xml += `  <${itemElement}>\n`;
                         for (const [k, v] of Object.entries(rec)) {
-                            const escaped = String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            const escaped = xmlEscape(String(v ?? ''));
                             xml += `    <${k}>${escaped}</${k}>\n`;
                         }
                         xml += `  </${itemElement}>\n`;

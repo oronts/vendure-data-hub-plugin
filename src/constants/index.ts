@@ -78,7 +78,6 @@ export {
 
 export {
     TIME_UNITS,
-    TIME_INTERVALS,
     UI_TIMEOUTS,
     CRON,
     TIME,
@@ -90,7 +89,6 @@ export {
     LENGTH_UNITS,
     VOLUME_UNITS,
     UNIT_CONVERSIONS,
-    CURRENCY_DECIMALS,
     convertUnit,
 } from './units';
 

@@ -10,6 +10,7 @@ import {
     ID,
 } from '@vendure/core';
 import { StockLevelInput } from '@vendure/common/lib/generated-types';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 export interface LookupLogger {
     warn(message: string, context?: Record<string, unknown>): void;
@@ -46,7 +47,7 @@ export async function resolveTaxCategoryId(
     } catch (error) {
         logger.warn('Failed to resolve tax category by name', {
             taxCategoryName: name,
-            error: (error as Error)?.message,
+            error: getErrorMessage(error),
         });
         return undefined;
     }
@@ -81,7 +82,7 @@ export async function resolveStockLevels(
     } catch (error) {
         logger.warn('Failed to resolve stock locations', {
             locationNames: locNames,
-            error: (error as Error)?.message,
+            error: getErrorMessage(error),
         });
         return undefined;
     }

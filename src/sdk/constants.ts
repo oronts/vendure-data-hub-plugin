@@ -4,7 +4,7 @@
  *
  * @example
  * ```typescript
- * import { HOOK_ACTION } from '@vendure/data-hub/sdk';
+ * import { HOOK_ACTION } from '@oronts/vendure-data-hub-plugin/sdk';
  *
  * const action = { type: HOOK_ACTION.WEBHOOK, url: 'https://...' };
  * ```
@@ -35,7 +35,7 @@ export const DEFAULT_TRIGGER_TYPE = 'MANUAL';
  *
  * @example
  * ```typescript
- * import { ROUTE_OPERATOR } from '@vendure/data-hub/sdk';
+ * import { ROUTE_OPERATOR } from '@oronts/vendure-data-hub-plugin/sdk';
  *
  * const condition = { field: 'status', cmp: ROUTE_OPERATOR.EQ, value: 'active' };
  * ```
@@ -84,7 +84,7 @@ export type RouteOperator = typeof ROUTE_OPERATOR[keyof typeof ROUTE_OPERATOR];
  *
  * @example
  * ```typescript
- * import { TRANSFORM_OPERATOR } from '@vendure/data-hub/sdk';
+ * import { TRANSFORM_OPERATOR } from '@oronts/vendure-data-hub-plugin/sdk';
  *
  * const operator = { op: TRANSFORM_OPERATOR.MAP, args: { mapping: {...} } };
  * ```

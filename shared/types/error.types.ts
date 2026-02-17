@@ -14,7 +14,7 @@
 export type ErrorSeverity = 'FATAL' | 'ERROR' | 'WARNING' | 'INFO';
 
 /**
- * Pipeline stage where error occurred (not to be confused with ErrorCategory enum)
+ * Pipeline stage where error occurred
  */
 export type PipelineErrorStage =
     | 'EXTRACTION'

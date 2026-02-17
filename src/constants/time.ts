@@ -1,7 +1,7 @@
 import { TIME_UNITS, UI_TIMEOUTS } from '../../shared/constants';
 export { TIME_UNITS, UI_TIMEOUTS };
 
-export const TIME_INTERVALS = {
+const TIME_INTERVALS = {
     ONE_MINUTE_MS: TIME_UNITS.MINUTE,
     FIVE_MINUTES_MS: 5 * TIME_UNITS.MINUTE,
     FIFTEEN_MINUTES_MS: 15 * TIME_UNITS.MINUTE,

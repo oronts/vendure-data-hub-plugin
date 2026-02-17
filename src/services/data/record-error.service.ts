@@ -7,6 +7,7 @@ import { DomainEventsService } from '../events/domain-events.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS, SortOrder, HookStage } from '../../constants/index';
 import type { JsonObject } from '../../types/index';
+import { getErrorMessage } from '../../utils/error.utils';
 
 @Injectable()
 export class RecordErrorService {
@@ -48,12 +49,12 @@ export class RecordErrorService {
                 await this.hooks.run(ctx, def, HookStage.ON_ERROR, undefined, payload, runId);
             }
         } catch (error) {
-            this.logger.warn('Failed to run onError hook', { runId, stepKey, error: (error as Error)?.message });
+            this.logger.warn('Failed to run onError hook', { runId, stepKey, error: getErrorMessage(error) });
         }
         try {
             this.events.publish('RECORD_REJECTED', { runId, stepKey, message });
         } catch (error) {
-            this.logger.warn('Failed to publish RECORD_REJECTED event', { runId, stepKey, error: (error as Error)?.message });
+            this.logger.warn('Failed to publish RECORD_REJECTED event', { runId, stepKey, error: getErrorMessage(error) });
         }
         return entity;
     }
@@ -96,7 +97,7 @@ export class RecordErrorService {
             this.logger.warn(`Failed to run ${value ? HookStage.ON_DEAD_LETTER : HookStage.ON_RETRY} hook`, {
                 recordErrorId: id,
                 stepKey: ent.stepKey,
-                error: (error as Error)?.message,
+                error: getErrorMessage(error),
             });
         }
         if (value) {
@@ -106,7 +107,7 @@ export class RecordErrorService {
                 this.logger.warn('Failed to publish RECORD_DEAD_LETTERED event', {
                     recordErrorId: ent.id,
                     stepKey: ent.stepKey,
-                    error: (error as Error)?.message,
+                    error: getErrorMessage(error),
                 });
             }
         }

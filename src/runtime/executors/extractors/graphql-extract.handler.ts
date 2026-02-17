@@ -132,7 +132,7 @@ export class GraphqlExtractHandler implements ExtractHandler {
             }
         } catch (error) {
             this.logger.warn('Failed to resolve authentication secrets for GraphQL extractor', {
-                error: (error as Error)?.message,
+                error: getErrorMessage(error),
             });
         }
 

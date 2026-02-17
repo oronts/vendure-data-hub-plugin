@@ -272,7 +272,7 @@ export class PipelineService {
             this.logger.warn('Failed to save pre-revert revision snapshot', {
                 pipelineCode: pipeline.code,
                 revisionId,
-                error: (error as Error)?.message,
+                error: getErrorMessage(error),
             });
         }
         pipeline.definition = revision.definition;

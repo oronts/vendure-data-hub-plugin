@@ -138,12 +138,6 @@ export interface InterceptorResult {
     errors?: Array<{ action: string; error: string }>;
 }
 
-export interface HookRegistration {
-    stage: HookStageValue;
-    handler: HookHandler;
-    priority?: number;
-}
-
 export type ScriptFunction = (
     records: readonly JsonObject[],
     context: HookContext,

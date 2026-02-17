@@ -5,10 +5,6 @@ import type { PipelineNodeData, VisualNodeCategory } from '../../../types';
 import { getVisualNodeConfig, VisualNodeConfig } from './visual-node-config';
 import { FALLBACK_COLORS, BRANCH_COLORS, NODE_DIMENSIONS, ICON_SIZES, TEST_STATUS } from '../../../constants';
 
-interface PipelineNodeProps extends NodeProps<Node<PipelineNodeData>> {
-    category: VisualNodeCategory;
-}
-
 export function createPipelineNode(category: VisualNodeCategory) {
     return function PipelineNodeComponent({ data, selected }: NodeProps<Node<PipelineNodeData>>) {
         const config = getVisualNodeConfig(category);

@@ -136,7 +136,7 @@ export class GraphqlMutationHandler implements LoaderHandler {
             this.logger.warn('Failed to resolve authentication secrets for GraphQL mutation loader', {
                 stepKey: step.key,
                 endpoint,
-                error: (error as Error)?.message,
+                error: getErrorMessage(error),
             });
         }
 

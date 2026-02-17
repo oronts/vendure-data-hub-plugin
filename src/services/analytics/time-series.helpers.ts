@@ -31,7 +31,7 @@ export function getStartDate(timeRange: TimeRange): Date {
 /**
  * Get bucket size in milliseconds based on time range
  */
-export function getBucketSizeMs(timeRange: TimeRange): number {
+function getBucketSizeMs(timeRange: TimeRange): number {
     switch (timeRange) {
         case '1h':
             return TIME.FIVE_MINUTES_MS;

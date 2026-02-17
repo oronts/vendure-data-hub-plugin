@@ -326,7 +326,7 @@ export class ProductHandler implements LoaderHandler {
             this.logger.warn('Failed to create request context for target channel, using original context', {
                 stepKey: step.key,
                 targetChannel,
-                error: (error as Error)?.message,
+                error: getErrorMessage(error),
             });
             return ctx;
         }
@@ -401,7 +401,7 @@ export class ProductHandler implements LoaderHandler {
                 stepKey: step.key,
                 productId,
                 targetChannel,
-                error: (error as Error)?.message,
+                error: getErrorMessage(error),
             });
         }
     }
@@ -553,7 +553,7 @@ export class ProductHandler implements LoaderHandler {
                 stepKey: step.key,
                 variantId,
                 targetChannel,
-                error: (error as Error)?.message,
+                error: getErrorMessage(error),
             });
         }
     }
@@ -610,7 +610,7 @@ export class ProductHandler implements LoaderHandler {
                 stepKey: step.key,
                 variantId: updatedVariantId,
                 targetChannel,
-                error: (error as Error)?.message,
+                error: getErrorMessage(error),
             });
         }
     }

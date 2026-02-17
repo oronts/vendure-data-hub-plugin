@@ -12,6 +12,7 @@ import { HookService } from '../../../services/events/hook.service';
 import { DomainEventsService } from '../../../services/events/domain-events.service';
 import { StepLogCallback } from '../types';
 import { getAdapterCode } from '../../../types/step-configs';
+import { getErrorMessage } from '../../../utils/error.utils';
 
 /**
  * Context passed to step strategies for execution
@@ -97,7 +98,7 @@ export function safePublish(
     try {
         domainEvents.publish(eventType, payload);
     } catch (error) {
-        logger?.warn(`Failed to publish ${eventType} event: ${(error as Error)?.message}`, payload);
+        logger?.warn(`Failed to publish ${eventType} event: ${getErrorMessage(error)}`, payload);
     }
 }
 

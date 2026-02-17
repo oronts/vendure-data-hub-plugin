@@ -733,17 +733,3 @@ export type LoaderAdapterCode =
     | UpdatePromotionLoaders
     | UpdateDataHubSettingsLoaders;
 
-/** Map loader adapter code to required permission */
-export const LOADER_PERMISSIONS: Record<LoaderAdapterCode, string> = {
-    productUpsert: 'UpdateCatalog',
-    variantUpsert: 'UpdateCatalog',
-    stockAdjust: 'UpdateCatalog',
-    collectionUpsert: 'UpdateCatalog',
-    assetAttach: 'UpdateCatalog',
-    customerUpsert: 'UpdateCustomer',
-    orderNote: 'UpdateOrder',
-    orderTransition: 'UpdateOrder',
-    applyCoupon: 'UpdateOrder',
-    promotionUpsert: 'UpdatePromotion',
-    restPost: 'UpdateDataHubSettings',
-};

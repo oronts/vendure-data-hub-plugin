@@ -109,7 +109,6 @@ export {
     PipelineExecutionContext,
     HookContext,
     HookHandler,
-    HookRegistration,
     PipelineRunInput,
     PipelineRunStatus,
     PipelineRunSummary,

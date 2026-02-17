@@ -115,7 +115,7 @@ export async function deliverToFTP(
             user: config.username,
             password: config.password,
             secure: config.secure || false,
-            secureOptions: config.secure ? { rejectUnauthorized: false } : undefined,
+            secureOptions: config.secure ? { rejectUnauthorized: true } : undefined,
         });
 
         const remoteDir = path.dirname(remotePath);

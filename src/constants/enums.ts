@@ -419,22 +419,6 @@ export type ExportFormatType = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'PAR
 export type ParseFormatType = 'CSV' | 'JSON' | 'XML' | 'XLSX';
 
 /**
- * Error categories for logging and analytics
- *
- * Values use SCREAMING_SNAKE_CASE to match error code conventions
- */
-export enum ErrorCategory {
-    VALIDATION = 'VALIDATION',
-    NETWORK = 'NETWORK',
-    TIMEOUT = 'TIMEOUT',
-    RATE_LIMIT = 'RATE_LIMIT',
-    AUTH = 'AUTH',
-    DATA = 'DATA',
-    SYSTEM = 'SYSTEM',
-    UNKNOWN = 'UNKNOWN',
-}
-
-/**
  * Log persistence levels - controls what gets saved to database
  * Higher levels include all events from lower levels
  */

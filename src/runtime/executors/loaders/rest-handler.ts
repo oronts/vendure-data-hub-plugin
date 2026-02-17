@@ -88,7 +88,7 @@ export class RestPostHandler implements LoaderHandler {
             this.logger.warn('Failed to resolve authentication secrets for REST loader', {
                 stepKey: step.key,
                 endpoint,
-                error: (error as Error)?.message,
+                error: getErrorMessage(error),
             });
         }
 
@@ -140,7 +140,7 @@ export class RestPostHandler implements LoaderHandler {
                     this.logger.warn('Failed to generate HMAC signature for REST request', {
                         stepKey: step.key,
                         endpoint,
-                        error: (error as Error)?.message,
+                        error: getErrorMessage(error),
                     });
                 }
 

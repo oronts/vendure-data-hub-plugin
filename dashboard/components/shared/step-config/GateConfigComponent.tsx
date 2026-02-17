@@ -151,7 +151,7 @@ export function GateConfigComponent({
                         const val = e.target.value ? Number(e.target.value) : undefined;
                         updateField('previewCount', val);
                     }}
-                    placeholder={String(STEP_CONFIG_DEFAULTS.GATE_THRESHOLD_PERCENT)}
+                    placeholder={String(STEP_CONFIG_DEFAULTS.GATE_PREVIEW_COUNT)}
                     min={1}
                     data-testid="datahub-gate-preview-count-input"
                 />

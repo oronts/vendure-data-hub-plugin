@@ -56,54 +56,6 @@ export const UNIT_CONVERSIONS: Record<string, Record<string, number>> = {
 } as const;
 
 /**
- * Currency decimal places by currency code (ISO 4217)
- * Most currencies use 2 decimal places, but some use 0 or 3
- */
-export const CURRENCY_DECIMALS: Record<string, number> = {
-    // 2 decimal places (default)
-    USD: 2,
-    EUR: 2,
-    GBP: 2,
-    CNY: 2,
-    CHF: 2,
-    CAD: 2,
-    AUD: 2,
-    NZD: 2,
-    HKD: 2,
-    SGD: 2,
-    SEK: 2,
-    NOK: 2,
-    DKK: 2,
-    INR: 2,
-    BRL: 2,
-    MXN: 2,
-    ZAR: 2,
-    RUB: 2,
-    PLN: 2,
-    CZK: 2,
-    HUF: 2,
-    ILS: 2,
-    THB: 2,
-    MYR: 2,
-    PHP: 2,
-    TRY: 2,
-    AED: 2,
-    SAR: 2,
-    EGP: 2,
-
-    // 0 decimal places
-    JPY: 0,
-    KRW: 0,
-    IDR: 0,
-    VND: 0,
-
-    // 3 decimal places
-    KWD: 3,
-    BHD: 3,
-    OMR: 3,
-} as const;
-
-/**
  * Convert a value between units
  * @param value - Value to convert
  * @param fromUnit - Source unit

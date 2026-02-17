@@ -47,7 +47,6 @@ import {
     type SchemaValidatorConfig,
     type RouteConfig,
     type LoaderAdapterCode,
-    LOADER_PERMISSIONS,
 } from '../../shared/types';
 
 export type {
@@ -105,8 +104,6 @@ export type {
     UpdateDataHubSettingsLoaders,
     LoaderAdapterCode,
 } from '../../shared/types';
-
-export { LOADER_PERMISSIONS } from '../../shared/types';
 
 export const Extractors = {
     csv: (config: Omit<CsvExtractorConfig, 'adapterCode'>): CsvExtractorConfig => ({ adapterCode: 'csv', ...config }),

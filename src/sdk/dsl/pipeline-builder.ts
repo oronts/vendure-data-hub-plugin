@@ -1,7 +1,7 @@
 /**
  * @example
  * ```typescript
- * import { createPipeline, operators, conditions } from '@vendure/data-hub/sdk';
+ * import { createPipeline, operators, conditions } from '@oronts/vendure-data-hub-plugin/sdk';
  *
  * const pipeline = createPipeline()
  *   .name('Product Import')
