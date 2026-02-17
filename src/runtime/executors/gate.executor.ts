@@ -17,13 +17,14 @@ import { Injectable, Inject, Logger, OnModuleInit, OnModuleDestroy } from '@nest
 import { ModuleRef } from '@nestjs/core';
 import { TransactionalConnection, RequestContext } from '@vendure/core';
 import * as nodemailer from 'nodemailer';
-import { PipelineStepDefinition, PipelineContext, JsonValue } from '../../types/index';
+import { PipelineStepDefinition, PipelineContext, JsonValue, JsonObject } from '../../types/index';
 import type { DataHubPluginOptions } from '../../types/index';
 import { RecordObject, ExecutorContext } from '../executor-types';
 import { DATAHUB_PLUGIN_OPTIONS, HTTP_HEADERS, CONTENT_TYPES, INTERNAL_TIMINGS } from '../../constants/index';
 import { RunStatus } from '../../constants/enums';
 import { validateUrlSafety } from '../../utils/url-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
+import { deepClone } from '../../utils/object-path.utils';
 import { PipelineRun } from '../../entities/pipeline/pipeline-run.entity';
 import { PipelineService } from '../../services/pipeline/pipeline.service';
 
@@ -106,6 +107,21 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
     ): Promise<GateResult> {
         const config = (step.config ?? {}) as unknown as GateStepConfig;
         const previewCount = config.previewCount ?? DEFAULT_PREVIEW_COUNT;
+
+        // Check if gate was already approved (resuming after gate approval)
+        const approvalKey = `__gateApproved:${step.key}`;
+        if (executorCtx.cpData?.[approvalKey]) {
+            logger.log(`GATE step "${step.key}": already approved, continuing pipeline`);
+            delete executorCtx.cpData[approvalKey];
+            executorCtx.markCheckpointDirty();
+            return {
+                paused: false,
+                pendingRecords: input,
+                previewRecords: input.slice(0, previewCount),
+                stepKey: step.key,
+                config,
+            };
+        }
 
         // --- THRESHOLD mode ---
         if (config.approvalType === 'THRESHOLD') {
@@ -398,7 +414,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
             stepKey,
             approvalType: config.approvalType,
             pendingRecordCount: records.length,
-            pendingRecords: records as unknown as JsonValue,
+            pendingRecords: deepClone(records as unknown as JsonObject) as JsonValue,
             pausedAt: new Date().toISOString(),
         } as Record<string, JsonValue>;
         executorCtx.markCheckpointDirty();

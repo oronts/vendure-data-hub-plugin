@@ -14,7 +14,7 @@ import {
     TransactionalConnection,
 } from '@vendure/core';
 import { Pipeline, PipelineRevision, PipelineRun } from '../../entities/pipeline';
-import { JsonValue, PipelineDefinition, PipelineMetrics, RunStatus } from '../../types/index';
+import { JsonObject, JsonValue, PipelineDefinition, PipelineMetrics, RunStatus } from '../../types/index';
 import { PipelineStatus, RevisionType, SortOrder, StepType } from '../../constants/enums';
 import { DefinitionValidationService } from '../validation/definition-validation.service';
 import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
@@ -23,6 +23,7 @@ import { LOGGER_CONTEXTS } from '../../constants/index';
 import { PipelineQueueRequestEvent } from '../events/pipeline-events';
 import { getErrorMessage, isDuplicateEntryError } from '../../utils/error.utils';
 import { escapeLikePattern } from '../../utils/sql-security.utils';
+import { CheckpointService } from '../data/checkpoint.service';
 
 export interface CreatePipelineInput {
     code: string;
@@ -51,6 +52,7 @@ export class PipelineService {
         private eventBus: EventBus,
         private definitionValidator: DefinitionValidationService,
         private adapterRuntime: AdapterRuntimeService,
+        private checkpointService: CheckpointService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PIPELINE_SERVICE);
@@ -426,6 +428,16 @@ export class PipelineService {
             throw new Error(`Cannot approve gate: run is not paused (current status: ${run.status})`);
         }
 
+        const pipelineId = run.pipeline?.id ?? run.pipelineId;
+
+        // Mark the gate as approved in the DataHubCheckpoint entity (read by the executor on resume)
+        if (pipelineId) {
+            const existing = await this.checkpointService.getByPipeline(ctx, pipelineId);
+            const cpData: JsonObject = { ...(existing?.data ?? {}) };
+            cpData[`__gateApproved:${stepKey}`] = true;
+            await this.checkpointService.setForPipeline(ctx, pipelineId, cpData);
+        }
+
         // Set status to RUNNING so the runner picks it up
         run.status = RunStatus.RUNNING;
         await repo.save(run, { reload: false });
@@ -433,13 +445,11 @@ export class PipelineService {
         this.logger.info('Gate approved, resuming pipeline run', {
             runId,
             stepKey,
-            pipelineId: run.pipeline?.id,
+            pipelineId,
             userId: ctx.activeUserId,
         });
 
-        // Dispatch the run for continued execution via the job queue.
-        // The runner accepts RUNNING status for gate-resume re-execution.
-        const pipelineId = run.pipeline?.id ?? run.pipelineId;
+        // Dispatch the run for continued execution via the job queue
         if (pipelineId) {
             this.eventBus.publish(new PipelineQueueRequestEvent(
                 runId,

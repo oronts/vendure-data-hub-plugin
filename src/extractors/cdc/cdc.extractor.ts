@@ -45,16 +45,22 @@ function toDatabaseConfig(
     config: CdcExtractorConfig,
     connection: ConnectionConfig,
 ): DatabaseExtractorConfig {
-    const connConfig = (connection.config ?? {}) as JsonObject;
+    // The connection adapter flattens config onto the top level,
+    // but ConnectionConfig also has a nested `config` field.
+    // Check both locations for compatibility.
+    const nested = (connection.config ?? {}) as JsonObject;
+    const flat = connection as unknown as JsonObject;
+    const get = (key: string) => (flat[key] ?? nested[key]) as string | undefined;
+    const getNum = (key: string) => (flat[key] ?? nested[key]) as number | undefined;
     return {
         adapterCode: 'database',
         databaseType: config.databaseType as DatabaseType,
-        host: connConfig.host as string | undefined,
-        port: connConfig.port as number | undefined,
-        database: connConfig.database as string | undefined,
-        username: connConfig.username as string | undefined,
-        passwordSecretCode: connConfig.passwordSecretCode as string | undefined,
-        connectionStringSecretCode: connConfig.connectionStringSecretCode as string | undefined,
+        host: get('host'),
+        port: getNum('port'),
+        database: get('database'),
+        username: get('username'),
+        passwordSecretCode: get('passwordSecretCode'),
+        connectionStringSecretCode: get('connectionStringSecretCode'),
         query: '', // not used directly
     };
 }
@@ -172,8 +178,8 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
             {
                 key: 'columns',
                 label: 'Columns',
-                description: 'Specific columns to select (comma-separated). Leave empty for all columns.',
-                type: 'string',
+                description: 'Specific columns to select as an array (e.g. ["id", "name"]). Leave empty for all columns.',
+                type: 'json',
                 group: 'columns',
             },
             {

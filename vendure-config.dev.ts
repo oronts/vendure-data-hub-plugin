@@ -541,19 +541,30 @@ export const config: VendureConfig = {
                 // For testing: uses 'demo-pimcore-key' fallback (will fail auth but allows pipeline validation)
                 { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY|demo-pimcore-key' },
                 { code: 'pimcore-webhook-key', provider: 'ENV', value: 'PIMCORE_WEBHOOK_KEY|demo-webhook-key' },
+                // CDC demo: PostgreSQL password
+                // Set DEMO_PG_PASSWORD env var, or defaults to 'postgres' for local dev
+                { code: 'demo-pg-password', provider: 'ENV', value: 'DEMO_PG_PASSWORD|postgres' },
             ],
 
             // Database connections
             connections: [
                 {
                     code: 'demo-postgres',
-                    type: 'postgres',
+                    type: 'DATABASE',
                     name: 'Demo PostgreSQL',
-                    settings: { host: 'localhost', port: 5432, database: 'demo', username: 'demo', password: 'demo' },
+                    // CDC demo requires a real PostgreSQL with a "products" table.
+                    // Override via env: DEMO_PG_HOST, DEMO_PG_DATABASE, DEMO_PG_USER, DEMO_PG_PASSWORD
+                    settings: {
+                        host: process.env.DEMO_PG_HOST || 'localhost',
+                        port: 5432,
+                        database: process.env.DEMO_PG_DATABASE || 'postgres',
+                        username: process.env.DEMO_PG_USER || 'postgres',
+                        passwordSecretCode: 'demo-pg-password',
+                    },
                 },
                 {
                     code: 'erp-api',
-                    type: 'http',
+                    type: 'HTTP',
                     name: 'ERP API Connection',
                     settings: { baseUrl: 'https://erp.example.com/api', headers: { 'X-API-Key': '{{secret:demo-api-key}}' } },
                 },

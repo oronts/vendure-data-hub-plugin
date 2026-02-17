@@ -154,7 +154,7 @@ export function pickForHash(obj: JsonObject, includePaths: string[], excludePath
             return out;
         }
         if (excludePaths && excludePaths.length) {
-            const clone = deepClone(obj);
+            const clone = deepCloneUtil(obj);
             for (const p of excludePaths) removePath(clone, p);
             return clone;
         }
@@ -277,9 +277,7 @@ export function chunk<T>(arr: T[], size: number): T[][] {
 
 export { sleep } from '../utils/retry.utils';
 
-export function deepClone<T extends JsonValue>(obj: T): T {
-    return deepCloneUtil(obj as JsonObject) as T;
-}
+export { deepCloneUtil as deepClone };
 
 /**
  * Escapes a value for CSV output

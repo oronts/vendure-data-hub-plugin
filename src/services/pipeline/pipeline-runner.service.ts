@@ -24,6 +24,7 @@ interface ExecutionContext {
     startTime: number;
     lockKey: string;
     lockToken?: string;
+    isGateResume?: boolean;
 }
 
 /** Result from prepareExecution indicating whether execution should proceed */
@@ -117,6 +118,9 @@ export class PipelineRunnerService {
         }
         const { run, runLogger } = loadResult;
 
+        // Detect gate resume: run is already RUNNING (set by approveGate)
+        const isGateResume = run.status === RunStatus.RUNNING;
+
         const lockKey = `pipeline-run:${runId}`;
         const lockResult = await this.acquireExecutionLock(lockKey, runLogger);
         if (!lockResult.acquired) {
@@ -126,6 +130,7 @@ export class PipelineRunnerService {
         const execCtx = await this.initializeExecutionContext(
             ctx, run, runId, runRepo, pipelineRepo, runLogger, lockKey, lockResult.lockToken,
         );
+        execCtx.isGateResume = isGateResume;
 
         return { proceed: true, executionContext: execCtx };
     }
@@ -228,7 +233,7 @@ export class PipelineRunnerService {
             stepCount: pipeline.definition.steps?.length ?? 0,
         });
 
-        return this.executeProcessing(ctx, runId, pipeline.definition, pipeline.id, runLogger);
+        return this.executeProcessing(ctx, runId, pipeline.definition, pipeline.id, runLogger, execCtx.isGateResume);
     }
 
     /**
@@ -347,10 +352,11 @@ export class PipelineRunnerService {
         definition: PipelineDefinition,
         pipelineId: ID | undefined,
         runLogger: DataHubLogger,
+        isGateResume?: boolean,
     ): Promise<PipelineMetrics> {
         const procCtx = await this.loadPipelineDefinition(ctx, runId, pipelineId, runLogger);
         const callbacks = this.createProcessingCallbacks(procCtx);
-        return this.runStepsWithMetrics(definition, procCtx, callbacks);
+        return this.runStepsWithMetrics(definition, procCtx, callbacks, isGateResume);
     }
 
     /**
@@ -407,6 +413,7 @@ export class PipelineRunnerService {
         definition: PipelineDefinition,
         procCtx: ProcessingContext,
         callbacks: ProcessingCallbacks,
+        isGateResume?: boolean,
     ): Promise<PipelineMetrics> {
         const { ctx, runId, pipelineId, runLogger, start, seed } = procCtx;
         const { onCancelRequested, onRecordError } = callbacks;
@@ -417,6 +424,7 @@ export class PipelineRunnerService {
               )
             : await this.adapterRuntime.executePipeline(
                   ctx, definition, onCancelRequested, onRecordError, pipelineId, runId,
+                  isGateResume ? { resume: true } : undefined,
               );
 
         const durationMs = Date.now() - start;

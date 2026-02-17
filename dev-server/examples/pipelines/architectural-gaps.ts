@@ -212,25 +212,23 @@ export const gateDemoPipeline = createPipeline()
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('fetch-import-data', {
-        adapterCode: 'httpApi',
-        url: 'https://supplier.example.com/api/catalog',
-        method: 'GET',
-        bearerTokenSecretCode: 'demo-api-key',
-        itemsField: 'data.products',
+        adapterCode: 'inMemory',
+        data: [
+            { sku: 'GATE-001', name: 'Supplier Widget A', description: 'Imported widget from supplier', price: 29.99 },
+            { sku: 'GATE-002', name: 'Supplier Widget B', description: 'Premium widget from supplier', price: 49.99 },
+            { sku: 'GATE-003', name: 'Supplier Gadget C', description: 'New gadget pending approval', price: 99.99 },
+        ],
     })
-    .validate('check-data', {
-        errorHandlingMode: 'ACCUMULATE',
-        validationMode: 'STRICT',
-        rules: [
-            { type: 'business', spec: { field: 'sku', required: true, pattern: '^[A-Z]{2,4}-\\d{3,6}$', error: 'SKU must match XX-NNN format' } },
-            { type: 'business', spec: { field: 'price', required: true, min: 0.01, max: 99999, error: 'Price must be between 0.01 and 99999' } },
-            { type: 'business', spec: { field: 'name', required: true, error: 'Product name is required' } },
+    .transform('prepare', {
+        operators: [
+            { op: 'toNumber', args: { source: 'price' } },
+            { op: 'toCents', args: { source: 'price', target: 'priceInCents' } },
+            { op: 'slugify', args: { source: 'name', target: 'slug' } },
+            { op: 'set', args: { path: 'enabled', value: true } },
         ],
     })
     .gate('approval-gate', {
         approvalType: 'MANUAL',
-        notifyWebhook: 'https://slack-webhook.example.com/datahub-approvals',
-        notifyEmail: 'data-team@example.com',
         previewCount: 5,
     })
     .load('import-approved', {
@@ -240,11 +238,12 @@ export const gateDemoPipeline = createPipeline()
         conflictResolution: 'SOURCE_WINS',
         skuField: 'sku',
         nameField: 'name',
+        slugField: 'slug',
         descriptionField: 'description',
     })
     .edge('start', 'fetch-import-data')
-    .edge('fetch-import-data', 'check-data')
-    .edge('check-data', 'approval-gate')
+    .edge('fetch-import-data', 'prepare')
+    .edge('prepare', 'approval-gate')
     .edge('approval-gate', 'import-approved')
     .build();
 
@@ -274,7 +273,7 @@ export const cdcDemoPipeline = createPipeline()
         primaryKey: 'id',
         trackingColumn: 'updated_at',
         trackingType: 'TIMESTAMP',
-        columns: 'id,sku,name,description,price,updated_at',
+        columns: ['id', 'sku', 'name', 'description', 'price', 'updated_at'],
         includeDeletes: true,
         deleteColumn: 'deleted_at',
         batchSize: 500,

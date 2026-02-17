@@ -149,7 +149,7 @@ export class AdapterRuntimeService {
         pipelineId?: ID,
         runId?: ID,
         options?: { resume?: boolean },
-    ): Promise<{ processed: number; succeeded: number; failed: number; details?: JsonObject[] }> {
+    ): Promise<{ processed: number; succeeded: number; failed: number; details?: JsonObject[]; paused?: boolean; pausedAtStep?: string }> {
         const pipelineCtx = await this.executionLifecycle.prepareExecution(
             ctx, definition, pipelineId, runId, options,
         );

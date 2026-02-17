@@ -87,6 +87,15 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
         setStatus(v === FILTER_VALUES.ALL ? '' : v);
     }, []);
 
+    const handlePageChange = React.useCallback((_table: unknown, newPage: number, newItemsPerPage: number) => {
+        setPage(newPage);
+        setItemsPerPage(newItemsPerPage);
+    }, []);
+
+    const handleSortChange = React.useCallback((_table: unknown, newSorting: SortingState) => {
+        setSorting(newSorting);
+    }, []);
+
     const handleCloseDrawer = React.useCallback((open: boolean) => {
         if (!open) setSelectedRun(null);
     }, []);
@@ -279,8 +288,8 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                             page={page}
                             itemsPerPage={itemsPerPage}
                             sorting={sorting}
-                            onPageChange={setPage}
-                            onSortChange={setSorting}
+                            onPageChange={handlePageChange}
+                            onSortChange={handleSortChange}
                             onRefresh={refetch}
                             disableViewOptions
                             data-testid="datahub-run-history-table"

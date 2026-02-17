@@ -24,7 +24,8 @@ import {
     updateCheckpoint,
     getCheckpointValue,
 } from './extract-handler.interface';
-import { FileFormat } from '../../../constants/enums';
+import { EXTRACTOR_CODE } from '../../../constants/index';
+import { parseXml } from '../../../parsers/formats/xml.parser';
 import { getErrorMessage } from '../../../utils/error.utils';
 
 interface CsvExtractConfig {
@@ -45,6 +46,15 @@ interface JsonExtractConfig {
     itemsPath?: string;
 }
 
+interface XmlExtractConfig {
+    adapterCode?: string;
+    fileId?: string;
+    xmlText?: string;
+    xmlPath?: string;
+    recordPath?: string;
+    attributePrefix?: string;
+}
+
 @Injectable()
 export class FileExtractHandler implements ExtractHandler {
     private readonly logger: DataHubLogger;
@@ -58,14 +68,17 @@ export class FileExtractHandler implements ExtractHandler {
 
     async extract(context: ExtractHandlerContext): Promise<RecordObject[]> {
         const { step } = context;
-        const cfg = getExtractConfig<CsvExtractConfig | JsonExtractConfig>(step);
+        const cfg = getExtractConfig<CsvExtractConfig | JsonExtractConfig | XmlExtractConfig>(step);
         const adapterCode = cfg.adapterCode;
 
-        if (adapterCode === FileFormat.CSV) {
+        if (adapterCode === EXTRACTOR_CODE.CSV) {
             return this.extractCsv(context);
         }
-        if (adapterCode === FileFormat.JSON) {
+        if (adapterCode === EXTRACTOR_CODE.JSON) {
             return this.extractJson(context);
+        }
+        if (adapterCode === EXTRACTOR_CODE.XML) {
+            return this.extractXml(context);
         }
 
         this.logger.warn('Unknown file extractor type', { stepKey: step.key, adapterCode });
@@ -271,6 +284,65 @@ export class FileExtractHandler implements ExtractHandler {
         if (typeof data === 'object' && data !== null) return [data] as RecordObject[];
 
         return [];
+    }
+
+    async extractXml(context: ExtractHandlerContext): Promise<RecordObject[]> {
+        const { step, executorCtx } = context;
+        const cfg = getExtractConfig<XmlExtractConfig>(step);
+        const offset = getCheckpointValue(executorCtx, step.key, 'offset', 0);
+
+        const content = await this.loadXmlContent(cfg, step.key);
+        if (!content) {
+            this.logger.warn('XML extractor: no data source provided', { stepKey: step.key });
+            return [];
+        }
+
+        const result = parseXml(content, {
+            recordPath: cfg.recordPath,
+            attributePrefix: cfg.attributePrefix,
+        });
+
+        if (!result.success) {
+            this.logger.warn('XML parsing failed', { stepKey: step.key, errors: result.errors });
+            return [];
+        }
+
+        this.logger.debug('Extracted XML records', { stepKey: step.key, count: result.records.length });
+        return this.applyOffsetAndCheckpoint(result.records as RecordObject[], offset, executorCtx, step.key);
+    }
+
+    private async loadXmlContent(cfg: XmlExtractConfig, stepKey: string): Promise<string | null> {
+        if (cfg.fileId) {
+            try {
+                const content = await this.fileStorageService.readFileAsString(cfg.fileId);
+                if (!content) {
+                    this.logger.warn('Uploaded XML file not found or empty', { stepKey, fileId: cfg.fileId });
+                    return null;
+                }
+                return content;
+            } catch (err) {
+                this.logger.warn('Failed to read uploaded XML file', { stepKey, fileId: cfg.fileId, error: getErrorMessage(err) });
+                return null;
+            }
+        }
+
+        if (typeof cfg.xmlText === 'string') {
+            return cfg.xmlText;
+        }
+
+        if (cfg.xmlPath) {
+            try {
+                await fs.promises.access(cfg.xmlPath);
+                return await fs.promises.readFile(cfg.xmlPath, 'utf8');
+            } catch (err) {
+                if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+                    this.logger.warn('Failed to read XML file', { stepKey, path: cfg.xmlPath, error: getErrorMessage(err) });
+                }
+                return null;
+            }
+        }
+
+        return null;
     }
 
     private applyOffsetAndCheckpoint(

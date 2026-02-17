@@ -39,7 +39,11 @@ async function createPostgresClient(
     };
 
     if (config.passwordSecretCode) {
-        poolConfig.password = await context.secrets.get(config.passwordSecretCode);
+        const password = await context.secrets.get(config.passwordSecretCode);
+        if (!password) {
+            throw new Error(`Secret "${config.passwordSecretCode}" not found — create it in DataHub → Secrets before using this connection`);
+        }
+        poolConfig.password = password;
     }
 
     if (config.ssl?.enabled) {
@@ -70,9 +74,10 @@ async function createPostgresClient(
 
     if (config.connectionStringSecretCode) {
         const connectionString = await context.secrets.get(config.connectionStringSecretCode);
-        if (connectionString) {
-            poolConfig.connectionString = connectionString;
+        if (!connectionString) {
+            throw new Error(`Secret "${config.connectionStringSecretCode}" not found — create it in DataHub → Secrets`);
         }
+        poolConfig.connectionString = connectionString;
     } else if (config.connectionString) {
         poolConfig.connectionString = config.connectionString;
     }
@@ -114,7 +119,11 @@ async function createMysqlClient(
     };
 
     if (config.passwordSecretCode) {
-        poolConfig.password = await context.secrets.get(config.passwordSecretCode);
+        const password = await context.secrets.get(config.passwordSecretCode);
+        if (!password) {
+            throw new Error(`Secret "${config.passwordSecretCode}" not found — create it in DataHub → Secrets before using this connection`);
+        }
+        poolConfig.password = password;
     }
 
     if (config.ssl?.enabled) {

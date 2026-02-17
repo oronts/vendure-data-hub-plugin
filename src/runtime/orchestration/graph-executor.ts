@@ -95,6 +95,8 @@ interface ExecutionMetrics {
     failed: number;
     details: Array<import('../../types/index').JsonObject>;
     counters: Record<string, number>;
+    paused?: boolean;
+    pausedAtStep?: string;
 }
 
 /**
@@ -348,6 +350,24 @@ async function executeSequential(
             }
         }
 
+        // Check if a GATE step requested a pause
+        if (step?.type === 'GATE' && stepResult.detail?.['shouldPause'] === true) {
+            metrics.paused = true;
+            metrics.pausedAtStep = key;
+            logger.log(`Pipeline paused at GATE step "${key}" - awaiting approval`);
+            try {
+                domainEvents.publish('PipelinePaused', {
+                    pipelineId,
+                    runId,
+                    stepKey: key,
+                    pausedAt: new Date().toISOString(),
+                });
+            } catch (error) {
+                handleNodeError(error as Error, 'PipelinePaused', { stepKey: key });
+            }
+            break;
+        }
+
         processNeighborIndegrees(key, edges, indeg, queue);
     }
 }
@@ -452,6 +472,25 @@ async function executeParallel(
                 } catch (error) {
                     handleNodeError(error as Error, stepResult.event.type, { stepKey: key });
                 }
+            }
+
+            // Check if a GATE step requested a pause
+            const completedStep = stepByKey.get(key);
+            if (completedStep?.type === 'GATE' && stepResult.detail?.['shouldPause'] === true) {
+                metrics.paused = true;
+                metrics.pausedAtStep = key;
+                logger.log(`[Parallel] Pipeline paused at GATE step "${key}" - awaiting approval`);
+                try {
+                    domainEvents.publish('PipelinePaused', {
+                        pipelineId,
+                        runId,
+                        stepKey: key,
+                        pausedAt: new Date().toISOString(),
+                    });
+                } catch (error) {
+                    handleNodeError(error as Error, 'PipelinePaused', { stepKey: key });
+                }
+                break;
             }
 
             // Update indegrees and add newly ready steps to queue

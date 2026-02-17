@@ -24,10 +24,11 @@ async function runServer() {
 
     if (needsPopulate) {
         console.log('  First run detected - populating database with initial data...');
-        await populate(
+        const populateApp = await populate(
             () => bootstrap(config),
             initialData,
         );
+        await populateApp.close();
         console.log('  Database populated successfully!');
     }
 

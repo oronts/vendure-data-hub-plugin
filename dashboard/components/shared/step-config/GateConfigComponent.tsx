@@ -104,7 +104,7 @@ export function GateConfigComponent({
                             const val = e.target.value ? Number(e.target.value) : undefined;
                             updateField('errorThresholdPercent', val);
                         }}
-                        placeholder={String(STEP_CONFIG_DEFAULTS.GATE_MIN_APPROVERS)}
+                        placeholder={String(STEP_CONFIG_DEFAULTS.GATE_THRESHOLD_PERCENT)}
                         min={0}
                         max={100}
                         data-testid="datahub-gate-threshold-input"

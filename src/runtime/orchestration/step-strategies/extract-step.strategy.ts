@@ -60,8 +60,8 @@ export class ExtractStepStrategy implements StepStrategy {
     }
 
     private async executeExtract(context: StepExecutionContext): Promise<RecordObject[]> {
-        const { ctx, step, executorCtx, onRecordError } = context;
-        return this.extractExecutor.execute(ctx, step, executorCtx, onRecordError);
+        const { ctx, step, executorCtx, onRecordError, pipelineId, runId } = context;
+        return this.extractExecutor.execute(ctx, step, executorCtx, onRecordError, pipelineId, runId);
     }
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {

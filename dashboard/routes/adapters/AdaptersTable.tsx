@@ -24,7 +24,7 @@ export function AdaptersTable({
         onSelect(adapter);
     }, [onSelect]);
 
-    const handlePageChange = React.useCallback((newPage: number) => {
+    const handlePageChange = React.useCallback((_table: unknown, newPage: number) => {
         setPage(newPage);
     }, []);
 

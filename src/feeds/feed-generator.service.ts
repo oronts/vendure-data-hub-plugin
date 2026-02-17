@@ -430,8 +430,10 @@ export class FeedGeneratorService implements OnModuleInit {
             .leftJoinAndSelect('product.facetValues', 'facetValues')
             .leftJoinAndSelect('facetValues.facet', 'facet')
             .leftJoinAndSelect('variant.stockLevels', 'stockLevels')
+            .innerJoin('product.channels', 'channel')
             .where('variant.deletedAt IS NULL')
-            .andWhere('product.deletedAt IS NULL');
+            .andWhere('product.deletedAt IS NULL')
+            .andWhere('channel.id = :channelId', { channelId: ctx.channelId });
 
         if (filters?.enabled !== false) {
             queryBuilder.andWhere('variant.enabled = true');

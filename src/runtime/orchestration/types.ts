@@ -60,6 +60,8 @@ export interface GraphExecutionResult {
     failed: number;
     details: Array<import('../../types/index').JsonObject>;
     counters: Record<string, number>;
+    paused?: boolean;
+    pausedAtStep?: string;
 }
 
 /**

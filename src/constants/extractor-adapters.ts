@@ -158,7 +158,7 @@ export const EXTRACTOR_ADAPTERS: AdapterDefinition[] = [
                     { value: 'TIMESTAMP', label: 'Timestamp' },
                     { value: 'VERSION', label: 'Version / Sequence Number' },
                 ] },
-                { key: 'columns', label: 'Columns (comma-separated)', type: 'string', description: 'Specific columns to select. Leave empty for all.' },
+                { key: 'columns', label: 'Columns', type: 'json', description: 'Specific columns to select as an array (e.g. ["id", "name"]). Leave empty for all.' },
                 { key: 'includeDeletes', label: 'Track Deletes', type: 'boolean', description: 'Query a soft-delete column for deleted rows' },
                 { key: 'deleteColumn', label: 'Delete Column', type: 'string', description: 'Timestamp column indicating when a row was deleted' },
                 { key: 'batchSize', label: 'Batch Size', type: 'number', description: 'Maximum rows per extraction (default: 1000)' },
