@@ -82,35 +82,6 @@ export const PHONE_PATTERN = /^\+?[0-9\s\-().]{7,}$/;
 export const SQL_IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 // ============================================================================
-// Pattern Collections
-// ============================================================================
-
-/**
- * All validation patterns in a single object.
- */
-export const PATTERNS = {
-    // Core identifiers
-    EMAIL: EMAIL_PATTERN,
-    PIPELINE_CODE: PIPELINE_CODE_PATTERN,
-    SLUG: SLUG_PATTERN,
-
-    // URL and network
-    URL: URL_PATTERN,
-
-    // Date and time
-    ISO_DATE: ISO_DATE_PATTERN,
-
-    // UUID and IDs
-    UUID: UUID_PATTERN,
-
-    // Location/Contact
-    PHONE: PHONE_PATTERN,
-
-    // File and path
-    SQL_IDENTIFIER: SQL_IDENTIFIER_PATTERN,
-} as const;
-
-// ============================================================================
 // Validation Helper Functions
 // ============================================================================
 

@@ -376,7 +376,7 @@ Create or update Vendure entities:
     lastNameField?: string,
     phoneNumberField?: string,
     codeField?: string,
-    parentSlugField?: string,
+    parentField?: string,
     positionField?: string,
     stockOnHandField?: string,
     stockLocationField?: string,

@@ -14,6 +14,7 @@ import {
     removeNestedValue,
     deepClone as deepCloneUtil,
 } from '../utils/object-path.utils';
+import { parseCsvLine } from '../parsers/formats/csv.parser';
 
 export function ensureDirectoryExists(filePath: string): void {
     const dir = path.dirname(filePath);
@@ -45,30 +46,11 @@ export function parseCsv(text: string, delimiter = ',', hasHeader = true): Recor
 }
 
 /**
- * Splits a single CSV line into an array of values, respecting quoted fields
+ * Splits a single CSV line into an array of values, respecting quoted fields.
+ * Delegates to the canonical parseCsvLine from parsers/formats/csv.parser.ts.
  */
 export function splitCsvLine(line: string, delimiter: string): string[] {
-    const out: string[] = [];
-    let currentValue = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-            if (inQuotes && line[i + 1] === '"') {
-                currentValue += '"';
-                i++;
-            } else {
-                inQuotes = !inQuotes;
-            }
-        } else if (char === delimiter && !inQuotes) {
-            out.push(currentValue);
-            currentValue = '';
-        } else {
-            currentValue += char;
-        }
-    }
-    out.push(currentValue);
-    return out.map(s => s.trim());
+    return parseCsvLine(line, delimiter);
 }
 
 /**

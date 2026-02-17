@@ -114,7 +114,7 @@ export const productImportCsv = createPipeline()
             { op: 'unit', args: { source: 'weight', target: 'weightInGrams', from: 'kg', to: 'g' } },
 
             // Split comma-separated tags into array
-            { op: 'split', args: { source: 'tags', target: 'tagArray', separator: ',' } },
+            { op: 'split', args: { source: 'tags', target: 'tagArray', delimiter: ',' } },
 
             // Map category to facet value
             {

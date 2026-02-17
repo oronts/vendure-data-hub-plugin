@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { JsonValue } from '../../types/index';
 import { RecordObject } from '../../runtime/executor-types';
 import { getErrorMessage } from '../../utils/error.utils';
+import { getNestedValue as getNestedValueCanonical } from '../../utils/object-path.utils';
 import {
     applyTemplateTransform,
     applySplitTransform,
@@ -236,26 +237,14 @@ export class FieldMapperService {
     }
 
     /**
-     * Get a nested value from an object using dot notation
-     * Supports array access like "items[0].name"
+     * Get a nested value from an object using dot notation.
+     * Normalizes bracket syntax (e.g. "items[0].name" -> "items.0.name")
+     * then delegates to the canonical getNestedValue with prototype-pollution protection.
      */
     private getNestedValue(obj: RecordObject, path: string): JsonValue | undefined {
         if (!path || !obj) return undefined;
-
-        const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.');
-        let current: JsonValue | undefined = obj;
-
-        for (const part of parts) {
-            if (current === null || current === undefined) {
-                return undefined;
-            }
-            if (typeof current !== 'object' || Array.isArray(current)) {
-                return undefined;
-            }
-            current = current[part];
-        }
-
-        return current;
+        const normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
+        return getNestedValueCanonical(obj, normalizedPath);
     }
 
     /**

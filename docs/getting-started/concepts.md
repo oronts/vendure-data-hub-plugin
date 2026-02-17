@@ -151,7 +151,7 @@ Control how records flow through steps:
         batchSize: 100,         // Process 100 records at a time
         concurrency: 4,         // Process 4 batches in parallel
         rateLimitRps: 10,       // Max 10 requests per second
-        pauseOnErrorRate: 0.5,  // Pause if error rate exceeds 50%
+        pauseOnErrorRate: { threshold: 0.5, intervalSec: 60 },  // Pause if error rate exceeds 50%
         drainStrategy: 'BACKOFF', // 'BACKOFF' | 'SHED' | 'QUEUE'
     }
 }

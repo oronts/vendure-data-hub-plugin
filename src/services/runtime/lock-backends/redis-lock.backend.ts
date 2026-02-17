@@ -86,7 +86,8 @@ export class RedisLockBackend implements LockBackend {
         await client.connect();
         await client.ping();
 
-        logger.info('Connected to Redis for distributed locking', { url });
+        const safeUrl = (() => { try { const u = new URL(url); u.password = ''; u.username = ''; return u.toString(); } catch { return '[invalid-url]'; } })();
+        logger.info('Connected to Redis for distributed locking', { url: safeUrl });
 
         return new RedisLockBackend(client, logger);
     }

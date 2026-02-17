@@ -158,8 +158,6 @@ type LoadStrategy =
     | 'UPDATE'        // Only update existing, skip new
     | 'UPSERT'        // Create or update
     | 'MERGE'         // Merge fields intelligently
-    | 'SOURCE_WINS'   // Source data wins conflicts
-    | 'VENDURE_WINS'  // Existing Vendure data wins
     | 'SOFT_DELETE'   // Mark as deleted
     | 'HARD_DELETE';  // Permanently delete
 ```

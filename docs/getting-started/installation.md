@@ -80,16 +80,16 @@ You can define pipelines, secrets, and connections directly in code. These are s
 
 ### Secrets
 
-Define secrets in code. Use `provider: 'env'` to read from environment variables:
+Define secrets in code. Use `provider: 'ENV'` to read from environment variables:
 
 ```typescript
 DataHubPlugin.init({
     secrets: [
         // Read from environment variable
-        { code: 'supplier-api-key', provider: 'env', value: 'SUPPLIER_API_KEY' },
+        { code: 'supplier-api-key', provider: 'ENV', value: 'SUPPLIER_API_KEY' },
 
         // Inline value (not recommended for production)
-        { code: 'test-secret', provider: 'inline', value: 'secret-value' },
+        { code: 'test-secret', provider: 'INLINE', value: 'secret-value' },
     ],
 })
 ```

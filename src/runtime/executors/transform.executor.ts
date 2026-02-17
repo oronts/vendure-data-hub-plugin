@@ -564,8 +564,8 @@ export class TransformExecutor {
                 // Apply computed fields (template syntax with ${field} placeholders)
                 for (const [key, template] of Object.entries(computed)) {
                     if (typeof template === 'string') {
-                        enriched[key] = template.replace(/\$\{([^}]+)\}/g, (_, path) => {
-                            const value = this.getNestedValue(enriched, path.trim());
+                        enriched[key] = template.replace(/\$\{([^}]+)\}/g, (_, p) => {
+                            const value = getPath(enriched, p.trim());
                             return value !== null && value !== undefined ? String(value) : '';
                         });
                     }
@@ -578,19 +578,6 @@ export class TransformExecutor {
         // For HTTP and VENDURE source types, would need async implementation
         // For now, pass through unchanged if no enrichment config is valid
         return input;
-    }
-
-    /**
-     * Helper to get nested value from object using dot notation
-     */
-    private getNestedValue(obj: Record<string, unknown>, path: string): unknown {
-        const parts = path.split('.');
-        let current: unknown = obj;
-        for (const part of parts) {
-            if (current === null || current === undefined) return undefined;
-            current = (current as Record<string, unknown>)[part];
-        }
-        return current;
     }
 
     /**

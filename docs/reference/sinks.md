@@ -22,7 +22,7 @@ Index records to MeiliSearch for fast, typo-tolerant search.
 | `apiKeySecretCode` | string | Yes | Secret code for API key |
 | `indexName` | string | Yes | Target index name |
 | `primaryKey` | string | Yes | Primary key field name |
-| `batchSize` | number | No | Records per batch |
+| `bulkSize` | number | No | Records per batch |
 | `searchableFields` | json | No | Array of searchable field names |
 | `filterableFields` | json | No | Array of filterable field names |
 | `sortableFields` | json | No | Array of sortable field names |
@@ -36,7 +36,7 @@ Index records to MeiliSearch for fast, typo-tolerant search.
     apiKeySecretCode: 'meilisearch-api-key',
     indexName: 'products',
     primaryKey: 'id',
-    batchSize: 500,
+    bulkSize: 500,
     searchableFields: ['name', 'description', 'sku'],
     filterableFields: ['categoryId', 'price', 'inStock'],
     sortableFields: ['price', 'name', 'createdAt'],
@@ -64,8 +64,8 @@ DataHubPlugin.init({
     secrets: [
         {
             code: 'meilisearch-api-key',
-            provider: 'env',
-            envVar: 'MEILISEARCH_API_KEY',
+            provider: 'ENV',
+            value: 'MEILISEARCH_API_KEY',
         },
     ],
 })
@@ -83,13 +83,12 @@ Index records to Elasticsearch or OpenSearch.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `node` | string | Yes | Node URL (e.g., http://localhost:9200) |
+| `host` | string | Yes | Host URL (e.g., http://localhost:9200) |
 | `apiKeySecretCode` | string | No | Secret code for API key auth |
-| `usernameSecretCode` | string | No | Secret code for username (Basic auth) |
-| `passwordSecretCode` | string | No | Secret code for password (Basic auth) |
+| `basicSecretCode` | string | No | Secret code for Basic auth (base64-encoded username:password) |
 | `indexName` | string | Yes | Target index name |
 | `idField` | string | Yes | Document ID field |
-| `batchSize` | number | No | Records per batch |
+| `bulkSize` | number | No | Records per batch |
 | `refresh` | boolean | No | Refresh index after indexing |
 
 ### Example - API Key Auth
@@ -97,11 +96,11 @@ Index records to Elasticsearch or OpenSearch.
 ```typescript
 .sink('elasticsearch-products', {
     adapterCode: 'elasticsearch',
-    node: 'https://elasticsearch.example.com:9200',
+    host: 'https://elasticsearch.example.com:9200',
     apiKeySecretCode: 'elasticsearch-api-key',
     indexName: 'products',
     idField: 'id',
-    batchSize: 1000,
+    bulkSize: 1000,
     refresh: true,
 })
 ```
@@ -111,9 +110,8 @@ Index records to Elasticsearch or OpenSearch.
 ```typescript
 .sink('elasticsearch-products', {
     adapterCode: 'elasticsearch',
-    node: 'http://localhost:9200',
-    usernameSecretCode: 'es-username',
-    passwordSecretCode: 'es-password',
+    host: 'http://localhost:9200',
+    basicSecretCode: 'es-basic-auth',
     indexName: 'products',
     idField: 'id',
 })
@@ -154,22 +152,22 @@ Index records to Algolia search service.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `appId` | string | Yes | Algolia Application ID |
+| `applicationId` | string | Yes | Algolia Application ID |
 | `apiKeySecretCode` | string | Yes | Secret code for Admin API key |
 | `indexName` | string | Yes | Target index name |
 | `idField` | string | Yes | Field for object ID |
-| `batchSize` | number | No | Records per batch |
+| `bulkSize` | number | No | Records per batch |
 
 ### Example
 
 ```typescript
 .sink('algolia-products', {
     adapterCode: 'algolia',
-    appId: 'YOUR_APP_ID',
+    applicationId: 'YOUR_APP_ID',
     apiKeySecretCode: 'algolia-admin-key',
     indexName: 'products',
     idField: 'id',
-    batchSize: 1000,
+    bulkSize: 1000,
 })
 ```
 
@@ -180,7 +178,7 @@ Algolia requires a unique `objectID` field. The `idField` specifies which record
 ```typescript
 .sink('algolia-products', {
     adapterCode: 'algolia',
-    appId: 'YOUR_APP_ID',
+    applicationId: 'YOUR_APP_ID',
     apiKeySecretCode: 'algolia-admin-key',
     indexName: 'products',
     idField: 'sku',  // Use SKU as the Algolia objectID
@@ -195,8 +193,8 @@ DataHubPlugin.init({
     secrets: [
         {
             code: 'algolia-admin-key',
-            provider: 'env',
-            envVar: 'ALGOLIA_ADMIN_KEY',
+            provider: 'ENV',
+            value: 'ALGOLIA_ADMIN_KEY',
         },
     ],
 })
@@ -220,7 +218,7 @@ Index records to Typesense search engine.
 | `apiKeySecretCode` | string | Yes | Secret code for API key |
 | `collectionName` | string | Yes | Target collection name |
 | `idField` | string | Yes | Document ID field |
-| `batchSize` | number | No | Records per batch |
+| `bulkSize` | number | No | Records per batch |
 
 ### Example
 
@@ -233,7 +231,7 @@ Index records to Typesense search engine.
     apiKeySecretCode: 'typesense-api-key',
     collectionName: 'products',
     idField: 'id',
-    batchSize: 250,
+    bulkSize: 250,
 })
 ```
 
@@ -308,7 +306,7 @@ createPipeline()
     })
     .sink('elasticsearch', {
         adapterCode: 'elasticsearch',
-        node: 'http://localhost:9200',
+        host: 'http://localhost:9200',
         indexName: 'products',
         idField: 'id',
     })
@@ -508,8 +506,8 @@ DataHubPlugin.init({
     secrets: [
         {
             code: 'webhook-bearer-token',
-            provider: 'env',
-            envVar: 'WEBHOOK_BEARER_TOKEN',
+            provider: 'ENV',
+            value: 'WEBHOOK_BEARER_TOKEN',
         },
     ],
 })
@@ -522,8 +520,8 @@ DataHubPlugin.init({
     secrets: [
         {
             code: 'webhook-api-key',
-            provider: 'env',
-            envVar: 'WEBHOOK_API_KEY',
+            provider: 'ENV',
+            value: 'WEBHOOK_API_KEY',
         },
     ],
 })

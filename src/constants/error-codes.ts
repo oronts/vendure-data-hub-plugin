@@ -90,57 +90,6 @@ export enum WebhookErrorCode {
 }
 
 /**
- * Error codes for connection operations
- */
-export enum ConnectionErrorCode {
-    NOT_FOUND = 'CONNECTION_NOT_FOUND',
-    INVALID_CONFIG = 'CONNECTION_INVALID_CONFIG',
-    SECRET_NOT_FOUND = 'CONNECTION_SECRET_NOT_FOUND',
-    TEST_FAILED = 'CONNECTION_TEST_FAILED',
-}
-
-/**
- * Error codes for schema validation
- */
-export enum SchemaErrorCode {
-    SCHEMA_NOT_FOUND = 'SCHEMA_NOT_FOUND',
-    VALIDATION_FAILED = 'SCHEMA_VALIDATION_FAILED',
-    INCOMPATIBLE_VERSION = 'SCHEMA_INCOMPATIBLE_VERSION',
-    INVALID_DEFINITION = 'SCHEMA_INVALID_DEFINITION',
-}
-
-/**
- * All error codes combined for lookup
- */
-export const ERROR_CODES = {
-    ...PipelineErrorCode,
-    ...ExtractorErrorCode,
-    ...LoaderErrorCode,
-    ...TransformErrorCode,
-    ...WebhookErrorCode,
-    ...ConnectionErrorCode,
-    ...SchemaErrorCode,
-} as const;
-
-/**
- * Error severity levels
- *
- * Values use SCREAMING_SNAKE_CASE to match status/severity conventions.
- * NOTE: This enum aligns with shared/types/error.types.ts ErrorSeverity type.
- * Use FATAL (not CRITICAL) for unrecoverable errors to maintain consistency.
- */
-export enum ErrorSeverity {
-    /** Informational - not an error */
-    INFO = 'INFO',
-    /** Warning - operation succeeded but with issues */
-    WARNING = 'WARNING',
-    /** Error - operation failed but may be retried */
-    ERROR = 'ERROR',
-    /** Fatal - operation failed and cannot be recovered */
-    FATAL = 'FATAL',
-}
-
-/**
  * Determines if an error is retryable based on its code
  */
 export function isRetryableError(code: string): boolean {

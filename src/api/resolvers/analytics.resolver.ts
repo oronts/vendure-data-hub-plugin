@@ -30,8 +30,8 @@ import type {
 } from '../../services/webhooks/webhook.types';
 import type {
     DeliveryResult,
-    ConnectionTestResult,
 } from '../../services/destinations/destination.types';
+import type { ConnectionTestResult } from '../../../shared/types';
 import { PAGINATION } from '../../constants/index';
 
 /** Redacted destination config for API responses */

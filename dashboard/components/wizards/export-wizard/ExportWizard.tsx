@@ -44,12 +44,6 @@ export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWiza
         setAttemptedNext(false);
     }, []);
 
-    // Memoize validation based on specific config properties to prevent unnecessary recalculations
-    const configSignature = React.useMemo(
-        () => JSON.stringify([config.sourceEntity, config.fields?.length, config.format?.type, config.destination?.type, config.name]),
-        [config.sourceEntity, config.fields?.length, config.format?.type, config.destination?.type, config.name],
-    );
-
     const validateCurrentStep = React.useCallback(() => {
         const stepId = WIZARD_STEPS[currentStep].id;
         const validation = validateExportWizardStep(stepId, config);

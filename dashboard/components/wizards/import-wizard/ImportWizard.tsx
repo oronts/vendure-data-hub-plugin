@@ -111,19 +111,6 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
         setAttemptedNext(false);
     }, []);
 
-    // Memoize validation based on specific config properties to prevent unnecessary recalculations
-    const configSignature = React.useMemo(
-        () => JSON.stringify([
-            config.source?.type,
-            config.source?.fileConfig?.format,
-            config.targetEntity,
-            config.mappings?.length,
-            config.strategies?.lookupFields?.length,
-            config.name,
-        ]),
-        [config.source?.type, config.source?.fileConfig?.format, config.targetEntity, config.mappings?.length, config.strategies?.lookupFields?.length, config.name],
-    );
-
     const validateCurrentStep = React.useCallback(() => {
         const stepId = activeSteps[currentStep].id;
         // Template step is always valid (user can proceed or select)
@@ -134,11 +121,10 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
         return validation;
     }, [currentStep, config, uploadedFile, activeSteps]);
 
-    const { canProceed, validationErrors } = React.useMemo(() => {
+    const { canProceed } = React.useMemo(() => {
         const validation = validateCurrentStep();
         return {
             canProceed: validation.isValid,
-            validationErrors: validation.errorsByField,
         };
     }, [validateCurrentStep]);
 

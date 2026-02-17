@@ -124,7 +124,6 @@ export type { ExtractorCode, LoaderCode, ExporterCode, FeedCode } from './adapte
 
 // Export patterns as the canonical source for all regex patterns
 export {
-    PATTERNS,
     EMAIL_PATTERN,
     PIPELINE_CODE_PATTERN,
     SLUG_PATTERN,
@@ -141,11 +140,6 @@ export {
     ExtractorErrorCode,
     LoaderErrorCode,
     TransformErrorCode,
-    WebhookErrorCode,
-    ConnectionErrorCode,
-    SchemaErrorCode,
-    ERROR_CODES,
-    ErrorSeverity,
     isRetryableError,
 } from './error-codes';
 

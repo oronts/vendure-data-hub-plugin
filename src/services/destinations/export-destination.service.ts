@@ -2,12 +2,12 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 
+import type { ConnectionTestResult } from '../../../shared/types';
 import {
     DestinationType,
     DestinationConfig,
     DeliveryResult,
     DeliveryOptions,
-    ConnectionTestResult,
     S3DestinationConfig,
     SFTPDestinationConfig,
     FTPDestinationConfig,

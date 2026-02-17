@@ -24,7 +24,6 @@ import {
     CLEANUP_STRATEGIES,
     UI_DEFAULTS,
 } from '../../../constants';
-import type { ExistingRecordsStrategy, NewRecordsStrategy, CleanupStrategy } from '../../../constants';
 import { STEP_CONTENT } from './constants';
 
 type CleanupStrategy = ImportStrategies['cleanupStrategy'];
