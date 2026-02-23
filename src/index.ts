@@ -249,6 +249,15 @@ export { ShippingMethodLoader } from './loaders/shipping-method';
 export { InventoryLoader } from './loaders/inventory';
 export { StockLocationLoader } from './loaders/stock-location';
 
+// Loader base utilities for custom loader development
+export { BaseEntityLoader, EntityLookupHelper, createLookupHelper, ValidationBuilder, createValidationResult } from './loaders/base';
+export type { LoaderMetadata, ExistingEntityLookupResult, LookupStrategy, LoaderValidationError, LoaderValidationWarning } from './loaders/base';
+
+// Additional entity loaders
+export { ChannelLoader } from './loaders/channel';
+export { TaxRateLoader } from './loaders/tax-rate';
+export { PaymentMethodLoader } from './loaders/payment-method';
+
 export { ALL_OPERATOR_DEFINITIONS } from './operators';
 
 export { DataHubRegistryService } from './sdk/registry.service';
@@ -394,3 +403,4 @@ export type {
     TemplateTag,
     TemplateCategoryInfo,
 } from './templates';
+

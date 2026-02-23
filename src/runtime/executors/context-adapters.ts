@@ -1,10 +1,10 @@
-import { RequestContext } from '@vendure/core';
+import { RequestContext, ID } from '@vendure/core';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { SecretResolver, ConnectionResolver, AdapterLogger, ConnectionConfig, ConnectionType } from '../../sdk/types';
 import { DataHubLogger } from '../../services/logger';
-import { JsonObject } from '../../types/index';
-import { ExecutionResult } from '../executor-types';
+import { JsonObject, PipelineContext as PipelineCtx } from '../../types/index';
+import { ExecutionResult, SANDBOX_PIPELINE_ID } from '../executor-types';
 import { toErrorOrUndefined } from '../../utils/error.utils';
 
 export function createSecretsAdapter(secretService: SecretService, ctx: RequestContext): SecretResolver {
@@ -78,4 +78,51 @@ export function handleCustomAdapterError(
         errorMessage,
     });
     return { ok: 0, fail: inputLength, error: errorMessage };
+}
+
+/**
+ * Base context properties shared by all custom adapter types (load, export, feed, sink).
+ * Consolidates common fields to reduce duplication across executor context builders.
+ */
+export interface BaseAdapterContext {
+    /** Vendure request context */
+    readonly ctx: RequestContext;
+    /** Pipeline ID */
+    readonly pipelineId: ID;
+    /** Step key in the pipeline */
+    readonly stepKey: string;
+    /** Pipeline context with settings */
+    readonly pipelineContext: PipelineCtx;
+    /** Secret resolver */
+    readonly secrets: SecretResolver;
+    /** Connection resolver */
+    readonly connections: ConnectionResolver;
+    /** Logger for the adapter */
+    readonly logger: AdapterLogger;
+    /** Whether this is a dry run */
+    readonly dryRun: boolean;
+}
+
+/**
+ * Creates base adapter context with common fields shared by load, export, feed, and sink executors.
+ * Consolidates the repetitive context building pattern into a single helper.
+ */
+export function createBaseAdapterContext(
+    ctx: RequestContext,
+    stepKey: string,
+    secretService: SecretService,
+    connectionService: ConnectionService,
+    logger: DataHubLogger,
+    pipelineContext?: PipelineCtx,
+): BaseAdapterContext {
+    return {
+        ctx,
+        pipelineId: SANDBOX_PIPELINE_ID,
+        stepKey,
+        pipelineContext: pipelineContext ?? {} as PipelineCtx,
+        secrets: createSecretsAdapter(secretService, ctx),
+        connections: createConnectionsAdapter(connectionService, ctx),
+        logger: createLoggerAdapter(logger),
+        dryRun: false,
+    };
 }

@@ -1,5 +1,5 @@
 import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
-import { loadSharp } from './shared';
+import { processImageRecords } from './shared';
 
 export const IMAGE_CONVERT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
@@ -42,32 +42,11 @@ export async function imageConvertOperator(
     config: ImageConvertConfig,
     _helpers: AdapterOperatorHelpers,
 ): Promise<OperatorResult> {
-    const sharp = await loadSharp();
-    const output: JsonObject[] = [];
-
-    for (const record of records) {
-        const sourceValue = record[config.sourceField];
-        if (!sourceValue || typeof sourceValue !== 'string') {
-            output.push({ ...record });
-            continue;
-        }
-
-        try {
-            const inputBuffer = Buffer.from(sourceValue, 'base64');
-            if (inputBuffer.length === 0) {
-                output.push({ ...record });
-                continue;
-            }
-            const outputBuffer = await sharp(inputBuffer)
-                .toFormat(config.format, { quality: config.quality })
-                .toBuffer();
-            const targetField = config.targetField ?? config.sourceField;
-            output.push({ ...record, [targetField]: outputBuffer.toString('base64') });
-        } catch (e: unknown) {
-            // Log warning - keep original record on processing failure
-            output.push({ ...record });
-        }
-    }
+    const output = await processImageRecords(records, config, async (sharp, inputBuffer, cfg) => {
+        return await sharp(inputBuffer)
+            .toFormat(cfg.format, { quality: cfg.quality })
+            .toBuffer();
+    });
 
     return { records: output };
 }

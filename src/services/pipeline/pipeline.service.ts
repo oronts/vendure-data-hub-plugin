@@ -134,6 +134,7 @@ export class PipelineService {
             pipelineCode: input.code,
             pipelineId: saved.id,
         });
+        this.domainEvents.publishPipelineCreated(saved.id.toString(), input.code);
         return assertFound(this.findOne(ctx, saved.id));
     }
 
@@ -163,6 +164,7 @@ export class PipelineService {
             entity.definition = definition;
         }
         await repo.save(entity, { reload: false });
+        this.domainEvents.publishPipelineUpdated(entity.id.toString(), entity.code);
         return assertFound(this.findOne(ctx, entity.id));
     }
 
@@ -171,6 +173,7 @@ export class PipelineService {
         const entity = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
         try {
             await repo.remove(entity);
+            this.domainEvents.publishPipelineDeleted(entity.id.toString(), entity.code);
             return { result: DeletionResult.DELETED };
         } catch (e) {
             return { result: DeletionResult.NOT_DELETED, message: getErrorMessage(e) };
@@ -222,6 +225,7 @@ export class PipelineService {
             version: newVersion,
             revisionId: savedRevisionId,
         });
+        this.domainEvents.publishPipelinePublished(pipeline.id.toString(), pipeline.code);
 
         return assertFound(this.findOne(ctx, pipeline.id));
     }
@@ -250,6 +254,7 @@ export class PipelineService {
         pipeline.status = PipelineStatus.ARCHIVED;
         pipeline.enabled = false;
         await repo.save(pipeline, { reload: false });
+        this.domainEvents.publishPipelineArchived(pipeline.id.toString(), pipeline.code);
         return assertFound(this.findOne(ctx, pipeline.id));
     }
 
@@ -357,6 +362,14 @@ export class PipelineService {
         if (run.status === RunStatus.RUNNING || run.status === RunStatus.PAUSED) {
             run.status = RunStatus.CANCEL_REQUESTED;
             await repo.save(run, { reload: false });
+
+            // Emit cancellation event for subscribers (webhooks, audit logs, monitoring)
+            this.domainEvents.publishRunCancelled(
+                run.pipelineId?.toString(),
+                String(id),
+                ctx.activeUserId?.toString(),
+            );
+
             this.logger.info('Pipeline run cancellation requested', { runId: id });
         } else if (run.status === RunStatus.PENDING) {
             run.status = RunStatus.CANCELLED;

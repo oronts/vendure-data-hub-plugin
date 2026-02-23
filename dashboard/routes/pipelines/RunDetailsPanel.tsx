@@ -132,8 +132,8 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
             </div>
 
             {status === RUN_STATUS.PAUSED && pausedGateStepKey && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2" data-testid="datahub-gate-approval-panel">
-                    <div className="text-sm font-medium text-amber-800">
+                <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-2" data-testid="datahub-gate-approval-panel">
+                    <div className="text-sm font-medium text-amber-800 dark:text-amber-400">
                         Gate step "{pausedGateStepKey}" is awaiting approval
                     </div>
                     <div className="flex gap-2">

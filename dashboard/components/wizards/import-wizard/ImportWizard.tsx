@@ -15,7 +15,7 @@ import { StrategyStep } from './StrategyStep';
 import { TriggerStep } from './TriggerStep';
 import { ReviewStep } from './ReviewStep';
 import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../shared';
-import { UI_LIMITS, TRIGGER_TYPES, FILE_FORMAT, SOURCE_TYPE, TOAST_WIZARD, formatParseError, formatParsedRecords, FILE_FORMAT_REGISTRY } from '../../../constants';
+import { UI_LIMITS, TRIGGER_TYPE, FILE_FORMAT, SOURCE_TYPE, TOAST_WIZARD, formatParseError, formatParsedRecords, FILE_FORMAT_REGISTRY } from '../../../constants';
 import type { FileParseOptions } from '../../../constants/file-format-registry';
 import { detectFileFormat } from '../../../constants/file-format-registry';
 import { normalizeString, validateImportWizardStep } from '../../../utils';
@@ -89,7 +89,7 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
             targetEntity: '',
             mappings: [],
             strategies: { ...DEFAULT_IMPORT_STRATEGIES },
-            trigger: { type: TRIGGER_TYPES.MANUAL },
+            trigger: { type: TRIGGER_TYPE.MANUAL },
             transformations: [],
         },
         validateStep,

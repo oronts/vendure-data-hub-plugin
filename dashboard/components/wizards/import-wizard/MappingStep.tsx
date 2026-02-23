@@ -269,7 +269,7 @@ function UnmappedFieldsWarning({ config }: UnmappedFieldsWarningProps) {
     }
 
     return (
-        <Card className="border-amber-200 bg-amber-50">
+        <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30">
             <CardContent className="p-4">
                 <div className="flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />

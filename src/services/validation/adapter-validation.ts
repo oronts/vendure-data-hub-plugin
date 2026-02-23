@@ -63,6 +63,29 @@ export function hasStreamSafetyInfo(
     return adapter !== undefined && typeof adapter.pure === 'boolean';
 }
 
+/**
+ * Validates that an operator is stream-safe when running in STREAM mode.
+ */
+export function validateOperatorStreamSafety(
+    stepKey: string,
+    opCode: string,
+    adapter: AdapterDefinition,
+    definition: PipelineDefinition,
+    issues: PipelineDefinitionIssue[],
+): void {
+    if (definition.context?.runMode !== RunMode.STREAM) {
+        return;
+    }
+
+    if (!hasStreamSafetyInfo(adapter) || adapter.pure !== true) {
+        issues.push({
+            message: `Step "${stepKey}": operator "${opCode}" is not stream-safe (pure=false)`,
+            stepKey,
+            errorCode: 'operator-not-pure',
+        });
+    }
+}
+
 // ============================================================================
 // Validation Functions
 // ============================================================================
@@ -112,14 +135,8 @@ export function validateAdapterConnectivity(
     definition: PipelineDefinition,
     issues: PipelineDefinitionIssue[],
 ): void {
-    if (definition.context?.runMode === RunMode.STREAM && adapterType === AdapterTypeEnum.OPERATOR) {
-        if (!hasStreamSafetyInfo(adapter) || adapter.pure !== true) {
-            issues.push({
-                message: `Step "${stepKey}": operator "${adapterCode}" is not stream-safe (pure=false)`,
-                stepKey,
-                errorCode: 'operator-not-pure',
-            });
-        }
+    if (adapterType === AdapterTypeEnum.OPERATOR) {
+        validateOperatorStreamSafety(stepKey, adapterCode, adapter, definition, issues);
     }
 }
 

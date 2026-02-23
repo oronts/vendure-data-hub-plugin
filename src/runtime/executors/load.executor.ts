@@ -11,7 +11,7 @@ import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig, PipelineContex
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { AdapterType, ConflictStrategy, ChannelStrategy as ChannelStrategyEnum, LanguageStrategy, ValidationStrictness } from '../../constants/enums';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult, SANDBOX_PIPELINE_ID } from '../executor-types';
+import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../executor-types';
 import { LoaderHandler } from './loaders/types';
 import { LOADER_HANDLER_REGISTRY } from './loaders/loader-handler-registry';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -19,7 +19,7 @@ import { LoaderAdapter, LoadContext, ChannelStrategy, LanguageStrategyValue, Val
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { getAdapterCode } from '../../types/step-configs';
-import { createSecretsAdapter, createConnectionsAdapter, createLoggerAdapter } from './context-adapters';
+import { createBaseAdapterContext } from './context-adapters';
 import { toErrorOrUndefined } from '../../utils/error.utils';
 
 /**
@@ -122,19 +122,12 @@ export class LoadExecutor implements OnModuleInit {
 
         // Create load context for the custom loader
         const loadContext: LoadContext = {
-            ctx,
-            pipelineId: SANDBOX_PIPELINE_ID,
-            stepKey: step.key,
-            pipelineContext: pipelineContext ?? {} as PipelineContext,
+            ...createBaseAdapterContext(ctx, step.key, this.secretService, this.connectionService, this.logger, pipelineContext),
             channelStrategy: cfg.channelStrategy ?? ChannelStrategyEnum.INHERIT,
             channels: [],
             languageStrategy: cfg.languageStrategy ?? LanguageStrategy.FALLBACK,
             validationMode: cfg.validationMode ?? ValidationStrictness.LENIENT,
             conflictStrategy: cfg.conflictStrategy ?? ConflictStrategy.SOURCE_WINS,
-            secrets: createSecretsAdapter(this.secretService, ctx),
-            connections: createConnectionsAdapter(this.connectionService, ctx),
-            logger: createLoggerAdapter(this.logger),
-            dryRun: false,
         };
 
         try {

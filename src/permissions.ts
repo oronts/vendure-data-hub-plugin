@@ -21,7 +21,6 @@ export const ViewDataHubEntitySchemasPermission = new PermissionDefinition({ nam
 export const SubscribeDataHubEventsPermission = new PermissionDefinition({ name: 'SubscribeDataHubEvents' });
 export const ManageDataHubFilesPermission = new PermissionDefinition({ name: 'ManageDataHubFiles' });
 export const ReadDataHubFilesPermission = new PermissionDefinition({ name: 'ReadDataHubFiles' });
-
 export const DATAHUB_PERMISSION_DEFINITIONS = [
     DataHubPipelinePermission,
     DataHubSecretPermission,

@@ -13,7 +13,7 @@ import {
     SelectValue,
     Switch,
 } from '@vendure/dashboard';
-import { TRIGGER_TYPES, UI_DEFAULTS, COMPRESSION_TYPE, LOADING_STATE_TYPE } from '../../../constants';
+import { TRIGGER_TYPE, UI_DEFAULTS, COMPRESSION_TYPE, LOADING_STATE_TYPE } from '../../../constants';
 import { useOptionValues } from '../../../hooks/api/use-config-options';
 import { useTriggerTypes } from '../../../hooks';
 import { WizardStepContainer } from '../shared';
@@ -29,19 +29,11 @@ interface TriggerStepProps {
 }
 
 export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepProps) {
-    const trigger = config.trigger ?? { type: TRIGGER_TYPES.MANUAL };
+    const trigger = config.trigger ?? { type: TRIGGER_TYPE.MANUAL };
     const options = config.options ?? { ...DEFAULT_EXPORT_OPTIONS };
 
     const handleTriggerTypeChange = (type: string) => {
         updateConfig({ trigger: { ...trigger, type: type as ExportTriggerType } });
-    };
-
-    const handleCronChange = (schedule: string) => {
-        updateConfig({ trigger: { ...trigger, schedule } });
-    };
-
-    const handleWebhookPathChange = (webhookPath: string) => {
-        updateConfig({ trigger: { ...trigger, webhookPath } });
     };
 
     return (
@@ -53,8 +45,6 @@ export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepPr
                 trigger={trigger}
                 updateConfig={updateConfig}
                 onTriggerTypeChange={handleTriggerTypeChange}
-                onCronChange={handleCronChange}
-                onWebhookPathChange={handleWebhookPathChange}
             />
             <ExportOptionsCard options={options} updateConfig={updateConfig} />
             <CachingCard config={config} updateConfig={updateConfig} />
@@ -66,19 +56,13 @@ interface TriggerCardProps {
     trigger: ExportConfiguration['trigger'];
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
     onTriggerTypeChange: (type: string) => void;
-    onCronChange: (cron: string) => void;
-    onWebhookPathChange: (path: string) => void;
 }
 
-function TriggerCard({ trigger, updateConfig, onTriggerTypeChange, onCronChange, onWebhookPathChange }: TriggerCardProps) {
+function TriggerCard({ trigger, updateConfig, onTriggerTypeChange }: TriggerCardProps) {
     const { exportWizardTriggers, triggerSchemas, isLoading } = useTriggerTypes();
     const currentSchema = triggerSchemas.find(s => s.value === trigger.type);
 
     const handleFieldChange = (key: string, value: unknown) => {
-        // Call specific handlers for fields that have dedicated state
-        if (key === 'schedule') onCronChange(String(value));
-        else if (key === 'webhookPath') onWebhookPathChange(String(value));
-        // Always store the field value in trigger config for schema-driven fields
         updateConfig({ trigger: { ...trigger, [key]: value } });
     };
 
@@ -102,7 +86,7 @@ function TriggerCard({ trigger, updateConfig, onTriggerTypeChange, onCronChange,
                             onChange={handleFieldChange}
                         />
                     </div>
-                ) : isLoading && trigger.type !== TRIGGER_TYPES.MANUAL ? (
+                ) : isLoading && trigger.type !== TRIGGER_TYPE.MANUAL ? (
                     <div className="pt-4 border-t">
                         <LoadingState type={LOADING_STATE_TYPE.FORM} rows={2} message="" />
                     </div>

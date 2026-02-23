@@ -38,7 +38,7 @@ export const FALLBACK_ADAPTER_TYPE_TABS: ConfigOptionValue[] = [
 
 /** Fallback hook stage categories used while backend metadata is loading */
 export const FALLBACK_STAGE_CATEGORIES: HookStageCategoryConfig[] = [
-    { key: 'lifecycle', label: 'Lifecycle', color: 'bg-blue-100 text-blue-800', description: 'Track pipeline start, completion, and failure', gridClass: 'grid-cols-3', order: 1 },
-    { key: 'data', label: 'Data Processing', color: 'bg-green-100 text-green-800', description: 'Intercept data at each processing step', gridClass: 'grid-cols-4', order: 2 },
-    { key: 'error', label: 'Error Handling', color: 'bg-red-100 text-red-800', description: 'Handle errors and retries', gridClass: 'grid-cols-3', order: 3 },
+    { key: 'lifecycle', label: 'Lifecycle', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400', description: 'Track pipeline start, completion, and failure', gridClass: 'grid-cols-3', order: 1 },
+    { key: 'data', label: 'Data Processing', color: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400', description: 'Intercept data at each processing step', gridClass: 'grid-cols-4', order: 2 },
+    { key: 'error', label: 'Error Handling', color: 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-400', description: 'Handle errors and retries', gridClass: 'grid-cols-3', order: 3 },
 ];

@@ -14,7 +14,7 @@ import { StepConfigPanel } from '../shared/step-config';
 import { PipelineSettingsPanel, StepListItem } from './shared';
 import {
     MOVE_DIRECTION,
-    STEP_TYPES,
+    STEP_TYPE,
     getStepTypeIcon,
     PIPELINE_EDITOR_PANEL,
     DEFAULT_STEP_CONFIGS,
@@ -32,7 +32,7 @@ import type {
 import { getCombinedTriggers, updateDefinitionWithTriggers } from '../../utils';
 
 const ADDABLE_STEP_TYPES = Object.keys(DEFAULT_STEP_CONFIGS).filter(
-    t => t !== 'ROUTE' && t !== 'GATE'
+    t => t !== STEP_TYPE.ROUTE && t !== STEP_TYPE.GATE
 ) as StepType[];
 
 export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEditorProps) {
@@ -62,9 +62,9 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
 
         let newEdges = existingEdges;
 
-        if (type === STEP_TYPES.TRIGGER) {
+        if (type === STEP_TYPE.TRIGGER) {
             // TRIGGER steps connect TO the first non-trigger step (parallel entry points)
-            const firstExecutionStep = currentSteps.find(s => s.type !== STEP_TYPES.TRIGGER);
+            const firstExecutionStep = currentSteps.find(s => s.type !== STEP_TYPE.TRIGGER);
             if (firstExecutionStep) {
                 newEdges = [
                     ...existingEdges,

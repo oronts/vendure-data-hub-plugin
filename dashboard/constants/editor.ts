@@ -64,6 +64,6 @@ export const EDGE_STYLE = {
 } as const;
 
 /** Canvas CSS class for the ReactFlow editor background */
-export const CANVAS_BG_CLASS = 'bg-gray-50' as const;
+export const CANVAS_BG_CLASS = 'bg-gray-50 dark:bg-gray-900' as const;
 
 

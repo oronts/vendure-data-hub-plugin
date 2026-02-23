@@ -340,7 +340,7 @@ export function ReactFlowPipelineEditor({
                             return (
                                 <Panel key={`iss-${n.id}`} position="top-left">
                                     <div style={{ position: 'absolute', transform: `translate(${n.position.x + 8}px, ${n.position.y - 6}px)` }}>
-                                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-800">{count}</span>
+                                        <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">{count}</span>
                                     </div>
                                 </Panel>
                             );

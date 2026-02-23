@@ -9,7 +9,7 @@ import {
 } from '@vendure/dashboard';
 import { VENDURE_ENTITY_SCHEMAS } from '../../../../shared';
 import { WIZARD_STEPS, EXPORT_STEP_ID, DEFAULT_EXPORT_OPTIONS } from './constants';
-import { QUERY_LIMITS, TRIGGER_TYPES, EXPORT_FORMAT, TOAST_WIZARD } from '../../../constants';
+import { QUERY_LIMITS, TRIGGER_TYPE, EXPORT_FORMAT, TOAST_WIZARD } from '../../../constants';
 import type { ExportWizardProps, ExportConfiguration, ExportField } from './types';
 import { SourceStep } from './SourceStep';
 import { FieldsStep } from './FieldsStep';
@@ -74,7 +74,7 @@ export function ExportWizard({ onComplete, onCancel, initialConfig, isSubmitting
             fields: [],
             format: { type: EXPORT_FORMAT.CSV, options: { delimiter: ',', includeHeaders: true } },
             destination: { type: 'FILE', fileConfig: { directory: fileDefaults.directory, filename: fileDefaults.filename } },
-            trigger: { type: TRIGGER_TYPES.MANUAL },
+            trigger: { type: TRIGGER_TYPE.MANUAL },
             options: { ...DEFAULT_EXPORT_OPTIONS },
         },
         validateStep,

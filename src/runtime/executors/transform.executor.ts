@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
-import { JsonObject, JsonValue, PipelineStepDefinition, PipelineContext } from '../../types/index';
+import { JsonObject, JsonValue, PipelineStepDefinition, PipelineContext, VendureEntityType } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS, ValidationMode } from '../../constants/index';
 import { RecordObject, OnRecordErrorCallback, ExecutorContext, BranchOutput, SANDBOX_PIPELINE_ID } from '../executor-types';
@@ -18,6 +18,9 @@ import { OperatorAdapter, SingleRecordOperator, AdapterOperatorHelpers, Operator
 import { getOperatorRuntime, getCustomOperatorRuntime } from '../../operators/operator-runtime-registry';
 import { OperatorSecretResolver } from '../../sdk/types/transform-types';
 import { SecretService } from '../../services/config/secret.service';
+import { LoaderRegistryService } from '../../loaders/registry';
+import { applyHttpLookupBatch } from '../../operators/enrichment/helpers';
+import type { HttpLookupOperatorConfig } from '../../operators/enrichment/types';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { sleep } from '../../utils/retry.utils';
 import {
@@ -50,6 +53,7 @@ export class TransformExecutor {
         loggerFactory: DataHubLoggerFactory,
         @Optional() private registry?: DataHubRegistryService,
         @Optional() private secretService?: SecretService,
+        @Optional() private loaderRegistry?: LoaderRegistryService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.TRANSFORM_EXECUTOR);
     }
@@ -577,9 +581,154 @@ export class TransformExecutor {
             });
         }
 
-        // HTTP and VENDURE source types require async external lookups not yet implemented
-        this.logger.warn(`ENRICH source type "${sourceType}" is not yet implemented for step "${step.key}" — records passed through unchanged`);
+        if (sourceType === 'HTTP') {
+            return this.executeEnrichHttp(ctx, step, input, executorCtx);
+        }
+
+        if (sourceType === 'VENDURE') {
+            return this.executeEnrichVendure(ctx, step, input);
+        }
+
+        this.logger.warn(`ENRICH source type "${sourceType}" is not supported for step "${step.key}" — records passed through unchanged`);
         return input;
+    }
+
+    /**
+     * Execute HTTP enrichment by performing HTTP lookups for each record.
+     * Delegates to the applyHttpLookupBatch helper which handles caching,
+     * circuit breaking, rate limiting, and retries.
+     */
+    private async executeEnrichHttp(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        input: RecordObject[],
+        executorCtx?: ExecutorContext,
+    ): Promise<RecordObject[]> {
+        const cfg = (step.config ?? {}) as Record<string, unknown>;
+
+        const url = cfg.url as string | undefined;
+        if (!url) {
+            this.logger.warn(`ENRICH HTTP step "${step.key}" has no URL configured — records passed through unchanged`);
+            return input;
+        }
+
+        const httpConfig: HttpLookupOperatorConfig = {
+            url,
+            method: (cfg.method as 'GET' | 'POST') ?? 'GET',
+            keyField: cfg.keyField as string | undefined,
+            target: (cfg.target as string) ?? 'enrichment',
+            responsePath: cfg.responsePath as string | undefined,
+            default: cfg.default as JsonValue | undefined,
+            timeoutMs: cfg.timeoutMs as number | undefined,
+            cacheTtlSec: cfg.cacheTtlSec as number | undefined,
+            headers: cfg.headers as Record<string, string> | undefined,
+            bearerTokenSecretCode: cfg.bearerTokenSecretCode as string | undefined,
+            apiKeySecretCode: cfg.apiKeySecretCode as string | undefined,
+            apiKeyHeader: cfg.apiKeyHeader as string | undefined,
+            basicAuthSecretCode: cfg.basicAuthSecretCode as string | undefined,
+            bodyField: cfg.bodyField as string | undefined,
+            body: cfg.body as JsonValue | undefined,
+            skipOn404: cfg.skipOn404 as boolean | undefined,
+            failOnError: cfg.failOnError as boolean | undefined,
+            maxRetries: cfg.maxRetries as number | undefined,
+            batchSize: cfg.batchSize as number | undefined,
+            rateLimitPerSecond: cfg.rateLimitPerSecond as number | undefined,
+        };
+
+        const secretResolver = this.createSecretResolver(ctx);
+
+        const { records, errors } = await applyHttpLookupBatch(
+            input,
+            httpConfig,
+            secretResolver,
+        );
+
+        if (errors.length > 0) {
+            this.logger.warn(
+                `ENRICH HTTP step "${step.key}" had ${errors.length} lookup error(s)`,
+            );
+        }
+
+        return records as RecordObject[];
+    }
+
+    /**
+     * Execute Vendure entity enrichment by looking up entities via the loader registry.
+     * For each record, uses the configured sourceField to find a matching entity and
+     * merges selected fields (or just the entity ID) into the record.
+     */
+    private async executeEnrichVendure(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        input: RecordObject[],
+    ): Promise<RecordObject[]> {
+        const cfg = (step.config ?? {}) as Record<string, unknown>;
+        const entityType = cfg.entityType as string | undefined;
+        const sourceField = cfg.sourceField as string | undefined;
+        const lookupField = cfg.lookupField as string | undefined;
+        const targetFields = cfg.targetFields as Record<string, string> | undefined;
+        const target = (cfg.target as string) || 'vendureData';
+
+        if (!entityType || !sourceField || !lookupField) {
+            this.logger.warn(
+                `ENRICH VENDURE step "${step.key}" missing required config (entityType, sourceField, lookupField) — records passed through unchanged`,
+            );
+            return input;
+        }
+
+        if (!this.loaderRegistry) {
+            this.logger.warn(
+                `ENRICH VENDURE step "${step.key}" — LoaderRegistryService not available`,
+            );
+            return input;
+        }
+
+        const loader = this.loaderRegistry.get(entityType as VendureEntityType);
+        if (!loader) {
+            this.logger.warn(
+                `ENRICH VENDURE step "${step.key}" — no loader found for entity type "${entityType}"`,
+            );
+            return input;
+        }
+
+        const results: RecordObject[] = [];
+        for (const record of input) {
+            try {
+                const lookupValue = record[sourceField];
+                if (lookupValue === undefined || lookupValue === null) {
+                    results.push(record);
+                    continue;
+                }
+
+                const lookupRecord = { [lookupField]: lookupValue } as Record<string, unknown>;
+                const existing = await loader.findExisting(ctx, [lookupField], lookupRecord);
+
+                if (existing) {
+                    const enriched = { ...record };
+                    if (targetFields && Object.keys(targetFields).length > 0) {
+                        const entity = existing.entity as Record<string, unknown>;
+                        for (const [entityField, recordField] of Object.entries(targetFields)) {
+                            const value = entity[entityField];
+                            if (value !== undefined) {
+                                enriched[recordField] = value as JsonValue;
+                            }
+                        }
+                    } else {
+                        enriched[target] = { id: String(existing.id) } as unknown as JsonValue;
+                    }
+                    results.push(enriched);
+                } else {
+                    results.push(record);
+                }
+            } catch (error) {
+                this.logger.debug(
+                    `ENRICH VENDURE lookup failed for record in step "${step.key}": ${getErrorMessage(error)}`,
+                );
+                results.push(record);
+            }
+        }
+
+        return results;
     }
 
     /**

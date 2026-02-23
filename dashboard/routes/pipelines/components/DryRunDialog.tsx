@@ -96,17 +96,17 @@ export function DryRunDialog({
                                 </div>
                             ) : dryRunError ? (
                                 <div className="py-6">
-                                    <div className="border rounded-md p-4 bg-red-50 border-red-200">
+                                    <div className="border rounded-md p-4 bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800">
                                         <div className="flex items-start gap-3">
                                             <div className="flex-shrink-0 mt-0.5">
-                                                <svg className="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <svg className="h-5 w-5 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                 </svg>
                                             </div>
                                             <div className="flex-1">
-                                                <h3 className="text-sm font-medium text-red-800">Dry Run Failed</h3>
-                                                <p className="mt-1 text-sm text-red-700">{dryRunError}</p>
-                                                <p className="mt-3 text-xs text-red-600">
+                                                <h3 className="text-sm font-medium text-red-800 dark:text-red-400">Dry Run Failed</h3>
+                                                <p className="mt-1 text-sm text-red-700 dark:text-red-400">{dryRunError}</p>
+                                                <p className="mt-3 text-xs text-red-600 dark:text-red-400">
                                                     Please fix the validation issues in your pipeline configuration and try again.
                                                 </p>
                                             </div>
@@ -125,9 +125,9 @@ export function DryRunDialog({
                                     {dryRunResult.notes?.length ? (
                                         <div className="space-y-2">
                                             {dryRunResult.notes.filter(n => n.startsWith('Error:')).length > 0 && (
-                                                <div className="border rounded-md p-3 bg-red-50 border-red-200">
-                                                    <div className="text-sm font-medium text-red-800 mb-1">Errors</div>
-                                                    <ul className="list-disc pl-5 text-sm text-red-700">
+                                                <div className="border rounded-md p-3 bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800">
+                                                    <div className="text-sm font-medium text-red-800 dark:text-red-400 mb-1">Errors</div>
+                                                    <ul className="list-disc pl-5 text-sm text-red-700 dark:text-red-400">
                                                         {/* Static display list, using content-based key */}
                                                         {dryRunResult.notes.filter(n => n.startsWith('Error:')).map((n) => (
                                                             <li key={`error-${n.slice(0, UI_LIMITS.TRUNCATE_LENGTH)}`}>{n.replace('Error: ', '')}</li>
@@ -136,9 +136,9 @@ export function DryRunDialog({
                                                 </div>
                                             )}
                                             {dryRunResult.notes.filter(n => !n.startsWith('Error:')).length > 0 && (
-                                                <div className="border rounded-md p-3 bg-amber-50 border-amber-200">
-                                                    <div className="text-sm font-medium text-amber-800 mb-1">Notes</div>
-                                                    <ul className="list-disc pl-5 text-sm text-amber-700">
+                                                <div className="border rounded-md p-3 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
+                                                    <div className="text-sm font-medium text-amber-800 dark:text-amber-400 mb-1">Notes</div>
+                                                    <ul className="list-disc pl-5 text-sm text-amber-700 dark:text-amber-400">
                                                         {/* Static display list, using content-based key */}
                                                         {dryRunResult.notes.filter(n => !n.startsWith('Error:')).map((n) => (
                                                             <li key={`note-${n.slice(0, UI_LIMITS.TRUNCATE_LENGTH)}`}>{n}</li>

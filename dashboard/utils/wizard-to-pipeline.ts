@@ -37,7 +37,7 @@ export interface AdapterResolver {
     getFeedAdapterCode(formatType: string): string | undefined;
 }
 
-// --- Dynamic resolution functions (replace hardcoded maps) ---
+// --- Dynamic resolution with convention-based fallbacks ---
 
 /**
  * Resolve loader adapter code from entity type.
@@ -155,7 +155,7 @@ function buildTriggerConfig(
         }
     }
 
-    // Fallback: hardcoded mapping for backwards compatibility
+    // Convention-based fallback when trigger schemas are unavailable (intentional design)
     if (trigger.type === 'SCHEDULE' && trigger.schedule) {
         config.cron = trigger.schedule;
     }
@@ -528,7 +528,7 @@ function buildDestinationConfig(
         return result;
     }
 
-    // Fallback: hardcoded FILE field mapping for backwards compatibility
+    // Convention-based fallback when destination schemas are unavailable (intentional design)
     const configKey = `${destination.type.toLowerCase()}Config`;
     const config = (destination as Record<string, unknown>)[configKey];
     if (!config || typeof config !== 'object') return result;

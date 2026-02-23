@@ -23,8 +23,6 @@ export interface TimeSeriesPoint {
 export interface AnalyticsOverview {
     totalPipelines: number;
     activePipelines: number;
-    totalJobs: number;
-    activeJobs: number;
     runsToday: number;
     runsThisWeek: number;
     successRateToday: number;

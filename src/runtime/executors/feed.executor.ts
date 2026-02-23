@@ -2,13 +2,13 @@ import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import { JsonObject, PipelineStepDefinition, PipelineContext } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { RecordObject, OnRecordErrorCallback, FeedExecutionResult, SANDBOX_PIPELINE_ID } from '../executor-types';
+import { RecordObject, OnRecordErrorCallback, FeedExecutionResult } from '../executor-types';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { AdapterType } from '../../constants/enums';
 import { BaseFeedConfig } from '../config-types';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { FeedAdapter, FeedContext } from '../../sdk/types';
-import { createSecretsAdapter, createConnectionsAdapter, createLoggerAdapter, handleCustomAdapterError } from './context-adapters';
+import { createBaseAdapterContext, handleCustomAdapterError } from './context-adapters';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { FEED_HANDLER_REGISTRY } from './feeds/feed-handler-registry';
@@ -123,14 +123,7 @@ export class FeedExecutor {
 
         // Create feed context for the custom feed generator
         const feedContext: FeedContext = {
-            ctx,
-            pipelineId: SANDBOX_PIPELINE_ID,
-            stepKey: step.key,
-            pipelineContext: pipelineContext ?? {} as PipelineContext,
-            secrets: createSecretsAdapter(this.secretService, ctx),
-            connections: createConnectionsAdapter(this.connectionService, ctx),
-            logger: createLoggerAdapter(this.logger),
-            dryRun: false,
+            ...createBaseAdapterContext(ctx, step.key, this.secretService, this.connectionService, this.logger, pipelineContext),
             channelId: cfg?.channelId,
             languageCode: cfg?.languageCode,
             currencyCode: cfg?.currency ?? cfg?.currencyCode,

@@ -4,14 +4,14 @@ import { JsonValue, JsonObject, PipelineStepDefinition, PipelineContext } from '
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult, SANDBOX_PIPELINE_ID } from '../executor-types';
+import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../executor-types';
 import { getPath } from '../utils';
 import { BATCH, LOGGER_CONTEXTS, SINK } from '../../constants/index';
 import { CircuitState, AdapterType } from '../../constants/enums';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { SinkAdapter, SinkContext } from '../../sdk/types';
 import { getAdapterCode } from '../../types/step-configs';
-import { createSecretsAdapter, createConnectionsAdapter, createLoggerAdapter, handleCustomAdapterError } from './context-adapters';
+import { createBaseAdapterContext, handleCustomAdapterError } from './context-adapters';
 import { CircuitBreakerService } from '../../services/runtime';
 import { SINK_HANDLER_REGISTRY, SinkHandlerContext, SinkServices } from './sink-handler-registry';
 
@@ -155,14 +155,7 @@ export class SinkExecutor {
 
         // Create sink context for the custom sink adapter
         const sinkContext: SinkContext = {
-            ctx,
-            pipelineId: SANDBOX_PIPELINE_ID,
-            stepKey: step.key,
-            pipelineContext: pipelineContext ?? {} as PipelineContext,
-            secrets: createSecretsAdapter(this.secretService, ctx),
-            connections: createConnectionsAdapter(this.connectionService, ctx),
-            logger: createLoggerAdapter(this.logger),
-            dryRun: false,
+            ...createBaseAdapterContext(ctx, step.key, this.secretService, this.connectionService, this.logger, pipelineContext),
         };
 
         try {

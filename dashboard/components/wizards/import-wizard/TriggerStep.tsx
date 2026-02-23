@@ -1,5 +1,5 @@
 import type { ImportConfiguration } from './types';
-import { TRIGGER_TYPES, LOADING_STATE_TYPE } from '../../../constants';
+import { TRIGGER_TYPE, LOADING_STATE_TYPE } from '../../../constants';
 import { useTriggerTypes } from '../../../hooks';
 import { WizardStepContainer } from '../shared';
 import { TriggerSelector, TriggerSchemaFields } from '../../shared/wizard-trigger';
@@ -13,7 +13,7 @@ interface TriggerStepProps {
 }
 
 export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepProps) {
-    const trigger = config.trigger ?? { type: TRIGGER_TYPES.MANUAL };
+    const trigger = config.trigger ?? { type: TRIGGER_TYPE.MANUAL };
     const { importWizardTriggers, triggerSchemas, isLoading } = useTriggerTypes();
 
     const currentSchema = triggerSchemas.find(s => s.value === trigger.type);
@@ -43,7 +43,7 @@ export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepPr
                     values={trigger as Record<string, unknown>}
                     onChange={handleFieldChange}
                 />
-            ) : isLoading && trigger.type !== TRIGGER_TYPES.MANUAL ? (
+            ) : isLoading && trigger.type !== TRIGGER_TYPE.MANUAL ? (
                 <LoadingState type={LOADING_STATE_TYPE.FORM} rows={2} message="" />
             ) : null}
         </WizardStepContainer>

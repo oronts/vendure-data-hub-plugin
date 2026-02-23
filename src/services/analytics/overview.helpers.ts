@@ -39,7 +39,6 @@ interface OverviewMetricsParams {
     activePipelines: number;
     runsToday: number;
     runsThisWeek: number;
-    activeJobs: number;
     recordsProcessedToday: number;
     recordsFailedToday: number;
     successRateToday: number;
@@ -109,8 +108,6 @@ export function buildOverviewMetrics(params: OverviewMetricsParams): AnalyticsOv
     return {
         totalPipelines: params.totalPipelines,
         activePipelines: params.activePipelines,
-        totalJobs: params.runsToday,
-        activeJobs: params.activeJobs,
         runsToday: params.runsToday,
         runsThisWeek: params.runsThisWeek,
         successRateToday: params.successRateToday,

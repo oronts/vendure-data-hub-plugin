@@ -5,8 +5,6 @@ export const analyticsSchema = `
     type DataHubAnalyticsOverview {
         totalPipelines: Int!
         activePipelines: Int!
-        totalJobs: Int!
-        activeJobs: Int!
         runsToday: Int!
         runsThisWeek: Int!
         successRateToday: Float!
@@ -17,11 +15,12 @@ export const analyticsSchema = `
     }
 
     type DataHubPipelinePerformance {
+        pipelineId: ID!
         pipelineCode: String!
         pipelineName: String!
-        runCount: Int!
-        successCount: Int!
-        failureCount: Int!
+        totalRuns: Int!
+        successfulRuns: Int!
+        failedRuns: Int!
         successRate: Float!
         avgDurationMs: Float!
         p50DurationMs: Float!
@@ -65,9 +64,11 @@ export const analyticsSchema = `
 
     type DataHubThroughputMetrics {
         recordsPerSecond: Float!
-        peakRecordsPerSecond: Float!
-        avgBatchSize: Float!
-        timeSeries: [DataHubTimeSeries!]!
+        recordsPerMinute: Float!
+        recordsPerHour: Float!
+        peakThroughput: Float!
+        peakThroughputAt: DateTime!
+        throughputTrend: [DataHubTimeSeries!]!
     }
 
     type DataHubRealTimeStats {
@@ -81,9 +82,9 @@ export const analyticsSchema = `
 export const analyticsQueries = `
     extend type Query {
         dataHubAnalyticsOverview: DataHubAnalyticsOverview!
-        dataHubPipelinePerformance(pipelineCode: String, fromDate: DateTime, toDate: DateTime, limit: Int): [DataHubPipelinePerformance!]!
-        dataHubErrorAnalytics(pipelineCode: String, fromDate: DateTime, toDate: DateTime): DataHubErrorAnalytics!
-        dataHubThroughputMetrics(pipelineCode: String, intervalMinutes: Int, periods: Int): DataHubThroughputMetrics!
+        dataHubPipelinePerformance(pipelineId: ID, timeRange: String, limit: Int): [DataHubPipelinePerformance!]!
+        dataHubErrorAnalytics(pipelineId: ID, timeRange: String): DataHubErrorAnalytics!
+        dataHubThroughputMetrics(pipelineId: ID, timeRange: String): DataHubThroughputMetrics!
         dataHubRealTimeStats: DataHubRealTimeStats!
     }
 `;

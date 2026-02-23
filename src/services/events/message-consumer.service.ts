@@ -9,6 +9,7 @@ import { getErrorMessage, toErrorOrUndefined, ensureError } from '../../utils/er
 import { ConsumerDiscovery, MessageConsumerConfig, getConsumerKey } from './consumer-discovery';
 import { ConsumerLifecycle, ActiveConsumer } from './consumer-lifecycle';
 import { MessageProcessing } from './message-processing';
+import { DomainEventsService } from './domain-events.service';
 
 /**
  * Message Consumer Service
@@ -48,6 +49,7 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
         private pipelineService: PipelineService,
         private connectionService: ConnectionService,
         loggerFactory: DataHubLoggerFactory,
+        private domainEvents: DomainEventsService,
         @Optional() distributedLock?: DistributedLockService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.MESSAGE_CONSUMER ?? 'DataHub:MessageConsumer');
@@ -71,6 +73,7 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
             pipelineService,
             connectionService,
             this.logger,
+            domainEvents,
         );
     }
 

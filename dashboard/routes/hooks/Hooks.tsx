@@ -2,6 +2,7 @@ import * as React from 'react';
 import {
     Button,
     DashboardRouteDefinition,
+    Input,
     Json,
     Page,
     PageActionBar,
@@ -283,8 +284,8 @@ function HooksPage() {
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <input
-                            className="border rounded px-3 py-1.5 text-sm w-48"
+                        <Input
+                            className="w-48"
                             placeholder="Filter events..."
                             aria-label="Filter hook events"
                             value={eventFilter}

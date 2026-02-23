@@ -11,11 +11,13 @@ import {
     WebhookDeliveryStatus,
     ExportDestinationService,
     DestinationConfig,
+    FileStorageService,
 } from '../../services';
 import {
     ViewDataHubAnalyticsPermission,
     ManageDataHubWebhooksPermission,
     ManageDataHubDestinationsPermission,
+    ReadDataHubFilesPermission,
 } from '../../permissions';
 import type {
     AnalyticsOverview,
@@ -64,6 +66,7 @@ export class DataHubAnalyticsAdminResolver {
         private analyticsService: AnalyticsService,
         private webhookRetryService: WebhookRetryService,
         private exportDestinationService: ExportDestinationService,
+        private fileStorageService: FileStorageService,
     ) {}
 
     @Query()
@@ -76,10 +79,11 @@ export class DataHubAnalyticsAdminResolver {
     @Allow(ViewDataHubAnalyticsPermission.Permission)
     async dataHubPipelinePerformance(
         @Ctx() ctx: RequestContext,
-        @Args() args: { pipelineId?: string; fromDate?: string; toDate?: string; limit?: number },
+        @Args() args: { pipelineId?: string; timeRange?: string; limit?: number },
     ): Promise<PipelinePerformance[]> {
         return this.analyticsService.getPipelinePerformance(ctx, {
             pipelineId: args.pipelineId,
+            timeRange: args.timeRange as import('../../services/analytics/analytics.types').TimeRange | undefined,
             limit: Math.min(args.limit ?? 100, PAGINATION.MAX_QUERY_LIMIT),
         });
     }
@@ -88,10 +92,11 @@ export class DataHubAnalyticsAdminResolver {
     @Allow(ViewDataHubAnalyticsPermission.Permission)
     async dataHubErrorAnalytics(
         @Ctx() ctx: RequestContext,
-        @Args() args: { pipelineId?: string; fromDate?: string; toDate?: string },
+        @Args() args: { pipelineId?: string; timeRange?: string },
     ): Promise<ErrorAnalytics> {
         return this.analyticsService.getErrorAnalytics(ctx, {
             pipelineId: args.pipelineId,
+            timeRange: args.timeRange as import('../../services/analytics/analytics.types').TimeRange | undefined,
         });
     }
 
@@ -99,10 +104,11 @@ export class DataHubAnalyticsAdminResolver {
     @Allow(ViewDataHubAnalyticsPermission.Permission)
     async dataHubThroughputMetrics(
         @Ctx() ctx: RequestContext,
-        @Args() args: { pipelineId?: string; intervalMinutes?: number; periods?: number },
+        @Args() args: { pipelineId?: string; timeRange?: string },
     ): Promise<ThroughputMetrics> {
         return this.analyticsService.getThroughputMetrics(ctx, {
             pipelineId: args.pipelineId,
+            timeRange: args.timeRange as import('../../services/analytics/analytics.types').TimeRange | undefined,
         });
     }
 
@@ -110,6 +116,21 @@ export class DataHubAnalyticsAdminResolver {
     @Allow(ViewDataHubAnalyticsPermission.Permission)
     async dataHubRealTimeStats(@Ctx() ctx: RequestContext): Promise<RealTimeStats> {
         return this.analyticsService.getRealTimeStats(ctx);
+    }
+
+    @Query()
+    @Allow(ReadDataHubFilesPermission.Permission)
+    async dataHubStorageStats(@Ctx() _ctx: RequestContext): Promise<{
+        totalFiles: number;
+        totalSize: number;
+        byMimeType: Record<string, { count: number; size: number }>;
+    }> {
+        const stats = await this.fileStorageService.getStorageStats();
+        return {
+            totalFiles: stats.totalFiles,
+            totalSize: stats.totalSize,
+            byMimeType: stats.byMimeType,
+        };
     }
 
     @Query()

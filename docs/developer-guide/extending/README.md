@@ -884,7 +884,7 @@ type ExportTargetType =
     | 'MESSAGING'   // RabbitMQ
     | 'STORAGE';    // S3, GCS, Azure Blob
 
-type ExportFormatType = 'CSV' | 'JSON' | 'NDJSON' | 'XML' | 'PARQUET' | 'AVRO';
+type ExportFormatType = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'PARQUET';
 
 interface ExportContext {
     readonly ctx: RequestContext;

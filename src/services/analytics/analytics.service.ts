@@ -75,9 +75,6 @@ export class AnalyticsService implements OnModuleInit {
                 where: { createdAt: MoreThan(startOfWeek) },
                 select: ['status'],
             }),
-            this.connection.getRepository(ctx, PipelineRun).count({
-                where: [{ status: RunStatus.RUNNING }, { status: RunStatus.PENDING }],
-            }),
         ]);
     }
 
@@ -91,7 +88,7 @@ export class AnalyticsService implements OnModuleInit {
         startOfWeek.setHours(0, 0, 0, 0);
 
         // Fetch all data in parallel
-        const [totalPipelines, activePipelines, runsToday, runsThisWeek, todayRuns, weekRuns, activeJobs] =
+        const [totalPipelines, activePipelines, runsToday, runsThisWeek, todayRuns, weekRuns] =
             await this.fetchOverviewData(ctx, startOfDay, startOfWeek);
 
         // Aggregate run statistics and calculate success rates
@@ -109,7 +106,6 @@ export class AnalyticsService implements OnModuleInit {
             activePipelines,
             runsToday,
             runsThisWeek,
-            activeJobs,
             recordsProcessedToday: runStats.recordsProcessedToday,
             recordsFailedToday: runStats.recordsFailedToday,
             successRateToday: successRates.successRateToday,

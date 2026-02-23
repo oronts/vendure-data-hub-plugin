@@ -4,13 +4,13 @@ import { JsonValue, JsonObject, PipelineStepDefinition, PipelineContext } from '
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult, ExecutorContext, SANDBOX_PIPELINE_ID } from '../executor-types';
+import { RecordObject, OnRecordErrorCallback, ExecutionResult, ExecutorContext } from '../executor-types';
 import { getPath, setPath, deepClone } from '../utils';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { AdapterType } from '../../constants/enums';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { ExporterAdapter, ExportContext } from '../../sdk/types';
-import { createSecretsAdapter, createConnectionsAdapter, createLoggerAdapter, handleCustomAdapterError } from './context-adapters';
+import { createBaseAdapterContext, handleCustomAdapterError } from './context-adapters';
 import { getAdapterCode } from '../../types/step-configs';
 import { EXPORT_HANDLER_REGISTRY } from './exporters/export-handler-registry';
 
@@ -148,14 +148,7 @@ export class ExportExecutor {
         const cfg = step.config as JsonObject & { incremental?: boolean };
 
         const exportContext: ExportContext = {
-            ctx,
-            pipelineId: SANDBOX_PIPELINE_ID,
-            stepKey: step.key,
-            pipelineContext: pipelineContext ?? {} as PipelineContext,
-            secrets: createSecretsAdapter(this.secretService, ctx),
-            connections: createConnectionsAdapter(this.connectionService, ctx),
-            logger: createLoggerAdapter(this.logger),
-            dryRun: false,
+            ...createBaseAdapterContext(ctx, step.key, this.secretService, this.connectionService, this.logger, pipelineContext),
             incremental: cfg?.incremental ?? false,
             checkpoint: executorCtx?.cpData?.[step.key] ?? {},
             setCheckpoint: (data: JsonObject) => {

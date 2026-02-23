@@ -6,6 +6,7 @@ import { DataHubLogger } from '../logger';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { queueAdapterRegistry, QueueConnectionConfig, QueueAdapter } from '../../sdk/adapters/queue';
 import { ActiveConsumer } from './consumer-lifecycle';
+import { DomainEventsService } from './domain-events.service';
 
 /**
  * Message Processing Module
@@ -19,6 +20,7 @@ export class MessageProcessing {
         private pipelineService: PipelineService,
         private connectionService: ConnectionService,
         private logger: DataHubLogger,
+        private domainEvents: DomainEventsService,
     ) {}
 
     /**
@@ -169,11 +171,21 @@ export class MessageProcessing {
             messageId: message.messageId,
         });
 
-        await this.pipelineService.startRunByCode(ctx, config.pipelineCode, {
+        const run = await this.pipelineService.startRunByCode(ctx, config.pipelineCode, {
             seedRecords: [seedRecord],
             skipPermissionCheck: true,
             triggeredBy: `message:${config.triggerKey}`,
         });
+
+        if (run) {
+            const pipelineId = run.pipeline?.id?.toString() ?? run.pipelineId?.toString();
+            this.domainEvents.publishTriggerFired(pipelineId, 'MESSAGE_QUEUE', {
+                pipelineCode: config.pipelineCode,
+                triggerKey: config.triggerKey,
+                queueName: config.queueName,
+                messageId: message.messageId,
+            });
+        }
     }
 
     /**

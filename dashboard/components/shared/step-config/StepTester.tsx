@@ -12,7 +12,7 @@ import {
     Badge,
 } from '@vendure/dashboard';
 import { PlayIcon, ChevronDown, ChevronUp } from 'lucide-react';
-import { STEP_TYPES, ADAPTER_TYPES, DEFAULT_SAMPLE_DATA, STEP_TEST_DESCRIPTIONS, PLACEHOLDERS, UI_LIMITS } from '../../../constants';
+import { STEP_TYPE, ADAPTER_TYPES, DEFAULT_SAMPLE_DATA, STEP_TEST_DESCRIPTIONS, PLACEHOLDERS, UI_LIMITS } from '../../../constants';
 import { createMutationErrorHandler } from '../../../hooks';
 import { runStepTest, canTestStepType, type TestResult, type StepTestOptions } from './step-test-handlers';
 import { ExtractTestResults } from './ExtractTestResults';
@@ -27,14 +27,17 @@ interface StepTesterProps {
 
 function getEffectiveStepType(stepType: string, adapterType: string): string {
     const st = stepType?.toUpperCase() || '';
-    if (st === STEP_TYPES.EXTRACT || adapterType === ADAPTER_TYPES.EXTRACTOR) return STEP_TYPES.EXTRACT;
-    if (st === STEP_TYPES.TRANSFORM) return STEP_TYPES.TRANSFORM;
-    if (st === STEP_TYPES.VALIDATE) return STEP_TYPES.VALIDATE;
-    if (st === STEP_TYPES.LOAD || adapterType === ADAPTER_TYPES.LOADER) return STEP_TYPES.LOAD;
-    if (st === STEP_TYPES.FEED || adapterType === ADAPTER_TYPES.FEED) return STEP_TYPES.FEED;
-    if (st === STEP_TYPES.EXPORT || adapterType === ADAPTER_TYPES.EXPORTER) return STEP_TYPES.EXPORT;
-    if (st === STEP_TYPES.SINK || adapterType === ADAPTER_TYPES.SINK) return STEP_TYPES.SINK;
-    if (st === STEP_TYPES.TRIGGER) return STEP_TYPES.TRIGGER;
+    if (st === STEP_TYPE.EXTRACT || adapterType === ADAPTER_TYPES.EXTRACTOR) return STEP_TYPE.EXTRACT;
+    if (st === STEP_TYPE.TRANSFORM) return STEP_TYPE.TRANSFORM;
+    if (st === STEP_TYPE.VALIDATE) return STEP_TYPE.VALIDATE;
+    if (st === STEP_TYPE.LOAD || adapterType === ADAPTER_TYPES.LOADER) return STEP_TYPE.LOAD;
+    if (st === STEP_TYPE.FEED || adapterType === ADAPTER_TYPES.FEED) return STEP_TYPE.FEED;
+    if (st === STEP_TYPE.EXPORT || adapterType === ADAPTER_TYPES.EXPORTER) return STEP_TYPE.EXPORT;
+    if (st === STEP_TYPE.SINK || adapterType === ADAPTER_TYPES.SINK) return STEP_TYPE.SINK;
+    if (st === STEP_TYPE.TRIGGER) return STEP_TYPE.TRIGGER;
+    if (st === STEP_TYPE.ENRICH) return STEP_TYPE.ENRICH;
+    if (st === STEP_TYPE.ROUTE) return STEP_TYPE.ROUTE;
+    if (st === STEP_TYPE.GATE) return STEP_TYPE.GATE;
     return st || 'UNKNOWN';
 }
 
@@ -78,7 +81,7 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
     }, [effectiveType, sampleInput, limit, stepTestMutation.mutate]);
 
     const renderInputSection = () => {
-        if (effectiveType === STEP_TYPES.EXTRACT || effectiveType === STEP_TYPES.FEED) {
+        if (effectiveType === STEP_TYPE.EXTRACT || effectiveType === STEP_TYPE.FEED) {
             return (
                 <div className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -86,16 +89,16 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
                         <Input id="step-tester-limit" type="number" value={limit} onChange={e => setLimit(Math.max(1, parseInt(e.target.value) || UI_LIMITS.PREVIEW_ROW_LIMIT))} className="w-20 h-8" min={1} max={UI_LIMITS.MAX_PREVIEW_ROWS} />
                     </div>
                     <p className="text-xs text-muted-foreground">
-                        {effectiveType === STEP_TYPES.EXTRACT ? STEP_TEST_DESCRIPTIONS.EXTRACT : 'Generates feed output using the configured feed adapter.'}
+                        {effectiveType === STEP_TYPE.EXTRACT ? STEP_TEST_DESCRIPTIONS.EXTRACT : 'Generates feed output using the configured feed adapter.'}
                     </p>
                 </div>
             );
         }
-        if ([STEP_TYPES.TRANSFORM, STEP_TYPES.VALIDATE, STEP_TYPES.LOAD].includes(effectiveType as typeof STEP_TYPES[keyof typeof STEP_TYPES])) {
+        if ([STEP_TYPE.TRANSFORM, STEP_TYPE.VALIDATE, STEP_TYPE.LOAD].includes(effectiveType as typeof STEP_TYPE[keyof typeof STEP_TYPE])) {
             const descriptions = {
-                [STEP_TYPES.TRANSFORM]: STEP_TEST_DESCRIPTIONS.TRANSFORM,
-                [STEP_TYPES.VALIDATE]: STEP_TEST_DESCRIPTIONS.VALIDATE,
-                [STEP_TYPES.LOAD]: STEP_TEST_DESCRIPTIONS.LOAD,
+                [STEP_TYPE.TRANSFORM]: STEP_TEST_DESCRIPTIONS.TRANSFORM,
+                [STEP_TYPE.VALIDATE]: STEP_TEST_DESCRIPTIONS.VALIDATE,
+                [STEP_TYPE.LOAD]: STEP_TEST_DESCRIPTIONS.LOAD,
             };
             return (
                 <div className="space-y-2">
@@ -111,15 +114,15 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
     const renderResults = () => {
         if (!result) return null;
         switch (effectiveType) {
-            case STEP_TYPES.EXTRACT:
+            case STEP_TYPE.EXTRACT:
                 return <ExtractTestResults result={result} resultView={resultView} onViewChange={setResultView} />;
-            case STEP_TYPES.TRANSFORM:
+            case STEP_TYPE.TRANSFORM:
                 return <TransformTestResults result={result} resultView={resultView} onViewChange={setResultView} />;
-            case STEP_TYPES.VALIDATE:
+            case STEP_TYPE.VALIDATE:
                 return <ValidateTestResults result={result} resultView={resultView} onViewChange={setResultView} />;
-            case STEP_TYPES.LOAD:
+            case STEP_TYPE.LOAD:
                 return <LoadTestResults result={result} />;
-            case STEP_TYPES.FEED:
+            case STEP_TYPE.FEED:
                 return <FeedTestResults result={result} />;
             default:
                 return <GenericTestResults result={result} />;
@@ -152,7 +155,7 @@ export function StepTester({ stepType, adapterType, config }: StepTesterProps) {
                         </>
                     ) : (
                         <p className="text-sm text-muted-foreground">
-                            {effectiveType === STEP_TYPES.TRIGGER ? 'Trigger steps define when pipelines run. Use the full pipeline dry run to test execution.' : `${effectiveType} steps cannot be tested individually. Use the full pipeline dry run.`}
+                            {effectiveType === STEP_TYPE.TRIGGER ? 'Trigger steps define when pipelines run. Use the full pipeline dry run to test execution.' : `${effectiveType} steps cannot be tested individually. Use the full pipeline dry run.`}
                         </p>
                     )}
                 </CardContent>

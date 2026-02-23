@@ -1,8 +1,8 @@
 const LOG_LEVEL_COLORS = {
-    debug: 'bg-gray-100 text-gray-600',
-    info: 'bg-blue-100 text-blue-600',
-    warn: 'bg-amber-100 text-amber-600',
-    error: 'bg-red-100 text-red-600',
+    debug: 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300',
+    info: 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400',
+    warn: 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400',
+    error: 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400',
 } as const;
 
 export const FALLBACK_COLORS = {

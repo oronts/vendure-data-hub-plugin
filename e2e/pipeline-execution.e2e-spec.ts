@@ -425,7 +425,6 @@ describe('DataHub Pipeline Execution', () => {
                     dataHubAnalyticsOverview {
                         totalPipelines
                         activePipelines
-                        totalJobs
                         runsToday
                     }
                 }

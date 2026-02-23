@@ -79,8 +79,8 @@ export function RouteConfigComponent({
             </div>
 
                         {showDuplicateWarning && hasDuplicates && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
-                    <div className="flex items-center gap-2 text-amber-800">
+                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
+                    <div className="flex items-center gap-2 text-amber-800 dark:text-amber-400">
                         <AlertTriangle className="h-4 w-4" />
                         <span className="text-sm font-medium">Duplicate branch names detected</span>
                     </div>

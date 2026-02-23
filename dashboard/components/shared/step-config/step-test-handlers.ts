@@ -5,7 +5,7 @@ import {
     simulateValidate,
     previewFeed,
 } from '../../../hooks';
-import { STEP_TYPES } from '../../../constants';
+import { STEP_TYPE } from '../../../constants';
 import { getErrorMessage } from '../../../../shared';
 
 /**
@@ -226,27 +226,48 @@ export async function runStepTest(
 ): Promise<TestResult> {
     try {
         switch (effectiveType) {
-            case STEP_TYPES.EXTRACT:
+            case STEP_TYPE.EXTRACT:
                 return await testExtractStep(options);
 
-            case STEP_TYPES.TRANSFORM:
+            case STEP_TYPE.TRANSFORM:
                 return await testTransformStep(options);
 
-            case STEP_TYPES.VALIDATE:
+            case STEP_TYPE.VALIDATE:
                 return await testValidateStep(options);
 
-            case STEP_TYPES.LOAD:
+            case STEP_TYPE.LOAD:
                 return await testLoadStep(options);
 
-            case STEP_TYPES.FEED:
+            case STEP_TYPE.FEED:
                 return await testFeedStep(options);
 
-            case STEP_TYPES.TRIGGER:
+            case STEP_TYPE.TRIGGER:
                 return getTriggerStepResult(options.config);
 
-            case STEP_TYPES.EXPORT:
-            case STEP_TYPES.SINK:
+            case STEP_TYPE.EXPORT:
+            case STEP_TYPE.SINK:
                 return getOutputStepResult(effectiveType, options.config);
+
+            case STEP_TYPE.ENRICH:
+                return {
+                    status: 'success',
+                    message: 'Enrich steps perform live lookups during pipeline execution. Use dry-run to test enrichment.',
+                    data: { config: options.config },
+                };
+
+            case STEP_TYPE.ROUTE:
+                return {
+                    status: 'success',
+                    message: 'Route steps evaluate conditions during pipeline execution. Use dry-run to test routing logic.',
+                    data: { config: options.config },
+                };
+
+            case STEP_TYPE.GATE:
+                return {
+                    status: 'success',
+                    message: 'Gate steps require approval during pipeline execution. They cannot be tested in isolation.',
+                    data: { config: options.config },
+                };
 
             default:
                 return getUnknownStepResult(effectiveType);
@@ -267,10 +288,10 @@ export async function runStepTest(
  */
 export function canTestStepType(effectiveType: string): boolean {
     return [
-        STEP_TYPES.EXTRACT,
-        STEP_TYPES.TRANSFORM,
-        STEP_TYPES.VALIDATE,
-        STEP_TYPES.LOAD,
-        STEP_TYPES.FEED,
-    ].includes(effectiveType as typeof STEP_TYPES[keyof typeof STEP_TYPES]);
+        STEP_TYPE.EXTRACT,
+        STEP_TYPE.TRANSFORM,
+        STEP_TYPE.VALIDATE,
+        STEP_TYPE.LOAD,
+        STEP_TYPE.FEED,
+    ].includes(effectiveType as typeof STEP_TYPE[keyof typeof STEP_TYPE]);
 }

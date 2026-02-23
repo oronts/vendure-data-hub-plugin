@@ -1,8 +1,7 @@
 import type { StepType } from '../../shared/types';
 import { STEP_TYPE, SHARED_STEP_TYPE_CONFIGS } from '../../shared/constants';
 
-/** Re-export from shared single source of truth (dashboard uses plural name) */
-export const STEP_TYPES = STEP_TYPE;
+export { STEP_TYPE };
 
 export interface StepConfig {
     readonly type: StepType;

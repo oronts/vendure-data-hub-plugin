@@ -1,9 +1,8 @@
-import { RunMode, AdapterType as AdapterTypeEnum } from '../../constants/enums';
+import { AdapterType as AdapterTypeEnum } from '../../constants/enums';
 import { PipelineDefinition } from '../../types/index';
 import { DataHubRegistryService } from '../../sdk/registry.service';
-import { AdapterDefinition } from '../../sdk/types';
 import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
-import { hasStreamSafetyInfo } from './adapter-validation';
+import { validateOperatorStreamSafety } from './adapter-validation';
 
 // ============================================================================
 // Type Definitions
@@ -126,24 +125,4 @@ export function validateOperatorParams(
     }
 
     validateOperatorStreamSafety(stepKey, opCode, adapter, definition, issues);
-}
-
-export function validateOperatorStreamSafety(
-    stepKey: string,
-    opCode: string,
-    adapter: AdapterDefinition,
-    definition: PipelineDefinition,
-    issues: PipelineDefinitionIssue[],
-): void {
-    if (definition.context?.runMode !== RunMode.STREAM) {
-        return;
-    }
-
-    if (!hasStreamSafetyInfo(adapter) || adapter.pure !== true) {
-        issues.push({
-            message: `Step "${stepKey}": operator "${opCode}" is not stream-safe (pure=false)`,
-            stepKey,
-            errorCode: 'operator-not-pure',
-        });
-    }
 }

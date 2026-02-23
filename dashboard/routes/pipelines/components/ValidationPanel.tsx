@@ -69,7 +69,7 @@ interface ValidationIssueItemProps {
 }
 
 function ValidationIssueItem({ issue, variant = 'error' }: ValidationIssueItemProps) {
-    const bgClass = variant === 'warning' ? 'bg-amber-50 border-amber-200' : '';
+    const bgClass = variant === 'warning' ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800' : '';
 
     return (
         <div className={`border rounded p-2 ${bgClass}`}>

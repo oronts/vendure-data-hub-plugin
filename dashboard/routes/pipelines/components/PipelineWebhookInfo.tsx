@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { STEP_TYPES, DATAHUB_API_WEBHOOK } from '../../../constants';
+import { STEP_TYPE, DATAHUB_API_WEBHOOK } from '../../../constants';
 import type { PipelineDefinition, PipelineStep } from '../../../types';
 
 export interface PipelineWebhookInfoProps {
@@ -28,7 +28,7 @@ export function PipelineWebhookInfo({
     // Find ALL webhook triggers
     const webhookTriggers: WebhookTriggerInfo[] = steps
         .filter((step): step is PipelineStep =>
-            step.type === STEP_TYPES.TRIGGER &&
+            step.type === STEP_TYPE.TRIGGER &&
             (step.config as Record<string, unknown>)?.type === 'WEBHOOK'
         )
         .map(trigger => {

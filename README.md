@@ -36,7 +36,7 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
 
 - **Visual Pipeline Builder** - Drag-and-drop workflow editor with live validation
 - **Code-First DSL** - TypeScript API for defining pipelines programmatically
-- **9 Data Extractors** - HTTP/REST API, GraphQL, Vendure Query, File (CSV/JSON/XML/XLSX/NDJSON/TSV/Parquet), Database (SQL), S3, FTP/SFTP, Webhook, CDC (Change Data Capture)
+- **9 Data Extractors** - HTTP/REST API, GraphQL, Vendure Query, File (CSV/JSON/XML/XLSX/NDJSON/TSV), Database (SQL), S3, FTP/SFTP, Webhook, CDC (Change Data Capture)
 - **22 Loaders** - Products, Variants, Customers, Customer Groups, Collections, Facets, Facet Values, Promotions, Orders (notes, transitions, coupons), Shipping Methods, Stock Locations, Stock/Inventory, Assets, Tax Rates, Payment Methods, Channels, REST POST, GraphQL Mutation
 - **61 Transform Operators** - String (12), Date (5), Numeric (9), Logic (4), JSON (4), Data (8), Enrichment (5), Aggregation (8), Validation (2), Script (1), File (3) - **includes HTTP Lookup with caching, circuit breaker, and rate limiting**
 - **4 Feed Generators** - Google Merchant Center, Meta/Facebook Catalog, Amazon Seller Central, Custom Feed (CSV/JSON/XML/TSV)
@@ -212,7 +212,7 @@ export const config: VendureConfig = {
 | HTTP/REST API | `httpApi` | Fetch from REST APIs with pagination, auth (Bearer/Basic/HMAC), field mapping |
 | GraphQL | `graphql` | Query GraphQL endpoints with cursor/offset/relay pagination, variables, auth |
 | Vendure Query | `vendureQuery` | Query Vendure entities (Product, ProductVariant, Customer, Order, Collection, Facet, FacetValue, Promotion, Asset) |
-| File | `file` | Parse CSV, JSON, XML, XLSX, NDJSON, TSV, Parquet files with custom delimiters and encoding |
+| File | `file` | Parse CSV, JSON, XML, XLSX, NDJSON, TSV files with custom delimiters and encoding |
 | Database | `database` | Query PostgreSQL, MySQL, MSSQL, SQLite with parameterized queries |
 | S3 | `s3` | Read files from AWS S3 and S3-compatible storage (MinIO, DigitalOcean Spaces) |
 | FTP/SFTP | `ftp` | Download files from FTP/SFTP servers with SSH key support |
@@ -346,22 +346,19 @@ Comparison operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `cont
 | `default` | Default if null | `{ op: 'default', args: { path: 'stock', value: 0 } }` |
 | `httpLookup` | Enrich from HTTP API | `{ op: 'httpLookup', args: { url: 'https://api.example.com/{{sku}}', target: 'externalData' } }` |
 
-### Array Operators
-
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `flatten` | Flatten nested arrays | `{ op: 'flatten', args: { source: 'nested', target: 'flat', depth: 1 } }` |
-| `count` | Count elements | `{ op: 'count', args: { source: 'items', target: 'itemCount' } }` |
-| `unique` | Remove duplicates | `{ op: 'unique', args: { source: 'items', by: 'id', target: 'uniqueItems' } }` |
-| `first` | Get first element | `{ op: 'first', args: { source: 'items', target: 'firstItem' } }` |
-| `last` | Get last element | `{ op: 'last', args: { source: 'items', target: 'lastItem' } }` |
-| `expand` | Explode to records | `{ op: 'expand', args: { path: 'variants' } }` |
-
 ### Aggregation Operators
+
+Aggregation operators include array manipulation, grouping, and data joining (8 operators).
 
 | Operator | Description | Example |
 |----------|-------------|---------|
 | `aggregate` | Aggregate values | `{ op: 'aggregate', args: { op: 'sum', source: 'amount', target: 'total' } }` |
+| `count` | Count elements | `{ op: 'count', args: { source: 'items', target: 'itemCount' } }` |
+| `unique` | Remove duplicates | `{ op: 'unique', args: { source: 'items', by: 'id', target: 'uniqueItems' } }` |
+| `flatten` | Flatten nested arrays | `{ op: 'flatten', args: { source: 'nested', target: 'flat', depth: 1 } }` |
+| `first` | Get first element | `{ op: 'first', args: { source: 'items', target: 'firstItem' } }` |
+| `last` | Get last element | `{ op: 'last', args: { source: 'items', target: 'lastItem' } }` |
+| `expand` | Explode to records | `{ op: 'expand', args: { path: 'variants' } }` |
 | `multiJoin` | Join datasets by key | `{ op: 'multiJoin', args: { leftKey: 'customerId', rightKey: 'id', rightDataPath: 'orders', type: 'LEFT' } }` |
 
 ### Advanced Operators

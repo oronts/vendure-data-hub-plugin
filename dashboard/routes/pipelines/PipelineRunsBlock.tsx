@@ -162,7 +162,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                 return (
                     <Badge
                         variant={getRunStatusBadgeVariant(st) as 'default' | 'secondary' | 'destructive' | 'outline'}
-                        className={isPaused ? 'border-amber-400 text-amber-700 bg-amber-50' : undefined}
+                        className={isPaused ? 'border-amber-400 dark:border-amber-600 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30' : undefined}
                     >
                         {isPaused ? 'AWAITING APPROVAL' : st}
                     </Badge>

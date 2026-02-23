@@ -12,7 +12,7 @@ export function createPipelineNode(category: VisualNodeCategory) {
 
         return (
             <div
-                className={`${NODE_DIMENSIONS.MIN_WIDTH} rounded-lg border-2 bg-white shadow-md transition-all ${
+                className={`${NODE_DIMENSIONS.MIN_WIDTH} rounded-lg border-2 bg-background shadow-md transition-all ${
                     selected ? 'shadow-lg' : ''
                 }`}
                 style={{ borderColor: selected ? config.color : FALLBACK_COLORS.BORDER }}
@@ -54,7 +54,7 @@ function ConditionNodeComponent({ data, selected }: NodeProps<Node<PipelineNodeD
 
     return (
         <div
-            className={`${NODE_DIMENSIONS.MIN_WIDTH} rounded-lg border-2 bg-white shadow-md transition-all ${
+            className={`${NODE_DIMENSIONS.MIN_WIDTH} rounded-lg border-2 bg-background shadow-md transition-all ${
                 selected ? 'shadow-lg' : ''
             }`}
             style={{ borderColor: selected ? config.color : FALLBACK_COLORS.BORDER }}

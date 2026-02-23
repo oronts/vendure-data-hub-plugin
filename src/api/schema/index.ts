@@ -5,7 +5,6 @@ import { testSchema, testMutations, testQueries } from './test.schema';
 import { secretSchema, secretQueries, secretMutations } from './secret.schema';
 import { connectionSchema, connectionQueries, connectionMutations } from './connection.schema';
 import { logSchema, logQueries } from './log.schema';
-import { jobSchema, jobQueries, jobMutations } from './job.schema';
 import { feedSchema, feedQueries, feedMutations } from './feed.schema';
 import { analyticsSchema, analyticsQueries } from './analytics.schema';
 import { adapterSchema, adapterQueries } from './adapter.schema';
@@ -28,7 +27,6 @@ export const adminApiExtensions = gql`
     ${secretSchema}
     ${connectionSchema}
     ${logSchema}
-    ${jobSchema}
     ${feedSchema}
     ${analyticsSchema}
     ${adapterSchema}
@@ -50,7 +48,6 @@ export const adminApiExtensions = gql`
     ${secretQueries}
     ${connectionQueries}
     ${logQueries}
-    ${jobQueries}
     ${feedQueries}
     ${analyticsQueries}
     ${adapterQueries}
@@ -70,7 +67,6 @@ export const adminApiExtensions = gql`
     ${testMutations}
     ${secretMutations}
     ${connectionMutations}
-    ${jobMutations}
     ${feedMutations}
     ${webhookMutations}
     ${destinationMutations}
@@ -85,7 +81,6 @@ export * from './pipeline.schema';
 export * from './secret.schema';
 export * from './connection.schema';
 export * from './log.schema';
-export * from './job.schema';
 export * from './feed.schema';
 export * from './analytics.schema';
 export * from './adapter.schema';

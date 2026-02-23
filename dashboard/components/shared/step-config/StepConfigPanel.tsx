@@ -35,7 +35,7 @@ import type { RetrySettings } from './RetrySettingsComponent';
 import { useAdapterCatalog, useStepConfigs, AdapterMetadata } from '../../../hooks';
 import { getAdapterTypeLabel, prepareDynamicFields, normalizeStepType, getAdapterTypeForStep } from '../../../utils';
 import {
-    STEP_TYPES,
+    STEP_TYPE,
     ADAPTER_TYPES,
     NODE_CATEGORIES,
     PANEL_VARIANT,
@@ -65,10 +65,10 @@ interface SpecialConfigProps {
  * table-driven dispatch in `renderSpecialConfigs`.
  */
 const SPECIAL_CONFIG_EDITORS: Record<string, React.ComponentType<SpecialConfigProps>> = {
-    [STEP_TYPES.ROUTE]: RouteConfigComponent as React.ComponentType<SpecialConfigProps>,
-    [STEP_TYPES.VALIDATE]: ValidateConfigComponent as React.ComponentType<SpecialConfigProps>,
-    [STEP_TYPES.ENRICH]: EnrichConfigComponent as React.ComponentType<SpecialConfigProps>,
-    [STEP_TYPES.GATE]: GateConfigComponent as React.ComponentType<SpecialConfigProps>,
+    [STEP_TYPE.ROUTE]: RouteConfigComponent as React.ComponentType<SpecialConfigProps>,
+    [STEP_TYPE.VALIDATE]: ValidateConfigComponent as React.ComponentType<SpecialConfigProps>,
+    [STEP_TYPE.ENRICH]: EnrichConfigComponent as React.ComponentType<SpecialConfigProps>,
+    [STEP_TYPE.GATE]: GateConfigComponent as React.ComponentType<SpecialConfigProps>,
 };
 
 /** Props shared by all advanced operator editors (map, template, filter). */
@@ -152,14 +152,14 @@ export function StepConfigPanel({
 
     const hasMultiOperatorConfig = useMemo(
         () =>
-            stepType === STEP_TYPES.TRANSFORM &&
+            stepType === STEP_TYPE.TRANSFORM &&
             Array.isArray(data.config?.operators) &&
             data.config.operators.length > 0,
         [stepType, data.config?.operators]
     );
 
     const needsAdapterSelection = useMemo(
-        () => !adapterCode && !hasMultiOperatorConfig && stepType !== STEP_TYPES.TRIGGER,
+        () => !adapterCode && !hasMultiOperatorConfig && stepType !== STEP_TYPE.TRIGGER,
         [adapterCode, hasMultiOperatorConfig, stepType]
     );
 
@@ -332,7 +332,7 @@ export function StepConfigPanel({
     };
 
     const renderTriggerConfig = () => {
-        if (stepType !== STEP_TYPES.TRIGGER) return null;
+        if (stepType !== STEP_TYPE.TRIGGER) return null;
 
         return (
             <TriggerForm
@@ -344,9 +344,9 @@ export function StepConfigPanel({
     };
 
     const renderAdapterSelection = () => {
-        if (!adapterType || stepType === STEP_TYPES.TRIGGER) return null;
+        if (!adapterType || stepType === STEP_TYPE.TRIGGER) return null;
 
-        if (stepType === STEP_TYPES.TRANSFORM) {
+        if (stepType === STEP_TYPE.TRANSFORM) {
             return (
                 <MultiOperatorEditor
                     operators={
@@ -508,7 +508,7 @@ export function StepConfigPanel({
     }, [onChange, data]);
 
     const renderRetrySettings = () => {
-        if (stepType !== STEP_TYPES.TRANSFORM) return null;
+        if (stepType !== STEP_TYPE.TRANSFORM) return null;
 
         const retrySettings: RetrySettings = {
             maxRetries: data.config?.retryMaxRetries as number | undefined,
@@ -527,7 +527,7 @@ export function StepConfigPanel({
     const renderStepTester = () => {
         if (
             !showStepTester ||
-            stepType === STEP_TYPES.TRIGGER ||
+            stepType === STEP_TYPE.TRIGGER ||
             !adapterType ||
             !selectedAdapter
         ) {

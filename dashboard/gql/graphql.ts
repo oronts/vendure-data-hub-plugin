@@ -832,16 +832,6 @@ export type CreateDataHubConnectionInput = {
   type?: InputMaybe<Scalars['String']['input']>;
 };
 
-export type CreateDataHubJobInput = {
-  code: Scalars['String']['input'];
-  definition: Scalars['JSON']['input'];
-  description?: InputMaybe<Scalars['String']['input']>;
-  enabled?: InputMaybe<Scalars['Boolean']['input']>;
-  name: Scalars['String']['input'];
-  tags?: InputMaybe<Array<Scalars['String']['input']>>;
-  type?: InputMaybe<DataHubJobType>;
-};
-
 /** Input for creating a new pipeline */
 export type CreateDataHubPipelineInput = {
   /** Unique identifier for webhook/API access (lowercase alphanumeric with hyphens) */
@@ -1619,7 +1609,6 @@ export type DataHubAdapterCodeMapping = {
 /** Analytics API - Stats and metrics */
 export type DataHubAnalyticsOverview = {
   __typename?: 'DataHubAnalyticsOverview';
-  activeJobs: Scalars['Int']['output'];
   activePipelines: Scalars['Int']['output'];
   avgDurationMsToday: Scalars['Float']['output'];
   recordsFailedToday: Scalars['Int']['output'];
@@ -1628,7 +1617,6 @@ export type DataHubAnalyticsOverview = {
   runsToday: Scalars['Int']['output'];
   successRateToday: Scalars['Float']['output'];
   successRateWeek: Scalars['Float']['output'];
-  totalJobs: Scalars['Int']['output'];
   totalPipelines: Scalars['Int']['output'];
 };
 
@@ -1931,19 +1919,6 @@ export enum DataHubDiffType {
   TRIGGER = 'TRIGGER'
 }
 
-export type DataHubDryRunError = {
-  __typename?: 'DataHubDryRunError';
-  field: Scalars['String']['output'];
-  message: Scalars['String']['output'];
-};
-
-export type DataHubDryRunRecord = {
-  __typename?: 'DataHubDryRunRecord';
-  data: Scalars['JSON']['output'];
-  errors: Array<DataHubDryRunError>;
-  success: Scalars['Boolean']['output'];
-};
-
 /** Result of a dry run execution */
 export type DataHubDryRunResult = {
   __typename?: 'DataHubDryRunResult';
@@ -1966,13 +1941,6 @@ export type DataHubDryRunSampleRecord = {
   step: Scalars['String']['output'];
 };
 
-export type DataHubDryRunSummary = {
-  __typename?: 'DataHubDryRunSummary';
-  failed: Scalars['Int']['output'];
-  success: Scalars['Int']['output'];
-  total: Scalars['Int']['output'];
-};
-
 /** Duration estimate with confidence */
 export type DataHubDurationEstimate = {
   __typename?: 'DataHubDurationEstimate';
@@ -1982,19 +1950,6 @@ export type DataHubDurationEstimate = {
   extractMs: Scalars['Int']['output'];
   loadMs: Scalars['Int']['output'];
   transformMs: Scalars['Int']['output'];
-};
-
-export type DataHubEntityField = {
-  __typename?: 'DataHubEntityField';
-  default?: Maybe<Scalars['JSON']['output']>;
-  description?: Maybe<Scalars['String']['output']>;
-  indexed: Scalars['Boolean']['output'];
-  key: Scalars['String']['output'];
-  readonly: Scalars['Boolean']['output'];
-  relation?: Maybe<DataHubRelationInfo>;
-  required: Scalars['Boolean']['output'];
-  type: Scalars['String']['output'];
-  unique: Scalars['Boolean']['output'];
 };
 
 /** Impact breakdown for a specific entity type */
@@ -2265,16 +2220,6 @@ export type DataHubFieldDependency = {
   value: Scalars['JSON']['output'];
 };
 
-export type DataHubFieldSuggestion = {
-  __typename?: 'DataHubFieldSuggestion';
-  confidence: Scalars['String']['output'];
-  reason: Scalars['String']['output'];
-  score: Scalars['Int']['output'];
-  source: Scalars['String']['output'];
-  suggestedTransforms?: Maybe<Scalars['JSON']['output']>;
-  target: Scalars['String']['output'];
-};
-
 export type DataHubFieldValidation = {
   __typename?: 'DataHubFieldValidation';
   max?: Maybe<Scalars['Float']['output']>;
@@ -2283,26 +2228,6 @@ export type DataHubFieldValidation = {
   minLength?: Maybe<Scalars['Int']['output']>;
   pattern?: Maybe<Scalars['String']['output']>;
   patternMessage?: Maybe<Scalars['String']['output']>;
-};
-
-export type DataHubFilePreview = {
-  __typename?: 'DataHubFilePreview';
-  fields: Array<DataHubPreviewField>;
-  format: Scalars['String']['output'];
-  sampleData: Scalars['JSON']['output'];
-  success: Scalars['Boolean']['output'];
-  suggestedMappings?: Maybe<Array<DataHubFieldSuggestion>>;
-  totalRows: Scalars['Int']['output'];
-  warnings: Array<Scalars['String']['output']>;
-};
-
-export type DataHubFileUploadInput = {
-  content: Scalars['String']['input'];
-  delimiter?: InputMaybe<Scalars['String']['input']>;
-  filename: Scalars['String']['input'];
-  format?: InputMaybe<Scalars['String']['input']>;
-  headerRow?: InputMaybe<Scalars['Boolean']['input']>;
-  sheet?: InputMaybe<Scalars['String']['input']>;
 };
 
 /** Result of format conversion operation */
@@ -2408,191 +2333,6 @@ export type DataHubImportTemplate = {
   sampleData?: Maybe<Scalars['JSON']['output']>;
   tags?: Maybe<Array<Scalars['String']['output']>>;
 };
-
-export type DataHubJob = Node & {
-  __typename?: 'DataHubJob';
-  code: Scalars['String']['output'];
-  createdAt: Scalars['DateTime']['output'];
-  createdByUserId?: Maybe<Scalars['String']['output']>;
-  definition: Scalars['JSON']['output'];
-  description?: Maybe<Scalars['String']['output']>;
-  enabled: Scalars['Boolean']['output'];
-  id: Scalars['ID']['output'];
-  lastRunAt?: Maybe<Scalars['DateTime']['output']>;
-  lastRunStatus?: Maybe<DataHubJobRunStatus>;
-  name: Scalars['String']['output'];
-  publishedAt?: Maybe<Scalars['DateTime']['output']>;
-  publishedByUserId?: Maybe<Scalars['String']['output']>;
-  runCount: Scalars['Int']['output'];
-  status: DataHubJobStatus;
-  tags?: Maybe<Array<Scalars['String']['output']>>;
-  totalRecordsFailed: Scalars['Int']['output'];
-  totalRecordsProcessed: Scalars['Int']['output'];
-  type: DataHubJobType;
-  updatedAt: Scalars['DateTime']['output'];
-};
-
-export type DataHubJobDryRunResult = {
-  __typename?: 'DataHubJobDryRunResult';
-  mappedRecords: Array<DataHubDryRunRecord>;
-  summary: DataHubDryRunSummary;
-  valid: Scalars['Boolean']['output'];
-};
-
-export type DataHubJobFilterParameter = {
-  _and?: InputMaybe<Array<DataHubJobFilterParameter>>;
-  _or?: InputMaybe<Array<DataHubJobFilterParameter>>;
-  code?: InputMaybe<StringOperators>;
-  createdAt?: InputMaybe<DateOperators>;
-  createdByUserId?: InputMaybe<StringOperators>;
-  description?: InputMaybe<StringOperators>;
-  enabled?: InputMaybe<BooleanOperators>;
-  id?: InputMaybe<IdOperators>;
-  lastRunAt?: InputMaybe<DateOperators>;
-  lastRunStatus?: InputMaybe<StringOperators>;
-  name?: InputMaybe<StringOperators>;
-  publishedAt?: InputMaybe<DateOperators>;
-  publishedByUserId?: InputMaybe<StringOperators>;
-  runCount?: InputMaybe<NumberOperators>;
-  status?: InputMaybe<StringOperators>;
-  totalRecordsFailed?: InputMaybe<NumberOperators>;
-  totalRecordsProcessed?: InputMaybe<NumberOperators>;
-  type?: InputMaybe<StringOperators>;
-  updatedAt?: InputMaybe<DateOperators>;
-};
-
-export type DataHubJobList = PaginatedList & {
-  __typename?: 'DataHubJobList';
-  items: Array<DataHubJob>;
-  totalItems: Scalars['Int']['output'];
-};
-
-export type DataHubJobListOptions = {
-  filter?: InputMaybe<Scalars['JSON']['input']>;
-  filterOperator?: InputMaybe<LogicalOperator>;
-  skip?: InputMaybe<Scalars['Int']['input']>;
-  sort?: InputMaybe<Scalars['JSON']['input']>;
-  take?: InputMaybe<Scalars['Int']['input']>;
-};
-
-export type DataHubJobRun = Node & {
-  __typename?: 'DataHubJobRun';
-  checkpoint?: Maybe<Scalars['JSON']['output']>;
-  createdAt: Scalars['DateTime']['output'];
-  error?: Maybe<Scalars['String']['output']>;
-  errors?: Maybe<Scalars['JSON']['output']>;
-  finishedAt?: Maybe<Scalars['DateTime']['output']>;
-  id: Scalars['ID']['output'];
-  inputFileId?: Maybe<Scalars['String']['output']>;
-  inputFileName?: Maybe<Scalars['String']['output']>;
-  job: DataHubJob;
-  metrics?: Maybe<Scalars['JSON']['output']>;
-  outputFileId?: Maybe<Scalars['String']['output']>;
-  outputFileName?: Maybe<Scalars['String']['output']>;
-  progressMessage?: Maybe<Scalars['String']['output']>;
-  progressPercent: Scalars['Int']['output'];
-  startedAt?: Maybe<Scalars['DateTime']['output']>;
-  startedByUserId?: Maybe<Scalars['String']['output']>;
-  status: DataHubJobRunStatus;
-  triggeredBy?: Maybe<Scalars['String']['output']>;
-  updatedAt: Scalars['DateTime']['output'];
-};
-
-export type DataHubJobRunFilterParameter = {
-  _and?: InputMaybe<Array<DataHubJobRunFilterParameter>>;
-  _or?: InputMaybe<Array<DataHubJobRunFilterParameter>>;
-  createdAt?: InputMaybe<DateOperators>;
-  error?: InputMaybe<StringOperators>;
-  finishedAt?: InputMaybe<DateOperators>;
-  id?: InputMaybe<IdOperators>;
-  inputFileId?: InputMaybe<StringOperators>;
-  inputFileName?: InputMaybe<StringOperators>;
-  outputFileId?: InputMaybe<StringOperators>;
-  outputFileName?: InputMaybe<StringOperators>;
-  progressMessage?: InputMaybe<StringOperators>;
-  progressPercent?: InputMaybe<NumberOperators>;
-  startedAt?: InputMaybe<DateOperators>;
-  startedByUserId?: InputMaybe<StringOperators>;
-  status?: InputMaybe<StringOperators>;
-  triggeredBy?: InputMaybe<StringOperators>;
-  updatedAt?: InputMaybe<DateOperators>;
-};
-
-export type DataHubJobRunList = PaginatedList & {
-  __typename?: 'DataHubJobRunList';
-  items: Array<DataHubJobRun>;
-  totalItems: Scalars['Int']['output'];
-};
-
-export type DataHubJobRunListOptions = {
-  /** Allows the results to be filtered */
-  filter?: InputMaybe<DataHubJobRunFilterParameter>;
-  /** Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND. */
-  filterOperator?: InputMaybe<LogicalOperator>;
-  /** Skips the first n results, for use in pagination */
-  skip?: InputMaybe<Scalars['Int']['input']>;
-  /** Specifies which properties to sort the results by */
-  sort?: InputMaybe<DataHubJobRunSortParameter>;
-  /** Takes n results, for use in pagination */
-  take?: InputMaybe<Scalars['Int']['input']>;
-};
-
-export type DataHubJobRunSortParameter = {
-  createdAt?: InputMaybe<SortOrder>;
-  error?: InputMaybe<SortOrder>;
-  finishedAt?: InputMaybe<SortOrder>;
-  id?: InputMaybe<SortOrder>;
-  inputFileId?: InputMaybe<SortOrder>;
-  inputFileName?: InputMaybe<SortOrder>;
-  outputFileId?: InputMaybe<SortOrder>;
-  outputFileName?: InputMaybe<SortOrder>;
-  progressMessage?: InputMaybe<SortOrder>;
-  progressPercent?: InputMaybe<SortOrder>;
-  startedAt?: InputMaybe<SortOrder>;
-  startedByUserId?: InputMaybe<SortOrder>;
-  triggeredBy?: InputMaybe<SortOrder>;
-  updatedAt?: InputMaybe<SortOrder>;
-};
-
-export enum DataHubJobRunStatus {
-  CANCELLED = 'CANCELLED',
-  CANCEL_REQUESTED = 'CANCEL_REQUESTED',
-  COMPLETED = 'COMPLETED',
-  FAILED = 'FAILED',
-  PARTIAL = 'PARTIAL',
-  PENDING = 'PENDING',
-  RUNNING = 'RUNNING'
-}
-
-export type DataHubJobSortParameter = {
-  code?: InputMaybe<SortOrder>;
-  createdAt?: InputMaybe<SortOrder>;
-  createdByUserId?: InputMaybe<SortOrder>;
-  description?: InputMaybe<SortOrder>;
-  id?: InputMaybe<SortOrder>;
-  lastRunAt?: InputMaybe<SortOrder>;
-  name?: InputMaybe<SortOrder>;
-  publishedAt?: InputMaybe<SortOrder>;
-  publishedByUserId?: InputMaybe<SortOrder>;
-  runCount?: InputMaybe<SortOrder>;
-  totalRecordsFailed?: InputMaybe<SortOrder>;
-  totalRecordsProcessed?: InputMaybe<SortOrder>;
-  updatedAt?: InputMaybe<SortOrder>;
-};
-
-export enum DataHubJobStatus {
-  ACTIVE = 'ACTIVE',
-  ARCHIVED = 'ARCHIVED',
-  DRAFT = 'DRAFT',
-  PAUSED = 'PAUSED'
-}
-
-/** Jobs API - Simplified ETL Configuration */
-export enum DataHubJobType {
-  EXPORT = 'EXPORT',
-  IMPORT = 'IMPORT',
-  SYNC = 'SYNC'
-}
 
 /** Summary of load simulation */
 export type DataHubLoadSummary = {
@@ -2763,13 +2503,6 @@ export type DataHubLogStats = {
   warningsToday: Scalars['Int']['output'];
 };
 
-export type DataHubMappingValidation = {
-  __typename?: 'DataHubMappingValidation';
-  errors: Array<Scalars['String']['output']>;
-  valid: Scalars['Boolean']['output'];
-  warnings: Array<Scalars['String']['output']>;
-};
-
 export type DataHubOption = {
   __typename?: 'DataHubOption';
   label: Scalars['String']['output'];
@@ -2858,19 +2591,20 @@ export type DataHubPipelineListOptions = {
 export type DataHubPipelinePerformance = {
   __typename?: 'DataHubPipelinePerformance';
   avgDurationMs: Scalars['Float']['output'];
-  failureCount: Scalars['Int']['output'];
+  failedRuns: Scalars['Int']['output'];
   lastRunAt?: Maybe<Scalars['DateTime']['output']>;
   lastRunStatus?: Maybe<Scalars['String']['output']>;
   p50DurationMs: Scalars['Float']['output'];
   p95DurationMs: Scalars['Float']['output'];
   p99DurationMs: Scalars['Float']['output'];
   pipelineCode: Scalars['String']['output'];
+  pipelineId: Scalars['ID']['output'];
   pipelineName: Scalars['String']['output'];
-  runCount: Scalars['Int']['output'];
-  successCount: Scalars['Int']['output'];
   successRate: Scalars['Float']['output'];
+  successfulRuns: Scalars['Int']['output'];
   totalRecordsFailed: Scalars['Int']['output'];
   totalRecordsProcessed: Scalars['Int']['output'];
+  totalRuns: Scalars['Int']['output'];
 };
 
 /** Historical snapshot of a pipeline definition for version control */
@@ -3017,14 +2751,6 @@ export enum DataHubPipelineStatus {
   REVIEW = 'REVIEW'
 }
 
-export type DataHubPreviewField = {
-  __typename?: 'DataHubPreviewField';
-  key: Scalars['String']['output'];
-  label: Scalars['String']['output'];
-  sampleValues: Scalars['JSON']['output'];
-  type: Scalars['String']['output'];
-};
-
 /** Result from extract preview */
 export type DataHubPreviewResult = {
   __typename?: 'DataHubPreviewResult';
@@ -3135,12 +2861,6 @@ export type DataHubRegisterDestinationResult = {
   __typename?: 'DataHubRegisterDestinationResult';
   id: Scalars['String']['output'];
   success: Scalars['Boolean']['output'];
-};
-
-export type DataHubRelationInfo = {
-  __typename?: 'DataHubRelationInfo';
-  entity: Scalars['String']['output'];
-  multiple: Scalars['Boolean']['output'];
 };
 
 /** Resource usage estimate */
@@ -3685,12 +3405,6 @@ export type DataHubSettingsInput = {
   retentionDaysRuns?: InputMaybe<Scalars['Int']['input']>;
 };
 
-export type DataHubSourceFieldInput = {
-  name: Scalars['String']['input'];
-  sampleValues: Scalars['JSON']['input'];
-  type: Scalars['String']['input'];
-};
-
 /** Step analysis result */
 export type DataHubStepAnalysis = {
   __typename?: 'DataHubStepAnalysis';
@@ -3835,10 +3549,12 @@ export type DataHubTemplateCategory = {
 
 export type DataHubThroughputMetrics = {
   __typename?: 'DataHubThroughputMetrics';
-  avgBatchSize: Scalars['Float']['output'];
-  peakRecordsPerSecond: Scalars['Float']['output'];
+  peakThroughput: Scalars['Float']['output'];
+  peakThroughputAt: Scalars['DateTime']['output'];
+  recordsPerHour: Scalars['Float']['output'];
+  recordsPerMinute: Scalars['Float']['output'];
   recordsPerSecond: Scalars['Float']['output'];
-  timeSeries: Array<DataHubTimeSeries>;
+  throughputTrend: Array<DataHubTimeSeries>;
 };
 
 export type DataHubTimeSeries = {
@@ -3941,17 +3657,6 @@ export type DataHubValidationSummary = {
   input: Scalars['Int']['output'];
   passRate: Scalars['Int']['output'];
   passed: Scalars['Int']['output'];
-};
-
-export type DataHubVendureEntitySchema = {
-  __typename?: 'DataHubVendureEntitySchema';
-  description?: Maybe<Scalars['String']['output']>;
-  entity: Scalars['String']['output'];
-  exportable: Scalars['Boolean']['output'];
-  fields: Array<DataHubEntityField>;
-  importable: Scalars['Boolean']['output'];
-  label: Scalars['String']['output'];
-  lookupFields: Array<Scalars['String']['output']>;
 };
 
 export type DataHubWebhookDelivery = {
@@ -5239,7 +4944,6 @@ export type MultipleOrderError = ErrorResult & {
 
 export type Mutation = {
   __typename?: 'Mutation';
-  activateDataHubJob: DataHubJob;
   /** Add Customers to a CustomerGroup */
   addCustomersToGroup: CustomerGroup;
   addFulfillmentToOrder: AddFulfillmentToOrderResult;
@@ -5268,7 +4972,6 @@ export type Mutation = {
   /** Approve a GATE step, resuming the paused pipeline run */
   approveDataHubGate: DataHubGateActionResult;
   approveDataHubPipeline: DataHubPipeline;
-  archiveDataHubJob: DataHubJob;
   archiveDataHubPipeline: DataHubPipeline;
   /** Assign assets to channel */
   assignAssetsToChannel: Array<Asset>;
@@ -5292,7 +4995,6 @@ export type Mutation = {
   assignStockLocationsToChannel: Array<StockLocation>;
   /** Authenticates the user using a named authentication strategy */
   authenticate: AuthenticationResult;
-  cancelDataHubJobRun: DataHubJobRun;
   cancelDataHubPipelineRun: DataHubPipelineRun;
   cancelJob: Job;
   cancelOrder: CancelOrderResult;
@@ -5315,7 +5017,6 @@ export type Mutation = {
   createCustomerGroup: CustomerGroup;
   createDataHubConnection: DataHubConnection;
   createDataHubFeed: DataHubFeed;
-  createDataHubJob: DataHubJob;
   createDataHubPipeline: DataHubPipeline;
   createDataHubSecret: DataHubSecret;
   /** Creates a draft Order */
@@ -5405,7 +5106,6 @@ export type Mutation = {
   /** Deletes Customers */
   deleteCustomers: Array<DeletionResponse>;
   deleteDataHubConnection: DeletionResponse;
-  deleteDataHubJob: DeletionResponse;
   deleteDataHubPipeline: DeletionResponse;
   deleteDataHubSecret: DeletionResponse;
   /** Deletes a draft Order */
@@ -5463,8 +5163,6 @@ export type Mutation = {
   deleteZone: DeletionResponse;
   /** Delete a Zone */
   deleteZones: Array<DeletionResponse>;
-  dryRunDataHubJob: DataHubJobDryRunResult;
-  duplicateDataHubJob: DataHubJob;
   /**
    * Duplicate an existing entity using a specific EntityDuplicator.
    * Since v2.2.0.
@@ -5489,11 +5187,9 @@ export type Mutation = {
   modifyOrder: ModifyOrderResult;
   /** Move a Collection to a different parent or index */
   moveCollection: Collection;
-  pauseDataHubJob: DataHubJob;
   /** Preview extract step - runs extractor and returns sample records */
   previewDataHubExtract: DataHubPreviewResult;
   previewDataHubFeed: DataHubFeedPreview;
-  previewDataHubFile: DataHubFilePreview;
   publishDataHubPipeline: DataHubPipeline;
   refundOrder: RefundOrderResult;
   reindex: Job;
@@ -5565,12 +5261,10 @@ export type Mutation = {
   /** Simulate validate step - runs validation rules on input records */
   simulateDataHubValidate: DataHubValidateResult;
   startDataHubConsumer: Scalars['Boolean']['output'];
-  startDataHubJobRun: DataHubJobRun;
   startDataHubPipelineDryRun: DataHubDryRunResult;
   startDataHubPipelineRun: DataHubPipelineRun;
   stopDataHubConsumer: Scalars['Boolean']['output'];
   submitDataHubPipelineForReview: DataHubPipeline;
-  suggestDataHubMappings: Array<DataHubFieldSuggestion>;
   transitionFulfillmentToState: TransitionFulfillmentToStateResult;
   transitionOrderToState?: Maybe<TransitionOrderToStateResult>;
   transitionPaymentToState: TransitionPaymentToStateResult;
@@ -5601,7 +5295,6 @@ export type Mutation = {
   updateDataHubAutoMapperConfig: DataHubAutoMapperConfig;
   updateDataHubCheckpoint: DataHubCheckpoint;
   updateDataHubConnection: DataHubConnection;
-  updateDataHubJob: DataHubJob;
   updateDataHubPipeline: DataHubPipeline;
   updateDataHubSecret: DataHubSecret;
   updateDataHubSettings: DataHubSettings;
@@ -5646,12 +5339,6 @@ export type Mutation = {
   updateTaxRate: TaxRate;
   /** Update an existing Zone */
   updateZone: Zone;
-  validateDataHubMappings: DataHubMappingValidation;
-};
-
-
-export type MutationActivateDataHubJobArgs = {
-  id: Scalars['ID']['input'];
 };
 
 
@@ -5722,11 +5409,6 @@ export type MutationApproveDataHubPipelineArgs = {
 };
 
 
-export type MutationArchiveDataHubJobArgs = {
-  id: Scalars['ID']['input'];
-};
-
-
 export type MutationArchiveDataHubPipelineArgs = {
   id: Scalars['ID']['input'];
 };
@@ -5786,11 +5468,6 @@ export type MutationAssignStockLocationsToChannelArgs = {
 export type MutationAuthenticateArgs = {
   input: AuthenticationInput;
   rememberMe?: InputMaybe<Scalars['Boolean']['input']>;
-};
-
-
-export type MutationCancelDataHubJobRunArgs = {
-  id: Scalars['ID']['input'];
 };
 
 
@@ -5863,11 +5540,6 @@ export type MutationCreateDataHubConnectionArgs = {
 
 export type MutationCreateDataHubFeedArgs = {
   input: DataHubFeedInput;
-};
-
-
-export type MutationCreateDataHubJobArgs = {
-  input: CreateDataHubJobInput;
 };
 
 
@@ -6124,11 +5796,6 @@ export type MutationDeleteDataHubConnectionArgs = {
 };
 
 
-export type MutationDeleteDataHubJobArgs = {
-  id: Scalars['ID']['input'];
-};
-
-
 export type MutationDeleteDataHubPipelineArgs = {
   id: Scalars['ID']['input'];
 };
@@ -6294,18 +5961,6 @@ export type MutationDeleteZonesArgs = {
 };
 
 
-export type MutationDryRunDataHubJobArgs = {
-  jobId: Scalars['ID']['input'];
-  sampleData: Scalars['JSON']['input'];
-};
-
-
-export type MutationDuplicateDataHubJobArgs = {
-  id: Scalars['ID']['input'];
-  newCode: Scalars['String']['input'];
-};
-
-
 export type MutationDuplicateEntityArgs = {
   input: DuplicateEntityInput;
 };
@@ -6349,11 +6004,6 @@ export type MutationMoveCollectionArgs = {
 };
 
 
-export type MutationPauseDataHubJobArgs = {
-  id: Scalars['ID']['input'];
-};
-
-
 export type MutationPreviewDataHubExtractArgs = {
   limit?: InputMaybe<Scalars['Int']['input']>;
   step: Scalars['JSON']['input'];
@@ -6363,12 +6013,6 @@ export type MutationPreviewDataHubExtractArgs = {
 export type MutationPreviewDataHubFeedArgs = {
   feedCode: Scalars['String']['input'];
   limit?: InputMaybe<Scalars['Int']['input']>;
-};
-
-
-export type MutationPreviewDataHubFileArgs = {
-  input: DataHubFileUploadInput;
-  targetEntity?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -6582,13 +6226,6 @@ export type MutationStartDataHubConsumerArgs = {
 };
 
 
-export type MutationStartDataHubJobRunArgs = {
-  inputFileId?: InputMaybe<Scalars['String']['input']>;
-  inputFileName?: InputMaybe<Scalars['String']['input']>;
-  jobId: Scalars['ID']['input'];
-};
-
-
 export type MutationStartDataHubPipelineDryRunArgs = {
   pipelineId: Scalars['ID']['input'];
 };
@@ -6606,12 +6243,6 @@ export type MutationStopDataHubConsumerArgs = {
 
 export type MutationSubmitDataHubPipelineForReviewArgs = {
   id: Scalars['ID']['input'];
-};
-
-
-export type MutationSuggestDataHubMappingsArgs = {
-  sourceFields: Array<DataHubSourceFieldInput>;
-  targetEntity: Scalars['String']['input'];
 };
 
 
@@ -6706,11 +6337,6 @@ export type MutationUpdateDataHubCheckpointArgs = {
 
 export type MutationUpdateDataHubConnectionArgs = {
   input: UpdateDataHubConnectionInput;
-};
-
-
-export type MutationUpdateDataHubJobArgs = {
-  input: UpdateDataHubJobInput;
 };
 
 
@@ -6841,12 +6467,6 @@ export type MutationUpdateTaxRateArgs = {
 
 export type MutationUpdateZoneArgs = {
   input: UpdateZoneInput;
-};
-
-
-export type MutationValidateDataHubMappingsArgs = {
-  mappings: Scalars['JSON']['input'];
-  targetEntity: Scalars['String']['input'];
 };
 
 export type NativeAuthInput = {
@@ -8198,11 +7818,6 @@ export type Query = {
   dataHubImportTemplateCategories: Array<DataHubTemplateCategory>;
   /** List all import templates (built-in + custom) */
   dataHubImportTemplates: Array<DataHubImportTemplate>;
-  dataHubJob?: Maybe<DataHubJob>;
-  dataHubJobByCode?: Maybe<DataHubJob>;
-  dataHubJobRun?: Maybe<DataHubJobRun>;
-  dataHubJobRuns: DataHubJobRunList;
-  dataHubJobs: DataHubJobList;
   /** Preview load operations for a pipeline */
   dataHubLoadPreview: Array<DataHubSandboxLoadPreview>;
   /**
@@ -8269,8 +7884,6 @@ export type Query = {
   dataHubToCanonicalFormat: DataHubFormatConversionResult;
   /** Convert canonical (step-based) definition to visual (nodes/edges) format */
   dataHubToVisualFormat: DataHubFormatConversionResult;
-  dataHubVendureSchema?: Maybe<DataHubVendureEntitySchema>;
-  dataHubVendureSchemas: Array<DataHubVendureEntitySchema>;
   dataHubWebhookDeliveries: Array<DataHubWebhookDelivery>;
   dataHubWebhookDelivery?: Maybe<DataHubWebhookDelivery>;
   dataHubWebhookStats: DataHubWebhookStats;
@@ -8456,9 +8069,8 @@ export type QueryDataHubConnectionsArgs = {
 
 
 export type QueryDataHubErrorAnalyticsArgs = {
-  fromDate?: InputMaybe<Scalars['DateTime']['input']>;
-  pipelineCode?: InputMaybe<Scalars['String']['input']>;
-  toDate?: InputMaybe<Scalars['DateTime']['input']>;
+  pipelineId?: InputMaybe<Scalars['ID']['input']>;
+  timeRange?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -8490,32 +8102,6 @@ export type QueryDataHubHasUnpublishedChangesArgs = {
 export type QueryDataHubImpactAnalysisArgs = {
   options?: InputMaybe<DataHubImpactAnalysisOptions>;
   pipelineId: Scalars['ID']['input'];
-};
-
-
-export type QueryDataHubJobArgs = {
-  id: Scalars['ID']['input'];
-};
-
-
-export type QueryDataHubJobByCodeArgs = {
-  code: Scalars['String']['input'];
-};
-
-
-export type QueryDataHubJobRunArgs = {
-  id: Scalars['ID']['input'];
-};
-
-
-export type QueryDataHubJobRunsArgs = {
-  jobId?: InputMaybe<Scalars['ID']['input']>;
-  options?: InputMaybe<DataHubJobRunListOptions>;
-};
-
-
-export type QueryDataHubJobsArgs = {
-  options?: InputMaybe<DataHubJobListOptions>;
 };
 
 
@@ -8561,10 +8147,9 @@ export type QueryDataHubPipelineHooksArgs = {
 
 
 export type QueryDataHubPipelinePerformanceArgs = {
-  fromDate?: InputMaybe<Scalars['DateTime']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
-  pipelineCode?: InputMaybe<Scalars['String']['input']>;
-  toDate?: InputMaybe<Scalars['DateTime']['input']>;
+  pipelineId?: InputMaybe<Scalars['ID']['input']>;
+  timeRange?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -8668,9 +8253,8 @@ export type QueryDataHubStepAnalysisArgs = {
 
 
 export type QueryDataHubThroughputMetricsArgs = {
-  intervalMinutes?: InputMaybe<Scalars['Int']['input']>;
-  periods?: InputMaybe<Scalars['Int']['input']>;
-  pipelineCode?: InputMaybe<Scalars['String']['input']>;
+  pipelineId?: InputMaybe<Scalars['ID']['input']>;
+  timeRange?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -8681,11 +8265,6 @@ export type QueryDataHubToCanonicalFormatArgs = {
 
 export type QueryDataHubToVisualFormatArgs = {
   definition: Scalars['JSON']['input'];
-};
-
-
-export type QueryDataHubVendureSchemaArgs = {
-  entity: Scalars['String']['input'];
 };
 
 
@@ -10047,18 +9626,6 @@ export type UpdateDataHubConnectionInput = {
   config?: InputMaybe<Scalars['JSON']['input']>;
   id: Scalars['ID']['input'];
   type?: InputMaybe<Scalars['String']['input']>;
-};
-
-export type UpdateDataHubJobInput = {
-  code?: InputMaybe<Scalars['String']['input']>;
-  definition?: InputMaybe<Scalars['JSON']['input']>;
-  description?: InputMaybe<Scalars['String']['input']>;
-  enabled?: InputMaybe<Scalars['Boolean']['input']>;
-  id: Scalars['ID']['input'];
-  name?: InputMaybe<Scalars['String']['input']>;
-  status?: InputMaybe<DataHubJobStatus>;
-  tags?: InputMaybe<Array<Scalars['String']['input']>>;
-  type?: InputMaybe<DataHubJobType>;
 };
 
 /** Input for updating an existing pipeline */

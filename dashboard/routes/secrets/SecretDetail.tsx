@@ -208,7 +208,7 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                     <FormFieldWrapper
                         name="hasValue"
                         control={form.control}
-                        render={({ field }) => <input type="hidden" {...field} />}
+                        render={({ field }) => <input type="hidden" {...field} value={field.value ? 'true' : 'false'} />}
                     />
 
                     <div className="mt-6">

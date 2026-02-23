@@ -17,4 +17,5 @@ export const TABLE_NAMES = {
     CHECKPOINT: `${TABLE_PREFIX}checkpoint`,
     RECORD_ERROR: `${TABLE_PREFIX}record_error`,
     RECORD_RETRY_AUDIT: `${TABLE_PREFIX}record_retry_audit`,
+
 } as const;

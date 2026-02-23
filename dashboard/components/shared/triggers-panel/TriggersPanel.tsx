@@ -4,7 +4,7 @@ import { Button, Switch } from '@vendure/dashboard';
 import { Plus, Trash2 } from 'lucide-react';
 import type { PipelineTrigger, TriggersPanelProps } from '../../../types';
 import type { TriggerType } from '../../../constants';
-import { TRIGGER_TYPES } from '../../../constants';
+import { TRIGGER_TYPE } from '../../../constants';
 import { TriggerForm } from '../trigger-config';
 import { EmptyState } from '../feedback';
 import { useStableKeys, useTriggerTypes, useTriggerIconResolver } from '../../../hooks';
@@ -162,10 +162,10 @@ export function TriggersPanel(props: TriggersPanelProps) {
     const { configList } = useTriggerTypes();
     const isOnChangeMode = typeof onChange === 'function';
 
-    const handleAddTrigger = useCallback((type: TriggerType = TRIGGER_TYPES.MANUAL) => {
+    const handleAddTrigger = useCallback((type: TriggerType = TRIGGER_TYPE.MANUAL) => {
         if (isOnChangeMode) {
             const newTrigger: PipelineTrigger = { type, enabled: true };
-            if (type === TRIGGER_TYPES.SCHEDULE) {
+            if (type === TRIGGER_TYPE.SCHEDULE) {
                 newTrigger.cron = '0 0 * * *';
             }
             onChange!([...triggers, newTrigger]);
