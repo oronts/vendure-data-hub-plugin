@@ -6,86 +6,25 @@ import {
     ExtractorValidationResult,
     ExtractorResult,
     RecordEnvelope,
-    StepConfigSchema,
     ExtractorCategory,
 } from '../../types/index';
 import { WebhookExtractorConfig } from './types';
 import { getNestedValue } from '../../operators/helpers';
 import { validateSignature } from './helpers';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
+import { WEBHOOK_EXTRACTOR_SCHEMA } from './schema';
 
 @Injectable()
 export class WebhookExtractor implements BatchDataExtractor<WebhookExtractorConfig> {
     readonly type = 'EXTRACTOR' as const;
     readonly code = 'webhook';
     readonly name = 'Webhook Extractor';
-    readonly description = 'Process incoming webhook payloads';
     readonly category: ExtractorCategory = 'WEBHOOK';
-    readonly version = '1.0.0';
-    readonly icon = 'webhook';
     readonly supportsPagination = false;
     readonly supportsIncremental = false;
     readonly supportsCancellation = false;
 
-    readonly schema: StepConfigSchema = {
-        fields: [
-            {
-                key: 'dataPath',
-                label: 'Data Path',
-                description: 'JSON path to records array in webhook payload',
-                type: 'string',
-                placeholder: 'data.records',
-            },
-            {
-                key: 'idempotencyKeyField',
-                label: 'Idempotency Key Field',
-                description: 'Field to use for deduplication',
-                type: 'string',
-                placeholder: 'id',
-            },
-            {
-                key: 'validateSignature',
-                label: 'Validate Signature',
-                description: 'Validate webhook signature',
-                type: 'boolean',
-                defaultValue: false,
-            },
-            {
-                key: 'signatureSecretCode',
-                label: 'Signature Secret',
-                description: 'Secret code for signature validation',
-                type: 'secret',
-                dependsOn: { field: 'validateSignature', value: true },
-            },
-            {
-                key: 'signatureHeader',
-                label: 'Signature Header',
-                description: 'Header containing signature',
-                type: 'string',
-                defaultValue: 'X-Hub-Signature-256',
-                dependsOn: { field: 'validateSignature', value: true },
-            },
-            {
-                key: 'signatureAlgorithm',
-                label: 'Signature Algorithm',
-                type: 'select',
-                options: [
-                    { value: 'sha256', label: 'SHA-256' },
-                    { value: 'sha1', label: 'SHA-1' },
-                    { value: 'md5', label: 'MD5' },
-                ],
-                defaultValue: 'sha256',
-                dependsOn: { field: 'validateSignature', value: true },
-            },
-            {
-                key: 'wrapSingleRecord',
-                label: 'Wrap Single Record',
-                description: 'Wrap single object in array',
-                type: 'boolean',
-                defaultValue: true,
-            },
-        ],
-    };
+    readonly schema = WEBHOOK_EXTRACTOR_SCHEMA;
 
     async extractAll(
         context: ExtractorContext,
@@ -175,7 +114,7 @@ export class WebhookExtractor implements BatchDataExtractor<WebhookExtractorConf
                 },
             };
         } catch (error) {
-            context.logger.error('Webhook processing failed', error instanceof Error ? error : undefined, { error: getErrorMessage(error) });
+            context.logger.error('Webhook processing failed', toErrorOrUndefined(error), { error: getErrorMessage(error) });
             throw error;
         }
     }

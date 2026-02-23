@@ -118,20 +118,16 @@ Step-type-specific execution logic:
 
 ### Adapter Registry
 
-The registry manages all adapters:
+The registry manages all adapters via `registerRuntime()`:
 
 ```typescript
-// Extractors
-registry.registerExtractor('httpApi', HttpApiExtractor);
-registry.registerExtractor('database', DatabaseExtractor);
-
-// Operators
-registry.registerOperator('rename', renameOperator);
-registry.registerOperator('set', setOperator);
-
-// Loaders
-registry.registerLoader('product', ProductLoader);
-registry.registerLoader('customer', CustomerLoader);
+// All adapter types use the same registration method
+registry.registerRuntime(httpApiExtractor);
+registry.registerRuntime(databaseExtractor);
+registry.registerRuntime(renameOperator);
+registry.registerRuntime(setOperator);
+registry.registerRuntime(productLoader);
+registry.registerRuntime(customerLoader);
 ```
 
 ## Execution Flow
@@ -250,6 +246,7 @@ Implement the `ExtractorAdapter` interface:
 
 ```typescript
 interface ExtractorAdapter {
+    readonly type: 'EXTRACTOR';
     code: string;
     name: string;
     extract(context: ExtractContext, config: JsonObject): AsyncGenerator<RecordEnvelope>;
@@ -261,10 +258,10 @@ interface ExtractorAdapter {
 Create operator definitions:
 
 ```typescript
-interface OperatorDefinition {
-    code: string;
-    name: string;
-    execute(ctx: RequestContext, record: JsonObject, args: JsonObject): JsonObject | null;
+interface SingleRecordOperator<TConfig = JsonObject> {
+    readonly type: 'OPERATOR';
+    readonly pure: boolean;
+    applyOne(record: JsonObject, config: TConfig, helpers: AdapterOperatorHelpers): JsonObject | null;
 }
 ```
 
@@ -273,10 +270,9 @@ interface OperatorDefinition {
 Implement entity loading:
 
 ```typescript
-interface LoaderAdapter {
-    code: string;
-    entityType: string;
-    load(context: LoadContext, config: LoadConfig, records: readonly JsonObject[]): Promise<LoadResult>;
+interface LoaderAdapter<TConfig = JsonObject> {
+    readonly type: 'LOADER';
+    load(context: LoadContext, config: TConfig, records: readonly JsonObject[]): Promise<LoadResult>;
 }
 ```
 
@@ -553,12 +549,15 @@ All sinks feature:
 ```
 src/plugins/data-hub/
 ├── src/                          # Backend source
-│   ├── adapters/                 # Adapter registry
 │   ├── api/                      # GraphQL resolvers & schema
+│   ├── bootstrap/                # Plugin initialization
 │   ├── constants/                # Configuration constants
+│   ├── decorators/               # Custom decorators
+│   ├── enrichers/                # Record enrichers
 │   ├── entities/                 # TypeORM entities
 │   ├── extractors/               # Data extractors
 │   ├── feeds/                    # Feed generators
+│   ├── gql/                      # Generated GraphQL types
 │   ├── jobs/                     # Job queue handlers
 │   ├── loaders/                  # Entity loaders
 │   ├── mappers/                  # Field mappers
@@ -567,20 +566,26 @@ src/plugins/data-hub/
 │   ├── runtime/                  # Execution engine
 │   ├── sdk/                      # Public SDK & DSL
 │   ├── services/                 # Business logic
+│   ├── templates/                # Import/export templates
 │   ├── transforms/               # Transform execution
 │   ├── types/                    # TypeScript types
 │   ├── utils/                    # Utilities
-│   └── validation/               # Definition validators
+│   ├── validation/               # Pipeline definition validators
+│   └── vendure-schemas/          # Vendure entity schema definitions
+├── connectors/                   # External system connectors (e.g. Pimcore)
 ├── dashboard/                    # React Admin UI
 │   ├── components/               # UI components
 │   ├── constants/                # UI constants
 │   ├── gql/                      # GraphQL queries
 │   ├── hooks/                    # React hooks
 │   ├── routes/                   # Route components
+│   ├── types/                    # UI type definitions
 │   └── utils/                    # UI utilities
-├── shared/                       # Shared code
+├── shared/                       # Shared code (backend + dashboard)
+│   ├── constants/                # Shared constants
 │   ├── types/                    # Shared types
 │   └── utils/                    # Shared utilities
+├── dev-server/                   # Development server & examples
 ├── docs/                         # Documentation
 └── e2e/                          # End-to-end tests
 ```

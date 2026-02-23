@@ -97,7 +97,6 @@ export const LOGGER_CONTEXTS = {
     CONFIG_SYNC: 'ConfigSync',
     JOB_PROCESSOR: 'JobProcessor',
     FTP_HANDLER: 'FtpHandler',
-    DELIVERY_UTILS: 'DeliveryUtils',
     EMAIL_HANDLER: 'EmailHandler',
     RABBITMQ_ADAPTER: 'RabbitMQAdapter',
     ERROR_RESOLVER: 'ErrorResolver',

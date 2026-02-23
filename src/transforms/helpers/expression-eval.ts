@@ -31,9 +31,6 @@ const EXPRESSION_PATTERNS = {
     NUMERIC: /^-?\d+(\.\d+)?$/,
 } as const;
 
-// UTILITY FUNCTIONS
-// Note: getNestedValue is imported from utils/object-path.utils.ts (canonical implementation)
-
 export function parseConditionValue(str: string): JsonValue {
     // Handle null/undefined keywords
     if (str === 'null' || str === 'undefined') return null;

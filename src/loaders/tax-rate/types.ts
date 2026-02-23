@@ -38,6 +38,7 @@ export const TAX_RATE_LOADER_METADATA = {
     entityType: VendureEntityType.TAX_RATE,
     name: 'Tax Rate Loader',
     description: 'Imports tax rates with tax category and zone resolution',
+    adapterCode: 'taxRateUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['name', 'id'],
     requiredFields: ['name', 'value', 'taxCategoryCode', 'zoneCode'],

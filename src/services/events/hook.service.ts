@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ID, RequestContext } from '@vendure/core';
 import { createContext, Script } from 'vm';
 import {
@@ -12,17 +12,29 @@ import {
     ScriptFunction,
     HookContext,
     LogHookAction,
+    WebhookHookAction,
+    DataHubPluginOptions,
+    LogLevel,
 } from '../../types/index';
 import { DomainEventsService } from './domain-events.service';
 import { ModuleRef } from '@nestjs/core';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { WebhookRetryService, WebhookConfig } from '../webhooks/webhook-retry.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK, TRUNCATION, CIRCUIT_BREAKER } from '../../constants/index';
+import { DATAHUB_PLUGIN_OPTIONS, LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK, TRUNCATION, CIRCUIT_BREAKER } from '../../constants/index';
 import { HookActionType } from '../../constants/enums';
 import { validateUserCode } from '../../utils/code-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { assertUrlSafe, validateUrlSafety } from '../../utils/url-security.utils';
+
+/** Context passed to action handlers during hook execution */
+interface ActionHandlerContext {
+    ctx: RequestContext;
+    stage: HookStageValue;
+    payload?: JsonObject | JsonObject[];
+    record?: JsonObject;
+    runId?: ID;
+}
 
 @Injectable()
 export class HookService implements OnModuleInit, OnModuleDestroy {
@@ -30,10 +42,21 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
     private webhookRetryService: WebhookRetryService | null = null;
     private registeredWebhooks = new Set<string>();
     private registeredScripts = new Map<string, ScriptFunction>();
+    /** Cache of compiled vm.Script instances keyed by wrapped code string */
+    private scriptCache = new Map<string, Script>();
+
+    /** Registry mapping hook action types to their handler functions */
+    private readonly actionHandlers = new Map<string, (action: HookAction, handlerCtx: ActionHandlerContext) => Promise<void>>([
+        [HookActionType.WEBHOOK, (action, handlerCtx) => this.handleWebhook(action as WebhookHookAction, handlerCtx)],
+        [HookActionType.EMIT, (action, handlerCtx) => this.handleEmit(action, handlerCtx)],
+        [HookActionType.TRIGGER_PIPELINE, (action, handlerCtx) => this.handleTriggerPipeline(action, handlerCtx)],
+        [HookActionType.LOG, async (action, handlerCtx) => this.handleLog(action as LogHookAction, handlerCtx)],
+    ]);
 
     constructor(
         private moduleRef: ModuleRef,
         private domainEvents: DomainEventsService,
+        @Inject(DATAHUB_PLUGIN_OPTIONS) private options: DataHubPluginOptions,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.HOOK_SERVICE);
@@ -67,11 +90,20 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         } catch {
             this.logger.debug('WebhookRetryService not available, using simple fetch for webhooks');
         }
+
+        // Register scripts from plugin options
+        if (this.options.scripts) {
+            for (const [name, fn] of Object.entries(this.options.scripts)) {
+                this.registerScript(name, fn);
+            }
+            this.logger.info(`Registered ${Object.keys(this.options.scripts).length} script(s) from plugin options`);
+        }
     }
 
     onModuleDestroy() {
         this.registeredWebhooks.clear();
         this.registeredScripts.clear();
+        this.scriptCache.clear();
         this.webhookRetryService = null;
     }
 
@@ -84,53 +116,13 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         runId?: ID,
     ): Promise<void> {
         const actions = (def.hooks?.[stage] ?? []) as HookAction[];
+        const handlerCtx: ActionHandlerContext = { ctx, stage, payload, record, runId };
         for (const action of actions) {
             try {
-                switch (action.type) {
-                    case HookActionType.WEBHOOK:
-                        await this.callWebhook(action, { stage, payload: payload ?? null, record: record ?? null, runId: runId?.toString() ?? null });
-                        break;
-                    case HookActionType.EMIT:
-                        this.domainEvents.publish(action.event, { stage, payload, record, runId });
-                        break;
-                    case HookActionType.TRIGGER_PIPELINE: {
-                        try {
-                            const pipelineService = this.moduleRef.get(PipelineService, { strict: false });
-                            if (pipelineService) {
-                                await pipelineService.startRunByCode(ctx, action.pipelineCode, { seedRecords: Array.isArray(payload) ? payload : (record ? [record] : []) });
-                            }
-                        } catch (error) {
-                            this.logger.warn('Failed to trigger pipeline from hook', {
-                                stage,
-                                pipelineCode: action.pipelineCode,
-                                runId,
-                                error: getErrorMessage(error),
-                            });
-                        }
-                        break;
-                    }
-                    case HookActionType.LOG: {
-                        const logAction = action as LogHookAction;
-                        const level = logAction.level ?? 'INFO';
-                        const message = logAction.message ?? `Hook triggered: ${stage}`;
-                        const logData = { stage, runId, payload: payload ?? record };
-                        switch (level) {
-                            case 'DEBUG':
-                                this.logger.debug(message, logData);
-                                break;
-                            case 'INFO':
-                                this.logger.info(message, logData);
-                                break;
-                            case 'WARN':
-                                this.logger.warn(message, logData);
-                                break;
-                            case 'ERROR':
-                                this.logger.error(message, undefined, logData);
-                                break;
-                        }
-                        break;
-                    }
-                    // INTERCEPTOR and SCRIPT are handled by runInterceptors(), not here
+                const handler = this.actionHandlers.get(action.type);
+                // INTERCEPTOR and SCRIPT are handled by runInterceptors(), not here
+                if (handler) {
+                    await handler(action, handlerCtx);
                 }
             } catch (error) {
                 // Hooks are best-effort; log but don't block the pipeline
@@ -282,7 +274,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
                 warn: (...args: unknown[]) => this.logger.warn('Interceptor console.warn', { consoleArgs: args }),
                 error: (...args: unknown[]) => this.logger.warn('Interceptor console.error', { consoleArgs: args }),
             }),
-            // Provide records and context in scope for interceptor code
+            // Intentional: creates new object identity for VM/sandbox isolation (structuredClone not available in VM context)
             records: JSON.parse(JSON.stringify(records)),
             context: JSON.parse(JSON.stringify(context)),
         };
@@ -296,10 +288,20 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
             })();
         `;
 
-        // Compile and execute with vm.Script timeout (kills CPU-bound loops)
-        const script = new Script(wrappedCode, {
-            filename: 'hook-interceptor.js',
-        });
+        // Compile (or retrieve from cache) and execute with vm.Script timeout (kills CPU-bound loops)
+        let script = this.scriptCache.get(wrappedCode);
+        if (!script) {
+            this.logger.debug('Script cache miss, compiling new script', { cacheSize: this.scriptCache.size });
+            if (this.scriptCache.size >= HOOK.MAX_SCRIPT_CACHE) {
+                // FIFO eviction: removes oldest inserted entry (not LRU)
+                const firstKey = this.scriptCache.keys().next().value!;
+                this.scriptCache.delete(firstKey);
+            }
+            script = new Script(wrappedCode, { filename: 'hook-interceptor.js' });
+            this.scriptCache.set(wrappedCode, script);
+        } else {
+            this.logger.debug('Script cache hit', { cacheSize: this.scriptCache.size });
+        }
 
         // runInContext with timeout truly terminates CPU-bound code
         const result = await script.runInContext(safeContext, {
@@ -348,6 +350,69 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
+    // ── Action handler methods (dispatched from actionHandlers registry) ──
+
+    private async handleWebhook(action: WebhookHookAction, handlerCtx: ActionHandlerContext): Promise<void> {
+        await this.callWebhook(action, {
+            stage: handlerCtx.stage,
+            payload: handlerCtx.payload ?? null,
+            record: handlerCtx.record ?? null,
+            runId: handlerCtx.runId?.toString() ?? null,
+        });
+    }
+
+    private async handleEmit(action: HookAction, handlerCtx: ActionHandlerContext): Promise<void> {
+        // HookAction with type EMIT has an `event` property
+        const emitAction = action as HookAction & { event: string };
+        this.domainEvents.publish(emitAction.event, {
+            stage: handlerCtx.stage,
+            payload: handlerCtx.payload,
+            record: handlerCtx.record,
+            runId: handlerCtx.runId,
+        });
+    }
+
+    private async handleTriggerPipeline(action: HookAction, handlerCtx: ActionHandlerContext): Promise<void> {
+        const triggerAction = action as HookAction & { pipelineCode: string };
+        try {
+            const pipelineService = this.moduleRef.get(PipelineService, { strict: false });
+            if (pipelineService) {
+                const seedRecords = Array.isArray(handlerCtx.payload)
+                    ? handlerCtx.payload
+                    : (handlerCtx.record ? [handlerCtx.record] : []);
+                await pipelineService.startRunByCode(handlerCtx.ctx, triggerAction.pipelineCode, { seedRecords });
+            }
+        } catch (error) {
+            this.logger.warn('Failed to trigger pipeline from hook', {
+                stage: handlerCtx.stage,
+                pipelineCode: triggerAction.pipelineCode,
+                runId: handlerCtx.runId,
+                error: getErrorMessage(error),
+            });
+        }
+    }
+
+    private static readonly LOG_METHODS: Record<LogLevel, 'debug' | 'info' | 'warn' | 'error'> = {
+        DEBUG: 'debug',
+        INFO: 'info',
+        WARN: 'warn',
+        ERROR: 'error',
+    };
+
+    private handleLog(action: LogHookAction, handlerCtx: ActionHandlerContext): void {
+        const level = action.level ?? 'INFO';
+        const message = action.message ?? `Hook triggered: ${handlerCtx.stage}`;
+        const logData = { stage: handlerCtx.stage, runId: handlerCtx.runId, payload: handlerCtx.payload ?? handlerCtx.record };
+        const method = HookService.LOG_METHODS[level] ?? HookService.LOG_METHODS.INFO;
+        if (method === 'error') {
+            this.logger.error(message, undefined, logData);
+        } else {
+            this.logger[method](message, logData);
+        }
+    }
+
+    // ── Webhook delivery ──
+
     /**
      * Call webhook with retry support if WebhookRetryService is available
      */
@@ -355,7 +420,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         // Type guard to ensure this is a webhook action
         if (action.type !== HookActionType.WEBHOOK) return;
 
-        const webhookAction = action as import('../../types').WebhookHookAction;
+        const webhookAction = action as WebhookHookAction;
         const url = webhookAction.url;
         const headers = webhookAction.headers;
 
@@ -415,7 +480,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
     /**
      * Generate a consistent webhook ID for registration
      */
-    private getWebhookId(url: string, _action: import('../../types').WebhookHookAction): string {
+    private getWebhookId(url: string, _action: WebhookHookAction): string {
         const hash = Buffer.from(url).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, TRUNCATION.WEBHOOK_ID_HASH_LENGTH);
         return `hook_${hash}`;
     }

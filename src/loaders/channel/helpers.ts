@@ -1,5 +1,5 @@
-import * as crypto from 'crypto';
 import { ID, RequestContext, ZoneService, CurrencyCode, LanguageCode } from '@vendure/core';
+import { randomHexSlice } from '../../utils/id-generation.utils';
 
 export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
 
@@ -93,7 +93,6 @@ export function parseLanguageCodes(codes: string[]): LanguageCode[] {
  * Generate a unique channel token
  */
 export function generateChannelToken(code: string): string {
-    const randomPart = crypto.randomUUID().replace(/-/g, '').substring(0, 8);
-    return `${code.toLowerCase().replace(/[^a-z0-9]/g, '')}_${randomPart}`;
+    return `${code.toLowerCase().replace(/[^a-z0-9]/g, '')}_${randomHexSlice(8)}`;
 }
 

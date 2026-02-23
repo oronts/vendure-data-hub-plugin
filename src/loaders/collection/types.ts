@@ -43,6 +43,7 @@ export const COLLECTION_LOADER_METADATA = {
     entityType: VendureEntityType.COLLECTION,
     name: 'Collection Loader',
     description: 'Imports collections/categories with hierarchical structure support',
+    adapterCode: 'collectionUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['slug', 'id', 'name', 'customFields.externalId'],
     requiredFields: ['name'],

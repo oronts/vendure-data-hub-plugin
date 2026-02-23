@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import { JsonObject } from '../../types/index';
-import { getErrorMessage } from '../../utils/error.utils';
-import { PAGINATION } from '../../constants/index';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
+import { PAGINATION, TRANSFORM_LIMITS } from '../../constants/index';
 import {
     DataExtractor,
     ExtractorContext,
@@ -16,210 +16,25 @@ import {
 import { FileParserService, ParseOptions } from '../../parsers/file-parser.service';
 import { FileExtractorConfig, FILE_EXTRACTOR_DEFAULTS } from './types';
 import { getFiles, resolvePath } from './helpers';
-import { SortOrder, FileFormat } from '../../constants/enums';
+import { FileFormat } from '../../constants/enums';
+import { FILE_FORMAT_METADATA } from '../../constants/adapter-schema-options';
+import { FILE_EXTRACTOR_SCHEMA } from './schema';
+
+const MAX_SAMPLE_FILES = TRANSFORM_LIMITS.MAX_PREVIEW_FILES;
 
 @Injectable()
 export class FileExtractor implements DataExtractor<FileExtractorConfig> {
     readonly type = 'EXTRACTOR' as const;
     readonly code = 'file';
     readonly name = 'File Extractor';
-    readonly description = 'Extract data from local files (CSV, JSON, XML, Excel)';
     readonly category: ExtractorCategory = 'FILE_SYSTEM';
-    readonly version = '1.0.0';
-    readonly icon = 'file';
     readonly supportsPagination = false;
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
 
     constructor(private readonly fileParser: FileParserService) {}
 
-    readonly schema: StepConfigSchema = {
-        groups: [
-            { id: 'source', label: 'Source', description: 'File source configuration' },
-            { id: 'format', label: 'Format', description: 'File format options' },
-            { id: 'csv', label: 'CSV Options', description: 'CSV-specific settings' },
-            { id: 'json', label: 'JSON Options', description: 'JSON-specific settings' },
-            { id: 'xml', label: 'XML Options', description: 'XML-specific settings' },
-            { id: 'xlsx', label: 'Excel Options', description: 'Excel-specific settings' },
-            { id: 'advanced', label: 'Advanced', description: 'Advanced options' },
-        ],
-        fields: [
-            {
-                key: 'path',
-                label: 'File Path',
-                description: 'File path or glob pattern (e.g., /data/*.csv)',
-                type: 'string',
-                required: true,
-                placeholder: '/data/imports/*.csv',
-                group: 'source',
-            },
-            {
-                key: 'baseDir',
-                label: 'Base Directory',
-                description: 'Base directory for relative paths',
-                type: 'string',
-                placeholder: '/var/data',
-                group: 'source',
-            },
-            {
-                key: 'format',
-                label: 'File Format',
-                description: 'File format (auto-detected if not specified)',
-                type: 'select',
-                options: [
-                    { value: '', label: 'Auto-detect' },
-                    { value: FileFormat.CSV, label: 'CSV' },
-                    { value: FileFormat.JSON, label: 'JSON' },
-                    { value: FileFormat.XML, label: 'XML' },
-                    { value: FileFormat.XLSX, label: 'Excel (XLSX)' },
-                ],
-                group: 'format',
-            },
-            // CSV Options
-            {
-                key: 'csv.delimiter',
-                label: 'Delimiter',
-                type: 'select',
-                options: [
-                    { value: ',', label: 'Comma (,)' },
-                    { value: ';', label: 'Semicolon (;)' },
-                    { value: '\t', label: 'Tab' },
-                    { value: '|', label: 'Pipe (|)' },
-                ],
-                defaultValue: ',',
-                group: 'csv',
-                dependsOn: { field: 'format', value: FileFormat.CSV },
-            },
-            {
-                key: 'csv.header',
-                label: 'Has Header Row',
-                type: 'boolean',
-                defaultValue: true,
-                group: 'csv',
-                dependsOn: { field: 'format', value: FileFormat.CSV },
-            },
-            {
-                key: 'csv.skipEmptyLines',
-                label: 'Skip Empty Lines',
-                type: 'boolean',
-                defaultValue: true,
-                group: 'csv',
-                dependsOn: { field: 'format', value: FileFormat.CSV },
-            },
-            // JSON Options
-            {
-                key: 'json.path',
-                label: 'Data Path',
-                description: 'JSON path to records array (e.g., data.items)',
-                type: 'string',
-                placeholder: 'data.items',
-                group: 'json',
-                dependsOn: { field: 'format', value: FileFormat.JSON },
-            },
-            // XML Options
-            {
-                key: 'xml.recordPath',
-                label: 'Record Path',
-                description: 'XPath-like path to record elements',
-                type: 'string',
-                placeholder: '//products/product',
-                group: 'xml',
-                dependsOn: { field: 'format', value: FileFormat.XML },
-            },
-            {
-                key: 'xml.attributePrefix',
-                label: 'Attribute Prefix',
-                description: 'Prefix for XML attributes',
-                type: 'string',
-                defaultValue: '@',
-                group: 'xml',
-                dependsOn: { field: 'format', value: FileFormat.XML },
-            },
-            // Excel Options
-            {
-                key: 'xlsx.sheet',
-                label: 'Sheet Name/Index',
-                description: 'Sheet name or zero-based index',
-                type: 'string',
-                placeholder: 'Sheet1 or 0',
-                group: 'xlsx',
-                dependsOn: { field: 'format', value: FileFormat.XLSX },
-            },
-            {
-                key: 'xlsx.range',
-                label: 'Cell Range',
-                description: 'Cell range to read (e.g., A1:Z100)',
-                type: 'string',
-                placeholder: 'A1:Z100',
-                group: 'xlsx',
-                dependsOn: { field: 'format', value: FileFormat.XLSX },
-            },
-            {
-                key: 'xlsx.header',
-                label: 'Has Header Row',
-                type: 'boolean',
-                defaultValue: true,
-                group: 'xlsx',
-                dependsOn: { field: 'format', value: FileFormat.XLSX },
-            },
-            // Advanced Options
-            {
-                key: 'modifiedAfter',
-                label: 'Modified After',
-                description: 'Only process files modified after this date (ISO format)',
-                type: 'string',
-                placeholder: '2024-01-01T00:00:00Z',
-                group: 'advanced',
-            },
-            {
-                key: 'includeFileMetadata',
-                label: 'Include File Metadata',
-                description: 'Add file path, size, and modified date to records',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'advanced',
-            },
-            {
-                key: 'maxFiles',
-                label: 'Max Files',
-                description: 'Maximum number of files to process',
-                type: 'number',
-                defaultValue: FILE_EXTRACTOR_DEFAULTS.maxFiles,
-                group: 'advanced',
-            },
-            {
-                key: 'sortBy',
-                label: 'Sort Files By',
-                type: 'select',
-                options: [
-                    { value: 'name', label: 'Name' },
-                    { value: 'modified', label: 'Modified Date' },
-                    { value: 'size', label: 'Size' },
-                ],
-                defaultValue: 'modified',
-                group: 'advanced',
-            },
-            {
-                key: 'sortOrder',
-                label: 'Sort Order',
-                type: 'select',
-                options: [
-                    { value: SortOrder.ASC, label: 'Ascending' },
-                    { value: SortOrder.DESC, label: 'Descending' },
-                ],
-                defaultValue: SortOrder.ASC,
-                group: 'advanced',
-            },
-            {
-                key: 'continueOnError',
-                label: 'Continue on Error',
-                description: 'Continue processing if a file fails to parse',
-                type: 'boolean',
-                defaultValue: true,
-                group: 'advanced',
-            },
-        ],
-    };
+    readonly schema: StepConfigSchema = FILE_EXTRACTOR_SCHEMA;
 
     async *extract(
         context: ExtractorContext,
@@ -341,7 +156,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 filesProcessed,
             });
         } catch (error) {
-            context.logger.error('File extraction failed', error instanceof Error ? error : undefined, { error: getErrorMessage(error) });
+            context.logger.error('File extraction failed', toErrorOrUndefined(error), { error: getErrorMessage(error) });
             throw error;
         }
     }
@@ -368,8 +183,10 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
             }
         }
 
-        const validFormats = [FileFormat.CSV, FileFormat.JSON, FileFormat.XML, FileFormat.XLSX];
-        if (config.format && !validFormats.includes(config.format as FileFormat)) {
+        const parseableFormats = Object.entries(FILE_FORMAT_METADATA)
+            .filter(([, meta]) => meta.parseable)
+            .map(([key]) => key);
+        if (config.format && !parseableFormats.includes(config.format as string)) {
             errors.push({ field: 'format', message: 'Invalid file format' });
         }
 
@@ -400,7 +217,7 @@ export class FileExtractor implements DataExtractor<FileExtractorConfig> {
                 success: true,
                 details: {
                     filesFound: files.length,
-                    sampleFiles: files.slice(0, 5).map(f => f.name),
+                    sampleFiles: files.slice(0, MAX_SAMPLE_FILES).map(f => f.name),
                 },
                 latencyMs: Date.now() - startTime,
             };

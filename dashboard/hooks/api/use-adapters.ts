@@ -2,12 +2,14 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
+import { createQueryKeys } from '../../utils/query-key-factory';
 import { CACHE_TIMES } from '../../constants';
 
+const base = createQueryKeys('adapters');
 const adapterKeys = {
-    all: ['adapters'] as const,
-    catalog: () => [...adapterKeys.all, 'catalog'] as const,
-    byType: (type: string) => [...adapterKeys.all, 'byType', type] as const,
+    ...base,
+    catalog: () => [...base.all, 'catalog'] as const,
+    byType: (type: string) => [...base.all, 'byType', type] as const,
 };
 
 const adaptersDocument = graphql(`
@@ -18,6 +20,8 @@ const adaptersDocument = graphql(`
             name
             description
             category
+            categoryLabel
+            categoryOrder
             schema {
                 fields {
                     key
@@ -31,6 +35,25 @@ const adaptersDocument = graphql(`
                         value
                         label
                     }
+                    group
+                    dependsOn {
+                        field
+                        value
+                        operator
+                    }
+                    validation {
+                        min
+                        max
+                        minLength
+                        maxLength
+                        pattern
+                        patternMessage
+                    }
+                }
+                groups {
+                    id
+                    label
+                    description
                 }
             }
             icon
@@ -39,6 +62,13 @@ const adaptersDocument = graphql(`
             async
             batchable
             requires
+            entityType
+            formatType
+            patchableFields
+            editorType
+            summaryTemplate
+            wizardHidden
+            builtIn
         }
     }
 `);

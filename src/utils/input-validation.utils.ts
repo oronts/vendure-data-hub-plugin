@@ -1,18 +1,6 @@
 import * as path from 'path';
-import {
-    EMAIL_PATTERN,
-    isValidEmail as isValidEmailFromShared,
-    isValidUrl as isValidUrlFromShared,
-    isValidPipelineCode as isValidPipelineCodeFromShared,
-} from '../../shared';
 
-
-export const isValidEmail = isValidEmailFromShared;
-export function isValidUrl(url: string, requireHttps: boolean = false): boolean {
-    return isValidUrlFromShared(url, { requireHttps });
-}
-
-export const isValidPipelineCode = isValidPipelineCodeFromShared;
+export { isValidEmail, isValidPipelineCode } from '../../shared';
 
 export function isValidPath(filePath: string): boolean {
     if (filePath.includes('\0')) {

@@ -1,4 +1,7 @@
+import type { JoinType } from '../../../shared/types';
 import { BaseOperatorConfig, JsonObject } from '../types';
+
+export type { JoinType };
 
 export type AggregationOp = 'count' | 'sum' | 'avg' | 'min' | 'max' | 'first' | 'last';
 
@@ -39,9 +42,6 @@ export interface ExpandOperatorConfig extends BaseOperatorConfig {
     /** Map of parent fields to include: { targetField: sourceFieldPath } */
     readonly parentFields?: Record<string, string>;
 }
-
-/** Join type for multi-source join */
-export type JoinType = 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
 
 export interface MultiJoinOperatorConfig extends BaseOperatorConfig {
     /** Field path in left (primary) records to join on */

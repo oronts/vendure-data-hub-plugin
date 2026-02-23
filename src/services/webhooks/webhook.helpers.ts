@@ -8,12 +8,13 @@ import * as crypto from 'crypto';
 import { RetryConfig, WebhookConfig, WebhookDelivery, WebhookDeliveryStatus, WebhookStats, WebhookPayload } from './webhook.types';
 import { WEBHOOK, HTTP_HEADERS } from '../../constants/index';
 import { calculateBackoff as calculateBackoffShared, createRetryConfig } from '../../utils/retry.utils';
+import { generateTimestampedId } from '../../utils/id-generation.utils';
 
 /**
  * Generate unique delivery ID
  */
 export function generateDeliveryId(): string {
-    return `dlv_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
+    return generateTimestampedId('dlv', 16);
 }
 
 /**

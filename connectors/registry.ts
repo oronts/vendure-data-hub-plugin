@@ -178,6 +178,32 @@ export class ConnectorRegistry {
     }
 
     /**
+     * Get all import templates from all registered connectors
+     */
+    getImportTemplates(): NonNullable<ConnectorDefinition['importTemplates']>[number][] {
+        const templates: NonNullable<ConnectorDefinition['importTemplates']>[number][] = [];
+        for (const instance of this.connectors.values()) {
+            if (instance.connector.importTemplates) {
+                templates.push(...instance.connector.importTemplates);
+            }
+        }
+        return templates;
+    }
+
+    /**
+     * Get all export templates from all registered connectors
+     */
+    getExportTemplates(): NonNullable<ConnectorDefinition['exportTemplates']>[number][] {
+        const templates: NonNullable<ConnectorDefinition['exportTemplates']>[number][] = [];
+        for (const instance of this.connectors.values()) {
+            if (instance.connector.exportTemplates) {
+                templates.push(...instance.connector.exportTemplates);
+            }
+        }
+        return templates;
+    }
+
+    /**
      * Check if a connector is registered
      */
     hasConnector(code: string): boolean {
@@ -206,6 +232,31 @@ export class ConnectorRegistry {
         }
 
         return this.connectors.delete(code);
+    }
+
+    /**
+     * Get combined import and export templates from all registered connectors,
+     * ready to pass directly to `DataHubPlugin.init()`.
+     *
+     * @example
+     * ```ts
+     * const registry = new ConnectorRegistry();
+     * registry.register(PimcoreConnector, config);
+     *
+     * DataHubPlugin.init({
+     *     importTemplates: [...DEFAULT_IMPORT_TEMPLATES, ...registry.getPluginTemplates().importTemplates],
+     *     exportTemplates: registry.getPluginTemplates().exportTemplates,
+     * });
+     * ```
+     */
+    getPluginTemplates(): {
+        importTemplates: NonNullable<ConnectorDefinition['importTemplates']>[number][];
+        exportTemplates: NonNullable<ConnectorDefinition['exportTemplates']>[number][];
+    } {
+        return {
+            importTemplates: this.getImportTemplates(),
+            exportTemplates: this.getExportTemplates(),
+        };
     }
 
     /**

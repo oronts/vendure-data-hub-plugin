@@ -1,8 +1,5 @@
 /**
  * Hook Types
- *
- * HookStageValue uses SCREAMING_SNAKE_CASE to match both the HookStage enum
- * values and the runtime usage patterns throughout the codebase.
  */
 
 import { JsonObject } from './json.types';
@@ -126,11 +123,6 @@ export interface HookContext {
 }
 
 export type HookHandler = (context: HookContext) => Promise<void>;
-
-type InterceptorHandler = (
-    records: readonly JsonObject[],
-    context: HookContext,
-) => Promise<JsonObject[] | undefined>;
 
 export interface InterceptorResult {
     records: JsonObject[];

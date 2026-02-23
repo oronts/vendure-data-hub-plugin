@@ -1,6 +1,6 @@
 import { JsonValue, JsonObject } from '../types';
 
-const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+export const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 export function getNestedValue(obj: JsonObject | unknown, path: string): JsonValue | undefined {
     if (!obj || !path) {
@@ -30,8 +30,13 @@ export function setNestedValue(obj: JsonObject, path: string, value: JsonValue):
     if (!path) {
         return;
     }
+    if (value === undefined) {
+        return; // Don't set undefined values
+    }
 
-    const parts = path.split('.');
+    // Normalize bracket notation (e.g., "items[0].name" -> "items.0.name")
+    const normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
+    const parts = normalizedPath.split('.');
     let current: JsonObject = obj;
 
     for (let i = 0; i < parts.length - 1; i++) {
@@ -39,10 +44,41 @@ export function setNestedValue(obj: JsonObject, path: string, value: JsonValue):
         if (DANGEROUS_KEYS.has(part)) {
             return;
         }
-        if (!(part in current) || typeof current[part] !== 'object' || current[part] === null) {
-            current[part] = {};
+        const nextPart = parts[i + 1];
+        const isNextArray = /^\d+$/.test(nextPart);
+
+        if (!(part in current)) {
+            current[part] = isNextArray ? [] : {};
         }
-        current = current[part] as JsonObject;
+        const next = current[part];
+        if (Array.isArray(next)) {
+            // The next segment must be a numeric array index
+            if (!isNextArray) {
+                return;
+            }
+            const idx = Number(nextPart);
+            // Check if the numeric index is the LAST segment (direct array element assignment)
+            if (i + 1 === parts.length - 1) {
+                // Final segment is the array index - assign value directly
+                next[idx] = value;
+                return;
+            }
+            // Intermediate array traversal: ensure slot exists for further nesting
+            if (next[idx] === undefined || next[idx] === null) {
+                const afterNext = parts[i + 2];
+                next[idx] = (afterNext !== undefined && /^\d+$/.test(afterNext)) ? [] : {};
+            }
+            const slot = next[idx];
+            if (typeof slot !== 'object' || slot === null) {
+                return;
+            }
+            current = slot as JsonObject;
+            i++; // skip the numeric index segment
+        } else if (typeof next === 'object' && next !== null) {
+            current = next as JsonObject;
+        } else {
+            return;
+        }
     }
 
     const lastPart = parts[parts.length - 1];
@@ -116,6 +152,7 @@ export function deepClone<T extends JsonValue>(value: T): T {
 
     const result: JsonObject = {};
     for (const key of Object.keys(value)) {
+        if (DANGEROUS_KEYS.has(key)) continue;
         result[key] = deepClone((value as JsonObject)[key]);
     }
     return result as T;

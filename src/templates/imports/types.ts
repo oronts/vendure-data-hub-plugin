@@ -6,10 +6,10 @@
  */
 
 import { UnifiedPipelineDefinition } from '../../types/index';
-import type { JsonObject, TemplateCategory, TemplateDifficulty } from '../../../shared/types';
+import type { JsonObject, TemplateCategory } from '../../../shared/types';
 
 export type { UnifiedPipelineDefinition } from '../../types/index';
-export type { TemplateCategory, TemplateDifficulty } from '../../../shared/types';
+export type { TemplateCategory } from '../../../shared/types';
 
 /**
  * Supported file formats for templates
@@ -42,10 +42,6 @@ export interface ImportTemplate {
     category: TemplateCategory;
     /** Icon name from lucide-react */
     icon?: string;
-    /** Complexity level */
-    difficulty: TemplateDifficulty;
-    /** Estimated setup time */
-    estimatedTime: string;
     /** Fields that must be present in source data */
     requiredFields: string[];
     /** Fields that can optionally be mapped */
@@ -76,56 +72,28 @@ export interface TemplateCategoryInfo {
     icon: string;
 }
 
-/**
- * Category labels for UI display
- */
-export const CATEGORY_LABELS: Record<TemplateCategory, string> = {
-    products: 'Products',
-    customers: 'Customers',
-    inventory: 'Inventory',
-    orders: 'Orders',
-    promotions: 'Promotions & Coupons',
-    catalog: 'Catalog Organization',
+/** Single-source metadata for template categories — label, description, and icon in one place */
+export const TEMPLATE_CATEGORY_METADATA: Record<TemplateCategory, { label: string; description: string; icon: string }> = {
+    products: { label: 'Products', description: 'Import and update product data including variants, pricing, and attributes', icon: 'shopping-bag' },
+    customers: { label: 'Customers', description: 'Import customer records with addresses and group assignments', icon: 'users' },
+    inventory: { label: 'Inventory', description: 'Update stock levels and manage inventory across locations', icon: 'package' },
+    orders: { label: 'Orders', description: 'Import historical orders for data migration', icon: 'receipt' },
+    promotions: { label: 'Promotions & Coupons', description: 'Create discount codes and promotional campaigns', icon: 'percent' },
+    catalog: { label: 'Catalog Organization', description: 'Set up collections, facets, and category structures', icon: 'folder-tree' },
 };
 
-/**
- * Category descriptions for UI display
- */
-export const CATEGORY_DESCRIPTIONS: Record<TemplateCategory, string> = {
-    products: 'Import and update product data including variants, pricing, and attributes',
-    customers: 'Import customer records with addresses and group assignments',
-    inventory: 'Update stock levels and manage inventory across locations',
-    orders: 'Import historical orders for data migration',
-    promotions: 'Create discount codes and promotional campaigns',
-    catalog: 'Set up collections, facets, and category structures',
-};
+/** Category labels for UI display (auto-derived from TEMPLATE_CATEGORY_METADATA) */
+export const CATEGORY_LABELS: Record<TemplateCategory, string> = Object.fromEntries(
+    Object.entries(TEMPLATE_CATEGORY_METADATA).map(([k, v]) => [k, v.label]),
+) as Record<TemplateCategory, string>;
 
-/**
- * Category icons for UI display
- */
-export const CATEGORY_ICONS: Record<TemplateCategory, string> = {
-    products: 'shopping-bag',
-    customers: 'users',
-    inventory: 'package',
-    orders: 'receipt',
-    promotions: 'percent',
-    catalog: 'folder-tree',
-};
+/** Category descriptions for UI display (auto-derived from TEMPLATE_CATEGORY_METADATA) */
+export const CATEGORY_DESCRIPTIONS: Record<TemplateCategory, string> = Object.fromEntries(
+    Object.entries(TEMPLATE_CATEGORY_METADATA).map(([k, v]) => [k, v.description]),
+) as Record<TemplateCategory, string>;
 
-/**
- * Difficulty labels for UI display
- */
-export const DIFFICULTY_LABELS: Record<TemplateDifficulty, string> = {
-    beginner: 'Beginner',
-    intermediate: 'Intermediate',
-    advanced: 'Advanced',
-};
+/** Category icons for UI display (auto-derived from TEMPLATE_CATEGORY_METADATA) */
+export const CATEGORY_ICONS: Record<TemplateCategory, string> = Object.fromEntries(
+    Object.entries(TEMPLATE_CATEGORY_METADATA).map(([k, v]) => [k, v.icon]),
+) as Record<TemplateCategory, string>;
 
-/**
- * Difficulty colors for UI display
- */
-export const DIFFICULTY_COLORS: Record<TemplateDifficulty, string> = {
-    beginner: 'green',
-    intermediate: 'yellow',
-    advanced: 'red',
-};

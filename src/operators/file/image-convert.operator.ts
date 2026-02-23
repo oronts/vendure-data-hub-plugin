@@ -7,7 +7,10 @@ export const IMAGE_CONVERT_OPERATOR_DEFINITION: AdapterDefinition = {
     name: 'Image Convert',
     description: 'Convert image format (JPEG, PNG, WebP, AVIF, GIF)',
     category: 'CONVERSION',
+    categoryLabel: 'File',
+    categoryOrder: 9,
     version: '1.0.0',
+    wizardHidden: true,
     schema: {
         groups: [{ id: 'main', label: 'Convert Settings' }],
         fields: [

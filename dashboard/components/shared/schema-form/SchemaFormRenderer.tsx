@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useCallback, useMemo } from 'react';
 import { Label } from '@vendure/dashboard';
-import type { AdapterSchemaField, SchemaFieldType, SchemaFormRendererProps } from '../../../types';
+import type { AdapterSchemaField, SchemaFormRendererProps } from '../../../types';
 import { normalizeFieldType } from './utils';
 import {
     StringField,
@@ -14,6 +14,133 @@ import {
     FileUploadField,
     FieldWrapper,
 } from './fields';
+
+/** Props passed to every field type renderer function in the registry. */
+export interface FieldRendererProps {
+    field: AdapterSchemaField;
+    value: unknown;
+    onChange: (value: unknown) => void;
+    compact: boolean;
+    disabled: boolean;
+    error?: string;
+    /** Secret codes available for reference fields. */
+    secretCodes: string[];
+    /** Connection codes available for reference fields. */
+    connectionCodes: string[];
+}
+
+/** A render function that returns a React element for a given field type. */
+export type FieldRendererFn = (props: FieldRendererProps) => React.ReactElement;
+
+function wrapField(
+    field: AdapterSchemaField,
+    compact: boolean,
+    error: string | undefined,
+    child: React.ReactNode,
+): React.ReactElement {
+    return (
+        <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
+            {child}
+        </FieldWrapper>
+    );
+}
+
+const renderStringField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) =>
+    wrapField(field, compact, error,
+        <StringField field={field} value={value as string} onChange={onChange as (v: string) => void} compact={compact} disabled={disabled} />,
+    );
+
+const renderNumberField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) =>
+    wrapField(field, compact, error,
+        <NumberField field={field} value={value as number | undefined} onChange={onChange as (v: number | undefined) => void} compact={compact} disabled={disabled} />,
+    );
+
+const renderBooleanField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) => (
+    <div key={field.key} className={compact ? 'py-1' : 'py-2'}>
+        <div className="flex items-center justify-between">
+            <Label htmlFor={field.key} className={compact ? 'text-xs font-medium' : 'text-sm font-medium'}>
+                {field.label || field.key}
+                {field.required && <span className="text-destructive ml-0.5">*</span>}
+            </Label>
+            <BooleanField field={field} value={value as boolean} onChange={onChange as (v: boolean) => void} disabled={disabled} />
+        </div>
+        {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+    </div>
+);
+
+const renderSelectField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) =>
+    wrapField(field, compact, error,
+        <SelectField field={field} value={value as string} onChange={onChange as (v: string) => void} compact={compact} disabled={disabled} />,
+    );
+
+const renderSecretField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error, secretCodes }) =>
+    wrapField(field, compact, error,
+        <ReferenceField field={field} value={value as string} onChange={onChange as (v: string) => void} options={secretCodes} placeholder="Select secret..." compact={compact} disabled={disabled} />,
+    );
+
+const renderConnectionField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error, connectionCodes }) =>
+    wrapField(field, compact, error,
+        <ReferenceField field={field} value={value as string} onChange={onChange as (v: string) => void} options={connectionCodes} placeholder="Select connection..." compact={compact} disabled={disabled} />,
+    );
+
+const renderJsonField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) =>
+    wrapField(field, compact, error,
+        <JsonField field={field} value={value} onChange={onChange} compact={compact} disabled={disabled} />,
+    );
+
+const renderTextareaField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) =>
+    wrapField(field, compact, error,
+        <TextareaField field={field} value={value as string} onChange={onChange as (v: string) => void} compact={compact} disabled={disabled} />,
+    );
+
+const renderCodeField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) =>
+    wrapField(field, compact, error,
+        <TextareaField field={field} value={value as string} onChange={onChange as (v: string) => void} compact={compact} disabled={disabled} isCode />,
+    );
+
+const renderEntityField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) => {
+    if (field.options && field.options.length > 0) {
+        return wrapField(field, compact, error,
+            <SelectField field={field} value={value as string} onChange={onChange as (v: string) => void} compact={compact} disabled={disabled} />,
+        );
+    }
+    return wrapField(field, compact, error,
+        <StringField field={field} value={String(value ?? field.default ?? '')} onChange={onChange as (v: string) => void} compact={compact} disabled={disabled} />,
+    );
+};
+
+const renderFileUploadField: FieldRendererFn = ({ field, value, onChange, compact, disabled, error }) =>
+    wrapField(field, compact, error,
+        <FileUploadField field={field} value={value as string | undefined} onChange={onChange as (v: string | undefined) => void} compact={compact} disabled={disabled} />,
+    );
+
+/**
+ * Registry mapping normalized field type strings to render functions.
+ * Exported so custom dashboards can add entries for custom field types.
+ */
+export const FIELD_TYPE_RENDERERS: Record<string, FieldRendererFn> = {
+    string: renderStringField,
+    text: renderStringField,
+    password: renderStringField,
+    email: renderStringField,
+    url: renderStringField,
+    number: renderNumberField,
+    int: renderNumberField,
+    float: renderNumberField,
+    boolean: renderBooleanField,
+    select: renderSelectField,
+    secret: renderSecretField,
+    connection: renderConnectionField,
+    json: renderJsonField,
+    object: renderJsonField,
+    array: renderJsonField,
+    textarea: renderTextareaField,
+    code: renderCodeField,
+    expression: renderCodeField,
+    entity: renderEntityField,
+    file: renderFileUploadField,
+    fileupload: renderFileUploadField,
+};
 
 function evaluateDependency(
     dependsOn: AdapterSchemaField['dependsOn'] | undefined,
@@ -79,122 +206,27 @@ export function SchemaFormRenderer({
         const error = errors[field.key];
         const fieldType = normalizeFieldType(field.type);
 
-        switch (fieldType) {
-            case 'string':
-            case 'text':
-            case 'password':
-            case 'email':
-            case 'url':
-                return (
-                    <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <StringField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
-                    </FieldWrapper>
-                );
+        const rendererProps: FieldRendererProps = {
+            field,
+            value,
+            onChange: (v: unknown) => handleFieldChange(field.key, v),
+            compact,
+            disabled: readOnly,
+            error,
+            secretCodes,
+            connectionCodes,
+        };
 
-            case 'number':
-            case 'int':
-            case 'float':
-                return (
-                    <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <NumberField field={field} value={value as number | undefined} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
-                    </FieldWrapper>
-                );
-
-            case 'boolean':
-                return (
-                    <div key={field.key} className={compact ? 'py-1' : 'py-2'}>
-                        <div className="flex items-center justify-between">
-                            <Label htmlFor={field.key} className={compact ? 'text-xs font-medium' : 'text-sm font-medium'}>
-                                {field.label || field.key}
-                                {field.required && <span className="text-destructive ml-0.5">*</span>}
-                            </Label>
-                            <BooleanField field={field} value={value as boolean} onChange={(v) => handleFieldChange(field.key, v)} disabled={readOnly} />
-                        </div>
-                        {error && <p className="text-xs text-destructive mt-1">{error}</p>}
-                    </div>
-                );
-
-            case 'select':
-                return (
-                    <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <SelectField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
-                    </FieldWrapper>
-                );
-
-            case 'secret':
-                return (
-                    <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <ReferenceField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} options={secretCodes} placeholder="Select secret..." compact={compact} disabled={readOnly} />
-                    </FieldWrapper>
-                );
-
-            case 'connection':
-                return (
-                    <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <ReferenceField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} options={connectionCodes} placeholder="Select connection..." compact={compact} disabled={readOnly} />
-                    </FieldWrapper>
-                );
-
-            case 'json':
-            case 'object':
-            case 'array':
-                return (
-                    <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <JsonField field={field} value={value} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
-                    </FieldWrapper>
-                );
-
-            case 'textarea':
-                return (
-                    <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <TextareaField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
-                    </FieldWrapper>
-                );
-
-            case 'code':
-            case 'expression':
-                return (
-                    <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <TextareaField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} isCode />
-                    </FieldWrapper>
-                );
-
-            case 'entity':
-                if (field.options && field.options.length > 0) {
-                    return (
-                        <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                            <SelectField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
-                        </FieldWrapper>
-                    );
-                }
-                return (
-                    <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <StringField field={field} value={String(value ?? field.default ?? '')} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
-                    </FieldWrapper>
-                );
-
-            case 'file':
-            case 'fileupload':
-                return (
-                    <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <FileUploadField field={field} value={value as string | undefined} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
-                    </FieldWrapper>
-                );
-
-            default:
-                if (field.options && field.options.length > 0) {
-                    return (
-                        <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                            <SelectField field={field} value={value as string} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
-                        </FieldWrapper>
-                    );
-                }
-                return (
-                    <FieldWrapper key={field.key} field={field} compact={compact} error={error}>
-                        <StringField field={field} value={String(value ?? field.default ?? '')} onChange={(v) => handleFieldChange(field.key, v)} compact={compact} disabled={readOnly} />
-                    </FieldWrapper>
-                );
+        const renderer = FIELD_TYPE_RENDERERS[fieldType];
+        if (renderer) {
+            return renderer(rendererProps);
         }
+
+        // Fallback for unknown types: select if options exist, otherwise string input
+        if (field.options && field.options.length > 0) {
+            return renderSelectField(rendererProps);
+        }
+        return renderStringField({ ...rendererProps, value: String(value ?? field.default ?? '') });
     };
 
     return (

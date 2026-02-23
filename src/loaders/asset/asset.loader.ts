@@ -15,7 +15,14 @@ import {
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+    createLookupHelper,
+} from '../base';
 import {
     AssetInput,
     ASSET_LOADER_METADATA,
@@ -48,6 +55,8 @@ export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = ASSET_LOADER_METADATA;
 
+    private readonly lookupHelper: EntityLookupHelper<AssetService, Asset, AssetInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private assetService: AssetService,
@@ -55,6 +64,9 @@ export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.ASSET_LOADER);
+        this.lookupHelper = createLookupHelper<AssetService, Asset, AssetInput>(this.assetService)
+            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts))
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id));
     }
 
     protected getDuplicateErrorMessage(record: AssetInput): string {
@@ -67,25 +79,11 @@ export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
         lookupFields: string[],
         record: AssetInput,
     ): Promise<ExistingEntityLookupResult<Asset> | null> {
-        // Primary lookup: by name
-        if (record.name && lookupFields.includes('name')) {
-            const assets = await this.assetService.findAll(ctx, {
-                filter: { name: { eq: record.name } },
-            });
-            if (assets.totalItems > 0) {
-                return { id: assets.items[0].id, entity: assets.items[0] };
-            }
-        }
+        // Primary lookup by name and ID via helper
+        const result = await this.lookupHelper.findExisting(ctx, lookupFields, record);
+        if (result) return result;
 
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const asset = await this.assetService.findOne(ctx, record.id as ID);
-            if (asset) {
-                return { id: asset.id, entity: asset };
-            }
-        }
-
-        // Fallback: by source URL
+        // Fallback: by source URL (field name mismatch: lookupField 'source' vs record 'sourceUrl')
         if (record.sourceUrl && lookupFields.includes('source')) {
             const assets = await this.assetService.findAll(ctx, {
                 filter: { source: { contains: extractFilenameFromUrl(record.sourceUrl) } },
@@ -103,36 +101,37 @@ export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
         record: AssetInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
+        const builder = new ValidationBuilder()
+            .requireStringForCreate('sourceUrl', record.sourceUrl, operation, 'Source URL is required');
 
-        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.sourceUrl || typeof record.sourceUrl !== 'string' || record.sourceUrl.trim() === '') {
-                errors.push({ field: 'sourceUrl', message: 'Source URL is required', code: 'REQUIRED' });
-            } else {
-                try {
-                    new URL(record.sourceUrl);
-                } catch {
-                    // URL parsing failed - invalid format
-                    errors.push({ field: 'sourceUrl', message: 'Invalid URL format', code: 'INVALID_FORMAT' });
-                }
+        // URL format validation (only if sourceUrl passed the required check)
+        if (
+            (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) &&
+            record.sourceUrl && typeof record.sourceUrl === 'string' && record.sourceUrl.trim() !== ''
+        ) {
+            try {
+                new URL(record.sourceUrl);
+            } catch {
+                builder.addError('sourceUrl', 'Invalid URL format', 'INVALID_FORMAT');
             }
         }
 
         if (record.focalPoint) {
-            if (typeof record.focalPoint.x !== 'number' || record.focalPoint.x < 0 || record.focalPoint.x > 1) {
-                errors.push({ field: 'focalPoint.x', message: 'Focal point X must be between 0 and 1', code: 'INVALID_VALUE' });
-            }
-            if (typeof record.focalPoint.y !== 'number' || record.focalPoint.y < 0 || record.focalPoint.y > 1) {
-                errors.push({ field: 'focalPoint.y', message: 'Focal point Y must be between 0 and 1', code: 'INVALID_VALUE' });
-            }
+            builder.addErrorIf(
+                typeof record.focalPoint.x !== 'number' || record.focalPoint.x < 0 || record.focalPoint.x > 1,
+                'focalPoint.x',
+                'Focal point X must be between 0 and 1',
+                'INVALID_VALUE',
+            );
+            builder.addErrorIf(
+                typeof record.focalPoint.y !== 'number' || record.focalPoint.y < 0 || record.focalPoint.y > 1,
+                'focalPoint.y',
+                'Focal point Y must be between 0 and 1',
+                'INVALID_VALUE',
+            );
         }
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

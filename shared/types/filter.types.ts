@@ -33,8 +33,6 @@ export type LogicalOperator = 'AND' | 'OR';
 
 /**
  * Filter action determining what happens to matching records
- *
- * Uses SCREAMING_SNAKE_CASE as per naming convention for status values
  */
 export type FilterAction = 'KEEP' | 'DROP';
 

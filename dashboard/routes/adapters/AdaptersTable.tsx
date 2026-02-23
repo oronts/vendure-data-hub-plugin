@@ -4,7 +4,7 @@ import {
     Badge,
 } from '@vendure/dashboard';
 import { ColumnDef } from '@tanstack/react-table';
-import { ADAPTER_TYPE_INFO, ADAPTERS_TABLE_PAGE_SIZE } from './AdapterConstants';
+import { ADAPTERS_TABLE_PAGE_SIZE } from './AdapterConstants';
 import type { DataHubAdapter } from '../../types';
 
 export function AdaptersTable({
@@ -33,14 +33,11 @@ export function AdaptersTable({
             id: 'type',
             header: 'Type',
             accessorFn: row => row.type,
-            cell: ({ row }) => {
-                const typeInfo = ADAPTER_TYPE_INFO[row.original.type as keyof typeof ADAPTER_TYPE_INFO];
-                return (
-                    <Badge className={typeInfo?.color ?? ''}>
-                        {row.original.type}
-                    </Badge>
-                );
-            },
+            cell: ({ row }) => (
+                <Badge variant="outline">
+                    {row.original.type}
+                </Badge>
+            ),
         },
         {
             id: 'code',

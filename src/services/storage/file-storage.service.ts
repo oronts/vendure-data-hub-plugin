@@ -5,11 +5,12 @@ import {
 } from '@vendure/core';
 import * as crypto from 'crypto';
 import * as path from 'path';
-import { LOGGER_CONTEXTS, FILE_STORAGE, SCHEDULER } from '../../constants/index';
+import { LOGGER_CONTEXTS, FILE_STORAGE, SCHEDULER, CONTENT_TYPES, EXTENSION_MIME_MAP } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { StorageBackend } from './storage-backend.interface';
 import { createStorageBackendFromEnv } from './storage-backend.factory';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, ensureError } from '../../utils/error.utils';
+import { generateTimestampedId } from '../../utils/id-generation.utils';
 
 export interface StoredFile {
     id: string;
@@ -38,13 +39,13 @@ interface StorageOptions {
 
 const DEFAULT_MAX_FILE_SIZE = FILE_STORAGE.MAX_FILE_SIZE_BYTES;
 const DEFAULT_ALLOWED_TYPES = [
-    'text/csv',
-    'text/plain',
-    'application/json',
-    'application/xml',
+    CONTENT_TYPES.CSV,
+    CONTENT_TYPES.PLAIN,
+    CONTENT_TYPES.JSON,
+    CONTENT_TYPES.XML,
     'text/xml',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    EXTENSION_MIME_MAP['.xls'],
+    EXTENSION_MIME_MAP['.xlsx'],
 ];
 
 @Injectable()
@@ -144,7 +145,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
 
             return { success: true, file: storedFile };
         } catch (error) {
-            this.logger.error('Failed to store file', error instanceof Error ? error : new Error(String(error)), {
+            this.logger.error('Failed to store file', ensureError(error), {
                 originalName,
                 mimeType,
                 size: buffer.length,
@@ -194,7 +195,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
             this.logger.debug('Deleted file', { fileId, originalName: file.originalName });
             return true;
         } catch (error) {
-            this.logger.error('Failed to delete file', error instanceof Error ? error : new Error(String(error)), { fileId });
+            this.logger.error('Failed to delete file', ensureError(error), { fileId });
             return false;
         }
     }
@@ -288,7 +289,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
             for (const storagePath of files) {
                 // Extract file ID from path: paths are like "2026/01/15/file_12345_abc.csv"
                 const fileName = path.basename(storagePath);
-                const fileIdMatch = fileName.match(/^(file_\d+_[a-f0-9]+)/);
+                const fileIdMatch = fileName.match(/^(file_[a-z0-9]+_[a-f0-9]+)/);
                 if (!fileIdMatch) continue;
 
                 const fileId = fileIdMatch[1];
@@ -336,15 +337,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
      * Only covers types relevant to DataHub file storage.
      */
     private inferMimeType(ext: string): string {
-        const mimeMap: Record<string, string> = {
-            '.csv': 'text/csv',
-            '.json': 'application/json',
-            '.xml': 'application/xml',
-            '.txt': 'text/plain',
-            '.xls': 'application/vnd.ms-excel',
-            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        };
-        return mimeMap[ext] ?? 'application/octet-stream';
+        return EXTENSION_MIME_MAP[ext] ?? CONTENT_TYPES.OCTET_STREAM;
     }
 
     private startCleanupJob() {
@@ -399,7 +392,7 @@ export class FileStorageService implements OnModuleInit, OnModuleDestroy {
     }
 
     private generateFileId(): string {
-        return `file_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
+        return generateTimestampedId('file', 16);
     }
 
     private getDatePath(): string {

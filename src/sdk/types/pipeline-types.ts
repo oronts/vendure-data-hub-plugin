@@ -84,7 +84,6 @@ export interface PipelineRunInput {
 
 /**
  * Status of a pipeline run
- * @see RunStatus enum in constants/enums.ts for canonical definition
  */
 export type PipelineRunStatus = `${RunStatus}`;
 

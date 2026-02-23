@@ -18,7 +18,12 @@ import {
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+} from '../base';
 import { InventoryInput, INVENTORY_LOADER_METADATA } from './types';
 import { findVariantBySku, resolveStockLocationId } from './helpers';
 
@@ -77,24 +82,10 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
         record: InventoryInput,
         _operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
-
-        if (!record.sku || typeof record.sku !== 'string' || record.sku.trim() === '') {
-            errors.push({ field: 'sku', message: 'Product SKU is required', code: 'REQUIRED' });
-        }
-
-        if (record.stockOnHand === undefined || record.stockOnHand === null) {
-            errors.push({ field: 'stockOnHand', message: 'Stock on hand is required', code: 'REQUIRED' });
-        } else if (typeof record.stockOnHand !== 'number' || record.stockOnHand < 0) {
-            errors.push({ field: 'stockOnHand', message: 'Stock on hand must be a non-negative number', code: 'INVALID_VALUE' });
-        }
-
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return new ValidationBuilder()
+            .requireString('sku', record.sku, 'Product SKU is required')
+            .requirePositiveNumber('stockOnHand', record.stockOnHand, 'Stock on hand must be a non-negative number')
+            .build();
     }
 
     getFieldSchema(): EntityFieldSchema {
@@ -165,7 +156,7 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
         const targetLocationId = stockLocationId || (locations.totalItems > 0 ? locations.items[0].id : undefined);
 
         if (!targetLocationId) {
-            throw new Error('No stock location available');
+            throw new Error(`No stock location available for SKU "${record.sku}" (variant ${variantId}). Create a stock location first.`);
         }
 
         await this.stockMovementService.adjustProductVariantStock(

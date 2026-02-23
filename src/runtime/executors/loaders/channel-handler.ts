@@ -4,7 +4,6 @@
  * Reads configurable field names from step.config and upserts Channel entities
  * via ChannelService. Supports currencies, languages, and zone configuration.
  */
-import * as crypto from 'crypto';
 import { Injectable } from '@nestjs/common';
 import {
     RequestContext,
@@ -19,9 +18,10 @@ import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../exec
 import { LoaderHandler } from './types';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { getStringValue, getArrayValue } from '../../../loaders/shared-helpers';
+import { generateChannelToken, parseCurrencyCode, parseLanguageCode } from '../../../loaders/channel/helpers';
 
 /**
- * Configuration for the channel handler step (mirrors loader-adapters.ts schema)
+ * Configuration for the channel handler step (mirrors loader-handler-registry.ts schema)
  */
 interface ChannelHandlerConfig {
     codeField?: string;
@@ -41,32 +41,6 @@ interface ChannelHandlerConfig {
  */
 function getConfig(config: JsonObject): ChannelHandlerConfig {
     return config as unknown as ChannelHandlerConfig;
-}
-
-/**
- * Parse and validate a 3-letter currency code
- */
-function parseCurrencyCode(code: string): CurrencyCode | null {
-    const normalized = code.toUpperCase().trim();
-    if (!/^[A-Z]{3}$/.test(normalized)) return null;
-    return normalized as CurrencyCode;
-}
-
-/**
- * Parse and validate a 2-letter language code
- */
-function parseLanguageCode(code: string): LanguageCode | null {
-    const normalized = code.toLowerCase().trim();
-    if (!/^[a-z]{2}$/.test(normalized)) return null;
-    return normalized as LanguageCode;
-}
-
-/**
- * Generate a channel token from code
- */
-function generateChannelToken(code: string): string {
-    const randomPart = crypto.randomUUID().replace(/-/g, '').substring(0, 8);
-    return `${code.toLowerCase().replace(/[^a-z0-9]/g, '')}_${randomPart}`;
 }
 
 @Injectable()

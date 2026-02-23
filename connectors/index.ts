@@ -9,13 +9,15 @@
  * import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
  *
  * DataHubPlugin.init({
- *   pipelines: [
+ *   connectors: [
  *     PimcoreConnector({
- *       endpoint: 'https://pimcore.company.com/pimcore-datahub-webservices/shop',
- *       apiKey: process.env.PIMCORE_API_KEY,
+ *       connection: {
+ *         endpoint: 'https://pimcore.company.com/pimcore-datahub-webservices/shop',
+ *         apiKeySecretCode: 'pimcore-api-key',
+ *       },
  *     }),
  *   ],
- * })
+ * });
  * ```
  */
 

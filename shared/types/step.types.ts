@@ -10,14 +10,8 @@ import { JsonObject, JsonValue } from './json.types';
 /**
  * Type of pipeline step.
  *
- * This is a string literal union type (not an enum) intentionally.
- * The shared/types module uses string literals for type-safe JSON compatibility,
- * allowing pipeline definitions to be serialized/deserialized without enum value issues.
- *
- * The backend uses the StepType enum from src/constants/enums.ts for runtime operations.
- * Both define the same values, ensuring type compatibility at the boundary.
- *
- * @see src/constants/enums.ts StepType enum for the backend runtime version
+ * String literal union (not an enum) for JSON serialization compatibility.
+ * The backend StepType enum in src/constants/enums.ts uses the same values.
  */
 export type StepType =
     | 'TRIGGER'
@@ -57,10 +51,8 @@ export type ChannelStrategy = 'EXPLICIT' | 'INHERIT' | 'MULTI';
  */
 export type ValidationModeType = 'STRICT' | 'LENIENT';
 
-/**
- * Run modes - matches src/constants/enums.ts RunMode values
- */
-type RunModeType = 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
+// Note: RunModeValue in pipeline.types.ts is the canonical exported type with
+// identical values. This file uses it inline to avoid circular imports.
 
 /**
  * Route condition operators - matches src/constants/enums.ts RouteConditionOperator values
@@ -250,7 +242,7 @@ export interface StepContextOverride {
     channelStrategy?: ChannelStrategy;
     channelIds?: string[];
     validationMode?: ValidationModeType;
-    runMode?: RunModeType;
+    runMode?: 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
 }
 
 /**

@@ -15,7 +15,14 @@ import {
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+    createLookupHelper,
+} from '../base';
 import {
     ShippingMethodInput,
     SHIPPING_METHOD_LOADER_METADATA,
@@ -42,6 +49,8 @@ export class ShippingMethodLoader extends BaseEntityLoader<ShippingMethodInput, 
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = SHIPPING_METHOD_LOADER_METADATA;
 
+    private readonly lookupHelper: EntityLookupHelper<ShippingMethodService, ShippingMethod, ShippingMethodInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private shippingMethodService: ShippingMethodService,
@@ -49,6 +58,10 @@ export class ShippingMethodLoader extends BaseEntityLoader<ShippingMethodInput, 
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.SHIPPING_METHOD_LOADER);
+        this.lookupHelper = createLookupHelper<ShippingMethodService, ShippingMethod, ShippingMethodInput>(this.shippingMethodService)
+            .addFilterStrategy('code', 'code', (ctx, svc, opts) => svc.findAll(ctx, opts))
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id))
+            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts));
     }
 
     protected getDuplicateErrorMessage(record: ShippingMethodInput): string {
@@ -60,35 +73,7 @@ export class ShippingMethodLoader extends BaseEntityLoader<ShippingMethodInput, 
         lookupFields: string[],
         record: ShippingMethodInput,
     ): Promise<ExistingEntityLookupResult<ShippingMethod> | null> {
-        // Primary lookup: by code
-        if (record.code && lookupFields.includes('code')) {
-            const methods = await this.shippingMethodService.findAll(ctx, {
-                filter: { code: { eq: record.code } },
-            });
-            if (methods.totalItems > 0) {
-                return { id: methods.items[0].id, entity: methods.items[0] };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const method = await this.shippingMethodService.findOne(ctx, record.id as ID);
-            if (method) {
-                return { id: method.id, entity: method };
-            }
-        }
-
-        // Fallback: by name
-        if (record.name && lookupFields.includes('name')) {
-            const methods = await this.shippingMethodService.findAll(ctx, {
-                filter: { name: { eq: record.name } },
-            });
-            if (methods.totalItems > 0) {
-                return { id: methods.items[0].id, entity: methods.items[0] };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -96,35 +81,39 @@ export class ShippingMethodLoader extends BaseEntityLoader<ShippingMethodInput, 
         record: ShippingMethodInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
+        const builder = new ValidationBuilder()
+            .requireStringForCreate('name', record.name, operation, 'Shipping method name is required')
+            .requireStringForCreate('code', record.code, operation, 'Shipping method code is required');
 
-        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
-                errors.push({ field: 'name', message: 'Shipping method name is required', code: 'REQUIRED' });
-            }
-            if (!record.code || typeof record.code !== 'string' || record.code.trim() === '') {
-                errors.push({ field: 'code', message: 'Shipping method code is required', code: 'REQUIRED' });
-            } else if (!/^[a-z0-9_-]+$/i.test(record.code)) {
-                errors.push({
-                    field: 'code',
-                    message: 'Code must contain only letters, numbers, hyphens, and underscores',
-                    code: 'INVALID_FORMAT'
-                });
-            }
-            if (!record.fulfillmentHandler || typeof record.fulfillmentHandler !== 'string') {
-                errors.push({ field: 'fulfillmentHandler', message: 'Fulfillment handler is required', code: 'REQUIRED' });
-            }
-            if (!record.calculator || !record.calculator.code) {
-                errors.push({ field: 'calculator', message: 'Shipping calculator is required', code: 'REQUIRED' });
-            }
+        if (
+            (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) &&
+            record.code && typeof record.code === 'string' && record.code.trim() !== '' &&
+            !/^[a-z0-9_-]+$/i.test(record.code)
+        ) {
+            builder.addError(
+                'code',
+                'Code must contain only letters, numbers, hyphens, and underscores',
+                'INVALID_FORMAT',
+            );
         }
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
+            builder
+                .addErrorIf(
+                    !record.fulfillmentHandler || typeof record.fulfillmentHandler !== 'string',
+                    'fulfillmentHandler',
+                    'Fulfillment handler is required',
+                    'REQUIRED',
+                )
+                .addErrorIf(
+                    !record.calculator || !record.calculator.code,
+                    'calculator',
+                    'Shipping calculator is required',
+                    'REQUIRED',
+                );
+        }
+
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

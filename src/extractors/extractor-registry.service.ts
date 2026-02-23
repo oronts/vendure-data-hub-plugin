@@ -1,4 +1,5 @@
-import { Injectable, OnModuleInit, Optional } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
     DataExtractor,
     BatchDataExtractor,
@@ -6,18 +7,10 @@ import {
     isStreamingExtractor,
     isBatchExtractor,
 } from '../types/index';
-import { getErrorMessage } from '../utils/error.utils';
-import { HttpApiExtractor } from './http-api';
-import { WebhookExtractor } from './webhook';
-import { VendureQueryExtractor } from './vendure-query';
-import { FileExtractor } from './file';
-import { FtpExtractor } from './ftp';
-import { S3Extractor } from './s3';
-import { DatabaseExtractor } from './database';
-import { GraphQLExtractor } from './graphql';
-import { CdcExtractor } from './cdc';
+import { getErrorMessage, toErrorOrUndefined } from '../utils/error.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
 import { LOGGER_CONTEXTS } from '../constants/index';
+import { EXTRACTOR_HANDLER_REGISTRY } from './extractor-handler-registry';
 
 export type ExtractorRegistrationCallback = (registry: ExtractorRegistryService) => void | Promise<void>;
 
@@ -49,23 +42,15 @@ export class ExtractorRegistryService implements OnModuleInit {
     private customCallbacks: ExtractorRegistrationCallback[] = [];
 
     constructor(
+        private moduleRef: ModuleRef,
         loggerFactory: DataHubLoggerFactory,
-        @Optional() private readonly httpApiExtractor?: HttpApiExtractor,
-        @Optional() private readonly webhookExtractor?: WebhookExtractor,
-        @Optional() private readonly vendureQueryExtractor?: VendureQueryExtractor,
-        @Optional() private readonly fileExtractor?: FileExtractor,
-        @Optional() private readonly ftpExtractor?: FtpExtractor,
-        @Optional() private readonly s3Extractor?: S3Extractor,
-        @Optional() private readonly databaseExtractor?: DatabaseExtractor,
-        @Optional() private readonly graphqlExtractor?: GraphQLExtractor,
-        @Optional() private readonly cdcExtractor?: CdcExtractor,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.EXTRACTOR_REGISTRY);
     }
 
     async onModuleInit() {
         try {
-            this.registerBuiltInExtractors();
+            await this.registerBuiltInExtractors();
 
             for (const callback of this.customCallbacks) {
                 try {
@@ -73,7 +58,7 @@ export class ExtractorRegistryService implements OnModuleInit {
                 } catch (error) {
                     this.logger.error(
                         'Extractor registration callback failed',
-                        error instanceof Error ? error : undefined,
+                        toErrorOrUndefined(error),
                     );
                 }
             }
@@ -91,38 +76,29 @@ export class ExtractorRegistryService implements OnModuleInit {
         } catch (error) {
             this.logger.error(
                 'Failed to initialize extractor registry',
-                error instanceof Error ? error : undefined,
+                toErrorOrUndefined(error),
             );
         }
     }
 
-    private registerBuiltInExtractors(): void {
-        const builtInExtractors: Array<DataExtractor | BatchDataExtractor | undefined> = [
-            this.httpApiExtractor,
-            this.webhookExtractor,
-            this.vendureQueryExtractor,
-            this.fileExtractor,
-            this.ftpExtractor,
-            this.s3Extractor,
-            this.databaseExtractor,
-            this.graphqlExtractor,
-            this.cdcExtractor,
-        ];
+    private async registerBuiltInExtractors(): Promise<void> {
+        let registered = 0;
 
-        for (const extractor of builtInExtractors) {
-            if (extractor) {
-                try {
-                    this.register(extractor, 'built-in');
-                } catch (error) {
-                    this.logger.warn(`Failed to register built-in extractor`, {
-                        error: getErrorMessage(error),
-                    });
-                }
+        for (const [code, entry] of EXTRACTOR_HANDLER_REGISTRY) {
+            try {
+                const extractor = this.moduleRef.get(entry.handler, { strict: false });
+                this.register(extractor, 'built-in');
+                registered++;
+            } catch (error) {
+                this.logger.warn(`Failed to register built-in extractor`, {
+                    adapterCode: code,
+                    error: getErrorMessage(error),
+                });
             }
         }
 
         this.logger.debug(`Registered built-in extractors`, {
-            recordCount: builtInExtractors.filter(Boolean).length,
+            recordCount: registered,
         });
     }
 

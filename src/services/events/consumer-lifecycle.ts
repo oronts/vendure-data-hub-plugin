@@ -3,7 +3,7 @@ import { ConnectionService } from '../config/connection.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 import { DISTRIBUTED_LOCK } from '../../constants/index';
 import { DataHubLogger } from '../logger';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { MessageConsumerConfig, getConsumerKey } from './consumer-discovery';
 
 /**
@@ -163,7 +163,7 @@ export class ConsumerLifecycle {
                 }
             } catch (error) {
                 this.logger.error(`Error extending lock for consumer ${consumerKey}`,
-                    error instanceof Error ? error : undefined, {
+                    toErrorOrUndefined(error), {
                     pipelineCode: consumer.config.pipelineCode,
                 });
             }

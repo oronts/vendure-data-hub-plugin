@@ -13,10 +13,13 @@ import {
     SelectValue,
     Switch,
 } from '@vendure/dashboard';
-import { EXPORT_WIZARD_TRIGGERS, TRIGGER_TYPES, UI_DEFAULTS, COMPRESSION_OPTIONS, COMPRESSION_TYPE } from '../../../constants';
+import { TRIGGER_TYPES, UI_DEFAULTS, COMPRESSION_TYPE, LOADING_STATE_TYPE } from '../../../constants';
+import { useOptionValues } from '../../../hooks/api/use-config-options';
+import { useTriggerTypes } from '../../../hooks';
 import { WizardStepContainer } from '../shared';
-import { TriggerSelector, ScheduleConfig } from '../../shared/wizard-trigger';
-import { STEP_CONTENT } from './constants';
+import { TriggerSelector, TriggerSchemaFields } from '../../shared/wizard-trigger';
+import { LoadingState } from '../../shared/feedback';
+import { STEP_CONTENT, DEFAULT_EXPORT_OPTIONS } from './constants';
 import type { ExportConfiguration, ExportTriggerType, CompressionType } from './types';
 
 interface TriggerStepProps {
@@ -27,21 +30,18 @@ interface TriggerStepProps {
 
 export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepProps) {
     const trigger = config.trigger ?? { type: TRIGGER_TYPES.MANUAL };
-    const options = config.options ?? {
-        batchSize: UI_DEFAULTS.EXPORT_BATCH_SIZE,
-        includeMetadata: false,
-        compression: COMPRESSION_TYPE.NONE,
-        notifyOnComplete: true,
-        retryOnFailure: true,
-        maxRetries: UI_DEFAULTS.DEFAULT_MAX_RETRIES,
-    };
+    const options = config.options ?? { ...DEFAULT_EXPORT_OPTIONS };
 
     const handleTriggerTypeChange = (type: string) => {
         updateConfig({ trigger: { ...trigger, type: type as ExportTriggerType } });
     };
 
-    const handleCronChange = (cron: string) => {
-        updateConfig({ trigger: { ...trigger, cron } });
+    const handleCronChange = (schedule: string) => {
+        updateConfig({ trigger: { ...trigger, schedule } });
+    };
+
+    const handleWebhookPathChange = (webhookPath: string) => {
+        updateConfig({ trigger: { ...trigger, webhookPath } });
     };
 
     return (
@@ -51,8 +51,10 @@ export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepPr
         >
             <TriggerCard
                 trigger={trigger}
+                updateConfig={updateConfig}
                 onTriggerTypeChange={handleTriggerTypeChange}
                 onCronChange={handleCronChange}
+                onWebhookPathChange={handleWebhookPathChange}
             />
             <ExportOptionsCard options={options} updateConfig={updateConfig} />
             <CachingCard config={config} updateConfig={updateConfig} />
@@ -62,11 +64,24 @@ export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepPr
 
 interface TriggerCardProps {
     trigger: ExportConfiguration['trigger'];
+    updateConfig: (updates: Partial<ExportConfiguration>) => void;
     onTriggerTypeChange: (type: string) => void;
     onCronChange: (cron: string) => void;
+    onWebhookPathChange: (path: string) => void;
 }
 
-function TriggerCard({ trigger, onTriggerTypeChange, onCronChange }: TriggerCardProps) {
+function TriggerCard({ trigger, updateConfig, onTriggerTypeChange, onCronChange, onWebhookPathChange }: TriggerCardProps) {
+    const { exportWizardTriggers, triggerSchemas, isLoading } = useTriggerTypes();
+    const currentSchema = triggerSchemas.find(s => s.value === trigger.type);
+
+    const handleFieldChange = (key: string, value: unknown) => {
+        // Call specific handlers for fields that have dedicated state
+        if (key === 'schedule') onCronChange(String(value));
+        else if (key === 'webhookPath') onWebhookPathChange(String(value));
+        // Always store the field value in trigger config for schema-driven fields
+        updateConfig({ trigger: { ...trigger, [key]: value } });
+    };
+
     return (
         <Card>
             <CardHeader>
@@ -74,20 +89,24 @@ function TriggerCard({ trigger, onTriggerTypeChange, onCronChange }: TriggerCard
             </CardHeader>
             <CardContent className="space-y-4">
                 <TriggerSelector
-                    options={EXPORT_WIZARD_TRIGGERS}
+                    options={exportWizardTriggers}
                     value={trigger.type}
                     onChange={onTriggerTypeChange}
                 />
 
-                {trigger.type === TRIGGER_TYPES.SCHEDULE && (
+                {currentSchema && currentSchema.fields.length > 0 ? (
                     <div className="pt-4 border-t">
-                        <ScheduleConfig
-                            cron={trigger.cron ?? ''}
-                            onChange={onCronChange}
-                            showCard={false}
+                        <TriggerSchemaFields
+                            fields={currentSchema.fields}
+                            values={trigger as Record<string, unknown>}
+                            onChange={handleFieldChange}
                         />
                     </div>
-                )}
+                ) : isLoading && trigger.type !== TRIGGER_TYPES.MANUAL ? (
+                    <div className="pt-4 border-t">
+                        <LoadingState type={LOADING_STATE_TYPE.FORM} rows={2} message="" />
+                    </div>
+                ) : null}
             </CardContent>
         </Card>
     );
@@ -99,6 +118,7 @@ interface ExportOptionsCardProps {
 }
 
 function ExportOptionsCard({ options, updateConfig }: ExportOptionsCardProps) {
+    const { options: compressionOptions } = useOptionValues('compressionTypes');
     return (
         <Card>
             <CardHeader>
@@ -129,7 +149,7 @@ function ExportOptionsCard({ options, updateConfig }: ExportOptionsCardProps) {
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                {COMPRESSION_OPTIONS.map(option => (
+                                {compressionOptions.map(option => (
                                     <SelectItem key={option.value} value={option.value}>
                                         {option.label}
                                     </SelectItem>
@@ -153,32 +173,35 @@ function ExportOptionsCard({ options, updateConfig }: ExportOptionsCardProps) {
                 <div className="flex flex-wrap gap-6">
                     <div className="flex items-center gap-2">
                         <Switch
+                            id="include-metadata"
                             checked={options.includeMetadata}
                             onCheckedChange={includeMetadata => updateConfig({
                                 options: { ...options, includeMetadata },
                             })}
                         />
-                        <Label>Include metadata</Label>
+                        <Label htmlFor="include-metadata">Include metadata</Label>
                     </div>
 
                     <div className="flex items-center gap-2">
                         <Switch
+                            id="notify-on-complete"
                             checked={options.notifyOnComplete}
                             onCheckedChange={notifyOnComplete => updateConfig({
                                 options: { ...options, notifyOnComplete },
                             })}
                         />
-                        <Label>Notify on complete</Label>
+                        <Label htmlFor="notify-on-complete">Notify on complete</Label>
                     </div>
 
                     <div className="flex items-center gap-2">
                         <Switch
+                            id="retry-on-failure"
                             checked={options.retryOnFailure}
                             onCheckedChange={retryOnFailure => updateConfig({
                                 options: { ...options, retryOnFailure },
                             })}
                         />
-                        <Label>Retry on failure</Label>
+                        <Label htmlFor="retry-on-failure">Retry on failure</Label>
                     </div>
                 </div>
             </CardContent>

@@ -12,6 +12,7 @@ import {
     createStepDetail,
 } from './step-strategy.interface';
 import { getAdapterCode } from '../../../types/step-configs';
+import { StepType as StepTypeEnum, DomainEventType } from '../../../constants/enums';
 
 export class FeedStepStrategy implements StepStrategy {
     constructor(private readonly feedExecutor: FeedExecutor) {}
@@ -36,14 +37,14 @@ export class FeedStepStrategy implements StepStrategy {
             failed: fail,
             detail: createStepDetail(step, { ok, fail, outputPath: outputPath ?? null }, durationMs),
             counters: {},
-            event: { type: 'FEED_GENERATED', data: { stepKey: step.key, ok, fail, outputPath } },
+            event: { type: DomainEventType.FEED_GENERATED, data: { stepKey: step.key, ok, fail, outputPath } },
         };
     }
 
     private async logStepStart(context: StepExecutionContext, recordsIn: number): Promise<void> {
         const { ctx, step, stepLog } = context;
         if (stepLog?.onStepStart) {
-            await stepLog.onStepStart(ctx, step.key, 'FEED', recordsIn);
+            await stepLog.onStepStart(ctx, step.key, StepTypeEnum.FEED, recordsIn);
         }
     }
 
@@ -64,7 +65,7 @@ export class FeedStepStrategy implements StepStrategy {
         if (stepLog?.onStepComplete) {
             await stepLog.onStepComplete(ctx, {
                 stepKey: step.key,
-                stepType: 'FEED',
+                stepType: StepTypeEnum.FEED,
                 adapterCode,
                 recordsIn,
                 recordsOut: ok,

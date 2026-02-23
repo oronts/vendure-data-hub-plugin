@@ -21,7 +21,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getPath } from '../../utils';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { sleep, calculateBackoff, ResolvedRetryConfig } from '../../../utils/retry.utils';
-import { PAGINATION, RATE_LIMIT, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, ConnectionType } from '../../../constants/index';
+import { PAGINATION, RATE_LIMIT, LOGGER_CONTEXTS, HTTP, HTTP_STATUS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, ConnectionType, TIME } from '../../../constants/index';
 import { ConnectionAuthType } from '../../../sdk/types/connection-types';
 import {
     ExtractHandler,
@@ -33,6 +33,7 @@ import {
     getCheckpointValue,
 } from './extract-handler.interface';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
+import { applyAuthentication, AuthConfig as SharedAuthConfig } from '../../../utils/auth-helpers';
 
 interface RestExtractConfig {
     connectionCode?: string;
@@ -487,13 +488,13 @@ export class RestExtractHandler implements ExtractHandler {
         const secret = cfg.hmacSecret ?? await this.resolveSecret(ctx, cfg.hmacSecretCode);
         if (!secret) return null;
 
-        const now = Math.floor(Date.now() / 1000);
+        const nowUnix = Math.floor(Date.now() / TIME.SECOND);
         const path = new URL(url, 'http://localhost');
         const template = cfg.hmacPayloadTemplate ?? '${method}:${path}:${timestamp}';
         const payload = template
             .replace('${method}', method)
             .replace('${path}', path.pathname + path.search)
-            .replace('${timestamp}', String(now))
+            .replace('${timestamp}', String(nowUnix))
             .replace('${body}', body ? JSON.stringify(body) : '');
 
         return crypto.createHmac('sha256', secret).update(payload).digest('hex');
@@ -504,28 +505,8 @@ export class RestExtractHandler implements ExtractHandler {
         auth: StoredHttpAuthConfig,
         headers: Record<string, string>,
     ): Promise<void> {
-        switch (auth.type) {
-            case ConnectionAuthType.BEARER: {
-                const token = await this.resolveSecret(ctx, auth.secretCode);
-                if (token) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${token}`;
-                break;
-            }
-            case ConnectionAuthType.API_KEY: {
-                const apiKey = await this.resolveSecret(ctx, auth.secretCode);
-                if (apiKey) headers[auth.headerName || HTTP_HEADERS.X_API_KEY] = apiKey;
-                break;
-            }
-            case ConnectionAuthType.BASIC: {
-                const username = auth.usernameSecretCode
-                    ? await this.resolveSecret(ctx, auth.usernameSecretCode)
-                    : auth.username;
-                const password = await this.resolveSecret(ctx, auth.secretCode);
-                if (username && password) {
-                    headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${Buffer.from(`${username}:${password}`).toString('base64')}`;
-                }
-                break;
-            }
-        }
+        const resolver = (secretCode: string) => this.resolveSecret(ctx, secretCode).then(v => v ?? undefined);
+        await applyAuthentication(headers, auth as SharedAuthConfig, resolver);
     }
 
     private async resolveSecret(ctx: RequestContext, code?: string | null): Promise<string | null> {

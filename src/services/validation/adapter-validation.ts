@@ -3,7 +3,7 @@
  * Handles validation of adapter codes, field schemas, and connectivity requirements.
  */
 
-import { RunMode } from '../../constants/enums';
+import { RunMode, AdapterType as AdapterTypeEnum, StepType as StepTypeEnum } from '../../constants/enums';
 import { EXTRACTOR_CODE } from '../../constants/adapters';
 import { JsonValue, PipelineDefinition, StepType } from '../../types/index';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -112,7 +112,7 @@ export function validateAdapterConnectivity(
     definition: PipelineDefinition,
     issues: PipelineDefinitionIssue[],
 ): void {
-    if (definition.context?.runMode === RunMode.STREAM && adapterType === 'OPERATOR') {
+    if (definition.context?.runMode === RunMode.STREAM && adapterType === AdapterTypeEnum.OPERATOR) {
         if (!hasStreamSafetyInfo(adapter) || adapter.pure !== true) {
             issues.push({
                 message: `Step "${stepKey}": operator "${adapterCode}" is not stream-safe (pure=false)`,
@@ -273,7 +273,7 @@ export function validateGraphQLExtractor(
  * Checks if a step type requires an adapter and returns true if built-in config is used.
  */
 export function isUsingBuiltInEnrichment(stepType: StepType, cfg: AdapterStepConfig): boolean {
-    if (stepType !== 'ENRICH') {
+    if (stepType !== StepTypeEnum.ENRICH) {
         return false;
     }
     const enrichConfig = cfg as { adapterCode?: string; defaults?: unknown; set?: unknown; computed?: unknown; sourceType?: string };
@@ -285,5 +285,5 @@ export function isUsingBuiltInEnrichment(stepType: StepType, cfg: AdapterStepCon
  * Checks if this is a GraphQL extractor step.
  */
 export function isGraphQLExtractor(adapterType: AdapterType, adapterCode: string): boolean {
-    return adapterType === 'EXTRACTOR' && adapterCode === EXTRACTOR_CODE.GRAPHQL;
+    return adapterType === AdapterTypeEnum.EXTRACTOR && adapterCode === EXTRACTOR_CODE.GRAPHQL;
 }

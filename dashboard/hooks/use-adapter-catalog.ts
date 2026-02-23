@@ -1,37 +1,14 @@
 import * as React from 'react';
 import {
-    FileText,
-    File,
-    FileSpreadsheet,
-    Code,
-    Globe,
-    Webhook,
-    Box,
-    Package,
-    ShoppingCart,
-    Users,
-    Database,
-    RefreshCw,
-    Filter,
-    Layers,
-    Zap,
-    Search,
     GitBranch,
-    CheckCircle,
-    AlertCircle,
-    Eye,
-    Rss,
-    Download,
-    Upload,
     Settings,
-    Sparkles,
-    FileOutput,
-    LucideIcon,
+    type LucideIcon,
 } from 'lucide-react';
 import { useAdapters } from './api/use-adapters';
 import { useConnectionCodes } from './api/use-connections';
 import { useSecrets } from './api/use-secrets';
 import { QUERY_LIMITS, FALLBACK_COLORS, UI_ADAPTER_CATEGORY, ADAPTER_TYPE_TO_NODE_TYPE, ADAPTER_TYPE_TO_CATEGORY } from '../constants';
+import { resolveIconName } from '../utils/icon-resolver';
 
 interface CatalogSchemaField {
     key: string;
@@ -56,6 +33,15 @@ export interface AdapterMetadata {
     schema?: {
         fields: CatalogSchemaField[];
     };
+    entityType?: string;
+    formatType?: string;
+    patchableFields?: string[];
+    editorType?: string;
+    summaryTemplate?: string;
+    categoryLabel?: string;
+    categoryOrder?: number;
+    wizardHidden?: boolean;
+    builtIn?: boolean;
 }
 
 type AdapterNodeType = import('../types').VisualNodeCategory;
@@ -72,100 +58,6 @@ interface AdapterCatalog {
     all: AdapterMetadata[];
 }
 
-const TYPE_ICONS: Record<string, LucideIcon> = {
-    EXTRACTOR: Download,
-    OPERATOR: RefreshCw,
-    VALIDATOR: CheckCircle,
-    ENRICHER: Sparkles,
-    ROUTER: GitBranch,
-    LOADER: Upload,
-    EXPORTER: FileOutput,
-    FEED: Rss,
-    SINK: Database,
-};
-
-const TYPE_COLORS: Record<string, string> = {
-    EXTRACTOR: '#3b82f6',
-    OPERATOR: '#8b5cf6',
-    VALIDATOR: '#22c55e',
-    ENRICHER: '#f59e0b',
-    ROUTER: '#f97316',
-    LOADER: '#6366f1',
-    EXPORTER: '#0ea5e9',
-    FEED: '#ec4899',
-    SINK: '#64748b',
-};
-
-const CODE_ICONS: Record<string, LucideIcon> = {
-    'csv': FileText,
-    'json': File,
-    'xlsx': FileSpreadsheet,
-    'xml': Code,
-    'rest': Globe,
-    'httpApi': Globe,
-    'webhook': Webhook,
-    'vendureQuery': Box,
-    'database': Database,
-    'map': RefreshCw,
-    'template': Code,
-    'when': Filter,
-    'filter': Filter,
-    'aggregate': Layers,
-    'deduplicate': Zap,
-    'lookup': Search,
-    'httpLookup': Globe,
-    'split': GitBranch,
-    'coerce': RefreshCw,
-    'validateRequired': AlertCircle,
-    'validateFormat': CheckCircle,
-    'validateRange': Eye,
-    'productUpsert': Box,
-    'variantUpsert': Package,
-    'customerUpsert': Users,
-    'orderCreate': ShoppingCart,
-    'http': Globe,
-    'csvExport': FileText,
-    'googleMerchant': ShoppingCart,
-    'metaCatalog': Users,
-    'rss': Rss,
-    'customFeed': Code,
-};
-
-const CODE_COLORS: Record<string, string> = {
-    'csv': '#3b82f6',
-    'json': '#eab308',
-    'xlsx': '#22c55e',
-    'xml': '#f97316',
-    'rest': '#8b5cf6',
-    'httpApi': '#8b5cf6',
-    'webhook': '#ec4899',
-    'vendureQuery': '#6366f1',
-    'database': '#0ea5e9',
-    'map': '#8b5cf6',
-    'template': '#f59e0b',
-    'when': '#3b82f6',
-    'filter': '#3b82f6',
-    'aggregate': '#10b981',
-    'deduplicate': '#6366f1',
-    'lookup': '#0ea5e9',
-    'httpLookup': '#059669',
-    'split': '#f97316',
-    'coerce': '#84cc16',
-    'validateRequired': '#ef4444',
-    'validateFormat': '#22c55e',
-    'validateRange': '#f59e0b',
-    'productUpsert': '#6366f1',
-    'variantUpsert': '#14b8a6',
-    'customerUpsert': '#10b981',
-    'orderCreate': '#f97316',
-    'http': '#8b5cf6',
-    'csvExport': '#3b82f6',
-    'googleMerchant': '#4285f4',
-    'metaCatalog': '#1877f2',
-    'rss': '#f97316',
-    'customFeed': '#8b5cf6',
-};
-
 function adapterTypeToNodeType(adapterType: string): AdapterNodeType {
     return (ADAPTER_TYPE_TO_NODE_TYPE[adapterType] ?? 'transform') as AdapterNodeType;
 }
@@ -179,6 +71,8 @@ function buildAdapterMetadata(adapter: {
     type: string;
     name?: string | null;
     description?: string | null;
+    icon?: string | null;
+    color?: string | null;
     schema?: {
         fields: Array<{
             key: string;
@@ -191,17 +85,21 @@ function buildAdapterMetadata(adapter: {
             options?: Array<{ value: string; label: string }> | null;
         }>;
     };
+    entityType?: string | null;
+    formatType?: string | null;
+    patchableFields?: readonly string[] | null;
+    editorType?: string | null;
+    summaryTemplate?: string | null;
+    categoryLabel?: string | null;
+    categoryOrder?: number | null;
+    wizardHidden?: boolean | null;
+    builtIn?: boolean | null;
 }): AdapterMetadata {
     const code = adapter.code;
     const type = adapter.type;
 
-    const icon = Object.hasOwn(CODE_ICONS, code) ? CODE_ICONS[code]
-               : Object.hasOwn(TYPE_ICONS, type) ? TYPE_ICONS[type]
-               : Settings;
-
-    const color = Object.hasOwn(CODE_COLORS, code) ? CODE_COLORS[code]
-                : Object.hasOwn(TYPE_COLORS, type) ? TYPE_COLORS[type]
-                : FALLBACK_COLORS.UNKNOWN_STEP_COLOR;
+    const icon = resolveIconName(adapter.icon) ?? Settings;
+    const color = adapter.color ?? FALLBACK_COLORS.UNKNOWN_STEP_COLOR;
 
     let schema = adapter.schema;
     if (typeof schema === 'string') {
@@ -233,6 +131,15 @@ function buildAdapterMetadata(adapter: {
         category: adapterTypeToCategory(type),
         nodeType: adapterTypeToNodeType(type),
         schema: { fields: mappedFields },
+        entityType: adapter.entityType ?? undefined,
+        formatType: adapter.formatType ?? undefined,
+        patchableFields: adapter.patchableFields ? [...adapter.patchableFields] : undefined,
+        editorType: adapter.editorType ?? undefined,
+        summaryTemplate: adapter.summaryTemplate ?? undefined,
+        categoryLabel: adapter.categoryLabel ?? undefined,
+        categoryOrder: adapter.categoryOrder ?? undefined,
+        wizardHidden: adapter.wizardHidden ?? undefined,
+        builtIn: adapter.builtIn ?? undefined,
     };
 }
 

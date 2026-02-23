@@ -15,6 +15,7 @@ export const CUSTOMER_GROUP_LOADER_METADATA = {
     entityType: VendureEntityType.CUSTOMER_GROUP,
     name: 'Customer Group Loader',
     description: 'Imports customer groups/segments with customer assignment',
+    adapterCode: 'customerGroupUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['name', 'id'],
     requiredFields: ['name'],

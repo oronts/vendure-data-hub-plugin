@@ -13,6 +13,7 @@ export function WizardFooter({
     onCancel,
     completeLabel = 'Complete',
     completeIcon: CompleteIcon,
+    isSubmitting,
 }: WizardFooterProps) {
     return (
         <div className="flex items-center justify-between p-4 border-t bg-muted/30">
@@ -35,9 +36,9 @@ export function WizardFooter({
                         <ChevronRight className="w-4 h-4 ml-2" />
                     </Button>
                 ) : (
-                    <Button onClick={onComplete} disabled={!canProceed}>
+                    <Button onClick={onComplete} disabled={!canProceed || isSubmitting}>
                         {CompleteIcon && <CompleteIcon className="w-4 h-4 mr-2" />}
-                        {completeLabel}
+                        {isSubmitting ? 'Creating...' : completeLabel}
                     </Button>
                 )}
             </div>

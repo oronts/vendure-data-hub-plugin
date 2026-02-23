@@ -4,8 +4,8 @@ export type { DryRunDialogProps } from './DryRunDialog';
 export { VersionHistoryDialog } from './VersionHistoryDialog';
 export type { VersionHistoryDialogProps, TimelineEntry } from './VersionHistoryDialog';
 
-export { ValidationPanel, ValidationStatusBadge } from './ValidationPanel';
-export type { ValidationPanelProps, ValidationStatusBadgeProps } from './ValidationPanel';
+export { ValidationPanel } from './ValidationPanel';
+export type { ValidationPanelProps } from './ValidationPanel';
 // Re-export ValidationState from central types for convenience
 export type { ValidationState } from '../../../types';
 

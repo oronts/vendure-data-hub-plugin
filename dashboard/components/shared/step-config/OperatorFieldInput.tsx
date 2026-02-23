@@ -19,6 +19,30 @@ interface OperatorFieldInputProps {
     onChange: (key: string, value: unknown) => void;
 }
 
+/** Renders the field label with an improved required indicator */
+function FieldLabel({ field }: { field: OperatorSchemaField }) {
+    return (
+        <div className="flex items-center gap-1.5">
+            <Label className="text-xs font-medium text-foreground/80">
+                {field.label || field.key}
+            </Label>
+            {field.required && (
+                <span className="inline-flex items-center px-1 py-0 rounded text-[9px] font-medium bg-destructive/10 text-destructive leading-tight">
+                    required
+                </span>
+            )}
+        </div>
+    );
+}
+
+/** Renders field description as help text below the input */
+function FieldDescription({ text }: { text?: string }) {
+    if (!text) return null;
+    return (
+        <p className="text-[11px] text-muted-foreground leading-relaxed mt-1">{text}</p>
+    );
+}
+
 /**
  * Renders a schema-based field input based on field type.
  * Handles: select, boolean, number, text, json/object/array field types.
@@ -33,18 +57,13 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
     // Select field type
     if (field.type === FIELD_TYPE.SELECT && field.options) {
         return (
-            <div className="space-y-1">
-                <div className="flex items-center gap-1">
-                    <Label className="text-[11px] text-muted-foreground">
-                        {field.label || field.key}
-                        {field.required && <span className="text-destructive ml-0.5">*</span>}
-                    </Label>
-                </div>
+            <div className="space-y-1.5">
+                <FieldLabel field={field} />
                 <Select
                     value={String(value ?? '')}
                     onValueChange={(v) => handleChange(v)}
                 >
-                    <SelectTrigger className="h-8 text-sm">
+                    <SelectTrigger className="h-9 text-sm">
                         <SelectValue placeholder={field.placeholder || `Select ${field.label || field.key}`} />
                     </SelectTrigger>
                     <SelectContent>
@@ -55,9 +74,7 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
                         ))}
                     </SelectContent>
                 </Select>
-                {field.description && (
-                    <p className="text-[10px] text-muted-foreground">{field.description}</p>
-                )}
+                <FieldDescription text={field.description} />
             </div>
         );
     }
@@ -65,13 +82,8 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
     // JSON/Object/Array field type
     if (isObject) {
         return (
-            <div className="space-y-1">
-                <div className="flex items-center gap-1">
-                    <Label className="text-[11px] text-muted-foreground">
-                        {field.label || field.key}
-                        {field.required && <span className="text-destructive ml-0.5">*</span>}
-                    </Label>
-                </div>
+            <div className="space-y-1.5">
+                <FieldLabel field={field} />
                 <Textarea
                     className="font-mono text-xs"
                     rows={3}
@@ -85,9 +97,7 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
                         }
                     }}
                 />
-                {field.description && (
-                    <p className="text-[10px] text-muted-foreground">{field.description}</p>
-                )}
+                <FieldDescription text={field.description} />
             </div>
         );
     }
@@ -95,16 +105,11 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
     // Number field type
     if (field.type === FIELD_TYPE.NUMBER) {
         return (
-            <div className="space-y-1">
-                <div className="flex items-center gap-1">
-                    <Label className="text-[11px] text-muted-foreground">
-                        {field.label || field.key}
-                        {field.required && <span className="text-destructive ml-0.5">*</span>}
-                    </Label>
-                </div>
+            <div className="space-y-1.5">
+                <FieldLabel field={field} />
                 <Input
                     type="number"
-                    className="h-8 text-sm"
+                    className="h-9 text-sm"
                     placeholder={field.placeholder}
                     value={value !== undefined ? String(value) : ''}
                     onChange={(e) => {
@@ -112,9 +117,7 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
                         handleChange(val === '' ? undefined : Number(val));
                     }}
                 />
-                {field.description && (
-                    <p className="text-[10px] text-muted-foreground">{field.description}</p>
-                )}
+                <FieldDescription text={field.description} />
             </div>
         );
     }
@@ -122,18 +125,13 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
     // Boolean field type
     if (field.type === FIELD_TYPE.BOOLEAN) {
         return (
-            <div className="space-y-1">
-                <div className="flex items-center gap-1">
-                    <Label className="text-[11px] text-muted-foreground">
-                        {field.label || field.key}
-                        {field.required && <span className="text-destructive ml-0.5">*</span>}
-                    </Label>
-                </div>
+            <div className="space-y-1.5">
+                <FieldLabel field={field} />
                 <Select
                     value={value === true ? 'true' : value === false ? 'false' : ''}
                     onValueChange={(v) => handleChange(v === 'true')}
                 >
-                    <SelectTrigger className="h-8 text-sm">
+                    <SelectTrigger className="h-9 text-sm">
                         <SelectValue placeholder="Select..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -141,31 +139,22 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
                         <SelectItem value="false">No</SelectItem>
                     </SelectContent>
                 </Select>
-                {field.description && (
-                    <p className="text-[10px] text-muted-foreground">{field.description}</p>
-                )}
+                <FieldDescription text={field.description} />
             </div>
         );
     }
 
     // Default: text field type
     return (
-        <div className="space-y-1">
-            <div className="flex items-center gap-1">
-                <Label className="text-[11px] text-muted-foreground">
-                    {field.label || field.key}
-                    {field.required && <span className="text-destructive ml-0.5">*</span>}
-                </Label>
-            </div>
+        <div className="space-y-1.5">
+            <FieldLabel field={field} />
             <Input
-                className="h-8 text-sm"
+                className="h-9 text-sm"
                 placeholder={field.placeholder}
                 value={String(value ?? '')}
                 onChange={(e) => handleChange(e.target.value)}
             />
-            {field.description && (
-                <p className="text-[10px] text-muted-foreground">{field.description}</p>
-            )}
+            <FieldDescription text={field.description} />
         </div>
     );
 }
@@ -183,12 +172,12 @@ interface GenericArgInputProps {
  */
 export function GenericArgInput({ argKey, value, onChange, onRemove }: GenericArgInputProps) {
     return (
-        <div className="flex items-start gap-2">
+        <div className="flex items-start gap-2 p-2 rounded-md bg-muted/30 border border-border/50">
             <div className="flex-1">
-                <Label className="text-[11px] text-muted-foreground">{argKey}</Label>
+                <Label className="text-xs font-medium text-foreground/80">{argKey}</Label>
                 {typeof value === 'object' ? (
                     <Textarea
-                        className="font-mono text-xs mt-0.5"
+                        className="font-mono text-xs mt-1"
                         rows={3}
                         value={JSON.stringify(value, null, 2)}
                         onChange={(e) => {
@@ -201,7 +190,7 @@ export function GenericArgInput({ argKey, value, onChange, onRemove }: GenericAr
                     />
                 ) : (
                     <Input
-                        className="mt-0.5 text-sm"
+                        className="mt-1 h-9 text-sm"
                         value={String(value ?? '')}
                         onChange={(e) => onChange(argKey, e.target.value)}
                     />
@@ -209,7 +198,7 @@ export function GenericArgInput({ argKey, value, onChange, onRemove }: GenericAr
             </div>
             <button
                 type="button"
-                className="h-6 w-6 p-0 mt-5 text-destructive hover:bg-destructive/10 rounded inline-flex items-center justify-center"
+                className="h-6 w-6 p-0 mt-5 text-destructive/70 hover:text-destructive hover:bg-destructive/10 rounded-md inline-flex items-center justify-center transition-colors"
                 onClick={() => onRemove(argKey)}
                 aria-label={`Remove argument ${argKey}`}
             >

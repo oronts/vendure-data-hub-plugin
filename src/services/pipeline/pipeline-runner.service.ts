@@ -9,8 +9,9 @@ import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
 import { RecordErrorService } from '../data/record-error.service';
 import { DataHubLogger, DataHubLoggerFactory, ExecutionLogger, SpanContext } from '../logger';
 import { LOGGER_CONTEXTS, DISTRIBUTED_LOCK, calculateThroughput } from '../../constants/index';
+import { DomainEventsService } from '../events/domain-events.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, ensureError } from '../../utils/error.utils';
 
 /** Context for pipeline execution passed between helper methods */
 interface ExecutionContext {
@@ -69,6 +70,7 @@ export class PipelineRunnerService {
         private definitionValidator: DefinitionValidationService,
         private adapterRuntime: AdapterRuntimeService,
         private recordErrorService: RecordErrorService,
+        private domainEvents: DomainEventsService,
         private loggerFactory: DataHubLoggerFactory,
         private executionLogger: ExecutionLogger,
         @Optional() private distributedLock?: DistributedLockService,
@@ -144,6 +146,10 @@ export class PipelineRunnerService {
             this.logger.warn('Run not found', { runId: String(runId) });
             return { valid: false };
         }
+        if (!run.pipeline) {
+            this.logger.warn('Orphaned run: pipeline no longer exists', { runId: String(runId) });
+            return { valid: false };
+        }
 
         const runLogger = this.logger.withContext({
             runId,
@@ -205,6 +211,12 @@ export class PipelineRunnerService {
         run.startedAt = new Date();
         await runRepo.save(run, { reload: false });
 
+        this.domainEvents.publishRunStarted(
+            String(runId),
+            run.pipeline.code,
+            String(run.pipeline.id),
+        );
+
         await this.executionLogger.logPipelineStart(ctx, run.pipeline.code, {
             pipelineId: run.pipeline.id,
             runId,
@@ -246,6 +258,17 @@ export class PipelineRunnerService {
         run.finishedAt = new Date();
         run.metrics = metrics;
         await runRepo.save(run, { reload: false });
+
+        this.domainEvents.publishRunCompleted(
+            String(runId),
+            run.pipeline.code,
+            {
+                processed: metrics.totalRecords ?? 0,
+                succeeded: metrics.succeeded ?? 0,
+                failed: metrics.failed ?? 0,
+                durationMs: metrics.durationMs ?? 0,
+            },
+        );
 
         await this.executionLogger.logPipelineComplete(ctx, run.pipeline.code, {
             pipelineId: run.pipeline.id,
@@ -300,12 +323,18 @@ export class PipelineRunnerService {
         const { ctx, run, runId, runRepo, runLogger, pipelineSpan, startTime } = execCtx;
 
         const durationMs = Date.now() - startTime;
-        const error = e instanceof Error ? e : new Error(String(e));
+        const error = ensureError(e);
 
         run.status = RunStatus.FAILED;
         run.finishedAt = new Date();
         run.error = error.message;
         await runRepo.save(run, { reload: false });
+
+        this.domainEvents.publishRunFailed(
+            String(runId),
+            run.pipeline.code,
+            error.message,
+        );
 
         await this.executionLogger.logPipelineFailed(ctx, run.pipeline.code, error, {
             pipelineId: run.pipeline.id,

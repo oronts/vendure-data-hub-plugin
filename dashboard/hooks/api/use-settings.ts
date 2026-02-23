@@ -2,11 +2,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { createMutationErrorHandler, createMutationSuccessHandler } from './mutation-helpers';
+import { createQueryKeys } from '../../utils/query-key-factory';
 import type { DataHubSettingsInput } from '../../types';
 
+const base = createQueryKeys('settings');
 const settingsKeys = {
-    all: ['settings'] as const,
-    detail: () => [...settingsKeys.all, 'detail'] as const,
+    all: base.all,
+    detail: base.details,
 };
 
 const settingsDocument = graphql(`

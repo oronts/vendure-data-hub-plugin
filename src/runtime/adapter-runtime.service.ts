@@ -78,13 +78,17 @@ export class AdapterRuntimeService {
     /**
      * Create the executor context for accessing checkpoint data and pipeline config
      */
-    private createExecutorContext(definition?: PipelineDefinition): ExecutorContext {
+    private createExecutorContext(
+        definition?: PipelineDefinition,
+        onCancelRequested?: () => Promise<boolean>,
+    ): ExecutorContext {
         return {
             cpData: this.checkpointManager.getCheckpointData(),
             cpDirty: this.checkpointManager.isCheckpointDirty(),
             markCheckpointDirty: () => this.checkpointManager.markCheckpointDirty(),
             errorHandling: definition?.context?.errorHandling,
             checkpointing: definition?.context?.checkpointing,
+            onCancelRequested,
         };
     }
 
@@ -110,7 +114,7 @@ export class AdapterRuntimeService {
         const pipelineCtx = await this.executionLifecycle.prepareExecution(
             ctx, definition, pipelineId, runId, options,
         );
-        const executorCtx = this.createExecutorContext(definition);
+        const executorCtx = this.createExecutorContext(definition, onCancelRequested);
         const stepLog = createStepLogCallback(this.executionLogger, pipelineId, runId);
 
         const result = await executeLinear({
@@ -153,7 +157,7 @@ export class AdapterRuntimeService {
         const pipelineCtx = await this.executionLifecycle.prepareExecution(
             ctx, definition, pipelineId, runId, options,
         );
-        const executorCtx = this.createExecutorContext(definition);
+        const executorCtx = this.createExecutorContext(definition, onCancelRequested);
         const stepLog = createStepLogCallback(this.executionLogger, pipelineId, runId);
 
         const result = await executeGraph({

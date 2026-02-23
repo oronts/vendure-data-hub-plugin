@@ -3,14 +3,12 @@ import { Button, Input, Switch, Label } from '@vendure/dashboard';
 import { PlusCircle, Trash2 } from 'lucide-react';
 import { ConnectionAuthType } from '../../../shared/types';
 import {
-    CONNECTION_PORTS,
-    CONNECTION_HOSTS,
     HTTP_CONNECTION_DEFAULTS,
-    DATABASE_PLACEHOLDERS,
-    CLOUD_PLACEHOLDERS,
     PLACEHOLDERS,
     CONNECTION_TYPE,
 } from '../../constants';
+import { useOptionValues, useConnectionSchemas } from '../../hooks/api/use-config-options';
+import type { ConnectionSchemaField } from '../../hooks/api/use-config-options';
 import { validateUrl, validatePort, validateHostname } from '../../utils';
 import { FieldError } from './ValidationFeedback';
 import type { UIConnectionType, HttpConnectionConfig, DataHubSecret } from '../../types';
@@ -24,7 +22,7 @@ const DEFAULT_HTTP_CONFIG: HttpConnectionConfig = {
 
 type SecretOption = Pick<DataHubSecret, 'code' | 'provider'>;
 
-interface ConnectionConfigEditorProps {
+export interface ConnectionConfigEditorProps {
     type: UIConnectionType;
     config: Record<string, unknown>;
     onChange: (config: Record<string, unknown>) => void;
@@ -41,50 +39,20 @@ interface ConfigFieldDef {
     description?: string;
 }
 
-const CONNECTION_SCHEMAS: Record<Exclude<UIConnectionType, 'HTTP'>, ConfigFieldDef[]> = {
-    POSTGRES: [
-        { key: 'host', label: 'Host', type: 'string', placeholder: CONNECTION_HOSTS.LOCALHOST, required: true },
-        { key: 'port', label: 'Port', type: 'number', placeholder: String(CONNECTION_PORTS.POSTGRESQL), required: true },
-        { key: 'database', label: 'Database', type: 'string', placeholder: DATABASE_PLACEHOLDERS.DATABASE, required: true },
-        { key: 'username', label: 'Username', type: 'string', placeholder: DATABASE_PLACEHOLDERS.POSTGRES_USER, required: true },
-        { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
-        { key: 'ssl', label: 'SSL', type: 'boolean' },
-    ],
-    MYSQL: [
-        { key: 'host', label: 'Host', type: 'string', placeholder: CONNECTION_HOSTS.LOCALHOST, required: true },
-        { key: 'port', label: 'Port', type: 'number', placeholder: String(CONNECTION_PORTS.MYSQL), required: true },
-        { key: 'database', label: 'Database', type: 'string', placeholder: DATABASE_PLACEHOLDERS.DATABASE, required: true },
-        { key: 'username', label: 'Username', type: 'string', placeholder: DATABASE_PLACEHOLDERS.MYSQL_USER, required: true },
-        { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
-    ],
-    S3: [
-        { key: 'bucket', label: 'Bucket', type: 'string', placeholder: CLOUD_PLACEHOLDERS.S3_BUCKET, required: true },
-        { key: 'region', label: 'Region', type: 'string', placeholder: CLOUD_PLACEHOLDERS.S3_REGION, required: true },
-        { key: 'accessKeyIdSecretCode', label: 'Access Key ID Secret', type: 'secret', description: 'Reference a secret by code' },
-        { key: 'secretAccessKeySecretCode', label: 'Secret Access Key Secret', type: 'secret', description: 'Reference a secret by code' },
-        { key: 'endpoint', label: 'Custom Endpoint', type: 'string', placeholder: CLOUD_PLACEHOLDERS.S3_ENDPOINT },
-        { key: 'forcePathStyle', label: 'Force Path Style', type: 'boolean' },
-    ],
-    FTP: [
-        { key: 'host', label: 'Host', type: 'string', placeholder: CONNECTION_HOSTS.FTP_EXAMPLE, required: true },
-        { key: 'port', label: 'Port', type: 'number', placeholder: String(CONNECTION_PORTS.FTP), required: true },
-        { key: 'username', label: 'Username', type: 'string', required: true },
-        { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Reference a secret by code' },
-        { key: 'secure', label: 'Use FTPS', type: 'boolean' },
-    ],
-    SFTP: [
-        { key: 'host', label: 'Host', type: 'string', placeholder: CONNECTION_HOSTS.SFTP_EXAMPLE, required: true },
-        { key: 'port', label: 'Port', type: 'number', placeholder: String(CONNECTION_PORTS.SFTP), required: true },
-        { key: 'username', label: 'Username', type: 'string', required: true },
-        { key: 'passwordSecretCode', label: 'Password Secret Code', type: 'secret', description: 'Or use privateKeySecretCode' },
-        { key: 'privateKeySecretCode', label: 'Private Key Secret Code', type: 'secret', description: 'SSH private key' },
-    ],
-};
+/**
+ * Fallback connection schemas used when the backend `connectionSchemas` query
+ * has not yet loaded or is unavailable.
+ */
 
 export function ConnectionConfigEditor({ type, config, onChange, disabled, secretOptions = [] }: ConnectionConfigEditorProps) {
-    const resolvedType = (typeof type === 'string' && type.length > 0 ? type : 'HTTP') as UIConnectionType;
+    const resolvedType = (typeof type === 'string' && type.length > 0 ? type : CONNECTION_TYPE.HTTP) as UIConnectionType;
+    const { schemas: backendSchemas } = useConnectionSchemas();
 
-    if (resolvedType === CONNECTION_TYPE.HTTP) {
+    // HTTP-like types use the dedicated HTTP editor with auth/headers support.
+    // Determined by backend `httpLike` metadata on the connection schema.
+    const isHttpLike = backendSchemas.some(s => s.type === resolvedType && s.httpLike === true);
+
+    if (isHttpLike) {
         return (
             <HttpConnectionFields
                 config={config as Record<string, unknown>}
@@ -95,7 +63,7 @@ export function ConnectionConfigEditor({ type, config, onChange, disabled, secre
         );
     }
 
-    const schema = CONNECTION_SCHEMAS[resolvedType as Exclude<UIConnectionType, 'HTTP'>];
+    const schema = resolveSchema(resolvedType, backendSchemas);
     if (!schema || schema.length === 0) {
         return <div className="text-center py-4 text-muted-foreground">No configuration options available for this type.</div>;
     }
@@ -145,6 +113,7 @@ function HttpConnectionFields({
     disabled?: boolean;
     secretOptions?: SecretOption[];
 }) {
+    const authOptions = useAuthOptions();
     const normalized = React.useMemo(() => normalizeHttpConfig(config), [config]);
     const [urlTouched, setUrlTouched] = React.useState(false);
 
@@ -292,7 +261,7 @@ function HttpConnectionFields({
             <div className="space-y-3" role="group" aria-labelledby="authentication-label">
                 <Label id="authentication-label" className="text-sm font-medium">Authentication</Label>
                 <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Select authentication method">
-                    {AUTH_OPTIONS.map(option => (
+                    {authOptions.map(option => (
                         <Button
                             key={option.value}
                             type="button"
@@ -378,19 +347,22 @@ interface HeaderRow {
     value: string;
 }
 
-const AUTH_OPTIONS: Array<{ value: ConnectionAuthType; label: string }> = [
-    { value: ConnectionAuthType.NONE, label: 'No auth' },
-    { value: ConnectionAuthType.BEARER, label: 'Bearer token' },
-    { value: ConnectionAuthType.API_KEY, label: 'API key' },
-    { value: ConnectionAuthType.BASIC, label: 'Basic auth' },
-];
+function useAuthOptions(): Array<{ value: ConnectionAuthType; label: string }> {
+    const { options: backendOptions } = useOptionValues('authTypes');
+    return React.useMemo(() => {
+        return backendOptions.map(opt => ({
+            value: opt.value as ConnectionAuthType,
+            label: opt.label,
+        }));
+    }, [backendOptions]);
+}
 
 function createHeaderRow(): HeaderRow {
     return { id: createRowId(), name: '', value: '' };
 }
 
 function createRowId(): string {
-    return crypto.randomUUID().slice(0, 8);
+    return (crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10)).slice(0, 8);
 }
 
 function normalizeHttpConfig(config: Record<string, unknown>): HttpConnectionConfig {
@@ -420,6 +392,37 @@ function normalizeHttpConfig(config: Record<string, unknown>): HttpConnectionCon
         if (typeof auth.usernameSecretCode === 'string') next.auth.usernameSecretCode = auth.usernameSecretCode;
     }
     return next;
+}
+
+/**
+ * Resolves the field schema for a given connection type from backend data.
+ */
+function resolveSchema(
+    type: string,
+    backendSchemas: ReadonlyArray<{ type: string; fields: ConnectionSchemaField[] }>,
+): ConfigFieldDef[] {
+    const backendEntry = backendSchemas.find(s => s.type === type);
+    if (!backendEntry || backendEntry.fields.length === 0) return [];
+    return backendEntry.fields.map(f => ({
+        key: f.key,
+        label: f.label,
+        type: mapBackendFieldType(f.type),
+        placeholder: f.placeholder ?? undefined,
+        required: f.required ?? undefined,
+        description: f.description ?? undefined,
+    }));
+}
+
+/** Maps backend field type strings to the ConfigFieldDef type union. */
+function mapBackendFieldType(backendType: string): ConfigFieldDef['type'] {
+    switch (backendType) {
+        case 'text': return 'string';
+        case 'number': return 'number';
+        case 'password': return 'password';
+        case 'boolean': return 'boolean';
+        case 'secret': return 'secret';
+        default: return 'string';
+    }
 }
 
 interface ConfigFieldProps {
@@ -538,14 +541,16 @@ function SecretReferenceInput({ value, onChange, placeholder, disabled, options 
     );
 }
 
-export const CONNECTION_TYPE_OPTIONS = [
-    { value: 'HTTP', label: 'HTTP / REST API' },
-    { value: 'POSTGRES', label: 'PostgreSQL' },
-    { value: 'MYSQL', label: 'MySQL / MariaDB' },
-    { value: 'S3', label: 'Amazon S3 / Compatible' },
-    { value: 'FTP', label: 'FTP' },
-    { value: 'SFTP', label: 'SFTP' },
-] as const;
+/**
+ * Hook that returns connection type options for dropdowns.
+ * Uses backend-provided connection schemas.
+ */
+export function useConnectionTypeOptions(): ReadonlyArray<{ value: string; label: string }> {
+    const { schemas } = useConnectionSchemas();
+    return React.useMemo(() => {
+        return schemas.map(s => ({ value: s.type, label: s.label }));
+    }, [schemas]);
+}
 
 export function createDefaultConnectionConfig(type: UIConnectionType): Record<string, unknown> {
     if (type === CONNECTION_TYPE.HTTP) {

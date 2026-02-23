@@ -14,8 +14,15 @@ import {
 } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
-import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import { VendureEntityType } from '../../constants/enums';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+    createLookupHelper,
+} from '../base';
 import { StockLocationInput, STOCK_LOCATION_LOADER_METADATA } from './types';
 import { shouldUpdateField } from '../shared-helpers';
 
@@ -36,6 +43,8 @@ export class StockLocationLoader extends BaseEntityLoader<StockLocationInput, St
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = STOCK_LOCATION_LOADER_METADATA;
 
+    private readonly lookupHelper: EntityLookupHelper<StockLocationService, StockLocation, StockLocationInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private stockLocationService: StockLocationService,
@@ -43,6 +52,9 @@ export class StockLocationLoader extends BaseEntityLoader<StockLocationInput, St
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.STOCK_LOCATION_LOADER);
+        this.lookupHelper = createLookupHelper<StockLocationService, StockLocation, StockLocationInput>(this.stockLocationService)
+            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts))
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id));
     }
 
     protected getDuplicateErrorMessage(record: StockLocationInput): string {
@@ -54,25 +66,7 @@ export class StockLocationLoader extends BaseEntityLoader<StockLocationInput, St
         lookupFields: string[],
         record: StockLocationInput,
     ): Promise<ExistingEntityLookupResult<StockLocation> | null> {
-        // Primary lookup: by name
-        if (record.name && lookupFields.includes('name')) {
-            const locations = await this.stockLocationService.findAll(ctx, {
-                filter: { name: { eq: record.name } },
-            });
-            if (locations.totalItems > 0) {
-                return { id: locations.items[0].id, entity: locations.items[0] };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const location = await this.stockLocationService.findOne(ctx, record.id as ID);
-            if (location) {
-                return { id: location.id, entity: location };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -80,20 +74,9 @@ export class StockLocationLoader extends BaseEntityLoader<StockLocationInput, St
         record: StockLocationInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
-
-        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
-                errors.push({ field: 'name', message: 'Stock location name is required', code: 'REQUIRED' });
-            }
-        }
-
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return new ValidationBuilder()
+            .requireStringForCreate('name', record.name, operation, 'Stock location name is required')
+            .build();
     }
 
     getFieldSchema(): EntityFieldSchema {

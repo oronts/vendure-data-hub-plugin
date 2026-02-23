@@ -1,15 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
+import { createQueryKeys } from '../../utils/query-key-factory';
 import { POLLING_INTERVALS } from '../../constants';
 import type { DataHubLogListOptions } from '../../types';
 
+const base = createQueryKeys('logs');
 const logKeys = {
-    all: ['logs'] as const,
-    lists: () => [...logKeys.all, 'list'] as const,
-    list: (options?: DataHubLogListOptions) => [...logKeys.lists(), options] as const,
-    stats: (pipelineId?: string) => [...logKeys.all, 'stats', pipelineId] as const,
-    recent: (limit?: number) => [...logKeys.all, 'recent', limit] as const,
+    ...base,
+    list: (options?: DataHubLogListOptions) => [...base.lists(), options] as const,
+    stats: (pipelineId?: string) => [...base.all, 'stats', pipelineId] as const,
+    recent: (limit?: number) => [...base.all, 'recent', limit] as const,
 };
 
 const logsDocument = graphql(`

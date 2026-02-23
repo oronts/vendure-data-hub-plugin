@@ -15,7 +15,11 @@ export const VALIDATE_REQUIRED_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'validateRequired',
     description: 'Mark records as invalid if required fields are missing.',
+    category: 'DATA',
+    categoryLabel: 'Data',
+    categoryOrder: 0,
     pure: true,
+    wizardHidden: true,
     schema: {
         fields: [
             { key: 'fields', label: 'Required fields (JSON array)', type: 'json', required: true },
@@ -28,7 +32,11 @@ export const VALIDATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'validateFormat',
     description: 'Validate field format using regex.',
+    category: 'DATA',
+    categoryLabel: 'Data',
+    categoryOrder: 0,
     pure: true,
+    wizardHidden: true,
     schema: {
         fields: [
             { key: 'field', label: 'Field path', type: 'string', required: true },

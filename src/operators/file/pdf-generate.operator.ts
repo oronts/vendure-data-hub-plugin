@@ -6,7 +6,10 @@ export const PDF_GENERATE_OPERATOR_DEFINITION: AdapterDefinition = {
     name: 'PDF Generate',
     description: 'Generate PDF from HTML template with record data',
     category: 'CONVERSION',
+    categoryLabel: 'File',
+    categoryOrder: 9,
     version: '1.0.0',
+    wizardHidden: true,
     schema: {
         groups: [{ id: 'main', label: 'PDF Settings' }],
         fields: [

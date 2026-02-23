@@ -38,6 +38,7 @@ export const CUSTOMER_LOADER_METADATA = {
     entityType: VendureEntityType.CUSTOMER,
     name: 'Customer Loader',
     description: 'Imports customers with email-based lookup, addresses, and group assignment',
+    adapterCode: 'customerUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['emailAddress', 'id', 'customFields.externalId'],
     requiredFields: ['emailAddress', 'firstName', 'lastName'],

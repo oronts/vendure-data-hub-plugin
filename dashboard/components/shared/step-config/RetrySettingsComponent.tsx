@@ -9,6 +9,7 @@ import {
     SelectValue,
 } from '@vendure/dashboard';
 import { STEP_CONFIG_DEFAULTS } from '../../../constants';
+import { useOptionValues } from '../../../hooks/api/use-config-options';
 
 export interface RetrySettings {
     maxRetries?: number;
@@ -22,16 +23,12 @@ export interface RetrySettingsComponentProps {
     readonly defaultExpanded?: boolean;
 }
 
-const BACKOFF_STRATEGIES = [
-    { value: 'FIXED', label: 'Fixed Delay' },
-    { value: 'EXPONENTIAL', label: 'Exponential Backoff' },
-] as const;
-
 export function RetrySettingsComponent({
     retrySettings,
     onChange,
     defaultExpanded = false,
 }: RetrySettingsComponentProps) {
+    const { options: backoffStrategies } = useOptionValues('backoffStrategies');
     const [expanded, setExpanded] = React.useState(defaultExpanded);
 
     return (
@@ -96,7 +93,7 @@ export function RetrySettingsComponent({
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                {BACKOFF_STRATEGIES.map((bs) => (
+                                {backoffStrategies.map((bs) => (
                                     <SelectItem key={bs.value} value={bs.value}>
                                         {bs.label}
                                     </SelectItem>

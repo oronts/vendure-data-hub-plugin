@@ -1,9 +1,6 @@
 import { CRON } from '../../constants/index';
 import { validateCronExpression, normalizeCronField } from '../../../shared/utils/validation';
 
-// Re-export so existing consumers (src/jobs/index.ts, step-validators.ts) keep working
-export { validateCronExpression } from '../../../shared/utils/validation';
-
 export function isValidTimezone(timezone: string): boolean {
     try {
         Intl.DateTimeFormat(undefined, { timeZone: timezone });

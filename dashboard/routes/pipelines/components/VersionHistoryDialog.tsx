@@ -12,7 +12,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { pipelineTimelineDocument, pipelineKeys } from '../../../hooks';
-import { REVISION_TYPE, UI_LIMITS, DIALOG_DIMENSIONS } from '../../../constants';
+import { REVISION_TYPE, UI_LIMITS, DIALOG_DIMENSIONS, RUN_STATUS } from '../../../constants';
 import { formatDateTime } from '../../../utils';
 
 export interface TimelineEntry {
@@ -43,7 +43,7 @@ export function VersionHistoryDialog({
     onOpenChange,
     pipelineId,
 }: VersionHistoryDialogProps) {
-    const { data: timeline = [], isPending: historyPending } = useQuery({
+    const { data: timeline = [], isPending: historyPending, isError } = useQuery({
         queryKey: pipelineKeys.timeline(pipelineId ?? '', UI_LIMITS.TIMELINE_LIMIT),
         queryFn: () =>
             api.query(pipelineTimelineDocument, { pipelineId: pipelineId!, limit: UI_LIMITS.TIMELINE_LIMIT })
@@ -59,7 +59,9 @@ export function VersionHistoryDialog({
                     <DialogDescription>Timeline of pipeline revisions</DialogDescription>
                 </DialogHeader>
                 <div className="flex-1 min-h-0 overflow-auto">
-                    {historyPending ? (
+                    {isError ? (
+                        <p className="text-sm text-destructive text-center py-4">Failed to load version history</p>
+                    ) : historyPending ? (
                         <div className="flex items-center justify-center py-8 text-muted-foreground">Loading...</div>
                     ) : timeline.length === 0 ? (
                         <div className="flex items-center justify-center py-8 text-muted-foreground">No version history</div>
@@ -96,7 +98,7 @@ export function VersionHistoryDialog({
                                         {entry.revision.authorName && <span>by {entry.revision.authorName}</span>}
                                         {entry.runCount > 0 && <span>{entry.runCount} run{entry.runCount !== 1 ? 's' : ''}</span>}
                                         {entry.lastRunStatus && (
-                                            <span className={entry.lastRunStatus === 'SUCCESS' ? 'text-green-600' : entry.lastRunStatus === 'FAILED' ? 'text-red-600' : ''}>
+                                            <span className={entry.lastRunStatus === RUN_STATUS.COMPLETED ? 'text-green-600' : entry.lastRunStatus === RUN_STATUS.FAILED ? 'text-red-600' : ''}>
                                                 Last: {entry.lastRunStatus}
                                             </span>
                                         )}

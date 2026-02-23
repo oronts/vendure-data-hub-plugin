@@ -49,8 +49,6 @@ export interface ExecutionLogContext {
     runId?: ID;
 }
 
-// PipelineEdge is imported from shared types via ../../types/index
-
 /**
  * Graph execution result
  */

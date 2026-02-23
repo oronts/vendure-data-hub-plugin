@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject } from '../types';
 import {
     DateFormatOperatorConfig,
     DateParseOperatorConfig,
@@ -14,12 +14,17 @@ import {
     applyNow,
 } from './helpers';
 import { DATE_UNIT_OPTIONS, DATE_DIFF_UNIT_OPTIONS } from '../constants';
+import { createRecordOperator } from '../operator-factory';
 
 export const DATE_FORMAT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'dateFormat',
     description: 'Format a date field to a string.',
+    category: 'DATE',
+    categoryLabel: 'Date',
+    categoryOrder: 5,
     pure: true,
+    fieldTransform: true,
     schema: {
         fields: [
             { key: 'source', label: 'Source field path', type: 'string', required: true },
@@ -35,6 +40,9 @@ export const DATE_PARSE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'dateParse',
     description: 'Parse a string to a date.',
+    category: 'DATE',
+    categoryLabel: 'Date',
+    categoryOrder: 5,
     pure: true,
     schema: {
         fields: [
@@ -50,6 +58,9 @@ export const DATE_ADD_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'dateAdd',
     description: 'Add or subtract time from a date.',
+    category: 'DATE',
+    categoryLabel: 'Date',
+    categoryOrder: 5,
     pure: true,
     schema: {
         fields: [
@@ -67,74 +78,40 @@ export const DATE_ADD_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-export function dateFormatOperator(
-    records: readonly JsonObject[],
-    config: DateFormatOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyDateFormatOperator(record: JsonObject, config: DateFormatOperatorConfig): JsonObject {
     if (!config.source || !config.target || !config.format) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyDateFormat(
-            record,
-            config.source,
-            config.target,
-            config.format,
-            config.inputFormat,
-            config.timezone,
-        ),
-    );
-    return { records: results };
+    return applyDateFormat(record, config.source, config.target, config.format, config.inputFormat, config.timezone);
 }
 
-export function dateParseOperator(
-    records: readonly JsonObject[],
-    config: DateParseOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    if (!config.source || !config.target || !config.format) {
-        return { records: [...records] };
-    }
+export const dateFormatOperator = createRecordOperator(applyDateFormatOperator);
 
-    const results = records.map(record =>
-        applyDateParse(
-            record,
-            config.source,
-            config.target,
-            config.format,
-            config.timezone,
-        ),
-    );
-    return { records: results };
+export function applyDateParseOperator(record: JsonObject, config: DateParseOperatorConfig): JsonObject {
+    if (!config.source || !config.target || !config.format) {
+        return record;
+    }
+    return applyDateParse(record, config.source, config.target, config.format, config.timezone);
 }
 
-export function dateAddOperator(
-    records: readonly JsonObject[],
-    config: DateAddOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const dateParseOperator = createRecordOperator(applyDateParseOperator);
+
+export function applyDateAddOperator(record: JsonObject, config: DateAddOperatorConfig): JsonObject {
     if (!config.source || !config.target || config.amount === undefined || !config.unit) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyDateAdd(
-            record,
-            config.source,
-            config.target,
-            config.amount,
-            config.unit,
-        ),
-    );
-    return { records: results };
+    return applyDateAdd(record, config.source, config.target, config.amount, config.unit);
 }
+
+export const dateAddOperator = createRecordOperator(applyDateAddOperator);
 
 export const DATE_DIFF_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'dateDiff',
     description: 'Calculate the difference between two dates in a specified unit.',
+    category: 'DATE',
+    categoryLabel: 'Date',
+    categoryOrder: 5,
     pure: true,
     schema: {
         fields: [
@@ -153,32 +130,22 @@ export const DATE_DIFF_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-export function dateDiffOperator(
-    records: readonly JsonObject[],
-    config: DateDiffOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyDateDiffOperator(record: JsonObject, config: DateDiffOperatorConfig): JsonObject {
     if (!config.startDate || !config.endDate || !config.target || !config.unit) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyDateDiff(
-            record,
-            config.startDate,
-            config.endDate,
-            config.target,
-            config.unit,
-            config.absolute,
-        ),
-    );
-    return { records: results };
+    return applyDateDiff(record, config.startDate, config.endDate, config.target, config.unit, config.absolute);
 }
+
+export const dateDiffOperator = createRecordOperator(applyDateDiffOperator);
 
 export const NOW_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'now',
     description: 'Set the current timestamp on a field. Useful for adding created/updated timestamps.',
+    category: 'DATE',
+    categoryLabel: 'Date',
+    categoryOrder: 5,
     pure: false, // Returns different values on each call
     schema: {
         fields: [
@@ -200,18 +167,11 @@ export const NOW_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-export function nowOperator(
-    records: readonly JsonObject[],
-    config: NowOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyNowOperator(record: JsonObject, config: NowOperatorConfig): JsonObject {
     if (!config.target) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyNow(record, config.target, config.format, config.timezone),
-    );
-    return { records: results };
+    return applyNow(record, config.target, config.format, config.timezone);
 }
 
+export const nowOperator = createRecordOperator(applyNowOperator);

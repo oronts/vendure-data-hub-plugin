@@ -18,13 +18,9 @@ import {
 } from '@vendure/dashboard';
 import { WizardStepContainer } from '../shared';
 import type { ImportConfiguration, ImportStrategies } from './types';
-import {
-    EXISTING_RECORDS_STRATEGIES,
-    NEW_RECORDS_STRATEGIES,
-    CLEANUP_STRATEGIES,
-    UI_DEFAULTS,
-} from '../../../constants';
-import { STEP_CONTENT } from './constants';
+import { UI_DEFAULTS } from '../../../constants';
+import { useOptionValues, type ConfigOptionValue } from '../../../hooks/api/use-config-options';
+import { STEP_CONTENT, DEFAULT_IMPORT_STRATEGIES } from './constants';
 
 type CleanupStrategy = ImportStrategies['cleanupStrategy'];
 
@@ -35,12 +31,16 @@ interface StrategyStepProps {
 }
 
 export function StrategyStep({ config, updateConfig, errors = {} }: StrategyStepProps) {
-    const strategies = config.strategies!;
+    const strategies = config.strategies ?? { ...DEFAULT_IMPORT_STRATEGIES };
     const primaryKeyFields = config.targetSchema?.primaryKey
         ? (Array.isArray(config.targetSchema.primaryKey)
             ? config.targetSchema.primaryKey
             : [config.targetSchema.primaryKey])
         : [];
+
+    const { options: existingRecordOptions } = useOptionValues('loadStrategies');
+    const { options: cleanupOptions } = useOptionValues('cleanupStrategies');
+    const { options: recordOptions } = useOptionValues('newRecordStrategies');
 
     return (
         <WizardStepContainer
@@ -53,9 +53,9 @@ export function StrategyStep({ config, updateConfig, errors = {} }: StrategyStep
                 strategies={strategies}
                 primaryKeyFields={primaryKeyFields}
             />
-            <ExistingRecordsCard strategies={strategies} updateConfig={updateConfig} />
-            <NewRecordsCard strategies={strategies} updateConfig={updateConfig} />
-            <AdvancedOptionsCard strategies={strategies} updateConfig={updateConfig} />
+            <ExistingRecordsCard strategies={strategies} updateConfig={updateConfig} options={existingRecordOptions} />
+            <NewRecordsCard strategies={strategies} updateConfig={updateConfig} options={recordOptions} />
+            <AdvancedOptionsCard strategies={strategies} updateConfig={updateConfig} cleanupOptions={cleanupOptions} />
         </WizardStepContainer>
     );
 }
@@ -142,9 +142,10 @@ const LookupFieldButton = memo(function LookupFieldButton({
 interface ExistingRecordsCardProps {
     strategies: ImportConfiguration['strategies'];
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
+    options: ConfigOptionValue[];
 }
 
-function ExistingRecordsCard({ strategies, updateConfig }: ExistingRecordsCardProps) {
+function ExistingRecordsCard({ strategies, updateConfig, options }: ExistingRecordsCardProps) {
     return (
         <Card>
             <CardHeader>
@@ -153,7 +154,7 @@ function ExistingRecordsCard({ strategies, updateConfig }: ExistingRecordsCardPr
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3" role="group" aria-label="Existing records strategy options">
-                    {EXISTING_RECORDS_STRATEGIES.map(option => (
+                    {options.map(option => (
                         <StrategyOptionButton
                             key={option.value}
                             option={option}
@@ -173,9 +174,10 @@ function ExistingRecordsCard({ strategies, updateConfig }: ExistingRecordsCardPr
 interface NewRecordsCardProps {
     strategies: ImportConfiguration['strategies'];
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
+    options: ConfigOptionValue[];
 }
 
-function NewRecordsCard({ strategies, updateConfig }: NewRecordsCardProps) {
+function NewRecordsCard({ strategies, updateConfig, options }: NewRecordsCardProps) {
     return (
         <Card>
             <CardHeader>
@@ -184,7 +186,7 @@ function NewRecordsCard({ strategies, updateConfig }: NewRecordsCardProps) {
             </CardHeader>
             <CardContent>
                 <div className="grid grid-cols-3 gap-3" role="group" aria-label="New records strategy options">
-                    {NEW_RECORDS_STRATEGIES.map(option => (
+                    {options.map(option => (
                         <StrategyOptionButton
                             key={option.value}
                             option={option}
@@ -225,29 +227,26 @@ const StrategyOptionButton = memo(function StrategyOptionButton({
     }, [option.value, strategies, strategyKey, updateConfig]);
 
     return (
-        <button
-            type="button"
-            className={`p-3 border rounded-lg text-left transition-all ${
-                isSelected
-                    ? 'border-primary bg-primary/5'
-                    : 'hover:border-primary/50'
-            }`}
+        <Button
+            variant={isSelected ? 'default' : 'outline'}
+            className="h-auto p-3 justify-start"
             onClick={handleClick}
             aria-pressed={isSelected}
             aria-label={`${option.label} strategy for ${testIdPrefix} records`}
             data-testid={`datahub-wizard-strategy-${testIdPrefix}-${option.value}-btn`}
         >
-            <div className="font-medium">{option.label}</div>
-        </button>
+            <span className="font-medium">{option.label}</span>
+        </Button>
     );
 });
 
 interface AdvancedOptionsCardProps {
     strategies: ImportConfiguration['strategies'];
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
+    cleanupOptions: ConfigOptionValue[];
 }
 
-function AdvancedOptionsCard({ strategies, updateConfig }: AdvancedOptionsCardProps) {
+function AdvancedOptionsCard({ strategies, updateConfig, cleanupOptions }: AdvancedOptionsCardProps) {
     return (
         <Card>
             <CardHeader>
@@ -282,22 +281,24 @@ function AdvancedOptionsCard({ strategies, updateConfig }: AdvancedOptionsCardPr
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-2">
                         <Switch
+                            id="publish-after-import"
                             checked={strategies.publishAfterImport}
                             onCheckedChange={publishAfterImport => updateConfig({
                                 strategies: { ...strategies, publishAfterImport },
                             })}
                         />
-                        <Label>Publish after import</Label>
+                        <Label htmlFor="publish-after-import">Publish after import</Label>
                     </div>
 
                     <div className="flex items-center gap-2">
                         <Switch
+                            id="continue-on-error"
                             checked={strategies.continueOnError}
                             onCheckedChange={continueOnError => updateConfig({
                                 strategies: { ...strategies, continueOnError },
                             })}
                         />
-                        <Label>Continue on error</Label>
+                        <Label htmlFor="continue-on-error">Continue on error</Label>
                     </div>
                 </div>
 
@@ -313,7 +314,7 @@ function AdvancedOptionsCard({ strategies, updateConfig }: AdvancedOptionsCardPr
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            {CLEANUP_STRATEGIES.map(option => (
+                            {cleanupOptions.map(option => (
                                 <SelectItem key={option.value} value={option.value}>
                                     {option.label}
                                 </SelectItem>

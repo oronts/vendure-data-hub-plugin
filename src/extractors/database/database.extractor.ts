@@ -8,11 +8,11 @@ import {
     ConnectionTestResult,
     ExtractorPreviewResult,
     RecordEnvelope,
-    StepConfigSchema,
     ExtractorCategory,
 } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
-import { DatabaseType, DatabasePaginationType, PAGINATION, HTTP, CONNECTION_POOL, TRANSFORM_LIMITS } from '../../constants/index';
+import { DatabaseType, DatabasePaginationType, PAGINATION, TRANSFORM_LIMITS } from '../../constants/index';
+import { DATABASE_EXTRACTOR_SCHEMA } from './schema';
 import {
     DatabaseExtractorConfig,
     DATABASE_TEST_QUERIES,
@@ -35,245 +35,12 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
     readonly type = 'EXTRACTOR' as const;
     readonly code = 'database';
     readonly name = 'Database Extractor';
-    readonly description = 'Extract data from SQL databases (PostgreSQL, MySQL, SQLite, etc.)';
     readonly category: ExtractorCategory = 'DATABASE';
-    readonly version = '1.0.0';
-    readonly icon = 'database';
     readonly supportsPagination = true;
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
 
-    readonly schema: StepConfigSchema = {
-        groups: [
-            { id: 'connection', label: 'Connection', description: 'Database connection settings' },
-            { id: 'query', label: 'Query', description: 'SQL query configuration' },
-            { id: 'pagination', label: 'Pagination', description: 'Pagination settings' },
-            { id: 'incremental', label: 'Incremental', description: 'Incremental extraction settings' },
-            { id: 'advanced', label: 'Advanced', description: 'Advanced options' },
-        ],
-        fields: [
-            // Connection
-            {
-                key: 'connectionCode',
-                label: 'Connection',
-                description: 'Use a saved database connection',
-                type: 'connection',
-                group: 'connection',
-            },
-            {
-                key: 'databaseType',
-                label: 'Database Type',
-                type: 'select',
-                required: true,
-                options: [
-                    { value: DatabaseType.POSTGRESQL, label: 'PostgreSQL' },
-                    { value: DatabaseType.MYSQL, label: 'MySQL / MariaDB' },
-                    { value: DatabaseType.SQLITE, label: 'SQLite' },
-                    { value: DatabaseType.MSSQL, label: 'SQL Server' },
-                    { value: DatabaseType.ORACLE, label: 'Oracle' },
-                ],
-                group: 'connection',
-            },
-            {
-                key: 'host',
-                label: 'Host',
-                description: 'Database server hostname or IP',
-                type: 'string',
-                placeholder: 'localhost',
-                group: 'connection',
-            },
-            {
-                key: 'port',
-                label: 'Port',
-                description: 'Database server port',
-                type: 'number',
-                group: 'connection',
-            },
-            {
-                key: 'database',
-                label: 'Database',
-                description: 'Database name',
-                type: 'string',
-                placeholder: 'mydb',
-                group: 'connection',
-            },
-            {
-                key: 'username',
-                label: 'Username',
-                type: 'string',
-                group: 'connection',
-            },
-            {
-                key: 'passwordSecretCode',
-                label: 'Password',
-                description: 'Secret code for database password',
-                type: 'secret',
-                group: 'connection',
-            },
-            {
-                key: 'connectionStringSecretCode',
-                label: 'Connection String',
-                description: 'Secret code for full connection string (alternative to host/port/etc.)',
-                type: 'secret',
-                group: 'connection',
-            },
-            {
-                key: 'ssl.enabled',
-                label: 'Use SSL',
-                description: 'Enable SSL/TLS connection',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'connection',
-            },
-            {
-                key: 'ssl.rejectUnauthorized',
-                label: 'Verify SSL Certificate',
-                description: 'Reject connections with invalid SSL certificates',
-                type: 'boolean',
-                defaultValue: true,
-                group: 'connection',
-                dependsOn: { field: 'ssl.enabled', value: true },
-            },
-            // Query
-            {
-                key: 'query',
-                label: 'SQL Query',
-                description: 'SQL SELECT query to execute. Use $1, $2 for parameters (PostgreSQL) or ?, ? for others.',
-                type: 'string',
-                required: true,
-                placeholder: 'SELECT * FROM products WHERE updated_at > $1',
-                group: 'query',
-            },
-            {
-                key: 'parameters',
-                label: 'Query Parameters',
-                description: 'Parameters for the query (JSON array)',
-                type: 'json',
-                placeholder: '["2024-01-01"]',
-                group: 'query',
-            },
-            {
-                key: 'schema',
-                label: 'Schema',
-                description: 'Database schema/namespace',
-                type: 'string',
-                placeholder: 'public',
-                group: 'query',
-            },
-            // Pagination
-            {
-                key: 'pagination.enabled',
-                label: 'Enable Pagination',
-                description: 'Paginate query results',
-                type: 'boolean',
-                defaultValue: true,
-                group: 'pagination',
-            },
-            {
-                key: 'pagination.type',
-                label: 'Pagination Type',
-                type: 'select',
-                options: [
-                    { value: DatabasePaginationType.OFFSET, label: 'Offset (LIMIT/OFFSET)' },
-                    { value: DatabasePaginationType.CURSOR, label: 'Cursor (WHERE column > cursor)' },
-                ],
-                defaultValue: DatabasePaginationType.OFFSET,
-                group: 'pagination',
-                dependsOn: { field: 'pagination.enabled', value: true },
-            },
-            {
-                key: 'pagination.pageSize',
-                label: 'Page Size',
-                description: 'Number of rows per page',
-                type: 'number',
-                defaultValue: PAGINATION.DATABASE_PAGE_SIZE,
-                group: 'pagination',
-                dependsOn: { field: 'pagination.enabled', value: true },
-            },
-            {
-                key: 'pagination.cursorColumn',
-                label: 'Cursor Column',
-                description: 'Column to use for cursor-based pagination (usually primary key)',
-                type: 'string',
-                placeholder: 'id',
-                group: 'pagination',
-                dependsOn: { field: 'pagination.type', value: DatabasePaginationType.CURSOR },
-            },
-            {
-                key: 'pagination.maxPages',
-                label: 'Max Pages',
-                description: 'Maximum pages to fetch (safety limit)',
-                type: 'number',
-                defaultValue: PAGINATION.MAX_PAGES,
-                group: 'pagination',
-                dependsOn: { field: 'pagination.enabled', value: true },
-            },
-            // Incremental
-            {
-                key: 'incremental.enabled',
-                label: 'Enable Incremental',
-                description: 'Only fetch new/updated records since last run',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'incremental',
-            },
-            {
-                key: 'incremental.column',
-                label: 'Incremental Column',
-                description: 'Column to track for incremental extraction',
-                type: 'string',
-                placeholder: 'updated_at',
-                group: 'incremental',
-                dependsOn: { field: 'incremental.enabled', value: true },
-            },
-            {
-                key: 'incremental.type',
-                label: 'Column Type',
-                type: 'select',
-                options: [
-                    { value: 'timestamp', label: 'Timestamp' },
-                    { value: 'sequence', label: 'Sequence/Numeric' },
-                    { value: 'id', label: 'Auto-increment ID' },
-                ],
-                defaultValue: 'timestamp',
-                group: 'incremental',
-                dependsOn: { field: 'incremental.enabled', value: true },
-            },
-            // Advanced
-            {
-                key: 'queryTimeoutMs',
-                label: 'Query Timeout (ms)',
-                description: 'Maximum time to wait for query execution',
-                type: 'number',
-                defaultValue: HTTP.TIMEOUT_MS,
-                group: 'advanced',
-            },
-            {
-                key: 'pool.min',
-                label: 'Min Pool Size',
-                description: 'Minimum connections in pool',
-                type: 'number',
-                defaultValue: 1,
-                group: 'advanced',
-            },
-            {
-                key: 'pool.max',
-                label: 'Max Pool Size',
-                description: 'Maximum connections in pool',
-                type: 'number',
-                defaultValue: CONNECTION_POOL.MAX,
-                group: 'advanced',
-            },
-            {
-                key: 'includeQueryMetadata',
-                label: 'Include Metadata',
-                description: 'Include query metadata (column types, row count) in results',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'advanced',
-            },
-        ],
-    };
+    readonly schema = DATABASE_EXTRACTOR_SCHEMA;
 
     async *extract(
         context: ExtractorContext,
@@ -343,8 +110,11 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                     if (config.incremental?.enabled && config.incremental.column) {
                         const incrementalValue = row[config.incremental.column];
                         if (incrementalValue !== undefined && incrementalValue !== null) {
-                            if (latestIncrementalValue === undefined ||
-                                (incrementalValue as string | number) > (latestIncrementalValue as string | number)) {
+                            // Validate types match before comparing to avoid mixed-type > comparison
+                            const canCompare = latestIncrementalValue === undefined ||
+                                typeof incrementalValue === typeof latestIncrementalValue;
+                            if (canCompare && (latestIncrementalValue === undefined ||
+                                (incrementalValue as string | number) > (latestIncrementalValue as string | number))) {
                                 latestIncrementalValue = incrementalValue as JsonValue;
                             }
                         }
@@ -473,10 +243,10 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
         const testQuery = DATABASE_TEST_QUERIES[config.databaseType] || 'SELECT 1';
         const startTime = Date.now();
 
+        let client: Awaited<ReturnType<typeof createDatabaseClient>> | null = null;
         try {
-            const client = await createDatabaseClient(context, config);
+            client = await createDatabaseClient(context, config);
             await client.query(testQuery);
-            await client.close();
 
             return {
                 success: true,
@@ -499,6 +269,8 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                     database: config.database ?? null,
                 },
             };
+        } finally {
+            if (client) await client.close().catch(() => {});
         }
     }
 

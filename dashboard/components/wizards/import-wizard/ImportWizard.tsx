@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { VENDURE_ENTITY_SCHEMAS } from '../../../../shared';
 import type { EnhancedFieldDefinition } from '../../../types';
 import type { ImportWizardProps, ImportConfiguration, FieldMapping } from './types';
-import { WIZARD_STEPS, WIZARD_STEPS_FROM_TEMPLATE, IMPORT_STEP_ID } from './constants';
+import { WIZARD_STEPS, WIZARD_STEPS_FROM_TEMPLATE, IMPORT_STEP_ID, DEFAULT_IMPORT_STRATEGIES } from './constants';
 import { TemplateStep } from './TemplateStep';
 import { SourceStep } from './SourceStep';
 import { PreviewStep } from './PreviewStep';
@@ -15,154 +15,124 @@ import { StrategyStep } from './StrategyStep';
 import { TriggerStep } from './TriggerStep';
 import { ReviewStep } from './ReviewStep';
 import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../shared';
-import { BATCH_SIZES, UI_LIMITS, UI_DEFAULTS, TRIGGER_TYPES, FILE_FORMAT, SOURCE_TYPE, CLEANUP_STRATEGY, TOAST_WIZARD, formatParseError, formatParsedRecords } from '../../../constants';
-import { normalizeString, parseCSVLine, validateImportWizardStep } from '../../../utils';
+import { UI_LIMITS, TRIGGER_TYPES, FILE_FORMAT, SOURCE_TYPE, TOAST_WIZARD, formatParseError, formatParsedRecords, FILE_FORMAT_REGISTRY } from '../../../constants';
+import type { FileParseOptions } from '../../../constants/file-format-registry';
+import { detectFileFormat } from '../../../constants/file-format-registry';
+import { normalizeString, validateImportWizardStep } from '../../../utils';
 import { useImportTemplates } from '../../../hooks/use-import-templates';
-import type { TemplateCategory, TemplateDifficulty } from '../../../types';
+import type { ImportTemplate } from '../../../hooks/use-import-templates';
+import { useAdaptersByType } from '../../../hooks/api/use-adapters';
+import { useEntityFieldSchemas } from '../../../hooks/api/use-entity-field-schemas';
+import { useTriggerTypeSchemas } from '../../../hooks/api/use-config-options';
+import { useWizardNavigation } from '../../../hooks/use-wizard-navigation';
 
-interface ImportTemplateLocal {
-    id: string;
-    name: string;
-    description: string;
-    category: TemplateCategory;
-    icon?: string;
-    difficulty: TemplateDifficulty;
-    estimatedTime: string;
-    requiredFields: string[];
-    optionalFields: string[];
-    sampleData?: Record<string, unknown>[];
-    featured?: boolean;
-    tags?: string[];
-    formats?: string[];
-    definition?: unknown;
-}
-
-export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWizardProps) {
+export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting }: ImportWizardProps) {
     const { templates, categories } = useImportTemplates();
+    const { data: extractors } = useAdaptersByType('EXTRACTOR');
+    const { getFields: getBackendFields } = useEntityFieldSchemas();
+    const { schemas: triggerSchemas } = useTriggerTypeSchemas();
 
-    // Track if user selected a template or is starting from scratch
-    const [selectedTemplate, setSelectedTemplate] = React.useState<ImportTemplateLocal | null>(null);
+    const [selectedTemplate, setSelectedTemplate] = React.useState<ImportTemplate | null>(null);
+    const [templateApplied, setTemplateApplied] = React.useState(false);
     const [startedFromScratch, setStartedFromScratch] = React.useState(false);
 
-    // Determine which steps to show based on template selection
     const activeSteps = React.useMemo(() => {
-        // If user selected a template or started from scratch, skip the template step
-        if (selectedTemplate || startedFromScratch) {
+        if (templateApplied || startedFromScratch) {
             return WIZARD_STEPS_FROM_TEMPLATE;
         }
         return WIZARD_STEPS;
-    }, [selectedTemplate, startedFromScratch]);
-
-    const [currentStep, setCurrentStep] = React.useState(0);
-    const [config, setConfig] = React.useState<Partial<ImportConfiguration>>(initialConfig ?? {
-        name: '',
-        source: { type: SOURCE_TYPE.FILE, fileConfig: { format: FILE_FORMAT.CSV, hasHeaders: true } },
-        targetEntity: '',
-        mappings: [],
-        strategies: {
-            existingRecords: 'UPDATE',
-            lookupFields: [],
-            newRecords: 'CREATE',
-            publishAfterImport: false,
-            cleanupStrategy: CLEANUP_STRATEGY.NONE,
-            batchSize: BATCH_SIZES.IMPORT_DEFAULT,
-            parallelBatches: 1,
-            errorThreshold: UI_DEFAULTS.DEFAULT_ERROR_THRESHOLD_PERCENT,
-            continueOnError: true,
-        },
-        trigger: { type: TRIGGER_TYPES.MANUAL },
-        transformations: [],
-    });
+    }, [templateApplied, startedFromScratch]);
 
     const [uploadedFile, setUploadedFile] = React.useState<File | null>(null);
     const [parsedData, setParsedData] = React.useState<{ headers: string[]; rows: Record<string, unknown>[] } | null>(null);
     const [isParsing, setIsParsing] = React.useState(false);
-    const [stepErrors, setStepErrors] = React.useState<Record<string, string>>({});
-    const [attemptedNext, setAttemptedNext] = React.useState(false);
+
+    const validateStep = React.useCallback((stepId: string, cfg: Partial<ImportConfiguration>) => {
+        // Template step is always valid (user can proceed or select)
+        if (stepId === IMPORT_STEP_ID.TEMPLATE) {
+            return { isValid: true, errors: [], errorsByField: {} };
+        }
+        // Guard: if source requires adapter schema but extractors haven't loaded yet, block
+        if (stepId === IMPORT_STEP_ID.SOURCE
+            && cfg.source?.type
+            && cfg.source.type !== SOURCE_TYPE.FILE
+            && !extractors) {
+            return {
+                isValid: false,
+                errors: [{ field: 'adapters', message: 'Loading adapter configuration, please wait...', type: 'required' as const }],
+                errorsByField: { adapters: 'Loading adapter configuration, please wait...' },
+            };
+        }
+        return validateImportWizardStep(stepId, cfg, uploadedFile, extractors, triggerSchemas);
+    }, [uploadedFile, extractors, triggerSchemas]);
+
+    const {
+        config,
+        setConfig,
+        currentStep,
+        setCurrentStep,
+        stepErrors,
+        setStepErrors,
+        attemptedNext,
+        setAttemptedNext,
+        updateConfig,
+        handleNext,
+        handleBack,
+        handleStepClick,
+        handleComplete,
+        canProceed,
+    } = useWizardNavigation<Partial<ImportConfiguration>>({
+        steps: activeSteps,
+        initialConfig: initialConfig ?? {
+            name: '',
+            source: { type: SOURCE_TYPE.FILE, fileConfig: { format: FILE_FORMAT.CSV, hasHeaders: true } },
+            targetEntity: '',
+            mappings: [],
+            strategies: { ...DEFAULT_IMPORT_STRATEGIES },
+            trigger: { type: TRIGGER_TYPES.MANUAL },
+            transformations: [],
+        },
+        validateStep,
+        onComplete: onComplete as (config: Partial<ImportConfiguration>) => void,
+        nameRequiredMessage: TOAST_WIZARD.IMPORT_NAME_REQUIRED,
+        isSubmitting,
+    });
 
     // Handle template selection
-    const handleSelectTemplate = React.useCallback((template: ImportTemplateLocal | null) => {
+    const handleSelectTemplate = React.useCallback((template: ImportTemplate | null) => {
         setSelectedTemplate(template);
     }, []);
 
-    // Handle using a template
-    const handleUseTemplate = React.useCallback((template: ImportTemplateLocal) => {
+    const handleUseTemplate = React.useCallback((template: ImportTemplate) => {
         setSelectedTemplate(template);
-        // Pre-fill config with template name
+        setTemplateApplied(true);
+        const def = template.definition;
         setConfig(prev => ({
             ...prev,
             name: `${template.name} Import`,
+            ...(def?.sourceType ? { source: { type: def.sourceType, fileConfig: { format: def.fileFormat ?? 'CSV', hasHeaders: true } } } : {}),
+            ...(def?.targetEntity ? { targetEntity: def.targetEntity } : {}),
+            ...(def?.existingRecords ? { strategies: { ...prev.strategies, existingRecords: def.existingRecords, lookupFields: def.lookupFields ?? [] } } : {}),
+            ...(def?.fieldMappings?.length ? {
+                mappings: def.fieldMappings.map(fm => ({
+                    sourceField: fm.sourceField,
+                    targetField: fm.targetField,
+                    required: false,
+                    preview: [],
+                })),
+            } : {}),
         }));
         // Move to first step after template (source step)
         setCurrentStep(0);
         toast.success(TOAST_WIZARD.TEMPLATE_SELECTED);
-    }, []);
+    }, [setConfig, setCurrentStep]);
 
     // Handle starting from scratch
     const handleStartFromScratch = React.useCallback(() => {
         setStartedFromScratch(true);
         setSelectedTemplate(null);
         setCurrentStep(0);
-    }, []);
-
-    const updateConfig = React.useCallback((updates: Partial<ImportConfiguration>) => {
-        setConfig(prev => ({ ...prev, ...updates }));
-        setStepErrors({});
-        setAttemptedNext(false);
-    }, []);
-
-    const validateCurrentStep = React.useCallback(() => {
-        const stepId = activeSteps[currentStep].id;
-        // Template step is always valid (user can proceed or select)
-        if (stepId === IMPORT_STEP_ID.TEMPLATE) {
-            return { isValid: true, errors: [], errorsByField: {} };
-        }
-        const validation = validateImportWizardStep(stepId, config, uploadedFile);
-        return validation;
-    }, [currentStep, config, uploadedFile, activeSteps]);
-
-    const { canProceed } = React.useMemo(() => {
-        const validation = validateCurrentStep();
-        return {
-            canProceed: validation.isValid,
-        };
-    }, [validateCurrentStep]);
-
-    const handleNext = React.useCallback(() => {
-        setAttemptedNext(true);
-        const validation = validateCurrentStep();
-
-        if (!validation.isValid) {
-            setStepErrors(validation.errorsByField);
-            const firstError = validation.errors[0];
-            if (firstError) {
-                toast.error(firstError.message);
-            }
-            return;
-        }
-
-        if (currentStep < activeSteps.length - 1) {
-            setAttemptedNext(false);
-            setStepErrors({});
-            setCurrentStep(prev => prev + 1);
-        }
-    }, [validateCurrentStep, currentStep, activeSteps]);
-
-    const handleBack = React.useCallback(() => {
-        if (currentStep > 0) {
-            setAttemptedNext(false);
-            setStepErrors({});
-            setCurrentStep(prev => prev - 1);
-        }
-    }, [currentStep]);
-
-    const handleComplete = React.useCallback(() => {
-        if (!config.name) {
-            toast.error(TOAST_WIZARD.IMPORT_NAME_REQUIRED);
-            return;
-        }
-        onComplete(config as ImportConfiguration);
-    }, [config, onComplete]);
+    }, [setCurrentStep]);
 
     // Store file config in refs to avoid unnecessary parseFile recreation
     const fileFormatRef = React.useRef(config.source?.fileConfig?.format ?? FILE_FORMAT.CSV);
@@ -179,37 +149,18 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
     const parseFile = React.useCallback(async (file: File) => {
         setIsParsing(true);
         try {
-            const text = await file.text();
             const format = fileFormatRef.current;
+            const entry = FILE_FORMAT_REGISTRY.get(format);
 
             let newParsedData: { headers: string[]; rows: Record<string, unknown>[] } | null = null;
 
-            if (format === FILE_FORMAT.CSV) {
-                const lines = text.split('\n').filter(line => line.trim());
-                const delimiter = delimiterRef.current;
-                const hasHeaders = hasHeadersRef.current;
-
-                const headers = hasHeaders
-                    ? parseCSVLine(lines[0], delimiter).map(h => h.replace(/^["']|["']$/g, ''))
-                    : parseCSVLine(lines[0], delimiter).map((_, i) => `column_${i + 1}`);
-
-                const dataLines = hasHeaders ? lines.slice(1) : lines;
-                const rows = dataLines.slice(0, UI_LIMITS.MAX_PREVIEW_ROWS).map(line => {
-                    const values = parseCSVLine(line, delimiter).map(v => v.replace(/^["']|["']$/g, ''));
-                    const row: Record<string, unknown> = {};
-                    headers.forEach((header, i) => {
-                        row[header] = values[i] ?? '';
-                    });
-                    return row;
-                });
-
-                newParsedData = { headers, rows };
-            } else if (format === FILE_FORMAT.JSON) {
-                const json = JSON.parse(text);
-                const items = Array.isArray(json) ? json : json.data ?? [json];
-                const sampleItems = items.slice(0, UI_LIMITS.MAX_PREVIEW_ROWS) as Record<string, unknown>[];
-                const headers = [...new Set(sampleItems.flatMap(item => Object.keys(item)))];
-                newParsedData = { headers, rows: sampleItems };
+            if (entry) {
+                const options: FileParseOptions = {
+                    delimiter: delimiterRef.current,
+                    hasHeaders: hasHeadersRef.current,
+                    maxRows: UI_LIMITS.MAX_PREVIEW_ROWS,
+                };
+                newParsedData = await entry.parse(file, options);
             }
 
             setParsedData(newParsedData);
@@ -223,54 +174,94 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
 
     React.useEffect(() => {
         if (uploadedFile) {
+            // Auto-detect format from file extension via registry
+            const detectedFormat = detectFileFormat(uploadedFile.name) ?? undefined;
+
+            if (detectedFormat && detectedFormat !== fileFormatRef.current) {
+                fileFormatRef.current = detectedFormat;
+                setConfig(prev => ({
+                    ...prev,
+                    source: { ...prev.source!, fileConfig: { ...prev.source?.fileConfig!, format: detectedFormat } },
+                }));
+            }
             parseFile(uploadedFile);
         }
-    }, [uploadedFile, parseFile]);
+    }, [uploadedFile, parseFile, setConfig]);
 
     React.useEffect(() => {
         if (config.targetEntity && parsedData) {
-            const schema = VENDURE_ENTITY_SCHEMAS[config.targetEntity];
-            if (schema) {
-                const autoMappings: FieldMapping[] = [];
+            // Use backend fields as primary source, fall back to static schemas during loading
+            const backendFields = getBackendFields(config.targetEntity);
+            const staticSchema = VENDURE_ENTITY_SCHEMAS[config.targetEntity];
 
-                Object.entries(schema.fields).forEach(([fieldName, fieldDef]) => {
-                    const matchingSource = parsedData.headers.find(h => {
-                        const normalized = normalizeString(h);
-                        const fieldNormalized = normalizeString(fieldName);
-                        return normalized === fieldNormalized ||
-                            normalized.includes(fieldNormalized) ||
-                            fieldNormalized.includes(normalized);
-                    });
+            // Build a unified field list: prefer backend data, fall back to static
+            const fieldEntries: { name: string; required: boolean }[] = backendFields.length > 0
+                ? backendFields.map(f => ({ name: f.key, required: f.required }))
+                : staticSchema
+                    ? Object.entries(staticSchema.fields).map(([name, def]) => ({
+                        name,
+                        required: (def as EnhancedFieldDefinition).required ?? false,
+                    }))
+                    : [];
 
-                    if (matchingSource || (fieldDef as EnhancedFieldDefinition).required) {
-                        autoMappings.push({
-                            sourceField: matchingSource ?? '',
-                            targetField: fieldName,
-                            required: (fieldDef as EnhancedFieldDefinition).required ?? false,
-                            preview: matchingSource
-                                ? parsedData.rows.slice(0, 3).map(r => r[matchingSource])
-                                : [],
-                        });
-                    }
-                });
+            if (fieldEntries.length === 0) return;
 
-                // Use functional setState to avoid stale closure with config.strategies
+            // If mappings already exist (e.g. from template), enhance them with preview data
+            if (config.mappings && config.mappings.length > 0) {
+                const enhancedMappings = config.mappings.map(mapping => ({
+                    ...mapping,
+                    preview: mapping.sourceField && parsedData.headers.includes(mapping.sourceField)
+                        ? parsedData.rows.slice(0, 3).map(r => r[mapping.sourceField])
+                        : mapping.preview,
+                }));
                 setConfig(prev => ({
                     ...prev,
-                    mappings: autoMappings,
-                    targetSchema: schema,
-                    strategies: {
-                        ...(prev.strategies ?? {}),
-                        lookupFields: schema.primaryKey
-                            ? (Array.isArray(schema.primaryKey) ? schema.primaryKey : [schema.primaryKey])
-                            : [],
-                    },
+                    mappings: enhancedMappings,
+                    targetSchema: staticSchema,
                 }));
-                setStepErrors({});
-                setAttemptedNext(false);
+                return;
             }
+
+            // Otherwise, auto-map from fields + parsed headers
+            const autoMappings: FieldMapping[] = [];
+
+            for (const { name: fieldName, required } of fieldEntries) {
+                const matchingSource = parsedData.headers.find(h => {
+                    const normalized = normalizeString(h);
+                    const fieldNormalized = normalizeString(fieldName);
+                    return normalized === fieldNormalized ||
+                        normalized.includes(fieldNormalized) ||
+                        fieldNormalized.includes(normalized);
+                });
+
+                if (matchingSource || required) {
+                    autoMappings.push({
+                        sourceField: matchingSource ?? '',
+                        targetField: fieldName,
+                        required,
+                        preview: matchingSource
+                            ? parsedData.rows.slice(0, 3).map(r => r[matchingSource])
+                            : [],
+                    });
+                }
+            }
+
+            // Use functional setState to avoid stale closure with config.strategies
+            setConfig(prev => ({
+                ...prev,
+                mappings: autoMappings,
+                targetSchema: staticSchema,
+                strategies: {
+                    ...(prev.strategies ?? {}),
+                    lookupFields: staticSchema?.primaryKey
+                        ? (Array.isArray(staticSchema.primaryKey) ? staticSchema.primaryKey : [staticSchema.primaryKey])
+                        : [],
+                },
+            }));
+            setStepErrors({});
+            setAttemptedNext(false);
         }
-    }, [config.targetEntity, parsedData]);
+    }, [config.targetEntity, parsedData, getBackendFields, setConfig, setStepErrors, setAttemptedNext]);
 
     const currentStepId = activeSteps[currentStep]?.id;
 
@@ -279,7 +270,7 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
             <WizardProgressBar
                 steps={activeSteps}
                 currentStep={currentStep}
-                onStepClick={setCurrentStep}
+                onStepClick={handleStepClick}
             />
 
             <div className="flex-1 overflow-auto p-6" data-testid="datahub-importwizard-steps">
@@ -352,6 +343,7 @@ export function ImportWizard({ onComplete, onCancel, initialConfig }: ImportWiza
                 onCancel={onCancel}
                 completeLabel="Create Import"
                 completeIcon={Play}
+                isSubmitting={isSubmitting}
             />
         </div>
     );

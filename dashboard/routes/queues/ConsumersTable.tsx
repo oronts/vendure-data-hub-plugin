@@ -6,6 +6,8 @@ import {
 } from '@vendure/dashboard';
 import { Play, Square, Radio } from 'lucide-react';
 import { DATAHUB_PERMISSIONS, ITEMS_PER_PAGE } from '../../constants';
+import { useLoadMore } from '../../hooks';
+import { LoadMoreButton } from '../../components/shared';
 import type { Consumer } from './types';
 import { formatDateTime } from '../../utils';
 
@@ -84,14 +86,7 @@ export function ConsumersTable({
     isStopPending: boolean;
     isStartPending: boolean;
 }) {
-    const [displayCount, setDisplayCount] = React.useState(ITEMS_PER_PAGE);
-
-    const displayedConsumers = consumers.slice(0, displayCount);
-    const hasMore = displayCount < consumers.length;
-
-    const handleLoadMore = React.useCallback(() => {
-        setDisplayCount(c => c + ITEMS_PER_PAGE);
-    }, []);
+    const { displayed: displayedConsumers, hasMore, remaining, loadMore } = useLoadMore(consumers, { pageSize: ITEMS_PER_PAGE });
 
     return (
         <>
@@ -133,13 +128,7 @@ export function ConsumersTable({
                     )}
                 </tbody>
             </table>
-            {hasMore && (
-                <div className="flex justify-center mt-4">
-                    <Button variant="outline" onClick={handleLoadMore}>
-                        Load More ({consumers.length - displayCount} remaining)
-                    </Button>
-                </div>
-            )}
+            {hasMore && <LoadMoreButton remaining={remaining} onClick={loadMore} />}
         </>
     );
 }

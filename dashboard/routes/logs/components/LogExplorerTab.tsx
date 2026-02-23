@@ -27,6 +27,7 @@ import {
 import {
     useLogs,
     usePipelines,
+    useOptionValues,
 } from '../../../hooks';
 import { ErrorState, LoadingState } from '../../../components/shared';
 import { QUERY_LIMITS, UI_DEFAULTS, FILTER_VALUES, TOAST_LOG } from '../../../constants';
@@ -47,6 +48,7 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
     const [endDate, setEndDate] = React.useState<string>('');
     const [page, setPage] = React.useState(1);
     const [selectedLog, setSelectedLog] = React.useState<DataHubLog | null>(null);
+    const { options: logLevelOptions } = useOptionValues('logLevels');
     const pageSize = UI_DEFAULTS.LOG_EXPLORER_PAGE_SIZE;
 
     const pipelinesQuery = usePipelines({ take: QUERY_LIMITS.ALL_ITEMS });
@@ -158,7 +160,8 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
             downloadLink.href = url;
             downloadLink.download = `datahub-logs-${new Date().toISOString().split('T')[0]}.json`;
             downloadLink.click();
-            URL.revokeObjectURL(url);
+            // Revoke blob URL after 1 second to ensure download completes
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
             toast.success(TOAST_LOG.EXPORT_SUCCESS);
         } catch {
             toast.error(TOAST_LOG.EXPORT_ERROR);
@@ -194,7 +197,7 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
                             </span>
                         </div>
                     )}
-                    <div className="grid grid-cols-7 gap-3" data-testid="datahub-logs-filters">
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3" data-testid="datahub-logs-filters">
                         <div className="relative">
                             <Hash className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                             <Input
@@ -226,10 +229,9 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value={FILTER_VALUES.ALL}>All Levels</SelectItem>
-                                <SelectItem value="DEBUG">DEBUG</SelectItem>
-                                <SelectItem value="INFO">INFO</SelectItem>
-                                <SelectItem value="WARN">WARN</SelectItem>
-                                <SelectItem value="ERROR">ERROR</SelectItem>
+                                {logLevelOptions.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
 
@@ -242,6 +244,7 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
                                 className="pl-9"
                                 placeholder="Start date"
                                 data-testid="datahub-logs-filter-start-date"
+                                aria-label="Filter by start date"
                             />
                         </div>
 
@@ -254,6 +257,7 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
                                 className="pl-9"
                                 placeholder="End date"
                                 data-testid="datahub-logs-filter-end-date"
+                                aria-label="Filter by end date"
                             />
                         </div>
 
@@ -265,6 +269,7 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
                                 placeholder="Search logs..."
                                 className="pl-9"
                                 data-testid="datahub-logs-search"
+                                aria-label="Search log messages"
                             />
                         </div>
 

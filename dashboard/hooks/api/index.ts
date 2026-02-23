@@ -19,7 +19,6 @@ export {
 } from './use-pipelines';
 
 export {
-    runKeys,
     usePipelineRuns,
     usePipelineRun,
     useRunErrors,
@@ -45,8 +44,6 @@ export {
     createConnectionDocument,
     updateConnectionDocument,
     deleteConnectionDocument,
-    useConnections,
-    useConnectionCodes,
 } from './use-connections';
 
 export {
@@ -55,13 +52,16 @@ export {
 } from './use-adapters';
 
 export {
+    useEntityFieldSchemas,
+} from './use-entity-field-schemas';
+
+export {
     useLogs,
     useLogStats,
     useRecentLogs,
 } from './use-logs';
 
 export {
-    queueKeys,
     useQueueStats,
     useDeadLetters,
     useConsumers,
@@ -81,7 +81,29 @@ export {
     useUpdateSettings,
 } from './use-settings';
 
-export { createMutationErrorHandler, createMutationSuccessHandler, handleMutationError } from './mutation-helpers';
+export { createMutationErrorHandler, handleMutationError } from './mutation-helpers';
+
+export {
+    useConfigOptions,
+    useOptionValues,
+    useAdapterCodeMappings,
+    useComparisonOperators,
+    useStepConfigs,
+    useStepMappings,
+    useHookStages,
+    useHookStageCategories,
+    useDestinationSchemas,
+    useTriggerTypeSchemas,
+    useEnrichmentSourceSchemas,
+    useValidationRuleSchemas,
+    useFieldTransformTypes,
+    useWizardStrategyMappings,
+    useQueryTypeOptions,
+    useCronPresets,
+    useAckModes,
+} from './use-config-options';
+
+export type { ComparisonOperatorOption, ConfigOptionValue, ConnectionSchemaField, DestinationSchema, TypedOptionValue, HookStageCategoryConfig, WizardStrategyMapping } from './use-config-options';
 
 export {
     previewExtract,

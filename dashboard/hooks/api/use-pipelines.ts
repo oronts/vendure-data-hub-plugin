@@ -2,18 +2,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { createMutationErrorHandler } from './mutation-helpers';
+import { createQueryKeys } from '../../utils/query-key-factory';
 import type {
     DataHubPipelineListOptions,
 } from '../../types';
 import { runKeys } from './use-pipeline-runs';
 
+const base = createQueryKeys('pipelines');
 export const pipelineKeys = {
-    all: ['pipelines'] as const,
-    lists: () => [...pipelineKeys.all, 'list'] as const,
-    list: (options?: DataHubPipelineListOptions) => [...pipelineKeys.lists(), options] as const,
-    details: () => [...pipelineKeys.all, 'detail'] as const,
-    detail: (id: string) => [...pipelineKeys.details(), id] as const,
-    timeline: (id: string, limit?: number) => [...pipelineKeys.detail(id), 'timeline', limit] as const,
+    ...base,
+    list: (options?: DataHubPipelineListOptions) => [...base.lists(), options] as const,
+    timeline: (id: string, limit?: number) => [...base.detail(id), 'timeline', limit] as const,
 };
 
 export const pipelinesListDocument = graphql(`

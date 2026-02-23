@@ -29,9 +29,10 @@ import {
 import { FileStorageService } from '../../services';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { ManageDataHubFilesPermission, ReadDataHubFilesPermission } from '../../permissions';
-import { PAGINATION, LOGGER_CONTEXTS, FILE_STORAGE } from '../../constants/index';
+import { PAGINATION, LOGGER_CONTEXTS, FILE_STORAGE, CONTENT_TYPES, HTTP_HEADERS } from '../../constants/index';
 import { detectFormat, isValidFileId, formatFileResponse, detectMimeType } from './file-upload.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
+import { toErrorOrUndefined } from '../../utils/error.utils';
 
 
 /** Multer configuration for file uploads */
@@ -44,14 +45,14 @@ const upload = multer({
     fileFilter: (_req, file, cb) => {
         // Allow common data file types
         const allowedMimeTypes = [
-            'text/csv',
-            'text/plain',
-            'application/json',
-            'application/xml',
+            CONTENT_TYPES.CSV,
+            CONTENT_TYPES.PLAIN,
+            CONTENT_TYPES.JSON,
+            CONTENT_TYPES.XML,
             'text/xml',
             'application/vnd.ms-excel',
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'application/octet-stream', // For files without specific mime type
+            CONTENT_TYPES.OCTET_STREAM, // For files without specific mime type
         ];
 
         if (allowedMimeTypes.includes(file.mimetype) || file.originalname.match(/\.(csv|json|xml|xlsx|xls|txt)$/i)) {
@@ -92,9 +93,9 @@ export class DataHubFileUploadController {
         try {
             const contentType = req.headers['content-type'] || '';
 
-            if (contentType.includes('multipart/form-data')) {
+            if (contentType.includes(CONTENT_TYPES.MULTIPART)) {
                 return this.handleMultipartUpload(ctx, req, res);
-            } else if (contentType.includes('application/json')) {
+            } else if (contentType.includes(CONTENT_TYPES.JSON)) {
                 return this.handleBase64Upload(ctx, req, res);
             } else {
                 return res.status(HttpStatus.BAD_REQUEST).json({
@@ -103,7 +104,7 @@ export class DataHubFileUploadController {
                 });
             }
         } catch (error) {
-            this.logger.error('Upload failed', error instanceof Error ? error : undefined);
+            this.logger.error('Upload failed', toErrorOrUndefined(error));
             return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
                 success: false,
                 error: 'Upload failed',
@@ -204,7 +205,7 @@ export class DataHubFileUploadController {
             });
         }
 
-        res.setHeader('Content-Type', file.mimeType);
+        res.setHeader(HTTP_HEADERS.CONTENT_TYPE, file.mimeType);
         /* eslint-disable no-control-regex */
         const sanitizedName = file.originalName
             .replace(/[\x00-\x1f\x7f"\\]/g, '')
@@ -271,7 +272,7 @@ export class DataHubFileUploadController {
                 warnings: preview.warnings,
             });
         } catch (error) {
-            this.logger.error('File preview failed', error instanceof Error ? error : undefined);
+            this.logger.error('File preview failed', toErrorOrUndefined(error));
             return res.status(HttpStatus.BAD_REQUEST).json({
                 success: false,
                 error: 'Failed to parse file preview',
@@ -355,7 +356,7 @@ export class DataHubFileUploadController {
                             });
                             return resolve();
                         }
-                        this.logger.error('Multer error', err instanceof Error ? err : undefined);
+                        this.logger.error('Multer error', toErrorOrUndefined(err));
                         res.status(HttpStatus.BAD_REQUEST).json({
                             success: false,
                             error: 'Failed to process upload',
@@ -393,7 +394,7 @@ export class DataHubFileUploadController {
                     }
                     resolve();
                 } catch (error) {
-                    this.logger.error('Upload processing error', error instanceof Error ? error : undefined);
+                    this.logger.error('Upload processing error', toErrorOrUndefined(error));
                     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
                         success: false,
                         error: 'Failed to process upload',
@@ -492,7 +493,7 @@ export class DataHubFileUploadController {
                     }
                     resolve();
                 } catch (error) {
-                    this.logger.error('Base64 parse error', error instanceof Error ? error : undefined);
+                    this.logger.error('Base64 parse error', toErrorOrUndefined(error));
                     res.status(HttpStatus.BAD_REQUEST).json({
                         success: false,
                         error: 'Failed to parse request body',

@@ -22,10 +22,7 @@ export interface CurrencyOperatorConfig extends BaseOperatorConfig {
     readonly round?: RoundingMode;
 }
 
-/**
- * Re-exported from SDK transform-types.ts (canonical, includes temperature units).
- * @see src/sdk/types/transform-types.ts UnitType
- */
+/** Unit type for conversions. */
 export type { UnitType };
 
 export interface UnitOperatorConfig extends BaseOperatorConfig {

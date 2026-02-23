@@ -14,6 +14,7 @@ import {
     createStepDetail,
 } from './step-strategy.interface';
 import { getAdapterCode } from '../../../types/step-configs';
+import { StepType as StepTypeEnum, DomainEventType, HookStage } from '../../../constants/enums';
 
 /**
  * Function type for loading with throughput control
@@ -65,20 +66,20 @@ export class LoadStepStrategy implements StepStrategy {
             failed: fail,
             detail: createStepDetail(step, { ok, fail }, durationMs),
             counters: { loaded: ok, rejected: fail },
-            event: { type: 'RECORD_LOADED', data: { stepKey: step.key, ok, fail } },
+            event: { type: DomainEventType.RECORD_LOADED, data: { stepKey: step.key, ok, fail } },
         };
     }
 
     private async logStepStart(context: StepExecutionContext, recordsIn: number): Promise<void> {
         const { ctx, step, stepLog } = context;
         if (stepLog?.onStepStart) {
-            await stepLog.onStepStart(ctx, step.key, 'LOAD', recordsIn);
+            await stepLog.onStepStart(ctx, step.key, StepTypeEnum.LOAD, recordsIn);
         }
     }
 
     private async runBeforeHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'BEFORE_LOAD', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.BEFORE_LOAD, records, runId, pipelineId);
         return result.records;
     }
 
@@ -96,7 +97,7 @@ export class LoadStepStrategy implements StepStrategy {
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'AFTER_LOAD', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.AFTER_LOAD, records, runId, pipelineId);
         return result.records;
     }
 
@@ -113,7 +114,7 @@ export class LoadStepStrategy implements StepStrategy {
         if (stepLog?.onStepComplete) {
             await stepLog.onStepComplete(ctx, {
                 stepKey: step.key,
-                stepType: 'LOAD',
+                stepType: StepTypeEnum.LOAD,
                 adapterCode,
                 recordsIn: batchSize,
                 recordsOut: ok,

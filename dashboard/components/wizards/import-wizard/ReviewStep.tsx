@@ -1,3 +1,4 @@
+import * as React from 'react';
 import {
     Badge,
     Accordion,
@@ -14,9 +15,12 @@ import {
 } from 'lucide-react';
 import { VENDURE_ENTITY_LIST } from '../../../../shared';
 import { WizardStepContainer } from '../shared';
-import { ConfigurationNameCard, SummaryCard, SummaryCardGrid } from '../../shared/wizard';
-import { STEP_CONTENT, PLACEHOLDERS } from './constants';
+import { ConfigurationNameCard, SummaryCard, SummaryCardGrid, SummaryField } from '../../shared/wizard';
+import { useAdaptersByType } from '../../../hooks/api/use-adapters';
+import { formatFieldLabel } from '../../../utils/formatters';
+import { STEP_CONTENT, IMPORT_PLACEHOLDERS } from './constants';
 import type { ImportConfiguration } from './types';
+import type { ImportSourceConfig } from '../../../types/wizard';
 
 interface ReviewStepProps {
     config: Partial<ImportConfiguration>;
@@ -39,7 +43,7 @@ export function ReviewStep({ config, updateConfig, errors = {} }: ReviewStepProp
                 description={config.description ?? ''}
                 onNameChange={name => updateConfig({ name })}
                 onDescriptionChange={description => updateConfig({ description })}
-                namePlaceholder={PLACEHOLDERS.configName}
+                namePlaceholder={IMPORT_PLACEHOLDERS.configName}
                 nameError={errors.name}
                 nameHelperText="A descriptive name to identify this import configuration"
             />
@@ -100,9 +104,7 @@ function DetailedConfigAccordion({ config, mappedFieldsCount }: DetailedConfigAc
             <AccordionItem value="source">
                 <AccordionTrigger>Source Configuration</AccordionTrigger>
                 <AccordionContent>
-                    <pre className="p-4 bg-muted rounded-lg text-xs overflow-auto">
-                        {JSON.stringify(config.source, null, 2)}
-                    </pre>
+                    <SourceConfigSummary source={config.source} />
                 </AccordionContent>
             </AccordionItem>
 
@@ -126,22 +128,10 @@ function DetailedConfigAccordion({ config, mappedFieldsCount }: DetailedConfigAc
                 <AccordionTrigger>Import Strategy</AccordionTrigger>
                 <AccordionContent>
                     <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                            <span className="text-muted-foreground">Existing records:</span>
-                            <span className="ml-2 font-medium">{config.strategies?.existingRecords}</span>
-                        </div>
-                        <div>
-                            <span className="text-muted-foreground">New records:</span>
-                            <span className="ml-2 font-medium">{config.strategies?.newRecords}</span>
-                        </div>
-                        <div>
-                            <span className="text-muted-foreground">Lookup fields:</span>
-                            <span className="ml-2 font-medium">{config.strategies?.lookupFields.join(', ')}</span>
-                        </div>
-                        <div>
-                            <span className="text-muted-foreground">Batch size:</span>
-                            <span className="ml-2 font-medium">{config.strategies?.batchSize}</span>
-                        </div>
+                        <SummaryField label="Existing records">{config.strategies?.existingRecords}</SummaryField>
+                        <SummaryField label="New records">{config.strategies?.newRecords}</SummaryField>
+                        <SummaryField label="Lookup fields">{config.strategies?.lookupFields?.join(', ')}</SummaryField>
+                        <SummaryField label="Batch size">{config.strategies?.batchSize}</SummaryField>
                     </div>
                 </AccordionContent>
             </AccordionItem>
@@ -165,4 +155,112 @@ function DetailedConfigAccordion({ config, mappedFieldsCount }: DetailedConfigAc
             )}
         </Accordion>
     );
+}
+
+/**
+ * Defines which fields to display in the summary for each source type.
+ */
+interface SourceSummaryFieldDef {
+    /** Field name relative to the source config sub-object */
+    field: string;
+    label: string;
+    colSpan?: 2;
+    className?: string;
+    /** Custom value formatter. Return null to skip the field. */
+    format?: (value: unknown, config: Record<string, unknown>) => React.ReactNode | null;
+}
+
+/**
+ * Registry mapping source type to its config sub-object key and displayable fields.
+ * Adding a new source type requires only a new entry here.
+ */
+const SOURCE_SUMMARY_REGISTRY: Record<string, {
+    configKey: string;
+    fields: SourceSummaryFieldDef[];
+}> = {
+    FILE: {
+        configKey: 'fileConfig',
+        fields: [
+            { field: 'format', label: 'Format' },
+            { field: 'hasHeaders', label: 'Has headers', format: (v) => v ? 'Yes' : 'No' },
+            {
+                field: 'delimiter', label: 'Delimiter',
+                format: (v) => {
+                    if (!v || v === ',') return null;
+                    return v === '\t' ? 'Tab' : String(v);
+                },
+            },
+        ],
+    },
+    API: {
+        configKey: 'apiConfig',
+        fields: [
+            { field: 'method', label: 'Method' },
+            { field: 'url', label: 'URL', colSpan: 2, className: 'break-all' },
+        ],
+    },
+};
+
+function SourceConfigSummary({ source }: { source?: ImportSourceConfig }) {
+    const { data: extractors } = useAdaptersByType('EXTRACTOR');
+
+    if (!source) return <p className="text-sm text-muted-foreground">No source configured</p>;
+
+    const registry = SOURCE_SUMMARY_REGISTRY[source.type];
+    const configObj = registry
+        ? (source as Record<string, unknown>)[registry.configKey] as Record<string, unknown> | undefined
+        : undefined;
+
+    return (
+        <div className="grid grid-cols-2 gap-4 text-sm">
+            <SummaryField label="Type" className="capitalize">{source.type?.toLowerCase()}</SummaryField>
+
+            {registry && configObj ? (
+                registry.fields.map(def => {
+                    const rawValue = configObj[def.field];
+                    const displayValue = def.format ? def.format(rawValue, configObj) : rawValue;
+                    if (displayValue == null || displayValue === '') return null;
+                    return (
+                        <SummaryField key={def.field} label={def.label} colSpan={def.colSpan} className={def.className}>
+                            {typeof displayValue === 'object' ? String(displayValue) : displayValue}
+                        </SummaryField>
+                    );
+                })
+            ) : (
+                renderDynamicSourceFields(source, extractors)
+            )}
+        </div>
+    );
+}
+
+/**
+ * Renders source config fields for dynamic source types (DATABASE, CDC, WEBHOOK, etc.).
+ * Uses the backend adapter schema for field labels when available, falling back
+ * to auto-generated labels from camelCase field names.
+ */
+function renderDynamicSourceFields(
+    source: ImportSourceConfig,
+    extractors?: Array<{ code: string; schema?: { fields: Array<{ key: string; label?: string | null }> } | null }>,
+): React.ReactNode {
+    const configKey = `${source.type.toLowerCase()}Config`;
+    const config = (source as Record<string, unknown>)[configKey] as Record<string, unknown> | undefined;
+    if (!config) return null;
+
+    // Find matching adapter for schema field labels
+    const adapter = extractors?.find(
+        e => e.code.toUpperCase() === source.type.toUpperCase(),
+    );
+    const schemaFields = adapter?.schema?.fields;
+
+    return Object.entries(config)
+        .filter(([, v]) => v != null && v !== '' && v !== false)
+        .map(([key, value]) => {
+            const schemaField = schemaFields?.find(f => f.key === key);
+            const label = schemaField?.label ?? formatFieldLabel(key);
+            return (
+                <SummaryField key={key} label={label}>
+                    {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                </SummaryField>
+            );
+        });
 }

@@ -305,7 +305,7 @@ export const googleFeedPipeline = createPipeline()
     })
 
     .feed('generate-feed', {
-        adapterCode: 'feed-generator',
+        adapterCode: 'googleMerchant',
         feedType: 'GOOGLE_SHOPPING',
         format: 'XML',
         outputPath: '/feeds/google-shopping.xml',
@@ -358,7 +358,7 @@ export const elasticsearchIndex = createPipeline()
     })
 
     .sink('index-to-es', {
-        adapterCode: 'search-sink',
+        adapterCode: 'elasticsearch',
         sinkType: 'ELASTICSEARCH',
         host: 'localhost',
         port: 9200,

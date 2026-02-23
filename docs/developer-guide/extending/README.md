@@ -10,9 +10,10 @@ Create custom extractors, loaders, operators, sinks, feeds, and triggers to exte
 4. [Custom Sinks](./custom-sinks.md) - Index to custom search engines
 5. [Custom Feeds](./custom-feeds.md) - Generate custom product feeds
 6. [Custom Triggers](./custom-triggers.md) - Add new trigger types (queues, etc.)
-7. [Validator Adapters](#validator-adapters) - Validate records against rules
-8. [Enricher Adapters](#enricher-adapters) - Enrich records with external data
-9. [Exporter Adapters](#exporter-adapters) - Export to external systems
+7. [Event Subscriptions](./events.md) - Subscribe to pipeline lifecycle events
+8. [Validator Adapters](#validator-adapters) - Validate records against rules
+9. [Enricher Adapters](#enricher-adapters) - Enrich records with external data
+10. [Exporter Adapters](#exporter-adapters) - Export to external systems
 
 ## When to Extend
 
@@ -87,17 +88,115 @@ export class MyExtensionPlugin implements OnModuleInit {
     ) {}
 
     onModuleInit() {
-        // Register adapters using type-specific methods
-        this.registry.registerExtractor(myExtractor);
-        this.registry.registerOperator(myOperator);
-        this.registry.registerLoader(myLoader);
-        this.registry.registerSink(mySink);
-
-        // Or use generic registration
-        this.registry.registerAdapter(myFeedAdapter);
+        // Register runtime adapters
+        this.registry.registerRuntime(myExtractor);
+        this.registry.registerRuntime(myOperator);
+        this.registry.registerRuntime(myLoader);
+        this.registry.registerRuntime(mySink);
+        this.registry.registerRuntime(myFeedAdapter);
 
         // Register feed generators
         this.feedService.registerCustomGenerator(myFeedGenerator);
+    }
+}
+```
+
+### Hook Script Registration
+
+Register named script functions for use in pipeline hooks:
+
+**Via Plugin Options (Recommended):**
+
+```typescript
+import { DataHubPlugin, ScriptFunction } from '@oronts/vendure-data-hub-plugin';
+
+DataHubPlugin.init({
+    scripts: {
+        'normalize-prices': async (records, context) => {
+            return records.map(r => ({
+                ...r,
+                price: Math.round(Number(r.price) * 100),
+            }));
+        },
+        'filter-inactive': async (records) => {
+            return records.filter(r => r.enabled !== false);
+        },
+    },
+})
+```
+
+**Via Service Injection:**
+
+```typescript
+import { HookService } from '@oronts/vendure-data-hub-plugin';
+
+@VendurePlugin({ imports: [DataHubPlugin] })
+export class MyPlugin implements OnModuleInit {
+    constructor(private hookService: HookService) {}
+
+    onModuleInit() {
+        this.hookService.registerScript('normalize-prices', async (records) => {
+            return records.map(r => ({
+                ...r,
+                price: Math.round(Number(r.price) * 100),
+            }));
+        });
+    }
+}
+```
+
+Scripts can modify records at any of the 18 hook stages. They receive the records array, a `HookContext` with pipeline/run metadata, and optional `args` from the hook action config.
+
+### Template Registration
+
+Register custom templates for the import and export wizards:
+
+**Via Plugin Options:**
+
+```typescript
+DataHubPlugin.init({
+    importTemplates: [{
+        id: 'my-product-import',
+        name: 'My Product Import',
+        description: 'Import products from our custom format',
+        category: 'products',
+        requiredFields: ['sku', 'name', 'price'],
+        featured: true,
+        formats: ['CSV', 'JSON'],
+        definition: {
+            sourceType: 'FILE',
+            targetEntity: 'Product',
+            existingRecords: 'UPDATE',
+            lookupFields: ['sku'],
+            fieldMappings: [
+                { sourceField: 'sku', targetField: 'sku' },
+                { sourceField: 'name', targetField: 'name' },
+                { sourceField: 'price', targetField: 'price' },
+            ],
+        },
+    }],
+    exportTemplates: [{
+        id: 'my-product-export',
+        name: 'My Product Export',
+        description: 'Export products as custom JSON',
+        format: 'JSON',
+        definition: { sourceEntity: 'Product', formatOptions: { pretty: true } },
+    }],
+})
+```
+
+**Via TemplateRegistryService:**
+
+```typescript
+import { TemplateRegistryService } from '@oronts/vendure-data-hub-plugin';
+
+@VendurePlugin({ imports: [DataHubPlugin] })
+export class MyPlugin implements OnModuleInit {
+    constructor(private templateRegistry: TemplateRegistryService) {}
+
+    onModuleInit() {
+        this.templateRegistry.registerImportTemplate({ /* ... */ });
+        this.templateRegistry.registerExportTemplate({ /* ... */ });
     }
 }
 ```
@@ -765,7 +864,7 @@ Exporters send data to external systems (files, APIs, cloud storage, data wareho
 interface ExporterAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'EXPORTER';
     readonly targetType: ExportTargetType;
-    readonly formats?: readonly ExportFormat[];
+    readonly formats?: readonly ExportFormatType[];
 
     export(
         context: ExportContext,
@@ -782,10 +881,10 @@ type ExportTargetType =
     | 'API'         // REST/GraphQL endpoints
     | 'SEARCH'      // Elasticsearch, MeiliSearch
     | 'WAREHOUSE'   // BigQuery, Snowflake, Redshift
-    | 'MESSAGING'   // RabbitMQ, Kafka
+    | 'MESSAGING'   // RabbitMQ
     | 'STORAGE';    // S3, GCS, Azure Blob
 
-type ExportFormat = 'CSV' | 'JSON' | 'NDJSON' | 'XML' | 'PARQUET' | 'AVRO';
+type ExportFormatType = 'CSV' | 'JSON' | 'NDJSON' | 'XML' | 'PARQUET' | 'AVRO';
 
 interface ExportContext {
     readonly ctx: RequestContext;
@@ -1088,7 +1187,7 @@ DataHubPlugin.init({
 
 See complete examples in the codebase:
 
-- **Operators:** `src/operators/` - 57 built-in operators
+- **Operators:** `src/operators/` - 61 built-in operators
 - **Extractors:** `src/extractors/` - REST, GraphQL, CSV, etc.
 - **Loaders:** `src/loaders/` - Product, Customer, Order, etc.
 - **Sinks:** `src/runtime/executors/sink.executor.ts` - MeiliSearch, Elasticsearch, etc.

@@ -1,4 +1,4 @@
-import { JsonObject, ExtractorAdapter, ExtractContext, RecordEnvelope, StepConfigSchema } from '../../../../src';
+import { JsonObject, ExtractorAdapter, ExtractContext, RecordEnvelope, StepConfigSchema, sleep } from '../../../../src';
 
 export const generatorExtractorSchema: StepConfigSchema = {
     fields: [
@@ -57,12 +57,10 @@ export const generatorExtractor: ExtractorAdapter<GeneratorExtractorConfig> = {
             };
 
             if (delayMs > 0 && (i + 1) % batchSize === 0 && i < count - 1) {
-                await new Promise(resolve => setTimeout(resolve, delayMs));
+                await sleep(delayMs);
             }
         }
 
         context.logger.info(`Completed generating ${count} records`);
     },
 };
-
-export default generatorExtractor;

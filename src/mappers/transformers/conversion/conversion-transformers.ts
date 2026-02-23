@@ -6,7 +6,6 @@ import { JsonValue } from '../../../types/index';
 import { MapperTransformConfig } from '../../types/transform-config.types';
 import { formatDate } from '../date/date-transformers';
 
-// Import canonical implementations
 import {
     applyToString as applyToStringCanonical,
     applyToNumber as applyToNumberCanonical,

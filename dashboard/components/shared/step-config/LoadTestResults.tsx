@@ -15,7 +15,7 @@ interface FeedPreviewProps {
 /**
  * Display component for LOAD step simulation results
  */
-export function LoadSimulationResult({
+function LoadSimulationResult({
     simulation,
 }: {
     simulation: Record<string, unknown>;
@@ -41,7 +41,7 @@ export function LoadSimulationResult({
 /**
  * Display component for FEED step preview results
  */
-export function FeedPreview({ feedContent }: FeedPreviewProps) {
+function FeedPreview({ feedContent }: FeedPreviewProps) {
     return (
         <div className="space-y-2">
             <div className="flex items-center gap-4 text-sm">

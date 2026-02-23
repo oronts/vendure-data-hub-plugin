@@ -2,7 +2,6 @@
  * FTP File Operations
  *
  * Utilities for FTP file filtering, parsing, and metadata handling.
- * Uses shared utilities from extractors/shared to eliminate duplication.
  */
 
 import { FtpFileInfo, FtpExtractorConfig, FtpFileMetadata, FtpProtocol } from './types';
@@ -68,7 +67,6 @@ export async function parseFtpContent(
     config: FtpExtractorConfig,
     fileParser: FileParserService,
 ): Promise<JsonObject[]> {
-    // Use shared parseFileContent to eliminate duplication
     return parseFileContent(
         content,
         filename,

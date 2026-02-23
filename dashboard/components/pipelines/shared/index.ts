@@ -1,11 +1,8 @@
 export { NodePropertiesPanel } from './NodePropertiesPanel';
-export type { NodePropertiesPanelProps } from './NodePropertiesPanel';
 
 export { PipelineSettingsPanel } from './PipelineSettingsPanel';
-export type { PipelineSettingsPanelProps } from './PipelineSettingsPanel';
 
 export { StepListItem } from './StepListItem';
-export type { StepListItemProps } from './StepListItem';
 
 export {
     StepConfigPanel,
@@ -16,10 +13,8 @@ export {
     MultiOperatorEditor,
     StepTester,
 } from '../../shared/step-config';
-export type { StepConfigData, StepConfigPanelProps } from '../../shared/step-config';
 
-export { VISUAL_NODE_CONFIGS, getVisualNodeConfig } from './visual-node-config';
-export type { VisualNodeConfig } from './visual-node-config';
+export { VISUAL_NODE_CONFIGS, getVisualNodeConfig, buildVisualNodeConfigs } from './visual-node-config';
 
 export {
     createPipelineNode,

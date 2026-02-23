@@ -84,7 +84,7 @@ Fetch data from REST APIs with automatic pagination, authentication, and retry s
 
 Code: `file`
 
-Parse files in multiple formats (CSV, JSON, XML, XLSX, NDJSON, TSV).
+Parse files in multiple formats (CSV, JSON, XML, XLSX, NDJSON, TSV). PARQUET is supported as an export format but not for extraction parsing.
 
 ### Configuration
 

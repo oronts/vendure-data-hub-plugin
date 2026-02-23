@@ -8,9 +8,11 @@ import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { ID } from '@vendure/core';
 import { RecordObject, OnRecordErrorCallback, ExecutorContext } from '../executor-types';
 import { LOGGER_CONTEXTS, EXTRACTOR_CODE } from '../../constants/index';
+import { AdapterType } from '../../constants/enums';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { ExtractorRegistryService } from '../../extractors/extractor-registry.service';
-import { ExtractorAdapter, ExtractContext, ConnectionResolver, ConnectionConfig, ConnectionType } from '../../sdk/types';
+import { ExtractorAdapter, ExtractContext } from '../../sdk/types';
+import { createSecretsAdapter, createConnectionsAdapter, createLoggerAdapter } from './context-adapters';
 import {
     ExtractHandler,
     ExtractHandlerContext,
@@ -21,15 +23,12 @@ import { VendureExtractHandler } from './extractors/vendure-extract.handler';
 import { FileExtractHandler } from './extractors/file-extract.handler';
 import { MemoryExtractHandler } from './extractors/memory-extract.handler';
 import { getAdapterCode } from '../../types/step-configs';
-import { getErrorMessage } from '../../utils/error.utils';
-
-type ExtractImpl = (ctx: RequestContext, step: PipelineStepDefinition, executorCtx: ExecutorContext, onRecordError?: OnRecordErrorCallback) => Promise<RecordObject[]>;
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 
 @Injectable()
 export class ExtractExecutor {
     private readonly logger: DataHubLogger;
     private readonly handlers: Map<string, ExtractHandler>;
-    private readonly handlerFunctions: Record<string, ExtractImpl>;
 
     constructor(
         private secretService: SecretService,
@@ -44,9 +43,6 @@ export class ExtractExecutor {
 
         // Initialize handlers
         this.handlers = this.initializeHandlers(loggerFactory);
-
-        // Map adapter codes to handler execution
-        this.handlerFunctions = this.buildImplMap();
     }
 
     private initializeHandlers(loggerFactory: DataHubLoggerFactory): Map<string, ExtractHandler> {
@@ -64,42 +60,6 @@ export class ExtractExecutor {
         return handlers;
     }
 
-    private buildImplMap(): Record<string, ExtractImpl> {
-        return {
-            [EXTRACTOR_CODE.HTTP_API]: (ctx, step, ex, onErr) => this.executeHandler(EXTRACTOR_CODE.HTTP_API, ctx, step, ex, onErr),
-            [EXTRACTOR_CODE.CSV]: (ctx, step, ex, onErr) => this.executeHandler(EXTRACTOR_CODE.CSV, ctx, step, ex, onErr),
-            [EXTRACTOR_CODE.JSON]: (ctx, step, ex, onErr) => this.executeHandler(EXTRACTOR_CODE.JSON, ctx, step, ex, onErr),
-            [EXTRACTOR_CODE.GRAPHQL]: (ctx, step, ex, onErr) => this.executeHandler(EXTRACTOR_CODE.GRAPHQL, ctx, step, ex, onErr),
-            [EXTRACTOR_CODE.VENDURE_QUERY]: (ctx, step, ex, onErr) => this.executeHandler(EXTRACTOR_CODE.VENDURE_QUERY, ctx, step, ex, onErr),
-            [EXTRACTOR_CODE.XML]: (ctx, step, ex, onErr) => this.executeHandler(EXTRACTOR_CODE.XML, ctx, step, ex, onErr),
-            [EXTRACTOR_CODE.IN_MEMORY]: (ctx, step, ex, onErr) => this.executeHandler(EXTRACTOR_CODE.IN_MEMORY, ctx, step, ex, onErr),
-            [EXTRACTOR_CODE.GENERATOR]: (ctx, step, ex, onErr) => this.executeHandler(EXTRACTOR_CODE.GENERATOR, ctx, step, ex, onErr),
-        };
-    }
-
-    private async executeHandler(
-        adapterCode: string,
-        ctx: RequestContext,
-        step: PipelineStepDefinition,
-        executorCtx: ExecutorContext,
-        onRecordError?: OnRecordErrorCallback,
-    ): Promise<RecordObject[]> {
-        const handler = this.handlers.get(adapterCode);
-        if (!handler) {
-            this.logger.warn(`No handler found for adapter: ${adapterCode}`, { adapterCode, stepKey: step.key });
-            return [];
-        }
-
-        const context: ExtractHandlerContext = {
-            ctx,
-            step,
-            executorCtx,
-            onRecordError,
-        };
-
-        return handler.extract(context);
-    }
-
     async execute(
         ctx: RequestContext,
         step: PipelineStepDefinition,
@@ -114,9 +74,10 @@ export class ExtractExecutor {
         this.logger.debug(`Executing extract step`, { stepKey: step.key, adapterCode });
 
         // Try built-in extractors first
-        const handler = adapterCode ? this.handlerFunctions[adapterCode] : undefined;
+        const handler = adapterCode ? this.handlers.get(adapterCode) : undefined;
         if (handler) {
-            const result = await handler(ctx, step, executorCtx, onRecordError);
+            const context: ExtractHandlerContext = { ctx, step, executorCtx, onRecordError };
+            const result = await handler.extract(context);
             this.logOperationResult(adapterCode ?? 'unknown', result.length, startTime, step.key);
             return result;
         }
@@ -140,7 +101,7 @@ export class ExtractExecutor {
 
         // Try custom extractors from SDK registry
         if (adapterCode && this.registry) {
-            const customExtractor = this.registry.getRuntime('EXTRACTOR', adapterCode) as ExtractorAdapter<unknown> | undefined;
+            const customExtractor = this.registry.getRuntime(AdapterType.EXTRACTOR, adapterCode) as ExtractorAdapter<unknown> | undefined;
             if (customExtractor && typeof customExtractor.extract === 'function') {
                 const result = await this.executeCustomExtractor(ctx, step, executorCtx, customExtractor, onRecordError, pipelineId);
                 this.logOperationResult(adapterCode, result.length, startTime, step.key);
@@ -243,33 +204,12 @@ export class ExtractExecutor {
             runId: runId ?? '0',
             stepKey: step.key,
             checkpoint: { data: executorCtx.cpData?.[step.key] as JsonObject ?? {} },
-            logger: this.createLoggerAdapter(),
-            secrets: {
-                get: async (code: string) => {
-                    const value = await this.secretService.resolve(ctx, code);
-                    return value ?? undefined;
-                },
-                getRequired: async (code: string) => {
-                    const value = await this.secretService.resolve(ctx, code);
-                    if (!value) throw new Error(`Secret not found: ${code}`);
-                    return value;
-                },
-            },
-            connections: {
-                get: async (code: string) => {
-                    const conn = await this.connectionService.getByCode(ctx, code);
-                    if (!conn) return undefined;
-                    return { code: conn.code, type: conn.type, ...conn.config } as import('../../types/index').ConnectionConfig;
-                },
-                getRequired: async (code: string) => {
-                    const conn = await this.connectionService.getByCode(ctx, code);
-                    if (!conn) throw new Error(`Connection not found: ${code}`);
-                    return { code: conn.code, type: conn.type, ...conn.config } as import('../../types/index').ConnectionConfig;
-                },
-            },
+            logger: createLoggerAdapter(this.logger),
+            secrets: createSecretsAdapter(this.secretService, ctx),
+            connections: createConnectionsAdapter(this.connectionService, ctx) as InternalExtractorContext['connections'],
             dryRun: false,
             setCheckpoint: (data: JsonObject) => this.handleCheckpointUpdate(executorCtx, step.key, data),
-            isCancelled: async () => false,
+            isCancelled: executorCtx.onCancelRequested ?? (async () => false),
         };
     }
 
@@ -285,62 +225,10 @@ export class ExtractExecutor {
             pipelineId: pipelineId ?? '0',
             stepKey: step.key,
             checkpoint: executorCtx.cpData?.[step.key] ?? {},
-            logger: this.createLoggerAdapter(),
-            secrets: this.createSecretsAdapter(ctx),
-            connections: this.createConnectionsAdapter(ctx),
+            logger: createLoggerAdapter(this.logger),
+            secrets: createSecretsAdapter(this.secretService, ctx),
+            connections: createConnectionsAdapter(this.connectionService, ctx),
             setCheckpoint: (data: JsonObject) => this.handleCheckpointUpdate(executorCtx, step.key, data),
-        };
-    }
-
-    private createLoggerAdapter() {
-        return {
-            info: (msg: string, meta?: JsonObject) => this.logger.info(msg, meta),
-            warn: (msg: string, meta?: JsonObject) => this.logger.warn(msg, meta),
-            error: (msg: string, errorOrMeta?: JsonObject | Error, meta?: JsonObject) => {
-                if (errorOrMeta instanceof Error) {
-                    this.logger.error(msg, errorOrMeta, meta);
-                } else {
-                    this.logger.error(msg, undefined, errorOrMeta);
-                }
-            },
-            debug: (msg: string, meta?: JsonObject) => this.logger.debug(msg, meta),
-        };
-    }
-
-    private createSecretsAdapter(ctx: RequestContext) {
-        return {
-            get: async (code: string) => {
-                const value = await this.secretService.resolve(ctx, code);
-                return value ?? undefined;
-            },
-            getRequired: async (code: string) => {
-                const value = await this.secretService.resolve(ctx, code);
-                if (!value) throw new Error(`Secret not found: ${code}`);
-                return value;
-            },
-        };
-    }
-
-    private createConnectionsAdapter(ctx: RequestContext): ConnectionResolver {
-        return {
-            get: async (code: string) => {
-                const conn = await this.connectionService.getByCode(ctx, code);
-                if (!conn) return undefined;
-                return {
-                    code: conn.code,
-                    type: conn.type as ConnectionType,
-                    ...conn.config,
-                } as ConnectionConfig;
-            },
-            getRequired: async (code: string) => {
-                const conn = await this.connectionService.getByCode(ctx, code);
-                if (!conn) throw new Error(`Connection not found: ${code}`);
-                return {
-                    code: conn.code,
-                    type: conn.type as ConnectionType,
-                    ...conn.config,
-                } as ConnectionConfig;
-            },
         };
     }
 
@@ -358,7 +246,7 @@ export class ExtractExecutor {
         onRecordError?: OnRecordErrorCallback,
     ): Promise<void> {
         const errorMsg = getErrorMessage(error);
-        this.logger.error(`Custom extractor failed: ${errorMsg}`, error instanceof Error ? error : undefined, {
+        this.logger.error(`Custom extractor failed: ${errorMsg}`, toErrorOrUndefined(error), {
             adapterCode,
             stepKey,
         });

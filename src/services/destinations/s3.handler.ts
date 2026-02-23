@@ -9,6 +9,7 @@ import { S3DestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE 
 import { assertUrlSafe } from '../../utils/url-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { createSuccessResult, createFailureResult } from './delivery-utils';
+import { HTTP_HEADERS, CONTENT_TYPES } from '../../constants/services';
 
 /**
  * Deliver content to S3 or S3-compatible storage
@@ -26,7 +27,7 @@ export async function deliverToS3(
     const timestamp = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
     const date = timestamp.slice(0, 8);
     const contentHash = crypto.createHash('sha256').update(content).digest('hex');
-    const mimeType = options?.mimeType || 'application/octet-stream';
+    const mimeType = options?.mimeType || CONTENT_TYPES.OCTET_STREAM;
 
     const host = config.endpoint
         ? new URL(config.endpoint).host
@@ -71,11 +72,11 @@ export async function deliverToS3(
         const response = await fetch(url, {
             method: 'PUT',
             headers: {
-                'Content-Type': mimeType,
+                [HTTP_HEADERS.CONTENT_TYPE]: mimeType,
                 'Host': host,
                 'x-amz-content-sha256': contentHash,
                 'x-amz-date': timestamp,
-                'Authorization': authorization,
+                [HTTP_HEADERS.AUTHORIZATION]: authorization,
                 ...(config.acl ? { 'x-amz-acl': config.acl } : {}),
             },
             body: content,

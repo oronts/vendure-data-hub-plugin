@@ -13,7 +13,6 @@ export * from './enums';
 export {
     // Core defaults
     RETENTION,
-    DEFAULT_HOSTS,
     PORTS,
     TRANSFORM_LIMITS,
     INTERNAL_TIMINGS,
@@ -21,7 +20,6 @@ export {
     // Batch processing
     BATCH,
     BATCH_ROLLBACK,
-    STREAMING,
 
     // Sink and queues
     SINK,
@@ -40,18 +38,14 @@ export {
 
     // Security
     CODE_SECURITY,
-    SAFE_EVALUATOR,
 
     // HTTP and network
     HTTP,
     HTTP_STATUS,
-    HTTP_LOOKUP,
-    VALIDATION_TIMEOUTS,
 
     // UI and display
     PAGINATION_PARAMS,
     PAGINATION,
-    UI,
     TRUNCATION,
 
     // Reliability
@@ -89,7 +83,6 @@ export {
     LENGTH_UNITS,
     VOLUME_UNITS,
     UNIT_CONVERSIONS,
-    convertUnit,
 } from './units';
 
 export {
@@ -97,6 +90,7 @@ export {
     SERVICE_DEFAULTS,
     FEED_NAMESPACES,
     CONTENT_TYPES,
+    EXTENSION_MIME_MAP,
     HTTP_HEADERS,
     AUTH_SCHEMES,
     SERVICE_URL_TEMPLATES,
@@ -109,46 +103,59 @@ export type { FeedFormatInfo } from './services';
 export {
     VALIDATION_PATTERNS,
     FIELD_LIMITS,
-    ERROR_MESSAGES,
-    CONFIDENCE_THRESHOLDS,
-    matchesPattern,
-    isValidEmail,
-    isValidUrl,
     scoreToConfidence,
     confidenceToMinScore,
 } from './validation';
 export type { MatchConfidence } from './validation';
 
-export { EXTRACTOR_CODE, LOADER_CODE, EXPORTER_CODE, FEED_CODE } from './adapters';
+export { STEP_TYPE_TO_ADAPTER_TYPE, EXTRACTOR_CODE, LOADER_CODE, EXPORTER_CODE, FEED_CODE, SINK_CODE, EXPORT_ADAPTER_CODES, FEED_ADAPTER_CODES } from './adapters';
 export type { ExtractorCode, LoaderCode, ExporterCode, FeedCode } from './adapters';
 
-// Export patterns as the canonical source for all regex patterns
 export {
     EMAIL_PATTERN,
-    PIPELINE_CODE_PATTERN,
-    SLUG_PATTERN,
-    URL_PATTERN,
-    ISO_DATE_PATTERN,
-    UUID_PATTERN,
-    PHONE_PATTERN,
-    SQL_IDENTIFIER_PATTERN,
-    isValidPipelineCode,
 } from './patterns';
 
 export {
-    PipelineErrorCode,
-    ExtractorErrorCode,
-    LoaderErrorCode,
-    TransformErrorCode,
-    isRetryableError,
-} from './error-codes';
+    LABEL_OVERRIDES,
+    toLabel,
+    enumToOptions,
+    LOAD_STRATEGY_METADATA,
+    CONFLICT_STRATEGY_METADATA,
+    LOAD_STRATEGY_DESCRIPTIONS,
+    CONFLICT_STRATEGY_DESCRIPTIONS,
+    STEP_TYPE_CONFIGS,
+    COMPARISON_OPERATORS,
+} from './enum-metadata';
+export type {
+    OptionValue,
+    SchemaFieldDefinition,
+    TypedOptionValue,
+    ComparisonOperatorValue,
+    AdapterCodeMapping,
+    StepTypeConfig,
+} from './enum-metadata';
+
+export {
+    TRIGGER_TYPE_SCHEMAS,
+    COMPRESSION_TYPES,
+    CLEANUP_STRATEGIES,
+    DESTINATION_TYPES,
+    APPROVAL_TYPES,
+    BACKOFF_STRATEGIES,
+    ENRICHMENT_SOURCE_TYPES,
+    VALIDATION_RULE_TYPES,
+    WIZARD_STRATEGY_MAPPINGS,
+    QUERY_TYPE_OPTIONS,
+    CRON_PRESETS,
+    ACK_MODE_OPTIONS,
+} from './adapter-schema-options';
 
 import { AdapterDefinition } from '../sdk/types';
-import { EXTRACTOR_ADAPTERS } from './extractor-adapters';
-import { LOADER_ADAPTERS } from './loader-adapters';
-import { EXPORTER_ADAPTERS } from './exporter-adapters';
-import { FEED_ADAPTERS } from './feed-adapters';
-import { SINK_ADAPTERS } from './sink-adapters';
+import { EXTRACTOR_ADAPTERS } from '../extractors/extractor-handler-registry';
+import { LOADER_ADAPTERS } from '../runtime/executors/loaders/loader-handler-registry';
+import { EXPORTER_ADAPTERS } from '../runtime/executors/exporters/export-handler-registry';
+import { FEED_ADAPTERS } from '../runtime/executors/feeds/feed-handler-registry';
+import { SINK_ADAPTERS } from '../runtime/executors/sink-handler-registry';
 import { ALL_OPERATOR_DEFINITIONS } from '../operators';
 import { ENRICHER_ADAPTER_DEFINITIONS } from '../enrichers';
 
@@ -162,38 +169,43 @@ export const BUILTIN_ADAPTERS: AdapterDefinition[] = [
     ...ENRICHER_ADAPTER_DEFINITIONS,
 ];
 
-export { EXTRACTOR_ADAPTERS } from './extractor-adapters';
-export { LOADER_ADAPTERS } from './loader-adapters';
-export { EXPORTER_ADAPTERS } from './exporter-adapters';
-export { FEED_ADAPTERS } from './feed-adapters';
-export { SINK_ADAPTERS, SINK_ADAPTER_CODES } from './sink-adapters';
-export { ENRICHER_ADAPTER_DEFINITIONS } from '../enrichers';
-export {
-    ALL_OPERATOR_DEFINITIONS,
-    DATA_OPERATOR_DEFINITIONS,
-    STRING_OPERATOR_DEFINITIONS,
-    LOGIC_OPERATOR_DEFINITIONS,
-    ENRICHMENT_OPERATOR_DEFINITIONS,
-    AGGREGATION_OPERATOR_DEFINITIONS,
-    NUMERIC_OPERATOR_DEFINITIONS,
-    DATE_OPERATOR_DEFINITIONS,
-    JSON_OPERATOR_DEFINITIONS,
-    VALIDATION_OPERATOR_DEFINITIONS,
-} from '../operators';
+export { EXTRACTOR_ADAPTERS } from '../extractors/extractor-handler-registry';
+export { LOADER_ADAPTERS } from '../runtime/executors/loaders/loader-handler-registry';
+export { EXPORTER_ADAPTERS } from '../runtime/executors/exporters/export-handler-registry';
+export { FEED_ADAPTERS } from '../runtime/executors/feeds/feed-handler-registry';
+export { SINK_ADAPTERS } from '../runtime/executors/sink-handler-registry';
 export {
     DEFAULT_WEBHOOK_CONFIG,
 } from './trigger-adapters';
 export type { WebhookAuthType, WebhookTriggerConfig, MessageTriggerConfig } from './trigger-adapters';
 
-export { RUN_EVENT_TYPES, WEBHOOK_EVENT_TYPES, STEP_EVENT_TYPES, LOG_EVENT_TYPES } from './events';
+export { CONNECTION_SCHEMAS } from './connection-schemas';
+export type { ConnectionSchema, ConnectionSchemaField } from './connection-schemas';
+
+export { DESTINATION_SCHEMAS } from './destination-schemas';
+export type { DestinationSchema } from './destination-schemas';
 
 export { RESOLVER_ERROR_MESSAGES } from './resolver-errors';
 
-export { TABLE_NAMES } from './table-names';
+export { HOOK_STAGE_METADATA, HOOK_STAGE_CATEGORIES } from './hook-stage-metadata';
+export type { HookStageMetadata, HookStageCategoryMetadata } from './hook-stage-metadata';
 
 export {
-    SQL_IDENTIFIER_MAX_LENGTH,
-    SQL_CHECK_MAX_LENGTH,
-    SQL_PATTERNS,
-} from './sql';
-
+    RUN_EVENT_TYPES,
+    WEBHOOK_EVENT_TYPES,
+    STEP_EVENT_TYPES,
+    GATE_EVENT_TYPES,
+    TRIGGER_EVENT_TYPES,
+    LOG_EVENT_TYPES,
+    PIPELINE_EVENT_TYPES,
+    INTERNAL_EVENT_TYPES,
+} from './events';
+export type {
+    RunEventType,
+    WebhookEventType,
+    StepEventType,
+    GateEventType,
+    TriggerEventType,
+    LogEventType,
+    PipelineEventType,
+} from './events';

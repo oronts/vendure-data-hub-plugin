@@ -1,2 +1,2 @@
-export { SchemaFormRenderer } from './SchemaFormRenderer';
-export type { SchemaFormRendererProps } from '../../../types';
+export { SchemaFormRenderer, FIELD_TYPE_RENDERERS } from './SchemaFormRenderer';
+export type { FieldRendererProps, FieldRendererFn } from './SchemaFormRenderer';

@@ -19,12 +19,15 @@ import {
     ConsumeResult,
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
-import { AckMode, INTERNAL_TIMINGS } from '../../../constants';
+import { AckMode, INTERNAL_TIMINGS, TIME } from '../../../constants';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 
 /** Queue name used for SQS connection tests */
 const SQS_TEST_CONNECTION_QUEUE = 'data-hub-test-connection';
+
+/** Error message when SQS module fails to load (type narrowing guard) */
+const SQS_MODULE_NOT_LOADED = 'SQS module not loaded';
 
 /**
  * SQS-specific connection configuration
@@ -183,7 +186,7 @@ async function getClient(config: SqsConnectionConfig): Promise<SQSClient> {
     }
 
     const sqs = await loadSqsModule();
-    if (!sqs) throw new Error('SQS module not loaded');
+    if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
 
     const clientConfig: Record<string, unknown> = {
         region: config.region ?? 'us-east-1',
@@ -309,7 +312,7 @@ export class SqsAdapter implements QueueAdapter {
         const isFifo = queueName.endsWith('.fifo');
 
         const sqs = await loadSqsModule();
-        if (!sqs) throw new Error('SQS module not loaded');
+        if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
         const SendCmd = sqs.SendMessageBatchCommand;
 
         const results: PublishResult[] = [];
@@ -334,7 +337,7 @@ export class SqsAdapter implements QueueAdapter {
 
                 // Delay (0-900 seconds)
                 if (msg.delayMs) {
-                    entry.DelaySeconds = Math.min(900, Math.floor(msg.delayMs / 1000));
+                    entry.DelaySeconds = Math.min(900, Math.floor(msg.delayMs / TIME.SECOND));
                 }
 
                 // Message attributes for headers
@@ -409,7 +412,7 @@ export class SqsAdapter implements QueueAdapter {
         const queueUrl = buildQueueUrl(config, queueName);
 
         const sqs = await loadSqsModule();
-        if (!sqs) throw new Error('SQS module not loaded');
+        if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
         const ReceiveCmd = sqs.ReceiveMessageCommand;
         const DeleteCmd = sqs.DeleteMessageCommand;
 
@@ -517,7 +520,7 @@ export class SqsAdapter implements QueueAdapter {
         const client = await getClient(config);
 
         const sqs = await loadSqsModule();
-        if (!sqs) throw new Error('SQS module not loaded');
+        if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
 
         await client.send(new sqs.DeleteMessageCommand({
             QueueUrl: pending.queueUrl,
@@ -541,7 +544,7 @@ export class SqsAdapter implements QueueAdapter {
         const client = await getClient(config);
 
         const sqs = await loadSqsModule();
-        if (!sqs) throw new Error('SQS module not loaded');
+        if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
 
         if (requeue) {
             // Set visibility timeout to 0 to make message immediately available
@@ -569,7 +572,7 @@ export class SqsAdapter implements QueueAdapter {
 
             // Try to get queue URL as a connection test
             const sqs = await loadSqsModule();
-            if (!sqs) throw new Error('SQS module not loaded');
+            if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
 
             await client.send(new sqs.GetQueueUrlCommand({
                 QueueName: SQS_TEST_CONNECTION_QUEUE,

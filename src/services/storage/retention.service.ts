@@ -6,7 +6,7 @@ import { PipelineRun } from '../../entities/pipeline';
 import { DataHubRecordError } from '../../entities/data';
 import { DataHubSettingsService } from '../config/settings.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, ensureError } from '../../utils/error.utils';
 
 @Injectable()
 export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
@@ -30,7 +30,7 @@ export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
 
         // Run daily
         this.handle = setInterval(() => this.purge().catch(err => {
-            this.logger.error('Scheduled retention purge failed', err instanceof Error ? err : new Error(String(err)));
+            this.logger.error('Scheduled retention purge failed', ensureError(err));
         }), SCHEDULER.RETENTION_PURGE_INTERVAL_MS);
         this.handle.unref();
 
@@ -54,8 +54,8 @@ export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
     private async purge(): Promise<void> {
         const startTime = Date.now();
         const db = await this.settings.get();
-        const daysRuns = Number((db.retentionDaysRuns ?? this.options.retentionDaysRuns) ?? 0);
-        const daysErrors = Number((db.retentionDaysErrors ?? this.options.retentionDaysErrors) ?? RETENTION.RUNS_DAYS);
+        const daysRuns = Number((db.retentionDaysRuns ?? this.options.retentionDaysRuns) ?? RETENTION.RUNS_DAYS);
+        const daysErrors = Number((db.retentionDaysErrors ?? this.options.retentionDaysErrors) ?? RETENTION.ERRORS_DAYS);
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
         const now = new Date();
 

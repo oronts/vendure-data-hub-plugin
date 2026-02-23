@@ -111,7 +111,13 @@ export class StepDispatcher {
     }
 
     /**
-     * Execute a step and return graph-compatible result
+     * Execute a step and return graph-compatible result.
+     *
+     * Note: This switch dispatches to concrete strategy objects, which is
+     * fundamentally different from the adapter-type mapping in STEP_TYPE_TO_ADAPTER_TYPE
+     * (src/constants/adapters.ts). That mapping resolves step types to adapter registry
+     * categories for validation. This dispatch routes to execution strategies, including
+     * step types (TRIGGER, VALIDATE, ROUTE, GATE) that have no adapter type.
      */
     async executeStep(params: StepExecutionParams): Promise<StepExecutionResult> {
         const { step, key, input } = params;

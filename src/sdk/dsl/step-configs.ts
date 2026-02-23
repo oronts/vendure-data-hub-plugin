@@ -15,7 +15,7 @@ import { JsonObject, JsonValue, Throughput } from '../../types/index';
 import type { OperatorConfig } from '../../types/step-configs';
 import { LoadStrategy, ChannelStrategy, LanguageStrategyValue, ValidationModeType, ConflictStrategyValue, TriggerType, FeedFormat, FeedType, SinkType } from '../types/index';
 import { RouteOperator } from '../constants';
-import { AuthType } from '../../constants/enums';
+import { ConnectionAuthType } from '../../constants/enums';
 
 // TRIGGER CONFIG
 
@@ -234,7 +234,7 @@ export interface LoadStepConfig {
     endpoint?: string;
     method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     headers?: Record<string, string>;
-    auth?: AuthType;
+    auth?: ConnectionAuthType;
     bearerTokenSecretCode?: string;
     basicSecretCode?: string;
     hmacSecretCode?: string;

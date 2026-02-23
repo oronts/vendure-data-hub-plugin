@@ -18,12 +18,9 @@ import { Clock, AlertTriangle, Zap, GitBranch } from 'lucide-react';
 import {
     PIPELINE_RETRY_DEFAULTS,
     PIPELINE_CHECKPOINT_DEFAULTS,
-    RUN_MODES,
-    DEFAULT_RUN_MODE,
-    ERROR_POLICIES,
-    DEFAULT_ERROR_POLICY,
     CHECKPOINT_STRATEGY,
 } from '../../../constants';
+import { useOptionValues } from '../../../hooks';
 import type {
     PipelineContext,
     ErrorHandlingConfig,
@@ -41,6 +38,10 @@ export interface PipelineSettingsPanelProps {
 }
 
 export function PipelineSettingsPanel({ context, onChange, compact = false }: PipelineSettingsPanelProps) {
+    const { options: runModeOptions } = useOptionValues('runModes');
+    const { options: checkpointStrategyOptions } = useOptionValues('checkpointStrategies');
+    const { options: errorPolicyOptions } = useOptionValues('parallelErrorPolicies');
+
     const updateErrorHandling = useCallback((errorHandling: ErrorHandlingConfig) => {
         onChange({ ...context, errorHandling });
     }, [context, onChange]);
@@ -74,14 +75,14 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
                 <div className="space-y-2">
                     <Label className={labelSize}>Run Mode</Label>
                     <Select
-                        value={context.runMode ?? DEFAULT_RUN_MODE}
+                        value={context.runMode ?? 'BATCH'}
                         onValueChange={(v) => onChange({ ...context, runMode: v as RunModeValue })}
                     >
                         <SelectTrigger className={`${labelSize} ${inputHeight}`}>
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            {RUN_MODES.map(mode => (
+                            {runModeOptions.map(mode => (
                                 <SelectItem key={mode.value} value={mode.value}>{mode.label}</SelectItem>
                             ))}
                         </SelectContent>
@@ -213,9 +214,9 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value={CHECKPOINT_STRATEGY.COUNT}>By Record Count</SelectItem>
-                                            <SelectItem value={CHECKPOINT_STRATEGY.INTERVAL}>By Time Interval</SelectItem>
-                                            <SelectItem value={CHECKPOINT_STRATEGY.TIMESTAMP}>By Timestamp Field</SelectItem>
+                                            {checkpointStrategyOptions.map(opt => (
+                                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -365,7 +366,7 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
                                 <div className="space-y-1">
                                     <Label className={labelSize}>Error Policy</Label>
                                     <Select
-                                        value={context.parallelExecution?.errorPolicy ?? DEFAULT_ERROR_POLICY}
+                                        value={context.parallelExecution?.errorPolicy ?? 'FAIL_FAST'}
                                         onValueChange={(v) => updateParallelExecution({
                                             ...context.parallelExecution,
                                             errorPolicy: v as 'FAIL_FAST' | 'CONTINUE' | 'BEST_EFFORT',
@@ -375,7 +376,7 @@ export function PipelineSettingsPanel({ context, onChange, compact = false }: Pi
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {ERROR_POLICIES.map(policy => (
+                                            {errorPolicyOptions.map(policy => (
                                                 <SelectItem key={policy.value} value={policy.value}>{policy.label}</SelectItem>
                                             ))}
                                         </SelectContent>

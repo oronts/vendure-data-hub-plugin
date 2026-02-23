@@ -8,7 +8,6 @@ export * from './promotion-templates';
 import {
     ImportTemplate,
     TemplateCategory,
-    TemplateDifficulty,
     TemplateTag,
     TemplateCategoryInfo,
     CATEGORY_LABELS,
@@ -56,13 +55,6 @@ export function getTemplatesByCategory(category: TemplateCategory): ImportTempla
  */
 export function getTemplateById(id: string): ImportTemplate | undefined {
     return getImportTemplates().find(t => t.id === id);
-}
-
-/**
- * Get templates filtered by difficulty level
- */
-export function getTemplatesByDifficulty(difficulty: TemplateDifficulty): ImportTemplate[] {
-    return getImportTemplates().filter(t => t.difficulty === difficulty);
 }
 
 /**
@@ -146,7 +138,6 @@ export function validateTemplate(template: ImportTemplate): { valid: boolean; er
     if (!template.name) errors.push('Template name is required');
     if (!template.description) errors.push('Template description is required');
     if (!template.category) errors.push('Template category is required');
-    if (!template.difficulty) errors.push('Template difficulty is required');
     if (!template.requiredFields || template.requiredFields.length === 0) {
         errors.push('At least one required field must be specified');
     }

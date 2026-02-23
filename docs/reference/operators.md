@@ -1154,8 +1154,7 @@ The code receives `records` array and `context`. Return the modified array.
 | Logic (4) | `when`, `ifThenElse`, `switch`, `deltaFilter` |
 | JSON (4) | `pick`, `omit`, `parseJson`, `stringifyJson` |
 | Enrichment (5) | `lookup`, `enrich`, `coalesce`, `default`, `httpLookup` |
-| Array (6) | `flatten`, `count`, `unique`, `first`, `last`, `expand` |
-| Aggregation (2) | `aggregate`, `multiJoin` |
+| Aggregation (8) | `aggregate`, `multiJoin`, `flatten`, `count`, `unique`, `first`, `last`, `expand` |
 | File (3) | `imageResize`, `imageConvert`, `pdfGenerate` |
 | Validation (2) | `validateRequired`, `validateFormat` |
 | Advanced (1) | `script` |

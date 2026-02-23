@@ -1579,19 +1579,35 @@ export type DataHubAdapter = {
   __typename?: 'DataHubAdapter';
   async?: Maybe<Scalars['Boolean']['output']>;
   batchable?: Maybe<Scalars['Boolean']['output']>;
+  builtIn?: Maybe<Scalars['Boolean']['output']>;
   category?: Maybe<Scalars['String']['output']>;
+  categoryLabel?: Maybe<Scalars['String']['output']>;
+  categoryOrder?: Maybe<Scalars['Int']['output']>;
   code: Scalars['String']['output'];
   color?: Maybe<Scalars['String']['output']>;
   deprecated?: Maybe<Scalars['Boolean']['output']>;
   deprecatedMessage?: Maybe<Scalars['String']['output']>;
   description?: Maybe<Scalars['String']['output']>;
+  editorType?: Maybe<Scalars['String']['output']>;
+  entityType?: Maybe<Scalars['String']['output']>;
+  formatType?: Maybe<Scalars['String']['output']>;
   icon?: Maybe<Scalars['String']['output']>;
   name?: Maybe<Scalars['String']['output']>;
+  patchableFields?: Maybe<Array<Scalars['String']['output']>>;
   pure?: Maybe<Scalars['Boolean']['output']>;
   requires?: Maybe<Array<Scalars['String']['output']>>;
   schema: DataHubStepConfigSchema;
+  summaryTemplate?: Maybe<Scalars['String']['output']>;
   type: Scalars['String']['output'];
   version?: Maybe<Scalars['String']['output']>;
+  wizardHidden?: Maybe<Scalars['Boolean']['output']>;
+};
+
+export type DataHubAdapterCodeMapping = {
+  __typename?: 'DataHubAdapterCodeMapping';
+  adapterCode: Scalars['String']['output'];
+  label: Scalars['String']['output'];
+  value: Scalars['String']['output'];
 };
 
 /** Analytics API - Stats and metrics */
@@ -1682,11 +1698,79 @@ export type DataHubCheckpoint = Node & {
   updatedAt: Scalars['DateTime']['output'];
 };
 
+export type DataHubComparisonOperator = {
+  __typename?: 'DataHubComparisonOperator';
+  description?: Maybe<Scalars['String']['output']>;
+  /** Example value hint (e.g. regex pattern, JSON array literal) */
+  example?: Maybe<Scalars['String']['output']>;
+  label: Scalars['String']['output'];
+  noValue?: Maybe<Scalars['Boolean']['output']>;
+  value: Scalars['String']['output'];
+  valueType?: Maybe<Scalars['String']['output']>;
+};
+
 export enum DataHubConfidenceLevel {
   HIGH = 'HIGH',
   LOW = 'LOW',
   MEDIUM = 'MEDIUM'
 }
+
+export type DataHubConfigFieldGroup = {
+  __typename?: 'DataHubConfigFieldGroup';
+  description?: Maybe<Scalars['String']['output']>;
+  id: Scalars['String']['output'];
+  label: Scalars['String']['output'];
+};
+
+export type DataHubConfigOptions = {
+  __typename?: 'DataHubConfigOptions';
+  /** Message acknowledgment mode options for queue consumers */
+  ackModes: Array<DataHubOptionValue>;
+  /** Adapter type metadata for the adapters page tabs */
+  adapterTypes: Array<DataHubOptionValue>;
+  approvalTypes: Array<DataHubTypedOptionValue>;
+  authTypes: Array<DataHubOptionValue>;
+  backoffStrategies: Array<DataHubOptionValue>;
+  checkpointStrategies: Array<DataHubOptionValue>;
+  cleanupStrategies: Array<DataHubOptionValue>;
+  comparisonOperators: Array<DataHubComparisonOperator>;
+  compressionTypes: Array<DataHubOptionValue>;
+  conflictStrategies: Array<DataHubOptionValue>;
+  connectionSchemas: Array<DataHubConnectionSchema>;
+  /** Cron schedule presets for quick schedule trigger configuration */
+  cronPresets: Array<DataHubOptionValue>;
+  csvDelimiters: Array<DataHubOptionValue>;
+  destinationSchemas: Array<DataHubDestinationSchema>;
+  destinationTypes: Array<DataHubOptionValue>;
+  enrichmentSourceTypes: Array<DataHubTypedOptionValue>;
+  exportAdapterCodes: Array<DataHubAdapterCodeMapping>;
+  feedAdapterCodes: Array<DataHubAdapterCodeMapping>;
+  /** Operator codes suitable for field-level transforms in the export wizard */
+  fieldTransformTypes: Array<DataHubOptionValue>;
+  fileEncodings: Array<DataHubOptionValue>;
+  fileFormats: Array<DataHubOptionValue>;
+  hookStageCategories: Array<DataHubHookStageCategory>;
+  hookStages: Array<DataHubHookStage>;
+  httpMethods: Array<DataHubOptionValue>;
+  loadStrategies: Array<DataHubOptionValue>;
+  logLevels: Array<DataHubOptionValue>;
+  logPersistenceLevels: Array<DataHubOptionValue>;
+  newRecordStrategies: Array<DataHubOptionValue>;
+  parallelErrorPolicies: Array<DataHubOptionValue>;
+  /** Export query type options for the source step */
+  queryTypeOptions: Array<DataHubOptionValue>;
+  queueTypes: Array<DataHubOptionValue>;
+  runModes: Array<DataHubOptionValue>;
+  /** Run status options for filter dropdowns */
+  runStatuses: Array<DataHubOptionValue>;
+  stepTypes: Array<DataHubStepTypeConfig>;
+  triggerTypes: Array<DataHubTypedOptionValue>;
+  validationModes: Array<DataHubOptionValue>;
+  validationRuleTypes: Array<DataHubTypedOptionValue>;
+  vendureEvents: Array<DataHubOptionValue>;
+  /** Wizard strategy mappings: existingRecords wizard value to backend load/conflict strategies */
+  wizardStrategyMappings: Array<DataHubWizardStrategyMapping>;
+};
 
 export type DataHubConnection = Node & {
   __typename?: 'DataHubConnection';
@@ -1720,6 +1804,29 @@ export type DataHubConnectionListOptions = {
   skip?: InputMaybe<Scalars['Int']['input']>;
   sort?: InputMaybe<Scalars['JSON']['input']>;
   take?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type DataHubConnectionSchema = {
+  __typename?: 'DataHubConnectionSchema';
+  fields: Array<DataHubConnectionSchemaField>;
+  /** True for HTTP-like connection types that use the dedicated HTTP editor with auth/headers support */
+  httpLike?: Maybe<Scalars['Boolean']['output']>;
+  label: Scalars['String']['output'];
+  type: Scalars['String']['output'];
+};
+
+export type DataHubConnectionSchemaField = {
+  __typename?: 'DataHubConnectionSchemaField';
+  defaultValue?: Maybe<Scalars['JSON']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  key: Scalars['String']['output'];
+  label: Scalars['String']['output'];
+  options?: Maybe<Array<DataHubOption>>;
+  /** Reference to a dynamic option list served by configOptions (e.g. authTypes, queueTypes, vendureEvents) */
+  optionsRef?: Maybe<Scalars['String']['output']>;
+  placeholder?: Maybe<Scalars['String']['output']>;
+  required?: Maybe<Scalars['Boolean']['output']>;
+  type: Scalars['String']['output'];
 };
 
 export type DataHubConnectionSortParameter = {
@@ -1757,6 +1864,22 @@ export type DataHubDeliveryResult = {
   metadata?: Maybe<Scalars['JSON']['output']>;
   size: Scalars['Int']['output'];
   success: Scalars['Boolean']['output'];
+};
+
+export type DataHubDestinationSchema = {
+  __typename?: 'DataHubDestinationSchema';
+  /** Key in the wizard destination state object (e.g. sftpConfig, s3Config) */
+  configKey: Scalars['String']['output'];
+  /** Maps wizard field names to pipeline config field names (JSON object, e.g. { directory: path }) */
+  fieldMapping?: Maybe<Scalars['JSON']['output']>;
+  /** Field definitions for the destination configuration form */
+  fields: Array<DataHubConnectionSchemaField>;
+  /** Human-readable label */
+  label: Scalars['String']['output'];
+  /** Informational message for destination types with no configurable fields */
+  message?: Maybe<Scalars['String']['output']>;
+  /** Destination type key (e.g. SFTP, S3, HTTP) */
+  type: Scalars['String']['output'];
 };
 
 export type DataHubDestinationTestResult = {
@@ -1962,6 +2085,19 @@ export type DataHubExportDestinationInput = {
   username?: InputMaybe<Scalars['String']['input']>;
 };
 
+/** Export template (built-in or custom) for the export wizard */
+export type DataHubExportTemplate = {
+  __typename?: 'DataHubExportTemplate';
+  definition?: Maybe<Scalars['JSON']['output']>;
+  description: Scalars['String']['output'];
+  format: Scalars['String']['output'];
+  icon?: Maybe<Scalars['String']['output']>;
+  id: Scalars['String']['output'];
+  name: Scalars['String']['output'];
+  requiredFields?: Maybe<Array<Scalars['String']['output']>>;
+  tags?: Maybe<Array<Scalars['String']['output']>>;
+};
+
 export type DataHubExtractor = {
   __typename?: 'DataHubExtractor';
   category: DataHubExtractorCategory;
@@ -2133,6 +2269,16 @@ export type DataHubFieldSuggestion = {
   target: Scalars['String']['output'];
 };
 
+export type DataHubFieldValidation = {
+  __typename?: 'DataHubFieldValidation';
+  max?: Maybe<Scalars['Float']['output']>;
+  maxLength?: Maybe<Scalars['Int']['output']>;
+  min?: Maybe<Scalars['Float']['output']>;
+  minLength?: Maybe<Scalars['Int']['output']>;
+  pattern?: Maybe<Scalars['String']['output']>;
+  patternMessage?: Maybe<Scalars['String']['output']>;
+};
+
 export type DataHubFilePreview = {
   __typename?: 'DataHubFilePreview';
   fields: Array<DataHubPreviewField>;
@@ -2175,6 +2321,36 @@ export type DataHubGateActionResult = {
   success: Scalars['Boolean']['output'];
 };
 
+export type DataHubHookStage = {
+  __typename?: 'DataHubHookStage';
+  /** Category for grouping (lifecycle, data, error) */
+  category: Scalars['String']['output'];
+  /** Description of when this hook stage fires */
+  description: Scalars['String']['output'];
+  /** Lucide icon name (kebab-case) for UI display */
+  icon: Scalars['String']['output'];
+  /** Hook stage key (e.g. PIPELINE_STARTED, BEFORE_EXTRACT) */
+  key: Scalars['String']['output'];
+  /** Human-readable label */
+  label: Scalars['String']['output'];
+};
+
+export type DataHubHookStageCategory = {
+  __typename?: 'DataHubHookStageCategory';
+  /** CSS color classes for the category badge */
+  color: Scalars['String']['output'];
+  /** Description of this category */
+  description: Scalars['String']['output'];
+  /** CSS grid class for layout (e.g. grid-cols-3) */
+  gridClass: Scalars['String']['output'];
+  /** Category key (e.g. lifecycle, data, error) */
+  key: Scalars['String']['output'];
+  /** Human-readable label */
+  label: Scalars['String']['output'];
+  /** Display order (lower = first) */
+  order: Scalars['Int']['output'];
+};
+
 /** Complete impact analysis result */
 export type DataHubImpactAnalysis = {
   __typename?: 'DataHubImpactAnalysis';
@@ -2208,6 +2384,23 @@ export type DataHubImpactSummary = {
   estimatedSkipCount: Scalars['Int']['output'];
   estimatedSuccessCount: Scalars['Int']['output'];
   totalRecordsToProcess: Scalars['Int']['output'];
+};
+
+/** Import template (built-in or custom) for the import wizard */
+export type DataHubImportTemplate = {
+  __typename?: 'DataHubImportTemplate';
+  category: Scalars['String']['output'];
+  definition?: Maybe<Scalars['JSON']['output']>;
+  description: Scalars['String']['output'];
+  featured?: Maybe<Scalars['Boolean']['output']>;
+  formats?: Maybe<Array<Scalars['String']['output']>>;
+  icon?: Maybe<Scalars['String']['output']>;
+  id: Scalars['String']['output'];
+  name: Scalars['String']['output'];
+  optionalFields?: Maybe<Array<Scalars['String']['output']>>;
+  requiredFields: Array<Scalars['String']['output']>;
+  sampleData?: Maybe<Scalars['JSON']['output']>;
+  tags?: Maybe<Array<Scalars['String']['output']>>;
 };
 
 export type DataHubJob = Node & {
@@ -2573,6 +2766,19 @@ export type DataHubMappingValidation = {
 
 export type DataHubOption = {
   __typename?: 'DataHubOption';
+  label: Scalars['String']['output'];
+  value: Scalars['String']['output'];
+};
+
+export type DataHubOptionValue = {
+  __typename?: 'DataHubOptionValue';
+  /** Optional category for UI grouping (e.g. Catalog, Orders) */
+  category?: Maybe<Scalars['String']['output']>;
+  /** Hex color code for UI display (e.g. #3b82f6) */
+  color?: Maybe<Scalars['String']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  /** Lucide icon name (kebab-case) for UI display */
+  icon?: Maybe<Scalars['String']['output']>;
   label: Scalars['String']['output'];
   value: Scalars['String']['output'];
 };
@@ -3492,18 +3698,22 @@ export type DataHubStepAnalysis = {
 export type DataHubStepConfigSchema = {
   __typename?: 'DataHubStepConfigSchema';
   fields: Array<DataHubStepConfigSchemaField>;
+  groups?: Maybe<Array<DataHubConfigFieldGroup>>;
 };
 
 export type DataHubStepConfigSchemaField = {
   __typename?: 'DataHubStepConfigSchemaField';
   defaultValue?: Maybe<Scalars['JSON']['output']>;
+  dependsOn?: Maybe<DataHubFieldDependency>;
   description?: Maybe<Scalars['String']['output']>;
+  group?: Maybe<Scalars['String']['output']>;
   key: Scalars['String']['output'];
   label?: Maybe<Scalars['String']['output']>;
   options?: Maybe<Array<DataHubOption>>;
   placeholder?: Maybe<Scalars['String']['output']>;
   required?: Maybe<Scalars['Boolean']['output']>;
   type: Scalars['String']['output'];
+  validation?: Maybe<DataHubFieldValidation>;
 };
 
 export type DataHubStepErrorCount = {
@@ -3537,6 +3747,34 @@ export type DataHubStepTransformation = {
   stepType: Scalars['String']['output'];
 };
 
+export type DataHubStepTypeConfig = {
+  __typename?: 'DataHubStepTypeConfig';
+  /** Backend adapter type for registry lookup (e.g. EXTRACTOR, OPERATOR, LOADER). Null for step types without adapters. */
+  adapterType?: Maybe<Scalars['String']['output']>;
+  /** Background color hex code */
+  bgColor: Scalars['String']['output'];
+  /** Border color hex code */
+  borderColor: Scalars['String']['output'];
+  /** Step category for grouping (e.g. source, transform, load) */
+  category: Scalars['String']['output'];
+  /** Primary color hex code */
+  color: Scalars['String']['output'];
+  /** Description of what this step type does */
+  description: Scalars['String']['output'];
+  /** Lucide icon name (PascalCase) for UI display */
+  icon: Scalars['String']['output'];
+  /** Number of input handles */
+  inputs: Scalars['Int']['output'];
+  /** Human-readable label */
+  label: Scalars['String']['output'];
+  /** Visual node type for the pipeline editor (e.g. source, transform, load) */
+  nodeType: Scalars['String']['output'];
+  /** Number of output handles */
+  outputs: Scalars['Int']['output'];
+  /** Step type identifier (e.g. TRIGGER, EXTRACT, TRANSFORM) */
+  type: Scalars['String']['output'];
+};
+
 export type DataHubStorageStats = {
   __typename?: 'DataHubStorageStats';
   byMimeType: Scalars['JSON']['output'];
@@ -3567,6 +3805,8 @@ export type DataHubStoredFileList = PaginatedList & {
 /** Summary of a supported entity type */
 export type DataHubSupportedEntity = {
   __typename?: 'DataHubSupportedEntity';
+  /** Loader adapter code for this entity */
+  adapterCode: Scalars['String']['output'];
   /** Entity type code */
   code: Scalars['String']['output'];
   /** Description of the entity */
@@ -3575,6 +3815,16 @@ export type DataHubSupportedEntity = {
   name: Scalars['String']['output'];
   /** Supported operations (create, update, upsert, delete) */
   supportedOperations: Array<Scalars['String']['output']>;
+};
+
+/** Template category with metadata and template count */
+export type DataHubTemplateCategory = {
+  __typename?: 'DataHubTemplateCategory';
+  category: Scalars['String']['output'];
+  count: Scalars['Int']['output'];
+  description: Scalars['String']['output'];
+  icon: Scalars['String']['output'];
+  label: Scalars['String']['output'];
 };
 
 export type DataHubThroughputMetrics = {
@@ -3624,6 +3874,25 @@ export type DataHubTopError = {
   firstOccurrence: Scalars['DateTime']['output'];
   lastOccurrence: Scalars['DateTime']['output'];
   message: Scalars['String']['output'];
+};
+
+export type DataHubTypedOptionValue = {
+  __typename?: 'DataHubTypedOptionValue';
+  /** Optional category for UI grouping */
+  category?: Maybe<Scalars['String']['output']>;
+  /** Key map for converting wizard field names to pipeline config keys (JSON object) */
+  configKeyMap?: Maybe<Scalars['JSON']['output']>;
+  /** Default values when creating a new entry of this type (JSON object) */
+  defaultValues?: Maybe<Scalars['JSON']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  /** Form field definitions for this option type */
+  fields: Array<DataHubConnectionSchemaField>;
+  /** Lucide icon name (kebab-case) for UI display */
+  icon?: Maybe<Scalars['String']['output']>;
+  label: Scalars['String']['output'];
+  value: Scalars['String']['output'];
+  /** Which wizard scopes this option appears in (e.g. import, export) */
+  wizardScopes?: Maybe<Array<Scalars['String']['output']>>;
 };
 
 /** Result from validate simulation */
@@ -3734,6 +4003,18 @@ export type DataHubWebhookUpdate = {
   responseStatus?: Maybe<Scalars['Int']['output']>;
   status: DataHubWebhookDeliveryStatus;
   webhookId: Scalars['String']['output'];
+};
+
+export type DataHubWizardStrategyMapping = {
+  __typename?: 'DataHubWizardStrategyMapping';
+  /** Backend ConflictStrategy to use (e.g. SOURCE_WINS, MERGE) */
+  conflictStrategy: Scalars['String']['output'];
+  /** Human-readable label */
+  label: Scalars['String']['output'];
+  /** Backend LoadStrategy to use (e.g. CREATE, UPSERT) */
+  loadStrategy: Scalars['String']['output'];
+  /** Wizard-internal value for existing records strategy (e.g. SKIP, UPDATE, REPLACE, ERROR) */
+  wizardValue: Scalars['String']['output'];
 };
 
 /** Operators for filtering on a list of Date fields */
@@ -7880,6 +8161,8 @@ export type Query = {
   dataHubCheckpoint?: Maybe<DataHubCheckpoint>;
   /** Compare sandbox results between two pipeline revisions */
   dataHubCompareSandboxResults: DataHubSandboxComparison;
+  /** Returns all enum/option values used by the frontend for dropdowns and selections. */
+  dataHubConfigOptions: DataHubConfigOptions;
   dataHubConnection?: Maybe<DataHubConnection>;
   dataHubConnections: DataHubConnectionList;
   dataHubConsumers: Array<DataHubConsumerStatus>;
@@ -7889,6 +8172,8 @@ export type Query = {
   dataHubEvents: Array<DataHubEvent>;
   dataHubExportDestination?: Maybe<DataHubExportDestination>;
   dataHubExportDestinations: Array<DataHubExportDestination>;
+  /** List all export templates (built-in + custom) */
+  dataHubExportTemplates: Array<DataHubExportTemplate>;
   /** Get a specific extractor by code */
   dataHubExtractor?: Maybe<DataHubExtractor>;
   /** Get the configuration schema for a specific extractor */
@@ -7903,6 +8188,10 @@ export type Query = {
   dataHubHasUnpublishedChanges: Scalars['Boolean']['output'];
   /** Get impact analysis for a pipeline */
   dataHubImpactAnalysis: DataHubImpactAnalysis;
+  /** List import template categories with metadata and counts */
+  dataHubImportTemplateCategories: Array<DataHubTemplateCategory>;
+  /** List all import templates (built-in + custom) */
+  dataHubImportTemplates: Array<DataHubImportTemplate>;
   dataHubJob?: Maybe<DataHubJob>;
   dataHubJobByCode?: Maybe<DataHubJob>;
   dataHubJobRun?: Maybe<DataHubJobRun>;

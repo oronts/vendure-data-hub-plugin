@@ -1,0 +1,41 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/index.ts!",
+    "src/data-hub.plugin.ts!",
+    "src/api/**/*.resolver.ts!",
+    "src/api/**/*.controller.ts!",
+    "src/entities/**/*.entity.ts!",
+    "src/jobs/**/*.ts!",
+    "shared/index.ts!",
+    "connectors/index.ts!",
+    "dashboard/index.tsx!",
+    "dashboard/routes/index.ts!",
+    "dev-server/index.ts",
+    "dev-server/examples/**/*.ts"
+  ],
+  "project": [
+    "src/**/*.ts!",
+    "shared/**/*.ts!",
+    "connectors/**/*.ts!",
+    "dashboard/**/*.{ts,tsx}!",
+    "dev-server/**/*.ts"
+  ],
+  "ignore": [
+    "dev-server/gql/**",
+    "dashboard/gql/**",
+    "src/gql/**",
+    "**/*.d.ts"
+  ],
+  "ignoreDependencies": [
+    "@nestjs/*",
+    "@vendure/*",
+    "graphql",
+    "sonner",
+    "react-hook-form",
+    "rxjs",
+    "rxjs/operators",
+    "sharp"
+  ],
+  "ignoreBinaries": ["vendure"]
+}

@@ -1,14 +1,13 @@
 import { SEARCH_SERVICE_PORTS } from '../../shared/constants';
 import { FeedFormat } from './enums';
-export { SEARCH_SERVICE_PORTS };
 
-export const SEARCH_SERVICE_ENV_VARS = {
+const SEARCH_SERVICE_ENV_VARS = {
     MEILISEARCH: 'DATAHUB_MEILISEARCH_URL',
     ELASTICSEARCH: 'DATAHUB_ELASTICSEARCH_URL',
     TYPESENSE: 'DATAHUB_TYPESENSE_URL',
 } as const;
 
-export function getSearchServiceUrl(service: keyof typeof SEARCH_SERVICE_PORTS): string {
+function getSearchServiceUrl(service: keyof typeof SEARCH_SERVICE_PORTS): string {
     const envVar = SEARCH_SERVICE_ENV_VARS[service];
     const envValue = process.env[envVar];
     if (envValue) {
@@ -18,7 +17,7 @@ export function getSearchServiceUrl(service: keyof typeof SEARCH_SERVICE_PORTS):
     return `http://localhost:${port}`;
 }
 
-export const SEARCH_SERVICE_URLS = {
+const SEARCH_SERVICE_URLS = {
     MEILISEARCH: getSearchServiceUrl('MEILISEARCH'),
     ELASTICSEARCH: getSearchServiceUrl('ELASTICSEARCH'),
     TYPESENSE: getSearchServiceUrl('TYPESENSE'),
@@ -66,6 +65,21 @@ export const CONTENT_TYPES = {
     OCTET_STREAM: 'application/octet-stream',
 } as const;
 
+/**
+ * File extension to MIME type mapping for common DataHub file types.
+ * Values use CONTENT_TYPES constants where applicable.
+ */
+export const EXTENSION_MIME_MAP: Record<string, string> = {
+    '.csv': CONTENT_TYPES.CSV,
+    '.json': CONTENT_TYPES.JSON,
+    '.xml': CONTENT_TYPES.XML,
+    '.txt': CONTENT_TYPES.PLAIN,
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.pdf': 'application/pdf',
+    '.zip': 'application/zip',
+} as const;
+
 export const HTTP_HEADERS = {
     CONTENT_TYPE: 'Content-Type',
     AUTHORIZATION: 'Authorization',
@@ -95,8 +109,6 @@ export const XML_NAMESPACES = {
     XHTML: 'http://www.w3.org/1999/xhtml',
     /** Atom 1.0 namespace */
     ATOM_1_0: 'http://www.w3.org/2005/Atom',
-    /** RSS 2.0 Google base namespace */
-    GOOGLE_BASE: 'http://base.google.com/ns/1.0',
 } as const;
 
 export interface FeedFormatInfo {

@@ -27,7 +27,7 @@ import {
     updateCheckpoint,
     getCheckpointValue,
 } from './extract-handler.interface';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../../../utils/error.utils';
 
 interface VendureExtractConfig {
     entity?: string;
@@ -97,7 +97,7 @@ export class VendureExtractHandler implements ExtractHandler {
             return await this.executeQuery(ctx, step, executorCtx, cfg, entityClass, relations);
         } catch (error) {
             const errorMsg = this.formatQueryError(error, entityType);
-            this.logger.error('vendureQuery: extraction failed', error instanceof Error ? error : undefined, { stepKey: step.key, entity: entityType, error: getErrorMessage(error) });
+            this.logger.error('vendureQuery: extraction failed', toErrorOrUndefined(error), { stepKey: step.key, entity: entityType, error: getErrorMessage(error) });
             await this.reportError(onRecordError, step.key, errorMsg, { entity: entityType });
             return [];
         }

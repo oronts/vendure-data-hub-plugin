@@ -95,7 +95,7 @@ const httpApiExtractorExample = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'SOURCE_WINS',
+        conflictStrategy: 'SOURCE_WINS',
         skuField: 'sku',
     })
     .edge('start', 'fetch')
@@ -152,7 +152,7 @@ const productLoaderExample = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'SOURCE_WINS',
+        conflictStrategy: 'SOURCE_WINS',
         skuField: 'sku',
         nameField: 'name',
         slugField: 'slug',
@@ -218,7 +218,7 @@ const transformOperatorsExample = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'SOURCE_WINS',
+        conflictStrategy: 'SOURCE_WINS',
         skuField: 'slug',
         nameField: 'name',
     })
@@ -428,10 +428,12 @@ export const config: VendureConfig = {
             retentionDaysRuns: 30,
             retentionDaysErrors: 90,
 
-            // Custom adapters (operators, extractors, loaders)
+            connectors: [
+                { definition: pimcoreConnectorDefinition, config: pimcoreConfig },
+            ],
+
             adapters: [...allCustomAdapters, pimcoreGraphQLExtractor],
 
-            // Custom feed generators
             feedGenerators: [...allCustomFeedGenerators],
 
             // All example pipelines organized by category

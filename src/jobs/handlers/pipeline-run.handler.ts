@@ -14,6 +14,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { PipelineRunJobData, JobOptions } from '../types';
 import { PipelineQueueRequestEvent } from '../../services/events/pipeline-events';
 import { isRetryableError } from '../processors/job-processor';
+import { ensureError } from '../../utils/error.utils';
 
 /**
  * Default job queue configuration for pipeline runs
@@ -74,7 +75,7 @@ export class DataHubRunQueueHandler implements OnModuleInit, OnModuleDestroy {
                     });
                 } catch (error) {
                     const durationMs = Date.now() - startTime;
-                    const err = error instanceof Error ? error : new Error(String(error));
+                    const err = ensureError(error);
                     const isRetryable = isRetryableError(err);
 
                     this.logger.error(
@@ -111,7 +112,7 @@ export class DataHubRunQueueHandler implements OnModuleInit, OnModuleDestroy {
             this.enqueueRun(event.runId).catch(error => {
                 this.logger.error(
                     'Failed to enqueue run from event',
-                    error instanceof Error ? error : new Error(String(error)),
+                    ensureError(error),
                     { runId: event.runId, pipelineId: event.pipelineId },
                 );
             });

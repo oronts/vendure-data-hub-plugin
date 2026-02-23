@@ -1,5 +1,11 @@
 import { JsonObject, JsonValue, ErrorHandlingConfig, CheckpointingConfig, ExecutorContext as SharedExecutorContext } from '../types/index';
 
+/**
+ * Placeholder pipeline ID used when executing operators/adapters in sandbox mode
+ * (e.g., preview, test, or isolated transform execution outside a real pipeline run).
+ */
+export const SANDBOX_PIPELINE_ID = '0';
+
 export type RecordObject = JsonObject;
 
 /**
@@ -37,6 +43,8 @@ export interface ExecutorContext extends SharedExecutorContext {
     errorHandling?: ErrorHandlingConfig;
     /** Checkpointing configuration from pipeline context */
     checkpointing?: CheckpointingConfig;
+    /** Cancellation check callback - returns true when the run has been cancelled */
+    onCancelRequested?: () => Promise<boolean>;
 }
 
 /**
@@ -45,6 +53,8 @@ export interface ExecutorContext extends SharedExecutorContext {
 export interface ExecutionResult {
     ok: number;
     fail: number;
+    /** Optional error message when the entire execution fails */
+    error?: string;
 }
 
 /**

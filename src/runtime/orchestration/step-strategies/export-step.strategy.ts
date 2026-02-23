@@ -12,6 +12,7 @@ import {
     createStepDetail,
 } from './step-strategy.interface';
 import { getAdapterCode } from '../../../types/step-configs';
+import { StepType as StepTypeEnum, DomainEventType } from '../../../constants/enums';
 
 export class ExportStepStrategy implements StepStrategy {
     constructor(private readonly exportExecutor: ExportExecutor) {}
@@ -36,14 +37,14 @@ export class ExportStepStrategy implements StepStrategy {
             failed: fail,
             detail: createStepDetail(step, { ok, fail }, durationMs),
             counters: {},
-            event: { type: 'RECORD_EXPORTED', data: { stepKey: step.key, ok, fail } },
+            event: { type: DomainEventType.RECORD_EXPORTED, data: { stepKey: step.key, ok, fail } },
         };
     }
 
     private async logStepStart(context: StepExecutionContext, recordsIn: number): Promise<void> {
         const { ctx, step, stepLog } = context;
         if (stepLog?.onStepStart) {
-            await stepLog.onStepStart(ctx, step.key, 'EXPORT', recordsIn);
+            await stepLog.onStepStart(ctx, step.key, StepTypeEnum.EXPORT, recordsIn);
         }
     }
 
@@ -64,7 +65,7 @@ export class ExportStepStrategy implements StepStrategy {
         if (stepLog?.onStepComplete) {
             await stepLog.onStepComplete(ctx, {
                 stepKey: step.key,
-                stepType: 'EXPORT',
+                stepType: StepTypeEnum.EXPORT,
                 adapterCode,
                 recordsIn,
                 recordsOut: ok,

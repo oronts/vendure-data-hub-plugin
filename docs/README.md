@@ -58,6 +58,8 @@ For developers who want to use the code-first DSL or extend the plugin.
   - [Custom Feeds](./developer-guide/extending/custom-feeds.md)
   - [Custom Sinks](./developer-guide/extending/custom-sinks.md)
   - [Custom Triggers](./developer-guide/extending/custom-triggers.md)
+  - [Hook Scripts](./developer-guide/extending/README.md#hook-script-registration)
+  - [Wizard Templates](./developer-guide/extending/README.md#template-registration)
 - [GraphQL API](./developer-guide/graphql-api.md)
 
 ### [Deployment](./deployment/README.md)
@@ -88,6 +90,9 @@ Complete reference documentation for all adapters and operators.
 | Generate Google feed | [Product Feeds](./user-guide/feeds.md) |
 | Use code-first DSL | [Pipeline Builder](./developer-guide/dsl/pipeline-builder.md) |
 | Create custom extractor | [Custom Extractors](./developer-guide/extending/custom-extractors.md) |
+| Use import/export wizards | [Pipelines Guide](./user-guide/pipelines.md#import--export-wizards) |
+| Register pipeline hooks | [Configuration](./deployment/configuration.md#scripts) |
+| Add custom templates | [Extending](./developer-guide/extending/README.md#template-registration) |
 
 ---
 
@@ -123,4 +128,4 @@ Need help with Data Hub, Vendure, or e-commerce solutions?
 - Website: [https://oronts.com](https://oronts.com)
 - Email: **office@oronts.com**
 
-*Transform your business with Oronts AI solutions. Custom software development, agentic AI, and automation services with measurable ROI. Pilot in 90 days.*
+*Custom software development, e-commerce integrations, and data automation services.*

@@ -4,7 +4,7 @@
  * Matches field names exactly (case-sensitive or case-insensitive)
  */
 
-import { MappingStrategy, NameScoreResult } from '../types/index';
+import { MappingStrategy, NameScoreResult } from '../types/mapping-types';
 
 export class ExactMatchStrategy implements MappingStrategy {
     match(

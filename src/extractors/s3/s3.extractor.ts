@@ -11,11 +11,13 @@ import {
 } from '../../types/index';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { FileFormat } from '../../constants/enums';
+import { TRANSFORM_LIMITS } from '../../constants/defaults/core-defaults';
 import { getErrorMessage } from '../../utils/error.utils';
 import {
     S3ExtractorConfig,
     S3_DEFAULTS,
 } from './types';
+import { S3_EXTRACTOR_SCHEMA } from './schema';
 import {
     createS3Client,
     buildS3SourceId,
@@ -32,238 +34,21 @@ import {
     parseModifiedAfterDate,
 } from './file-handlers';
 
+const MAX_PREVIEW_FILES = TRANSFORM_LIMITS.MAX_PREVIEW_FILES;
+
 @Injectable()
 export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
     readonly type = 'EXTRACTOR' as const;
     readonly code = 's3';
     readonly name = 'S3 Extractor';
-    readonly description = 'Extract data from AWS S3 or S3-compatible storage';
     readonly category: ExtractorCategory = 'CLOUD_STORAGE';
-    readonly version = '1.0.0';
-    readonly icon = 'cloud';
     readonly supportsPagination = true;
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
 
     constructor(private readonly fileParser: FileParserService) {}
 
-    readonly schema: StepConfigSchema = {
-        groups: [
-            { id: 'connection', label: 'Connection', description: 'S3 connection settings' },
-            { id: 'source', label: 'Source', description: 'Bucket and object settings' },
-            { id: 'format', label: 'Format', description: 'File format options' },
-            { id: 's3select', label: 'S3 Select', description: 'Server-side filtering' },
-            { id: 'postProcess', label: 'Post-Processing', description: 'Actions after processing' },
-            { id: 'advanced', label: 'Advanced', description: 'Advanced options' },
-        ],
-        fields: [
-            // Connection
-            {
-                key: 'connectionCode',
-                label: 'Connection',
-                description: 'Use a saved S3 connection',
-                type: 'connection',
-                group: 'connection',
-            },
-            {
-                key: 'region',
-                label: 'Region',
-                description: 'AWS region (e.g., us-east-1)',
-                type: 'string',
-                placeholder: 'us-east-1',
-                group: 'connection',
-            },
-            {
-                key: 'endpoint',
-                label: 'Custom Endpoint',
-                description: 'Custom S3 endpoint URL (for MinIO, DigitalOcean Spaces, etc.)',
-                type: 'string',
-                placeholder: 'https://s3.example.com',
-                group: 'connection',
-            },
-            {
-                key: 'accessKeyIdSecretCode',
-                label: 'Access Key ID',
-                description: 'Secret code for AWS Access Key ID',
-                type: 'secret',
-                group: 'connection',
-            },
-            {
-                key: 'secretAccessKeySecretCode',
-                label: 'Secret Access Key',
-                description: 'Secret code for AWS Secret Access Key',
-                type: 'secret',
-                group: 'connection',
-            },
-            {
-                key: 'forcePathStyle',
-                label: 'Force Path Style',
-                description: 'Use path-style addressing (required for some S3-compatible services)',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'connection',
-            },
-            // Source
-            {
-                key: 'bucket',
-                label: 'Bucket',
-                description: 'S3 bucket name',
-                type: 'string',
-                required: true,
-                placeholder: 'my-data-bucket',
-                group: 'source',
-            },
-            {
-                key: 'prefix',
-                label: 'Prefix',
-                description: 'Object key prefix (folder path)',
-                type: 'string',
-                placeholder: 'data/imports/',
-                group: 'source',
-            },
-            {
-                key: 'suffix',
-                label: 'Suffix',
-                description: 'Object key suffix (e.g., .csv, .json)',
-                type: 'string',
-                placeholder: '.csv',
-                group: 'source',
-            },
-            // Format
-            {
-                key: 'format',
-                label: 'File Format',
-                type: 'select',
-                options: [
-                    { value: '', label: 'Auto-detect' },
-                    { value: FileFormat.CSV, label: 'CSV' },
-                    { value: FileFormat.JSON, label: 'JSON' },
-                    { value: FileFormat.XML, label: 'XML' },
-                    { value: FileFormat.XLSX, label: 'Excel (XLSX)' },
-                ],
-                group: 'format',
-            },
-            {
-                key: 'csv.delimiter',
-                label: 'CSV Delimiter',
-                type: 'select',
-                options: [
-                    { value: ',', label: 'Comma (,)' },
-                    { value: ';', label: 'Semicolon (;)' },
-                    { value: '\t', label: 'Tab' },
-                    { value: '|', label: 'Pipe (|)' },
-                ],
-                defaultValue: ',',
-                group: 'format',
-                dependsOn: { field: 'format', value: FileFormat.CSV },
-            },
-            {
-                key: 'csv.header',
-                label: 'Has Header Row',
-                type: 'boolean',
-                defaultValue: true,
-                group: 'format',
-                dependsOn: { field: 'format', value: FileFormat.CSV },
-            },
-            {
-                key: 'json.path',
-                label: 'JSON Data Path',
-                description: 'Path to records array in JSON',
-                type: 'string',
-                placeholder: 'data.items',
-                group: 'format',
-                dependsOn: { field: 'format', value: FileFormat.JSON },
-            },
-            // S3 Select
-            {
-                key: 's3Select.enabled',
-                label: 'Use S3 Select',
-                description: 'Use S3 Select for server-side filtering (CSV/JSON only)',
-                type: 'boolean',
-                defaultValue: false,
-                group: 's3select',
-            },
-            {
-                key: 's3Select.expression',
-                label: 'SQL Expression',
-                description: 'S3 Select SQL expression',
-                type: 'string',
-                placeholder: "SELECT * FROM s3object WHERE status = 'active'",
-                group: 's3select',
-                dependsOn: { field: 's3Select.enabled', value: true },
-            },
-            {
-                key: 's3Select.inputSerialization',
-                label: 'Input Format',
-                type: 'select',
-                options: [
-                    { value: FileFormat.CSV, label: 'CSV' },
-                    { value: FileFormat.JSON, label: 'JSON' },
-                ],
-                defaultValue: FileFormat.CSV,
-                group: 's3select',
-                dependsOn: { field: 's3Select.enabled', value: true },
-            },
-            // Post-Processing
-            {
-                key: 'deleteAfterProcess',
-                label: 'Delete After Processing',
-                description: 'Delete objects after successful processing',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'postProcess',
-            },
-            {
-                key: 'moveAfterProcess.enabled',
-                label: 'Move After Processing',
-                description: 'Move objects to another prefix after processing',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'postProcess',
-            },
-            {
-                key: 'moveAfterProcess.destinationPrefix',
-                label: 'Destination Prefix',
-                description: 'Prefix to move processed objects to',
-                type: 'string',
-                placeholder: 'data/processed/',
-                group: 'postProcess',
-                dependsOn: { field: 'moveAfterProcess.enabled', value: true },
-            },
-            // Advanced
-            {
-                key: 'modifiedAfter',
-                label: 'Modified After',
-                description: 'Only process objects modified after this date',
-                type: 'string',
-                placeholder: '2024-01-01T00:00:00Z',
-                group: 'advanced',
-            },
-            {
-                key: 'maxObjects',
-                label: 'Max Objects',
-                description: 'Maximum number of objects to process',
-                type: 'number',
-                defaultValue: S3_DEFAULTS.maxObjects,
-                group: 'advanced',
-            },
-            {
-                key: 'includeObjectMetadata',
-                label: 'Include Object Metadata',
-                description: 'Add S3 metadata (key, size, etag) to records',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'advanced',
-            },
-            {
-                key: 'continueOnError',
-                label: 'Continue on Error',
-                type: 'boolean',
-                defaultValue: true,
-                group: 'advanced',
-            },
-        ],
-    };
+    readonly schema: StepConfigSchema = S3_EXTRACTOR_SCHEMA;
 
     async *extract(
         context: ExtractorContext,
@@ -281,6 +66,10 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
             let continuationToken: string | undefined;
             let objectsProcessed = 0;
             const maxObjects = config.maxObjects || S3_DEFAULTS.maxObjects;
+            // Track processed keys via checkpoint for crash-safe resumability
+            const processedKeys = new Set<string>(
+                (context.checkpoint?.data?.processedS3Keys as string[]) ?? [],
+            );
 
             do {
                 if (await context.isCancelled()) break;
@@ -291,6 +80,11 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                 for (const obj of filteredObjects) {
                     if (await context.isCancelled()) break;
                     if (objectsProcessed >= maxObjects) break;
+                    if (processedKeys.has(obj.key)) {
+                        context.logger.debug(`Skipping already-processed S3 object: ${obj.key}`);
+                        objectsProcessed++;
+                        continue;
+                    }
 
                     try {
                         const content = await client.getObject(obj.key);
@@ -326,7 +120,13 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
                             context.logger.debug(`Moved S3 object: ${obj.key} -> ${destKey}`);
                         }
 
+                        processedKeys.add(obj.key);
                         objectsProcessed++;
+
+                        // Checkpoint after each file so restarts skip completed files
+                        if (config.deleteAfterProcess || config.moveAfterProcess?.enabled) {
+                            context.setCheckpoint({ processedS3Keys: [...processedKeys] });
+                        }
                     } catch (error) {
                         if (!config.continueOnError) throw error;
                         context.logger.warn(`Failed to process S3 object ${obj.key}: ${error}`);
@@ -453,7 +253,7 @@ export class S3Extractor implements DataExtractor<S3ExtractorConfig> {
 
             try {
                 const listResult = await client.listObjects(config.prefix);
-                const filteredObjects = filterObjects(listResult.objects, config).slice(0, 5);
+                const filteredObjects = filterObjects(listResult.objects, config).slice(0, MAX_PREVIEW_FILES);
 
                 for (const obj of filteredObjects) {
                     if (records.length >= limit) break;

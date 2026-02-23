@@ -4,7 +4,7 @@
  * Delivery to HTTP/HTTPS endpoints.
  */
 
-import { AuthType, HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES, TRUNCATION } from '../../constants/index';
+import { ConnectionAuthType, HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES, TRUNCATION } from '../../constants/index';
 import { HTTPDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
@@ -40,14 +40,14 @@ export async function deliverToHTTP(
     };
 
     // Add authentication
-    if (config.authType === AuthType.BASIC && config.authConfig?.username) {
+    if (config.authType === ConnectionAuthType.BASIC && config.authConfig?.username) {
         const credentials = Buffer.from(
             `${config.authConfig.username}:${config.authConfig.password || ''}`
         ).toString('base64');
         headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${credentials}`;
-    } else if (config.authType === AuthType.BEARER && config.authConfig?.token) {
+    } else if (config.authType === ConnectionAuthType.BEARER && config.authConfig?.token) {
         headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${config.authConfig.token}`;
-    } else if (config.authType === AuthType.API_KEY && config.authConfig?.apiKey) {
+    } else if (config.authType === ConnectionAuthType.API_KEY && config.authConfig?.apiKey) {
         const headerName = config.authConfig.apiKeyHeader || HTTP_HEADERS.X_API_KEY;
         headers[headerName] = config.authConfig.apiKey;
     }

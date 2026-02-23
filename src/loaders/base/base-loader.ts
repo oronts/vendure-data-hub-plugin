@@ -21,7 +21,7 @@ import {
 import { TARGET_OPERATION, OUTCOME_TYPE, LoaderOutcomeType } from '../../constants/enums';
 import { DataHubLogger } from '../../services/logger';
 import { isRecoverableError } from '../shared-helpers';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 
 /**
  * Metadata configuration for a loader
@@ -30,6 +30,7 @@ export interface LoaderMetadata {
     entityType: VendureEntityType;
     name: string;
     description: string;
+    adapterCode: string;
     supportedOperations: readonly TargetOperation[];
     lookupFields: readonly string[];
     requiredFields: readonly string[];
@@ -79,6 +80,10 @@ export abstract class BaseEntityLoader<
 
     get description(): string {
         return this.metadata.description;
+    }
+
+    get adapterCode(): string {
+        return this.metadata.adapterCode;
     }
 
     get supportedOperations(): TargetOperation[] {
@@ -229,7 +234,7 @@ export abstract class BaseEntityLoader<
         });
         this.logger.error(
             `Failed to load ${this.metadata.entityType.toLowerCase()}`,
-            error instanceof Error ? error : undefined,
+            toErrorOrUndefined(error),
         );
     }
 

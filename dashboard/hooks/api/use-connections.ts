@@ -1,18 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
+import { createQueryKeys } from '../../utils/query-key-factory';
 import { QUERY_LIMITS } from '../../constants';
 import type {
     DataHubConnectionListOptions,
 } from '../../types';
 
+const base = createQueryKeys('connections');
 const connectionKeys = {
-    all: ['connections'] as const,
-    lists: () => [...connectionKeys.all, 'list'] as const,
-    list: (options?: DataHubConnectionListOptions) => [...connectionKeys.lists(), options] as const,
-    details: () => [...connectionKeys.all, 'detail'] as const,
-    detail: (id: string) => [...connectionKeys.details(), id] as const,
-    codes: () => [...connectionKeys.all, 'codes'] as const,
+    ...base,
+    list: (options?: DataHubConnectionListOptions) => [...base.lists(), options] as const,
+    codes: () => [...base.all, 'codes'] as const,
 };
 
 export const connectionsListDocument = graphql(`

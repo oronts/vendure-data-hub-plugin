@@ -1,13 +1,17 @@
 import { AdapterDefinition, JsonObject } from '../types';
 import { SetOperatorConfig } from './types';
 import { applySet } from './helpers';
-import { createRecordOperator } from './operator-factory';
+import { createRecordOperator } from '../operator-factory';
 
 export const SET_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'set',
     description: 'Set a static value at a specified path.',
+    category: 'DATA',
+    categoryLabel: 'Data',
+    categoryOrder: 0,
     pure: true,
+    summaryTemplate: 'Set field values',
     schema: {
         fields: [
             {

@@ -33,7 +33,7 @@ Steps are the building blocks of a pipeline. Each step has:
 
 | Type | Purpose |
 |------|---------|
-| `TRIGGER` | Defines how the pipeline starts (MANUAL, SCHEDULE, WEBHOOK, EVENT) |
+| `TRIGGER` | Defines how the pipeline starts (MANUAL, SCHEDULE, WEBHOOK, EVENT, FILE, MESSAGE) |
 | `EXTRACT` | Pulls data from external sources |
 | `TRANSFORM` | Modifies, validates, or enriches data |
 | `VALIDATE` | Validates records against rules or schemas |
@@ -141,6 +141,41 @@ Checkpoints allow a failed pipeline to resume from the last successful record in
 
 If a run fails, rerunning the pipeline will skip already-processed records.
 
+## Templates
+
+Templates are pre-configured pipeline blueprints for the import and export wizards. They pre-fill wizard steps with common field mappings, source types, and format options.
+
+**Built-in import templates:**
+- REST API Product Sync
+- JSON Product Import
+- Magento CSV Import
+- XML Product Feed Import
+- ERP Inventory Sync
+- CRM Customer Sync
+
+**Built-in export templates:**
+- Google Merchant Center Feed
+- Meta (Facebook) Catalog
+- Product Catalog (CSV/JSON)
+- Order Analytics Export
+- Customer GDPR Export
+- Inventory Reconciliation Report
+
+Custom templates can be registered via plugin options or the `TemplateRegistryService`.
+
+## Scripts & Hooks
+
+Scripts are named functions that can modify records at any stage of pipeline execution. Register scripts via plugin options and reference them in pipeline hook definitions:
+
+| Hook Type | Purpose | Can Modify Records |
+|-----------|---------|-------------------|
+| `INTERCEPTOR` | Inline JavaScript code (sandboxed) | Yes |
+| `SCRIPT` | Pre-registered TypeScript functions | Yes |
+| `WEBHOOK` | HTTP notifications | No |
+| `EMIT` | Vendure domain events | No |
+| `TRIGGER_PIPELINE` | Start another pipeline | No |
+| `LOG` | Write to pipeline logs | No |
+
 ## Throughput
 
 Control how records flow through steps:
@@ -166,6 +201,9 @@ When loading entities, choose a strategy:
 | `CREATE` | Only create new records; skip if exists |
 | `UPDATE` | Only update existing records; skip if not found |
 | `UPSERT` | Create new or update existing records |
+| `MERGE` | Merge source with existing data |
+| `SOFT_DELETE` | Mark as deleted / logical delete |
+| `HARD_DELETE` | Permanently remove from database |
 
 ## Channel Strategy
 

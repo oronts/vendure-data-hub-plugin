@@ -9,12 +9,12 @@ import {
     ConnectionTestResult,
     ExtractorPreviewResult,
     RecordEnvelope,
-    StepConfigSchema,
     ExtractorCategory,
 } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
 import { DatabaseType, TRANSFORM_LIMITS } from '../../constants/index';
 import { CdcExtractorConfig, CDC_DEFAULTS, CdcOperation } from './types';
+import { CDC_EXTRACTOR_SCHEMA } from './schema';
 import {
     createDatabaseClient,
     DatabaseClient,
@@ -101,122 +101,12 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
     readonly type = 'EXTRACTOR' as const;
     readonly code = 'cdc';
     readonly name = 'CDC Extractor';
-    readonly description = 'Poll a database table for changes using a timestamp or version column (Change Data Capture)';
     readonly category: ExtractorCategory = 'DATABASE';
-    readonly version = '1.0.0';
-    readonly icon = 'refresh-cw';
     readonly supportsPagination = false;
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
 
-    readonly schema: StepConfigSchema = {
-        groups: [
-            { id: 'connection', label: 'Connection', description: 'Database connection settings' },
-            { id: 'tracking', label: 'Change Tracking', description: 'How changes are detected' },
-            { id: 'columns', label: 'Columns', description: 'Which columns to extract' },
-            { id: 'deletes', label: 'Deletes', description: 'Soft-delete tracking' },
-            { id: 'advanced', label: 'Advanced', description: 'Batch size and polling' },
-        ],
-        fields: [
-            {
-                key: 'connectionCode',
-                label: 'Connection',
-                description: 'Saved database connection',
-                type: 'connection',
-                required: true,
-                group: 'connection',
-            },
-            {
-                key: 'databaseType',
-                label: 'Database Type',
-                type: 'select',
-                required: true,
-                options: [
-                    { value: 'POSTGRESQL', label: 'PostgreSQL' },
-                    { value: 'MYSQL', label: 'MySQL / MariaDB' },
-                ],
-                group: 'connection',
-            },
-            {
-                key: 'table',
-                label: 'Table',
-                description: 'Table to poll for changes',
-                type: 'string',
-                required: true,
-                placeholder: 'products',
-                group: 'tracking',
-            },
-            {
-                key: 'primaryKey',
-                label: 'Primary Key Column',
-                description: 'Primary key column of the table',
-                type: 'string',
-                required: true,
-                placeholder: 'id',
-                group: 'tracking',
-            },
-            {
-                key: 'trackingColumn',
-                label: 'Tracking Column',
-                description: 'Column used to detect changes (e.g., updated_at, version)',
-                type: 'string',
-                required: true,
-                placeholder: 'updated_at',
-                group: 'tracking',
-            },
-            {
-                key: 'trackingType',
-                label: 'Tracking Type',
-                type: 'select',
-                required: true,
-                options: [
-                    { value: 'TIMESTAMP', label: 'Timestamp' },
-                    { value: 'VERSION', label: 'Version / Sequence Number' },
-                ],
-                group: 'tracking',
-            },
-            {
-                key: 'columns',
-                label: 'Columns',
-                description: 'Specific columns to select as an array (e.g. ["id", "name"]). Leave empty for all columns.',
-                type: 'json',
-                group: 'columns',
-            },
-            {
-                key: 'includeDeletes',
-                label: 'Track Deletes',
-                description: 'Query a soft-delete column for deleted rows',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'deletes',
-            },
-            {
-                key: 'deleteColumn',
-                label: 'Delete Column',
-                description: 'Timestamp column that indicates when a row was deleted',
-                type: 'string',
-                placeholder: 'deleted_at',
-                group: 'deletes',
-                dependsOn: { field: 'includeDeletes', value: true },
-            },
-            {
-                key: 'batchSize',
-                label: 'Batch Size',
-                description: 'Maximum rows per extraction',
-                type: 'number',
-                defaultValue: CDC_DEFAULTS.batchSize,
-                group: 'advanced',
-            },
-            {
-                key: 'pollIntervalMs',
-                label: 'Poll Interval (ms)',
-                description: 'Milliseconds between polls (used by scheduler)',
-                type: 'number',
-                defaultValue: CDC_DEFAULTS.pollIntervalMs,
-                group: 'advanced',
-            },
-        ],
-    };
+    readonly schema = CDC_EXTRACTOR_SCHEMA;
 
     async *extract(
         context: ExtractorContext,
@@ -513,14 +403,14 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
     ): Promise<ConnectionTestResult> {
         const startTime = Date.now();
 
+        let client: Awaited<ReturnType<typeof createDatabaseClient>> | null = null;
         try {
             const connection = await context.connections.getRequired(config.connectionCode);
             const dbConfig = toDatabaseConfig(config, connection);
             const testQuery = DATABASE_TEST_QUERIES[config.databaseType as DatabaseType] || 'SELECT 1';
 
-            const client = await createDatabaseClient(context, dbConfig);
+            client = await createDatabaseClient(context, dbConfig);
             await client.query(testQuery);
-            await client.close();
 
             return {
                 success: true,
@@ -540,6 +430,8 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                     table: config.table,
                 },
             };
+        } finally {
+            if (client) await client.close().catch(() => {});
         }
     }
 

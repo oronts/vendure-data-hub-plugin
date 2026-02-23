@@ -1,6 +1,7 @@
 import { PluginCommonModule, Type, VendurePlugin } from '@vendure/core';
 import { DATAHUB_PLUGIN_OPTIONS } from './constants/index';
 import { DataHubPluginOptions } from './types/index';
+import { DEFAULT_IMPORT_TEMPLATES } from './templates';
 // Pipeline entities
 import { Pipeline, PipelineRun, PipelineRevision, PipelineLog } from './entities/pipeline';
 // Data entities
@@ -40,6 +41,7 @@ import {
     RateLimitService,
     MessageConsumerService,
     StepTestService,
+    TemplateRegistryService,
 } from './services';
 import { RateLimitServiceHolder } from './decorators';
 import { DATAHUB_PERMISSION_DEFINITIONS } from './permissions';
@@ -60,42 +62,21 @@ import { DataHubAnalyticsAdminResolver } from './api/resolvers/analytics.resolve
 import { DataHubFileUploadController } from './api/controllers/file-upload.controller';
 // Transform and Loader services
 import { TransformExecutor } from './transforms/transform-executor';
-import { ProductVariantLoader } from './loaders/product-variant';
-import { ProductLoader } from './loaders/product';
-import { CustomerLoader } from './loaders/customer';
-import { CollectionLoader } from './loaders/collection';
-import { FacetLoader } from './loaders/facet';
-import { FacetValueLoader } from './loaders/facet-value';
-import { PromotionLoader } from './loaders/promotion';
-import { CustomerGroupLoader } from './loaders/customer-group';
-import { AssetLoader } from './loaders/asset';
-import { OrderLoader } from './loaders/order';
-import { StockLocationLoader } from './loaders/stock-location';
-import { InventoryLoader } from './loaders/inventory';
-import { ShippingMethodLoader } from './loaders/shipping-method';
-import { TaxRateLoader } from './loaders/tax-rate';
-import { PaymentMethodLoader } from './loaders/payment-method';
-import { ChannelLoader } from './loaders/channel';
+import { ENTITY_LOADER_PROVIDERS } from './loaders/entity-loader-registry';
 import { LoaderRegistryService } from './loaders/registry';
 // Logger Service
 import { DataHubLoggerFactory, ExecutionLogger } from './services/logger';
-// Extractor Services
+// Extractor Services (auto-discovered via EXTRACTOR_HANDLER_REGISTRY)
 import { ExtractorRegistryService } from './extractors/extractor-registry.service';
-import { HttpApiExtractor } from './extractors/http-api';
-import { WebhookExtractor } from './extractors/webhook';
-import { VendureQueryExtractor } from './extractors/vendure-query';
-import { FileExtractor } from './extractors/file';
-import { FtpExtractor } from './extractors/ftp';
-import { S3Extractor } from './extractors/s3';
-import { DatabaseExtractor } from './extractors/database';
-import { GraphQLExtractor } from './extractors/graphql';
-import { CdcExtractor } from './extractors/cdc';
+import { EXTRACTOR_PROVIDERS } from './extractors/extractor-handler-registry';
 import { DataHubExtractorAdminResolver } from './api/resolvers/extractor.resolver';
 import { EntitySchemaAdminResolver } from './api/resolvers/entity-schema.resolver';
 import { DataHubVersioningResolver } from './api/resolvers/versioning.resolver';
 import { DataHubSandboxResolver } from './api/resolvers/sandbox.resolver';
 import { DataHubSubscriptionResolver } from './api/resolvers/subscription.resolver';
 import { DataHubGateAdminResolver } from './api/resolvers/gate.resolver';
+import { DataHubTemplateAdminResolver } from './api/resolvers/template.resolver';
+import { DataHubConfigOptionsAdminResolver } from './api/resolvers/config-options.resolver';
 // Versioning Services
 import { DiffService, RevisionService, ImpactAnalysisService, RiskAssessmentService, SandboxService } from './services/versioning';
 // Runtime Services
@@ -109,27 +90,8 @@ import { FeedExecutor } from './runtime/executors/feed.executor';
 import { SinkExecutor } from './runtime/executors/sink.executor';
 import { GateExecutor } from './runtime/executors/gate.executor';
 import { GateStepStrategy } from './runtime/orchestration/step-strategies';
-// Loader Handlers (used by LoadExecutor)
-import {
-    ProductHandler,
-    VariantHandler,
-    CustomerHandler,
-    OrderNoteHandler,
-    ApplyCouponHandler,
-    OrderTransitionHandler,
-    StockAdjustHandler,
-    CollectionHandler,
-    PromotionHandler,
-    AssetAttachHandler,
-    AssetImportHandler,
-    FacetHandler,
-    FacetValueHandler,
-    RestPostHandler,
-    GraphqlMutationHandler,
-    TaxRateHandler,
-    PaymentMethodHandler,
-    ChannelHandler,
-} from './runtime/executors/loaders';
+// Loader Handler Registry (used by LoadExecutor - auto-discovered via LOADER_HANDLER_REGISTRY)
+import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
 
 /**
  * Data Hub Plugin - ETL (Extract, Transform, Load) data integration plugin for Vendure.
@@ -195,48 +157,10 @@ import {
         SinkExecutor,
         GateExecutor,
         GateStepStrategy,
-        // Loader Handlers (used by LoadExecutor)
-        ProductHandler,
-        VariantHandler,
-        CustomerHandler,
-        OrderNoteHandler,
-        ApplyCouponHandler,
-        OrderTransitionHandler,
-        StockAdjustHandler,
-        CollectionHandler,
-        PromotionHandler,
-        AssetAttachHandler,
-        AssetImportHandler,
-        FacetHandler,
-        FacetValueHandler,
-        RestPostHandler,
-        GraphqlMutationHandler,
-        TaxRateHandler,
-        PaymentMethodHandler,
-        ChannelHandler,
-        // Entity Loaders - Products
-        ProductVariantLoader,
-        ProductLoader,
-        // Entity Loaders - Customers
-        CustomerLoader,
-        CustomerGroupLoader,
-        // Entity Loaders - Catalog
-        CollectionLoader,
-        FacetLoader,
-        FacetValueLoader,
-        // Entity Loaders - Commerce
-        PromotionLoader,
-        OrderLoader,
-        ShippingMethodLoader,
-        PaymentMethodLoader,
-        // Entity Loaders - Tax & Channel
-        TaxRateLoader,
-        ChannelLoader,
-        // Entity Loaders - Inventory
-        StockLocationLoader,
-        InventoryLoader,
-        // Entity Loaders - Media
-        AssetLoader,
+        // Loader Handlers (auto-discovered from LOADER_HANDLER_REGISTRY)
+        ...LOADER_HANDLER_PROVIDERS,
+        // Entity Loaders (auto-discovered from ENTITY_LOADER_REGISTRY)
+        ...ENTITY_LOADER_PROVIDERS,
         // Loader Registry
         LoaderRegistryService,
         // Logger Factory and Execution Logger
@@ -245,17 +169,9 @@ import {
         // Rate Limiting Service
         RateLimitService,
         RateLimitServiceHolder,
-        // Extractor Services
+        // Extractor Services (auto-discovered from EXTRACTOR_HANDLER_REGISTRY)
         ExtractorRegistryService,
-        HttpApiExtractor,
-        WebhookExtractor,
-        VendureQueryExtractor,
-        FileExtractor,
-        FtpExtractor,
-        S3Extractor,
-        DatabaseExtractor,
-        GraphQLExtractor,
-        CdcExtractor,
+        ...EXTRACTOR_PROVIDERS,
         // DataHub services
         FileStorageService,
         WebhookRetryService,
@@ -295,6 +211,10 @@ import {
         PipelineFormatService,
         // Testing Services
         StepTestService,
+        // Template Registry
+        TemplateRegistryService,
+        DataHubTemplateAdminResolver,
+        DataHubConfigOptionsAdminResolver,
         {
             provide: DATAHUB_PLUGIN_OPTIONS,
             useFactory: () => DataHubPlugin.options,
@@ -323,6 +243,8 @@ import {
             DataHubSandboxResolver,
             DataHubSubscriptionResolver,
             DataHubGateAdminResolver,
+            DataHubTemplateAdminResolver,
+            DataHubConfigOptionsAdminResolver,
         ],
     },
     controllers: [DataHubWebhookController, DataHubFileUploadController],
@@ -337,7 +259,10 @@ import {
 })
 export class DataHubPlugin {
     /** @internal */
-    static options: DataHubPluginOptions = { enabled: true };
+    static options: DataHubPluginOptions = {
+        enabled: true,
+        importTemplates: DEFAULT_IMPORT_TEMPLATES,
+    };
 
     /**
      * Initialize the Data Hub plugin with configuration options.

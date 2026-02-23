@@ -4,26 +4,10 @@
 
 import { StoredFile } from '../../services';
 import { ParseFormatType } from '../../constants/enums';
+import { CONTENT_TYPES, EXTENSION_MIME_MAP } from '../../constants/index';
 import { extractFileExtension } from '../../extractors/shared/file-format.utils';
 
 type FileFormatAlias = ParseFormatType;
-
-/**
- * MIME type to file extension mapping
- */
-const MIME_TYPE_MAP: Record<string, string> = {
-    csv: 'text/csv',
-    json: 'application/json',
-    xml: 'application/xml',
-    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    xls: 'application/vnd.ms-excel',
-    txt: 'text/plain',
-} as const;
-
-/**
- * Default MIME type for unknown file types
- */
-const DEFAULT_MIME_TYPE = 'application/octet-stream';
 
 /**
  * Base path for DataHub file endpoints - used to construct download/preview URLs
@@ -63,7 +47,7 @@ export function formatFileResponse(file: StoredFile): {
  */
 export function detectMimeType(filename: string): string {
     const ext = extractFileExtension(filename);
-    return MIME_TYPE_MAP[ext || ''] || DEFAULT_MIME_TYPE;
+    return EXTENSION_MIME_MAP[`.${ext}`] ?? CONTENT_TYPES.OCTET_STREAM;
 }
 
 /**
@@ -72,8 +56,8 @@ export function detectMimeType(filename: string): string {
 export function detectFormat(mimeType: string, filename: string): FileFormatAlias {
     const ext = extractFileExtension(filename).toUpperCase();
 
-    if (ext === 'CSV' || mimeType === 'text/csv') return 'CSV';
-    if (ext === 'JSON' || mimeType === 'application/json') return 'JSON';
+    if (ext === 'CSV' || mimeType === CONTENT_TYPES.CSV) return 'CSV';
+    if (ext === 'JSON' || mimeType === CONTENT_TYPES.JSON) return 'JSON';
     if (ext === 'XML' || mimeType.includes('xml')) return 'XML';
     if (ext === 'XLSX' || ext === 'XLS' || mimeType.includes('spreadsheet') || mimeType.includes('excel')) return 'XLSX';
 

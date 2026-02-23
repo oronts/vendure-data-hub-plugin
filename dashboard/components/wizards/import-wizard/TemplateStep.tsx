@@ -13,24 +13,8 @@ import { Button } from '@vendure/dashboard';
 import { TemplateGallery } from '../../templates';
 import { TemplatePreview } from '../../templates';
 import { STEP_CONTENT } from './constants';
-import type { TemplateCategory, TemplateDifficulty } from '../../../types';
-
-interface ImportTemplate {
-    id: string;
-    name: string;
-    description: string;
-    category: TemplateCategory;
-    icon?: string;
-    difficulty: TemplateDifficulty;
-    estimatedTime: string;
-    requiredFields: string[];
-    optionalFields: string[];
-    sampleData?: Record<string, unknown>[];
-    featured?: boolean;
-    tags?: string[];
-    formats?: string[];
-    definition?: unknown;
-}
+import type { ImportTemplate } from '../../../hooks/use-import-templates';
+import type { TemplateCategory } from '../../../types';
 
 interface CategoryInfo {
     category: TemplateCategory;

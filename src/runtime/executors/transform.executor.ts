@@ -1,12 +1,14 @@
+import * as crypto from 'crypto';
 import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import { JsonObject, JsonValue, PipelineStepDefinition, PipelineContext } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS, ValidationMode } from '../../constants/index';
-import { RecordObject, OnRecordErrorCallback, ExecutorContext, BranchOutput } from '../executor-types';
+import { RecordObject, OnRecordErrorCallback, ExecutorContext, BranchOutput, SANDBOX_PIPELINE_ID } from '../executor-types';
 import {
     getPath,
     setPath,
+    removePath,
     evalCondition,
     unitFactor,
     validateAgainstSimpleSpec,
@@ -15,9 +17,9 @@ import { DataHubRegistryService } from '../../sdk/registry.service';
 import { OperatorAdapter, SingleRecordOperator, AdapterOperatorHelpers, OperatorContext } from '../../sdk/types';
 import { getOperatorRuntime, getCustomOperatorRuntime } from '../../operators/operator-runtime-registry';
 import { OperatorSecretResolver } from '../../sdk/types/transform-types';
-import { hashStable } from '../utils';
 import { SecretService } from '../../services/config/secret.service';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
+import { sleep } from '../../utils/retry.utils';
 import {
     getAdapterCode,
     isTransformStepConfig,
@@ -186,14 +188,14 @@ export class TransformExecutor {
     ): OperatorContext {
         return {
             ctx,
-            pipelineId: '0',
+            pipelineId: SANDBOX_PIPELINE_ID,
             stepKey: step.key,
             pipelineContext: pipelineContext ?? {} as PipelineContext,
             logger: {
                 info: (msg: string, meta?: JsonObject) => this.logger.info(msg, meta as Record<string, unknown> | undefined),
                 warn: (msg: string, meta?: JsonObject) => this.logger.warn(msg, meta as Record<string, unknown> | undefined),
                 error: (msg: string, errorOrMeta?: JsonObject | Error, meta?: JsonObject) => {
-                    const error = errorOrMeta instanceof Error ? errorOrMeta : undefined;
+                    const error = toErrorOrUndefined(errorOrMeta);
                     const metadata = errorOrMeta instanceof Error ? meta : errorOrMeta;
                     this.logger.error(msg, error, metadata as Record<string, unknown> | undefined);
                 },
@@ -229,15 +231,7 @@ export class TransformExecutor {
             get: (record: JsonObject, path: string) => getPath(record as RecordObject, path),
             set: (record: JsonObject, path: string, value: JsonValue) => setPath(record as RecordObject, path, value),
             remove: (record: JsonObject, path: string) => {
-                const parts = path.split('.');
-                let cur: JsonObject | undefined = record;
-                for (let i = 0; i < parts.length - 1; i++) {
-                    if (cur == null) return;
-                    const val = cur[parts[i]];
-                    if (typeof val !== 'object' || val === null || Array.isArray(val)) return;
-                    cur = val as JsonObject;
-                }
-                if (cur) delete cur[parts[parts.length - 1]];
+                removePath(record, path);
             },
         };
     }
@@ -282,13 +276,20 @@ export class TransformExecutor {
     }
 
     /**
-     * Build crypto utilities for operator helpers
+     * Build crypto utilities for operator helpers.
+     *
+     * `hash()` uses the specified algorithm (defaults to sha256).
+     * `hmac()` uses Node.js crypto.createHmac for proper key-based HMAC.
      */
     private buildCryptoHelpers(): AdapterOperatorHelpers['crypto'] {
         return {
-            hash: (value: string, _algorithm?: 'md5' | 'sha256' | 'sha512') => hashStable(value),
-            hmac: (value: string, secret: string, _algorithm?: 'sha256' | 'sha512') => {
-                return hashStable(value + secret);
+            hash: (value: string, algorithm?: 'md5' | 'sha256' | 'sha512') => {
+                const algo = algorithm ?? 'sha256';
+                return crypto.createHash(algo).update(value).digest('hex');
+            },
+            hmac: (value: string, secret: string, algorithm?: 'sha256' | 'sha512') => {
+                const algo = algorithm ?? 'sha256';
+                return crypto.createHmac(algo, secret).update(value).digest('hex');
             },
             uuid: () => crypto.randomUUID(),
         };
@@ -341,10 +342,11 @@ export class TransformExecutor {
                 const waitMs = retryConfig.backoff === 'EXPONENTIAL'
                     ? delay * Math.pow(2, attempt)
                     : delay * (attempt + 1);
-                await new Promise(r => setTimeout(r, waitMs));
+                await sleep(waitMs);
             }
         }
-        throw new Error('Unreachable: retry loop exited without returning or throwing');
+        // istanbul ignore next -- required for TypeScript exhaustiveness (loop always returns or throws)
+        throw new Error('Unreachable');
     }
 
     /**
@@ -398,7 +400,7 @@ export class TransformExecutor {
             throw error;
         }
 
-        this.logger.error(`Operator execution failed`, error instanceof Error ? error : undefined, {
+        this.logger.error(`Operator execution failed`, toErrorOrUndefined(error), {
             adapterCode: operator.code,
             stepKey,
         });
@@ -575,8 +577,8 @@ export class TransformExecutor {
             });
         }
 
-        // For HTTP and VENDURE source types, would need async implementation
-        // For now, pass through unchanged if no enrichment config is valid
+        // HTTP and VENDURE source types require async external lookups not yet implemented
+        this.logger.warn(`ENRICH source type "${sourceType}" is not yet implemented for step "${step.key}" — records passed through unchanged`);
         return input;
     }
 

@@ -6,6 +6,7 @@ import { LockBackend, MemoryLockEntry, LockBackendFactory } from './lock-backend
 import { DISTRIBUTED_LOCK } from '../../constants/index';
 import { sleep } from '../../utils/retry.utils';
 import { getErrorMessage } from '../../utils/error.utils';
+import { generateTimestampedId } from '../../utils/id-generation.utils';
 
 /**
  * Lock configuration options
@@ -107,10 +108,17 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
                     this.memoryLocks.delete(k);
                 }
             }
-            // If still at capacity, evict the oldest entry
+            // If still at capacity after clearing expired, evict the oldest entry
             if (this.memoryLocks.size >= DISTRIBUTED_LOCK.MAX_MEMORY_LOCKS) {
                 const oldestKey = this.memoryLocks.keys().next().value;
-                if (oldestKey) this.memoryLocks.delete(oldestKey);
+                if (oldestKey) {
+                    this.logger.warn('Evicting non-expired lock at capacity limit', {
+                        evictedKey: oldestKey,
+                        mapSize: this.memoryLocks.size,
+                        maxSize: DISTRIBUTED_LOCK.MAX_MEMORY_LOCKS,
+                    });
+                    this.memoryLocks.delete(oldestKey);
+                }
             }
         }
 
@@ -176,7 +184,7 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
     }
 
     private generateToken(): string {
-        return `${this.instanceId}-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').substring(0, 9)}`;
+        return generateTimestampedId(this.instanceId, 9);
     }
 
     private async createFailedResult(key: string): Promise<LockResult> {
@@ -192,5 +200,3 @@ export class LockAcquisitionError extends Error {
         this.name = 'LockAcquisitionError';
     }
 }
-
-export { LockState } from './lock-backends';

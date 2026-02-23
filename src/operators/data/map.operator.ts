@@ -1,12 +1,17 @@
-import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject } from '../types';
 import { MapOperatorConfig } from './types';
 import { applyMapping } from './helpers';
+import { createRecordOperator } from '../operator-factory';
 
 export const MAP_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'map',
     description: 'Transform records via field mapping. Provide a JSON object of dst -> src dot-paths.',
+    category: 'DATA',
+    categoryLabel: 'Data',
+    categoryOrder: 0,
     pure: true,
+    editorType: 'map',
     schema: {
         fields: [
             {
@@ -36,11 +41,4 @@ export function applyMapOperator(
     return applyMapping(record, config.mapping, config.passthrough);
 }
 
-export function mapOperator(
-    records: readonly JsonObject[],
-    config: MapOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record => applyMapOperator(record, config));
-    return { records: results };
-}
+export const mapOperator = createRecordOperator(applyMapOperator);

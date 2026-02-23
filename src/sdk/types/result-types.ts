@@ -117,7 +117,7 @@ export interface LoadResult {
  * validation result reporting. Field is optional because some validation
  * errors apply to the entire record rather than a specific field.
  *
- * @see shared/types/validation.types.ts for the canonical ValidationError type
+ * @see shared/types/validation.types.ts ValidationError
  */
 export interface SdkValidationError {
     /** Field that failed validation (optional for record-level errors) */

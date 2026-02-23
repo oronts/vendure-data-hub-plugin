@@ -2,19 +2,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { createMutationErrorHandler } from './mutation-helpers';
+import { createQueryKeys } from '../../utils/query-key-factory';
 import { POLLING_INTERVALS, RUN_STATUS } from '../../constants';
 import { queueKeys } from './use-queues';
 import type { DataHubPipelineRunListOptions, JsonObject } from '../../types';
 
+const base = createQueryKeys('pipelineRuns');
 export const runKeys = {
-    all: ['pipelineRuns'] as const,
-    lists: () => [...runKeys.all, 'list'] as const,
+    ...base,
     list: (pipelineId?: string, options?: DataHubPipelineRunListOptions) =>
-        [...runKeys.lists(), pipelineId, options] as const,
-    details: () => [...runKeys.all, 'detail'] as const,
-    detail: (id: string) => [...runKeys.details(), id] as const,
-    errors: (runId: string) => [...runKeys.all, 'errors', runId] as const,
-    errorAudits: (errorId: string) => [...runKeys.all, 'errorAudits', errorId] as const,
+        [...base.lists(), pipelineId, options] as const,
+    errors: (runId: string) => [...base.all, 'errors', runId] as const,
+    errorAudits: (errorId: string) => [...base.all, 'errorAudits', errorId] as const,
 };
 
 const runsListDocument = graphql(`

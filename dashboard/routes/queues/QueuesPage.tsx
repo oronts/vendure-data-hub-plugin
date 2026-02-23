@@ -68,7 +68,7 @@ function QueuesPage() {
     const consumers = consumersQueryResult.data ?? [];
     const [selectedRunId, setSelectedRunId] = React.useState<string | null>(null);
 
-    const isLoading = statsQuery.isLoading && deadLettersQuery.isLoading && consumersQueryResult.isLoading;
+    const isLoading = statsQuery.isLoading || deadLettersQuery.isLoading || consumersQueryResult.isLoading;
     const hasError = statsQuery.isError || deadLettersQuery.isError || consumersQueryResult.isError;
     const errorMessage =
         statsQuery.error?.message || deadLettersQuery.error?.message || consumersQueryResult.error?.message;
@@ -171,7 +171,7 @@ function QueuesPage() {
                     </TabsList>
 
                     <TabsContent value="overview" className="mt-4">
-                        <div className="grid grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <StatCard title="Pending" value={stats?.pending ?? 0} icon={<Clock className="w-4 h-4" />} />
                             <StatCard title="Running" value={stats?.running ?? 0} icon={<RefreshCw className="w-4 h-4 animate-spin" />} />
                             <StatCard title="Failed" value={stats?.failed ?? 0} icon={<XCircle className="w-4 h-4" />} variant="error" />
@@ -238,7 +238,12 @@ function QueuesPage() {
                         <DrawerDescription>{selectedRunId ? `Run ${selectedRunId}` : '—'}</DrawerDescription>
                     </DrawerHeader>
                     <div className="p-4 space-y-3">
-                        {runDetails.data ? (
+                        {runDetails.isError ? (
+                            <div className="p-4 text-center text-sm text-destructive">
+                                Failed to load run details.{' '}
+                                <Button variant="link" className="p-0 h-auto" onClick={() => runDetails.refetch()}>Retry</Button>
+                            </div>
+                        ) : runDetails.data ? (
                             <>
                                 <div className="text-sm">Status: {runDetails.data?.status}</div>
                                 <div className="text-sm text-muted-foreground">Pipeline: <span className="font-mono">{runDetails.data?.pipeline?.code ?? '—'}</span></div>

@@ -10,7 +10,7 @@
 import { Logger } from '@nestjs/common';
 import { RequestContext, ID } from '@vendure/core';
 import { PipelineDefinition, PipelineStepDefinition, StepType } from '../../types/index';
-import { StepType as StepTypeEnum } from '../../constants/enums';
+import { StepType as StepTypeEnum, RunStatus } from '../../constants/enums';
 import {
     RecordObject,
     OnRecordErrorCallback,
@@ -46,6 +46,7 @@ import { ExportStepStrategy } from './step-strategies/export-step.strategy';
 import { FeedStepStrategy } from './step-strategies/feed-step.strategy';
 import { SinkStepStrategy } from './step-strategies/sink-step.strategy';
 import { GateStepStrategy } from './step-strategies/gate-step.strategy';
+import { getErrorMessage } from '../../utils/error.utils';
 
 const logger = new Logger('DataHub:LinearExecutor');
 
@@ -109,7 +110,13 @@ class StepStrategyRegistry {
 }
 
 /**
- * Build strategy registry from executors
+ * Build strategy registry from executors.
+ *
+ * Note: This maps step types to concrete strategy objects for execution, which is
+ * fundamentally different from the adapter-type mapping in STEP_TYPE_TO_ADAPTER_TYPE
+ * (src/constants/adapters.ts). That mapping resolves step types to adapter registry
+ * categories for validation. This registry routes to execution strategies, including
+ * step types (VALIDATE, ROUTE, GATE) that have no adapter type.
  */
 function buildStrategyRegistry(params: LinearExecutorParams): StepStrategyRegistry {
     const registry = new StepStrategyRegistry();
@@ -207,7 +214,7 @@ async function checkCancellation(
     state.details.push({
         stepKey: step.key,
         type: step.type,
-        status: 'CANCELLED',
+        status: RunStatus.CANCELLED,
         durationMs: 0,
     });
 
@@ -223,7 +230,7 @@ function publishCancellationEvents(
     pipelineId: ID | undefined,
     stepKey: string,
 ): void {
-    safePublish(domainEvents, 'PipelineCancelled', {
+    safePublish(domainEvents, 'PipelineRunCancelled', {
         pipelineId,
         stepKey,
         cancelledAt: new Date().toISOString(),
@@ -319,12 +326,32 @@ async function executeStep(
         return;
     }
 
-    // Build context and execute strategy
-    const context = buildStepContext(params, step, state.records);
-    const result = await strategy.execute(context);
+    const pipelineIdStr = params.pipelineId?.toString();
+    const runIdStr = params.runId?.toString();
 
-    // Apply result to state
-    applyResultToState(state, result);
+    // Publish StepStarted event (typed helper already wraps in try/catch)
+    params.domainEvents.publishStepStarted(pipelineIdStr, runIdStr, step.key, step.type);
+
+    try {
+        // Build context and execute strategy
+        const context = buildStepContext(params, step, state.records);
+        const result = await strategy.execute(context);
+
+        // Apply result to state
+        applyResultToState(state, result);
+
+        // Publish record-level domain event (e.g. RECORD_EXTRACTED, RECORD_TRANSFORMED)
+        if (result.event) {
+            safePublish(params.domainEvents, result.event.type, result.event.data, logger);
+        }
+
+        // Publish StepCompleted event (typed helper already wraps in try/catch)
+        params.domainEvents.publishStepCompleted(pipelineIdStr, runIdStr, step.key, step.type, result.processed);
+    } catch (error) {
+        // Publish StepFailed event (typed helper already wraps in try/catch)
+        params.domainEvents.publishStepFailed(pipelineIdStr, runIdStr, step.key, step.type, getErrorMessage(error));
+        throw error;
+    }
 }
 
 /**
@@ -358,6 +385,37 @@ function checkGatePause(
 }
 
 /**
+ * Publish run progress event after each step completes
+ */
+function publishRunProgress(
+    params: LinearExecutorParams,
+    state: ExecutionState,
+    completedStepIndex: number,
+    totalSteps: number,
+    currentStepKey: string,
+): void {
+    if (!params.runId) return;
+
+    const progressPercent = totalSteps > 0
+        ? Math.round(((completedStepIndex + 1) / totalSteps) * 100)
+        : 0;
+
+    try {
+        params.domainEvents.publishRunProgress(
+            String(params.runId),
+            params.definition.name ?? '',
+            progressPercent,
+            `Completed step ${completedStepIndex + 1}/${totalSteps}: ${currentStepKey}`,
+            state.processed,
+            state.failed,
+            currentStepKey,
+        );
+    } catch (error) {
+        logger.warn(`Failed to publish PipelineRunProgress event: ${getErrorMessage(error)}`);
+    }
+}
+
+/**
  * Main orchestration loop
  */
 async function executeSteps(
@@ -365,7 +423,10 @@ async function executeSteps(
     registry: StepStrategyRegistry,
     state: ExecutionState,
 ): Promise<void> {
-    for (const step of params.definition.steps) {
+    const totalSteps = params.definition.steps.length;
+
+    for (let i = 0; i < params.definition.steps.length; i++) {
+        const step = params.definition.steps[i];
         // Check for cancellation
         if (await checkCancellation(params, state, step)) {
             break;
@@ -373,6 +434,9 @@ async function executeSteps(
 
         // Execute the step
         await executeStep(params, registry, step, state);
+
+        // Publish run progress after each step
+        publishRunProgress(params, state, i, totalSteps, step.key);
 
         // Check if a GATE step requested a pause
         if (checkGatePause(step, state, params)) {
@@ -426,7 +490,7 @@ export async function executeLinear(params: LinearExecutorParams): Promise<Linea
         failed: state.failed,
         details: state.details,
         counters: state.counters,
-        paused: state.paused || undefined,
+        paused: state.paused ? true : undefined,
         pausedAtStep: state.pausedAtStep,
     };
 }
@@ -503,8 +567,10 @@ async function executeTransformStep(
 
     switch (step.type) {
         case StepType.TRANSFORM:
-        case StepType.ENRICH:
             state.records = await transformExecutor.executeOperator(ctx, step, state.records, executorCtx);
+            break;
+        case StepType.ENRICH:
+            state.records = await transformExecutor.executeEnrich(ctx, step, state.records, executorCtx);
             break;
         case StepType.VALIDATE:
             state.records = await transformExecutor.executeValidate(ctx, step, state.records, onRecordError);

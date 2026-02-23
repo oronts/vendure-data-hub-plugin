@@ -1,12 +1,17 @@
-import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject } from '../types';
 import { RemoveOperatorConfig } from './types';
 import { applyRemove } from './helpers';
+import { createRecordOperator } from '../operator-factory';
 
 export const REMOVE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'remove',
     description: 'Remove a field at a specified path.',
+    category: 'DATA',
+    categoryLabel: 'Data',
+    categoryOrder: 0,
     pure: true,
+    summaryTemplate: 'Remove fields',
     schema: {
         fields: [
             {
@@ -30,11 +35,4 @@ export function applyRemoveOperator(
     return applyRemove(record, config.path);
 }
 
-export function removeOperator(
-    records: readonly JsonObject[],
-    config: RemoveOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record => applyRemoveOperator(record, config));
-    return { records: results };
-}
+export const removeOperator = createRecordOperator(applyRemoveOperator);

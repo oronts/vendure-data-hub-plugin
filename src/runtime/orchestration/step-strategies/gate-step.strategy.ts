@@ -12,6 +12,7 @@ import {
     StepStrategyResult,
     createStepDetail,
 } from './step-strategy.interface';
+import { StepType as StepTypeEnum } from '../../../constants/enums';
 
 /**
  * Strategy for GATE steps (human-in-the-loop approval)
@@ -35,6 +36,19 @@ export class GateStepStrategy implements StepStrategy {
 
         await this.logStepComplete(context, recordsIn, durationMs);
 
+        // Publish GateApprovalRequested event when gate pauses
+        if (gateResult.paused) {
+            try {
+                context.domainEvents.publishGateApprovalRequested(
+                    context.pipelineId?.toString(),
+                    context.runId?.toString(),
+                    step.key,
+                );
+            } catch {
+                // Gate events are non-critical - don't disrupt pipeline flow
+            }
+        }
+
         return {
             records: gateResult.pendingRecords,
             processed: recordsIn,
@@ -54,7 +68,7 @@ export class GateStepStrategy implements StepStrategy {
     private async logStepStart(context: StepExecutionContext, recordsIn: number): Promise<void> {
         const { ctx, step, stepLog } = context;
         if (stepLog?.onStepStart) {
-            await stepLog.onStepStart(ctx, step.key, 'GATE', recordsIn);
+            await stepLog.onStepStart(ctx, step.key, StepTypeEnum.GATE, recordsIn);
         }
     }
 
@@ -67,7 +81,7 @@ export class GateStepStrategy implements StepStrategy {
         if (stepLog?.onStepComplete) {
             await stepLog.onStepComplete(ctx, {
                 stepKey: step.key,
-                stepType: 'GATE',
+                stepType: StepTypeEnum.GATE,
                 adapterCode: '',
                 recordsIn,
                 recordsOut: recordsIn,

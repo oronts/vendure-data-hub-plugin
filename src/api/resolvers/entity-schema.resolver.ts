@@ -3,22 +3,8 @@ import { Allow } from '@vendure/core';
 import { LoaderRegistryService } from '../../loaders/registry';
 import { ViewDataHubEntitySchemasPermission } from '../../permissions';
 import { VendureEntityType, EntityFieldSchema, EntityField } from '../../types/index';
-
-const ENTITY_DESCRIPTIONS: Record<string, string> = {
-    Product: 'Products with variants, assets, and custom fields',
-    ProductVariant: 'Individual product variants with SKU, pricing, and inventory',
-    Customer: 'Customer accounts with addresses and order history',
-    CustomerGroup: 'Customer groups for segmentation and pricing',
-    Order: 'Customer orders with lines, payments, and fulfillments',
-    Collection: 'Product collections for navigation and categorization',
-    Facet: 'Facets for product filtering (e.g., Color, Size)',
-    FacetValue: 'Individual facet values (e.g., Red, Large)',
-    Asset: 'Media assets including images and files',
-    Promotion: 'Promotional rules and coupon codes',
-    ShippingMethod: 'Shipping method configurations',
-    StockLocation: 'Inventory locations and warehouses',
-    Inventory: 'Stock levels for product variants',
-};
+import { ENTITY_DESCRIPTIONS } from '../../vendure-schemas/vendure-entity-schemas';
+import { screamingSnakeToKebab } from '../../../shared/utils/string-case';
 
 function mapFieldTypeToGraphQL(type: EntityField['type']): string {
     switch (type) {
@@ -83,18 +69,24 @@ export class EntitySchemaAdminResolver {
         name: string;
         description: string | null;
         supportedOperations: string[];
+        adapterCode: string;
     }>> {
         const loaders = this.loaderRegistry.getAll();
         return loaders.map(loader => ({
-            code: loader.entityType,
+            code: screamingSnakeToKebab(loader.entityType),
             name: this.formatEntityName(loader.entityType),
             description: this.getEntityDescription(loader.entityType),
             supportedOperations: loader.supportedOperations,
+            adapterCode: loader.adapterCode,
         }));
     }
 
+    /** Convert UPPER_CASE to Title Case (e.g., PRODUCT_VARIANT -> Product Variant) */
     private formatEntityName(entityType: string): string {
-        return entityType.replace(/([A-Z])/g, ' $1').trim();
+        return entityType
+            .split('_')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ');
     }
 
     private getEntityDescription(entityType: string): string | null {

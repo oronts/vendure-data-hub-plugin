@@ -2,14 +2,14 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { createMutationErrorHandler } from './mutation-helpers';
+import { createQueryKeys } from '../../utils/query-key-factory';
 import { POLLING_INTERVALS } from '../../constants';
 import type { JsonObject } from '../../types';
 
+const base = createQueryKeys('pipelineHooks');
 const hookKeys = {
-    all: ['pipelineHooks'] as const,
-    details: () => [...hookKeys.all, 'detail'] as const,
-    detail: (pipelineId: string) => [...hookKeys.details(), pipelineId] as const,
-    events: (limit?: number) => [...hookKeys.all, 'events', limit] as const,
+    ...base,
+    events: (limit?: number) => [...base.all, 'events', limit] as const,
 };
 
 const hooksDocument = graphql(`

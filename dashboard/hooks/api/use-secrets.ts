@@ -1,17 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
+import { createQueryKeys } from '../../utils/query-key-factory';
 import type {
     DataHubSecretListOptions,
 } from '../../types';
 
+const base = createQueryKeys('secrets');
 const secretKeys = {
-    all: ['secrets'] as const,
-    lists: () => [...secretKeys.all, 'list'] as const,
-    list: (options?: DataHubSecretListOptions) => [...secretKeys.lists(), options] as const,
-    details: () => [...secretKeys.all, 'detail'] as const,
-    detail: (id: string) => [...secretKeys.details(), id] as const,
-    codes: () => [...secretKeys.all, 'codes'] as const,
+    ...base,
+    list: (options?: DataHubSecretListOptions) => [...base.lists(), options] as const,
+    codes: () => [...base.all, 'codes'] as const,
 };
 
 export const secretsListDocument = graphql(`

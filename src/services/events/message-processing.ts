@@ -3,7 +3,7 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { ConnectionService } from '../config/connection.service';
 import { AckMode } from '../../constants/index';
 import { DataHubLogger } from '../logger';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { queueAdapterRegistry, QueueConnectionConfig, QueueAdapter } from '../../sdk/adapters/queue';
 import { ActiveConsumer } from './consumer-lifecycle';
 
@@ -36,7 +36,7 @@ export class MessageProcessing {
                 await this.pollMessages(consumer);
             } catch (error) {
                 this.logger.error(`Poll error for ${key}`,
-                    error instanceof Error ? error : undefined, { pipelineCode: key });
+                    toErrorOrUndefined(error), { pipelineCode: key });
             }
         };
 
@@ -121,7 +121,7 @@ export class MessageProcessing {
                 } catch (error) {
                     consumer.messagesFailed++;
                     this.logger.error(`Failed to process message`,
-                        error instanceof Error ? error : undefined, {
+                        toErrorOrUndefined(error), {
                         pipelineCode: config.pipelineCode,
                         messageId: msg.messageId,
                     });
@@ -139,7 +139,7 @@ export class MessageProcessing {
 
         } catch (error) {
             this.logger.error(`Failed to poll queue`,
-                error instanceof Error ? error : undefined, {
+                toErrorOrUndefined(error), {
                 pipelineCode: config.pipelineCode,
                 queueName: config.queueName,
             });
@@ -212,7 +212,7 @@ export class MessageProcessing {
             });
         } catch (dlqError) {
             this.logger.error(`Failed to route message to DLQ`,
-                dlqError instanceof Error ? dlqError : undefined, {
+                toErrorOrUndefined(dlqError), {
                 pipelineCode: config.pipelineCode,
                 dlq: config.deadLetterQueue,
             });

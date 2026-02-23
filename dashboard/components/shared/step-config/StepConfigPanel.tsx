@@ -32,14 +32,12 @@ import {
 import { StepTester } from './StepTester';
 import { RetrySettingsComponent } from './RetrySettingsComponent';
 import type { RetrySettings } from './RetrySettingsComponent';
-import { useAdapterCatalog, AdapterMetadata } from '../../../hooks';
+import { useAdapterCatalog, useStepConfigs, AdapterMetadata } from '../../../hooks';
 import { getAdapterTypeLabel, prepareDynamicFields, normalizeStepType, getAdapterTypeForStep } from '../../../utils';
 import {
-    STEP_CONFIGS,
     STEP_TYPES,
     ADAPTER_TYPES,
     NODE_CATEGORIES,
-    TRANSFORM_ADAPTER_CODE,
     PANEL_VARIANT,
     FALLBACK_COLORS,
 } from '../../../constants';
@@ -50,6 +48,44 @@ import type {
     TriggerType,
     AdapterSchemaField,
 } from '../../../types';
+
+/** Common props shared by all special config editors (Route, Validate, Enrich, Gate). */
+interface SpecialConfigProps {
+    readonly config: Record<string, unknown>;
+    readonly onChange: (config: Record<string, unknown>) => void;
+    readonly showErrorHandling?: boolean;
+    readonly showValidationMode?: boolean;
+    readonly showRulesEditor?: boolean;
+    readonly showDuplicateWarning?: boolean;
+}
+
+/**
+ * Registry mapping step types to their dedicated config editor component.
+ * Used both as a guard (`stepType in SPECIAL_CONFIG_EDITORS`) and for
+ * table-driven dispatch in `renderSpecialConfigs`.
+ */
+const SPECIAL_CONFIG_EDITORS: Record<string, React.ComponentType<SpecialConfigProps>> = {
+    [STEP_TYPES.ROUTE]: RouteConfigComponent as React.ComponentType<SpecialConfigProps>,
+    [STEP_TYPES.VALIDATE]: ValidateConfigComponent as React.ComponentType<SpecialConfigProps>,
+    [STEP_TYPES.ENRICH]: EnrichConfigComponent as React.ComponentType<SpecialConfigProps>,
+    [STEP_TYPES.GATE]: GateConfigComponent as React.ComponentType<SpecialConfigProps>,
+};
+
+/** Props shared by all advanced operator editors (map, template, filter). */
+interface AdvancedEditorProps {
+    readonly config: Record<string, unknown>;
+    readonly onChange: (values: Record<string, unknown>) => void;
+}
+
+/**
+ * Registry mapping operator editor types to their advanced editor component.
+ * Keyed by the canonical lowercase adapter code.
+ */
+const ADVANCED_EDITORS: Record<string, React.ComponentType<AdvancedEditorProps>> = {
+    map: AdvancedMapEditor,
+    template: AdvancedTemplateEditor,
+    filter: AdvancedWhenEditor,
+};
 
 export interface StepConfigData {
     key: string;
@@ -92,13 +128,14 @@ export function StepConfigPanel({
     compact = false,
 }: StepConfigPanelProps) {
     const hookResult = useAdapterCatalog();
+    const { getStepConfig } = useStepConfigs();
     const catalog = externalCatalog ?? hookResult.adapters;
     const connectionCodes = externalConnectionCodes ?? hookResult.connectionCodes;
     const secretOptions = externalSecretOptions ?? hookResult.secretOptions;
     const isLoadingCatalog = !externalCatalog && hookResult.isLoading;
 
     const stepType = normalizeStepType(data.type);
-    const config = STEP_CONFIGS[stepType];
+    const config = getStepConfig(stepType);
     const adapterType = getAdapterTypeForStep(data.type);
 
     const availableAdapters = useMemo(
@@ -164,7 +201,7 @@ export function StepConfigPanel({
     const updateOperators = useCallback((operators: Array<{ op: string; args?: Record<string, unknown> }>) => {
         onChange({
             ...data,
-            config: { operators },
+            config: { ...data.config, operators },
         });
     }, [onChange, data]);
 
@@ -327,9 +364,7 @@ export function StepConfigPanel({
         }
 
         // Steps with built-in config editors don't need the adapter selector empty state
-        const hasBuiltInConfig = stepType === STEP_TYPES.VALIDATE
-            || stepType === STEP_TYPES.GATE
-            || stepType === STEP_TYPES.ROUTE;
+        const hasBuiltInConfig = stepType in SPECIAL_CONFIG_EDITORS;
         if (hasBuiltInConfig && availableAdapters.length === 0) return null;
 
         return (
@@ -438,57 +473,26 @@ export function StepConfigPanel({
     const renderAdvancedEditors = () => {
         if (!showAdvancedEditors || adapterType !== ADAPTER_TYPES.OPERATOR) return null;
 
-        const adapterCodeValue = selectedAdapter?.code;
+        const editorType = selectedAdapter?.editorType ?? selectedAdapter?.code;
+        if (!editorType) return null;
 
-        if (adapterCodeValue === TRANSFORM_ADAPTER_CODE.MAP) {
-            return <AdvancedMapEditor config={data.config} onChange={updateConfigBatch} />;
-        }
-        if (adapterCodeValue === TRANSFORM_ADAPTER_CODE.TEMPLATE) {
-            return <AdvancedTemplateEditor config={data.config} onChange={updateConfigBatch} />;
-        }
-        if (adapterCodeValue === TRANSFORM_ADAPTER_CODE.FILTER) {
-            return <AdvancedWhenEditor config={data.config} onChange={updateConfigBatch} />;
-        }
-
-        return null;
+        const AdvancedEditor = ADVANCED_EDITORS[editorType];
+        return AdvancedEditor ? <AdvancedEditor config={data.config} onChange={updateConfigBatch} /> : null;
     };
 
     const renderSpecialConfigs = () => {
-        if (stepType === STEP_TYPES.ROUTE) {
-            return <RouteConfigComponent config={data.config} onChange={updateConfigBatch} />;
-        }
+        const SpecialEditor = SPECIAL_CONFIG_EDITORS[stepType];
+        if (!SpecialEditor) return null;
 
-        if (stepType === STEP_TYPES.VALIDATE) {
-            return (
-                <ValidateConfigComponent
-                    config={data.config}
-                    onChange={updateConfigBatch}
-                    showErrorHandling={variant === PANEL_VARIANT.PANEL}
-                    showValidationMode={true}
-                    showRulesEditor={true}
-                />
-            );
-        }
-
-        if (stepType === STEP_TYPES.ENRICH) {
-            return (
-                <EnrichConfigComponent
-                    config={data.config}
-                    onChange={updateConfigBatch}
-                />
-            );
-        }
-
-        if (stepType === STEP_TYPES.GATE) {
-            return (
-                <GateConfigComponent
-                    config={data.config}
-                    onChange={updateConfigBatch}
-                />
-            );
-        }
-
-        return null;
+        return (
+            <SpecialEditor
+                config={data.config}
+                onChange={updateConfigBatch}
+                showErrorHandling={variant === PANEL_VARIANT.PANEL}
+                showValidationMode={true}
+                showRulesEditor={true}
+            />
+        );
     };
 
     const handleRetryChange = useCallback((retrySettings: RetrySettings | undefined) => {

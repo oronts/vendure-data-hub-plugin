@@ -1,9 +1,6 @@
 /**
  * Built-in enricher adapters
  */
-export { httpLookupEnricher, HttpLookupEnricherConfig } from './http-lookup.enricher';
-export { lookupEnricher, LookupEnricherConfig } from './lookup.enricher';
-
 import { httpLookupEnricher } from './http-lookup.enricher';
 import { lookupEnricher } from './lookup.enricher';
 import { EnricherAdapter, AdapterDefinition } from '../sdk/types';

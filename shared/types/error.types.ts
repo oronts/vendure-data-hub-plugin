@@ -7,9 +7,6 @@
 
 /**
  * Severity level of an error
- *
- * NOTE: This type alias must match the ErrorSeverity enum values in
- * src/constants/error-codes.ts. Keep in sync when modifying either.
  */
 export type ErrorSeverity = 'FATAL' | 'ERROR' | 'WARNING' | 'INFO';
 

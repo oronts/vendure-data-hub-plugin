@@ -19,6 +19,7 @@ export const FACET_VALUE_LOADER_METADATA = {
     entityType: VendureEntityType.FACET_VALUE,
     name: 'Facet Value Loader',
     description: 'Imports facet values (attribute options) with parent facet resolution',
+    adapterCode: 'facetValueUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['code', 'id'],
     requiredFields: ['name', 'code', 'facetCode'],

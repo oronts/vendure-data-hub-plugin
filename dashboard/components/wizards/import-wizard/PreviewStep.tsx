@@ -33,7 +33,7 @@ export function PreviewStep({ parsedData, isParsing }: PreviewStepProps) {
         <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-semibold mb-2">{STEP_CONTENT.preview.title}</h2>
+                    <h2 className="text-lg font-semibold mb-2">{STEP_CONTENT.preview.title}</h2>
                     <p className="text-muted-foreground">
                         Showing first {Math.min(parsedData.rows.length, UI_LIMITS.MAX_PREVIEW_ROWS)} of {parsedData.rows.length} records
                     </p>

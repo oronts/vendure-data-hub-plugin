@@ -1,8 +1,9 @@
-import * as crypto from 'crypto';
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { BatchTransactionStatus, LOGGER_CONTEXTS, RollbackOperationType, BATCH_ROLLBACK } from '../../constants/index';
+import { generateTimestampedId } from '../../utils/id-generation.utils';
+import { ensureError } from '../../utils/error.utils';
 import { JsonObject } from '../../types/index';
 import type { DeepPartial, ObjectLiteral } from 'typeorm';
 
@@ -76,7 +77,7 @@ export class BatchRollbackService implements OnModuleDestroy {
     }
 
     startTransaction(): string {
-        const id = `batch_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 7)}`;
+        const id = generateTimestampedId('batch');
         this.transactions.set(id, {
             id,
             operations: [],
@@ -156,7 +157,7 @@ export class BatchRollbackService implements OnModuleDestroy {
                 rolled++;
             } catch (error) {
                 failed++;
-                this.logger.error('Failed to rollback operation', error instanceof Error ? error : new Error(String(error)), {
+                this.logger.error('Failed to rollback operation', ensureError(error), {
                     operation: op,
                 });
             }
@@ -232,7 +233,7 @@ export class BatchRollbackService implements OnModuleDestroy {
                 rolled++;
             } catch (error) {
                 failed++;
-                this.logger.error('Failed to rollback operation', error instanceof Error ? error : new Error(String(error)), {
+                this.logger.error('Failed to rollback operation', ensureError(error), {
                     operation: op,
                 });
             }

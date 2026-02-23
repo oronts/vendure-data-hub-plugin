@@ -3,10 +3,13 @@ import { RequestContext, RequestContextService, TransactionalConnection } from '
 import type { Request } from 'express';
 import * as crypto from 'crypto';
 import type { PipelineTrigger, PipelineDefinition, JsonValue } from '../../types/index';
-import { LOGGER_CONTEXTS, INTERNAL_TIMINGS, PipelineStatus, WEBHOOK, DEFAULT_WEBHOOK_CONFIG, AUTH_SCHEMES } from '../../constants';
+import { LOGGER_CONTEXTS, INTERNAL_TIMINGS, PipelineStatus, WEBHOOK, DEFAULT_WEBHOOK_CONFIG, AUTH_SCHEMES, TIME } from '../../constants';
+import { TriggerType as TriggerTypeEnum } from '../../constants/enums';
+import { ConnectionAuthType } from '../../../shared/types/adapter-config.types';
 import { Pipeline } from '../../entities/pipeline';
 import { PipelineService } from '../../services';
 import { SecretService } from '../../services/config/secret.service';
+import { DomainEventsService } from '../../services/events/domain-events.service';
 import { DataHubLoggerFactory, DataHubLogger } from '../../services/logger';
 import { RateLimitService } from '../../services/rate-limit';
 import { isValidPipelineCode, findEnabledTriggersByType } from '../../utils';
@@ -15,11 +18,24 @@ import { isValidPipelineCode, findEnabledTriggersByType } from '../../utils';
 export class DataHubWebhookController {
     private readonly logger: DataHubLogger;
 
+    private readonly authStrategies: Record<string, (
+        ctx: RequestContext,
+        req: Request,
+        body: Record<string, unknown> | unknown[],
+        cfg: Partial<PipelineTrigger>,
+    ) => Promise<void>> = {
+        [ConnectionAuthType.API_KEY]: (ctx, req, _body, cfg) => this.verifyApiKey(ctx, req, cfg),
+        [ConnectionAuthType.HMAC]: (ctx, req, body, cfg) => this.verifyHmacSignature(ctx, req, body, cfg),
+        [ConnectionAuthType.BASIC]: (ctx, req, _body, cfg) => this.verifyBasicAuth(ctx, req, cfg),
+        [ConnectionAuthType.JWT]: (ctx, req, _body, cfg) => this.verifyJwtAuth(ctx, req, cfg),
+    };
+
     constructor(
         private requestContextService: RequestContextService,
         private connection: TransactionalConnection,
         private pipelineService: PipelineService,
         private secretService: SecretService,
+        private domainEvents: DomainEventsService,
         private rateLimitService: RateLimitService,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -52,7 +68,7 @@ export class DataHubWebhookController {
 
         // Find ALL enabled webhook triggers - supports multiple webhooks per pipeline
         const definition = pipeline.definition as PipelineDefinition | undefined;
-        const webhookTriggers = findEnabledTriggersByType(definition, 'WEBHOOK');
+        const webhookTriggers = findEnabledTriggersByType(definition, TriggerTypeEnum.WEBHOOK);
 
         if (webhookTriggers.length === 0) {
             throw new HttpException('Pipeline is not configured for webhook trigger', HttpStatus.BAD_REQUEST);
@@ -65,31 +81,18 @@ export class DataHubWebhookController {
 
         for (const trigger of webhookTriggers) {
             const cfg = (trigger.config ?? {}) as unknown as Partial<PipelineTrigger>;
-            const authType = cfg.authentication || 'NONE';
+            const authType = cfg.authentication || ConnectionAuthType.NONE;
 
             try {
-                switch (authType) {
-                    case 'API_KEY':
-                        await this.verifyApiKey(ctx, req, cfg);
-                        break;
-                    case 'HMAC':
-                        await this.verifyHmacSignature(ctx, req, body, cfg);
-                        break;
-                    case 'BASIC':
-                        await this.verifyBasicAuth(ctx, req, cfg);
-                        break;
-                    case 'JWT':
-                        await this.verifyJwtAuth(ctx, req, cfg);
-                        break;
-                    case 'NONE':
-                        // No auth required - always passes
-                        break;
-                    default:
-                        throw new HttpException('Invalid authentication type', HttpStatus.BAD_REQUEST);
+                const strategy = this.authStrategies[authType];
+                if (strategy) {
+                    await strategy(ctx, req, body, cfg);
+                } else if (authType !== ConnectionAuthType.NONE) {
+                    throw new HttpException('Invalid authentication type', HttpStatus.BAD_REQUEST);
                 }
                 // Auth passed - use this trigger
                 authenticatedTrigger = trigger;
-                if (authType === 'NONE') {
+                if (authType === ConnectionAuthType.NONE) {
                     this.logger.error(
                         `SECURITY: Webhook received WITHOUT authentication for pipeline: ${code}. ` +
                         `Configure authentication (api-key, hmac, basic, or jwt) to secure this endpoint.`,
@@ -140,7 +143,7 @@ export class DataHubWebhookController {
             }
         }
 
-        const authType = cfg.authentication || 'NONE';
+        const authType = cfg.authentication || ConnectionAuthType.NONE;
 
         const records: JsonValue[] = Array.isArray(body)
             ? (body as JsonValue[])
@@ -152,6 +155,12 @@ export class DataHubWebhookController {
             skipPermissionCheck: true,
             triggeredBy: `webhook:${authenticatedTrigger.key}`,
         });
+
+        this.domainEvents.publishTriggerFired(
+            String(pipeline.id),
+            'WEBHOOK',
+            { pipelineCode: code, triggerKey: authenticatedTrigger.key, recordCount: records.length },
+        );
 
         this.logger.debug(`Webhook accepted for pipeline: ${code}`, {
             pipelineCode: code,
@@ -365,11 +374,12 @@ export class DataHubWebhookController {
             const payloadJson = Buffer.from(payloadB64, 'base64url').toString('utf8');
             const payload = JSON.parse(payloadJson);
 
-            if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+            const nowUnix = Math.floor(Date.now() / TIME.SECOND);
+            if (payload.exp && payload.exp < nowUnix) {
                 throw new HttpException('JWT has expired', HttpStatus.UNAUTHORIZED);
             }
 
-            if (payload.nbf && payload.nbf > Math.floor(Date.now() / 1000)) {
+            if (payload.nbf && payload.nbf > nowUnix) {
                 throw new HttpException('JWT is not yet valid', HttpStatus.UNAUTHORIZED);
             }
         } catch (error) {

@@ -1,4 +1,4 @@
-import { JsonObject, BatchExtractorAdapter, ExtractContext, ExtractResult, StepConfigSchema } from '../../../../src';
+import { JsonObject, BatchExtractorAdapter, ExtractContext, ExtractResult, StepConfigSchema, sleep } from '../../../../src';
 
 export const inMemoryExtractorSchema: StepConfigSchema = {
     fields: [
@@ -35,7 +35,7 @@ export const inMemoryExtractor: BatchExtractorAdapter<InMemoryExtractorConfig> =
             throw new Error('Data array is empty');
         }
 
-        if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
+        if (delay > 0) await sleep(delay);
 
         context.logger.info(`Extracted ${data.length} records from in-memory source`);
 
@@ -48,5 +48,3 @@ export const inMemoryExtractor: BatchExtractorAdapter<InMemoryExtractorConfig> =
         };
     },
 };
-
-export default inMemoryExtractor;

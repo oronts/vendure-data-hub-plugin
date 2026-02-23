@@ -13,8 +13,6 @@ import { HmacAlgorithm } from './trigger.types';
  *
  * Values are lowercase/camelCase (serialized to DB, changing requires migration).
  * Aligned with RouteConditionOperator enum in src/constants/enums.ts.
- *
- * @see src/operators/types.ts — extended ComparisonOperator (superset with negation/emptiness/between operators)
  */
 export type ComparisonOperator =
     | 'eq' | 'ne'

@@ -37,6 +37,7 @@ export interface EntityLoader<TInput extends InputRecord = InputRecord> {
     readonly entityType: VendureEntityType;
     readonly name: string;
     readonly description?: string;
+    readonly adapterCode: string;
     readonly supportedOperations: TargetOperation[];
     readonly lookupFields: string[];
     readonly requiredFields: string[];

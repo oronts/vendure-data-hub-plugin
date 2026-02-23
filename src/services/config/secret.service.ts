@@ -11,6 +11,7 @@ import {
     isEncryptionConfigured,
     getMasterKey,
 } from '../../utils/encryption.utils';
+import { ensureError } from '../../utils/error.utils';
 
 /**
  * Secure storage and resolution of secrets for DataHub pipelines.
@@ -218,7 +219,7 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
         try {
             return encryptSecret(plaintext, masterKey);
         } catch (err) {
-            const error = err instanceof Error ? err : new Error(String(err));
+            const error = ensureError(err);
             this.logger.error('Failed to encrypt secret value', error);
             throw new Error('Failed to encrypt secret value');
         }
@@ -242,7 +243,7 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
         try {
             return decryptSecret(value, masterKey);
         } catch (err) {
-            const error = err instanceof Error ? err : new Error(String(err));
+            const error = ensureError(err);
             this.logger.error('Failed to decrypt secret value', error);
             throw new Error('Failed to decrypt secret value');
         }

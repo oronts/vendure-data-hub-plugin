@@ -12,6 +12,7 @@ import {
     createStepDetail,
 } from './step-strategy.interface';
 import { getAdapterCode } from '../../../types/step-configs';
+import { StepType as StepTypeEnum, DomainEventType } from '../../../constants/enums';
 
 export class SinkStepStrategy implements StepStrategy {
     constructor(private readonly sinkExecutor: SinkExecutor) {}
@@ -36,14 +37,14 @@ export class SinkStepStrategy implements StepStrategy {
             failed: fail,
             detail: createStepDetail(step, { ok, fail }, durationMs),
             counters: {},
-            event: { type: 'RECORD_INDEXED', data: { stepKey: step.key, ok, fail } },
+            event: { type: DomainEventType.RECORD_INDEXED, data: { stepKey: step.key, ok, fail } },
         };
     }
 
     private async logStepStart(context: StepExecutionContext, recordsIn: number): Promise<void> {
         const { ctx, step, stepLog } = context;
         if (stepLog?.onStepStart) {
-            await stepLog.onStepStart(ctx, step.key, 'SINK', recordsIn);
+            await stepLog.onStepStart(ctx, step.key, StepTypeEnum.SINK, recordsIn);
         }
     }
 
@@ -64,7 +65,7 @@ export class SinkStepStrategy implements StepStrategy {
         if (stepLog?.onStepComplete) {
             await stepLog.onStepComplete(ctx, {
                 stepKey: step.key,
-                stepType: 'SINK',
+                stepType: StepTypeEnum.SINK,
                 adapterCode,
                 recordsIn,
                 recordsOut: ok,

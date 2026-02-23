@@ -26,6 +26,7 @@ export const ASSET_LOADER_METADATA = {
     entityType: VendureEntityType.ASSET,
     name: 'Asset Loader',
     description: 'Imports media assets (images, files) from URLs',
+    adapterCode: 'assetImport',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['name', 'id', 'source'],
     requiredFields: ['sourceUrl'],

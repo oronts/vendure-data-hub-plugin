@@ -3,6 +3,7 @@ import { JsonObject } from '../../../src/types';
 import { sleep } from '../../../src/utils/retry.utils';
 import { getErrorMessage } from '../../../src/utils/error.utils';
 import { assertUrlSafe } from '../../../src/utils/url-security.utils';
+import { sanitizeUrlForLogging } from '../../../src/utils/url-sanitize.utils';
 import { PimcoreObjectListing } from '../types';
 
 const DEFAULTS = {
@@ -334,15 +335,11 @@ function sanitizeError(text: string): string {
         .replace(/\/[^\s"'<>|:]+\.[a-z]+/gi, '[PATH]');
 }
 
+/** Sanitize URL for logging - strips credentials, keeps query params */
 function sanitizeUrl(endpoint: string): string {
-    try {
-        const url = new URL(endpoint);
-        url.username = '';
-        url.password = '';
-        return url.toString();
-    } catch {
-        return '[invalid]';
-    }
+    return sanitizeUrlForLogging(endpoint, {
+        stripQueryParams: false,
+        stripCredentials: true,
+        invalidFallback: '[invalid]',
+    });
 }
-
-export default pimcoreGraphQLExtractor;

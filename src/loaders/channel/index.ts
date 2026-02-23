@@ -1,2 +1,2 @@
-export { ChannelLoader } from './channel.loader';
-export { ChannelInput, CHANNEL_LOADER_METADATA } from './types';
+export * from './channel.loader';
+export * from './types';

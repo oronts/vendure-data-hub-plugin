@@ -16,6 +16,8 @@ import {
 import { WizardStepContainer } from '../shared';
 import { STEP_CONTENT } from './constants';
 import { COMPONENT_HEIGHTS, SENTINEL_VALUES } from '../../../constants';
+import { useFieldTransformTypes } from '../../../hooks/api/use-config-options';
+import type { ConfigOptionValue } from '../../../hooks/api/use-config-options';
 import type { ExportConfiguration, ExportField } from './types';
 
 interface FieldsStepProps {
@@ -25,6 +27,7 @@ interface FieldsStepProps {
 }
 
 export function FieldsStep({ config, updateConfig, errors = {} }: FieldsStepProps) {
+    const { options: transformTypes } = useFieldTransformTypes();
     const fields = config.fields ?? [];
 
     const toggleField = useCallback((index: number) => {
@@ -84,6 +87,7 @@ export function FieldsStep({ config, updateConfig, errors = {} }: FieldsStepProp
                                     key={field.sourceField}
                                     field={field}
                                     index={index}
+                                    transformTypes={transformTypes}
                                     onToggle={() => toggleField(index)}
                                     onUpdate={(updates) => updateField(index, updates)}
                                 />
@@ -99,11 +103,12 @@ export function FieldsStep({ config, updateConfig, errors = {} }: FieldsStepProp
 interface FieldRowProps {
     field: ExportField;
     index: number;
+    transformTypes: ConfigOptionValue[];
     onToggle: () => void;
     onUpdate: (updates: Partial<ExportField>) => void;
 }
 
-function FieldRow({ field, index, onToggle, onUpdate }: FieldRowProps) {
+function FieldRow({ field, index, transformTypes, onToggle, onUpdate }: FieldRowProps) {
     return (
         <div
             className={`grid grid-cols-12 gap-4 p-4 items-center ${
@@ -143,14 +148,9 @@ function FieldRow({ field, index, onToggle, onUpdate }: FieldRowProps) {
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value={SENTINEL_VALUES.NONE}>None</SelectItem>
-                        <SelectItem value="uppercase">Uppercase</SelectItem>
-                        <SelectItem value="lowercase">Lowercase</SelectItem>
-                        <SelectItem value="trim">Trim</SelectItem>
-                        <SelectItem value="date-format">Date Format</SelectItem>
-                        <SelectItem value="number-format">Number Format</SelectItem>
-                        <SelectItem value="currency">Currency</SelectItem>
-                        <SelectItem value="boolean-yn">Boolean (Y/N)</SelectItem>
-                        <SelectItem value="html-strip">Strip HTML</SelectItem>
+                        {transformTypes.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>

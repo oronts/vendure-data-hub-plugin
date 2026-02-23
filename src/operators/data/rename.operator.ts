@@ -1,12 +1,17 @@
-import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject } from '../types';
 import { RenameOperatorConfig } from './types';
 import { applyRename } from './helpers';
+import { createRecordOperator } from '../operator-factory';
 
 export const RENAME_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'rename',
     description: 'Rename a field from one path to another.',
+    category: 'DATA',
+    categoryLabel: 'Data',
+    categoryOrder: 0,
     pure: true,
+    summaryTemplate: '${from} \u2192 ${to}',
     schema: {
         fields: [
             {
@@ -37,11 +42,4 @@ export function applyRenameOperator(
     return applyRename(record, config.from, config.to);
 }
 
-export function renameOperator(
-    records: readonly JsonObject[],
-    config: RenameOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record => applyRenameOperator(record, config));
-    return { records: results };
-}
+export const renameOperator = createRecordOperator(applyRenameOperator);

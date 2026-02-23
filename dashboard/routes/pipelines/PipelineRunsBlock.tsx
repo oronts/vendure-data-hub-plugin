@@ -3,6 +3,12 @@ import {
     Badge,
     Button,
     DataTable,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
     PageBlock,
     PermissionGuard,
     Select,
@@ -42,13 +48,22 @@ import {
     useRunPipeline,
     handleMutationError,
 } from '../../hooks';
+import { useOptionValues } from '../../hooks/api/use-config-options';
 import { RunDetailsPanel } from './RunDetailsPanel';
 import { getErrorMessage } from '../../../shared';
 import type { RunRow } from '../../types';
 
+/**
+ * Terminal run statuses — intentionally hardcoded rather than derived from backend.
+ * These are a fundamental system invariant: a run is either still in progress or it has
+ * reached one of these four terminal states. Adding `isFinished` metadata to the GraphQL
+ * `DataHubOptionValue` type would require schema + codegen changes for no practical benefit,
+ * since the set of terminal statuses is fixed by the execution engine contract.
+ */
 const FINISHED_STATUSES = [RUN_STATUS.COMPLETED, RUN_STATUS.FAILED, RUN_STATUS.CANCELLED, RUN_STATUS.TIMEOUT] as string[];
 
 export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
+    const { options: statusOptions } = useOptionValues('runStatuses');
     const [page, setPage] = React.useState(1);
     const [itemsPerPage, setItemsPerPage] = React.useState(QUERY_LIMITS.PAGINATION_DEFAULT);
     const [sorting, setSorting] = React.useState<SortingState>([
@@ -56,6 +71,8 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
     ]);
     const [status, setStatus] = React.useState<string>('');
     const [selectedRun, setSelectedRun] = React.useState<RunRow | null>(null);
+    const [cancelConfirmRunId, setCancelConfirmRunId] = React.useState<string | null>(null);
+    const [cancellingRunId, setCancellingRunId] = React.useState<string | null>(null);
 
     const sortVar = sorting.length
         ? { [sorting[0].id]: sorting[0].desc ? 'DESC' : 'ASC' }
@@ -79,8 +96,19 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
     }, []);
 
     const handleCancelRun = React.useCallback((runId: string) => {
-        cancelRun.mutate(runId);
-    }, [cancelRun.mutate]);
+        setCancelConfirmRunId(runId);
+    }, []);
+
+    const handleConfirmCancel = React.useCallback(() => {
+        if (!cancelConfirmRunId) return;
+        setCancellingRunId(cancelConfirmRunId);
+        cancelRun.mutate(cancelConfirmRunId, {
+            onSettled: () => {
+                setCancellingRunId(null);
+            },
+        });
+        setCancelConfirmRunId(null);
+    }, [cancelConfirmRunId, cancelRun.mutate]);
 
     const handleStatusChange = React.useCallback((v: string) => {
         setPage(1);
@@ -219,7 +247,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                             <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleCancelRun(row.original.id)} disabled={cancelRun.isPending} aria-label="Cancel run">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleCancelRun(row.original.id)} disabled={cancellingRunId === row.original.id} aria-label="Cancel run">
                                             <XCircle className="h-3.5 w-3.5" />
                                         </Button>
                                     </TooltipTrigger>
@@ -232,7 +260,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             },
             enableSorting: false,
         },
-    ], [handleSelectRun, handleCancelRun, handleOnRerun, cancelRun.isPending, pipelineId]);
+    ], [handleSelectRun, handleCancelRun, handleOnRerun, cancellingRunId, pipelineId]);
 
     let content: React.ReactNode;
 
@@ -265,13 +293,9 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value={FILTER_VALUES.ALL}>All</SelectItem>
-                                    <SelectItem value={RUN_STATUS.PENDING}>Pending</SelectItem>
-                                    <SelectItem value={RUN_STATUS.RUNNING}>Running</SelectItem>
-                                    <SelectItem value={RUN_STATUS.PAUSED}>Paused (awaiting approval)</SelectItem>
-                                    <SelectItem value={RUN_STATUS.COMPLETED}>Completed</SelectItem>
-                                    <SelectItem value={RUN_STATUS.FAILED}>Failed</SelectItem>
-                                    <SelectItem value={RUN_STATUS.CANCEL_REQUESTED}>Cancel requested</SelectItem>
-                                    <SelectItem value={RUN_STATUS.CANCELLED}>Cancelled</SelectItem>
+                                    {statusOptions.map(opt => (
+                                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                             <Button variant="ghost" onClick={() => refetch()} disabled={isLoading} data-testid="datahub-run-history-refresh-button">
@@ -310,11 +334,35 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                                 initialData={selectedRun}
                                 onCancel={handleCancelRun}
                                 onRerun={handleOnRerun}
-                                isCancelling={cancelRun.isPending}
+                                isCancelling={cancellingRunId === selectedRun.id}
                             />
                         )}
                     </DrawerContent>
                 </Drawer>
+                <Dialog open={!!cancelConfirmRunId} onOpenChange={(open) => { if (!open) setCancelConfirmRunId(null); }}>
+                    <DialogContent className="max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Cancel Pipeline Run</DialogTitle>
+                            <DialogDescription>
+                                This will request cancellation of the running pipeline. This action cannot be undone.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button
+                                variant="outline"
+                                onClick={() => setCancelConfirmRunId(null)}
+                            >
+                                Keep Running
+                            </Button>
+                            <Button
+                                variant="destructive"
+                                onClick={handleConfirmCancel}
+                            >
+                                Cancel Run
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </>
         );
     }

@@ -1,9 +1,15 @@
 import * as React from 'react';
 import { Download } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+} from '@vendure/dashboard';
 import { VENDURE_ENTITY_SCHEMAS } from '../../../../shared';
-import { WIZARD_STEPS, EXPORT_STEP_ID } from './constants';
-import { QUERY_LIMITS, BATCH_SIZES, UI_DEFAULTS, EXPORT_DEFAULTS, TRIGGER_TYPES, EXPORT_FORMAT, COMPRESSION_TYPE, TOAST_WIZARD } from '../../../constants';
+import { WIZARD_STEPS, EXPORT_STEP_ID, DEFAULT_EXPORT_OPTIONS } from './constants';
+import { QUERY_LIMITS, TRIGGER_TYPES, EXPORT_FORMAT, TOAST_WIZARD } from '../../../constants';
 import type { ExportWizardProps, ExportConfiguration, ExportField } from './types';
 import { SourceStep } from './SourceStep';
 import { FieldsStep } from './FieldsStep';
@@ -12,61 +18,120 @@ import { DestinationStep } from './DestinationStep';
 import { TriggerStep } from './TriggerStep';
 import { ReviewStep } from './ReviewStep';
 import { validateExportWizardStep } from '../../../utils';
-import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../shared';
+import { WizardProgressBar, WizardFooter, ValidationErrorDisplay, SelectableCard, SelectableCardGrid } from '../../shared';
+import { useExportTemplates } from '../../../hooks/use-export-templates';
+import type { ExportTemplate } from '../../../hooks/use-export-templates';
+import { useWizardNavigation } from '../../../hooks/use-wizard-navigation';
+import { useEntityFieldSchemas } from '../../../hooks/api/use-entity-field-schemas';
+import { useDestinationSchemas, useTriggerTypeSchemas } from '../../../hooks/api/use-config-options';
 
-export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWizardProps) {
-    const [currentStep, setCurrentStep] = React.useState(0);
-    const [config, setConfig] = React.useState<Partial<ExportConfiguration>>(initialConfig ?? {
-        name: '',
-        sourceEntity: '',
-        sourceQuery: { type: 'all', limit: QUERY_LIMITS.EXPORT_DEFAULT, orderBy: 'id', orderDirection: 'ASC' },
-        filters: [],
-        fields: [],
-        format: { type: EXPORT_FORMAT.CSV, options: { delimiter: ',', includeHeaders: true } },
-        destination: { type: 'FILE', fileConfig: { directory: EXPORT_DEFAULTS.DIRECTORY, filename: EXPORT_DEFAULTS.FILENAME } },
-        trigger: { type: TRIGGER_TYPES.MANUAL },
-        options: {
-            batchSize: BATCH_SIZES.EXPORT_DEFAULT,
-            includeMetadata: false,
-            compression: COMPRESSION_TYPE.NONE,
-            notifyOnComplete: true,
-            retryOnFailure: true,
-            maxRetries: UI_DEFAULTS.DEFAULT_MAX_RETRIES,
+const QUICK_START_TEMPLATE_COUNT = 4;
+
+function getSchemaFieldDefault(schemas: Array<{ type: string; fields: Array<{ key: string; defaultValue?: unknown }> }>, type: string, key: string, fallback: string): string {
+    const schema = schemas.find(s => s.type === type);
+    const field = schema?.fields.find(f => f.key === key);
+    return typeof field?.defaultValue === 'string' ? field.defaultValue : fallback;
+}
+
+export function ExportWizard({ onComplete, onCancel, initialConfig, isSubmitting }: ExportWizardProps) {
+    const [selectedTemplate, setSelectedTemplate] = React.useState<ExportTemplate | null>(null);
+    const { templates: exportTemplates } = useExportTemplates();
+    const { getFieldNames: getBackendFieldNames } = useEntityFieldSchemas();
+    const { schemas: destinationSchemas } = useDestinationSchemas();
+    const { schemas: triggerSchemas } = useTriggerTypeSchemas();
+
+    const fileDefaults = React.useMemo(() => ({
+        directory: getSchemaFieldDefault(destinationSchemas, 'FILE', 'directory', '/exports'),
+        filename: getSchemaFieldDefault(destinationSchemas, 'FILE', 'filename', 'export.csv'),
+    }), [destinationSchemas]);
+
+    const validateStep = React.useCallback((stepId: string, cfg: Partial<ExportConfiguration>) => {
+        return validateExportWizardStep(stepId, cfg, destinationSchemas, triggerSchemas);
+    }, [destinationSchemas, triggerSchemas]);
+
+    const {
+        config,
+        setConfig,
+        currentStep,
+        setCurrentStep,
+        stepErrors,
+        setStepErrors,
+        attemptedNext,
+        setAttemptedNext,
+        updateConfig,
+        handleNext,
+        handleBack,
+        handleStepClick,
+        handleComplete,
+        canProceed,
+    } = useWizardNavigation<Partial<ExportConfiguration>>({
+        steps: WIZARD_STEPS,
+        initialConfig: initialConfig ?? {
+            name: '',
+            sourceEntity: '',
+            sourceQuery: { type: 'all', limit: QUERY_LIMITS.EXPORT_DEFAULT, orderBy: 'id', orderDirection: 'ASC' },
+            filters: [],
+            fields: [],
+            format: { type: EXPORT_FORMAT.CSV, options: { delimiter: ',', includeHeaders: true } },
+            destination: { type: 'FILE', fileConfig: { directory: fileDefaults.directory, filename: fileDefaults.filename } },
+            trigger: { type: TRIGGER_TYPES.MANUAL },
+            options: { ...DEFAULT_EXPORT_OPTIONS },
         },
+        validateStep,
+        onComplete: onComplete as (config: Partial<ExportConfiguration>) => void,
+        nameRequiredMessage: TOAST_WIZARD.EXPORT_NAME_REQUIRED,
+        isSubmitting,
     });
 
-    const [stepErrors, setStepErrors] = React.useState<Record<string, string>>({});
-    const [attemptedNext, setAttemptedNext] = React.useState(false);
-
-    const updateConfig = React.useCallback((updates: Partial<ExportConfiguration>) => {
-        setConfig(prev => ({ ...prev, ...updates }));
-        setStepErrors({});
-        setAttemptedNext(false);
-    }, []);
-
-    const validateCurrentStep = React.useCallback(() => {
-        const stepId = WIZARD_STEPS[currentStep].id;
-        const validation = validateExportWizardStep(stepId, config);
-        return validation;
-    }, [currentStep, config]);
-
-    const { canProceed } = React.useMemo(() => {
-        const validation = validateCurrentStep();
-        return {
-            canProceed: validation.isValid,
-        };
-    }, [validateCurrentStep]);
+    const handleUseTemplate = React.useCallback((template: ExportTemplate) => {
+        setSelectedTemplate(template);
+        const def = template.definition;
+        setConfig(prev => ({
+            ...prev,
+            name: template.name,
+            ...(def?.sourceEntity ? { sourceEntity: def.sourceEntity } : {}),
+            ...(def?.format ? {
+                format: {
+                    type: def.format as ExportConfiguration['format']['type'],
+                    options: {
+                        ...prev.format?.options,
+                        ...(def.formatOptions ?? {}),
+                    },
+                },
+            } : {}),
+            ...(def?.fields?.length ? {
+                fields: def.fields.map(f => ({
+                    sourceField: f.sourceField,
+                    outputName: f.outputName,
+                    include: true,
+                })),
+            } : {}),
+        }));
+        setCurrentStep(0);
+        toast.success(TOAST_WIZARD.TEMPLATE_SELECTED);
+    }, [setConfig, setCurrentStep]);
 
     // Track previous sourceEntity to detect changes and avoid re-running on same value
     const prevSourceEntityRef = React.useRef<string | undefined>(undefined);
 
     React.useEffect(() => {
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- config.fields intentionally excluded: effect SETS fields, including it would cause infinite loop
         // Only run when sourceEntity actually changes, not on every render
         if (config.sourceEntity && config.sourceEntity !== prevSourceEntityRef.current) {
             prevSourceEntityRef.current = config.sourceEntity;
-            const schema = VENDURE_ENTITY_SCHEMAS[config.sourceEntity];
-            if (schema) {
-                const fields: ExportField[] = Object.entries(schema.fields).map(([name]) => ({
+
+            // Use backend field names as primary source, fall back to static schemas during loading
+            const backendNames = getBackendFieldNames(config.sourceEntity);
+            const fieldNames = backendNames.length > 0
+                ? backendNames
+                : Object.keys(VENDURE_ENTITY_SCHEMAS[config.sourceEntity]?.fields ?? {});
+
+            if (fieldNames.length > 0) {
+                // If template fields are already set, don't override with auto-detected fields
+                if (config.fields && config.fields.length > 0 && selectedTemplate) {
+                    return;
+                }
+                const fields: ExportField[] = fieldNames.map(name => ({
                     sourceField: name,
                     outputName: name,
                     include: true,
@@ -77,53 +142,41 @@ export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWiza
                 setAttemptedNext(false);
             }
         }
-    }, [config.sourceEntity]);
-
-    const handleNext = React.useCallback(() => {
-        setAttemptedNext(true);
-        const validation = validateCurrentStep();
-
-        if (!validation.isValid) {
-            setStepErrors(validation.errorsByField);
-            const firstError = validation.errors[0];
-            if (firstError) {
-                toast.error(firstError.message);
-            }
-            return;
-        }
-
-        if (currentStep < WIZARD_STEPS.length - 1) {
-            setAttemptedNext(false);
-            setStepErrors({});
-            setCurrentStep(prev => prev + 1);
-        }
-    }, [validateCurrentStep, currentStep]);
-
-    const handleBack = React.useCallback(() => {
-        if (currentStep > 0) {
-            setAttemptedNext(false);
-            setStepErrors({});
-            setCurrentStep(prev => prev - 1);
-        }
-    }, [currentStep]);
-
-    const handleComplete = React.useCallback(() => {
-        if (!config.name) {
-            toast.error(TOAST_WIZARD.EXPORT_NAME_REQUIRED);
-            return;
-        }
-        onComplete(config as ExportConfiguration);
-    }, [config, onComplete]);
+    }, [config.sourceEntity, selectedTemplate, getBackendFieldNames, setConfig, setStepErrors, setAttemptedNext]);
 
     return (
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full" data-testid="datahub-exportwizard-wizard">
             <WizardProgressBar
                 steps={WIZARD_STEPS}
                 currentStep={currentStep}
-                onStepClick={setCurrentStep}
+                onStepClick={handleStepClick}
             />
 
-            <div className="flex-1 overflow-auto p-6">
+            {!selectedTemplate && currentStep === 0 && exportTemplates.length > 0 && (
+                <div className="px-6 pt-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-sm">Quick Start with a Template</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <SelectableCardGrid columns={4}>
+                                {exportTemplates.slice(0, QUICK_START_TEMPLATE_COUNT).map(template => (
+                                    <SelectableCard
+                                        key={template.id}
+                                        title={template.name}
+                                        description={template.description}
+                                        selected={false}
+                                        onClick={() => handleUseTemplate(template)}
+                                        data-testid={`datahub-export-template-${template.id}-btn`}
+                                    />
+                                ))}
+                            </SelectableCardGrid>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+
+            <div className="flex-1 overflow-auto p-6" data-testid="datahub-exportwizard-steps">
                 <ValidationErrorDisplay errors={stepErrors} show={attemptedNext} />
 
                 {WIZARD_STEPS[currentStep].id === EXPORT_STEP_ID.SOURCE && (
@@ -161,6 +214,7 @@ export function ExportWizard({ onComplete, onCancel, initialConfig }: ExportWiza
                 onCancel={onCancel}
                 completeLabel="Create Export"
                 completeIcon={Download}
+                isSubmitting={isSubmitting}
             />
         </div>
     );

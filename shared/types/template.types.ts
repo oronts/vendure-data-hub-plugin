@@ -13,6 +13,3 @@ export type TemplateCategory =
     | 'orders'
     | 'promotions'
     | 'catalog';
-
-/** Template difficulty levels */
-export type TemplateDifficulty = 'beginner' | 'intermediate' | 'advanced';

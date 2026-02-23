@@ -5,6 +5,7 @@ import { Upload, CheckCircle2, X, RefreshCw } from 'lucide-react';
 import type { AdapterSchemaField } from '../../../../types';
 import { getErrorMessage } from '../../../../../shared';
 import { DATAHUB_API_UPLOAD } from '../../../../constants';
+import { buildAcceptString } from '../../../../constants/file-format-registry';
 import { formatFileSize } from '../../../../utils';
 
 export interface FileUploadFieldProps {
@@ -124,7 +125,7 @@ export function FileUploadField({ field, value, onChange, compact, disabled }: F
                 <input
                     ref={inputRef}
                     type="file"
-                    accept=".csv,.json,.xlsx,.xls,.xml"
+                    accept={buildAcceptString()}
                     onChange={handleInputChange}
                     className="hidden"
                     disabled={disabled}

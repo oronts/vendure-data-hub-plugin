@@ -7,7 +7,6 @@
  * Note: Other resolver output types live in their respective service modules:
  * - Analytics: src/services/analytics/analytics.types.ts
  * - Webhooks: src/services/webhooks/webhook.types.ts
- * - Validation: src/validation/rules/types.ts
  * - Feeds: local interfaces in feed.resolver.ts
  * - Queues: local interface in queue.resolver.ts
  */

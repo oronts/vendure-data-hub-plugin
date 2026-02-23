@@ -12,7 +12,7 @@ export function applyIfElse(value: JsonValue, config: TransformConfig, record?: 
     return value;
 }
 
-/** Lightweight nil-or-empty-string check for coalesce logic (intentionally narrower than shared isEmpty). */
+/** Nil-or-empty-string check for coalesce logic (narrower than shared isEmpty). */
 function isNilOrEmptyString(value: JsonValue): boolean {
     return value === null || value === undefined || value === '';
 }

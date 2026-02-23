@@ -270,24 +270,67 @@ Interceptors run JavaScript code that can modify the records array:
 
 #### Script Hooks
 
-Script hooks reference pre-registered functions:
+Script hooks reference pre-registered TypeScript functions. Register scripts via plugin options (recommended) or imperatively:
+
+**Via Plugin Options (Recommended):**
 
 ```typescript
-// Register at startup
-hookService.registerScript('addSegment', async (records, context, args) => {
-    const threshold = args?.threshold || 1000;
-    return records.map(r => ({
-        ...r,
-        segment: r.totalSpent > threshold ? 'vip' : 'standard',
-    }));
-});
+DataHubPlugin.init({
+    scripts: {
+        'addSegment': async (records, context, args) => {
+            const threshold = args?.threshold || 1000;
+            return records.map(r => ({
+                ...r,
+                segment: r.totalSpent > threshold ? 'vip' : 'standard',
+            }));
+        },
+        'validateRequired': async (records, context) => {
+            return records.filter(r => r.sku && r.name && r.price > 0);
+        },
+        'enrichWithTimestamp': async (records, context) => {
+            return records.map(r => ({
+                ...r,
+                importedAt: Date.now(),
+                pipelineRun: context.runId,
+            }));
+        },
+    },
+})
+```
 
-// Use in pipeline
+**Via Service Injection:**
+
+```typescript
+import { HookService } from '@oronts/vendure-data-hub-plugin';
+
+@VendurePlugin({ imports: [DataHubPlugin] })
+export class MyPlugin implements OnModuleInit {
+    constructor(private hookService: HookService) {}
+
+    onModuleInit() {
+        this.hookService.registerScript('addSegment', async (records, context, args) => {
+            const threshold = args?.threshold || 1000;
+            return records.map(r => ({
+                ...r,
+                segment: r.totalSpent > threshold ? 'vip' : 'standard',
+            }));
+        });
+    }
+}
+```
+
+**Use in pipeline:**
+
+```typescript
 .hooks({
     AFTER_TRANSFORM: [{
         type: 'SCRIPT',
         scriptName: 'addSegment',
         args: { threshold: 5000 },
+    }],
+    AFTER_EXTRACT: [{
+        type: 'SCRIPT',
+        scriptName: 'validateRequired',
     }],
 })
 ```
@@ -361,6 +404,30 @@ Test hooks without running the full pipeline:
 - Use script hooks for reusable logic
 - Set appropriate timeouts (default: 5000ms)
 - Use `failOnError: false` for non-critical hooks
+
+---
+
+## Import & Export Wizards
+
+The Data Hub provides guided wizards for creating import and export pipelines:
+
+1. Go to **Data Hub > Pipelines**
+2. Click **Import Wizard** or **Export Wizard**
+3. Follow the step-by-step guide:
+   - Select a template or start from scratch
+   - Configure source/destination
+   - Map fields
+   - Set trigger and options
+   - Review and create
+
+### Templates
+
+Wizards offer pre-configured templates for common scenarios:
+
+**Import Templates:** REST API Sync, JSON Import, Magento CSV, XML Feed, ERP Inventory, CRM Customer Sync
+**Export Templates:** Google Shopping, Meta Catalog, Amazon Feed, Product CSV/JSON, Order Analytics, Customer GDPR, Inventory Report
+
+Custom templates registered via plugin options or connectors appear alongside built-in templates.
 
 ---
 

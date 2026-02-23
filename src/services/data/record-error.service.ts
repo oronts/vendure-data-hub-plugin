@@ -5,7 +5,7 @@ import { PipelineRun } from '../../entities/pipeline';
 import { HookService } from '../events/hook.service';
 import { DomainEventsService } from '../events/domain-events.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { LOGGER_CONTEXTS, SortOrder, HookStage } from '../../constants/index';
+import { LOGGER_CONTEXTS, SortOrder, HookStage, PAGINATION } from '../../constants/index';
 import type { JsonObject } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
 
@@ -74,6 +74,7 @@ export class RecordErrorService {
         return this.connection.getRepository(ctx, DataHubRecordError).find({
             where: { deadLetter: true },
             order: { createdAt: SortOrder.ASC },
+            take: PAGINATION.MAX_QUERY_LIMIT,
         });
     }
 

@@ -25,6 +25,7 @@ export const PRODUCT_LOADER_METADATA = {
     entityType: VendureEntityType.PRODUCT,
     name: 'Product Loader',
     description: 'Imports products with slug-based lookup, facets, and assets',
+    adapterCode: 'productUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['slug', 'id', 'customFields.externalId'],
     requiredFields: ['name'],

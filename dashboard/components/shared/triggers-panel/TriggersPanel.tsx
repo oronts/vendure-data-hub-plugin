@@ -1,13 +1,13 @@
 import * as React from 'react';
 import { useCallback, memo } from 'react';
 import { Button, Switch } from '@vendure/dashboard';
-import { Plus, Trash2, Play } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import type { PipelineTrigger, TriggersPanelProps } from '../../../types';
 import type { TriggerType } from '../../../constants';
-import { TRIGGER_TYPE_CONFIGS, TRIGGER_ICONS, TRIGGER_TYPES } from '../../../constants';
+import { TRIGGER_TYPES } from '../../../constants';
 import { TriggerForm } from '../trigger-config';
 import { EmptyState } from '../feedback';
-import { useStableKeys } from '../../../hooks';
+import { useStableKeys, useTriggerTypes, useTriggerIconResolver } from '../../../hooks';
 
 export type { TriggersPanelProps };
 
@@ -29,7 +29,8 @@ const CompactTriggerItem = memo(function CompactTriggerItem({
     onUpdate,
     onRemove,
 }: CompactTriggerItemProps) {
-    const Icon = TRIGGER_ICONS[trigger.type] ?? Play;
+    const resolveTriggerIcon = useTriggerIconResolver();
+    const Icon = resolveTriggerIcon(trigger.type);
 
     const handleEnabledChange = useCallback((enabled: boolean) => {
         onUpdate(index, { ...trigger, enabled });
@@ -124,7 +125,8 @@ interface AddTriggerButtonProps {
 }
 
 const AddTriggerButton = memo(function AddTriggerButton({ config, onAdd }: AddTriggerButtonProps) {
-    const Icon = TRIGGER_ICONS[config.type];
+    const resolveTriggerIcon = useTriggerIconResolver();
+    const Icon = resolveTriggerIcon(config.type);
     const handleClick = useCallback(() => {
         onAdd(config.type);
     }, [onAdd, config.type]);
@@ -157,6 +159,7 @@ export function TriggersPanel(props: TriggersPanelProps) {
     const removeTrigger = 'removeTrigger' in props ? props.removeTrigger : undefined;
 
     const triggerKeys = useStableKeys(triggers, 'trigger');
+    const { configList } = useTriggerTypes();
     const isOnChangeMode = typeof onChange === 'function';
 
     const handleAddTrigger = useCallback((type: TriggerType = TRIGGER_TYPES.MANUAL) => {
@@ -226,7 +229,7 @@ export function TriggersPanel(props: TriggersPanelProps) {
                     <div className="p-3 border-t bg-muted/50">
                         <p className="text-xs text-muted-foreground mb-2">Add Trigger:</p>
                         <div className="grid grid-cols-2 gap-1">
-                            {Object.values(TRIGGER_TYPE_CONFIGS).map((config) => (
+                            {configList.map((config) => (
                                 <AddTriggerButton
                                     key={config.type}
                                     config={config}

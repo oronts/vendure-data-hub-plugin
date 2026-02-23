@@ -1,5 +1,7 @@
 import { CustomFeedGenerator, FeedGeneratorContext, CustomFeedResult, VariantWithCustomFields } from '../../../../src/feeds/generators/feed-types';
 import { CONTENT_TYPES } from '../../../../src/constants/index';
+import { getNestedValue } from '../../../../shared/utils/object-path';
+import { xmlEscape } from '../../../../src/runtime/utils';
 
 const LOG_CONTEXT = 'SSRFeedGenerator';
 
@@ -76,7 +78,7 @@ function transformVariantToSSRItem(
     if (fieldMappings) {
         for (const [targetField, mapping] of Object.entries(fieldMappings)) {
             if (typeof mapping === 'string') {
-                const value = getNestedValue(variant, mapping) ?? getNestedValue(product, mapping);
+                const value = getNestedValue(variant as unknown as Record<string, unknown>, mapping) ?? getNestedValue(product as unknown as Record<string, unknown>, mapping);
                 if (value !== undefined) {
                     customAttributes[targetField] = String(value);
                 }
@@ -100,45 +102,27 @@ function transformVariantToSSRItem(
     };
 }
 
-function getNestedValue(obj: unknown, path: string): unknown {
-    return path.split('.').reduce((acc: unknown, part) => {
-        if (acc && typeof acc === 'object' && part in acc) {
-            return (acc as Record<string, unknown>)[part];
-        }
-        return undefined;
-    }, obj);
-}
-
 function generateSSRXml(items: SSRFeedItem[], feedCode: string): string {
-    const escapeXml = (str: string): string =>
-        str.replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&apos;');
-
     const itemsXml = items.map(item => `
     <product>
-      <id>${escapeXml(item.id)}</id>
-      <sku>${escapeXml(item.sku)}</sku>
-      <name>${escapeXml(item.name)}</name>
-      <description>${escapeXml(item.description)}</description>
+      <id>${xmlEscape(item.id)}</id>
+      <sku>${xmlEscape(item.sku)}</sku>
+      <name>${xmlEscape(item.name)}</name>
+      <description>${xmlEscape(item.description)}</description>
       <price currency="${item.currency}">${item.price.toFixed(2)}</price>
       <availability>${item.availability}</availability>
-      <image_url>${escapeXml(item.imageUrl)}</image_url>
-      <product_url>${escapeXml(item.productUrl)}</product_url>
-      ${item.brand ? `<brand>${escapeXml(item.brand)}</brand>` : ''}
-      ${item.category ? `<category>${escapeXml(item.category)}</category>` : ''}
+      <image_url>${xmlEscape(item.imageUrl)}</image_url>
+      <product_url>${xmlEscape(item.productUrl)}</product_url>
+      ${item.brand ? `<brand>${xmlEscape(item.brand)}</brand>` : ''}
+      ${item.category ? `<category>${xmlEscape(item.category)}</category>` : ''}
       ${item.customAttributes ? Object.entries(item.customAttributes).map(([k, v]) =>
-        `<custom_attribute name="${escapeXml(k)}">${escapeXml(v)}</custom_attribute>`
+        `<custom_attribute name="${xmlEscape(k)}">${xmlEscape(v)}</custom_attribute>`
       ).join('\n      ') : ''}
     </product>`).join('\n');
 
     return `<?xml version="1.0" encoding="UTF-8"?>
-<feed code="${escapeXml(feedCode)}" generated="${new Date().toISOString()}">
+<feed code="${xmlEscape(feedCode)}" generated="${new Date().toISOString()}">
   <products count="${items.length}">${itemsXml}
   </products>
 </feed>`;
 }
-
-export default ssrFeedGenerator;

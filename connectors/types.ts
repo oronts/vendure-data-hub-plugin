@@ -103,6 +103,43 @@ export interface ConnectorDefinition<TConfig extends BaseConnectorConfig = BaseC
     /** Custom loaders provided by this connector */
     loaders?: Array<LoaderAdapter<unknown>>;
 
+    /** Import templates provided by this connector */
+    importTemplates?: Array<{
+        id: string;
+        name: string;
+        description: string;
+        category: string;
+        icon?: string;
+        requiredFields: string[];
+        optionalFields?: string[];
+        featured?: boolean;
+        tags?: string[];
+        formats?: string[];
+        definition?: {
+            sourceType?: string;
+            fileFormat?: string;
+            targetEntity?: string;
+            existingRecords?: string;
+            lookupFields?: string[];
+            fieldMappings?: Array<{ sourceField: string; targetField: string }>;
+        };
+    }>;
+    /** Export templates provided by this connector */
+    exportTemplates?: Array<{
+        id: string;
+        name: string;
+        description: string;
+        icon?: string;
+        format: string;
+        requiredFields?: string[];
+        tags?: string[];
+        definition?: {
+            sourceEntity?: string;
+            fields?: string[];
+            formatOptions?: Record<string, unknown>;
+        };
+    }>;
+
     /** Pipeline factory function */
     createPipelines: (config: TConfig) => PipelineDefinition[];
 

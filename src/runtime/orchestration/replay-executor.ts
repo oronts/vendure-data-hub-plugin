@@ -70,9 +70,13 @@ export async function replayFromStepLinear(params: {
         if (onCancelRequested && (await onCancelRequested())) break;
 
         switch (step.type) {
-            case StepType.TRANSFORM:
-            case StepType.ENRICH: {
+            case StepType.TRANSFORM: {
                 records = await transformExecutor.executeOperator(ctx, step, records, executorCtx);
+                break;
+            }
+
+            case StepType.ENRICH: {
+                records = await transformExecutor.executeEnrich(ctx, step, records, executorCtx);
                 break;
             }
 
@@ -255,9 +259,13 @@ export async function replayFromStepGraph(params: {
 
         // Execute step
         switch (step.type) {
-            case StepType.TRANSFORM:
-            case StepType.ENRICH: {
+            case StepType.TRANSFORM: {
                 outputs.set(key, await transformExecutor.executeOperator(ctx, step, input, executorCtx));
+                break;
+            }
+
+            case StepType.ENRICH: {
+                outputs.set(key, await transformExecutor.executeEnrich(ctx, step, input, executorCtx));
                 break;
             }
 

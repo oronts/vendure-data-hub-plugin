@@ -2,18 +2,19 @@ import { JsonObject } from '../../types/index';
 import { ExtractorContext } from '../../types/index';
 import { GraphQLExtractorConfig, GraphQLPaginationConfig, GRAPHQL_DEFAULTS } from './types';
 import { GraphQLPaginationType, HTTP_HEADERS, CONTENT_TYPES } from '../../constants/index';
-import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
-import { applyAuthentication, AuthConfig, createSecretResolver } from '../../utils/auth-helpers';
-import { buildUrlWithConnection, isValidGraphQLUrl as isValidGraphQLUrlUtil } from '../../utils/url-helpers';
+import { UrlSecurityConfig } from '../../utils/url-security.utils';
+import { isValidGraphQLUrl as isValidGraphQLUrlUtil } from '../../utils/url-helpers';
 import { getNestedValue } from '../../utils/object-path.utils';
 import {
     ExtendedPaginationState,
     initExtendedPaginationState,
+    buildExtractorUrl,
+    buildExtractorHeaders,
 } from '../shared';
 
 /**
- * Build the full GraphQL endpoint URL
- * Validates URL against SSRF attacks before returning
+ * Build the full GraphQL endpoint URL.
+ * Delegates to shared buildExtractorUrl.
  *
  * @param context - Extractor context
  * @param config - GraphQL extractor config
@@ -25,59 +26,23 @@ export async function buildUrl(
     config: GraphQLExtractorConfig,
     ssrfConfig?: UrlSecurityConfig,
 ): Promise<string> {
-    let url: string;
-
-    // If using a connection, resolve it and build URL
-    if (config.connectionCode) {
-        const connection = await context.connections.get(config.connectionCode);
-        url = buildUrlWithConnection(config.url, connection);
-    } else {
-        url = config.url;
-    }
-
-    // Validate URL against SSRF attacks
-    await assertUrlSafe(url, ssrfConfig);
-
-    return url;
+    return buildExtractorUrl(context, config, ssrfConfig);
 }
 
 /**
- * Build headers including auth from config and connection
+ * Build headers including auth from config and connection.
+ * Delegates to shared buildExtractorHeaders with GraphQL-specific defaults.
  */
 export async function buildHeaders(
     context: ExtractorContext,
     config: GraphQLExtractorConfig,
 ): Promise<Record<string, string>> {
-    const headers: Record<string, string> = {
-        [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
-        [HTTP_HEADERS.ACCEPT]: CONTENT_TYPES.JSON,
-    };
-
-    const secretResolver = createSecretResolver(context.secrets);
-
-    // Get connection headers if available
-    if (config.connectionCode) {
-        const connection = await context.connections.get(config.connectionCode);
-        if (connection?.headers) {
-            Object.assign(headers, connection.headers);
-        }
-        // Apply connection auth
-        if (connection?.auth) {
-            await applyAuthentication(headers, connection.auth as unknown as AuthConfig, secretResolver);
-        }
-    }
-
-    // Config headers override connection headers
-    if (config.headers) {
-        Object.assign(headers, config.headers);
-    }
-
-    // Config auth overrides connection auth
-    if (config.auth) {
-        await applyAuthentication(headers, config.auth as unknown as AuthConfig, secretResolver);
-    }
-
-    return headers;
+    return buildExtractorHeaders(context, config, {
+        defaultHeaders: {
+            [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
+            [HTTP_HEADERS.ACCEPT]: CONTENT_TYPES.JSON,
+        },
+    });
 }
 
 /**
@@ -136,9 +101,6 @@ export function extractRecords(
 
     return current ? [current as JsonObject] : [];
 }
-
-// Re-export getNestedValue from canonical location
-export { getNestedValue };
 
 /**
  * Build variables for paginated request

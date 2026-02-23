@@ -122,5 +122,3 @@ export const vendureProductSyncLoader: LoaderAdapter<VendureProductSyncConfig> =
         };
     },
 };
-
-export default vendureProductSyncLoader;

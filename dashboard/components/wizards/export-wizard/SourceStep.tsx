@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import {
     Card,
     CardContent,
@@ -14,12 +15,12 @@ import {
 } from '@vendure/dashboard';
 import { VENDURE_ENTITY_SCHEMAS } from '../../../../shared';
 import { QUERY_LIMITS } from '../../../constants';
+import { useEntityFieldSchemas, useQueryTypeOptions } from '../../../hooks/api';
 import { WizardStepContainer } from '../shared';
 import { EntitySelector } from '../../shared/entity-selector';
 import { FilterConditionsEditor } from '../../shared/filter-conditions-editor';
 import { STEP_CONTENT } from './constants';
 import type { ExportConfiguration, QueryType } from './types';
-import type { FilterCondition, FilterOperator } from '../../../types';
 
 interface SourceStepProps {
     config: Partial<ExportConfiguration>;
@@ -47,6 +48,26 @@ export function SourceStep({ config, updateConfig, errors = {} }: SourceStepProp
     );
 }
 
+/**
+ * Resolve entity field names dynamically from the backend, falling back
+ * to the static VENDURE_ENTITY_SCHEMAS while the query is loading or
+ * if the entity is not known to the backend.
+ */
+function useEntityFields(entityCode: string | undefined): string[] {
+    const { getFieldNames, isLoading } = useEntityFieldSchemas();
+
+    return useMemo(() => {
+        if (!entityCode) return [];
+        // Try dynamic fields from backend first
+        const dynamicFields = getFieldNames(entityCode);
+        if (dynamicFields.length > 0) return dynamicFields;
+        // Fall back to static schemas while loading or for unknown entities
+        const staticSchema = VENDURE_ENTITY_SCHEMAS[entityCode];
+        if (staticSchema) return Object.keys(staticSchema.fields);
+        return [];
+    }, [entityCode, getFieldNames]);
+}
+
 interface QueryConfigurationProps {
     config: Partial<ExportConfiguration>;
     updateConfig: (updates: Partial<ExportConfiguration>) => void;
@@ -54,6 +75,9 @@ interface QueryConfigurationProps {
 }
 
 function QueryConfiguration({ config, updateConfig, query }: QueryConfigurationProps) {
+    const entityFields = useEntityFields(config.sourceEntity);
+    const { options: queryTypeOptions } = useQueryTypeOptions();
+
     return (
         <Card>
             <CardHeader>
@@ -74,9 +98,9 @@ function QueryConfiguration({ config, updateConfig, query }: QueryConfigurationP
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">All Records</SelectItem>
-                                <SelectItem value="query">With Filters</SelectItem>
-                                <SelectItem value="graphql">Custom GraphQL</SelectItem>
+                                {queryTypeOptions.map(option => (
+                                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -104,25 +128,19 @@ function QueryConfiguration({ config, updateConfig, query }: QueryConfigurationP
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                                {config.sourceEntity && VENDURE_ENTITY_SCHEMAS[config.sourceEntity] &&
-                                    Object.keys(VENDURE_ENTITY_SCHEMAS[config.sourceEntity].fields).map(field => (
-                                        <SelectItem key={field} value={field}>{field}</SelectItem>
-                                    ))
-                                }
+                                {entityFields.map(field => (
+                                    <SelectItem key={field} value={field}>{field}</SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
                 </div>
 
-                                {query.type === 'query' && config.sourceEntity && (
+                {query.type === 'query' && config.sourceEntity && (
                     <FilterConditionsEditor
                         conditions={config.filters ?? []}
                         onChange={(filters) => updateConfig({ filters })}
-                        fields={
-                            VENDURE_ENTITY_SCHEMAS[config.sourceEntity]
-                                ? Object.keys(VENDURE_ENTITY_SCHEMAS[config.sourceEntity].fields)
-                                : []
-                        }
+                        fields={entityFields}
                         showLogicSelector={false}
                         fieldPlaceholder="Select field..."
                         valuePlaceholder="Value"

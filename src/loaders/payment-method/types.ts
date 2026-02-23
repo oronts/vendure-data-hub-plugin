@@ -45,6 +45,7 @@ export const PAYMENT_METHOD_LOADER_METADATA = {
     entityType: VendureEntityType.PAYMENT_METHOD,
     name: 'Payment Method Loader',
     description: 'Imports payment methods with handlers and eligibility checkers',
+    adapterCode: 'paymentMethodUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['code', 'id', 'name'],
     requiredFields: ['name', 'code', 'handler'],

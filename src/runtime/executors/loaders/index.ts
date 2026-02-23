@@ -1,4 +1,5 @@
 export * from './types';
+export { LOADER_HANDLER_REGISTRY, LOADER_HANDLER_PROVIDERS, LOADER_ADAPTERS } from './loader-handler-registry';
 export { ProductHandler } from './product-handler';
 export { VariantHandler } from './variant-handler';
 export { CustomerHandler } from './customer-handler';
@@ -14,3 +15,7 @@ export { GraphqlMutationHandler } from './graphql-mutation-handler';
 export { TaxRateHandler } from './tax-rate-handler';
 export { PaymentMethodHandler } from './payment-method-handler';
 export { ChannelHandler } from './channel-handler';
+export { ShippingMethodHandler } from './shipping-method-handler';
+export { CustomerGroupHandler } from './customer-group-handler';
+export { StockLocationHandler } from './stock-location-handler';
+export { InventoryAdjustHandler } from './inventory-adjust-handler';

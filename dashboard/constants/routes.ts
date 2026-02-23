@@ -10,5 +10,3 @@ export const ROUTES = {
     SECRETS: `${DATAHUB_API_BASE}/secrets`,
     CONNECTIONS: `${DATAHUB_API_BASE}/connections`,
 } as const;
-
-type RouteKey = keyof typeof ROUTES;

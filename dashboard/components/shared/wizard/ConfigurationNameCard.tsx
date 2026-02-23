@@ -28,8 +28,9 @@ export function ConfigurationNameCard({
             </CardHeader>
             <CardContent className="space-y-4">
                 <div>
-                    <Label>Name *</Label>
+                    <Label htmlFor="config-name">Name *</Label>
                     <Input
+                        id="config-name"
                         value={name}
                         onChange={e => onNameChange(e.target.value)}
                         placeholder={namePlaceholder}
@@ -43,8 +44,9 @@ export function ConfigurationNameCard({
                     )}
                 </div>
                 <div>
-                    <Label>Description</Label>
+                    <Label htmlFor="config-description">Description</Label>
                     <Textarea
+                        id="config-description"
                         value={description}
                         onChange={e => onDescriptionChange(e.target.value)}
                         placeholder="Optional description..."

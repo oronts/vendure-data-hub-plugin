@@ -7,6 +7,7 @@ import {
     SelectValue,
 } from '@vendure/dashboard';
 import type { AdapterSchemaField } from '../../../../types';
+import { SENTINEL_VALUES } from '../../../../constants';
 
 export interface SelectFieldProps {
     field: AdapterSchemaField;
@@ -17,13 +18,14 @@ export interface SelectFieldProps {
 }
 
 export function SelectField({ field, value, onChange, compact, disabled }: SelectFieldProps) {
+    const validOptions = field.options?.filter(o => o.value !== '') ?? [];
     return (
         <Select value={value ?? (field.default as string) ?? ''} onValueChange={onChange} disabled={disabled}>
             <SelectTrigger className={compact ? 'h-8 text-sm' : ''}>
                 <SelectValue placeholder={field.placeholder ?? `Select ${field.label || field.key}`} />
             </SelectTrigger>
             <SelectContent>
-                {field.options?.map((option) => (
+                {validOptions.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                         {option.label}
                     </SelectItem>
@@ -44,18 +46,19 @@ export interface ReferenceFieldProps {
 }
 
 export function ReferenceField({ field, value, onChange, options, placeholder, compact, disabled }: ReferenceFieldProps) {
+    const validOptions = options.filter(o => o !== '');
     return (
         <Select value={value ?? ''} onValueChange={onChange} disabled={disabled}>
             <SelectTrigger className={compact ? 'h-8 text-sm' : ''}>
                 <SelectValue placeholder={placeholder} />
             </SelectTrigger>
             <SelectContent>
-                {options.length === 0 ? (
-                    <SelectItem value="" disabled>
+                {validOptions.length === 0 ? (
+                    <SelectItem value={SENTINEL_VALUES.NONE} disabled>
                         No options available
                     </SelectItem>
                 ) : (
-                    options.map((code) => (
+                    validOptions.map((code) => (
                         <SelectItem key={code} value={code}>
                             {code}
                         </SelectItem>

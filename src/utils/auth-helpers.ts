@@ -1,17 +1,12 @@
-import { AuthType, HTTP_HEADERS, AUTH_SCHEMES } from '../constants/index';
+import { ConnectionAuthType, HTTP_HEADERS, AUTH_SCHEMES } from '../constants/index';
 import { SecretResolver as SharedSecretResolver, AuthConfig as SharedAuthConfig } from '../../shared/types';
 
 /**
- * AuthConfig used by auth-helpers. Re-exports the shared AuthConfig with
- * the AuthType enum as the `type` discriminator for runtime switch/case.
- * The shared version uses equivalent string literals.
- *
- * @see shared/types/extractor.types.ts AuthConfig - canonical shared definition
+ * AuthConfig used by auth-helpers.
  */
-export type AuthConfig = Omit<SharedAuthConfig, 'type'> & { type: AuthType };
+export type AuthConfig = Omit<SharedAuthConfig, 'type'> & { type: ConnectionAuthType };
 
-export type SecretResolverFn = (secretCode: string) => Promise<string | undefined>;
-export type { SharedSecretResolver };
+type SecretResolverFn = (secretCode: string) => Promise<string | undefined>;
 
 /** Supports: Bearer, API key, and Basic auth. */
 export async function applyAuthentication(
@@ -19,12 +14,12 @@ export async function applyAuthentication(
     auth: AuthConfig | undefined,
     secretResolver?: SecretResolverFn,
 ): Promise<void> {
-    if (!auth || auth.type === AuthType.NONE) {
+    if (!auth || auth.type === ConnectionAuthType.NONE) {
         return;
     }
 
     switch (auth.type) {
-        case AuthType.BEARER: {
+        case ConnectionAuthType.BEARER: {
             const token = auth.secretCode && secretResolver
                 ? await secretResolver(auth.secretCode)
                 : auth.token;
@@ -34,7 +29,7 @@ export async function applyAuthentication(
             break;
         }
 
-        case AuthType.API_KEY: {
+        case ConnectionAuthType.API_KEY: {
             const apiKey = auth.secretCode && secretResolver
                 ? await secretResolver(auth.secretCode)
                 : auth.token;
@@ -45,7 +40,7 @@ export async function applyAuthentication(
             break;
         }
 
-        case AuthType.BASIC: {
+        case ConnectionAuthType.BASIC: {
             const password = auth.secretCode && secretResolver
                 ? await secretResolver(auth.secretCode)
                 : auth.password || '';

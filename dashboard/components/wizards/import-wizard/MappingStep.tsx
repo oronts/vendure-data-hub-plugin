@@ -264,6 +264,10 @@ function UnmappedFieldsWarning({ config }: UnmappedFieldsWarningProps) {
             .map(([name]) => name)
         : [];
 
+    if (unmappedRequiredFields.length === 0) {
+        return null;
+    }
+
     return (
         <Card className="border-amber-200 bg-amber-50">
             <CardContent className="p-4">
@@ -272,9 +276,7 @@ function UnmappedFieldsWarning({ config }: UnmappedFieldsWarningProps) {
                     <div>
                         <div className="font-medium text-amber-800">Unmapped Required Fields</div>
                         <div className="text-sm text-amber-700 mt-1">
-                            {unmappedRequiredFields.length > 0
-                                ? unmappedRequiredFields.join(', ')
-                                : 'All required fields are mapped'}
+                            {unmappedRequiredFields.join(', ')}
                         </div>
                     </div>
                 </div>

@@ -1,21 +1,12 @@
 import * as React from 'react';
 import { useCallback, memo } from 'react';
 import { Button } from '@vendure/dashboard';
-import { Upload, RefreshCw, CheckCircle2, X } from 'lucide-react';
+import { Upload, RefreshCw, CheckCircle2, X, File } from 'lucide-react';
 import type { FileType, FileDropzoneProps } from '../../../types';
 import { formatFileSize } from '../../../utils';
-import { FILE_TYPE_ICON_CONFIG, DROPZONE_DIMENSIONS, ICON_SIZES } from '../../../constants';
-import { FILE_FORMAT } from '../../../constants';
-
-function getAcceptString(allowedTypes?: FileType[]): string {
-    if (!allowedTypes) return '*';
-    const types: string[] = [];
-    if (allowedTypes.includes(FILE_FORMAT.CSV)) types.push('.csv');
-    if (allowedTypes.includes(FILE_FORMAT.XLSX)) types.push('.xlsx', '.xls');
-    if (allowedTypes.includes(FILE_FORMAT.JSON)) types.push('.json');
-    if (allowedTypes.includes(FILE_FORMAT.XML)) types.push('.xml');
-    return types.join(',');
-}
+import { DROPZONE_DIMENSIONS, ICON_SIZES, buildAcceptString } from '../../../constants';
+import { useOptionValues } from '../../../hooks/api/use-config-options';
+import { resolveIconName } from '../../../utils/icon-resolver';
 
 function FileDropzoneComponent({
     onFileSelect,
@@ -31,6 +22,7 @@ function FileDropzoneComponent({
 }: FileDropzoneProps) {
     const [dragOver, setDragOver] = React.useState(false);
     const inputRef = React.useRef<HTMLInputElement>(null);
+    const { options: fileFormatOptions } = useOptionValues('fileFormats');
 
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -76,7 +68,7 @@ function FileDropzoneComponent({
         inputRef.current?.click();
     }, []);
 
-    const acceptString = accept || getAcceptString(allowedTypes);
+    const acceptString = accept || buildAcceptString(allowedTypes);
     const padding = compact ? DROPZONE_DIMENSIONS.PADDING_COMPACT : DROPZONE_DIMENSIONS.PADDING_DEFAULT;
     const iconSize = compact ? DROPZONE_DIMENSIONS.ICON_COMPACT : DROPZONE_DIMENSIONS.ICON_DEFAULT;
     const fileIconSize = compact ? DROPZONE_DIMENSIONS.FILE_ICON_COMPACT : DROPZONE_DIMENSIONS.FILE_ICON_DEFAULT;
@@ -106,7 +98,7 @@ function FileDropzoneComponent({
                 accept={acceptString}
                 onChange={handleChange}
                 className="hidden"
-                aria-label="Upload file"
+                aria-hidden="true"
             />
 
             {loading ? (
@@ -140,10 +132,10 @@ function FileDropzoneComponent({
                         <div className="flex justify-center gap-4 mb-4">
                             {allowedTypes.map(type => {
                                 if (!type) return null;
-                                const config = FILE_TYPE_ICON_CONFIG[type];
-                                if (!config) return null;
-                                const Icon = config.icon;
-                                return <Icon key={type} className={`${fileIconSize} ${config.color}`} />;
+                                const formatOpt = fileFormatOptions.find(f => f.value === type.toUpperCase());
+                                const Icon = resolveIconName(formatOpt?.icon) ?? File;
+                                const hexColor = formatOpt?.color ?? undefined;
+                                return <Icon key={type} className={fileIconSize} style={hexColor ? { color: hexColor } : undefined} />;
                             })}
                         </div>
                     )}

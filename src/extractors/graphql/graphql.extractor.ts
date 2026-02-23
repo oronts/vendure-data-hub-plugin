@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { HTTP, WEBHOOK, GraphQLPaginationType } from '../../constants/index';
-import { getErrorMessage } from '../../utils/error.utils';
-import { sleep } from '../../utils/retry.utils';
+import { HTTP, GraphQLPaginationType } from '../../constants/index';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
+import { executeWithRetry, createRetryConfig } from '../../utils/retry.utils';
 import {
     DataExtractor,
     ExtractorContext,
@@ -11,6 +11,7 @@ import {
     RecordEnvelope,
     StepConfigSchema,
     ExtractorCategory,
+    JsonObject,
 } from '../../types/index';
 import {
     GraphQLExtractorConfig,
@@ -26,8 +27,9 @@ import {
     updatePaginationState,
     isValidGraphQLUrl,
     isValidGraphQLQuery,
-    getNestedValue,
 } from './helpers';
+import { getNestedValue } from '../../utils/object-path.utils';
+import { GRAPHQL_EXTRACTOR_SCHEMA } from './schema';
 
 /**
  * GraphQL Extractor
@@ -64,178 +66,12 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
     readonly type = 'EXTRACTOR' as const;
     readonly code = 'graphql';
     readonly name = 'GraphQL Extractor';
-    readonly description = 'Extract data from GraphQL APIs with pagination support';
     readonly category: ExtractorCategory = 'API';
-    readonly version = '1.0.0';
-    readonly icon = 'code';
     readonly supportsPagination = true;
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
 
-    readonly schema: StepConfigSchema = {
-        groups: [
-            { id: 'connection', label: 'Connection', description: 'GraphQL endpoint configuration' },
-            { id: 'query', label: 'Query', description: 'GraphQL query settings' },
-            { id: 'pagination', label: 'Pagination', description: 'Pagination configuration' },
-            { id: 'advanced', label: 'Advanced', description: 'Advanced options' },
-        ],
-        fields: [
-            // Connection
-            {
-                key: 'connectionCode',
-                label: 'Connection',
-                description: 'HTTP connection to use (optional)',
-                type: 'connection',
-                group: 'connection',
-            },
-            {
-                key: 'url',
-                label: 'GraphQL URL',
-                description: 'GraphQL endpoint URL (or path if using connection)',
-                type: 'string',
-                required: true,
-                placeholder: 'https://api.example.com/graphql',
-                group: 'connection',
-            },
-            {
-                key: 'headers',
-                label: 'Additional Headers',
-                description: 'Extra HTTP headers (JSON object)',
-                type: 'json',
-                group: 'connection',
-            },
-            // Query
-            {
-                key: 'query',
-                label: 'GraphQL Query',
-                description: 'GraphQL query or mutation to execute',
-                type: 'string',
-                required: true,
-                placeholder: 'query { products { items { id name } } }',
-                group: 'query',
-            },
-            {
-                key: 'variables',
-                label: 'Variables',
-                description: 'Query variables (JSON object)',
-                type: 'json',
-                placeholder: '{"status": "active"}',
-                group: 'query',
-            },
-            {
-                key: 'operationName',
-                label: 'Operation Name',
-                description: 'Operation name (for queries with multiple operations)',
-                type: 'string',
-                group: 'query',
-            },
-            {
-                key: 'dataPath',
-                label: 'Data Path',
-                description: 'Path to records array in response (e.g., "data.products.items")',
-                type: 'string',
-                placeholder: 'data.products.items',
-                group: 'query',
-            },
-            // Pagination
-            {
-                key: 'pagination.type',
-                label: 'Pagination Type',
-                type: 'select',
-                options: [
-                    { value: GraphQLPaginationType.NONE, label: 'None' },
-                    { value: GraphQLPaginationType.OFFSET, label: 'Offset (skip/take)' },
-                    { value: GraphQLPaginationType.CURSOR, label: 'Cursor' },
-                    { value: GraphQLPaginationType.RELAY, label: 'Relay Connection' },
-                ],
-                defaultValue: GraphQLPaginationType.NONE,
-                group: 'pagination',
-            },
-            {
-                key: 'pagination.limit',
-                label: 'Page Size',
-                description: 'Number of records per page',
-                type: 'number',
-                defaultValue: GRAPHQL_DEFAULTS.pageLimit,
-                group: 'pagination',
-            },
-            {
-                key: 'pagination.offsetVariable',
-                label: 'Offset Variable',
-                description: 'Variable name for offset (e.g., "skip")',
-                type: 'string',
-                defaultValue: 'skip',
-                group: 'pagination',
-                dependsOn: { field: 'pagination.type', value: GraphQLPaginationType.OFFSET },
-            },
-            {
-                key: 'pagination.limitVariable',
-                label: 'Limit Variable',
-                description: 'Variable name for limit (e.g., "take", "first")',
-                type: 'string',
-                defaultValue: 'take',
-                group: 'pagination',
-            },
-            {
-                key: 'pagination.cursorVariable',
-                label: 'Cursor Variable',
-                description: 'Variable name for cursor (e.g., "after")',
-                type: 'string',
-                defaultValue: 'after',
-                group: 'pagination',
-                dependsOn: { field: 'pagination.type', value: GraphQLPaginationType.CURSOR },
-            },
-            {
-                key: 'pagination.totalCountPath',
-                label: 'Total Count Path',
-                description: 'Path to total count in response (for offset pagination)',
-                type: 'string',
-                placeholder: 'data.products.totalItems',
-                group: 'pagination',
-                dependsOn: { field: 'pagination.type', value: GraphQLPaginationType.OFFSET },
-            },
-            {
-                key: 'pagination.pageInfoPath',
-                label: 'Page Info Path',
-                description: 'Path to pageInfo for Relay connections',
-                type: 'string',
-                placeholder: 'data.products.pageInfo',
-                group: 'pagination',
-                dependsOn: { field: 'pagination.type', value: GraphQLPaginationType.RELAY },
-            },
-            {
-                key: 'pagination.maxPages',
-                label: 'Max Pages',
-                description: 'Maximum pages to fetch (safety limit)',
-                type: 'number',
-                defaultValue: GRAPHQL_DEFAULTS.maxPages,
-                group: 'pagination',
-            },
-            // Advanced
-            {
-                key: 'timeoutMs',
-                label: 'Timeout (ms)',
-                type: 'number',
-                defaultValue: GRAPHQL_DEFAULTS.timeoutMs,
-                group: 'advanced',
-            },
-            {
-                key: 'includeExtensions',
-                label: 'Include Extensions',
-                description: 'Include GraphQL extensions in record metadata',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'advanced',
-            },
-            {
-                key: 'retry.maxAttempts',
-                label: 'Max Retry Attempts',
-                type: 'number',
-                defaultValue: 3,
-                group: 'advanced',
-            },
-        ],
-    };
+    readonly schema: StepConfigSchema = GRAPHQL_EXTRACTOR_SCHEMA;
 
     async *extract(
         context: ExtractorContext,
@@ -357,7 +193,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                 totalFetched,
             });
         } catch (error) {
-            context.logger.error('GraphQL extraction failed', error instanceof Error ? error : undefined, { error: getErrorMessage(error) });
+            context.logger.error('GraphQL extraction failed', toErrorOrUndefined(error), { error: getErrorMessage(error) });
             throw error;
         }
     }
@@ -481,7 +317,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
     }
 
     /**
-     * Execute a GraphQL query
+     * Execute a GraphQL query using the centralised retry utility.
      */
     private async executeQuery(
         context: ExtractorContext,
@@ -489,14 +325,14 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
         variables?: Record<string, unknown>,
         queryOverride?: string,
     ): Promise<GraphQLResponse> {
-        const maxAttempts = config.retry?.maxAttempts || HTTP.MAX_RETRIES;
-        const initialDelay = config.retry?.initialDelayMs || HTTP.RETRY_DELAY_MS;
-        const backoffMultiplier = config.retry?.backoffMultiplier || WEBHOOK.BACKOFF_MULTIPLIER;
+        const retryConfig = createRetryConfig({
+            maxAttempts: config.retry?.maxAttempts || HTTP.MAX_RETRIES,
+            initialDelayMs: config.retry?.initialDelayMs,
+            backoffMultiplier: config.retry?.backoffMultiplier,
+        });
 
-        let lastError: Error | undefined;
-
-        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
+        return executeWithRetry(
+            async () => {
                 const url = await buildUrl(context, config);
                 const headers = await buildHeaders(context, config);
 
@@ -506,7 +342,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                     operationName: config.operationName,
                 });
 
-                context.logger.debug(`Executing GraphQL query (attempt ${attempt}/${maxAttempts})`, {
+                context.logger.debug(`Executing GraphQL query`, {
                     url,
                     hasVariables: !!variables,
                 });
@@ -532,23 +368,15 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                 }
 
                 return result;
-            } catch (error) {
-                lastError = error instanceof Error ? error : new Error(String(error));
-
-                if (attempt >= maxAttempts) {
-                    throw lastError;
-                }
-
-                const delay = initialDelay * Math.pow(backoffMultiplier, attempt - 1);
-                context.logger.warn(`Request failed, retrying in ${delay}ms`, {
-                    attempt,
-                    error: lastError.message,
-                });
-
-                await sleep(delay);
-            }
-        }
-
-        throw lastError || new Error('Request failed');
+            },
+            {
+                config: retryConfig,
+                logger: {
+                    warn: (msg: string, meta?: Record<string, unknown>) => context.logger.warn(msg, meta as JsonObject),
+                    debug: (msg: string, meta?: Record<string, unknown>) => context.logger.debug(msg, meta as JsonObject),
+                },
+                context: { url: config.url },
+            },
+        );
     }
 }

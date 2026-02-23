@@ -16,14 +16,20 @@ import {
 } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
-import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import { VendureEntityType } from '../../constants/enums';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+    createLookupHelper,
+} from '../base';
 import {
     CustomerInput,
     CUSTOMER_LOADER_METADATA,
 } from './types';
 import {
-    isValidEmail,
     assignCustomerGroups,
     createAddresses,
     shouldUpdateField,
@@ -46,6 +52,8 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = CUSTOMER_LOADER_METADATA;
 
+    private readonly lookupHelper: EntityLookupHelper<CustomerService, Customer, CustomerInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private customerService: CustomerService,
@@ -55,6 +63,9 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.CUSTOMER_LOADER);
+        this.lookupHelper = createLookupHelper<CustomerService, Customer, CustomerInput>(this.customerService)
+            .addFilterStrategy('emailAddress', 'emailAddress', (ctx, svc, opts) => svc.findAll(ctx, opts))
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id));
     }
 
     protected getDuplicateErrorMessage(record: CustomerInput): string {
@@ -66,26 +77,7 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
         lookupFields: string[],
         record: CustomerInput,
     ): Promise<ExistingEntityLookupResult<Customer> | null> {
-        // Primary lookup: by email
-        if (record.emailAddress && lookupFields.includes('emailAddress')) {
-            const customers = await this.customerService.findAll(ctx, {
-                filter: { emailAddress: { eq: record.emailAddress } },
-            });
-
-            if (customers.totalItems > 0) {
-                return { id: customers.items[0].id, entity: customers.items[0] };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const customer = await this.customerService.findOne(ctx, record.id as ID);
-            if (customer) {
-                return { id: customer.id, entity: customer };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -93,47 +85,29 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
         record: CustomerInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
-
-        // Required field validation
-        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.emailAddress || typeof record.emailAddress !== 'string' || record.emailAddress.trim() === '') {
-                errors.push({ field: 'emailAddress', message: 'Email address is required', code: 'REQUIRED' });
-            } else if (!isValidEmail(record.emailAddress)) {
-                errors.push({ field: 'emailAddress', message: 'Invalid email format', code: 'INVALID_FORMAT' });
-            }
-
-            if (!record.firstName || typeof record.firstName !== 'string' || record.firstName.trim() === '') {
-                errors.push({ field: 'firstName', message: 'First name is required', code: 'REQUIRED' });
-            }
-
-            if (!record.lastName || typeof record.lastName !== 'string' || record.lastName.trim() === '') {
-                errors.push({ field: 'lastName', message: 'Last name is required', code: 'REQUIRED' });
-            }
-        }
+        const builder = new ValidationBuilder()
+            .requireEmailForCreate('emailAddress', record.emailAddress, operation)
+            .requireStringForCreate('firstName', record.firstName, operation, 'First name is required')
+            .requireStringForCreate('lastName', record.lastName, operation, 'Last name is required');
 
         // Validate addresses if provided
         if (record.addresses && Array.isArray(record.addresses)) {
-            for (let i = 0; i < record.addresses.length; i++) {
-                const addr = record.addresses[i];
+            builder.validateArrayItems('addresses', record.addresses, (addr) => {
+                const errors: { field: string; message: string; code?: string }[] = [];
                 if (!addr.streetLine1) {
-                    errors.push({ field: `addresses[${i}].streetLine1`, message: 'Street line 1 is required', code: 'REQUIRED' });
+                    errors.push({ field: 'streetLine1', message: 'Street line 1 is required', code: 'REQUIRED' });
                 }
                 if (!addr.city) {
-                    errors.push({ field: `addresses[${i}].city`, message: 'City is required', code: 'REQUIRED' });
+                    errors.push({ field: 'city', message: 'City is required', code: 'REQUIRED' });
                 }
                 if (!addr.countryCode) {
-                    errors.push({ field: `addresses[${i}].countryCode`, message: 'Country code is required', code: 'REQUIRED' });
+                    errors.push({ field: 'countryCode', message: 'Country code is required', code: 'REQUIRED' });
                 }
-            }
+                return errors;
+            });
         }
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

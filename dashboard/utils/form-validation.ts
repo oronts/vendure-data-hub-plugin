@@ -1,6 +1,7 @@
 import { isEmpty, isValidUrl } from '../../shared';
-import { SOURCE_TYPE, DESTINATION_TYPE } from '../constants';
 import { CODE_PATTERN } from '../../shared';
+import { SOURCE_TYPE } from '../constants';
+import type { DestinationSchema, TypedOptionValue } from '../hooks/api/use-config-options';
 
 export { CODE_PATTERN };
 
@@ -10,7 +11,7 @@ interface FieldValidationError {
     type: 'required' | 'format' | 'range' | 'custom';
 }
 
-interface FormValidationResult {
+export interface FormValidationResult {
     isValid: boolean;
     errors: FieldValidationError[];
     errorsByField: Record<string, string>;
@@ -86,16 +87,70 @@ export function validatePort(value: string | number, fieldName: string = 'Port')
     return null;
 }
 
+export function validateTriggerConfig(
+    trigger?: { type?: string; [key: string]: unknown },
+    triggerSchemas?: TypedOptionValue[],
+): FieldValidationError[] {
+    if (!trigger?.type) return [];
+    const errors: FieldValidationError[] = [];
+
+    // Schema-driven validation: validate required fields from schema
+    if (triggerSchemas?.length) {
+        const schema = triggerSchemas.find(s => s.value === trigger.type);
+        if (schema) {
+            for (const field of schema.fields) {
+                if (field.required) {
+                    const value = trigger[field.key];
+                    if (value === undefined || value === null || value === '') {
+                        errors.push({
+                            field: field.key,
+                            message: `${field.label} is required`,
+                            type: 'required',
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    return errors;
+}
+
+function validateReviewStep(name?: string): FieldValidationError[] {
+    const err = validateRequired(name, 'Name');
+    return err ? [err] : [];
+}
+
+/**
+ * Resolve the backend adapter code for a wizard source type.
+ * Searches provided adapter schemas first (case-insensitive match),
+ * then falls back to lowercase convention.
+ */
+function getAdapterCodeForType(
+    sourceType: string,
+    adapterSchemas?: Array<{ code: string }>,
+): string {
+    const match = adapterSchemas?.find(a => a.code.toUpperCase() === sourceType.toUpperCase());
+    if (match) return match.code;
+    return sourceType.toLowerCase();
+}
+
 export function validateImportWizardStep(
     step: string,
     config: {
         name?: string;
-        source?: { type?: string; apiConfig?: { url?: string } };
+        source?: {
+            type?: string;
+            [key: string]: unknown;
+        };
+        trigger?: { type?: string; [key: string]: unknown };
         targetEntity?: string;
         mappings?: Array<{ sourceField?: string; targetField?: string; required?: boolean }>;
         strategies?: { lookupFields?: string[] };
     },
-    uploadedFile?: File | null
+    uploadedFile?: File | null,
+    adapterSchemas?: Array<{ code: string; schema?: { fields: Array<{ key: string; required?: boolean }> } }>,
+    triggerSchemas?: TypedOptionValue[],
 ): FormValidationResult {
     const errors: FieldValidationError[] = [];
 
@@ -108,22 +163,57 @@ export function validateImportWizardStep(
                     type: 'required',
                 });
             }
-            if (config.source?.type === SOURCE_TYPE.API) {
-                const urlError = validateRequired(config.source.apiConfig?.url, 'API URL');
-                if (urlError) errors.push(urlError);
-                else {
-                    const urlFormatError = validateUrl(config.source.apiConfig?.url ?? '', 'API URL');
-                    if (urlFormatError) errors.push(urlFormatError);
+            // Generic validation for all schema-driven sources (API, DATABASE, WEBHOOK, CDC, and dynamic types)
+            if (config.source?.type
+                && config.source.type !== SOURCE_TYPE.FILE) {
+                const configKey = `${config.source.type.toLowerCase()}Config`;
+                const sourceConfig = (config.source as Record<string, unknown>)[configKey];
+                if (!sourceConfig || typeof sourceConfig !== 'object') {
+                    errors.push({
+                        field: configKey,
+                        message: 'Source configuration is required',
+                        type: 'required',
+                    });
+                }
+                // When adapter schemas are provided, validate required fields from the schema
+                if (adapterSchemas) {
+                    const adapterCode = getAdapterCodeForType(config.source.type, adapterSchemas);
+                    const adapter = adapterSchemas.find(a => a.code === adapterCode);
+                    if (adapter?.schema?.fields) {
+                        const cfgObj = ((sourceConfig ?? {}) as Record<string, unknown>);
+                        for (const field of adapter.schema.fields) {
+                            if (field.required && isEmpty(cfgObj[field.key])) {
+                                errors.push({
+                                    field: field.key,
+                                    message: `${field.key} is required`,
+                                    type: 'required',
+                                });
+                            }
+                            // Validate URL format for URL-typed fields
+                            if (/url/i.test(field.key) && !isEmpty(cfgObj[field.key])) {
+                                const urlError = validateUrl(String(cfgObj[field.key]), field.key);
+                                if (urlError) errors.push(urlError);
+                            }
+                        }
+                    } else if (!adapter) {
+                        // Adapter schemas loaded but this specific adapter was not found
+                        errors.push({
+                            field: 'adapterCode',
+                            message: `Unknown source adapter: ${adapterCode}`,
+                            type: 'custom',
+                        });
+                    }
                 }
             }
             break;
 
-        case 'target':
+        case 'target': {
             const targetError = validateRequired(config.targetEntity, 'Target Entity');
             if (targetError) errors.push(targetError);
             break;
+        }
 
-        case 'mapping':
+        case 'mapping': {
             const mappedFields = config.mappings?.filter(m => m.sourceField && m.targetField) ?? [];
             if (mappedFields.length === 0) {
                 errors.push({
@@ -141,6 +231,7 @@ export function validateImportWizardStep(
                 });
             }
             break;
+        }
 
         case 'strategy':
             if ((config.strategies?.lookupFields?.length ?? 0) === 0) {
@@ -152,13 +243,51 @@ export function validateImportWizardStep(
             }
             break;
 
+        case 'trigger':
+            errors.push(...validateTriggerConfig(config.trigger, triggerSchemas));
+            break;
+
         case 'review':
-            const nameError = validateRequired(config.name, 'Name');
-            if (nameError) errors.push(nameError);
+            errors.push(...validateReviewStep(config.name));
             break;
     }
 
     return createValidationResult(errors);
+}
+
+/**
+ * Validate destination fields using backend destination schemas.
+ * Loops over schema-defined required fields instead of hardcoding per-type validation.
+ * For URL-typed fields (key contains 'url', case-insensitive), also validates format.
+ */
+function validateDestinationFromSchema(
+    destination: { type?: string; [key: string]: unknown },
+    schemas: DestinationSchema[],
+): FieldValidationError[] {
+    if (!destination.type) return [];
+    const schema = schemas.find(s => s.type === destination.type);
+    if (!schema || schema.fields.length === 0) return [];
+
+    const configObj = (destination[schema.configKey] ?? {}) as Record<string, unknown>;
+    const errors: FieldValidationError[] = [];
+
+    for (const field of schema.fields) {
+        const value = configObj[field.key];
+        if (field.required && isEmpty(value)) {
+            errors.push({
+                field: field.key,
+                message: `${field.label} is required`,
+                type: 'required',
+            });
+        }
+        // Validate URL format for URL-typed fields
+        if (/url/i.test(field.key) && !isEmpty(value)) {
+            const urlError = validateUrl(String(value), field.label);
+            if (urlError) errors.push(urlError);
+        }
+    }
+
+    return errors;
 }
 
 export function validateExportWizardStep(
@@ -168,23 +297,22 @@ export function validateExportWizardStep(
         sourceEntity?: string;
         fields?: Array<{ include?: boolean }>;
         format?: { type?: string };
-        destination?: {
-            type?: string;
-            fileConfig?: { filename?: string };
-            sftpConfig?: { host?: string };
-            httpConfig?: { url?: string };
-        };
-    }
+        trigger?: { type?: string; [key: string]: unknown };
+        destination?: { type?: string; [key: string]: unknown };
+    },
+    destinationSchemas?: DestinationSchema[],
+    triggerSchemas?: TypedOptionValue[],
 ): FormValidationResult {
     const errors: FieldValidationError[] = [];
 
     switch (step) {
-        case 'source':
+        case 'source': {
             const entityError = validateRequired(config.sourceEntity, 'Source Entity');
             if (entityError) errors.push(entityError);
             break;
+        }
 
-        case 'fields':
+        case 'fields': {
             const includedFields = config.fields?.filter(f => f.include) ?? [];
             if (includedFields.length === 0) {
                 errors.push({
@@ -193,37 +321,53 @@ export function validateExportWizardStep(
                     type: 'required',
                 });
             }
+            // Validate each included field has a non-empty outputName
+            for (let i = 0; i < includedFields.length; i++) {
+                const field = includedFields[i] as { outputName?: string };
+                if (!field.outputName || field.outputName.trim() === '') {
+                    errors.push({
+                        field: `fields[${i}].outputName`,
+                        message: 'Output name is required for all included fields',
+                        type: 'required',
+                    });
+                }
+            }
+            // Check for duplicate outputName values
+            const outputNames = includedFields
+                .map((f: { outputName?: string }) => f.outputName?.trim())
+                .filter((name): name is string => Boolean(name));
+            const duplicates = outputNames.filter((name, index) => outputNames.indexOf(name) !== index);
+            if (duplicates.length > 0) {
+                errors.push({
+                    field: 'fields',
+                    message: `Duplicate output names found: ${[...new Set(duplicates)].join(', ')}`,
+                    type: 'custom',
+                });
+            }
             break;
+        }
 
-        case 'format':
+        case 'format': {
             const formatError = validateRequired(config.format?.type, 'Export Format');
             if (formatError) errors.push(formatError);
             break;
+        }
 
         case 'destination':
-            if (config.destination?.type === DESTINATION_TYPE.FILE) {
-                const filenameError = validateRequired(config.destination.fileConfig?.filename, 'Filename');
-                if (filenameError) errors.push(filenameError);
-            }
-            if (config.destination?.type === DESTINATION_TYPE.SFTP) {
-                const hostError = validateRequired(config.destination.sftpConfig?.host, 'SFTP Host');
-                if (hostError) errors.push(hostError);
-            }
-            if (config.destination?.type === DESTINATION_TYPE.HTTP) {
-                const urlError = validateRequired(config.destination.httpConfig?.url, 'HTTP URL');
-                if (urlError) errors.push(urlError);
-                else {
-                    const urlFormatError = validateUrl(config.destination.httpConfig?.url ?? '', 'HTTP URL');
-                    if (urlFormatError) errors.push(urlFormatError);
-                }
+            if (config.destination && destinationSchemas) {
+                errors.push(...validateDestinationFromSchema(config.destination, destinationSchemas));
             }
             break;
 
+        case 'trigger':
+            errors.push(...validateTriggerConfig(config.trigger, triggerSchemas));
+            break;
+
         case 'review':
-            const nameError = validateRequired(config.name, 'Name');
-            if (nameError) errors.push(nameError);
+            errors.push(...validateReviewStep(config.name));
             break;
     }
 
     return createValidationResult(errors);
 }
+

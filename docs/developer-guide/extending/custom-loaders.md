@@ -10,7 +10,7 @@ interface LoaderAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly code: string;
     readonly name: string;
     readonly description?: string;
-    readonly schema: AdapterSchema;
+    readonly schema: StepConfigSchema;
 
     load(
         context: LoadContext,
@@ -20,19 +20,19 @@ interface LoaderAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
 }
 
 interface LoadContext {
-    ctx: RequestContext;
-    pipelineId: ID;
-    stepKey: string;
-    pipelineContext: PipelineCtx;
-    secrets: SecretResolver;
-    connections: ConnectionResolver;
-    logger: AdapterLogger;
-    channelStrategy: ChannelStrategy;    // 'EXPLICIT' | 'INHERIT' | 'MULTI'
-    channels: readonly ID[];
-    languageStrategy: LanguageStrategy;
-    validationMode: ValidationMode;       // 'STRICT' | 'LENIENT'
-    conflictStrategy: ConflictStrategy;
-    dryRun: boolean;
+    readonly ctx: RequestContext;
+    readonly pipelineId: ID;
+    readonly stepKey: string;
+    readonly pipelineContext: PipelineCtx;
+    readonly secrets: SecretResolver;
+    readonly connections: ConnectionResolver;
+    readonly logger: AdapterLogger;
+    readonly channelStrategy: ChannelStrategy;
+    readonly channels: readonly ID[];
+    readonly languageStrategy: LanguageStrategyValue;
+    readonly validationMode: ValidationModeType;
+    readonly conflictStrategy: ConflictStrategyValue;
+    readonly dryRun: boolean;
 }
 ```
 
@@ -70,17 +70,16 @@ export class CustomEntityLoader implements LoaderAdapter<CustomLoaderConfig> {
         records: readonly JsonObject[],
     ): Promise<LoadResult> {
         const { ctx, dryRun, logger } = context;
-        const results: LoadResult = {
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            failed: 0,
-            errors: [],
-        };
+        let succeeded = 0;
+        let failed = 0;
+        let created = 0;
+        let updated = 0;
+        let skipped = 0;
+        const errors: LoadError[] = [];
 
         if (dryRun) {
             logger.info(`[DRY RUN] Would process ${records.length} records`);
-            return { ...results, skipped: records.length };
+            return { succeeded: 0, failed: 0, skipped: records.length };
         }
 
         for (const record of records) {
@@ -94,33 +93,35 @@ export class CustomEntityLoader implements LoaderAdapter<CustomLoaderConfig> {
 
                 if (existing) {
                     if (config.strategy === 'CREATE') {
-                        results.skipped++;
+                        skipped++;
                         continue;
                     }
 
                     existing.name = name;
                     await this.connection.getRepository(ctx, CustomEntity).save(existing);
-                    results.updated++;
+                    updated++;
+                    succeeded++;
                 } else {
                     if (config.strategy === 'UPDATE') {
-                        results.skipped++;
+                        skipped++;
                         continue;
                     }
 
                     const entity = new CustomEntity({ code, name });
                     await this.connection.getRepository(ctx, CustomEntity).save(entity);
-                    results.created++;
+                    created++;
+                    succeeded++;
                 }
             } catch (error) {
-                results.failed++;
-                results.errors.push({
+                failed++;
+                errors.push({
                     record,
                     message: error.message,
                 });
             }
         }
 
-        return results;
+        return { succeeded, failed, created, updated, skipped, errors };
     }
 }
 ```
@@ -143,7 +144,7 @@ export class MyLoaderPlugin implements OnModuleInit {
     ) {}
 
     onModuleInit() {
-        this.registry.registerLoader(this.loader.code, this.loader);
+        this.registry.registerRuntime(this.loader);
     }
 }
 ```
@@ -168,15 +169,21 @@ Return processing results:
 
 ```typescript
 interface LoadResult {
-    created: number;
-    updated: number;
-    skipped: number;
-    failed: number;
-    errors: Array<{
-        record: JsonObject;
-        message: string;
-        code?: string;
-    }>;
+    readonly succeeded: number;      // Number of successfully loaded records (REQUIRED)
+    readonly failed: number;         // Number of failed records (REQUIRED)
+    readonly created?: number;       // Number of newly created entities
+    readonly updated?: number;       // Number of updated entities
+    readonly skipped?: number;       // Number of skipped records (e.g., duplicates)
+    readonly errors?: readonly LoadError[];  // Load errors
+    readonly affectedIds?: readonly ID[];    // IDs of affected entities
+}
+
+interface LoadError {
+    readonly record: JsonObject;
+    readonly message: string;
+    readonly field?: string;
+    readonly code?: string;
+    readonly recoverable?: boolean;
 }
 ```
 
@@ -194,7 +201,8 @@ export class MyProductLoader implements LoaderAdapter {
         private connection: TransactionalConnection,
     ) {}
 
-    async load(ctx, records, config, context) {
+    async load(context, config, records) {
+        const { ctx } = context;
         for (const record of records) {
             // Use Vendure's ProductService
             await this.productService.update(ctx, {
@@ -214,8 +222,12 @@ export class MyProductLoader implements LoaderAdapter {
 Process records in batches for better performance:
 
 ```typescript
-async load(ctx, records, config, context) {
-    const results = { created: 0, updated: 0, skipped: 0, failed: 0, errors: [] };
+async load(context, config, records) {
+    const { ctx, logger } = context;
+    let succeeded = 0;
+    let failed = 0;
+    let created = 0;
+    const errors: LoadError[] = [];
     const batchSize = 50;
 
     for (let i = 0; i < records.length; i += batchSize) {
@@ -225,18 +237,19 @@ async load(ctx, records, config, context) {
             for (const record of batch) {
                 try {
                     await this.processRecord(ctx, record, config, manager);
-                    results.created++;
+                    created++;
+                    succeeded++;
                 } catch (error) {
-                    results.failed++;
-                    results.errors.push({ record, message: error.message });
+                    failed++;
+                    errors.push({ record, message: error.message });
                 }
             }
         });
 
-        context.logger.debug(`Processed batch ${i / batchSize + 1}`);
+        logger.debug(`Processed batch ${i / batchSize + 1}`);
     }
 
-    return results;
+    return { succeeded, failed, created, errors };
 }
 ```
 
@@ -245,7 +258,8 @@ async load(ctx, records, config, context) {
 Handle multi-channel properly:
 
 ```typescript
-async load(ctx, records, config, context) {
+async load(context, config, records) {
+    const { ctx } = context;
     const channel = config.channel
         ? await this.channelService.findByCode(ctx, config.channel)
         : ctx.channel;
@@ -264,15 +278,19 @@ async load(ctx, records, config, context) {
 Validate records before loading:
 
 ```typescript
-async load(ctx, records, config, context) {
-    const results = { created: 0, updated: 0, skipped: 0, failed: 0, errors: [] };
+async load(context, config, records) {
+    let succeeded = 0;
+    let failed = 0;
+    let created = 0;
+    let updated = 0;
+    const errors: LoadError[] = [];
 
     for (const record of records) {
         const validation = this.validate(record, config);
 
         if (!validation.valid) {
-            results.failed++;
-            results.errors.push({
+            failed++;
+            errors.push({
                 record,
                 message: validation.errors.join(', '),
             });
@@ -280,12 +298,13 @@ async load(ctx, records, config, context) {
         }
 
         // Process valid record...
+        // succeeded++; created++ or updated++;
     }
 
-    return results;
+    return { succeeded, failed, created, updated, errors };
 }
 
-private validate(record: JsonObject, config: LoadConfig) {
+private validate(record: JsonObject, config: JsonObject) {
     const errors: string[] = [];
 
     if (!record[config.codeField]) {
@@ -303,20 +322,21 @@ import { Injectable } from '@nestjs/common';
 import { RequestContext, TransactionalConnection, Tag } from '@vendure/core';
 import {
     LoaderAdapter,
-    LoadConfig,
     LoadContext,
     LoadResult,
-    AdapterSchema,
+    StepConfigSchema,
+    JsonObject,
 } from '@oronts/vendure-data-hub-plugin';
 
 @Injectable()
 export class TagLoader implements LoaderAdapter {
+    readonly type = 'LOADER' as const;
     readonly code = 'tag';
     readonly name = 'Tag Loader';
     readonly entityType = 'Tag';
     readonly description = 'Create or update tags';
 
-    readonly schema: AdapterSchema = {
+    readonly schema: StepConfigSchema = {
         fields: [
             { key: 'valueField', type: 'string', required: true, label: 'Value Field', default: 'value' },
         ],
@@ -325,18 +345,17 @@ export class TagLoader implements LoaderAdapter {
     constructor(private connection: TransactionalConnection) {}
 
     async load(
-        ctx: RequestContext,
-        records: JsonObject[],
-        config: LoadConfig,
         context: LoadContext,
+        config: JsonObject,
+        records: readonly JsonObject[],
     ): Promise<LoadResult> {
-        const results: LoadResult = {
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            failed: 0,
-            errors: [],
-        };
+        const { ctx, logger } = context;
+        let succeeded = 0;
+        let failed = 0;
+        let created = 0;
+        let updated = 0;
+        let skipped = 0;
+        const errors: LoadError[] = [];
 
         const repo = this.connection.getRepository(ctx, Tag);
 
@@ -345,7 +364,7 @@ export class TagLoader implements LoaderAdapter {
                 const value = String(record[config.valueField] || '').trim();
 
                 if (!value) {
-                    results.skipped++;
+                    skipped++;
                     continue;
                 }
 
@@ -353,39 +372,41 @@ export class TagLoader implements LoaderAdapter {
 
                 if (existing) {
                     if (config.strategy === 'CREATE') {
-                        results.skipped++;
-                        context.logger.debug(`Tag "${value}" exists, skipping`);
+                        skipped++;
+                        logger.debug(`Tag "${value}" exists, skipping`);
                         continue;
                     }
-                    results.updated++;
+                    updated++;
+                    succeeded++;
                 } else {
                     if (config.strategy === 'UPDATE') {
-                        results.skipped++;
-                        context.logger.debug(`Tag "${value}" not found, skipping`);
+                        skipped++;
+                        logger.debug(`Tag "${value}" not found, skipping`);
                         continue;
                     }
 
                     const tag = repo.create({ value });
                     await repo.save(tag);
-                    results.created++;
-                    context.logger.debug(`Created tag: ${value}`);
+                    created++;
+                    succeeded++;
+                    logger.debug(`Created tag: ${value}`);
                 }
             } catch (error) {
-                results.failed++;
-                results.errors.push({
+                failed++;
+                errors.push({
                     record,
                     message: error.message,
                 });
-                context.logger.error(`Failed to load tag`, error);
+                logger.error(`Failed to load tag`, error);
             }
         }
 
-        context.logger.info(
-            `Load complete: ${results.created} created, ${results.updated} updated, ` +
-            `${results.skipped} skipped, ${results.failed} failed`,
+        logger.info(
+            `Load complete: ${created} created, ${updated} updated, ` +
+            `${skipped} skipped, ${failed} failed`,
         );
 
-        return results;
+        return { succeeded, failed, created, updated, skipped, errors };
     }
 }
 ```

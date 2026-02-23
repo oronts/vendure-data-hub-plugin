@@ -1,7 +1,9 @@
 import type { ImportConfiguration } from './types';
-import { IMPORT_WIZARD_TRIGGERS, TRIGGER_TYPES } from '../../../constants';
+import { TRIGGER_TYPES, LOADING_STATE_TYPE } from '../../../constants';
+import { useTriggerTypes } from '../../../hooks';
 import { WizardStepContainer } from '../shared';
-import { TriggerSelector, ScheduleConfig, WebhookConfig } from '../../shared/wizard-trigger';
+import { TriggerSelector, TriggerSchemaFields } from '../../shared/wizard-trigger';
+import { LoadingState } from '../../shared/feedback';
 import { STEP_CONTENT } from './constants';
 
 interface TriggerStepProps {
@@ -11,18 +13,17 @@ interface TriggerStepProps {
 }
 
 export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepProps) {
-    const trigger = config.trigger!;
+    const trigger = config.trigger ?? { type: TRIGGER_TYPES.MANUAL };
+    const { importWizardTriggers, triggerSchemas, isLoading } = useTriggerTypes();
+
+    const currentSchema = triggerSchemas.find(s => s.value === trigger.type);
 
     const handleTriggerTypeChange = (type: string) => {
         updateConfig({ trigger: { ...trigger, type: type as typeof trigger.type } });
     };
 
-    const handleCronChange = (cron: string) => {
-        updateConfig({ trigger: { ...trigger, cron } });
-    };
-
-    const handleWebhookPathChange = (webhookPath: string) => {
-        updateConfig({ trigger: { ...trigger, webhookPath } });
+    const handleFieldChange = (key: string, value: unknown) => {
+        updateConfig({ trigger: { ...trigger, [key]: value } });
     };
 
     return (
@@ -31,24 +32,20 @@ export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepPr
             description={STEP_CONTENT.trigger.description}
         >
             <TriggerSelector
-                options={IMPORT_WIZARD_TRIGGERS}
+                options={importWizardTriggers}
                 value={trigger.type}
                 onChange={handleTriggerTypeChange}
             />
 
-            {trigger.type === TRIGGER_TYPES.SCHEDULE && (
-                <ScheduleConfig
-                    cron={trigger.cron ?? ''}
-                    onChange={handleCronChange}
+            {currentSchema && currentSchema.fields.length > 0 ? (
+                <TriggerSchemaFields
+                    fields={currentSchema.fields}
+                    values={trigger as Record<string, unknown>}
+                    onChange={handleFieldChange}
                 />
-            )}
-
-            {trigger.type === TRIGGER_TYPES.WEBHOOK && (
-                <WebhookConfig
-                    webhookPath={trigger.webhookPath ?? ''}
-                    onChange={handleWebhookPathChange}
-                />
-            )}
+            ) : isLoading && trigger.type !== TRIGGER_TYPES.MANUAL ? (
+                <LoadingState type={LOADING_STATE_TYPE.FORM} rows={2} message="" />
+            ) : null}
         </WizardStepContainer>
     );
 }

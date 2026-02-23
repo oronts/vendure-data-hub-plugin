@@ -1,5 +1,4 @@
-/** @see shared/utils/error - canonical source; re-exported here for backend convenience (84+ consumers) */
-export { getErrorMessage } from '../../shared/utils/error';
+export { getErrorMessage, ensureError, toErrorOrUndefined } from '../../shared/utils/error';
 
 /** Detects unique constraint violations across MySQL and PostgreSQL */
 export function isDuplicateEntryError(msg: string): boolean {

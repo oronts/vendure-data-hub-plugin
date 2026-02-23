@@ -1,6 +1,6 @@
 # Loaders Reference
 
-Complete reference for all entity loaders (18 total).
+Complete reference for all entity loaders (22 operation-specific adapters across 16 entity types).
 
 ## Common Configuration
 
@@ -35,6 +35,10 @@ All loaders are configured using the `.load()` step in the pipeline DSL:
 | `taxRateUpsert` | Tax Rate | Tax rates with zone and category mappings |
 | `paymentMethodUpsert` | Payment Method | Payment methods with handler configuration |
 | `channelUpsert` | Channel | Channels with currency and language settings |
+| `shippingMethodUpsert` | Shipping Method | Create/update shipping methods with calculators |
+| `customerGroupUpsert` | Customer Group | Create/update customer groups with member assignments |
+| `stockLocationUpsert` | Stock Location | Create/update stock locations for inventory |
+| `inventoryAdjust` | Inventory | Adjust inventory levels by SKU and location |
 | `restPost` | Custom | POST data to REST endpoints |
 | `graphqlMutation` | GraphQL | Send records as GraphQL mutations to external APIs |
 
@@ -368,6 +372,10 @@ For sending data to external systems (REST APIs, search engines, message queues)
 | `taxRateUpsert` | Tax Rate | Create/update tax rates with category and zone |
 | `paymentMethodUpsert` | Payment Method | Create/update payment methods with handlers |
 | `channelUpsert` | Channel | Create/update channels with currencies and languages |
+| `shippingMethodUpsert` | Shipping Method | Create/update shipping methods with calculators |
+| `customerGroupUpsert` | Customer Group | Create/update customer groups with member assignments |
+| `stockLocationUpsert` | Stock Location | Create/update stock locations for inventory |
+| `inventoryAdjust` | Inventory | Adjust inventory levels by SKU and location |
 | `restPost` | Custom | POST data to REST endpoints |
 | `graphqlMutation` | GraphQL | Send records as GraphQL mutations to external APIs |
 
@@ -381,5 +389,12 @@ Each loader requires specific Vendure permissions:
 | `customerUpsert` | `UpdateCustomer` |
 | `orderNote`, `orderTransition`, `applyCoupon` | `UpdateOrder` |
 | `promotionUpsert` | `UpdatePromotion` |
-| `restPost` | No specific permission (depends on endpoint) |
-| `graphqlMutation` | No specific permission (depends on endpoint) |
+| `shippingMethodUpsert` | `UpdateShippingMethod` |
+| `customerGroupUpsert` | `UpdateCustomer` |
+| `stockLocationUpsert` | `UpdateCatalog` |
+| `inventoryAdjust` | `UpdateCatalog` |
+| `taxRateUpsert` | `UpdateSettings` |
+| `paymentMethodUpsert` | `UpdateSettings` |
+| `channelUpsert` | `UpdateSettings` |
+| `restPost` | `UpdateDataHubSettings` |
+| `graphqlMutation` | `UpdateDataHubSettings` |

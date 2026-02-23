@@ -366,7 +366,7 @@ export class MySinksPlugin implements OnModuleInit {
     constructor(private registry: DataHubRegistryService) {}
 
     onModuleInit() {
-        this.registry.registerAdapter(openSearchSink);
+        this.registry.registerRuntime(openSearchSink);
     }
 }
 ```
@@ -384,13 +384,12 @@ const searchSyncPipeline = createPipeline()
         relations: 'translations,featuredAsset',
     })
     .transform('prepare', {
-        adapterCode: 'map',
-        mapping: {
-            'id': 'id',
-            'name': 'translations.0.name',
-            'slug': 'translations.0.slug',
-            'image': 'featuredAsset.preview',
-        },
+        operators: [
+            { op: 'copy', args: { source: 'translations.0.name', target: 'name' } },
+            { op: 'copy', args: { source: 'translations.0.slug', target: 'slug' } },
+            { op: 'copy', args: { source: 'featuredAsset.preview', target: 'image' } },
+            { op: 'pick', args: { fields: ['id', 'name', 'slug', 'image'] } },
+        ],
     })
     .sink('index-products', {
         adapterCode: 'opensearch',  // Your custom sink code
@@ -402,7 +401,7 @@ const searchSyncPipeline = createPipeline()
     })
     .trigger('sync', {
         type: 'SCHEDULE',
-        schedule: { cron: '0 */4 * * *' },
+        cron: '0 */4 * * *',
     })
     .build();
 ```

@@ -6,17 +6,19 @@
  */
 import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
-import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
+import { JsonObject, JsonValue, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { SecretService } from '../../../services/config/secret.service';
 import { CircuitBreakerService } from '../../../services/runtime/circuit-breaker.service';
 import { sleep, chunk } from '../../utils';
 import { LoaderHandler } from './types';
-import { LOGGER_CONTEXTS, HTTP, HTTP_STATUS, HTTP_HEADERS, CONTENT_TYPES } from '../../../constants/index';
+import { LOGGER_CONTEXTS, HTTP_HEADERS, CONTENT_TYPES } from '../../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
+import { setNestedValue } from '../../../utils/object-path.utils';
 import { resolveAuthHeaders } from './shared-http-auth';
+import { doHttpFetch, execHttpWithRetry, deriveCircuitKey, resolveHttpRetryConfig, HttpFetchResult } from './shared-http-client';
 
 /** Delay in ms when circuit breaker is open, to give the downstream service time to recover */
 const CIRCUIT_OPEN_BACKOFF_MS = 1_000;
@@ -54,28 +56,16 @@ export class GraphqlMutationHandler implements LoaderHandler {
     }
 
     /**
-     * Get circuit breaker key for an endpoint
-     */
-    private getCircuitKey(endpoint: string): string {
-        try {
-            const url = new URL(endpoint);
-            return `graphql-loader:${url.host}`;
-        } catch {
-            return `graphql-loader:${endpoint}`;
-        }
-    }
-
-    /**
      * Map record fields to GraphQL variables using the variableMapping config.
      * Each key in variableMapping is a GraphQL variable name, and each value is the
      * dot-notation path in the record to read from.
      */
     private mapVariables(record: RecordObject, variableMapping: Record<string, string>): Record<string, unknown> {
-        const variables: Record<string, unknown> = {};
+        const variables: JsonObject = {};
         for (const [variableName, recordPath] of Object.entries(variableMapping)) {
             // Support nested variable paths by splitting on '.' for the target
             const value = this.getRecordValue(record, recordPath);
-            this.setNestedVariable(variables, variableName, value);
+            setNestedValue(variables, variableName, value as JsonValue);
         }
         return variables;
     }
@@ -93,22 +83,6 @@ export class GraphqlMutationHandler implements LoaderHandler {
         return current;
     }
 
-    /**
-     * Set a value at a dot-notation path in the variables object
-     */
-    private setNestedVariable(obj: Record<string, unknown>, path: string, value: unknown): void {
-        const parts = path.split('.');
-        let current: Record<string, unknown> = obj;
-        for (let i = 0; i < parts.length - 1; i++) {
-            const part = parts[i];
-            if (current[part] == null || typeof current[part] !== 'object') {
-                current[part] = {};
-            }
-            current = current[part] as Record<string, unknown>;
-        }
-        current[parts[parts.length - 1]] = value;
-    }
-
     async execute(
         ctx: RequestContext,
         step: PipelineStepDefinition,
@@ -122,13 +96,8 @@ export class GraphqlMutationHandler implements LoaderHandler {
         const mutation = String(cfg.mutation ?? '');
         const variableMapping = cfg.variableMapping ?? {};
         let headers: Record<string, string> = cfg.headers ?? {};
-        // Use step config first, fall back to pipeline context errorHandling
-        const retries = Math.max(0, Number(cfg.retries ?? errorHandling?.maxRetries ?? 0) || 0);
-        const retryDelayMs = Math.max(0, Number(cfg.retryDelayMs ?? errorHandling?.retryDelayMs ?? 0) || 0);
-        const maxRetryDelayMs = Math.max(0, Number(cfg.maxRetryDelayMs ?? errorHandling?.maxRetryDelayMs ?? HTTP.RETRY_MAX_DELAY_MS) || HTTP.RETRY_MAX_DELAY_MS);
-        const backoffMultiplier = Number(cfg.backoffMultiplier ?? errorHandling?.backoffMultiplier ?? HTTP.BACKOFF_MULTIPLIER) || HTTP.BACKOFF_MULTIPLIER;
-        const timeoutMs = Math.max(0, Number(cfg.timeoutMs ?? 0) || 0);
-        const maxBatchSize = Math.max(0, Number(cfg.maxBatchSize ?? 0) || 0);
+        // Resolve retry/timeout/batch config from step config with pipeline error handling fallbacks
+        const { retries, retryDelayMs, maxRetryDelayMs, backoffMultiplier, timeoutMs, maxBatchSize } = resolveHttpRetryConfig(cfg, errorHandling);
 
         try {
             headers = await resolveAuthHeaders(ctx, this.secretService, cfg, headers);
@@ -145,88 +114,39 @@ export class GraphqlMutationHandler implements LoaderHandler {
 
         await assertUrlSafe(endpoint);
 
-        // Circuit breaker key based on endpoint host
-        const circuitKey = this.getCircuitKey(endpoint);
+        const circuitKey = deriveCircuitKey('graphql-loader', endpoint);
+        const reqHeaders: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...headers };
 
-        type FetchResult = { ok: true } | { ok: false; error: string; isCircuitOpen?: boolean };
-
-        const doFetch = async (body: { query: string; variables: Record<string, unknown> }): Promise<FetchResult> => {
-            // Check circuit breaker before making request
-            if (this.circuitBreaker && !this.circuitBreaker.canExecute(circuitKey)) {
-                return { ok: false, error: 'Circuit breaker is open - endpoint temporarily unavailable', isCircuitOpen: true };
-            }
-
-            const controller = timeoutMs > 0 ? new AbortController() : undefined;
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            if (controller && timeoutMs > 0) {
-                timer = setTimeout(() => controller.abort(), timeoutMs);
-            }
+        /** GraphQL-specific response checker: inspect body for GraphQL-level errors */
+        const onGraphqlResponse = async (res: Response): Promise<HttpFetchResult | undefined> => {
             try {
-                const reqHeaders: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...headers };
+                const responseBody = await res.json() as { errors?: Array<{ message: string }> };
+                if (responseBody.errors && responseBody.errors.length > 0) {
+                    const errorMessages = responseBody.errors.map(e => e.message).join('; ');
+                    return { ok: false, error: `GraphQL errors: ${errorMessages}` };
+                }
+            } catch {
+                // If we can't parse the response, treat HTTP 2xx as success
+            }
+            return undefined;
+        };
 
-                const res = await fetchImpl(endpoint, {
+        const fetchWithRetry = async (body: { query: string; variables: Record<string, unknown> }): Promise<HttpFetchResult> => {
+            return execHttpWithRetry(
+                () => doHttpFetch({
+                    endpoint,
                     method: 'POST',
                     headers: reqHeaders,
                     body: JSON.stringify(body),
-                    signal: controller?.signal,
-                });
-                if (res?.ok) {
-                    // Check for GraphQL-level errors in the response body
-                    try {
-                        const responseBody = await res.json() as { errors?: Array<{ message: string }> };
-                        if (responseBody.errors && responseBody.errors.length > 0) {
-                            const errorMessages = responseBody.errors.map(e => e.message).join('; ');
-                            this.circuitBreaker?.recordFailure(circuitKey);
-                            return { ok: false, error: `GraphQL errors: ${errorMessages}` };
-                        }
-                    } catch {
-                        // If we can't parse the response, treat HTTP 2xx as success
-                    }
-                    // Record success with circuit breaker
-                    this.circuitBreaker?.recordSuccess(circuitKey);
-                    return { ok: true };
-                }
-                // Record failure with circuit breaker for server errors
-                if (res?.status && res.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR) {
-                    this.circuitBreaker?.recordFailure(circuitKey);
-                }
-                return { ok: false, error: `HTTP ${res?.status ?? 'unknown'}: ${res?.statusText ?? 'Request failed'}` };
-            } catch (err: unknown) {
-                const error = err as Error & { name?: string };
-                const errorMsg = error?.name === 'AbortError'
-                    ? `Request timeout after ${timeoutMs}ms`
-                    : (error?.message ?? 'Unknown fetch error');
-                this.logger.warn('GraphQL mutation fetch failed', {
+                    timeoutMs,
+                    circuitKey,
+                    circuitBreaker: this.circuitBreaker,
+                    logger: this.logger,
                     stepKey: step.key,
-                    endpoint,
-                    error: errorMsg,
-                });
-                // Record failure with circuit breaker for network errors
-                this.circuitBreaker?.recordFailure(circuitKey);
-                return { ok: false, error: errorMsg };
-            } finally {
-                if (timer) clearTimeout(timer);
-            }
-        };
-
-        const execWithRetry = async (body: { query: string; variables: Record<string, unknown> }): Promise<FetchResult> => {
-            let attempt = 0;
-            let lastResult: FetchResult = { ok: false, error: 'No attempts made' };
-            while (attempt <= retries) {
-                lastResult = await doFetch(body);
-                if (lastResult.ok) return lastResult;
-                // Don't retry if circuit is open
-                if ('isCircuitOpen' in lastResult && lastResult.isCircuitOpen) {
-                    return lastResult;
-                }
-                attempt++;
-                if (attempt <= retries && retryDelayMs > 0) {
-                    // Calculate exponential backoff delay
-                    const expDelay = Math.min(retryDelayMs * Math.pow(backoffMultiplier, attempt - 1), maxRetryDelayMs);
-                    await sleep(expDelay);
-                }
-            }
-            return lastResult;
+                    onResponse: onGraphqlResponse,
+                }),
+                { retries, retryDelayMs, maxRetryDelayMs, backoffMultiplier },
+            );
         };
 
         const batchMode = String(cfg.batchMode ?? 'single');
@@ -237,7 +157,7 @@ export class GraphqlMutationHandler implements LoaderHandler {
                 for (const arr of chunks) {
                     const batchVariables = arr.map(rec => this.mapVariables(rec, variableMapping));
                     const body = { query: mutation, variables: { input: batchVariables } };
-                    const result = await execWithRetry(body);
+                    const result = await fetchWithRetry(body);
                     if (result.ok) {
                         ok += arr.length;
                     } else {
@@ -263,7 +183,7 @@ export class GraphqlMutationHandler implements LoaderHandler {
                     }
                     const variables = this.mapVariables(rec, variableMapping);
                     const body = { query: mutation, variables };
-                    const result = await execWithRetry(body);
+                    const result = await fetchWithRetry(body);
                     if (result.ok) {
                         ok++;
                     } else {
@@ -280,8 +200,10 @@ export class GraphqlMutationHandler implements LoaderHandler {
                 }
             }
         } catch (e: unknown) {
-            fail += input.length;
-            for (const rec of input) {
+            const processedCount = ok + fail;
+            const unprocessed = input.slice(processedCount);
+            fail += unprocessed.length;
+            for (const rec of unprocessed) {
                 if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'graphqlMutation failed', rec as JsonObject);
             }
         }

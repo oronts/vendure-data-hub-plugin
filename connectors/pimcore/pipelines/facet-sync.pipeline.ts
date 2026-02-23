@@ -1,12 +1,18 @@
 import { createPipeline } from '../../../src';
 import { PipelineDefinition } from '../../../src/types';
+import { TRIGGER_TYPE, VALIDATION_MODE, HOOK_STAGE } from '../../../shared/constants/enums';
+import { LOADER_CODE } from '../../../src/constants/adapters';
+import { TRANSFORM_OPERATOR, HOOK_ACTION } from '../../../src/sdk/constants';
+import { pimcoreGraphQLExtractor } from '../extractors/pimcore-graphql.extractor';
 import { PimcoreConnectorConfig } from '../types';
+import { PIMCORE_API_KEY_SECRET } from '../index';
+import { DEFAULT_CHANNEL_CODE } from '../../../shared/constants';
 
 export function createFacetSyncPipeline(config: PimcoreConnectorConfig): PipelineDefinition {
     const {
         connection,
         pipelines,
-        vendureChannel = '__default_channel__',
+        vendureChannel = DEFAULT_CHANNEL_CODE,
         defaultLanguage = 'en',
     } = config;
 
@@ -16,7 +22,7 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
         return createPipeline()
             .name('Pimcore Facet Sync (Disabled)')
             .description('Facet sync is disabled')
-            .trigger('MANUAL', { type: 'MANUAL' })
+            .trigger(TRIGGER_TYPE.MANUAL, { type: TRIGGER_TYPE.MANUAL })
             .build();
     }
 
@@ -26,22 +32,22 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
         .capabilities({ requires: ['UpdateCatalog'] });
 
     if (pipelineConfig.schedule) {
-        pipeline.trigger('scheduled', { type: 'SCHEDULE', cron: pipelineConfig.schedule, timezone: 'UTC' });
+        pipeline.trigger('scheduled', { type: TRIGGER_TYPE.SCHEDULE, cron: pipelineConfig.schedule, timezone: 'UTC' });
     }
 
-    pipeline.trigger('MANUAL', { type: 'MANUAL', enabled: true });
+    pipeline.trigger(TRIGGER_TYPE.MANUAL, { type: TRIGGER_TYPE.MANUAL, enabled: true });
 
     pipeline.extract('fetch-facets', {
-        adapterCode: 'pimcoreGraphQL',
+        adapterCode: pimcoreGraphQLExtractor.code,
         'connection.endpoint': connection.endpoint,
-        'connection.apiKeySecretCode': connection.apiKeySecretCode ?? 'pimcore-api-key',
+        'connection.apiKeySecretCode': connection.apiKeySecretCode ?? PIMCORE_API_KEY_SECRET,
         entityType: 'facet',
         first: 100,
         defaultLanguage,
     });
 
     pipeline.validate('validate-facets', {
-        errorHandlingMode: 'ACCUMULATE',
+        errorHandlingMode: VALIDATION_MODE.ACCUMULATE,
         rules: [
             { type: 'business', spec: { field: 'key', required: true, error: 'Facet key required' } },
         ],
@@ -49,11 +55,11 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
 
     pipeline.transform('transform-facets', {
         operators: [
-            { op: 'template', args: { template: 'pimcore:facet:${key}', target: 'externalId' } },
-            { op: 'slugify', args: { source: 'key', target: 'code' } },
-            { op: 'coalesce', args: { paths: ['title', 'key'], target: 'name' } },
+            { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: 'pimcore:facet:${key}', target: 'externalId' } },
+            { op: TRANSFORM_OPERATOR.SLUGIFY, args: { source: 'key', target: 'code' } },
+            { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: ['title', 'key'], target: 'name' } },
             {
-                op: 'map',
+                op: TRANSFORM_OPERATOR.MAP,
                 args: {
                     mapping: { externalId: 'externalId', code: 'code', name: 'name', options: 'options' },
                 },
@@ -62,22 +68,22 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
     });
 
     pipeline.load('upsert-facets', {
-        adapterCode: 'facetUpsert',
+        adapterCode: LOADER_CODE.FACET_UPSERT,
         codeField: 'code',
         nameField: 'name',
         channel: vendureChannel,
     });
 
     pipeline.transform('extract-facet-values', {
-        operators: [{ op: 'flatten', args: { source: 'options', preserveParent: true, parentFields: ['code'] } }],
+        operators: [{ op: TRANSFORM_OPERATOR.FLATTEN, args: { source: 'options', preserveParent: true, parentFields: ['code'] } }],
     });
 
     pipeline.transform('transform-facet-values', {
         operators: [
-            { op: 'slugify', args: { source: 'key', target: 'valueCode' } },
-            { op: 'coalesce', args: { paths: ['value', 'key'], target: 'valueName' } },
+            { op: TRANSFORM_OPERATOR.SLUGIFY, args: { source: 'key', target: 'valueCode' } },
+            { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: ['value', 'key'], target: 'valueName' } },
             {
-                op: 'map',
+                op: TRANSFORM_OPERATOR.MAP,
                 args: {
                     mapping: { facetCode: '_parent.code', code: 'valueCode', name: 'valueName' },
                 },
@@ -86,14 +92,14 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
     });
 
     pipeline.load('upsert-facet-values', {
-        adapterCode: 'facetValueUpsert',
+        adapterCode: LOADER_CODE.FACET_VALUE_UPSERT,
         facetCodeField: 'facetCode',
         codeField: 'code',
         nameField: 'name',
         channel: vendureChannel,
     });
 
-    pipeline.edge('MANUAL', 'fetch-facets');
+    pipeline.edge(TRIGGER_TYPE.MANUAL, 'fetch-facets');
     if (pipelineConfig.schedule) pipeline.edge('scheduled', 'fetch-facets');
     pipeline.edge('fetch-facets', 'validate-facets');
     pipeline.edge('validate-facets', 'transform-facets');
@@ -103,11 +109,9 @@ export function createFacetSyncPipeline(config: PimcoreConnectorConfig): Pipelin
     pipeline.edge('transform-facet-values', 'upsert-facet-values');
 
     pipeline.hooks({
-        PIPELINE_COMPLETED: [{ type: 'LOG', name: 'Log completion' }],
-        PIPELINE_FAILED: [{ type: 'LOG', name: 'Log failure' }],
+        [HOOK_STAGE.PIPELINE_COMPLETED]: [{ type: HOOK_ACTION.LOG, name: 'Log completion' }],
+        [HOOK_STAGE.PIPELINE_FAILED]: [{ type: HOOK_ACTION.LOG, name: 'Log failure' }],
     });
 
     return pipeline.build();
 }
-
-export default createFacetSyncPipeline;

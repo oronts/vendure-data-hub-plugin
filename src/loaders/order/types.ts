@@ -52,6 +52,7 @@ export const ORDER_LOADER_METADATA = {
     entityType: VendureEntityType.ORDER,
     name: 'Order Loader',
     description: 'Imports orders for system migrations (not for normal order processing)',
+    adapterCode: 'orderNote',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['code', 'id'],
     requiredFields: ['customerEmail', 'lines'],

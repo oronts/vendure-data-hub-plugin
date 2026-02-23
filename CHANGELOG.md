@@ -1,9 +1,128 @@
 # Changelog
 
-All notable changes to the Vendure Data Hub Plugin will be documented in this file.
+All notable changes to the Data Hub Plugin are documented here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [Unreleased]
+
+### Added
+
+- Script caching for hook interceptors with bounded LRU eviction (`MAX_SCRIPT_CACHE=100`)
+- Shared utility functions: string-case conversions, ID generation, query-key factory
+- Gate events (`GateApprovalRequested`, `GateApproved`, `GateRejected`, `GateTimeout`) and trigger events (`TriggerFired`, `ScheduleActivated`, `ScheduleDeactivated`) documentation in `events.md`
+- `TriggerSchemaFields` component supports `select`, `boolean`, and `number` field types
+
+### Fixed
+
+- Standardized `PipelineRunCancelled` event name across linear and graph executors
+- Error propagation in load executor now surfaces root cause correctly
+- Gate timeout delay tracking uses monotonic time reference
+- Distributed lock eviction logs warning when map reaches capacity
+- Type-safe incremental comparison in database extractor (consistent column types)
+
+### Improved
+
+- DRY: extracted duplicated patterns into shared utilities (string-case, ID generation, query-key factory)
+- Documentation accuracy: custom-extractors imports, enrich step config fields, operator lookup descriptions
+
+## [1.1.0] - 2026-02-17
+
+### Added
+
+- **Import & Export Wizards** - Step-by-step guided wizards for creating import and export pipelines without using the raw pipeline editor
+  - Import Wizard: source selection, entity targeting, field mapping, strategy configuration, scheduling
+  - Export Wizard: entity selection, field picking, format configuration, destination setup, scheduling
+  - Template system: pre-configured blueprints that pre-fill wizard steps for common scenarios
+  - Accessible from the Pipelines list page via dedicated buttons
+
+- **Built-in Import Templates** (6 templates)
+  - REST API Product Sync (featured)
+  - JSON Product Import
+  - Magento Product Export CSV (featured)
+  - XML Product Feed Import
+  - ERP Inventory Sync (featured)
+  - CRM Customer Sync
+
+- **Built-in Export Templates** (8 dashboard templates + 4 plugin defaults)
+  - Google Merchant Center Feed (featured)
+  - Meta (Facebook) Catalog Feed (featured)
+  - Amazon Product Feed
+  - Product Catalog CSV (featured)
+  - Product Catalog JSON
+  - Customer Export CSV
+  - Order Export CSV
+  - Inventory Report CSV
+  - Product XML Feed (plugin default)
+  - Order Analytics CSV (plugin default)
+  - Customer GDPR Export (plugin default)
+  - Inventory Reconciliation Report (plugin default)
+
+- **Custom Template Registration** via `importTemplates` and `exportTemplates` in `DataHubPluginOptions`
+  - Templates appear alongside built-in ones in the wizard UI
+  - Support field mapping definitions for automatic pre-fill
+  - `TemplateRegistryService` for runtime template registration
+
+- **Programmatic Script Hooks** via `scripts` in `DataHubPluginOptions`
+  - Register named `ScriptFunction` handlers at plugin init
+  - Scripts auto-register on startup via `HookService`
+  - Reference scripts by name in pipeline SCRIPT hook actions
+  - Full access to records, `HookContext` (pipelineId, runId, stage), and optional args
+  - Can filter, transform, enrich, or reject records at any of the 18 hook stages
+
+- **Connector Template System** - Connectors can now ship `importTemplates` and `exportTemplates`
+  - Pimcore connector ships 4 import templates (Product, Category, Asset, Facet Sync) and 1 export template
+  - `ConnectorRegistry` provides `getImportTemplates()`, `getExportTemplates()`, and `getPluginTemplates()` methods
+  - Spread connector templates into `DataHubPlugin.init()` to make them appear in the wizard UI
+
+- **Pipeline Event Type Exports** - Public API now exports event type constants and their TypeScript types:
+  - `RUN_EVENT_TYPES`, `WEBHOOK_EVENT_TYPES`, `STEP_EVENT_TYPES`, `LOG_EVENT_TYPES`, `PIPELINE_EVENT_TYPES`
+  - Corresponding type exports: `RunEventType`, `WebhookEventType`, `StepEventType`, `LogEventType`, `PipelineEventType`
+
+### Changed
+
+- `DataHubPlugin.options` default now includes `importTemplates` and `exportTemplates` from built-in defaults
+- `HookService` now accepts `DATAHUB_PLUGIN_OPTIONS` injection and auto-registers scripts from plugin options on init
+- `ConnectorDefinition` interface extended with optional `importTemplates` and `exportTemplates` fields
+
+## [1.0.0] - 2026-02-16
+
+### Production Readiness
+
+- 74 audit rounds completed across backend, dashboard, SDK, connectors, and docs
+- Zero TODO/FIXME/HACK markers, zero `as any` casts, zero dead code
+- All enums use SCREAMING_SNAKE_CASE, hooks use kebab-case, .tsx files use PascalCase
+- TypeScript compiles clean (`npx tsc --noEmit`)
+
+### Security
+
+- SSRF protection on all outbound HTTP requests (webhook, extractor, API calls)
+- SQL injection guards on dynamic queries
+- Sandboxed evaluator for user-provided expressions (vm module with frozen builtins)
+- Encrypted secret storage with provider abstraction (ENV, INLINE)
+- Channel isolation properly enforced through resolvers and services
+- Code security validation for interceptor hooks (dangerous pattern detection)
+
+### Features
+
+- Full ETL pipeline engine: Extract (9 extractors) -> Transform (61 operators across 11 categories) -> Load (22 loaders) -> Export/Feed
+- Visual drag-and-drop pipeline builder with simple and workflow modes
+- Code-first DSL with `createPipeline()` builder and typed configurations
+- 9 data extractors: REST API, GraphQL, File (CSV/JSON/XML/XLSX), Database, S3, FTP/SFTP, Vendure Query, Webhook, CDC
+- 22 loaders: Product, Variant, Customer, Customer Group, Collection, Facet, FacetValue, Promotion, Order (Note, Transition, Coupon), Shipping Method, Stock Location, Stock/Inventory, Asset (Attach, Import), Tax Rate, Payment Method, Channel, GraphQL Mutation, REST POST
+- 61 transform operators across 11 categories (string, numeric, date, logic, JSON, data, enrichment, aggregation, validation, script, file)
+- Product feed generators: Google Shopping, Meta/Facebook Catalog, Amazon, custom XML/JSON
+- Search sinks: Elasticsearch, MeiliSearch, Algolia, Typesense
+- Pipeline hooks: 18 stages with INTERCEPTOR, SCRIPT, WEBHOOK, EMIT, TRIGGER_PIPELINE, LOG action types
+- Gate steps for human approval workflows (MANUAL, THRESHOLD, TIMEOUT)
+- Pipeline versioning with diff, revision history, impact analysis, and risk assessment
+- Real-time pipeline monitoring with WebSocket subscriptions
+- Error quarantine with retry, replay, and dead letter queue
+- Checkpointing for resumable pipeline runs
+- Distributed locking for concurrent execution safety
+- Rate limiting and circuit breaker patterns
+- Scheduling with cron expressions and interval triggers
+- Pimcore PIM/DAM connector with 4 sync pipelines
+- 18 GraphQL resolvers + 2 REST controllers
+- Comprehensive permission system (27 permissions)
 
 ## [0.1.0] - 2026-01-30
 
@@ -57,7 +176,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security Notes
 - Secrets stored with INLINE provider are encrypted at rest when DATAHUB_MASTER_KEY environment variable is configured
-- Generate a master key: \`openssl rand -hex 32\`
+- Generate a master key: `openssl rand -hex 32`
 - Without encryption configured, INLINE secrets are stored as plain text (warning logged at startup)
 
 ### Configuration
@@ -72,14 +191,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Production Deployment guide
 - API Reference
 
-## [Unreleased]
-
-### Planned
-- Additional audit logging for admin actions
-- Key rotation utility for secret encryption
-- Enhanced multi-tenancy documentation
-- Additional test coverage
-
 ---
 
 ## Migration Notes
@@ -89,9 +200,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 If upgrading from a pre-release version:
 
 1. **Database Migration**: Run Vendure migrations to create new tables
-   \`\`\`bash
+   ```bash
    npx vendure migrate
-   \`\`\`
+   ```
 
 2. **Secret Encryption**: To enable encryption for existing secrets:
    - Set DATAHUB_MASTER_KEY environment variable
@@ -104,5 +215,5 @@ If upgrading from a pre-release version:
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/oronts/vendure-data-hub-plugin/issues)
-- **Documentation**: See \`/docs\` folder
-- **Examples**: See \`/dev-server/examples\` folder
+- **Documentation**: See `/docs` folder
+- **Examples**: See `/dev-server/examples` folder

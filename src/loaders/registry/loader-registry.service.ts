@@ -3,24 +3,10 @@ import { ModuleRef } from '@nestjs/core';
 import { EntityLoader, LoaderRegistry, EntityFieldSchema, TargetOperation } from '../../types/index';
 import { VendureEntityType as VendureEntityTypeUnion } from '../../types/index';
 import { VendureEntityType } from '../../constants/enums';
-import { ProductVariantLoader } from '../product-variant';
-import { ProductLoader } from '../product';
-import { CustomerLoader } from '../customer';
-import { CollectionLoader } from '../collection';
-import { FacetLoader } from '../facet';
-import { FacetValueLoader } from '../facet-value';
-import { PromotionLoader } from '../promotion';
-import { CustomerGroupLoader } from '../customer-group';
-import { AssetLoader } from '../asset';
-import { OrderLoader } from '../order';
-import { StockLocationLoader } from '../stock-location';
-import { InventoryLoader } from '../inventory';
-import { ShippingMethodLoader } from '../shipping-method';
-import { TaxRateLoader } from '../tax-rate';
-import { PaymentMethodLoader } from '../payment-method';
-import { ChannelLoader } from '../channel';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { ENTITY_LOADER_REGISTRY } from '../entity-loader-registry';
+import { toErrorOrUndefined } from '../../utils/error.utils';
 
 export type LoaderRegistrationCallback = (registry: LoaderRegistryService) => void | Promise<void>;
 
@@ -39,29 +25,10 @@ export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
 
     async onModuleInit() {
         try {
-            this.register(await this.moduleRef.resolve(ProductLoader));
-            this.register(await this.moduleRef.resolve(ProductVariantLoader));
-
-            this.register(await this.moduleRef.resolve(CustomerLoader));
-            this.register(await this.moduleRef.resolve(CustomerGroupLoader));
-
-            this.register(await this.moduleRef.resolve(CollectionLoader));
-            this.register(await this.moduleRef.resolve(FacetLoader));
-            this.register(await this.moduleRef.resolve(FacetValueLoader));
-
-            this.register(await this.moduleRef.resolve(PromotionLoader));
-            this.register(await this.moduleRef.resolve(OrderLoader));
-            this.register(await this.moduleRef.resolve(ShippingMethodLoader));
-
-            this.register(await this.moduleRef.resolve(StockLocationLoader));
-            this.register(await this.moduleRef.resolve(InventoryLoader));
-
-            this.register(await this.moduleRef.resolve(AssetLoader));
-
-            // Tax, Payment & Channel
-            this.register(await this.moduleRef.resolve(TaxRateLoader));
-            this.register(await this.moduleRef.resolve(PaymentMethodLoader));
-            this.register(await this.moduleRef.resolve(ChannelLoader));
+            // Auto-register all loaders from the entity loader registry
+            for (const [, LoaderClass] of ENTITY_LOADER_REGISTRY) {
+                this.register(await this.moduleRef.resolve(LoaderClass as any));
+            }
 
             for (const callback of this.customCallbacks) {
                 try {
@@ -69,7 +36,7 @@ export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
                 } catch (error) {
                     this.logger.error(
                         'Loader registration callback failed',
-                        error instanceof Error ? error : undefined,
+                        toErrorOrUndefined(error),
                     );
                 }
             }
@@ -80,7 +47,7 @@ export class LoaderRegistryService implements LoaderRegistry, OnModuleInit {
         } catch (error) {
             this.logger.error(
                 'Failed to register loaders',
-                error instanceof Error ? error : undefined,
+                toErrorOrUndefined(error),
             );
         }
     }

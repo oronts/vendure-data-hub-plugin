@@ -8,6 +8,7 @@ import { slugify } from '../operators/helpers';
 import { evaluateCondition } from '../operators/logic/helpers';
 import { ComparisonOperator } from '../../shared/types';
 import { getErrorMessage } from '../utils/error.utils';
+import { validateRegexSafety } from '../utils/safe-regex.utils';
 import {
     getNestedValue,
     setNestedValue,
@@ -15,6 +16,7 @@ import {
     deepClone as deepCloneUtil,
 } from '../utils/object-path.utils';
 import { parseCsvLine } from '../parsers/formats/csv.parser';
+import { escapeXml } from '../parsers/formats/xml.parser';
 
 export function ensureDirectoryExists(filePath: string): void {
     const dir = path.dirname(filePath);
@@ -148,16 +150,16 @@ export function pickForHash(obj: JsonObject, includePaths: string[], excludePath
 }
 
 /**
- * Sets a value at a dot-notation path in an object.
- * Uses the canonical implementation from object-path.utils.
+ * Convenience alias for {@link setNestedValue} from object-path.utils.
+ * Kept to avoid renaming 79+ call sites across executors/strategies.
  */
 export function setPath(obj: JsonObject, pathStr: string, value: JsonValue): void {
     setNestedValue(obj, pathStr, value);
 }
 
 /**
- * Removes a value at a dot-notation path from an object.
- * Uses the canonical implementation from object-path.utils.
+ * Convenience alias for {@link removeNestedValue} from object-path.utils.
+ * Kept to avoid renaming call sites across executors/strategies.
  */
 export function removePath(obj: JsonObject, pathStr: string): void {
     removeNestedValue(obj, pathStr);
@@ -184,8 +186,8 @@ export function stableStringify(value: JsonValue): string {
 }
 
 /**
- * Gets a value at a dot-notation path from an object.
- * Uses the canonical implementation from object-path.utils.
+ * Convenience alias for {@link getNestedValue} from object-path.utils.
+ * Kept to avoid renaming 79+ call sites across executors/strategies.
  */
 export function getPath(obj: JsonObject, pathStr: string): JsonValue {
     return getNestedValue(obj, pathStr ?? '') as JsonValue;
@@ -234,11 +236,16 @@ export function validateAgainstSimpleSpec(
             if (typeof spec.minLength === 'number' && value.length < spec.minLength) errors.push(`${key} length must be >= ${spec.minLength}`);
             if (typeof spec.maxLength === 'number' && value.length > spec.maxLength) errors.push(`${key} length must be <= ${spec.maxLength}`);
             if (spec.pattern) {
-                try {
-                    const re = new RegExp(spec.pattern);
-                    if (!re.test(value)) errors.push(`${key} does not match pattern`);
-                } catch (error) {
-                    errors.push(`${key} has invalid regex pattern: ${getErrorMessage(error)}`);
+                const safetyCheck = validateRegexSafety(spec.pattern);
+                if (!safetyCheck.safe) {
+                    errors.push(`${key} has unsafe regex pattern: ${safetyCheck.reason}`);
+                } else {
+                    try {
+                        const re = new RegExp(spec.pattern);
+                        if (!re.test(value)) errors.push(`${key} does not match pattern`);
+                    } catch (error) {
+                        errors.push(`${key} has invalid regex pattern: ${getErrorMessage(error)}`);
+                    }
                 }
             }
         }
@@ -259,6 +266,7 @@ export function chunk<T>(arr: T[], size: number): T[][] {
 
 export { sleep } from '../utils/retry.utils';
 
+/** Re-exported from object-path.utils for runtime module convenience */
 export { deepCloneUtil as deepClone };
 
 /**
@@ -272,11 +280,10 @@ export function csvEscape(val: string, delimiter: string): string {
 }
 
 /**
- * Escapes a value for XML output
+ * Escapes a value for XML output.
+ * Re-exported from parsers/formats/xml.parser.ts (canonical implementation).
  */
-export function xmlEscape(val: string): string {
-    return val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-}
+export const xmlEscape = escapeXml;
 
 /**
  * Converts an array of records to CSV format

@@ -12,6 +12,7 @@ import {
 
 /**
  * Path utilities for operators.
+ * Re-exported from object-path.utils for operator module convenience.
  */
 export const getNestedValue = getNestedValueUtil;
 export const setNestedValue = setNestedValueUtil;
@@ -78,15 +79,15 @@ export function compare(
     }
 }
 
-export { evaluateConditions } from './logic/helpers';
-
 export function slugify(text: string, separator = '-'): string {
+    // Escape regex metacharacters in separator to prevent regex injection
+    const escaped = separator.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return text
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
         .replace(/[^a-z0-9]+/g, separator)
-        .replace(new RegExp(`^${separator}+|${separator}+$`, 'g'), '')
+        .replace(new RegExp(`^${escaped}+|${escaped}+$`, 'g'), '')
         .substring(0, TRANSFORM_LIMITS.SLUG_MAX_LENGTH);
 }
 

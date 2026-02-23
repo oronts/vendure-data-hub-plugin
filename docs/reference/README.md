@@ -33,28 +33,32 @@ Complete reference documentation for all Data Hub adapters.
 | `cdc` | Change Data Capture - poll database tables for changes |
 | `webhook` | Incoming webhook payloads |
 
-### Loaders (18)
+### Loaders (22 - 20 Entity + 2 External API)
 
-| Entity Type | Description |
-|-------------|-------------|
-| `PRODUCT` | Create/update products with facets and assets |
-| `PRODUCT_VARIANT` | Update variants by SKU with multi-currency prices |
-| `CUSTOMER` | Create/update customers with addresses and groups |
-| `CUSTOMER_GROUP` | Create/update customer groups with member assignments |
-| `COLLECTION` | Create/update collections with parent relationships |
-| `FACET` | Create/update facets for categorization |
-| `FACET_VALUE` | Create/update facet values within facets |
-| `PROMOTION` | Create/update promotions with conditions and actions |
-| `ORDER` | Create/update orders with line items |
-| `SHIPPING_METHOD` | Create/update shipping methods with calculators |
-| `STOCK_LOCATION` | Create/update stock locations |
-| `INVENTORY` | Adjust inventory levels by SKU and location |
-| `ASSET` | Create/update assets and attach to entities |
-| `TAX_RATE` | Create/update tax rates with category and zone |
-| `PAYMENT_METHOD` | Create/update payment methods with handlers |
-| `CHANNEL` | Create/update channels with currencies and languages |
-| `REST_POST` | POST data to custom REST endpoints |
-| `GRAPHQL_MUTATION` | Send records as GraphQL mutations to external APIs |
+| Code | Description |
+|------|-------------|
+| `productUpsert` | Upsert products by slug/SKU with facets and assets |
+| `variantUpsert` | Update variants by SKU with multi-currency prices |
+| `customerUpsert` | Create/update customers with addresses and groups |
+| `customerGroupUpsert` | Create/update customer groups with member assignments |
+| `collectionUpsert` | Create/update collections with parent relationships |
+| `facetUpsert` | Create/update facets for categorization |
+| `facetValueUpsert` | Create/update facet values within facets |
+| `promotionUpsert` | Create/update promotions with conditions and actions |
+| `orderNote` | Add notes to existing orders |
+| `orderTransition` | Transition order states |
+| `applyCoupon` | Apply coupon codes to orders |
+| `shippingMethodUpsert` | Create/update shipping methods with calculators |
+| `stockLocationUpsert` | Create/update stock locations |
+| `stockAdjust` | Adjust stock levels by SKU |
+| `inventoryAdjust` | Adjust inventory levels by SKU and location |
+| `assetAttach` | Attach existing assets to entities |
+| `assetImport` | Import assets from external URLs |
+| `taxRateUpsert` | Create/update tax rates with category and zone |
+| `paymentMethodUpsert` | Create/update payment methods with handlers |
+| `channelUpsert` | Create/update channels with currencies and languages |
+| `restPost` | POST data to custom REST endpoints |
+| `graphqlMutation` | Send records as GraphQL mutations to external APIs |
 
 ### Operator Categories (61 operators)
 
@@ -67,24 +71,26 @@ Complete reference documentation for all Data Hub adapters.
 | Logic (4) | `when`, `ifThenElse`, `switch`, `deltaFilter` |
 | JSON (4) | `pick`, `omit`, `parseJson`, `stringifyJson` |
 | Enrichment (5) | `lookup`, `enrich`, `coalesce`, `default`, `httpLookup` |
-| Aggregation (8) | `aggregate`, `multiJoin`, `count`, `unique`, `flatten`, `first`, `last`, `expand` |
+| Aggregation (8) | `aggregate`, `multiJoin`, `flatten`, `count`, `unique`, `first`, `last`, `expand` |
 | File (3) | `imageResize`, `imageConvert`, `pdfGenerate` |
 | Validation (2) | `validateRequired`, `validateFormat` |
 | Advanced (1) | `script` |
 
-### Feed Types (5)
+### Feed Types (4)
 
 | Adapter Code | Platform |
 |--------------|----------|
 | `googleMerchant` | Google Merchant Center / Google Shopping |
 | `metaCatalog` | Meta/Facebook/Instagram Catalog |
+| `amazonFeed` | Amazon Seller Central |
 | `customFeed` | Custom CSV, JSON, or XML format |
 
-### Sink Types (6)
+### Sink Types (7)
 
 | Code | Engine |
 |------|--------|
-| `elasticsearch` | Elasticsearch / OpenSearch |
+| `elasticsearch` | Elasticsearch |
+| `opensearch` | OpenSearch |
 | `meilisearch` | MeiliSearch |
 | `algolia` | Algolia |
 | `typesense` | Typesense |

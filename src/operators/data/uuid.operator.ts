@@ -1,6 +1,7 @@
-import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject } from '../types';
 import { UuidOperatorConfig } from './types';
 import { applyUuid } from './helpers';
+import { createRecordOperator } from '../operator-factory';
 
 /**
  * Operator definition for generating UUIDs.
@@ -9,6 +10,9 @@ export const UUID_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'uuid',
     description: 'Generate a UUID for each record. Supports v4 (random) and v5 (namespace-based deterministic).',
+    category: 'DATA',
+    categoryLabel: 'Data',
+    categoryOrder: 0,
     pure: false, // v4 is not deterministic
     schema: {
         fields: [
@@ -58,26 +62,4 @@ export function applyUuidOperator(
     return applyUuid(record, config.target, config.version, config.namespace, config.source);
 }
 
-/**
- * Generate UUID for each record.
- */
-export function uuidOperator(
-    records: readonly JsonObject[],
-    config: UuidOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    if (!config.target) {
-        return { records: [...records] };
-    }
-
-    const results = records.map(record =>
-        applyUuid(
-            record,
-            config.target,
-            config.version,
-            config.namespace,
-            config.source,
-        ),
-    );
-    return { records: results };
-}
+export const uuidOperator = createRecordOperator(applyUuidOperator);

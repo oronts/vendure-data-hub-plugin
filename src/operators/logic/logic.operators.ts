@@ -12,12 +12,17 @@ import {
     calculateRecordHash,
 } from './helpers';
 import { getNestedValue } from '../helpers';
+import { createRecordOperator } from '../operator-factory';
 
 export const WHEN_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'when',
     description: 'Filter records by conditions. Action: keep or drop.',
+    category: 'LOGIC',
+    categoryLabel: 'Logic',
+    categoryOrder: 3,
     pure: true,
+    editorType: 'filter',
     schema: {
         fields: [
             {
@@ -45,6 +50,9 @@ export const IF_THEN_ELSE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'ifThenElse',
     description: 'Set a value based on a condition.',
+    category: 'LOGIC',
+    categoryLabel: 'Logic',
+    categoryOrder: 3,
     pure: true,
     schema: {
         fields: [
@@ -66,6 +74,9 @@ export const SWITCH_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'switch',
     description: 'Set a value based on multiple conditions (like a switch statement).',
+    category: 'LOGIC',
+    categoryLabel: 'Logic',
+    categoryOrder: 3,
     pure: true,
     schema: {
         fields: [
@@ -87,6 +98,9 @@ export const DELTA_FILTER_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'deltaFilter',
     description: 'Filter out unchanged records using a stable hash stored in checkpoint. Keeps only changed/new based on idPath.',
+    category: 'LOGIC',
+    categoryLabel: 'Logic',
+    categoryOrder: 3,
     pure: true,
     schema: {
         fields: [
@@ -123,47 +137,23 @@ export function whenOperator(
     };
 }
 
-export function ifThenElseOperator(
-    records: readonly JsonObject[],
-    config: IfThenElseOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyIfThenElseOperator(record: JsonObject, config: IfThenElseOperatorConfig): JsonObject {
     if (!config.condition || !config.target) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyIfThenElse(
-            record,
-            config.condition,
-            config.thenValue,
-            config.elseValue,
-            config.target,
-        ),
-    );
-    return { records: results };
+    return applyIfThenElse(record, config.condition, config.thenValue, config.elseValue, config.target);
 }
 
-export function switchOperator(
-    records: readonly JsonObject[],
-    config: SwitchOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const ifThenElseOperator = createRecordOperator(applyIfThenElseOperator);
+
+export function applySwitchOperator(record: JsonObject, config: SwitchOperatorConfig): JsonObject {
     if (!config.source || !config.cases || !config.target) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applySwitch(
-            record,
-            config.source,
-            config.cases,
-            config.default,
-            config.target,
-        ),
-    );
-    return { records: results };
+    return applySwitch(record, config.source, config.cases, config.default, config.target);
 }
+
+export const switchOperator = createRecordOperator(applySwitchOperator);
 
 export function deltaFilterOperator(
     records: readonly JsonObject[],
@@ -212,4 +202,3 @@ export function deltaFilterOperator(
         meta: { checkpoint: Object.fromEntries(newCheckpoint) },
     };
 }
-

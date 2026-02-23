@@ -5,7 +5,7 @@ import { useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import {
     ConnectionConfigEditor,
-    CONNECTION_TYPE_OPTIONS,
+    useConnectionTypeOptions,
     createDefaultConnectionConfig,
     normalizeConnectionConfig,
 } from '../../components/common';
@@ -37,6 +37,7 @@ function ConnectionDetailPage({ route }: { route: AnyRoute }) {
     const navigate = useNavigate();
     const creating = params.id === 'new';
 
+    const connectionTypeOptions = useConnectionTypeOptions();
     const { data: secretsData, isError: secretsError } = useSecrets({ take: QUERY_LIMITS.SECRETS_LIST });
 
     React.useEffect(() => {
@@ -175,7 +176,7 @@ function ConnectionDetailPage({ route }: { route: AnyRoute }) {
                                         <SelectValue placeholder="Select type" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {CONNECTION_TYPE_OPTIONS.map(opt => (
+                                        {connectionTypeOptions.map(opt => (
                                             <SelectItem key={opt.value} value={opt.value}>
                                                 {opt.label}
                                             </SelectItem>

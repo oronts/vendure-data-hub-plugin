@@ -3,7 +3,6 @@ export type { TriggerTypeValue } from './field-constants';
 
 export type {
     TemplateCategory,
-    TemplateDifficulty,
 } from './template.types';
 
 export type { JsonValue, JsonObject } from './json.types';
@@ -47,9 +46,11 @@ export {
 
 export type {
     ErrorSeverity,
+    PipelineErrorStage,
+    PipelineError,
+    RecordError,
+    PipelineStepError,
 } from './error.types';
-// NOTE: getErrorSeverity is intentionally NOT exported from shared/types.
-// Import from src/constants/error-codes instead (authoritative implementation).
 
 export type {
     TransformationType,
@@ -59,10 +60,16 @@ export type {
 } from './transform.types';
 
 export type {
+    FieldTransformType,
+    MathOperation,
+    TransformOptions,
+    PadPosition,
+    LookupType,
     FieldTransform,
     TransformType,
     TransformConfig,
     Transform,
+    MappingCondition,
     FieldMapping,
     MappingConfig,
     MappingResult,

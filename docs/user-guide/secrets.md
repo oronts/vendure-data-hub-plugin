@@ -186,10 +186,10 @@ Define secrets in your Vendure config:
 DataHubPlugin.init({
     secrets: [
         // From environment variable
-        { code: 'api-key', provider: 'env', value: 'SUPPLIER_API_KEY' },
+        { code: 'api-key', provider: 'ENV', value: 'SUPPLIER_API_KEY' },
 
         // Inline value (not recommended for production)
-        { code: 'test-key', provider: 'inline', value: 'test-value' },
+        { code: 'test-key', provider: 'INLINE', value: 'test-value' },
     ],
 })
 ```
@@ -204,7 +204,7 @@ Code-first secrets:
 ### Use Environment Variables in Production
 
 ```typescript
-{ code: 'api-key', provider: 'env', value: 'API_KEY' }
+{ code: 'api-key', provider: 'ENV', value: 'API_KEY' }
 ```
 
 This keeps secrets out of your codebase and allows different values per environment.

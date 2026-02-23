@@ -36,11 +36,11 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
 
 - **Visual Pipeline Builder** - Drag-and-drop workflow editor with live validation
 - **Code-First DSL** - TypeScript API for defining pipelines programmatically
-- **9 Data Extractors** - HTTP/REST API, GraphQL, Vendure Query, File (CSV/JSON/XML/XLSX/NDJSON/TSV), Database (SQL), S3, FTP/SFTP, Webhook, CDC (Change Data Capture)
-- **18 Entity Loaders** - Products, Variants, Customers, Customer Groups, Collections, Facets, Facet Values, Promotions, Orders (notes, transitions, coupons), Shipping Methods, Stock/Inventory, Assets, Tax Rates, Payment Methods, Channels, REST POST
+- **9 Data Extractors** - HTTP/REST API, GraphQL, Vendure Query, File (CSV/JSON/XML/XLSX/NDJSON/TSV/Parquet), Database (SQL), S3, FTP/SFTP, Webhook, CDC (Change Data Capture)
+- **22 Loaders** - Products, Variants, Customers, Customer Groups, Collections, Facets, Facet Values, Promotions, Orders (notes, transitions, coupons), Shipping Methods, Stock Locations, Stock/Inventory, Assets, Tax Rates, Payment Methods, Channels, REST POST, GraphQL Mutation
 - **61 Transform Operators** - String (12), Date (5), Numeric (9), Logic (4), JSON (4), Data (8), Enrichment (5), Aggregation (8), Validation (2), Script (1), File (3) - **includes HTTP Lookup with caching, circuit breaker, and rate limiting**
-- **6 Feed Generators** - Google Shopping, Meta/Facebook Catalog (CSV/XML), Amazon Seller Central, Custom CSV, JSON Feed, XML Feed
-- **6 Search & Integration Sinks** - Elasticsearch, MeiliSearch, Algolia, Typesense, Queue Producer (RabbitMQ/SQS/Redis), Webhook
+- **4 Feed Generators** - Google Merchant Center, Meta/Facebook Catalog, Amazon Seller Central, Custom Feed (CSV/JSON/XML/TSV)
+- **7 Search & Integration Sinks** - Elasticsearch, OpenSearch, MeiliSearch, Algolia, Typesense, Queue Producer (RabbitMQ/SQS/Redis), Webhook
 - **18 Hook Stages** - Interceptors and scripts to modify data at any pipeline stage
 - **7 Connection Types** - HTTP/REST, S3, FTP, SFTP, Database (PostgreSQL/MySQL/SQLite/MSSQL/Oracle), Message Queue (RabbitMQ/SQS/Redis), Custom
 - **6 Trigger Types** - Manual, Scheduled (cron), Webhook, Vendure Events, File Watch, **Message Queue Consumer**
@@ -136,7 +136,7 @@ const productImport = createPipeline()
     .name('Product Import')
     .description('Import products from supplier API')
     .capabilities({ requires: ['UpdateCatalog'] })
-    .trigger('start', { type: 'manual' })
+    .trigger('start', { type: 'MANUAL' })
     .extract('fetch-products', {
         adapterCode: 'httpApi',
         url: 'https://api.supplier.com/products',
@@ -160,8 +160,8 @@ const productImport = createPipeline()
     .load('upsert', {
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
-        strategy: 'upsert',
-        conflictResolution: 'source-wins',
+        strategy: 'UPSERT',
+        conflictStrategy: 'SOURCE_WINS',
         slugField: 'slug',
     })
     .edge('start', 'fetch-products')
@@ -212,15 +212,12 @@ export const config: VendureConfig = {
 | HTTP/REST API | `httpApi` | Fetch from REST APIs with pagination, auth (Bearer/Basic/HMAC), field mapping |
 | GraphQL | `graphql` | Query GraphQL endpoints with cursor/offset/relay pagination, variables, auth |
 | Vendure Query | `vendureQuery` | Query Vendure entities (Product, ProductVariant, Customer, Order, Collection, Facet, FacetValue, Promotion, Asset) |
-| CSV File | `csv` | Parse CSV files with custom delimiters and encoding |
-| JSON File | `json` | Parse JSON files with path extraction |
+| File | `file` | Parse CSV, JSON, XML, XLSX, NDJSON, TSV, Parquet files with custom delimiters and encoding |
 | Database | `database` | Query PostgreSQL, MySQL, MSSQL, SQLite with parameterized queries |
 | S3 | `s3` | Read files from AWS S3 and S3-compatible storage (MinIO, DigitalOcean Spaces) |
 | FTP/SFTP | `ftp` | Download files from FTP/SFTP servers with SSH key support |
 | Webhook | `webhook` | Receive incoming webhook data with HMAC signature verification |
 | CDC | `cdc` | Polling-based change data capture with checkpoint tracking |
-| In-Memory | `inMemory` | Extract from in-memory data (webhooks, inline) |
-| Generator | `generator` | Generate test records with configurable fields |
 
 ### HTTP API Extractor
 
@@ -349,17 +346,23 @@ Comparison operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `cont
 | `default` | Default if null | `{ op: 'default', args: { path: 'stock', value: 0 } }` |
 | `httpLookup` | Enrich from HTTP API | `{ op: 'httpLookup', args: { url: 'https://api.example.com/{{sku}}', target: 'externalData' } }` |
 
+### Array Operators
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `flatten` | Flatten nested arrays | `{ op: 'flatten', args: { source: 'nested', target: 'flat', depth: 1 } }` |
+| `count` | Count elements | `{ op: 'count', args: { source: 'items', target: 'itemCount' } }` |
+| `unique` | Remove duplicates | `{ op: 'unique', args: { source: 'items', by: 'id', target: 'uniqueItems' } }` |
+| `first` | Get first element | `{ op: 'first', args: { source: 'items', target: 'firstItem' } }` |
+| `last` | Get last element | `{ op: 'last', args: { source: 'items', target: 'lastItem' } }` |
+| `expand` | Explode to records | `{ op: 'expand', args: { path: 'variants' } }` |
+
 ### Aggregation Operators
 
 | Operator | Description | Example |
 |----------|-------------|---------|
 | `aggregate` | Aggregate values | `{ op: 'aggregate', args: { op: 'sum', source: 'amount', target: 'total' } }` |
-| `count` | Count elements | `{ op: 'count', args: { source: 'items', target: 'itemCount' } }` |
-| `unique` | Remove duplicates | `{ op: 'unique', args: { source: 'items', by: 'id', target: 'uniqueItems' } }` |
-| `flatten` | Flatten nested arrays | `{ op: 'flatten', args: { source: 'nested', target: 'flat', depth: 1 } }` |
-| `first` | Get first element | `{ op: 'first', args: { source: 'items', target: 'firstItem' } }` |
-| `last` | Get last element | `{ op: 'last', args: { source: 'items', target: 'lastItem' } }` |
-| `expand` | Explode to records | `{ op: 'expand', args: { path: 'variants' } }` |
+| `multiJoin` | Join datasets by key | `{ op: 'multiJoin', args: { leftKey: 'customerId', rightKey: 'id', rightDataPath: 'orders', type: 'LEFT' } }` |
 
 ### Advanced Operators
 
@@ -422,20 +425,24 @@ Execute custom JavaScript for complex transformations:
 | Product Loader | `productUpsert` | Create/update products with variants, prices, tax, and stock |
 | Variant Loader | `variantUpsert` | Update product variants by SKU with multi-currency prices |
 | Customer Loader | `customerUpsert` | Create/update customers with addresses and group memberships |
+| Customer Group Loader | `customerGroupUpsert` | Create/update customer groups by name; assign customers by email |
 | Collection Loader | `collectionUpsert` | Create/update collections with parent relationships |
 | Promotion Loader | `promotionUpsert` | Create/update promotions with conditions and actions |
 | Order Note Loader | `orderNote` | Attach notes to orders by code or id |
 | Order Transition Loader | `orderTransition` | Transition orders to new states |
-| Stock Adjust Loader | `stockAdjust` | Adjust inventory levels by SKU and stock location |
+| Stock Adjust Loader | `stockAdjust` | Adjust inventory levels by SKU and stock location map |
+| Inventory Adjust Loader | `inventoryAdjust` | Adjust stock levels for product variants by SKU with location targeting |
 | Asset Attach Loader | `assetAttach` | Attach existing assets to products/collections |
 | Apply Coupon Loader | `applyCoupon` | Apply coupon codes to orders |
 | Tax Rate Loader | `taxRateUpsert` | Create/update tax rates by name with category and zone |
 | Payment Method Loader | `paymentMethodUpsert` | Create/update payment methods with handler and checker |
 | Channel Loader | `channelUpsert` | Create/update channels with currencies, languages, and zones |
+| Shipping Method Loader | `shippingMethodUpsert` | Create/update shipping methods with calculator and checker |
+| Stock Location Loader | `stockLocationUpsert` | Create/update stock locations and warehouses |
 | Facet Loader | `facetUpsert` | Create/update facets with translations |
 | Facet Value Loader | `facetValueUpsert` | Create/update facet values with translations |
-| Customer Group Loader | `customerGroupUpsert` | Create/update customer groups and assign members |
-| Shipping Method Loader | `shippingMethodUpsert` | Create/update shipping methods with calculator and checker |
+| GraphQL Mutation Loader | `graphqlMutation` | Execute arbitrary GraphQL mutations against Vendure |
+| Asset Import Loader | `assetImport` | Import assets from URLs or file paths |
 | REST POST Loader | `restPost` | POST/PUT records to external REST endpoints |
 
 ### Product Loader
@@ -444,8 +451,8 @@ Execute custom JavaScript for complex transformations:
 .load('import-products', {
     adapterCode: 'productUpsert',
     channel: '__default_channel__',
-    strategy: 'upsert',                  // create, update, upsert
-    conflictResolution: 'source-wins',   // source-wins, vendure-wins, merge
+    strategy: 'UPSERT',                  // CREATE, UPDATE, UPSERT
+    conflictStrategy: 'SOURCE_WINS',     // SOURCE_WINS, VENDURE_WINS, MERGE, MANUAL_QUEUE
     nameField: 'name',
     slugField: 'slug',
     skuField: 'sku',
@@ -751,14 +758,14 @@ Index products to search engines.
 ### Manual Trigger
 
 ```typescript
-.trigger('start', { type: 'manual' })
+.trigger('start', { type: 'MANUAL' })
 ```
 
 ### Cron Schedule
 
 ```typescript
 .trigger('schedule', {
-    type: 'schedule',
+    type: 'SCHEDULE',
     cron: '0 2 * * *',                   // Daily at 2 AM
     timezone: 'America/New_York',
 })
@@ -817,7 +824,7 @@ Common patterns:
 
 ```typescript
 .trigger('on-order', {
-    type: 'event',
+    type: 'EVENT',
     event: 'OrderPlacedEvent',
     filter: { state: 'ArrangingPayment' },
 })
@@ -866,8 +873,8 @@ The plugin includes a full-featured admin dashboard:
 ```typescript
 DataHubPlugin.init({
     secrets: [
-        { code: 'api-key', provider: 'env', value: 'SUPPLIER_API_KEY' },
-        { code: 'ftp-pass', provider: 'inline', value: 'secret123' },
+        { code: 'api-key', provider: 'ENV', value: 'SUPPLIER_API_KEY' },
+        { code: 'ftp-pass', provider: 'INLINE', value: 'secret123' },
     ],
 })
 ```
@@ -938,7 +945,7 @@ DataHubPlugin.init({
 ### Custom Operator
 
 ```typescript
-import { SingleRecordOperator, JsonObject, OperatorHelpers } from '@oronts/vendure-data-hub-plugin';
+import { SingleRecordOperator, JsonObject, AdapterOperatorHelpers } from '@oronts/vendure-data-hub-plugin';
 
 interface CurrencyConvertConfig {
     field: string;
@@ -949,10 +956,10 @@ interface CurrencyConvertConfig {
 
 const currencyConvert: SingleRecordOperator<CurrencyConvertConfig> = {
     code: 'currencyConvert',
-    type: 'operator',
+    type: 'OPERATOR',
     name: 'Currency Convert',
     description: 'Convert between currencies',
-    category: 'conversion',
+    category: 'CONVERSION',
     pure: true,
     schema: {
         fields: [
@@ -962,7 +969,7 @@ const currencyConvert: SingleRecordOperator<CurrencyConvertConfig> = {
             { key: 'targetField', type: 'string', label: 'Target Field', required: false },
         ],
     },
-    applyOne(record: JsonObject, config: CurrencyConvertConfig, helpers: OperatorHelpers): JsonObject | null {
+    applyOne(record: JsonObject, config: CurrencyConvertConfig, helpers: AdapterOperatorHelpers): JsonObject | null {
         const rate = getExchangeRate(config.from, config.to);
         const value = helpers.get(record, config.field) as number;
         const converted = value * rate;
@@ -979,7 +986,7 @@ DataHubPlugin.init({
 ### Custom Extractor
 
 ```typescript
-import { ExtractorAdapter, JsonObject } from '@oronts/vendure-data-hub-plugin';
+import { ExtractorAdapter, ExtractContext, RecordEnvelope } from '@oronts/vendure-data-hub-plugin';
 
 interface MyExtractorConfig {
     endpoint: string;
@@ -987,7 +994,7 @@ interface MyExtractorConfig {
 
 const myExtractor: ExtractorAdapter<MyExtractorConfig> = {
     code: 'myExtractor',
-    type: 'extractor',
+    type: 'EXTRACTOR',
     name: 'My Custom Source',
     description: 'Fetch data from custom API',
     schema: {
@@ -995,11 +1002,11 @@ const myExtractor: ExtractorAdapter<MyExtractorConfig> = {
             { key: 'endpoint', type: 'string', label: 'API Endpoint', required: true },
         ],
     },
-    async *extract(config: MyExtractorConfig): AsyncGenerator<JsonObject> {
+    async *extract(context: ExtractContext, config: MyExtractorConfig): AsyncGenerator<RecordEnvelope, void, undefined> {
         const response = await fetch(config.endpoint);
         const data = await response.json();
         for (const item of data.items) {
-            yield item;
+            yield { data: item };
         }
     },
 };
@@ -1008,7 +1015,7 @@ const myExtractor: ExtractorAdapter<MyExtractorConfig> = {
 ### Custom Loader
 
 ```typescript
-import { LoaderAdapter, JsonObject, LoadResult } from '@oronts/vendure-data-hub-plugin';
+import { LoaderAdapter, LoadContext, JsonObject, LoadResult } from '@oronts/vendure-data-hub-plugin';
 
 interface WebhookNotifyConfig {
     endpoint: string;
@@ -1017,7 +1024,7 @@ interface WebhookNotifyConfig {
 
 const webhookNotify: LoaderAdapter<WebhookNotifyConfig> = {
     code: 'webhookNotify',
-    type: 'loader',
+    type: 'LOADER',
     name: 'Webhook Notify',
     description: 'Send records to webhook endpoint',
     schema: {
@@ -1026,7 +1033,7 @@ const webhookNotify: LoaderAdapter<WebhookNotifyConfig> = {
             { key: 'batchSize', type: 'number', label: 'Batch Size', required: false },
         ],
     },
-    async load(records: JsonObject[], config: WebhookNotifyConfig): Promise<LoadResult> {
+    async load(context: LoadContext, config: WebhookNotifyConfig, records: readonly JsonObject[]): Promise<LoadResult> {
         await fetch(config.endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

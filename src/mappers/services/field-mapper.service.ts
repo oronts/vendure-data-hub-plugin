@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { JsonValue } from '../../types/index';
 import { RecordObject } from '../../runtime/executor-types';
 import { getErrorMessage } from '../../utils/error.utils';
-import { getNestedValue as getNestedValueCanonical } from '../../utils/object-path.utils';
+import { getNestedValue as getNestedValueCanonical, setNestedValue as setNestedValueCanonical } from '../../utils/object-path.utils';
 import {
     applyTemplateTransform,
     applySplitTransform,
@@ -13,12 +13,12 @@ import {
     applyTrimTransform,
     applyLowercaseTransform,
     applyUppercaseTransform,
-} from '../transformers/string';
-import { applyMathTransform } from '../transformers/number';
-import { applyDateTransform } from '../transformers/date';
-import { applyMapTransform, applyDefaultTransform } from '../transformers/array';
-import { applyConvertTransform } from '../transformers/conversion';
-import { applyConditionalTransform, applyCustomTransform, isEmpty } from '../transformers/conditional';
+} from '../transformers/string/string-transformers';
+import { applyMathTransform } from '../transformers/number/number-transformers';
+import { applyDateTransform } from '../transformers/date/date-transformers';
+import { applyMapTransform, applyDefaultTransform } from '../transformers/array/array-transformers';
+import { applyConvertTransform } from '../transformers/conversion/conversion-transformers';
+import { applyConditionalTransform, applyCustomTransform, isEmpty } from '../transformers/conditional/conditional-transformers';
 import {
     MapperTransformType,
     MapperTransformConfig,
@@ -37,12 +37,57 @@ export type {
     MapperLookupTable,
 };
 
+/** Handler signature for mapper transform operations */
+type MapperTransformHandler = (value: JsonValue, config: MapperTransformConfig, record: RecordObject) => JsonValue;
+
 /** Maximum number of lookup tables that can be registered */
 const MAX_LOOKUP_TABLES = 200;
 
 @Injectable()
 export class FieldMapperService {
     private lookupTables = new Map<string, MapperLookupTable>();
+    private readonly transformHandlers: Map<MapperTransformType, MapperTransformHandler>;
+
+    constructor() {
+        const boundGetNestedValue = this.getNestedValue.bind(this);
+
+        this.transformHandlers = new Map<MapperTransformType, MapperTransformHandler>([
+            ['template', (value, config, record) =>
+                applyTemplateTransform(value, config.template ?? '', record, boundGetNestedValue)],
+            ['lookup', (value, config) =>
+                config.lookup ? this.applyLookupTransform(value, config.lookup) : value],
+            ['convert', (value, config) =>
+                config.convert ? applyConvertTransform(value, config.convert) : value],
+            ['split', (value, config) =>
+                config.split ? applySplitTransform(value, config.split) : value],
+            ['join', (value, config, record) =>
+                config.join ? applyJoinTransform(value, config.join, record, boundGetNestedValue) : value],
+            ['map', (value, config) =>
+                config.map ? applyMapTransform(value, config.map) : value],
+            ['date', (value, config) =>
+                config.date ? applyDateTransform(value, config.date) : value],
+            ['trim', (value) =>
+                applyTrimTransform(value)],
+            ['lowercase', (value) =>
+                applyLowercaseTransform(value)],
+            ['uppercase', (value) =>
+                applyUppercaseTransform(value)],
+            ['replace', (value, config) =>
+                config.replace ? applyReplaceTransform(value, config.replace) : value],
+            ['extract', (value, config) =>
+                config.extract ? applyExtractTransform(value, config.extract) : value],
+            ['default', (value, config) =>
+                config.default ? applyDefaultTransform(value, config.default, isEmpty) : value],
+            ['concat', (value, config, record) =>
+                config.concat ? applyConcatTransform(value, config.concat, record, boundGetNestedValue) : value],
+            ['math', (value, config) =>
+                config.math ? applyMathTransform(value, config.math) : value],
+            ['conditional', (value, config, record) =>
+                config.conditional ? applyConditionalTransform(value, config.conditional, record, boundGetNestedValue) : value],
+            ['custom', (value, config, record) =>
+                config.custom ? applyCustomTransform(value, config.custom, record) : value],
+        ]);
+    }
 
     /**
      * Register a lookup table for use in transformations
@@ -149,74 +194,8 @@ export class FieldMapperService {
         config: MapperTransformConfig,
         record: RecordObject,
     ): JsonValue {
-        switch (config.type) {
-            case 'template':
-                return applyTemplateTransform(value, config.template ?? '', record, this.getNestedValue.bind(this));
-
-            case 'lookup':
-                if (!config.lookup) return value;
-                return this.applyLookupTransform(value, config.lookup);
-
-            case 'convert':
-                if (!config.convert) return value;
-                return applyConvertTransform(value, config.convert);
-
-            case 'split':
-                if (!config.split) return value;
-                return applySplitTransform(value, config.split);
-
-            case 'join':
-                if (!config.join) return value;
-                return applyJoinTransform(value, config.join, record, this.getNestedValue.bind(this));
-
-            case 'map':
-                if (!config.map) return value;
-                return applyMapTransform(value, config.map);
-
-            case 'date':
-                if (!config.date) return value;
-                return applyDateTransform(value, config.date);
-
-            case 'trim':
-                return applyTrimTransform(value);
-
-            case 'lowercase':
-                return applyLowercaseTransform(value);
-
-            case 'uppercase':
-                return applyUppercaseTransform(value);
-
-            case 'replace':
-                if (!config.replace) return value;
-                return applyReplaceTransform(value, config.replace);
-
-            case 'extract':
-                if (!config.extract) return value;
-                return applyExtractTransform(value, config.extract);
-
-            case 'default':
-                if (!config.default) return value;
-                return applyDefaultTransform(value, config.default, isEmpty);
-
-            case 'concat':
-                if (!config.concat) return value;
-                return applyConcatTransform(value, config.concat, record, this.getNestedValue.bind(this));
-
-            case 'math':
-                if (!config.math) return value;
-                return applyMathTransform(value, config.math);
-
-            case 'conditional':
-                if (!config.conditional) return value;
-                return applyConditionalTransform(value, config.conditional, record, this.getNestedValue.bind(this));
-
-            case 'custom':
-                if (!config.custom) return value;
-                return applyCustomTransform(value, config.custom, record);
-
-            default:
-                return value;
-        }
+        const handler = this.transformHandlers.get(config.type);
+        return handler ? handler(value, config, record) : value;
     }
 
     private applyLookupTransform(
@@ -248,31 +227,11 @@ export class FieldMapperService {
     }
 
     /**
-     * Set a nested value in an object using dot notation
+     * Set a nested value in an object using dot notation.
+     * Delegates to the canonical setNestedValue with prototype-pollution protection
+     * and array bracket notation support.
      */
     private setNestedValue(obj: RecordObject, path: string, value: JsonValue | undefined): void {
-        if (!path) return;
-        if (value === undefined) return; // Don't set undefined values
-
-        const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.');
-        let current: RecordObject = obj;
-
-        for (let i = 0; i < parts.length - 1; i++) {
-            const part = parts[i];
-            const nextPart = parts[i + 1];
-            const isNextArray = /^\d+$/.test(nextPart);
-
-            if (!(part in current)) {
-                current[part] = isNextArray ? [] : {};
-            }
-            const next = current[part];
-            if (typeof next === 'object' && next !== null && !Array.isArray(next)) {
-                current = next;
-            } else {
-                return;
-            }
-        }
-
-        current[parts[parts.length - 1]] = value;
+        setNestedValueCanonical(obj, path, value as JsonValue);
     }
 }

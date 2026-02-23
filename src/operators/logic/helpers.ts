@@ -5,7 +5,7 @@ import { SwitchCase } from './types';
 
 /**
  * Filter action type for operator use (lowercase to match operator schema options).
- * Note: Different from FilterAction enum which uses SCREAMING_SNAKE_CASE for GraphQL.
+ * Distinct from the FilterAction enum which uses UPPER_CASE for GraphQL.
  */
 type FilterActionType = 'keep' | 'drop';
 

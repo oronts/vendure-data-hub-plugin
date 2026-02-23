@@ -213,11 +213,10 @@ export async function testDatabaseConnection(
     testQuery: string,
 ): Promise<{ success: boolean; error?: string; latencyMs?: number }> {
     const startTime = Date.now();
+    const client = await createDatabaseClient(context, config);
 
     try {
-        const client = await createDatabaseClient(context, config);
         await client.query(testQuery);
-        await client.close();
 
         return {
             success: true,
@@ -228,5 +227,7 @@ export async function testDatabaseConnection(
             success: false,
             error: getErrorMessage(error),
         };
+    } finally {
+        await client.close();
     }
 }

@@ -6,6 +6,8 @@ import {
 } from '@vendure/dashboard';
 import { AlertTriangle } from 'lucide-react';
 import { DATAHUB_PERMISSIONS, ITEMS_PER_PAGE } from '../../constants';
+import { useLoadMore } from '../../hooks';
+import { LoadMoreButton } from '../../components/shared';
 import type { DeadLetter } from './types';
 
 // Memoized row component for dead letters
@@ -70,14 +72,7 @@ export function DeadLettersTable({
     isRetryPending: boolean;
     isUnmarkPending: boolean;
 }) {
-    const [displayCount, setDisplayCount] = React.useState(ITEMS_PER_PAGE);
-
-    const displayedLetters = deadLetters.slice(0, displayCount);
-    const hasMore = displayCount < deadLetters.length;
-
-    const handleLoadMore = React.useCallback(() => {
-        setDisplayCount(c => c + ITEMS_PER_PAGE);
-    }, []);
+    const { displayed: displayedLetters, hasMore, remaining, loadMore } = useLoadMore(deadLetters, { pageSize: ITEMS_PER_PAGE });
 
     return (
         <div data-testid="datahub-dead-letters-table">
@@ -117,13 +112,7 @@ export function DeadLettersTable({
                     )}
                 </tbody>
             </table>
-            {hasMore && (
-                <div className="flex justify-center mt-4">
-                    <Button variant="outline" onClick={handleLoadMore}>
-                        Load More ({deadLetters.length - displayCount} remaining)
-                    </Button>
-                </div>
-            )}
+            {hasMore && <LoadMoreButton remaining={remaining} onClick={loadMore} />}
         </div>
     );
 }

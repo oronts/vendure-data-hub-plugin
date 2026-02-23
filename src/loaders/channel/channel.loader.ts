@@ -18,7 +18,13 @@ import {
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+} from '../base';
 import {
     ChannelInput,
     CHANNEL_LOADER_METADATA,
@@ -65,6 +71,8 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
     // Cache for resolved zone IDs to avoid repeated lookups
     private zoneCache = new Map<string, ID>();
 
+    private readonly lookupHelper: EntityLookupHelper<ChannelService, Channel, ChannelInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private channelService: ChannelService,
@@ -73,6 +81,40 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.CHANNEL_LOADER);
+        this.lookupHelper = new EntityLookupHelper<ChannelService, Channel, ChannelInput>(this.channelService)
+            .addCustomStrategy({
+                fieldName: 'code',
+                lookup: async (ctx, svc, value) => {
+                    if (!value || typeof value !== 'string') return null;
+                    const channels = await svc.findAll(ctx);
+                    const channelsList = channels as unknown as Array<{ id: ID; code: string }>;
+                    const match = channelsList.find((c) => c.code === value);
+                    if (match) {
+                        const fullChannel = await svc.findOne(ctx, match.id);
+                        if (fullChannel) {
+                            return { id: fullChannel.id, entity: fullChannel };
+                        }
+                    }
+                    return null;
+                },
+            })
+            .addCustomStrategy({
+                fieldName: 'token',
+                lookup: async (_ctx, svc, value) => {
+                    if (!value || typeof value !== 'string') return null;
+                    const channel = await svc.getChannelFromToken(value);
+                    if (channel) {
+                        return { id: channel.id, entity: channel };
+                    }
+                    return null;
+                },
+            })
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id));
+    }
+
+    protected preprocessRecords(records: ChannelInput[]): ChannelInput[] {
+        this.zoneCache.clear();
+        return records;
     }
 
     protected getDuplicateErrorMessage(record: ChannelInput): string {
@@ -84,37 +126,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         lookupFields: string[],
         record: ChannelInput,
     ): Promise<ExistingEntityLookupResult<Channel> | null> {
-        // Primary lookup: by code
-        if (record.code && lookupFields.includes('code')) {
-            // ChannelService.findAll returns Channel[] directly
-            const channels = await this.channelService.findAll(ctx);
-            const channelsList = channels as unknown as Array<{ id: ID; code: string }>;
-            const match = channelsList.find((c) => c.code === record.code);
-            if (match) {
-                const fullChannel = await this.channelService.findOne(ctx, match.id);
-                if (fullChannel) {
-                    return { id: fullChannel.id, entity: fullChannel };
-                }
-            }
-        }
-
-        // Fallback: by token
-        if (record.token && lookupFields.includes('token')) {
-            const channel = await this.channelService.getChannelFromToken(record.token);
-            if (channel) {
-                return { id: channel.id, entity: channel };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const channel = await this.channelService.findOne(ctx, record.id as ID);
-            if (channel) {
-                return { id: channel.id, entity: channel };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -122,51 +134,47 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
         record: ChannelInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
+        const builder = new ValidationBuilder()
+            .requireStringForCreate('code', record.code, operation, 'Channel code is required');
+
+        if (
+            (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) &&
+            record.code && typeof record.code === 'string' && record.code.trim() !== '' &&
+            !/^[a-z0-9_-]+$/i.test(record.code)
+        ) {
+            builder.addError(
+                'code',
+                'Code must contain only letters, numbers, hyphens, and underscores',
+                'INVALID_FORMAT',
+            );
+        }
 
         if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.code || typeof record.code !== 'string' || record.code.trim() === '') {
-                errors.push({ field: 'code', message: 'Channel code is required', code: 'REQUIRED' });
-            } else if (!/^[a-z0-9_-]+$/i.test(record.code)) {
-                errors.push({
-                    field: 'code',
-                    message: 'Code must contain only letters, numbers, hyphens, and underscores',
-                    code: 'INVALID_FORMAT',
-                });
-            }
-
+            // Default language code validation
             if (!record.defaultLanguageCode) {
-                errors.push({
-                    field: 'defaultLanguageCode',
-                    message: 'Default language code is required',
-                    code: 'REQUIRED',
-                });
+                builder.addError('defaultLanguageCode', 'Default language code is required', 'REQUIRED');
             } else {
                 const langCode = parseLanguageCode(record.defaultLanguageCode);
                 if (!langCode) {
-                    errors.push({
-                        field: 'defaultLanguageCode',
-                        message: 'Invalid language code format (expected 2-letter code like "en")',
-                        code: 'INVALID_FORMAT',
-                    });
+                    builder.addError(
+                        'defaultLanguageCode',
+                        'Invalid language code format (expected 2-letter code like "en")',
+                        'INVALID_FORMAT',
+                    );
                 }
             }
 
+            // Default currency code validation
             if (!record.defaultCurrencyCode) {
-                errors.push({
-                    field: 'defaultCurrencyCode',
-                    message: 'Default currency code is required',
-                    code: 'REQUIRED',
-                });
+                builder.addError('defaultCurrencyCode', 'Default currency code is required', 'REQUIRED');
             } else {
                 const currCode = parseCurrencyCode(record.defaultCurrencyCode);
                 if (!currCode) {
-                    errors.push({
-                        field: 'defaultCurrencyCode',
-                        message: 'Invalid currency code format (expected 3-letter code like "USD")',
-                        code: 'INVALID_FORMAT',
-                    });
+                    builder.addError(
+                        'defaultCurrencyCode',
+                        'Invalid currency code format (expected 3-letter code like "USD")',
+                        'INVALID_FORMAT',
+                    );
                 }
             }
 
@@ -174,10 +182,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
             if (record.availableLanguageCodes) {
                 for (const code of record.availableLanguageCodes) {
                     if (!parseLanguageCode(code)) {
-                        warnings.push({
-                            field: 'availableLanguageCodes',
-                            message: `Invalid language code: ${code}`,
-                        });
+                        builder.addWarning('availableLanguageCodes', `Invalid language code: ${code}`);
                     }
                 }
             }
@@ -186,10 +191,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
             if (record.availableCurrencyCodes) {
                 for (const code of record.availableCurrencyCodes) {
                     if (!parseCurrencyCode(code)) {
-                        warnings.push({
-                            field: 'availableCurrencyCodes',
-                            message: `Invalid currency code: ${code}`,
-                        });
+                        builder.addWarning('availableCurrencyCodes', `Invalid currency code: ${code}`);
                     }
                 }
             }
@@ -204,11 +206,11 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                     this.zoneCache,
                 );
                 if (!taxZoneId) {
-                    errors.push({
-                        field: 'defaultTaxZoneCode',
-                        message: `Default tax zone "${record.defaultTaxZoneCode}" not found`,
-                        code: 'TAX_ZONE_NOT_FOUND',
-                    });
+                    builder.addError(
+                        'defaultTaxZoneCode',
+                        `Default tax zone "${record.defaultTaxZoneCode}" not found`,
+                        'TAX_ZONE_NOT_FOUND',
+                    );
                 }
             }
 
@@ -221,20 +223,16 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                     this.zoneCache,
                 );
                 if (!shippingZoneId) {
-                    errors.push({
-                        field: 'defaultShippingZoneCode',
-                        message: `Default shipping zone "${record.defaultShippingZoneCode}" not found`,
-                        code: 'SHIPPING_ZONE_NOT_FOUND',
-                    });
+                    builder.addError(
+                        'defaultShippingZoneCode',
+                        `Default shipping zone "${record.defaultShippingZoneCode}" not found`,
+                        'SHIPPING_ZONE_NOT_FOUND',
+                    );
                 }
             }
         }
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

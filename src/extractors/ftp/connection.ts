@@ -150,7 +150,9 @@ export async function createFtpClient(
             if (recursive) {
                 await client.ensureDir(remotePath);
             } else {
-                await client.send(`MKD ${remotePath}`);
+                // Sanitize remotePath to prevent CRLF injection in FTP commands
+                const sanitized = remotePath.replace(/[\r\n]/g, '');
+                await client.send(`MKD ${sanitized}`);
             }
         },
 

@@ -187,6 +187,10 @@ export interface EnhancedSchemaDefinition {
     $id?: string;               // Unique schema ID
     $extends?: string;          // Inherit from another schema
 
+    // Documentation
+    label?: string;             // Human-readable entity name (e.g., "Product Variant")
+    description?: string;       // Short description of the entity
+
     // Fields
     fields: Record<string, EnhancedFieldDefinition>;
 

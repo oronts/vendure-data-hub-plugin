@@ -20,7 +20,7 @@ import { getErrorMessage } from '../../../utils/error.utils';
 import { getStringValue, getNumberValue } from '../../../loaders/shared-helpers';
 
 /**
- * Configuration for the tax rate handler step (mirrors loader-adapters.ts schema)
+ * Configuration for the tax rate handler step (mirrors loader-handler-registry.ts schema)
  */
 interface TaxRateHandlerConfig {
     nameField?: string;

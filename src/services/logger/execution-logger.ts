@@ -92,8 +92,9 @@ const LEVEL_HIERARCHY: Record<LogPersistenceLevel, number> = {
     [LogPersistenceLevel.DEBUG]: 4,
 };
 
-/** Maximum sample record size for logging */
 const MAX_SAMPLE_SIZE = TRUNCATION.SAMPLE_VALUES_LIMIT;
+const MAX_MAPPINGS_LOG = 50;
+const MAX_FIELDS_LOG = 20;
 
 @Injectable()
 export class ExecutionLogger {
@@ -444,7 +445,7 @@ export class ExecutionLogger {
             adapterCode,
             recordCount: records.length,
             fieldCount: fieldNames.length,
-            fields: fieldNames.slice(0, 20),
+            fields: fieldNames.slice(0, MAX_FIELDS_LOG),
         });
 
         // Persist at DEBUG level
@@ -488,7 +489,7 @@ export class ExecutionLogger {
             adapterCode,
             recordCount: records.length,
             fieldCount: fieldNames.length,
-            fields: fieldNames.slice(0, 20),
+            fields: fieldNames.slice(0, MAX_FIELDS_LOG),
         });
 
         // Persist at DEBUG level
@@ -578,7 +579,7 @@ export class ExecutionLogger {
                 metadata: {
                     inputFields,
                     outputFields,
-                    mappings: mappings.slice(0, 50) as unknown as JsonValue, // Limit to 50 mappings
+                    mappings: mappings.slice(0, MAX_MAPPINGS_LOG) as unknown as JsonValue,
                 },
             });
         }

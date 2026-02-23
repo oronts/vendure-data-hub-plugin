@@ -8,7 +8,7 @@ import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { In } from 'typeorm';
 import { PipelineDefinition, StepType } from '../../types/index';
 import { StepType as StepTypeEnum } from '../../constants/enums';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { LOGGER_CONTEXTS, STEP_TYPE_TO_ADAPTER_TYPE } from '../../constants/index';
 import { Pipeline } from '../../entities/pipeline';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { validatePipelineDefinition } from '../../validation/pipeline-definition.validator';
@@ -52,20 +52,6 @@ interface DefinitionValidationResult {
     warnings: PipelineDefinitionIssue[];
     level: ValidationLevel;
 }
-
-// ============================================================================
-// Step Type to Adapter Type Mapping
-// ============================================================================
-
-const STEP_TYPE_TO_ADAPTER_TYPE: Partial<Record<StepType, AdapterType>> = {
-    [StepTypeEnum.EXTRACT]: 'EXTRACTOR',
-    [StepTypeEnum.TRANSFORM]: 'OPERATOR',
-    [StepTypeEnum.LOAD]: 'LOADER',
-    [StepTypeEnum.EXPORT]: 'EXPORTER',
-    [StepTypeEnum.FEED]: 'FEED',
-    [StepTypeEnum.ENRICH]: 'ENRICHER',
-    [StepTypeEnum.SINK]: 'SINK',
-};
 
 function adapterTypeFor(stepType: StepType): AdapterType | null {
     return STEP_TYPE_TO_ADAPTER_TYPE[stepType] ?? null;
@@ -220,6 +206,17 @@ export class DefinitionValidationService {
         issues: PipelineDefinitionIssue[],
         _warnings: PipelineDefinitionIssue[],
     ): void {
+        // Only validate adapter config for step types that use adapter-based dispatch.
+        // Step types like TRIGGER, VALIDATE, ROUTE, and GATE use inline config
+        // (rules, branches, approval settings) and have no registered adapters.
+        const ADAPTER_BASED_STEP_TYPES = new Set([
+            StepTypeEnum.EXTRACT,
+            StepTypeEnum.LOAD,
+            StepTypeEnum.EXPORT,
+            StepTypeEnum.FEED,
+            StepTypeEnum.SINK,
+        ]);
+
         for (const step of definition.steps) {
             const type = step.type as StepType;
             const cfg = (step.config ?? {}) as AdapterStepConfig;
@@ -229,14 +226,19 @@ export class DefinitionValidationService {
                 continue;
             }
 
-            // Handle TRANSFORM steps with operators
-            if (type === 'TRANSFORM') {
+            // Handle TRANSFORM steps with operators (special validation path)
+            if (type === StepTypeEnum.TRANSFORM) {
                 validateTransformOperators(step.key, cfg as TransformStepConfig, definition, this.registry, issues);
                 continue;
             }
 
             // ENRICH steps can use built-in config without an adapter
             if (isUsingBuiltInEnrichment(type, cfg)) {
+                continue;
+            }
+
+            // Skip adapter validation for step types that don't use adapter-based dispatch
+            if (!ADAPTER_BASED_STEP_TYPES.has(type as StepTypeEnum)) {
                 continue;
             }
 

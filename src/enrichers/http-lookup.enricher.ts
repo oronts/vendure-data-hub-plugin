@@ -4,6 +4,7 @@
 import { EnricherAdapter, EnrichContext, EnrichResult, StepConfigSchema } from '../sdk/types';
 import { JsonObject } from '../types';
 import { applyHttpLookupBatch, HttpLookupOperatorConfig } from '../operators/enrichment';
+import { HTTP_METHOD_GET_POST_OPTIONS } from '../constants/adapter-schema-options';
 
 export interface HttpLookupEnricherConfig {
     /** HTTP endpoint URL. Use {{field}} for dynamic values from record */
@@ -52,10 +53,7 @@ const HTTP_LOOKUP_ENRICHER_SCHEMA: StepConfigSchema = {
     fields: [
         { key: 'url', label: 'URL', type: 'string', required: true, description: 'HTTP endpoint URL. Use {{field}} for dynamic values.' },
         { key: 'target', label: 'Target Field', type: 'string', required: true, description: 'Field path to store the response data.' },
-        { key: 'method', label: 'HTTP Method', type: 'select', options: [
-            { value: 'GET', label: 'GET' },
-            { value: 'POST', label: 'POST' },
-        ] },
+        { key: 'method', label: 'HTTP Method', type: 'select', options: HTTP_METHOD_GET_POST_OPTIONS },
         { key: 'responsePath', label: 'Response Path', type: 'string', description: 'JSON path to extract from response.' },
         { key: 'keyField', label: 'Cache Key Field', type: 'string', description: 'Field to use as cache key.' },
         { key: 'default', label: 'Default Value', type: 'json', description: 'Value to use if lookup fails.' },

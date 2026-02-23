@@ -68,12 +68,12 @@ export const currencyConvertOperator: SingleRecordOperator<CurrencyConvertConfig
         const rate = EXCHANGE_RATES[from]?.[to];
         if (!rate) return record;
 
-        const converted = Math.round(numValue * rate * Math.pow(10, round)) / Math.pow(10, round);
+        const safeRound = Math.min(Math.max(round, 0), 20);
+        const factor = Math.pow(10, safeRound);
+        const converted = isFinite(factor) ? Math.round(numValue * rate * factor) / factor : numValue;
         const output = targetField || field;
         const result = { ...record };
         helpers.set(result, output, converted);
         return result;
     },
 };
-
-export default currencyConvertOperator;

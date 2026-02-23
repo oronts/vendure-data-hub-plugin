@@ -9,29 +9,20 @@ import {
     SelectValue,
     Input,
 } from '@vendure/dashboard';
-import { STEP_CONFIG_DEFAULTS } from '../../../constants';
+import { useApprovalTypeSchemas, type ConnectionSchemaField } from '../../../hooks/api/use-config-options';
 
 export interface GateConfigComponentProps {
     readonly config: Record<string, unknown>;
     readonly onChange: (config: Record<string, unknown>) => void;
 }
 
-const APPROVAL_TYPES = [
-    { value: 'MANUAL', label: 'Manual Approval', description: 'Requires explicit human approval to continue' },
-    { value: 'THRESHOLD', label: 'Threshold', description: 'Auto-approves if error rate is below threshold' },
-    { value: 'TIMEOUT', label: 'Timeout', description: 'Auto-approves after a specified timeout period' },
-] as const;
-
 export function GateConfigComponent({
     config,
     onChange,
 }: GateConfigComponentProps) {
+    const { schemas: approvalTypeSchemas } = useApprovalTypeSchemas();
     const approvalType = (config.approvalType as string) || 'MANUAL';
-    const timeoutSeconds = config.timeoutSeconds as number | undefined;
-    const errorThresholdPercent = config.errorThresholdPercent as number | undefined;
-    const notifyWebhook = (config.notifyWebhook as string) || '';
-    const notifyEmail = (config.notifyEmail as string) || '';
-    const previewCount = config.previewCount as number | undefined;
+    const currentSchema = approvalTypeSchemas.find(s => s.value === approvalType);
 
     // Use refs to avoid stale closures in the initialization effect
     const configRef = useRef(config);
@@ -62,7 +53,7 @@ export function GateConfigComponent({
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        {APPROVAL_TYPES.map((at) => (
+                        {approvalTypeSchemas.map((at) => (
                             <SelectItem key={at.value} value={at.value}>
                                 {at.label}
                             </SelectItem>
@@ -70,95 +61,67 @@ export function GateConfigComponent({
                     </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                    {APPROVAL_TYPES.find(at => at.value === approvalType)?.description}
+                    {currentSchema?.description}
                 </p>
             </div>
 
-            {approvalType === 'TIMEOUT' && (
-                <div className="space-y-2">
-                    <Label className="text-sm font-medium">Timeout (seconds)</Label>
-                    <Input
-                        type="number"
-                        value={timeoutSeconds ?? ''}
-                        onChange={(e) => {
-                            const val = e.target.value ? Number(e.target.value) : undefined;
-                            updateField('timeoutSeconds', val);
-                        }}
-                        placeholder={String(STEP_CONFIG_DEFAULTS.GATE_TIMEOUT_SECONDS)}
-                        min={1}
-                        data-testid="datahub-gate-timeout-input"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                        Number of seconds to wait before auto-approving
-                    </p>
+            {currentSchema && currentSchema.fields.length > 0 && (
+                <div className="space-y-3">
+                    {currentSchema.fields.map(field => (
+                        <GateSchemaField
+                            key={field.key}
+                            field={field}
+                            value={config[field.key]}
+                            onChange={(value) => updateField(field.key, value)}
+                        />
+                    ))}
                 </div>
             )}
+        </div>
+    );
+}
 
-            {approvalType === 'THRESHOLD' && (
-                <div className="space-y-2">
-                    <Label className="text-sm font-medium">Error Threshold (%)</Label>
-                    <Input
-                        type="number"
-                        value={errorThresholdPercent ?? ''}
-                        onChange={(e) => {
-                            const val = e.target.value ? Number(e.target.value) : undefined;
-                            updateField('errorThresholdPercent', val);
-                        }}
-                        placeholder={String(STEP_CONFIG_DEFAULTS.GATE_THRESHOLD_PERCENT)}
-                        min={0}
-                        max={100}
-                        data-testid="datahub-gate-threshold-input"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                        Auto-approve if error rate is below this percentage (0-100)
-                    </p>
-                </div>
-            )}
+interface GateSchemaFieldProps {
+    field: ConnectionSchemaField;
+    value: unknown;
+    onChange: (value: unknown) => void;
+}
 
+function GateSchemaField({ field, value, onChange }: GateSchemaFieldProps) {
+    if (field.type === 'number') {
+        return (
             <div className="space-y-2">
-                <Label className="text-sm font-medium">Notify Webhook</Label>
-                <Input
-                    value={notifyWebhook}
-                    onChange={(e) => updateField('notifyWebhook', e.target.value)}
-                    placeholder="https://hooks.example.com/gate-notify"
-                    data-testid="datahub-gate-webhook-input"
-                />
-                <p className="text-xs text-muted-foreground">
-                    Webhook URL to call when the gate is reached (optional)
-                </p>
-            </div>
-
-            <div className="space-y-2">
-                <Label className="text-sm font-medium">Notify Email</Label>
-                <Input
-                    value={notifyEmail}
-                    onChange={(e) => updateField('notifyEmail', e.target.value)}
-                    placeholder="approver@example.com"
-                    type="email"
-                    data-testid="datahub-gate-email-input"
-                />
-                <p className="text-xs text-muted-foreground">
-                    Email address to notify when the gate is reached (optional)
-                </p>
-            </div>
-
-            <div className="space-y-2">
-                <Label className="text-sm font-medium">Preview Count</Label>
+                <Label className="text-sm font-medium">{field.label}</Label>
                 <Input
                     type="number"
-                    value={previewCount ?? ''}
+                    value={value != null ? String(value) : ''}
                     onChange={(e) => {
                         const val = e.target.value ? Number(e.target.value) : undefined;
-                        updateField('previewCount', val);
+                        onChange(val);
                     }}
-                    placeholder={String(STEP_CONFIG_DEFAULTS.GATE_PREVIEW_COUNT)}
-                    min={1}
-                    data-testid="datahub-gate-preview-count-input"
+                    placeholder={field.placeholder ?? undefined}
+                    data-testid={`datahub-gate-${field.key}-input`}
                 />
-                <p className="text-xs text-muted-foreground">
-                    Number of records to include in the gate preview (default: 10)
-                </p>
+                {field.description && (
+                    <p className="text-xs text-muted-foreground">{field.description}</p>
+                )}
             </div>
+        );
+    }
+
+    // Default: string/text input
+    return (
+        <div className="space-y-2">
+            <Label className="text-sm font-medium">{field.label}</Label>
+            <Input
+                value={value != null ? String(value) : ''}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={field.placeholder ?? undefined}
+                data-testid={`datahub-gate-${field.key}-input`}
+            />
+            {field.description && (
+                <p className="text-xs text-muted-foreground">{field.description}</p>
+            )}
         </div>
     );
 }

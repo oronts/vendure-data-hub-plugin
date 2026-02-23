@@ -1,3 +1,5 @@
+import { HookActionType, RouteConditionOperator } from '../constants/enums';
+
 /**
  * Hook action types for pipeline lifecycle events.
  * Used in the `hooks` configuration of pipelines.
@@ -11,13 +13,17 @@
  */
 export const HOOK_ACTION = {
     /** Send HTTP POST to a webhook URL */
-    WEBHOOK: 'WEBHOOK',
+    WEBHOOK: HookActionType.WEBHOOK,
     /** Emit an event to the event bus */
-    EMIT: 'EMIT',
+    EMIT: HookActionType.EMIT,
     /** Trigger another pipeline by code */
-    TRIGGER_PIPELINE: 'TRIGGER_PIPELINE',
+    TRIGGER_PIPELINE: HookActionType.TRIGGER_PIPELINE,
     /** Log a message */
-    LOG: 'LOG',
+    LOG: HookActionType.LOG,
+    /** Run a sandboxed interceptor function that can modify records */
+    INTERCEPTOR: HookActionType.INTERCEPTOR,
+    /** Run a named script function registered via plugin options */
+    SCRIPT: HookActionType.SCRIPT,
 } as const;
 
 /** Hook action type - union of all HOOK_ACTION values */
@@ -42,37 +48,37 @@ export const DEFAULT_TRIGGER_TYPE = 'MANUAL';
  */
 export const ROUTE_OPERATOR = {
     /** Equal (==) */
-    EQ: 'eq',
+    EQ: RouteConditionOperator.EQ,
     /** Not equal (!=) */
-    NE: 'ne',
+    NE: RouteConditionOperator.NE,
     /** Greater than (>) */
-    GT: 'gt',
+    GT: RouteConditionOperator.GT,
     /** Less than (<) */
-    LT: 'lt',
+    LT: RouteConditionOperator.LT,
     /** Greater than or equal (>=) */
-    GTE: 'gte',
+    GTE: RouteConditionOperator.GTE,
     /** Less than or equal (<=) */
-    LTE: 'lte',
+    LTE: RouteConditionOperator.LTE,
     /** Value is in array */
-    IN: 'in',
+    IN: RouteConditionOperator.IN,
     /** Value is not in array */
-    NOT_IN: 'notIn',
+    NOT_IN: RouteConditionOperator.NOT_IN,
     /** String contains substring */
-    CONTAINS: 'contains',
+    CONTAINS: RouteConditionOperator.CONTAINS,
     /** String does not contain substring */
-    NOT_CONTAINS: 'notContains',
+    NOT_CONTAINS: RouteConditionOperator.NOT_CONTAINS,
     /** String starts with prefix */
-    STARTS_WITH: 'startsWith',
+    STARTS_WITH: RouteConditionOperator.STARTS_WITH,
     /** String ends with suffix */
-    ENDS_WITH: 'endsWith',
+    ENDS_WITH: RouteConditionOperator.ENDS_WITH,
     /** String matches glob pattern */
-    MATCHES: 'matches',
+    MATCHES: RouteConditionOperator.MATCHES,
     /** String matches regex pattern */
-    REGEX: 'regex',
+    REGEX: RouteConditionOperator.REGEX,
     /** Field exists (is defined) */
-    EXISTS: 'exists',
+    EXISTS: RouteConditionOperator.EXISTS,
     /** Field is null */
-    IS_NULL: 'isNull',
+    IS_NULL: RouteConditionOperator.IS_NULL,
 } as const;
 
 /** Route operator type - union of all ROUTE_OPERATOR values */

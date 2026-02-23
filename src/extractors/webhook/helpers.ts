@@ -8,7 +8,7 @@ import * as crypto from 'crypto';
 import { JsonObject } from '../../types/index';
 import { ExtractorContext } from '../../types/index';
 import { WebhookExtractorConfig } from './types';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 
 /**
  * Validate webhook signature
@@ -65,7 +65,7 @@ export async function validateSignature(
 
         return isValid;
     } catch (error) {
-        context.logger.error('Signature validation error', error instanceof Error ? error : undefined, { error: getErrorMessage(error) });
+        context.logger.error('Signature validation error', toErrorOrUndefined(error), { error: getErrorMessage(error) });
         return false;
     }
 }

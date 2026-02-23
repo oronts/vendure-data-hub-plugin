@@ -81,12 +81,6 @@ export class MyApiExtractor implements ExtractorAdapter<MyApiConfig> {
         let hasMore = true;
 
         while (hasMore) {
-            // Check if cancelled
-            if (await context.isCancelled()) {
-                logger.info('Extraction cancelled');
-                break;
-            }
-
             const response = await fetch(`${apiUrl}?page=${page}&limit=${pageSize}`, {
                 headers: { 'X-API-Key': apiKey },
             });
@@ -125,7 +119,7 @@ export class MyExtractorPlugin implements OnModuleInit {
     ) {}
 
     onModuleInit() {
-        this.registry.registerExtractor(this.extractor.code, this.extractor);
+        this.registry.registerRuntime(this.extractor);
     }
 }
 ```
@@ -209,7 +203,7 @@ async *extract(context, config) {
 ### Using Logger
 
 ```typescript
-async *extract(ctx, config, context) {
+async *extract(context, config) {
     context.logger.info('Starting extraction');
 
     try {
@@ -217,7 +211,7 @@ async *extract(ctx, config, context) {
         context.logger.debug(`Fetched ${data.length} records`);
 
         for (const item of data) {
-            yield item;
+            yield { data: item };
         }
 
         context.logger.info('Extraction complete');
@@ -233,7 +227,7 @@ async *extract(ctx, config, context) {
 ### Offset-based
 
 ```typescript
-async *extract(ctx, config, context) {
+async *extract(context, config) {
     let offset = 0;
     const limit = 100;
 
@@ -244,7 +238,7 @@ async *extract(ctx, config, context) {
         if (items.length === 0) break;
 
         for (const item of items) {
-            yield item;
+            yield { data: item };
         }
 
         offset += items.length;
@@ -255,7 +249,7 @@ async *extract(ctx, config, context) {
 ### Cursor-based
 
 ```typescript
-async *extract(ctx, config, context) {
+async *extract(context, config) {
     let cursor: string | null = null;
 
     while (true) {
@@ -267,7 +261,7 @@ async *extract(ctx, config, context) {
         const { items, nextCursor } = await response.json();
 
         for (const item of items) {
-            yield item;
+            yield { data: item };
         }
 
         if (!nextCursor) break;
@@ -278,55 +272,60 @@ async *extract(ctx, config, context) {
 
 ## Error Handling
 
-```typescript
-import { ExtractorError } from '@oronts/vendure-data-hub-plugin';
+`ExtractorError` is an interface, not a class. Use a plain `Error` with structured
+properties attached:
 
-async *extract(ctx, config, context) {
+```typescript
+import type { ExtractorError } from '@oronts/vendure-data-hub-plugin';
+
+async *extract(context, config) {
     try {
         const response = await fetch(config.url);
 
         if (!response.ok) {
-            throw new ExtractorError(`HTTP ${response.status}`, {
-                retryable: response.status >= 500,
+            const error = new Error(`HTTP ${response.status}`) as Error & ExtractorError;
+            Object.assign(error, {
                 code: 'HTTP_ERROR',
+                statusCode: response.status,
+                recoverable: response.status >= 500,
             });
+            throw error;
         }
 
         // ...
     } catch (error) {
-        if (error instanceof ExtractorError) {
+        if (error instanceof Error && 'code' in error) {
             throw error;
         }
 
-        throw new ExtractorError(error.message, {
-            retryable: true,
+        const wrapped = new Error(error.message);
+        Object.assign(wrapped, {
+            code: 'EXTRACTOR_ERROR',
+            recoverable: true,
             cause: error,
         });
+        throw wrapped;
     }
 }
 ```
 
 ## Using Connections
 
-Access saved connections:
+Access saved connections via the context resolver:
 
 ```typescript
-import { ConnectionService } from '@oronts/vendure-data-hub-plugin';
-
 @Injectable()
 export class MyExtractor implements ExtractorAdapter {
-    constructor(private connectionService: ConnectionService) {}
+    readonly type = 'EXTRACTOR' as const;
+    readonly code = 'my-extractor';
+    readonly schema = { fields: [] };
 
-    async *extract(ctx, config, context) {
-        const connection = await this.connectionService.getConnection(
-            ctx,
-            config.connectionCode,
-        );
+    async *extract(context, config) {
+        const connection = await context.connections.getRequired(config.connectionCode);
 
         const client = createClient({
-            host: connection.settings.host,
-            port: connection.settings.port,
-            password: connection.settings.password, // Already resolved
+            host: connection.config.host,
+            port: connection.config.port,
         });
 
         // Use client...
@@ -336,20 +335,17 @@ export class MyExtractor implements ExtractorAdapter {
 
 ## Using Secrets
 
-Access secret values:
+Access secret values via the context resolver:
 
 ```typescript
-import { SecretService } from '@oronts/vendure-data-hub-plugin';
-
 @Injectable()
 export class MyExtractor implements ExtractorAdapter {
-    constructor(private secretService: SecretService) {}
+    readonly type = 'EXTRACTOR' as const;
+    readonly code = 'my-extractor';
+    readonly schema = { fields: [] };
 
-    async *extract(ctx, config, context) {
-        const apiKey = await this.secretService.resolveSecretValue(
-            ctx,
-            config.apiKeySecretCode,
-        );
+    async *extract(context, config) {
+        const apiKey = await context.secrets.getRequired(config.apiKeySecretCode);
 
         // Use apiKey...
     }
@@ -360,17 +356,17 @@ export class MyExtractor implements ExtractorAdapter {
 
 ```typescript
 import { Injectable } from '@nestjs/common';
-import { RequestContext } from '@vendure/core';
 import {
     ExtractorAdapter,
     ExtractContext,
     StepConfigSchema,
-    SecretService,
-    ExtractorError,
+    JsonObject,
+    RecordEnvelope,
 } from '@oronts/vendure-data-hub-plugin';
 
 @Injectable()
 export class GraphQLExtractor implements ExtractorAdapter {
+    readonly type = 'EXTRACTOR' as const;
     readonly code = 'graphql-api';
     readonly name = 'GraphQL API';
     readonly description = 'Fetch data from GraphQL APIs';
@@ -385,8 +381,6 @@ export class GraphQLExtractor implements ExtractorAdapter {
         ],
     };
 
-    constructor(private secretService: SecretService) {}
-
     async *extract(
         context: ExtractContext,
         config: JsonObject,
@@ -398,8 +392,8 @@ export class GraphQLExtractor implements ExtractorAdapter {
         };
 
         if (bearerToken) {
-            const token = await this.secretService.resolveSecretValue(ctx, bearerToken);
-            headers['Authorization'] = `Bearer ${token}`;
+            const token = await context.secrets.get(String(bearerToken));
+            if (token) headers['Authorization'] = `Bearer ${token}`;
         }
 
         context.logger.info(`Querying GraphQL endpoint: ${endpoint}`);
@@ -411,15 +405,17 @@ export class GraphQLExtractor implements ExtractorAdapter {
         });
 
         if (!response.ok) {
-            throw new ExtractorError(`GraphQL request failed: ${response.status}`, {
-                retryable: response.status >= 500,
-            });
+            const error = new Error(`GraphQL request failed: ${response.status}`);
+            Object.assign(error, { code: 'HTTP_ERROR', recoverable: response.status >= 500 });
+            throw error;
         }
 
         const result = await response.json();
 
         if (result.errors) {
-            throw new ExtractorError(`GraphQL errors: ${JSON.stringify(result.errors)}`);
+            const error = new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
+            Object.assign(error, { code: 'GRAPHQL_ERROR', recoverable: false });
+            throw error;
         }
 
         // Navigate to items using path
@@ -429,13 +425,15 @@ export class GraphQLExtractor implements ExtractorAdapter {
         );
 
         if (!Array.isArray(items)) {
-            throw new ExtractorError(`Items path "${itemsPath}" did not return an array`);
+            const error = new Error(`Items path "${itemsPath}" did not return an array`);
+            Object.assign(error, { code: 'INVALID_PATH', recoverable: false });
+            throw error;
         }
 
         context.logger.info(`Extracted ${items.length} items`);
 
         for (const item of items) {
-            yield item;
+            yield { data: item };
         }
     }
 }

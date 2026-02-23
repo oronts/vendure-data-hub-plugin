@@ -9,6 +9,7 @@
  */
 
 import type { EnhancedSchemaDefinition, EnhancedFieldDefinition } from '../types/index';
+import { kebabToScreamingSnake } from '../../shared/utils/string-case';
 
 // HELPER FUNCTIONS
 
@@ -45,6 +46,8 @@ function currencyCode(): EnhancedFieldDefinition {
 export const PRODUCT_SCHEMA: EnhancedSchemaDefinition = {
     $version: '1.0.0',
     $id: 'vendure-product',
+    label: 'Product',
+    description: 'Products with variants, assets, and custom fields',
     primaryKey: 'id',
 
     groups: [
@@ -127,6 +130,8 @@ export const PRODUCT_SCHEMA: EnhancedSchemaDefinition = {
 export const PRODUCT_VARIANT_SCHEMA: EnhancedSchemaDefinition = {
     $version: '1.0.0',
     $id: 'vendure-product-variant',
+    label: 'Product Variant',
+    description: 'Individual product variants with SKU, pricing, and inventory',
     primaryKey: 'sku',
 
     groups: [
@@ -247,6 +252,8 @@ export const PRODUCT_VARIANT_SCHEMA: EnhancedSchemaDefinition = {
 export const ORDER_SCHEMA: EnhancedSchemaDefinition = {
     $version: '1.0.0',
     $id: 'vendure-order',
+    label: 'Order',
+    description: 'Customer orders with lines, payments, and fulfillments',
     primaryKey: 'code',
 
     groups: [
@@ -439,6 +446,8 @@ export const ORDER_SCHEMA: EnhancedSchemaDefinition = {
 export const CUSTOMER_SCHEMA: EnhancedSchemaDefinition = {
     $version: '1.0.0',
     $id: 'vendure-customer',
+    label: 'Customer',
+    description: 'Customer accounts with addresses and order history',
     primaryKey: 'emailAddress',
 
     groups: [
@@ -529,6 +538,8 @@ export const CUSTOMER_SCHEMA: EnhancedSchemaDefinition = {
 export const COLLECTION_SCHEMA: EnhancedSchemaDefinition = {
     $version: '1.0.0',
     $id: 'vendure-collection',
+    label: 'Collection',
+    description: 'Product collections for navigation and categorization',
     primaryKey: 'slug',
 
     fields: {
@@ -575,6 +586,8 @@ export const COLLECTION_SCHEMA: EnhancedSchemaDefinition = {
 export const FACET_SCHEMA: EnhancedSchemaDefinition = {
     $version: '1.0.0',
     $id: 'vendure-facet',
+    label: 'Facet',
+    description: 'Facets for product filtering (e.g., Color, Size)',
     primaryKey: 'code',
 
     fields: {
@@ -626,6 +639,8 @@ export const FACET_SCHEMA: EnhancedSchemaDefinition = {
 export const ASSET_SCHEMA: EnhancedSchemaDefinition = {
     $version: '1.0.0',
     $id: 'vendure-asset',
+    label: 'Asset',
+    description: 'Media assets including images and files',
     primaryKey: 'id',
 
     fields: {
@@ -667,6 +682,8 @@ export const ASSET_SCHEMA: EnhancedSchemaDefinition = {
 export const STOCK_LEVEL_SCHEMA: EnhancedSchemaDefinition = {
     $version: '1.0.0',
     $id: 'vendure-stock-level',
+    label: 'Inventory',
+    description: 'Stock levels for product variants',
     primaryKey: ['productVariantId', 'stockLocationId'],
 
     fields: {
@@ -686,6 +703,8 @@ export const STOCK_LEVEL_SCHEMA: EnhancedSchemaDefinition = {
 export const PROMOTION_SCHEMA: EnhancedSchemaDefinition = {
     $version: '1.0.0',
     $id: 'vendure-promotion',
+    label: 'Promotion',
+    description: 'Promotional rules and coupon codes',
     primaryKey: 'couponCode',
 
     fields: {
@@ -737,6 +756,291 @@ export const PROMOTION_SCHEMA: EnhancedSchemaDefinition = {
     },
 };
 
+// CUSTOMER GROUP SCHEMA
+
+export const CUSTOMER_GROUP_SCHEMA: EnhancedSchemaDefinition = {
+    $version: '1.0.0',
+    $id: 'vendure-customer-group',
+    label: 'Customer Group',
+    description: 'Customer groups for segmentation and pricing',
+    primaryKey: 'name',
+
+    fields: {
+        id: id('Customer Group ID'),
+        name: { type: 'string', required: true, label: 'Name' },
+        customerEmails: {
+            type: 'array',
+            label: 'Customer Emails',
+            items: { type: 'email' },
+            description: 'Email addresses of customers to add to this group',
+        },
+        customFields: { type: 'json', label: 'Custom Fields' },
+        ...timestamps(),
+    },
+};
+
+// FACET VALUE SCHEMA
+
+export const FACET_VALUE_SCHEMA: EnhancedSchemaDefinition = {
+    $version: '1.0.0',
+    $id: 'vendure-facet-value',
+    label: 'Facet Value',
+    description: 'Individual facet values (e.g., Red, Large)',
+    primaryKey: 'code',
+
+    fields: {
+        id: id('Facet Value ID'),
+        name: { type: 'string', required: true, label: 'Name' },
+        code: { type: 'string', required: true, label: 'Code' },
+        facetCode: {
+            type: 'string',
+            required: true,
+            label: 'Facet Code',
+            description: 'Code of the parent facet this value belongs to',
+        },
+        facetId: {
+            type: 'string',
+            label: 'Facet ID',
+            description: 'ID of the parent facet (alternative to facetCode)',
+        },
+        translations: {
+            type: 'array',
+            label: 'Translations',
+            items: {
+                type: 'object',
+                fields: {
+                    languageCode: { type: 'locale', required: true },
+                    name: { type: 'string', required: true },
+                },
+            },
+        },
+        customFields: { type: 'json', label: 'Custom Fields' },
+        ...timestamps(),
+    },
+};
+
+// SHIPPING METHOD SCHEMA
+
+export const SHIPPING_METHOD_SCHEMA: EnhancedSchemaDefinition = {
+    $version: '1.0.0',
+    $id: 'vendure-shipping-method',
+    label: 'Shipping Method',
+    description: 'Shipping method configurations with calculators and checkers',
+    primaryKey: 'code',
+
+    fields: {
+        id: id('Shipping Method ID'),
+        name: { type: 'string', required: true, label: 'Name' },
+        code: { type: 'string', required: true, label: 'Code' },
+        description: { type: 'text', label: 'Description' },
+        fulfillmentHandler: {
+            type: 'string',
+            required: true,
+            label: 'Fulfillment Handler',
+            description: 'Code of the fulfillment handler to use',
+        },
+        calculator: {
+            type: 'object',
+            required: true,
+            label: 'Calculator',
+            description: 'Calculator configuration for shipping rates',
+            fields: {
+                code: { type: 'string', required: true },
+                args: { type: 'json' },
+            },
+        },
+        checker: {
+            type: 'object',
+            label: 'Checker',
+            description: 'Optional checker to determine eligibility',
+            fields: {
+                code: { type: 'string', required: true },
+                args: { type: 'json' },
+            },
+        },
+        translations: {
+            type: 'array',
+            label: 'Translations',
+            items: {
+                type: 'object',
+                fields: {
+                    languageCode: { type: 'locale', required: true },
+                    name: { type: 'string', required: true },
+                    description: { type: 'text' },
+                },
+            },
+        },
+        customFields: { type: 'json', label: 'Custom Fields' },
+        ...timestamps(),
+    },
+};
+
+// PAYMENT METHOD SCHEMA
+
+export const PAYMENT_METHOD_SCHEMA: EnhancedSchemaDefinition = {
+    $version: '1.0.0',
+    $id: 'vendure-payment-method',
+    label: 'Payment Method',
+    description: 'Payment method configurations with handlers and eligibility checkers',
+    primaryKey: 'code',
+
+    fields: {
+        id: id('Payment Method ID'),
+        name: { type: 'string', required: true, label: 'Name' },
+        code: { type: 'string', required: true, label: 'Code' },
+        description: { type: 'text', label: 'Description' },
+        enabled: { type: 'boolean', label: 'Enabled', default: true },
+        handler: {
+            type: 'object',
+            required: true,
+            label: 'Handler',
+            description: 'Payment handler configuration',
+            fields: {
+                code: { type: 'string', required: true },
+                args: { type: 'json' },
+            },
+        },
+        checker: {
+            type: 'object',
+            label: 'Checker',
+            description: 'Eligibility checker configuration',
+            fields: {
+                code: { type: 'string', required: true },
+                args: { type: 'json' },
+            },
+        },
+        translations: {
+            type: 'array',
+            label: 'Translations',
+            items: {
+                type: 'object',
+                fields: {
+                    languageCode: { type: 'locale', required: true },
+                    name: { type: 'string', required: true },
+                    description: { type: 'text' },
+                },
+            },
+        },
+        customFields: { type: 'json', label: 'Custom Fields' },
+        ...timestamps(),
+    },
+};
+
+// TAX RATE SCHEMA
+
+export const TAX_RATE_SCHEMA: EnhancedSchemaDefinition = {
+    $version: '1.0.0',
+    $id: 'vendure-tax-rate',
+    label: 'Tax Rate',
+    description: 'Tax rate configurations with category and zone resolution',
+    primaryKey: 'name',
+
+    fields: {
+        id: id('Tax Rate ID'),
+        name: { type: 'string', required: true, label: 'Name' },
+        value: {
+            type: 'float',
+            required: true,
+            label: 'Rate (%)',
+            description: 'Tax rate percentage (e.g., 20 for 20%)',
+            validation: { min: 0, max: 100 },
+        },
+        enabled: { type: 'boolean', label: 'Enabled', default: true },
+        taxCategoryCode: {
+            type: 'string',
+            label: 'Tax Category Code',
+            description: 'Code of the tax category this rate belongs to',
+        },
+        taxCategoryId: {
+            type: 'string',
+            label: 'Tax Category ID',
+            description: 'ID of the tax category (alternative to taxCategoryCode)',
+        },
+        zoneCode: {
+            type: 'string',
+            label: 'Zone Code',
+            description: 'Code of the zone where this tax rate applies',
+        },
+        zoneId: {
+            type: 'string',
+            label: 'Zone ID',
+            description: 'ID of the zone (alternative to zoneCode)',
+        },
+        customFields: { type: 'json', label: 'Custom Fields' },
+        ...timestamps(),
+    },
+};
+
+// STOCK LOCATION SCHEMA
+
+export const STOCK_LOCATION_SCHEMA: EnhancedSchemaDefinition = {
+    $version: '1.0.0',
+    $id: 'vendure-stock-location',
+    label: 'Stock Location',
+    description: 'Inventory locations and warehouses',
+    primaryKey: 'name',
+
+    fields: {
+        id: id('Stock Location ID'),
+        name: { type: 'string', required: true, label: 'Name' },
+        description: { type: 'text', label: 'Description' },
+        customFields: { type: 'json', label: 'Custom Fields' },
+        ...timestamps(),
+    },
+};
+
+// CHANNEL SCHEMA
+
+export const CHANNEL_SCHEMA: EnhancedSchemaDefinition = {
+    $version: '1.0.0',
+    $id: 'vendure-channel',
+    label: 'Channel',
+    description: 'Sales channel configurations',
+    primaryKey: 'code',
+
+    fields: {
+        id: id('Channel ID'),
+        code: { type: 'string', required: true, label: 'Code' },
+        token: {
+            type: 'string',
+            label: 'Token',
+            description: 'Unique identifier used in API requests',
+        },
+        defaultLanguageCode: {
+            type: 'locale',
+            required: true,
+            label: 'Default Language',
+        },
+        availableLanguageCodes: {
+            type: 'array',
+            label: 'Available Languages',
+            items: { type: 'locale' },
+        },
+        defaultCurrencyCode: {
+            type: 'currency',
+            required: true,
+            label: 'Default Currency',
+        },
+        availableCurrencyCodes: {
+            type: 'array',
+            label: 'Available Currencies',
+            items: { type: 'currency' },
+        },
+        pricesIncludeTax: {
+            type: 'boolean',
+            label: 'Prices Include Tax',
+            default: false,
+        },
+        defaultTaxZoneCode: { type: 'string', label: 'Default Tax Zone Code' },
+        defaultTaxZoneId: { type: 'string', label: 'Default Tax Zone ID' },
+        defaultShippingZoneCode: { type: 'string', label: 'Default Shipping Zone Code' },
+        defaultShippingZoneId: { type: 'string', label: 'Default Shipping Zone ID' },
+        sellerId: { type: 'string', label: 'Seller ID' },
+        customFields: { type: 'json', label: 'Custom Fields' },
+        ...timestamps(),
+    },
+};
+
 // EXPORT ALL SCHEMAS
 
 export const VENDURE_ENTITY_SCHEMAS: Record<string, EnhancedSchemaDefinition> = {
@@ -744,21 +1048,33 @@ export const VENDURE_ENTITY_SCHEMAS: Record<string, EnhancedSchemaDefinition> = 
     'product-variant': PRODUCT_VARIANT_SCHEMA,
     'order': ORDER_SCHEMA,
     'customer': CUSTOMER_SCHEMA,
+    'customer-group': CUSTOMER_GROUP_SCHEMA,
     'collection': COLLECTION_SCHEMA,
     'facet': FACET_SCHEMA,
+    'facet-value': FACET_VALUE_SCHEMA,
     'asset': ASSET_SCHEMA,
-    'stock-level': STOCK_LEVEL_SCHEMA,
+    'inventory': STOCK_LEVEL_SCHEMA,
     'promotion': PROMOTION_SCHEMA,
+    'shipping-method': SHIPPING_METHOD_SCHEMA,
+    'payment-method': PAYMENT_METHOD_SCHEMA,
+    'tax-rate': TAX_RATE_SCHEMA,
+    'stock-location': STOCK_LOCATION_SCHEMA,
+    'channel': CHANNEL_SCHEMA,
 };
 
-export const VENDURE_ENTITY_LIST = [
-    { code: 'product', name: 'Product', description: 'Product with variants' },
-    { code: 'product-variant', name: 'Product Variant', description: 'Individual product variant with SKU' },
-    { code: 'order', name: 'Order', description: 'Customer order' },
-    { code: 'customer', name: 'Customer', description: 'Customer account' },
-    { code: 'collection', name: 'Collection', description: 'Product collection' },
-    { code: 'facet', name: 'Facet', description: 'Facet with values' },
-    { code: 'asset', name: 'Asset', description: 'Media asset' },
-    { code: 'stock-level', name: 'Stock Level', description: 'Stock level per location' },
-    { code: 'promotion', name: 'Promotion', description: 'Discount promotion' },
-];
+/** Auto-derived from VENDURE_ENTITY_SCHEMAS. Used by dashboard for entity selection UI. */
+export const VENDURE_ENTITY_LIST = Object.entries(VENDURE_ENTITY_SCHEMAS).map(
+    ([code, schema]) => ({
+        code,
+        name: schema.label ?? code,
+        description: schema.description ?? '',
+    }),
+);
+
+/** Auto-derived from VENDURE_ENTITY_SCHEMAS. Keyed by SCREAMING_SNAKE entity type for resolver use. */
+export const ENTITY_DESCRIPTIONS: Record<string, string> = Object.fromEntries(
+    Object.entries(VENDURE_ENTITY_SCHEMAS).map(([key, schema]) => [
+        kebabToScreamingSnake(key),
+        schema.description ?? '',
+    ]),
+);

@@ -1,18 +1,23 @@
 import * as path from 'path';
-import { FileFormat } from '../../parsers/types';
+import { FileFormat, FORMAT_EXTENSIONS } from '../../parsers/types';
+import { FILE_FORMAT_METADATA } from '../../constants/adapter-schema-options';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { JsonObject } from '../../types/index';
 
-export const FILE_FORMAT_MAP: Record<string, FileFormat> = {
-    csv: 'CSV',
-    tsv: 'CSV',
-    json: 'JSON',
-    jsonl: 'JSON',
-    ndjson: 'JSON',
-    xml: 'XML',
-    xlsx: 'XLSX',
-    xls: 'XLSX',
-};
+/**
+ * Extension-to-format mapping — auto-derived from FILE_FORMAT_METADATA.
+ * Only includes parseable formats (CSV, JSON, XML, XLSX).
+ */
+export const FILE_FORMAT_MAP: Record<string, FileFormat> = (() => {
+    const map: Record<string, string> = {};
+    for (const [format, meta] of Object.entries(FILE_FORMAT_METADATA)) {
+        if (!meta.parseable) continue;
+        for (const ext of meta.extensions) {
+            map[ext] = format;
+        }
+    }
+    return map as Record<string, FileFormat>;
+})();
 
 /**
  * Extract the file extension from a filename, path, or URL.
@@ -47,14 +52,7 @@ export function hasExpectedExtension(filename: string, format?: FileFormat): boo
     if (!format) return true;
 
     const extension = getFileExtension(filename);
-    const formatExtensions: Record<string, string[]> = {
-        csv: ['csv', 'tsv'],
-        json: ['json', 'jsonl', 'ndjson'],
-        xml: ['xml'],
-        xlsx: ['xlsx', 'xls'],
-    };
-
-    const validExtensions = formatExtensions[format] || [];
+    const validExtensions = FORMAT_EXTENSIONS[format] || [];
     return validExtensions.length === 0 || validExtensions.includes(extension);
 }
 

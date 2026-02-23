@@ -42,9 +42,9 @@ export function applyParseInt(value: JsonValue): JsonValue {
  */
 export function applyRound(value: JsonValue, config: TransformConfig): JsonValue {
     if (typeof value === 'number') {
-        const precision = config.precision ?? 0;
+        const precision = Math.min(Math.max(0, Math.floor(config.precision ?? 0)), TRANSFORM_LIMITS.MAX_DECIMAL_PLACES);
         const factor = Math.pow(10, precision);
-        return Math.round(value * factor) / factor;
+        return isFinite(factor) ? Math.round(value * factor) / factor : value;
     }
     return value;
 }
@@ -110,8 +110,10 @@ export function applyMath(value: JsonValue, config: TransformConfig): JsonValue 
                 return config.operand !== 0 ? value / config.operand : null;
             case MathOperation.MODULO:
                 return config.operand !== 0 ? value % config.operand : null;
-            case MathOperation.POWER:
-                return Math.pow(value, config.operand);
+            case MathOperation.POWER: {
+                const powered = Math.pow(value, config.operand);
+                return isFinite(powered) ? powered : value;
+            }
         }
     }
     return value;

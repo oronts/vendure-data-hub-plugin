@@ -1,8 +1,7 @@
 import * as React from 'react';
 import { memo } from 'react';
 import type { TriggerType, TriggerSelectorProps } from '../../../types';
-import { TRIGGER_ICONS } from '../../../constants';
-import { Play } from 'lucide-react';
+import { useTriggerIconResolver } from '../../../hooks';
 import { SelectableCard, SelectableCardGrid } from '../selectable-card';
 
 function TriggerSelectorComponent({
@@ -11,10 +10,11 @@ function TriggerSelectorComponent({
     onChange,
     columns = 4,
 }: TriggerSelectorProps) {
+    const resolveTriggerIcon = useTriggerIconResolver();
     return (
         <SelectableCardGrid columns={columns}>
             {options.map(option => {
-                const Icon = TRIGGER_ICONS[option.id as TriggerType] ?? Play;
+                const Icon = resolveTriggerIcon(option.id as TriggerType);
                 return (
                     <SelectableCard
                         key={option.id}

@@ -82,6 +82,8 @@ export const entitySchemaSchema = `
         description: String
         "Supported operations (create, update, upsert, delete)"
         supportedOperations: [String!]!
+        "Loader adapter code for this entity"
+        adapterCode: String!
     }
 `;
 

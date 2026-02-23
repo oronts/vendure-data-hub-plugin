@@ -1,8 +1,9 @@
-import { RunMode } from '../../constants/enums';
-import { JsonObject, PipelineDefinition } from '../../types/index';
+import { RunMode, AdapterType as AdapterTypeEnum } from '../../constants/enums';
+import { PipelineDefinition } from '../../types/index';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { AdapterDefinition } from '../../sdk/types';
 import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
+import { hasStreamSafetyInfo } from './adapter-validation';
 
 // ============================================================================
 // Type Definitions
@@ -38,12 +39,6 @@ export function isOperatorConfig(value: unknown): value is OperatorConfig {
         }
     }
     return true;
-}
-
-function hasStreamSafetyInfo(
-    adapter: AdapterDefinition | undefined,
-): adapter is AdapterDefinition & { pure: boolean } {
-    return adapter !== undefined && typeof adapter.pure === 'boolean';
 }
 
 // ============================================================================
@@ -120,7 +115,7 @@ export function validateOperatorParams(
         return;
     }
 
-    const adapter = registry.find('OPERATOR', opCode);
+    const adapter = registry.find(AdapterTypeEnum.OPERATOR, opCode);
     if (!adapter) {
         issues.push({
             message: `Step "${stepKey}": unknown operator "${opCode}"`,

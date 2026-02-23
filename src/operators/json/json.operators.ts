@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject } from '../types';
 import {
     ParseJsonOperatorConfig,
     StringifyJsonOperatorConfig,
@@ -11,11 +11,15 @@ import {
     applyPick,
     applyOmit,
 } from './helpers';
+import { createRecordOperator } from '../operator-factory';
 
 export const PARSE_JSON_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'parseJson',
     description: 'Parse a JSON string field into an object.',
+    category: 'JSON',
+    categoryLabel: 'JSON',
+    categoryOrder: 4,
     pure: true,
     schema: {
         fields: [
@@ -29,6 +33,9 @@ export const STRINGIFY_JSON_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'stringifyJson',
     description: 'Stringify an object field to a JSON string.',
+    category: 'JSON',
+    categoryLabel: 'JSON',
+    categoryOrder: 4,
     pure: true,
     schema: {
         fields: [
@@ -43,7 +50,11 @@ export const PICK_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'pick',
     description: 'Pick specific fields from a record, discarding others.',
+    category: 'JSON',
+    categoryLabel: 'JSON',
+    categoryOrder: 4,
     pure: true,
+    summaryTemplate: 'Keep selected fields',
     schema: {
         fields: [
             { key: 'fields', label: 'Fields to keep (JSON array)', type: 'json', required: true, description: 'Array of field paths to keep' },
@@ -55,6 +66,9 @@ export const OMIT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'omit',
     description: 'Omit specific fields from a record.',
+    category: 'JSON',
+    categoryLabel: 'JSON',
+    categoryOrder: 4,
     pure: true,
     schema: {
         fields: [
@@ -63,58 +77,38 @@ export const OMIT_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-export function parseJsonOperator(
-    records: readonly JsonObject[],
-    config: ParseJsonOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyParseJsonOperator(record: JsonObject, config: ParseJsonOperatorConfig): JsonObject {
     if (!config.source) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyParseJson(record, config.source, config.target),
-    );
-    return { records: results };
+    return applyParseJson(record, config.source, config.target);
 }
 
-export function stringifyJsonOperator(
-    records: readonly JsonObject[],
-    config: StringifyJsonOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const parseJsonOperator = createRecordOperator(applyParseJsonOperator);
+
+export function applyStringifyJsonOperator(record: JsonObject, config: StringifyJsonOperatorConfig): JsonObject {
     if (!config.source) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyStringifyJson(record, config.source, config.target, config.pretty),
-    );
-    return { records: results };
+    return applyStringifyJson(record, config.source, config.target, config.pretty);
 }
 
-export function pickOperator(
-    records: readonly JsonObject[],
-    config: PickOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const stringifyJsonOperator = createRecordOperator(applyStringifyJsonOperator);
+
+export function applyPickOperator(record: JsonObject, config: PickOperatorConfig): JsonObject {
     if (!config.fields || !Array.isArray(config.fields)) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record => applyPick(record, config.fields));
-    return { records: results };
+    return applyPick(record, config.fields);
 }
 
-export function omitOperator(
-    records: readonly JsonObject[],
-    config: OmitOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const pickOperator = createRecordOperator(applyPickOperator);
+
+export function applyOmitOperator(record: JsonObject, config: OmitOperatorConfig): JsonObject {
     if (!config.fields || !Array.isArray(config.fields)) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record => applyOmit(record, config.fields));
-    return { records: results };
+    return applyOmit(record, config.fields);
 }
+
+export const omitOperator = createRecordOperator(applyOmitOperator);

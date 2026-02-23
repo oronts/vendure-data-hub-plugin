@@ -4,6 +4,8 @@ import { DATAHUB_NAV_SECTION } from './constants';
 import {
     pipelinesList,
     pipelineDetail,
+    importWizardPage,
+    exportWizardPage,
     adaptersList,
     secretsList,
     secretDetail,
@@ -31,6 +33,8 @@ function wrapWithErrorBoundary(route: DashboardRouteDefinition): DashboardRouteD
 
 const routes: DashboardRouteDefinition[] = [
     pipelinesList,
+    importWizardPage,
+    exportWizardPage,
     pipelineDetail,
     adaptersList,
     secretsList,

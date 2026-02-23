@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject } from '../types';
 import {
     SplitOperatorConfig,
     JoinOperatorConfig,
@@ -27,11 +27,15 @@ import {
     applyTruncate,
 } from './helpers';
 import { TRIM_MODES } from '../constants';
+import { createRecordOperator } from '../operator-factory';
 
 export const SPLIT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'split',
     description: 'Split a string field into an array by delimiter.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
     schema: {
         fields: [
@@ -47,6 +51,9 @@ export const JOIN_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'join',
     description: 'Join an array field into a string.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
     schema: {
         fields: [
@@ -61,7 +68,11 @@ export const TRIM_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'trim',
     description: 'Trim whitespace from a string field.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
+    fieldTransform: true,
     schema: {
         fields: [
             { key: 'path', label: 'Field path', type: 'string', required: true },
@@ -76,7 +87,11 @@ export const LOWERCASE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'lowercase',
     description: 'Convert a string field to lowercase.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
+    fieldTransform: true,
     schema: {
         fields: [
             { key: 'path', label: 'Field path', type: 'string', required: true },
@@ -88,7 +103,11 @@ export const UPPERCASE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'uppercase',
     description: 'Convert a string field to uppercase.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
+    fieldTransform: true,
     schema: {
         fields: [
             { key: 'path', label: 'Field path', type: 'string', required: true },
@@ -100,6 +119,9 @@ export const SLUGIFY_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'slugify',
     description: 'Generate a URL-friendly slug from a string field.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
     schema: {
         fields: [
@@ -114,6 +136,9 @@ export const CONCAT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'concat',
     description: 'Concatenate multiple string fields into one.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
     schema: {
         fields: [
@@ -128,6 +153,9 @@ export const REPLACE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'replace',
     description: 'Replace text in a string field.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
     schema: {
         fields: [
@@ -139,94 +167,61 @@ export const REPLACE_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-export function splitOperator(
-    records: readonly JsonObject[],
-    config: SplitOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record =>
-        applySplit(record, config.source, config.target, config.delimiter, config.trim),
-    );
-    return { records: results };
+export function applySplitOperator(record: JsonObject, config: SplitOperatorConfig): JsonObject {
+    return applySplit(record, config.source, config.target, config.delimiter, config.trim);
 }
 
-export function joinOperator(
-    records: readonly JsonObject[],
-    config: JoinOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record =>
-        applyJoin(record, config.source, config.target, config.delimiter),
-    );
-    return { records: results };
+export const splitOperator = createRecordOperator(applySplitOperator);
+
+export function applyJoinOperator(record: JsonObject, config: JoinOperatorConfig): JsonObject {
+    return applyJoin(record, config.source, config.target, config.delimiter);
 }
 
-export function trimOperator(
-    records: readonly JsonObject[],
-    config: TrimOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record =>
-        applyTrim(record, config.path, config.mode),
-    );
-    return { records: results };
+export const joinOperator = createRecordOperator(applyJoinOperator);
+
+export function applyTrimOperator(record: JsonObject, config: TrimOperatorConfig): JsonObject {
+    return applyTrim(record, config.path, config.mode);
 }
 
-export function lowercaseOperator(
-    records: readonly JsonObject[],
-    config: CaseOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record => applyLowercase(record, config.path));
-    return { records: results };
+export const trimOperator = createRecordOperator(applyTrimOperator);
+
+export function applyLowercaseOperator(record: JsonObject, config: CaseOperatorConfig): JsonObject {
+    return applyLowercase(record, config.path);
 }
 
-export function uppercaseOperator(
-    records: readonly JsonObject[],
-    config: CaseOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record => applyUppercase(record, config.path));
-    return { records: results };
+export const lowercaseOperator = createRecordOperator(applyLowercaseOperator);
+
+export function applyUppercaseOperator(record: JsonObject, config: CaseOperatorConfig): JsonObject {
+    return applyUppercase(record, config.path);
 }
 
-export function slugifyOperator(
-    records: readonly JsonObject[],
-    config: SlugifyOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record =>
-        applySlugify(record, config.source, config.target, config.separator),
-    );
-    return { records: results };
+export const uppercaseOperator = createRecordOperator(applyUppercaseOperator);
+
+export function applySlugifyOperator(record: JsonObject, config: SlugifyOperatorConfig): JsonObject {
+    return applySlugify(record, config.source, config.target, config.separator);
 }
 
-export function concatOperator(
-    records: readonly JsonObject[],
-    config: ConcatOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record =>
-        applyConcat(record, config.sources, config.target, config.separator),
-    );
-    return { records: results };
+export const slugifyOperator = createRecordOperator(applySlugifyOperator);
+
+export function applyConcatOperator(record: JsonObject, config: ConcatOperatorConfig): JsonObject {
+    return applyConcat(record, config.sources, config.target, config.separator);
 }
 
-export function replaceOperator(
-    records: readonly JsonObject[],
-    config: ReplaceOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record =>
-        applyReplace(record, config.path, config.search, config.replacement, config.all),
-    );
-    return { records: results };
+export const concatOperator = createRecordOperator(applyConcatOperator);
+
+export function applyReplaceOperator(record: JsonObject, config: ReplaceOperatorConfig): JsonObject {
+    return applyReplace(record, config.path, config.search, config.replacement, config.all);
 }
+
+export const replaceOperator = createRecordOperator(applyReplaceOperator);
 
 export const EXTRACT_REGEX_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'extractRegex',
     description: 'Extract a value from a string field using a regular expression pattern with capture groups.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
     schema: {
         fields: [
@@ -243,6 +238,9 @@ export const REPLACE_REGEX_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'replaceRegex',
     description: 'Replace values in a string field using a regular expression pattern.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
     schema: {
         fields: [
@@ -254,54 +252,34 @@ export const REPLACE_REGEX_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-export function extractRegexOperator(
-    records: readonly JsonObject[],
-    config: ExtractRegexOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyExtractRegexOperator(record: JsonObject, config: ExtractRegexOperatorConfig): JsonObject {
     if (!config.source || !config.target || !config.pattern) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyExtractRegex(
-            record,
-            config.source,
-            config.target,
-            config.pattern,
-            config.group,
-            config.flags,
-        ),
-    );
-    return { records: results };
+    return applyExtractRegex(record, config.source, config.target, config.pattern, config.group, config.flags);
 }
 
-export function replaceRegexOperator(
-    records: readonly JsonObject[],
-    config: ReplaceRegexOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const extractRegexOperator = createRecordOperator(applyExtractRegexOperator);
+
+export function applyReplaceRegexOperator(record: JsonObject, config: ReplaceRegexOperatorConfig): JsonObject {
     if (!config.path || !config.pattern || config.replacement === undefined) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyReplaceRegex(
-            record,
-            config.path,
-            config.pattern,
-            config.replacement,
-            config.flags,
-        ),
-    );
-    return { records: results };
+    return applyReplaceRegex(record, config.path, config.pattern, config.replacement, config.flags);
 }
+
+export const replaceRegexOperator = createRecordOperator(applyReplaceRegexOperator);
 
 export const STRIP_HTML_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'stripHtml',
+    name: 'Strip HTML',
     description: 'Remove HTML tags from a string field, preserving text content.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
+    fieldTransform: true,
     schema: {
         fields: [
             { key: 'source', label: 'Source field path', type: 'string', required: true },
@@ -314,6 +292,9 @@ export const TRUNCATE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'truncate',
     description: 'Truncate a string to a maximum length, optionally adding a suffix.',
+    category: 'STRING',
+    categoryLabel: 'String',
+    categoryOrder: 1,
     pure: true,
     schema: {
         fields: [
@@ -325,32 +306,20 @@ export const TRUNCATE_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-export function stripHtmlOperator(
-    records: readonly JsonObject[],
-    config: StripHtmlOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyStripHtmlOperator(record: JsonObject, config: StripHtmlOperatorConfig): JsonObject {
     if (!config.source) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyStripHtml(record, config.source, config.target),
-    );
-    return { records: results };
+    return applyStripHtml(record, config.source, config.target);
 }
 
-export function truncateOperator(
-    records: readonly JsonObject[],
-    config: TruncateOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const stripHtmlOperator = createRecordOperator(applyStripHtmlOperator);
+
+export function applyTruncateOperator(record: JsonObject, config: TruncateOperatorConfig): JsonObject {
     if (!config.source || config.length === undefined) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyTruncate(record, config.source, config.target, config.length, config.suffix),
-    );
-    return { records: results };
+    return applyTruncate(record, config.source, config.target, config.length, config.suffix);
 }
+
+export const truncateOperator = createRecordOperator(applyTruncateOperator);

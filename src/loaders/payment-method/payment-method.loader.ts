@@ -15,7 +15,14 @@ import {
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+    createLookupHelper,
+} from '../base';
 import {
     PaymentMethodInput,
     PAYMENT_METHOD_LOADER_METADATA,
@@ -60,6 +67,8 @@ export class PaymentMethodLoader extends BaseEntityLoader<PaymentMethodInput, Pa
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = PAYMENT_METHOD_LOADER_METADATA;
 
+    private readonly lookupHelper: EntityLookupHelper<PaymentMethodService, PaymentMethod, PaymentMethodInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private paymentMethodService: PaymentMethodService,
@@ -67,6 +76,10 @@ export class PaymentMethodLoader extends BaseEntityLoader<PaymentMethodInput, Pa
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PAYMENT_METHOD_LOADER);
+        this.lookupHelper = createLookupHelper<PaymentMethodService, PaymentMethod, PaymentMethodInput>(this.paymentMethodService)
+            .addFilterStrategy('code', 'code', (ctx, svc, opts) => svc.findAll(ctx, opts))
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id))
+            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts));
     }
 
     protected getDuplicateErrorMessage(record: PaymentMethodInput): string {
@@ -78,35 +91,7 @@ export class PaymentMethodLoader extends BaseEntityLoader<PaymentMethodInput, Pa
         lookupFields: string[],
         record: PaymentMethodInput,
     ): Promise<ExistingEntityLookupResult<PaymentMethod> | null> {
-        // Primary lookup: by code
-        if (record.code && lookupFields.includes('code')) {
-            const methods = await this.paymentMethodService.findAll(ctx, {
-                filter: { code: { eq: record.code } },
-            });
-            if (methods.totalItems > 0) {
-                return { id: methods.items[0].id, entity: methods.items[0] };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const method = await this.paymentMethodService.findOne(ctx, record.id as ID);
-            if (method) {
-                return { id: method.id, entity: method };
-            }
-        }
-
-        // Fallback: by name
-        if (record.name && lookupFields.includes('name')) {
-            const methods = await this.paymentMethodService.findAll(ctx, {
-                filter: { name: { eq: record.name } },
-            });
-            if (methods.totalItems > 0) {
-                return { id: methods.items[0].id, entity: methods.items[0] };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -114,34 +99,32 @@ export class PaymentMethodLoader extends BaseEntityLoader<PaymentMethodInput, Pa
         record: PaymentMethodInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
+        const builder = new ValidationBuilder()
+            .requireStringForCreate('name', record.name, operation, 'Payment method name is required')
+            .requireStringForCreate('code', record.code, operation, 'Payment method code is required');
 
-        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
-                errors.push({ field: 'name', message: 'Payment method name is required', code: 'REQUIRED' });
-            }
-
-            if (!record.code || typeof record.code !== 'string' || record.code.trim() === '') {
-                errors.push({ field: 'code', message: 'Payment method code is required', code: 'REQUIRED' });
-            } else if (!/^[a-z0-9_-]+$/i.test(record.code)) {
-                errors.push({
-                    field: 'code',
-                    message: 'Code must contain only letters, numbers, hyphens, and underscores',
-                    code: 'INVALID_FORMAT',
-                });
-            }
-
-            if (!record.handler || !record.handler.code) {
-                errors.push({ field: 'handler', message: 'Payment handler is required', code: 'REQUIRED' });
-            }
+        if (
+            (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) &&
+            record.code && typeof record.code === 'string' && record.code.trim() !== '' &&
+            !/^[a-z0-9_-]+$/i.test(record.code)
+        ) {
+            builder.addError(
+                'code',
+                'Code must contain only letters, numbers, hyphens, and underscores',
+                'INVALID_FORMAT',
+            );
         }
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
+            builder.addErrorIf(
+                !record.handler || !record.handler.code,
+                'handler',
+                'Payment handler is required',
+                'REQUIRED',
+            );
+        }
+
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

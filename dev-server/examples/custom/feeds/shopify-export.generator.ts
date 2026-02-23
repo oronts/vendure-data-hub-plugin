@@ -203,5 +203,3 @@ function escapeCsvField(value: string): string {
     }
     return value;
 }
-
-export default shopifyExportGenerator;

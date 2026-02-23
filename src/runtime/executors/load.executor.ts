@@ -1,49 +1,26 @@
 /**
- * Load Executor - Routes load operations to handler modules:
+ * Load Executor - Routes load operations to handler modules.
  *
- * - product-handler.ts: Product and variant upsert
- * - variant-handler.ts: Variant upsert standalone
- * - customer-handler.ts: Customer upsert with addresses and groups
- * - order-handler.ts: Order note, coupon application, and state transitions
- * - inventory-handler.ts: Stock adjustments
- * - collection-handler.ts: Collection upsert
- * - promotion-handler.ts: Promotion upsert
- * - asset-handler.ts: Asset attachment
- * - rest-handler.ts: REST POST to external endpoints
- * - graphql-mutation-handler.ts: GraphQL mutations to external endpoints
+ * Handler dispatch is driven by LOADER_HANDLER_REGISTRY, so adding a new
+ * loader only requires adding an entry there. No changes are needed in this file.
  */
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Optional, OnModuleInit } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { RequestContext } from '@vendure/core';
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig, PipelineContext } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-import { LOGGER_CONTEXTS, LOADER_CODE } from '../../constants/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../executor-types';
-import {
-    ProductHandler,
-    VariantHandler,
-    CustomerHandler,
-    OrderNoteHandler,
-    ApplyCouponHandler,
-    OrderTransitionHandler,
-    StockAdjustHandler,
-    CollectionHandler,
-    PromotionHandler,
-    AssetAttachHandler,
-    AssetImportHandler,
-    FacetHandler,
-    FacetValueHandler,
-    RestPostHandler,
-    GraphqlMutationHandler,
-    TaxRateHandler,
-    PaymentMethodHandler,
-    ChannelHandler,
-} from './loaders';
+import { LOGGER_CONTEXTS } from '../../constants/index';
+import { AdapterType, ConflictStrategy, ChannelStrategy as ChannelStrategyEnum, LanguageStrategy, ValidationStrictness } from '../../constants/enums';
+import { RecordObject, OnRecordErrorCallback, ExecutionResult, SANDBOX_PIPELINE_ID } from '../executor-types';
+import { LoaderHandler } from './loaders/types';
+import { LOADER_HANDLER_REGISTRY } from './loaders/loader-handler-registry';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { LoaderAdapter, LoadContext, ChannelStrategy, LanguageStrategyValue, ValidationModeType, ConflictStrategyValue } from '../../sdk/types';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { getAdapterCode } from '../../types/step-configs';
-import { ConnectionType } from '../../sdk/types/connection-types';
+import { createSecretsAdapter, createConnectionsAdapter, createLoggerAdapter } from './context-adapters';
+import { toErrorOrUndefined } from '../../utils/error.utils';
 
 /**
  * Common load step configuration
@@ -58,55 +35,34 @@ interface LoadStepCfg {
 }
 
 @Injectable()
-export class LoadExecutor {
+export class LoadExecutor implements OnModuleInit {
     private readonly logger: DataHubLogger;
-    private readonly handlers: Record<string, (ctx: RequestContext, step: PipelineStepDefinition, input: RecordObject[], onRecordError?: OnRecordErrorCallback, errorHandling?: ErrorHandlingConfig) => Promise<ExecutionResult>>;
+    private readonly handlers = new Map<string, LoaderHandler>();
 
     constructor(
-        private productHandler: ProductHandler,
-        private variantHandler: VariantHandler,
-        private customerHandler: CustomerHandler,
-        private orderNoteHandler: OrderNoteHandler,
-        private applyCouponHandler: ApplyCouponHandler,
-        private orderTransitionHandler: OrderTransitionHandler,
-        private stockAdjustHandler: StockAdjustHandler,
-        private collectionHandler: CollectionHandler,
-        private promotionHandler: PromotionHandler,
-        private assetAttachHandler: AssetAttachHandler,
-        private assetImportHandler: AssetImportHandler,
-        private facetHandler: FacetHandler,
-        private facetValueHandler: FacetValueHandler,
-        private restPostHandler: RestPostHandler,
-        private graphqlMutationHandler: GraphqlMutationHandler,
-        private taxRateHandler: TaxRateHandler,
-        private paymentMethodHandler: PaymentMethodHandler,
-        private channelHandler: ChannelHandler,
+        private moduleRef: ModuleRef,
         private secretService: SecretService,
         private connectionService: ConnectionService,
         loggerFactory: DataHubLoggerFactory,
         @Optional() private registry?: DataHubRegistryService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.LOAD_EXECUTOR);
-        this.handlers = {
-            [LOADER_CODE.PRODUCT_UPSERT]: (ctx, step, input, onErr, err) => this.productHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.VARIANT_UPSERT]: (ctx, step, input, onErr, err) => this.variantHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.CUSTOMER_UPSERT]: (ctx, step, input, onErr, err) => this.customerHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.ORDER_NOTE]: (ctx, step, input, onErr, err) => this.orderNoteHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.STOCK_ADJUST]: (ctx, step, input, onErr, err) => this.stockAdjustHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.APPLY_COUPON]: (ctx, step, input, onErr, err) => this.applyCouponHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.COLLECTION_UPSERT]: (ctx, step, input, onErr, err) => this.collectionHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.PROMOTION_UPSERT]: (ctx, step, input, onErr, err) => this.promotionHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.ASSET_ATTACH]: (ctx, step, input, onErr, err) => this.assetAttachHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.ASSET_IMPORT]: (ctx, step, input, onErr, err) => this.assetImportHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.FACET_UPSERT]: (ctx, step, input, onErr, err) => this.facetHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.FACET_VALUE_UPSERT]: (ctx, step, input, onErr, err) => this.facetValueHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.ORDER_TRANSITION]: (ctx, step, input, onErr, err) => this.orderTransitionHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.REST_POST]: (ctx, step, input, onErr, err) => this.restPostHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.GRAPHQL_MUTATION]: (ctx, step, input, onErr, err) => this.graphqlMutationHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.TAX_RATE_UPSERT]: (ctx, step, input, onErr, err) => this.taxRateHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.PAYMENT_METHOD_UPSERT]: (ctx, step, input, onErr, err) => this.paymentMethodHandler.execute(ctx, step, input, onErr, err),
-            [LOADER_CODE.CHANNEL_UPSERT]: (ctx, step, input, onErr, err) => this.channelHandler.execute(ctx, step, input, onErr, err),
-        };
+    }
+
+    onModuleInit(): void {
+        // Resolve all registered handler classes from the DI container
+        for (const [code, entry] of LOADER_HANDLER_REGISTRY) {
+            try {
+                const instance = this.moduleRef.get(entry.handler, { strict: false });
+                this.handlers.set(code, instance);
+            } catch (error) {
+                this.logger.warn(`Failed to resolve loader handler`, {
+                    code,
+                    handler: entry.handler.name,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        }
     }
 
     async execute(
@@ -127,9 +83,9 @@ export class LoadExecutor {
         });
 
         // Try built-in loaders first
-        const handler = adapterCode ? this.handlers[adapterCode] : undefined;
+        const handler = adapterCode ? this.handlers.get(adapterCode) : undefined;
         if (handler) {
-            const result = await handler(ctx, step, input, onRecordError, errorHandling);
+            const result = await handler.execute(ctx, step, input, onRecordError, errorHandling);
             const durationMs = Date.now() - startTime;
             this.logger.logLoaderOperation(adapterCode ?? 'unknown', 'upsert', result.ok, result.fail, durationMs);
             return result;
@@ -137,7 +93,7 @@ export class LoadExecutor {
 
         // Try custom loaders from registry
         if (adapterCode && this.registry) {
-            const customLoader = this.registry.getRuntime('LOADER', adapterCode) as LoaderAdapter<unknown> | undefined;
+            const customLoader = this.registry.getRuntime(AdapterType.LOADER, adapterCode) as LoaderAdapter<unknown> | undefined;
             if (customLoader && typeof customLoader.load === 'function') {
                 const result = await this.executeCustomLoader(ctx, step, input, customLoader, pipelineContext);
                 const durationMs = Date.now() - startTime;
@@ -167,26 +123,17 @@ export class LoadExecutor {
         // Create load context for the custom loader
         const loadContext: LoadContext = {
             ctx,
-            pipelineId: '0',
+            pipelineId: SANDBOX_PIPELINE_ID,
             stepKey: step.key,
             pipelineContext: pipelineContext ?? {} as PipelineContext,
-            channelStrategy: cfg.channelStrategy ?? 'INHERIT',
+            channelStrategy: cfg.channelStrategy ?? ChannelStrategyEnum.INHERIT,
             channels: [],
-            languageStrategy: cfg.languageStrategy ?? 'FALLBACK',
-            validationMode: cfg.validationMode ?? 'LENIENT',
-            conflictStrategy: cfg.conflictStrategy ?? 'SOURCE_WINS',
-            secrets: {
-                get: async (code: string) => {
-                    return await this.secretService.resolve(ctx, code) ?? undefined;
-                },
-                getRequired: async (code: string) => {
-                    const value = await this.secretService.resolve(ctx, code);
-                    if (!value) throw new Error(`Secret not found: ${code}`);
-                    return value;
-                },
-            },
-            connections: this.createConnectionAdapter(ctx),
-            logger: this.createLoggerAdapter(),
+            languageStrategy: cfg.languageStrategy ?? LanguageStrategy.FALLBACK,
+            validationMode: cfg.validationMode ?? ValidationStrictness.LENIENT,
+            conflictStrategy: cfg.conflictStrategy ?? ConflictStrategy.SOURCE_WINS,
+            secrets: createSecretsAdapter(this.secretService, ctx),
+            connections: createConnectionsAdapter(this.connectionService, ctx),
+            logger: createLoggerAdapter(this.logger),
             dryRun: false,
         };
 
@@ -197,48 +144,19 @@ export class LoadExecutor {
                 fail: result.failed,
             };
         } catch (error) {
-            this.logger.error(`Custom loader failed`, error instanceof Error ? error : undefined, {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Custom loader failed`, toErrorOrUndefined(error), {
                 adapterCode: loader.code,
                 stepKey: step.key,
+                errorMessage,
             });
-            return { ok: 0, fail: input.length };
+            return { ok: 0, fail: input.length, error: errorMessage };
         }
     }
 
-    private createConnectionAdapter(ctx: RequestContext): LoadContext['connections'] {
-        return {
-            get: async (code: string) => {
-                const conn = await this.connectionService.getByCode(ctx, code);
-                if (!conn) return undefined;
-                return {
-                    code: conn.code,
-                    type: conn.type as ConnectionType,
-                    config: conn.config as JsonObject,
-                };
-            },
-            getRequired: async (code: string) => {
-                const conn = await this.connectionService.getByCode(ctx, code);
-                if (!conn) throw new Error(`Connection not found: ${code}`);
-                return {
-                    code: conn.code,
-                    type: conn.type as ConnectionType,
-                    config: conn.config as JsonObject,
-                };
-            },
-        };
-    }
-
-    private createLoggerAdapter(): LoadContext['logger'] {
-        return {
-            info: (msg: string, meta?: JsonObject) => this.logger.info(msg, meta),
-            warn: (msg: string, meta?: JsonObject) => this.logger.warn(msg, meta),
-            error: (msg: string, meta?: JsonObject) => this.logger.error(msg, undefined, meta),
-            debug: (msg: string, meta?: JsonObject) => this.logger.debug(msg, meta),
-        };
-    }
-
     /**
-     * Simulate a loader step for dry-run mode
+     * Simulate a loader step for dry-run mode.
+     * Delegates to the handler's simulate() method if available.
      */
     async simulate(
         ctx: RequestContext,
@@ -246,15 +164,12 @@ export class LoadExecutor {
         input: RecordObject[],
     ): Promise<Record<string, unknown>> {
         const code = getAdapterCode(step);
+        const handler = this.handlers.get(code);
 
-        const sim: Record<string, unknown> = {
-            productUpsert: await this.productHandler.simulate?.(ctx, step, input),
-            variantUpsert: await this.variantHandler.simulate?.(ctx, step, input),
-            customerUpsert: await this.customerHandler.simulate?.(ctx, step, input),
-            collectionUpsert: await this.collectionHandler.simulate?.(ctx, step, input),
-            promotionUpsert: await this.promotionHandler.simulate?.(ctx, step, input),
-            applyCoupon: await this.applyCouponHandler.simulate?.(ctx, step, input),
-        };
-        return (sim[code] ?? {}) as Record<string, unknown>;
+        if (handler?.simulate) {
+            return await handler.simulate(ctx, step, input) ?? {};
+        }
+
+        return {};
     }
 }

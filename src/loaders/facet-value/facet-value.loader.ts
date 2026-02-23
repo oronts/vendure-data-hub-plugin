@@ -16,7 +16,13 @@ import {
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+} from '../base';
 import {
     FacetValueInput,
     FACET_VALUE_LOADER_METADATA,
@@ -42,6 +48,8 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
     // Cache for resolved facet IDs to avoid repeated lookups
     private facetCache = new Map<string, ID>();
 
+    private readonly lookupHelper: EntityLookupHelper<FacetValueService, FacetValue, FacetValueInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private facetValueService: FacetValueService,
@@ -50,6 +58,13 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FACET_VALUE_LOADER);
+        this.lookupHelper = new EntityLookupHelper<FacetValueService, FacetValue, FacetValueInput>(this.facetValueService)
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id) as Promise<FacetValue | null>);
+    }
+
+    protected preprocessRecords(records: FacetValueInput[]): FacetValueInput[] {
+        this.facetCache.clear();
+        return records;
     }
 
     protected getDuplicateErrorMessage(record: FacetValueInput): string {
@@ -61,7 +76,7 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
         lookupFields: string[],
         record: FacetValueInput,
     ): Promise<ExistingEntityLookupResult<FacetValue> | null> {
-        // Primary lookup: by code - need to search through facet values of the parent facet
+        // Primary lookup: by code within parent facet (composite key, requires custom logic)
         if (record.code && lookupFields.includes('code')) {
             const facetId = record.facetId || await resolveFacetIdFromCode(ctx, this.facetService, record.facetCode);
             if (facetId) {
@@ -73,15 +88,8 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
             }
         }
 
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const facetValue = await this.facetValueService.findOne(ctx, record.id as ID);
-            if (facetValue) {
-                return { id: facetValue.id, entity: facetValue as FacetValue };
-            }
-        }
-
-        return null;
+        // Fallback: by ID (delegated to lookup helper)
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -89,44 +97,44 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
         record: FacetValueInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
+        const builder = new ValidationBuilder()
+            .requireStringForCreate('name', record.name, operation, 'Facet value name is required')
+            .requireStringForCreate('code', record.code, operation, 'Facet value code is required');
+
+        if (
+            (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) &&
+            record.code && typeof record.code === 'string' && record.code.trim() !== '' &&
+            !/^[a-z0-9_-]+$/i.test(record.code)
+        ) {
+            builder.addError(
+                'code',
+                'Code must contain only letters, numbers, hyphens, and underscores',
+                'INVALID_FORMAT',
+            );
+        }
 
         if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
-                errors.push({ field: 'name', message: 'Facet value name is required', code: 'REQUIRED' });
-            }
-            if (!record.code || typeof record.code !== 'string' || record.code.trim() === '') {
-                errors.push({ field: 'code', message: 'Facet value code is required', code: 'REQUIRED' });
-            } else if (!/^[a-z0-9_-]+$/i.test(record.code)) {
-                errors.push({
-                    field: 'code',
-                    message: 'Code must contain only letters, numbers, hyphens, and underscores',
-                    code: 'INVALID_FORMAT'
-                });
-            }
-            if (!record.facetCode && !record.facetId) {
-                errors.push({ field: 'facetCode', message: 'Parent facet code or ID is required', code: 'REQUIRED' });
-            }
+            builder.addErrorIf(
+                !record.facetCode && !record.facetId,
+                'facetCode',
+                'Parent facet code or ID is required',
+                'REQUIRED',
+            );
 
             // Validate that the parent facet exists
             if (record.facetCode || record.facetId) {
                 const facetId = await resolveFacetId(ctx, this.facetService, record, this.facetCache);
                 if (!facetId) {
-                    errors.push({
-                        field: 'facetCode',
-                        message: `Parent facet "${record.facetCode}" not found`,
-                        code: 'PARENT_NOT_FOUND'
-                    });
+                    builder.addError(
+                        'facetCode',
+                        `Parent facet "${record.facetCode}" not found`,
+                        'PARENT_NOT_FOUND',
+                    );
                 }
             }
         }
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

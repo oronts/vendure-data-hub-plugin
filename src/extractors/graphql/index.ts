@@ -1,2 +1,2 @@
-export { GraphQLExtractor } from './graphql.extractor';
-export { GraphQLExtractorConfig, GraphQLPaginationConfig, GraphQLResponse, GraphQLError, GRAPHQL_DEFAULTS } from './types';
+export * from './graphql.extractor';
+export * from './types';

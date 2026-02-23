@@ -13,8 +13,7 @@ export const simpleProductsTemplate: ImportTemplate = {
     description: 'Import basic products with name, SKU, price, and description from a CSV file. Perfect for getting started with product imports.',
     category: 'products',
     icon: 'shopping-bag',
-    difficulty: 'beginner',
-    estimatedTime: '5 minutes',
+
     requiredFields: ['name', 'sku', 'price'],
     optionalFields: ['description', 'slug', 'enabled', 'facetCodes'],
     formats: ['csv'],
@@ -90,8 +89,7 @@ export const productsWithVariantsTemplate: ImportTemplate = {
     description: 'Import products with multiple variants (sizes, colors) from a CSV file. Handles grouped variants and automatic option creation.',
     category: 'products',
     icon: 'layers',
-    difficulty: 'intermediate',
-    estimatedTime: '10 minutes',
+
     requiredFields: ['product_name', 'variant_sku', 'price'],
     optionalFields: ['variant_name', 'color', 'size', 'stock_quantity', 'weight'],
     formats: ['csv'],
@@ -174,8 +172,7 @@ export const shopifyProductsTemplate: ImportTemplate = {
     description: 'Import products exported from Shopify in their standard CSV format. Automatically maps Shopify fields to Vendure entities.',
     category: 'products',
     icon: 'shopping-cart',
-    difficulty: 'intermediate',
-    estimatedTime: '15 minutes',
+
     requiredFields: ['Title', 'Variant SKU', 'Variant Price'],
     optionalFields: ['Body (HTML)', 'Vendor', 'Tags', 'Variant Inventory Qty', 'Image Src'],
     formats: ['csv'],
@@ -251,8 +248,7 @@ export const woocommerceProductsTemplate: ImportTemplate = {
     description: 'Import products exported from WooCommerce using the standard Product CSV Export. Handles variable products and attributes.',
     category: 'products',
     icon: 'store',
-    difficulty: 'intermediate',
-    estimatedTime: '15 minutes',
+
     requiredFields: ['Name', 'SKU', 'Regular price'],
     optionalFields: ['Description', 'Categories', 'Tags', 'Images', 'Stock', 'Attribute 1 name', 'Attribute 1 value(s)'],
     formats: ['csv'],
@@ -327,8 +323,7 @@ export const priceUpdateTemplate: ImportTemplate = {
     description: 'Update product prices in bulk by SKU. Perfect for seasonal sales or price adjustments.',
     category: 'products',
     icon: 'dollar-sign',
-    difficulty: 'beginner',
-    estimatedTime: '3 minutes',
+
     requiredFields: ['sku', 'price'],
     optionalFields: ['sale_price', 'cost_price'],
     formats: ['csv'],

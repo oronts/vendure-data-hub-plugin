@@ -1,9 +1,9 @@
-import * as crypto from 'crypto';
 import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
 import { EventBus } from '@vendure/core';
 import { Subject, Observable } from 'rxjs';
 import { share } from 'rxjs/operators';
 import { DOMAIN_EVENTS } from '../../constants/index';
+import { generateTimestampedId } from '../../utils/id-generation.utils';
 
 export type DomainEventPayload = Record<string, unknown>;
 
@@ -128,6 +128,46 @@ export class DomainEventsService implements OnModuleDestroy {
         });
     }
 
+    publishPipelineCreated(pipelineId: string, pipelineCode: string): void {
+        this.publish('PipelineCreated', {
+            pipelineId,
+            pipelineCode,
+            createdAt: new Date(),
+        });
+    }
+
+    publishPipelineUpdated(pipelineId: string, pipelineCode: string): void {
+        this.publish('PipelineUpdated', {
+            pipelineId,
+            pipelineCode,
+            updatedAt: new Date(),
+        });
+    }
+
+    publishPipelineDeleted(pipelineId: string, pipelineCode: string): void {
+        this.publish('PipelineDeleted', {
+            pipelineId,
+            pipelineCode,
+            deletedAt: new Date(),
+        });
+    }
+
+    publishPipelinePublished(pipelineId: string, pipelineCode: string): void {
+        this.publish('PipelinePublished', {
+            pipelineId,
+            pipelineCode,
+            publishedAt: new Date(),
+        });
+    }
+
+    publishPipelineArchived(pipelineId: string, pipelineCode: string): void {
+        this.publish('PipelineArchived', {
+            pipelineId,
+            pipelineCode,
+            archivedAt: new Date(),
+        });
+    }
+
     publishLog(
         level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR',
         message: string,
@@ -139,7 +179,7 @@ export class DomainEventsService implements OnModuleDestroy {
         },
     ): void {
         this.publish('LogAdded', {
-            id: `log_${Date.now()}_${crypto.randomUUID().replace(/-/g, '').substring(0, 6)}`,
+            id: generateTimestampedId('log', 6),
             timestamp: new Date(),
             level,
             message,
@@ -162,6 +202,150 @@ export class DomainEventsService implements OnModuleDestroy {
             webhookId,
             lastAttemptAt: new Date(),
             ...details,
+        });
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Step lifecycle events
+    // ──────────────────────────────────────────────────────────────
+
+    publishStepStarted(pipelineId: string | undefined, runId: string | undefined, stepKey: string, stepType: string): void {
+        this.publish('StepStarted', {
+            pipelineId,
+            runId,
+            stepKey,
+            stepType,
+            timestamp: new Date(),
+        });
+    }
+
+    publishStepCompleted(
+        pipelineId: string | undefined,
+        runId: string | undefined,
+        stepKey: string,
+        stepType: string,
+        recordsProcessed?: number,
+    ): void {
+        this.publish('StepCompleted', {
+            pipelineId,
+            runId,
+            stepKey,
+            stepType,
+            recordsProcessed,
+            timestamp: new Date(),
+        });
+    }
+
+    publishStepFailed(
+        pipelineId: string | undefined,
+        runId: string | undefined,
+        stepKey: string,
+        stepType: string,
+        error: string,
+    ): void {
+        this.publish('StepFailed', {
+            pipelineId,
+            runId,
+            stepKey,
+            stepType,
+            error,
+            timestamp: new Date(),
+        });
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Gate events
+    // ──────────────────────────────────────────────────────────────
+
+    publishGateApprovalRequested(pipelineId: string | undefined, runId: string | undefined, stepKey: string): void {
+        this.publish('GateApprovalRequested', {
+            pipelineId,
+            runId,
+            stepKey,
+            timestamp: new Date(),
+        });
+    }
+
+    publishGateApproved(
+        pipelineId: string | undefined,
+        runId: string | undefined,
+        stepKey: string,
+        approver?: string,
+    ): void {
+        this.publish('GateApproved', {
+            pipelineId,
+            runId,
+            stepKey,
+            approver,
+            timestamp: new Date(),
+        });
+    }
+
+    publishGateRejected(
+        pipelineId: string | undefined,
+        runId: string | undefined,
+        stepKey: string,
+        reason?: string,
+    ): void {
+        this.publish('GateRejected', {
+            pipelineId,
+            runId,
+            stepKey,
+            reason,
+            timestamp: new Date(),
+        });
+    }
+
+    publishGateTimeout(pipelineId: string | undefined, runId: string | undefined, stepKey: string): void {
+        this.publish('GateTimeout', {
+            pipelineId,
+            runId,
+            stepKey,
+            timestamp: new Date(),
+        });
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Run cancellation
+    // ──────────────────────────────────────────────────────────────
+
+    publishRunCancelled(pipelineId: string | undefined, runId: string, cancelledBy?: string): void {
+        this.publish('PipelineRunCancelled', {
+            pipelineId,
+            runId,
+            cancelledBy,
+            cancelledAt: new Date(),
+        });
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Trigger lifecycle events
+    // ──────────────────────────────────────────────────────────────
+
+    publishTriggerFired(pipelineId: string | undefined, triggerType: string, details?: Record<string, unknown>): void {
+        this.publish('TriggerFired', {
+            pipelineId,
+            triggerType,
+            details,
+            timestamp: new Date(),
+        });
+    }
+
+    publishScheduleActivated(pipelineId: string | undefined, pipelineCode: string, scheduleCount: number): void {
+        this.publish('ScheduleActivated', {
+            pipelineId,
+            pipelineCode,
+            scheduleCount,
+            timestamp: new Date(),
+        });
+    }
+
+    publishScheduleDeactivated(pipelineId: string | undefined, pipelineCode: string, reason?: string): void {
+        this.publish('ScheduleDeactivated', {
+            pipelineId,
+            pipelineCode,
+            reason,
+            timestamp: new Date(),
         });
     }
 }

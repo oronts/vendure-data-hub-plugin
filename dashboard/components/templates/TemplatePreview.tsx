@@ -11,7 +11,6 @@ import {
     FileText,
     CheckCircle,
     Circle,
-    Clock,
     Tag,
     Download,
     Copy,
@@ -21,39 +20,12 @@ import {
 import { Badge, Button } from '@vendure/dashboard';
 import { toast } from 'sonner';
 import { TOAST_TEMPLATE } from '../../constants';
-import type { TemplateDifficulty } from '../../../shared/types';
-
-interface ImportTemplate {
-    id: string;
-    name: string;
-    description: string;
-    category: string;
-    icon?: string;
-    difficulty: TemplateDifficulty;
-    estimatedTime: string;
-    requiredFields: string[];
-    optionalFields: string[];
-    sampleData?: Record<string, unknown>[];
-    tags?: string[];
-    formats?: string[];
-}
+import type { ImportTemplate } from '../../hooks/use-import-templates';
 
 export interface TemplatePreviewProps {
     template: ImportTemplate;
     onUseTemplate: () => void;
 }
-
-const DIFFICULTY_LABELS: Record<TemplateDifficulty, string> = {
-    beginner: 'Beginner Friendly',
-    intermediate: 'Intermediate',
-    advanced: 'Advanced',
-};
-
-const DIFFICULTY_STYLES: Record<TemplateDifficulty, string> = {
-    beginner: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    intermediate: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-    advanced: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-};
 
 function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewProps) {
     const [showSampleData, setShowSampleData] = React.useState(false);
@@ -120,15 +92,8 @@ function TemplatePreviewComponent({ template, onUseTemplate }: TemplatePreviewPr
                     </Button>
                 </div>
 
-                {/* Meta badges */}
+                {/* Format badges */}
                 <div className="flex items-center gap-2 mt-3 flex-wrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${DIFFICULTY_STYLES[template.difficulty]}`}>
-                        {DIFFICULTY_LABELS[template.difficulty]}
-                    </span>
-                    <span className="inline-flex items-center text-xs text-muted-foreground">
-                        <Clock className="h-3.5 w-3.5 mr-1" />
-                        {template.estimatedTime}
-                    </span>
                     {template.formats?.map(format => (
                         <Badge key={format} variant="outline" className="text-xs">
                             {format.toUpperCase()}

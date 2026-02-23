@@ -4,7 +4,7 @@
  * Matches field names against known aliases
  */
 
-import { MappingStrategy, NameScoreResult } from '../types/index';
+import { MappingStrategy, NameScoreResult } from '../types/mapping-types';
 
 /**
  * Common field name aliases for better matching (built-in defaults)

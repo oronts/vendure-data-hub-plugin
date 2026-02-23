@@ -1,6 +1,8 @@
-import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject } from '../types';
 import { HashOperatorConfig } from './types';
 import { applyHash } from './helpers';
+import { createRecordOperator } from '../operator-factory';
+import { HASH_ALGORITHM_OPTIONS, HASH_ENCODING_OPTIONS } from '../../constants/adapter-schema-options';
 
 /**
  * Operator definition for generating cryptographic hashes of field values.
@@ -9,6 +11,9 @@ export const HASH_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'hash',
     description: 'Generate a cryptographic hash (MD5, SHA1, SHA256, SHA512) of field value(s).',
+    category: 'DATA',
+    categoryLabel: 'Data',
+    categoryOrder: 0,
     pure: true,
     schema: {
         fields: [
@@ -30,22 +35,14 @@ export const HASH_OPERATOR_DEFINITION: AdapterDefinition = {
                 key: 'algorithm',
                 label: 'Hash algorithm',
                 type: 'select',
-                options: [
-                    { value: 'md5', label: 'MD5' },
-                    { value: 'sha1', label: 'SHA-1' },
-                    { value: 'sha256', label: 'SHA-256' },
-                    { value: 'sha512', label: 'SHA-512' },
-                ],
+                options: HASH_ALGORITHM_OPTIONS,
                 description: 'Default: sha256',
             },
             {
                 key: 'encoding',
                 label: 'Output encoding',
                 type: 'select',
-                options: [
-                    { value: 'hex', label: 'Hexadecimal' },
-                    { value: 'base64', label: 'Base64' },
-                ],
+                options: HASH_ENCODING_OPTIONS,
                 description: 'Default: hex',
             },
         ],
@@ -65,26 +62,4 @@ export function applyHashOperator(
     return applyHash(record, config.source, config.target, config.algorithm, config.encoding);
 }
 
-/**
- * Generate cryptographic hash of field values.
- */
-export function hashOperator(
-    records: readonly JsonObject[],
-    config: HashOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    if (!config.source || !config.target) {
-        return { records: [...records] };
-    }
-
-    const results = records.map(record =>
-        applyHash(
-            record,
-            config.source,
-            config.target,
-            config.algorithm,
-            config.encoding,
-        ),
-    );
-    return { records: results };
-}
+export const hashOperator = createRecordOperator(applyHashOperator);

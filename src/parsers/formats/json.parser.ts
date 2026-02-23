@@ -5,6 +5,8 @@ import { getErrorMessage } from '../../utils/error.utils';
 
 const MAX_PATH_LENGTH = CODE_SECURITY.MAX_CONDITION_LENGTH;
 const MAX_PATH_DEPTH = 50;
+const MAX_FLATTEN_DEPTH = 50;
+const JSONLINES_SAMPLE_LINES = 3;
 
 /** `navigatePath(data, 'items.0.name')` - Dot-notation with array index support */
 export function navigatePath(data: unknown, path: string): unknown {
@@ -58,13 +60,12 @@ export function navigatePath(data: unknown, path: string): unknown {
     return current;
 }
 
-export { extractFields } from '../helpers/field-extraction';
-
 /** `flattenObject({a: {b: 1}})` -> `{'a.b': 1}` */
 export function flattenObject(
     obj: Record<string, unknown>,
     prefix: string = '',
     delimiter: string = '.',
+    depth: number = 0,
 ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
@@ -72,7 +73,12 @@ export function flattenObject(
         const newKey = prefix ? `${prefix}${delimiter}${key}` : key;
 
         if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-            Object.assign(result, flattenObject(value as Record<string, unknown>, newKey, delimiter));
+            if (depth >= MAX_FLATTEN_DEPTH) {
+                // Stop recursion at max depth - store the nested object as-is
+                result[newKey] = value;
+            } else {
+                Object.assign(result, flattenObject(value as Record<string, unknown>, newKey, delimiter, depth + 1));
+            }
         } else {
             result[newKey] = value;
         }
@@ -230,7 +236,7 @@ export function parseJsonLines(content: string): ParseResult {
 }
 
 export function isJsonLines(content: string): boolean {
-    const lines = content.trim().split('\n').slice(0, 3);
+    const lines = content.trim().split('\n').slice(0, JSONLINES_SAMPLE_LINES);
 
     if (lines.length <= 1) {
         return false;
@@ -267,4 +273,3 @@ export function generateJsonLines(records: Record<string, unknown>[]): string {
     return records.map(r => JSON.stringify(r)).join('\n');
 }
 
-export { getNestedValue, setNestedValue } from '../../utils/object-path.utils';

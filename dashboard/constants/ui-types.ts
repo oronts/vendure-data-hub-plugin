@@ -29,13 +29,6 @@ export const LOADING_STATE_TYPE = {
     LIST: 'LIST',
 } as const;
 
-/** File upload mapper steps */
-export const MAPPER_STEP = {
-    UPLOAD: 'UPLOAD',
-    PREVIEW: 'PREVIEW',
-    MAPPING: 'MAPPING',
-} as const;
-
 /** Secret provider types */
 export const SECRET_PROVIDER = {
     ENV: 'ENV',

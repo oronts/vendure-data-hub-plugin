@@ -8,8 +8,10 @@ import {
     RequestContext,
     Transaction,
 } from '@vendure/core';
+import { DeletionResult } from '@vendure/common/lib/generated-types';
 import { Pipeline, PipelineRun } from '../../entities/pipeline';
 import { PipelineService, CreatePipelineInput, UpdatePipelineInput, DefinitionValidationService, PipelineFormatService, VisualPipelineDefinition } from '../../services';
+import { DomainEventsService } from '../../services/events/domain-events.service';
 import { PipelineDefinition } from '../../types';
 import { PipelineDefinitionError } from '../../validation/pipeline-definition-error';
 import { getErrorMessage } from '../../utils/error.utils';
@@ -29,6 +31,7 @@ export class DataHubPipelineAdminResolver {
         private pipelineService: PipelineService,
         private definitionValidator: DefinitionValidationService,
         private formatService: PipelineFormatService,
+        private domainEvents: DomainEventsService,
     ) {}
 
     @Query()
@@ -137,29 +140,40 @@ export class DataHubPipelineAdminResolver {
     @Mutation()
     @Transaction()
     @Allow(DataHubPipelinePermission.Create)
-    createDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { input: CreatePipelineInput }) {
-        return this.pipelineService.create(ctx, args.input);
+    async createDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { input: CreatePipelineInput }) {
+        const result = await this.pipelineService.create(ctx, args.input);
+        this.domainEvents.publishPipelineCreated(String(result.id), result.code);
+        return result;
     }
 
     @Mutation()
     @Transaction()
     @Allow(DataHubPipelinePermission.Update)
-    updateDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { input: UpdatePipelineInput }) {
-        return this.pipelineService.update(ctx, args.input);
+    async updateDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { input: UpdatePipelineInput }) {
+        const result = await this.pipelineService.update(ctx, args.input);
+        this.domainEvents.publishPipelineUpdated(String(result.id), result.code);
+        return result;
     }
 
     @Mutation()
     @Transaction()
     @Allow(DataHubPipelinePermission.Delete)
-    deleteDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }) {
-        return this.pipelineService.delete(ctx, args.id);
+    async deleteDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }) {
+        const pipeline = await this.pipelineService.findOne(ctx, args.id);
+        const result = await this.pipelineService.delete(ctx, args.id);
+        if (result.result === DeletionResult.DELETED && pipeline) {
+            this.domainEvents.publishPipelineDeleted(String(args.id), pipeline.code);
+        }
+        return result;
     }
 
     @Mutation()
     @Transaction()
     @Allow(PublishDataHubPipelinePermission.Permission)
-    publishDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }) {
-        return this.pipelineService.publish(ctx, args.id);
+    async publishDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }) {
+        const result = await this.pipelineService.publish(ctx, args.id);
+        this.domainEvents.publishPipelinePublished(String(result.id), result.code);
+        return result;
     }
 
     @Mutation()
@@ -186,8 +200,10 @@ export class DataHubPipelineAdminResolver {
     @Mutation()
     @Transaction()
     @Allow(PublishDataHubPipelinePermission.Permission)
-    archiveDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }) {
-        return this.pipelineService.archive(ctx, args.id);
+    async archiveDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }) {
+        const result = await this.pipelineService.archive(ctx, args.id);
+        this.domainEvents.publishPipelineArchived(String(result.id), result.code);
+        return result;
     }
 
     @Mutation()

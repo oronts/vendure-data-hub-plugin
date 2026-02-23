@@ -4,7 +4,7 @@
  * Uses Levenshtein distance to find similar field names
  */
 
-import { MappingStrategy, NameScoreResult } from '../types/index';
+import { MappingStrategy, NameScoreResult } from '../types/mapping-types';
 import { calculateSimilarity } from '../helpers';
 
 export class FuzzyMatchStrategy implements MappingStrategy {

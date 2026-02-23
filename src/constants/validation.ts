@@ -9,7 +9,6 @@ import {
     SLUG_PATTERN,
     PHONE_PATTERN,
     SQL_IDENTIFIER_PATTERN,
-    isValidEmail as isValidEmailFromPatterns,
 } from './patterns';
 import { CONFIDENCE_THRESHOLDS } from '../../shared/constants';
 
@@ -90,26 +89,7 @@ export {
     ERROR_MESSAGES,
 } from '../../shared/types';
 
-/**
- * Validate a value against a pattern
- */
-export function matchesPattern(value: string, pattern: RegExp): boolean {
-    return pattern.test(value);
-}
-
-export { isValidEmailFromPatterns as isValidEmail };
-
-/**
- * Check if a string is a valid URL.
- * Delegates to the canonical isValidUrl from shared/utils/validation.
- */
-export { isValidUrl } from '../../shared';
-
-// Re-export from shared constants (single source of truth) - imported at top of file
 export { CONFIDENCE_THRESHOLDS };
 
-// Re-export MatchConfidence type and conversion functions from shared (single source of truth).
-// These were moved to shared/utils/validation.ts so dashboard can import without
-// crossing the src/ boundary.
 export type { MatchConfidence } from '../../shared';
 export { scoreToConfidence, confidenceToMinScore } from '../../shared';

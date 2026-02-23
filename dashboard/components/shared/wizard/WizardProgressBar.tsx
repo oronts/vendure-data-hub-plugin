@@ -42,6 +42,7 @@ const ProgressStepButton = memo(function ProgressStepButton({
                 onClick={handleClick}
                 disabled={index > currentStep}
                 aria-current={isActive ? 'step' : undefined}
+                aria-label={step.label}
             >
                 {isCompleted ? (
                     <Check className={ICON_SIZES.SM} />

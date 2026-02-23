@@ -8,8 +8,6 @@ import { JsonValue } from './json.types';
 
 /**
  * Types of adapters available in the pipeline system
- *
- * Uses SCREAMING_SNAKE_CASE as these are internal type identifiers, not GraphQL enums
  */
 export type AdapterType =
     | 'EXTRACTOR'
@@ -25,8 +23,6 @@ export type AdapterType =
 
 /**
  * Categories for organizing adapters in the UI
- *
- * Uses SCREAMING_SNAKE_CASE as these are display/organization identifiers
  */
 export type AdapterCategory =
     | 'DATA_SOURCE'
@@ -48,7 +44,6 @@ export type AdapterCategory =
  * Field types for adapter configuration schema
  *
  * Uses lowercase values as these represent HTML input types and schema primitives.
- * Intentionally not SCREAMING_SNAKE_CASE - these are standard type identifiers.
  */
 export type SchemaFieldType =
     | 'string'      // Single-line text input
@@ -208,4 +203,22 @@ export interface AdapterDefinition {
     experimental?: boolean;
     /** Tags for filtering/search */
     tags?: string[];
+    /** For loaders: the Vendure entity type this loader handles */
+    entityType?: string;
+    /** For exporters/feeds: the base output file format */
+    formatType?: string;
+    /** For loaders: fields that can be patched during error retry */
+    patchableFields?: string[];
+    /** For operators: which custom editor to use in the UI */
+    editorType?: string;
+    /** For operators: template string for config summary display */
+    summaryTemplate?: string;
+    /** Human-readable category label for UI display (e.g. "String", "Numeric") */
+    categoryLabel?: string;
+    /** Sort order for category display in the UI (lower = first) */
+    categoryOrder?: number;
+    /** Whether this adapter should be hidden from wizard UIs */
+    wizardHidden?: boolean;
+    /** Whether this adapter is built-in (shipped with the plugin) vs custom (registered via SDK/connectors) */
+    builtIn?: boolean;
 }

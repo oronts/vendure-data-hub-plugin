@@ -6,8 +6,9 @@ import { PipelineService } from '../../services/pipeline/pipeline.service';
 import { RuntimeConfigService } from '../../services/runtime/runtime-config.service';
 import { DistributedLockService } from '../../services/runtime/distributed-lock.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
+import { DomainEventsService } from '../../services/events/domain-events.service';
 import { LOGGER_CONTEXTS, DISTRIBUTED_LOCK } from '../../constants/index';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { RunStatus, PipelineDefinition, JsonObject } from '../../types/index';
 import { PipelineStatus, TriggerType, TIMER_TYPE, TimerType } from '../../constants/enums';
 import { findEnabledTriggersByType } from '../../utils';
@@ -70,6 +71,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         private requestContextService: RequestContextService,
         private pipelineService: PipelineService,
         private runtimeConfigService: RuntimeConfigService,
+        private domainEvents: DomainEventsService,
         loggerFactory: DataHubLoggerFactory,
         @Optional() private distributedLock?: DistributedLockService,
     ) {
@@ -95,7 +97,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
 
         const refreshHandle = setInterval(
             () => this.refresh().catch(err => {
-                this.logger.error('Failed to refresh schedules', err instanceof Error ? err : undefined, {});
+                this.logger.error('Failed to refresh schedules', toErrorOrUndefined(err), {});
             }),
             this.schedulerConfig.refreshIntervalMs,
         );
@@ -163,7 +165,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                 if (pipeline.status !== PipelineStatus.PUBLISHED) continue;
 
                 const definition = pipeline.definition as PipelineDefinition;
-                const scheduleTriggers = findEnabledTriggersByType(definition, 'SCHEDULE');
+                const scheduleTriggers = findEnabledTriggersByType(definition, TriggerType.SCHEDULE);
                 if (scheduleTriggers.length === 0) continue;
 
                 const failureCount = this.failureCountByPipeline.get(pipeline.code) ?? 0;
@@ -213,6 +215,17 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
 
             const refreshDurationMs = Date.now() - refreshStartTime;
 
+            // Publish ScheduleActivated for newly scheduled pipelines (one per unique pipeline code)
+            if (scheduledCount > 0 && scheduledCount !== existingCount) {
+                for (const code of activePipelineCodes) {
+                    this.domainEvents.publishScheduleActivated(
+                        undefined,
+                        code,
+                        activeTimers.filter(t => t.code === code).length,
+                    );
+                }
+            }
+
             if (scheduledCount > 0 || existingCount > 0 || cleanedCronKeys > 0 || skippedDueToFailures > 0) {
                 const refreshMetadata: LogMetadata = {
                     recordCount: scheduledCount,
@@ -225,7 +238,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                 this.logger.info('Schedule refresh complete', refreshMetadata);
             }
         } catch (error) {
-            this.logger.error('Error during schedule refresh', error instanceof Error ? error : undefined, {
+            this.logger.error('Error during schedule refresh', toErrorOrUndefined(error), {
                 refreshDurationMs: Date.now() - refreshStartTime,
             });
             throw error;
@@ -315,7 +328,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                 try {
                     await this.triggerPipeline(pipeline, TIMER_TYPE.INTERVAL, triggerKey);
                 } catch (error) {
-                    this.logger.error('Interval schedule callback failed', error instanceof Error ? error : undefined, {
+                    this.logger.error('Interval schedule callback failed', toErrorOrUndefined(error), {
                         pipelineCode: pipeline.code,
                         triggerKey,
                     });
@@ -387,7 +400,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                         }
                     }
                 } catch (error) {
-                    this.logger.error('Cron schedule callback failed', error instanceof Error ? error : undefined, {
+                    this.logger.error('Cron schedule callback failed', toErrorOrUndefined(error), {
                         pipelineCode: pipeline.code,
                         triggerKey,
                         cronExpr,
@@ -464,6 +477,12 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             const triggeredBy = triggerKey ? `schedule:${triggerKey}` : 'schedule';
             await this.pipelineService.startRun(ctx, pipeline.id, { skipPermissionCheck: true, triggeredBy });
 
+            this.domainEvents.publishTriggerFired(
+                String(pipeline.id),
+                'SCHEDULE',
+                { pipelineCode: pipeline.code, triggerType, triggerKey },
+            );
+
             if (this.failureCountByPipeline.has(pipeline.code)) {
                 this.failureCountByPipeline.delete(pipeline.code);
                 this.logger.debug('Reset failure count after successful trigger', {
@@ -479,7 +498,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
 
             this.logger.error(
                 'Failed to trigger scheduled pipeline',
-                error instanceof Error ? error : undefined,
+                toErrorOrUndefined(error),
                 {
                     pipelineCode: pipeline.code,
                     triggerType,
@@ -489,6 +508,11 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             );
 
             if (newFailureCount >= this.maxConsecutiveFailures) {
+                this.domainEvents.publishScheduleDeactivated(
+                    String(pipeline.id),
+                    pipeline.code,
+                    `Circuit breaker: ${newFailureCount} consecutive failures`,
+                );
                 const pauseMetadata: LogMetadata = {
                     pipelineCode: pipeline.code,
                     maxConsecutiveFailures: this.maxConsecutiveFailures,

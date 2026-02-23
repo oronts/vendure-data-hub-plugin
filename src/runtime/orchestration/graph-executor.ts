@@ -36,11 +36,11 @@ import {
 import { buildTopology, gatherInput } from './helpers';
 import { createStepDispatcher, StepDispatcher, StepExecutionParams } from './step-strategies';
 import { getErrorMessage } from '../../utils/error.utils';
+import { StepType as StepTypeEnum } from '../../constants/enums';
 
 const logger = new Logger('DataHub:GraphExecutor');
 
 export type { GraphExecutionResult };
-export type { PipelineEdge } from '../../types/index';
 
 // ============================================================================
 // Types
@@ -230,6 +230,37 @@ function createInitialMetrics(): ExecutionMetrics {
 }
 
 /**
+ * Publish run progress event after each step completes in graph execution
+ */
+function publishRunProgress(
+    params: ExecuteGraphParams,
+    metrics: ExecutionMetrics,
+    completedCount: number,
+    totalSteps: number,
+    currentStepKey: string,
+): void {
+    if (!params.runId) return;
+
+    const progressPercent = totalSteps > 0
+        ? Math.round((completedCount / totalSteps) * 100)
+        : 0;
+
+    try {
+        params.domainEvents.publishRunProgress(
+            String(params.runId),
+            params.definition.name ?? '',
+            progressPercent,
+            `Completed step ${completedCount}/${totalSteps}: ${currentStepKey}`,
+            metrics.processed,
+            metrics.failed,
+            currentStepKey,
+        );
+    } catch (error) {
+        handleNodeError(error as Error, 'PipelineRunProgress', { stepKey: currentStepKey, pipelineId: params.pipelineId });
+    }
+}
+
+/**
  * Creates step dispatcher from execution params
  */
 function createDispatcher(params: ExecuteGraphParams): StepDispatcher {
@@ -285,6 +316,9 @@ export async function executeGraph(params: ExecuteGraphParams): Promise<GraphExe
     // Get parallel execution configuration
     const parallelConfig = getParallelConfig(definition);
 
+    // Run PIPELINE_STARTED hook (mirrors linear executor's publishPipelineStarted)
+    await params.hookService.run(params.ctx, definition, 'PIPELINE_STARTED');
+
     // Publish pipeline started event
     try {
         domainEvents.publish('PIPELINE_STARTED', { pipelineId });
@@ -328,6 +362,11 @@ async function executeSequential(
 ): Promise<void> {
     const { ctx, definition, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog } = params;
 
+    const pipelineIdStr = pipelineId?.toString();
+    const runIdStr = runId?.toString();
+    const totalSteps = stepByKey.size;
+    let completedCount = 0;
+
     while (queue.length) {
         const key = queue.shift();
         if (key === undefined) break;
@@ -335,13 +374,33 @@ async function executeSequential(
         if (!step) continue;
         if (onCancelRequested && (await onCancelRequested())) break;
 
-        const input = collectNodeOutputs(key, preds, outputs);
-        const { stepResult, durationMs } = await executeNode(stepDispatcher, {
-            ctx, definition, step, key, input, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog,
-        });
+        // Publish StepStarted event (typed helper already wraps in try/catch)
+        domainEvents.publishStepStarted(pipelineIdStr, runIdStr, key, step.type);
+
+        let stepResult: StepExecutionResult;
+        let durationMs: number;
+        try {
+            const input = collectNodeOutputs(key, preds, outputs);
+            const nodeResult = await executeNode(stepDispatcher, {
+                ctx, definition, step, key, input, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog,
+            });
+            stepResult = nodeResult.stepResult;
+            durationMs = nodeResult.durationMs;
+        } catch (error) {
+            // Publish StepFailed event (typed helper already wraps in try/catch)
+            domainEvents.publishStepFailed(pipelineIdStr, runIdStr, key, step.type, getErrorMessage(error));
+            throw error;
+        }
+
+        // Publish StepCompleted event (typed helper already wraps in try/catch)
+        domainEvents.publishStepCompleted(pipelineIdStr, runIdStr, key, step.type, stepResult.processed);
 
         outputs.set(key, stepResult.output);
         updateMetrics(metrics, stepResult, durationMs);
+
+        // Publish run progress
+        completedCount++;
+        publishRunProgress(params, metrics, completedCount, totalSteps, key);
 
         if (stepResult.event) {
             try {
@@ -352,7 +411,7 @@ async function executeSequential(
         }
 
         // Check if a GATE step requested a pause
-        if (step?.type === 'GATE' && stepResult.detail?.['shouldPause'] === true) {
+        if (step?.type === StepTypeEnum.GATE && stepResult.detail?.['shouldPause'] === true) {
             metrics.paused = true;
             metrics.pausedAtStep = key;
             logger.log(`Pipeline paused at GATE step "${key}" - awaiting approval`);
@@ -390,11 +449,15 @@ async function executeParallel(
     onCancelRequested?: () => Promise<boolean>,
 ): Promise<void> {
     const { ctx, definition, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog } = params;
+    const pipelineIdStr = pipelineId?.toString();
+    const runIdStr = runId?.toString();
 
     // Track in-flight step executions
     const inFlight = new Map<string, Promise<{ key: string; stepResult: StepExecutionResult; durationMs: number }>>();
     const errors: Array<{ key: string; error: unknown }> = [];
     let cancelled = false;
+    const totalSteps = stepByKey.size;
+    let completedCount = 0;
 
     while (queue.length > 0 || inFlight.size > 0) {
         // Check for cancellation
@@ -417,18 +480,24 @@ async function executeParallel(
 
             const input = collectNodeOutputs(key, preds, outputs);
 
+            // Publish StepStarted event (typed helper already wraps in try/catch)
+            domainEvents.publishStepStarted(pipelineIdStr, runIdStr, key, step.type);
+
             logger.debug(`[Parallel] Starting step: ${key}`, {
                 step: key,
                 inFlightCount: inFlight.size,
                 queueLength: queue.length,
             });
 
+            const stepType = step.type;
             const promise = executeNode(stepDispatcher, {
                 ctx, definition, step, key, input, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog,
             })
                 .then(({ stepResult, durationMs }) => ({ key, stepResult, durationMs }))
                 .catch((error: unknown) => {
                     errors.push({ key, error });
+                    // Publish StepFailed event (typed helper already wraps in try/catch)
+                    domainEvents.publishStepFailed(pipelineIdStr, runIdStr, key, stepType, getErrorMessage(error));
                     // Return empty result on error
                     return {
                         key,
@@ -462,9 +531,20 @@ async function executeParallel(
                 durationMs,
             });
 
+            // Publish StepCompleted event (only if the step didn't already fail)
+            const completedStepDef = stepByKey.get(key);
+            if (!stepResult.detail?.['error']) {
+                // Typed helper already wraps in try/catch
+                domainEvents.publishStepCompleted(pipelineIdStr, runIdStr, key, completedStepDef?.type ?? '', stepResult.processed);
+            }
+
             // Store output and update metrics
             outputs.set(key, stepResult.output);
             updateMetrics(metrics, stepResult, durationMs);
+
+            // Publish run progress
+            completedCount++;
+            publishRunProgress(params, metrics, completedCount, totalSteps, key);
 
             // Publish domain event if any
             if (stepResult.event) {
@@ -477,7 +557,7 @@ async function executeParallel(
 
             // Check if a GATE step requested a pause
             const completedStep = stepByKey.get(key);
-            if (completedStep?.type === 'GATE' && stepResult.detail?.['shouldPause'] === true) {
+            if (completedStep?.type === StepTypeEnum.GATE && stepResult.detail?.['shouldPause'] === true) {
                 metrics.paused = true;
                 metrics.pausedAtStep = key;
                 logger.log(`[Parallel] Pipeline paused at GATE step "${key}" - awaiting approval`);
@@ -499,9 +579,37 @@ async function executeParallel(
         }
     }
 
-    // Drain remaining in-flight promises to prevent resource leaks
+    // Drain remaining in-flight promises and collect their metrics
     if (inFlight.size > 0) {
-        await Promise.allSettled(inFlight.values());
+        const settled = await Promise.allSettled(inFlight.values());
+        for (const result of settled) {
+            if (result.status === 'fulfilled') {
+                const { key, stepResult, durationMs } = result.value;
+                outputs.set(key, stepResult.output);
+                updateMetrics(metrics, stepResult, durationMs);
+
+                const settledStep = stepByKey.get(key);
+                if (!stepResult.detail?.['error']) {
+                    domainEvents.publishStepCompleted(pipelineIdStr, runIdStr, key, settledStep?.type ?? '', stepResult.processed);
+                }
+                completedCount++;
+                publishRunProgress(params, metrics, completedCount, totalSteps, key);
+
+                if (stepResult.event) {
+                    try {
+                        domainEvents.publish(stepResult.event.type, stepResult.event.data);
+                    } catch (error) {
+                        handleNodeError(error as Error, stepResult.event.type, { stepKey: key });
+                    }
+                }
+
+                logger.debug(`[Parallel] Drained in-flight step: ${key}`, {
+                    step: key,
+                    processed: stepResult.processed,
+                    durationMs,
+                });
+            }
+        }
         inFlight.clear();
     }
 
@@ -521,5 +629,14 @@ async function executeParallel(
 
     if (cancelled) {
         logger.log('[Parallel] Execution cancelled');
+        try {
+            domainEvents.publish('PipelineRunCancelled', {
+                pipelineId: pipelineIdStr,
+                runId: runIdStr,
+                cancelledAt: new Date().toISOString(),
+            });
+        } catch (error) {
+            handleNodeError(error as Error, 'PipelineRunCancelled', { pipelineId });
+        }
     }
 }

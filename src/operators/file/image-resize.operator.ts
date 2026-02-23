@@ -7,7 +7,10 @@ export const IMAGE_RESIZE_OPERATOR_DEFINITION: AdapterDefinition = {
     name: 'Image Resize',
     description: 'Resize images referenced in record fields (base64-encoded)',
     category: 'CONVERSION',
+    categoryLabel: 'File',
+    categoryOrder: 9,
     version: '1.0.0',
+    wizardHidden: true,
     schema: {
         groups: [{ id: 'main', label: 'Resize Settings' }],
         fields: [

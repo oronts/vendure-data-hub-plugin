@@ -8,15 +8,12 @@ import type {
     ExportOptions,
 } from '../../../types/wizard';
 import type { FilterCondition } from '../../../types';
-import type { HttpMethod } from '../../../../shared/types';
-import type {
-    HttpAuthType as WizardHttpAuthType,
-} from '../../../constants';
 
 export interface ExportWizardProps {
     onComplete: (config: ExportConfiguration) => void;
     onCancel: () => void;
     initialConfig?: Partial<ExportConfiguration>;
+    isSubmitting?: boolean;
 }
 
 export interface ExportConfiguration {
@@ -34,13 +31,9 @@ export interface ExportConfiguration {
 }
 
 export type QueryType = QueryConfig['type'];
-/** Derived from DestinationConfig - @see shared/types/pipeline.types.ts for canonical DestinationType */
+/** Derived from DestinationConfig */
 export type DestinationType = DestinationConfig['type'];
-export type { HttpMethod };
-export type HttpAuthType = WizardHttpAuthType;
-export type FormatType = ExportFormatConfig['type'];
 export type ExportTriggerType = ExportTriggerConfig['type'];
 export type CompressionType = NonNullable<ExportOptions['compression']>;
 
-export type { FilterOperator } from '../../../types';
 export type { ExportField };

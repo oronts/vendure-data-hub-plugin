@@ -15,6 +15,7 @@ export interface ImportWizardProps {
     onComplete: (config: ImportConfiguration) => void;
     onCancel: () => void;
     initialConfig?: Partial<ImportConfiguration>;
+    isSubmitting?: boolean;
 }
 
 export interface ImportConfiguration {

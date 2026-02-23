@@ -40,6 +40,7 @@ export const PRODUCT_VARIANT_LOADER_METADATA = {
     entityType: VendureEntityType.PRODUCT_VARIANT,
     name: 'Product Variant Loader',
     description: 'Imports product variants with SKU-based lookup, prices, stock, and options',
+    adapterCode: 'variantUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['sku', 'id', 'customFields.externalId'],
     requiredFields: ['sku', 'price'],

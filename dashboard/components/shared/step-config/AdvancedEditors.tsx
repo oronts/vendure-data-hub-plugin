@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { useCallback, memo } from 'react';
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@vendure/dashboard';
-import { COMPARISON_OPERATORS, getOperatorPlaceholder, MOVE_DIRECTION, ERROR_MESSAGES } from '../../../constants';
+import { getOperatorPlaceholder, MOVE_DIRECTION, ERROR_MESSAGES } from '../../../constants';
 import type { MoveDirection } from '../../../constants';
+import { useComparisonOperators } from '../../../hooks/api/use-config-options';
+import type { ComparisonOperatorOption } from '../../../hooks/api/use-config-options';
 import { OperatorCard, OperatorConfig, StepOperatorDefinition } from './OperatorCard';
-import { getErrorMessage } from '../../../../shared';
+import { getErrorMessage, getNestedValue } from '../../../../shared';
 import { useStableKeys } from '../../../hooks';
 
 export type { OperatorConfig, StepOperatorDefinition } from './OperatorCard';
@@ -39,15 +41,6 @@ interface WhenEditorConfig extends JsonRecord {
 }
 
 type LogicType = 'AND' | 'OR';
-
-function getPath(obj: JsonRecord, path: string): unknown {
-    return String(path).split('.').reduce((acc: unknown, k) => {
-        if (acc && typeof acc === 'object' && k in (acc as JsonRecord)) {
-            return (acc as JsonRecord)[k];
-        }
-        return undefined;
-    }, obj);
-}
 
 function collectPaths(obj: JsonRecord, prefix = ''): string[] {
     const out: string[] = [];
@@ -279,7 +272,7 @@ export function AdvancedTemplateEditor({ config, onChange }: { config: JsonRecor
         try {
             const obj = JSON.parse(sample);
             return template.replace(/\$\{([^}]+)\}/g, (_m, p1) => {
-                const pathValue = getPath(obj, String(p1));
+                const pathValue = getNestedValue(obj, String(p1));
                 return pathValue == null ? '' : String(pathValue);
             });
         } catch { return ''; }
@@ -362,6 +355,7 @@ export function AdvancedTemplateEditor({ config, onChange }: { config: JsonRecor
 }
 
 export function AdvancedWhenEditor({ config, onChange }: { config: JsonRecord; onChange: (values: JsonRecord) => void }) {
+    const { operators: comparisonOperators } = useComparisonOperators();
     const typedConfig = config as WhenEditorConfig;
     const rawConds = Array.isArray(typedConfig.conditions) ? typedConfig.conditions : [];
     const isGrouped = rawConds.length > 0 && typeof rawConds[0] === 'object' && 'rules' in (rawConds[0] as object);
@@ -408,6 +402,7 @@ export function AdvancedWhenEditor({ config, onChange }: { config: JsonRecord; o
                             key={groupKeys[gi]}
                             group={g}
                             groupIndex={gi}
+                            comparisonOperators={comparisonOperators}
                             onUpdateLogic={(logic) => updateGroupLogic(gi, logic)}
                             onRemoveGroup={() => removeGroup(gi)}
                             onAddRule={() => addRule(gi)}
@@ -422,9 +417,42 @@ export function AdvancedWhenEditor({ config, onChange }: { config: JsonRecord; o
     );
 }
 
+interface RuleValueCellProps {
+    condition: RuleCondition;
+    ruleIndex: number;
+    onUpdateRule: (ruleIndex: number, patch: Partial<RuleCondition>) => void;
+}
+
+const RuleValueCell = React.memo(function RuleValueCell({ condition: c, ruleIndex: ri, onUpdateRule }: RuleValueCellProps) {
+    const cmp = String(c.cmp ?? 'eq');
+    const placeholder = getOperatorPlaceholder(cmp);
+    const valStr = Array.isArray(c.value) ? JSON.stringify(c.value) : String(c.value ?? '');
+    const onValChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const txt = e.target.value;
+        if (cmp === 'in') {
+            try { onUpdateRule(ri, { value: JSON.parse(txt) }); } catch { onUpdateRule(ri, { value: txt }); }
+        } else {
+            onUpdateRule(ri, { value: txt });
+        }
+    };
+    const regexError = cmp === 'regex' ? (() => { try { new RegExp(String(c.value ?? '')); return ''; } catch (err: unknown) { return getErrorMessage(err); } })() : '';
+    const inError = cmp === 'in' ? (Array.isArray(c.value) ? '' : 'Enter a JSON array for "in"') : '';
+    return (
+        <>
+            <Input value={valStr} onChange={onValChange} placeholder={placeholder} />
+            {(inError || regexError) && (
+                <div className="col-span-3 -mt-1">
+                    <p className="text-[11px] text-amber-600">{inError || regexError}</p>
+                </div>
+            )}
+        </>
+    );
+});
+
 interface RuleGroupCardProps {
     group: RuleGroup;
     groupIndex: number;
+    comparisonOperators: ComparisonOperatorOption[];
     onUpdateLogic: (logic: LogicType) => void;
     onRemoveGroup: () => void;
     onAddRule: () => void;
@@ -432,7 +460,7 @@ interface RuleGroupCardProps {
     onRemoveRule: (ruleIndex: number) => void;
 }
 
-const RuleGroupCard = React.memo(function RuleGroupCard({ group: g, groupIndex: gi, onUpdateLogic, onRemoveGroup, onAddRule, onUpdateRule, onRemoveRule }: RuleGroupCardProps) {
+const RuleGroupCard = React.memo(function RuleGroupCard({ group: g, groupIndex: gi, comparisonOperators, onUpdateLogic, onRemoveGroup, onAddRule, onUpdateRule, onRemoveRule }: RuleGroupCardProps) {
     const ruleKeys = useStableKeys(g.rules, 'rule');
 
     return (
@@ -465,36 +493,12 @@ const RuleGroupCard = React.memo(function RuleGroupCard({ group: g, groupIndex: 
                                         <Select value={String(c.cmp ?? 'eq')} onValueChange={(v) => onUpdateRule(ri, { cmp: v })}>
                                             <SelectTrigger><SelectValue /></SelectTrigger>
                                             <SelectContent>
-                                                {COMPARISON_OPERATORS.map(op => (
-                                                    <SelectItem key={op.code} value={op.code}>{op.label}</SelectItem>
+                                                {comparisonOperators.map(op => (
+                                                    <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
                                                 ))}
                                             </SelectContent>
                                         </Select>
-                                        {(() => {
-                                            const cmp = String(c.cmp ?? 'eq');
-                                            const placeholder = getOperatorPlaceholder(cmp);
-                                            const valStr = Array.isArray(c.value) ? JSON.stringify(c.value) : String(c.value ?? '');
-                                            const onValChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-                                                const txt = e.target.value;
-                                                if (cmp === 'in') {
-                                                    try { onUpdateRule(ri, { value: JSON.parse(txt) }); } catch { onUpdateRule(ri, { value: txt }); }
-                                                } else {
-                                                    onUpdateRule(ri, { value: txt });
-                                                }
-                                            };
-                                            const regexError = cmp === 'regex' ? (() => { try { new RegExp(String(c.value ?? '')); return ''; } catch (err: unknown) { return getErrorMessage(err); } })() : '';
-                                            const inError = cmp === 'in' ? (Array.isArray(c.value) ? '' : 'Enter a JSON array for "in"') : '';
-                                            return (
-                                                <>
-                                                    <Input value={valStr} onChange={onValChange} placeholder={placeholder} />
-                                                    {(inError || regexError) && (
-                                                        <div className="col-span-3 -mt-1">
-                                                            <p className="text-[11px] text-amber-600">{inError || regexError}</p>
-                                                        </div>
-                                                    )}
-                                                </>
-                                            );
-                                        })()}
+                                        <RuleValueCell condition={c} ruleIndex={ri} onUpdateRule={onUpdateRule} />
                                         <RemoveRuleButton ruleIndex={ri} onRemove={onRemoveRule} />
                                     </div>
                                 ))}

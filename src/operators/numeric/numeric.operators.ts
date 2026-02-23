@@ -1,4 +1,4 @@
-import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject } from '../types';
 import {
     MathOperatorConfig,
     CurrencyOperatorConfig,
@@ -22,11 +22,15 @@ import {
     applyRound,
 } from './helpers';
 import { ROUNDING_MODES, UNIT_OPTIONS } from '../constants';
+import { createRecordOperator } from '../operator-factory';
 
 export const MATH_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'math',
     description: 'Perform math operations on numeric fields.',
+    category: 'NUMERIC',
+    categoryLabel: 'Numeric',
+    categoryOrder: 2,
     pure: true,
     schema: {
         fields: [
@@ -60,7 +64,11 @@ export const CURRENCY_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'currency',
     description: 'Convert floats to minor units or re-map currency fields.',
+    category: 'NUMERIC',
+    categoryLabel: 'Numeric',
+    categoryOrder: 2,
     pure: true,
+    fieldTransform: true,
     schema: {
         fields: [
             { key: 'source', label: 'Source field path', type: 'string', required: true },
@@ -80,6 +88,9 @@ export const UNIT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'unit',
     description: 'Convert units (e.g. g<->kg, cm<->m)',
+    category: 'NUMERIC',
+    categoryLabel: 'Numeric',
+    categoryOrder: 2,
     pure: true,
     schema: {
         fields: [
@@ -107,6 +118,9 @@ export const TO_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'toNumber',
     description: 'Convert a string field to a number.',
+    category: 'NUMERIC',
+    categoryLabel: 'Numeric',
+    categoryOrder: 2,
     pure: true,
     schema: {
         fields: [
@@ -121,6 +135,9 @@ export const TO_STRING_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'toString',
     description: 'Convert a value to a string.',
+    category: 'NUMERIC',
+    categoryLabel: 'Numeric',
+    categoryOrder: 2,
     pure: true,
     schema: {
         fields: [
@@ -130,85 +147,58 @@ export const TO_STRING_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-export function mathOperator(
-    records: readonly JsonObject[],
-    config: MathOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyMathOperator(record: JsonObject, config: MathOperatorConfig): JsonObject {
     if (!config.operation || !config.source || !config.target) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyMath(record, config.operation, config.source, config.operand, config.target, config.decimals),
-    );
-    return { records: results };
+    return applyMath(record, config.operation, config.source, config.operand, config.target, config.decimals);
 }
 
-export function currencyOperator(
-    records: readonly JsonObject[],
-    config: CurrencyOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const mathOperator = createRecordOperator(applyMathOperator);
+
+export function applyCurrencyOperator(record: JsonObject, config: CurrencyOperatorConfig): JsonObject {
     if (!config.source || !config.target || config.decimals === undefined) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyCurrency(record, config.source, config.target, config.decimals, config.round),
-    );
-    return { records: results };
+    return applyCurrency(record, config.source, config.target, config.decimals, config.round);
 }
 
-export function unitOperator(
-    records: readonly JsonObject[],
-    config: UnitOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const currencyOperator = createRecordOperator(applyCurrencyOperator);
+
+export function applyUnitOperator(record: JsonObject, config: UnitOperatorConfig): JsonObject {
     if (!config.source || !config.target || !config.from || !config.to) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyUnit(record, config.source, config.target, config.from, config.to),
-    );
-    return { records: results };
+    return applyUnit(record, config.source, config.target, config.from, config.to);
 }
 
-export function toNumberOperator(
-    records: readonly JsonObject[],
-    config: ToNumberOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const unitOperator = createRecordOperator(applyUnitOperator);
+
+export function applyToNumberOperator(record: JsonObject, config: ToNumberOperatorConfig): JsonObject {
     if (!config.source) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyToNumber(record, config.source, config.target, config.default),
-    );
-    return { records: results };
+    return applyToNumber(record, config.source, config.target, config.default);
 }
 
-export function toStringOperator(
-    records: readonly JsonObject[],
-    config: ToStringOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const toNumberOperator = createRecordOperator(applyToNumberOperator);
+
+export function applyToStringOperator(record: JsonObject, config: ToStringOperatorConfig): JsonObject {
     if (!config.source) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyToString(record, config.source, config.target),
-    );
-    return { records: results };
+    return applyToString(record, config.source, config.target);
 }
+
+export const toStringOperator = createRecordOperator(applyToStringOperator);
 
 export const PARSE_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'parseNumber',
     description: 'Parse a string to a number with locale-aware decimal/thousand separator handling.',
+    category: 'NUMERIC',
+    categoryLabel: 'Numeric',
+    categoryOrder: 2,
     pure: true,
     schema: {
         fields: [
@@ -223,8 +213,13 @@ export const PARSE_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
 export const FORMAT_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'formatNumber',
+    name: 'Number Format',
     description: 'Format a number as a localized string with optional currency or percent formatting.',
+    category: 'NUMERIC',
+    categoryLabel: 'Numeric',
+    categoryOrder: 2,
     pure: true,
+    fieldTransform: true,
     schema: {
         fields: [
             { key: 'source', label: 'Source field path', type: 'string', required: true },
@@ -247,55 +242,31 @@ export const FORMAT_NUMBER_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-export function parseNumberOperator(
-    records: readonly JsonObject[],
-    config: ParseNumberOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyParseNumberOperator(record: JsonObject, config: ParseNumberOperatorConfig): JsonObject {
     if (!config.source) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyParseNumber(
-            record,
-            config.source,
-            config.target,
-            config.locale,
-            config.default,
-        ),
-    );
-    return { records: results };
+    return applyParseNumber(record, config.source, config.target, config.locale, config.default);
 }
 
-export function formatNumberOperator(
-    records: readonly JsonObject[],
-    config: FormatNumberOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const parseNumberOperator = createRecordOperator(applyParseNumberOperator);
+
+export function applyFormatNumberOperator(record: JsonObject, config: FormatNumberOperatorConfig): JsonObject {
     if (!config.source || !config.target) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyFormatNumber(
-            record,
-            config.source,
-            config.target,
-            config.locale,
-            config.decimals,
-            config.currency,
-            config.style,
-            config.useGrouping,
-        ),
-    );
-    return { records: results };
+    return applyFormatNumber(record, config.source, config.target, config.locale, config.decimals, config.currency, config.style, config.useGrouping);
 }
+
+export const formatNumberOperator = createRecordOperator(applyFormatNumberOperator);
 
 export const TO_CENTS_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'toCents',
     description: 'Convert a decimal amount to cents (minor currency units). Multiplies by 100 and rounds.',
+    category: 'NUMERIC',
+    categoryLabel: 'Numeric',
+    categoryOrder: 2,
     pure: true,
     schema: {
         fields: [
@@ -315,6 +286,9 @@ export const ROUND_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'round',
     description: 'Round a number to a specified number of decimal places.',
+    category: 'NUMERIC',
+    categoryLabel: 'Numeric',
+    categoryOrder: 2,
     pure: true,
     schema: {
         fields: [
@@ -331,32 +305,20 @@ export const ROUND_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-export function toCentsOperator(
-    records: readonly JsonObject[],
-    config: ToCentsOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyToCentsOperator(record: JsonObject, config: ToCentsOperatorConfig): JsonObject {
     if (!config.source || !config.target) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyToCents(record, config.source, config.target, config.round),
-    );
-    return { records: results };
+    return applyToCents(record, config.source, config.target, config.round);
 }
 
-export function roundOperator(
-    records: readonly JsonObject[],
-    config: RoundOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const toCentsOperator = createRecordOperator(applyToCentsOperator);
+
+export function applyRoundOperator(record: JsonObject, config: RoundOperatorConfig): JsonObject {
     if (!config.source) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyRound(record, config.source, config.target, config.decimals, config.mode),
-    );
-    return { records: results };
+    return applyRound(record, config.source, config.target, config.decimals, config.mode);
 }
+
+export const roundOperator = createRecordOperator(applyRoundOperator);

@@ -25,7 +25,13 @@ import {
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+} from '../base';
 import {
     ProductVariantInput,
     PRODUCT_VARIANT_LOADER_METADATA,
@@ -54,6 +60,8 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = PRODUCT_VARIANT_LOADER_METADATA;
 
+    private readonly lookupHelper: EntityLookupHelper<TransactionalConnection, ProductVariant, ProductVariantInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private variantService: ProductVariantService,
@@ -69,6 +77,33 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PRODUCT_VARIANT_LOADER);
+        this.lookupHelper = new EntityLookupHelper<TransactionalConnection, ProductVariant, ProductVariantInput>(this.connection)
+            .addCustomStrategy({
+                fieldName: 'sku',
+                lookup: async (ctx, conn, value) => {
+                    if (!value) return null;
+                    const variants = await conn
+                        .getRepository(ctx, ProductVariant)
+                        .find({ where: { sku: value as string }, relations: ['product'] });
+                    if (variants.length > 0) {
+                        return { id: variants[0].id, entity: variants[0] };
+                    }
+                    return null;
+                },
+            })
+            .addCustomStrategy({
+                fieldName: 'id',
+                lookup: async (ctx, conn, value) => {
+                    if (!value) return null;
+                    const variant = await conn
+                        .getRepository(ctx, ProductVariant)
+                        .findOne({ where: { id: value as ID }, relations: ['product'] });
+                    if (variant) {
+                        return { id: variant.id, entity: variant };
+                    }
+                    return null;
+                },
+            });
     }
 
     protected getDuplicateErrorMessage(record: ProductVariantInput): string {
@@ -80,29 +115,7 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
         lookupFields: string[],
         record: ProductVariantInput,
     ): Promise<ExistingEntityLookupResult<ProductVariant> | null> {
-        // Primary lookup: by SKU
-        if (record.sku && lookupFields.includes('sku')) {
-            const variants = await this.connection
-                .getRepository(ctx, ProductVariant)
-                .find({ where: { sku: record.sku }, relations: ['product'] });
-
-            if (variants.length > 0) {
-                return { id: variants[0].id, entity: variants[0] };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const variant = await this.connection
-                .getRepository(ctx, ProductVariant)
-                .findOne({ where: { id: record.id as ID }, relations: ['product'] });
-
-            if (variant) {
-                return { id: variant.id, entity: variant };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -110,55 +123,49 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
         record: ProductVariantInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
+        const builder = new ValidationBuilder()
+            .requireStringForCreate('sku', record.sku, operation, 'SKU is required');
 
-        // Required field validation
+        // Price validation for CREATE/UPSERT
         if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.sku || typeof record.sku !== 'string' || record.sku.trim() === '') {
-                errors.push({ field: 'sku', message: 'SKU is required', code: 'REQUIRED' });
-            }
-
             if (record.price === undefined || record.price === null) {
-                errors.push({ field: 'price', message: 'Price is required', code: 'REQUIRED' });
+                builder.addError('price', 'Price is required', 'REQUIRED');
             } else if (typeof record.price !== 'number' || isNaN(record.price)) {
-                errors.push({ field: 'price', message: 'Price must be a valid number', code: 'INVALID_TYPE' });
+                builder.addError('price', 'Price must be a valid number', 'INVALID_TYPE');
             } else if (record.price < 0) {
-                errors.push({ field: 'price', message: 'Price cannot be negative', code: 'INVALID_VALUE' });
+                builder.addError('price', 'Price cannot be negative', 'INVALID_VALUE');
             }
 
             // For new variants, we need either product reference or product data
-            if (!record.productId && !record.productSlug && !record.productName) {
-                errors.push({
-                    field: 'productId',
-                    message: 'Product reference (productId, productSlug, or productName) is required for new variants',
-                    code: 'REQUIRED',
-                });
-            }
+            builder.addErrorIf(
+                !record.productId && !record.productSlug && !record.productName,
+                'productId',
+                'Product reference (productId, productSlug, or productName) is required for new variants',
+                'REQUIRED',
+            );
         }
 
         // Optional field validation
-        if (record.stockOnHand !== undefined && typeof record.stockOnHand !== 'number') {
-            errors.push({ field: 'stockOnHand', message: 'Stock must be a number', code: 'INVALID_TYPE' });
-        }
+        builder.addErrorIf(
+            record.stockOnHand !== undefined && typeof record.stockOnHand !== 'number',
+            'stockOnHand',
+            'Stock must be a number',
+            'INVALID_TYPE',
+        );
 
         // Validate tax category if provided
         if (record.taxCategoryCode) {
             const taxCatList = await this.taxCategoryService.findAll(ctx);
             const taxCat = taxCatList.items.find(tc => tc.name === record.taxCategoryCode);
             if (!taxCat) {
-                warnings.push({
-                    field: 'taxCategoryCode',
-                    message: `Tax category "${record.taxCategoryCode}" not found, will use default`,
-                });
+                builder.addWarning(
+                    'taxCategoryCode',
+                    `Tax category "${record.taxCategoryCode}" not found, will use default`,
+                );
             }
         }
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

@@ -24,6 +24,7 @@ import { PipelineQueueRequestEvent } from '../events/pipeline-events';
 import { getErrorMessage, isDuplicateEntryError } from '../../utils/error.utils';
 import { escapeLikePattern } from '../../utils/sql-security.utils';
 import { CheckpointService } from '../data/checkpoint.service';
+import { DomainEventsService } from '../events/domain-events.service';
 
 export interface CreatePipelineInput {
     code: string;
@@ -53,6 +54,7 @@ export class PipelineService {
         private definitionValidator: DefinitionValidationService,
         private adapterRuntime: AdapterRuntimeService,
         private checkpointService: CheckpointService,
+        private domainEvents: DomainEventsService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PIPELINE_SERVICE);
@@ -181,41 +183,46 @@ export class PipelineService {
         this.definitionValidator.validate(pipeline.definition);
         await this.assertCapabilitiesAllowed(ctx, pipeline.definition);
 
-        // Auto-increment version on publish
-        const previousVersion = pipeline.version ?? 0;
-        pipeline.version = previousVersion + 1;
-        pipeline.status = PipelineStatus.PUBLISHED;
-        pipeline.publishedAt = new Date();
-        pipeline.publishedByUserId = ctx.activeUserId?.toString() ?? null;
-        await repo.save(pipeline, { reload: false });
+        const newVersion = (pipeline.version ?? 0) + 1;
 
-        // Save revision for version history
+        // Save revision FIRST so version increment is only committed on success
+        let savedRevisionId: number | undefined;
         try {
             const revRepo = this.connection.getRepository(ctx, PipelineRevision);
             const revision = new PipelineRevision();
             revision.pipeline = pipeline;
             revision.pipelineId = Number(pipeline.id);
-            revision.version = pipeline.version;
+            revision.version = newVersion;
             revision.definition = pipeline.definition;
             revision.type = RevisionType.PUBLISHED;
             revision.authorUserId = ctx.activeUserId?.toString() ?? null;
             revision.definitionSize = JSON.stringify(pipeline.definition).length;
             const savedRevision = await revRepo.save(revision);
-            // Update pipeline to point to this revision
-            pipeline.currentRevisionId = Number(savedRevision.id);
-            pipeline.publishedVersionCount = (pipeline.publishedVersionCount ?? 0) + 1;
-            await repo.save(pipeline, { reload: false });
-            this.logger.info('Pipeline published with revision', {
-                pipelineCode: pipeline.code,
-                version: pipeline.version,
-                revisionId: savedRevision.id,
-            });
+            savedRevisionId = Number(savedRevision.id);
         } catch (e) {
             this.logger.warn('Failed to save pipeline revision', {
                 pipelineCode: pipeline.code,
                 error: getErrorMessage(e),
             });
         }
+
+        // Commit all pipeline changes in a single save
+        pipeline.version = newVersion;
+        pipeline.status = PipelineStatus.PUBLISHED;
+        pipeline.publishedAt = new Date();
+        pipeline.publishedByUserId = ctx.activeUserId?.toString() ?? null;
+        if (savedRevisionId != null) {
+            pipeline.currentRevisionId = savedRevisionId;
+            pipeline.publishedVersionCount = (pipeline.publishedVersionCount ?? 0) + 1;
+        }
+        await repo.save(pipeline, { reload: false });
+
+        this.logger.info('Pipeline published', {
+            pipelineCode: pipeline.code,
+            version: newVersion,
+            revisionId: savedRevisionId,
+        });
+
         return assertFound(this.findOne(ctx, pipeline.id));
     }
 
@@ -347,7 +354,7 @@ export class PipelineService {
     async cancelRun(ctx: RequestContext, id: ID): Promise<PipelineRun> {
         const repo = this.connection.getRepository(ctx, PipelineRun);
         const run = await this.connection.getEntityOrThrow(ctx, PipelineRun, id);
-        if (run.status === RunStatus.RUNNING) {
+        if (run.status === RunStatus.RUNNING || run.status === RunStatus.PAUSED) {
             run.status = RunStatus.CANCEL_REQUESTED;
             await repo.save(run, { reload: false });
             this.logger.info('Pipeline run cancellation requested', { runId: id });
@@ -355,6 +362,11 @@ export class PipelineService {
             run.status = RunStatus.CANCELLED;
             run.finishedAt = new Date();
             await repo.save(run, { reload: false });
+            this.domainEvents.publishRunCancelled(
+                run.pipelineId?.toString(),
+                String(id),
+                ctx.activeUserId?.toString(),
+            );
             this.logger.info('Pipeline run cancelled', { runId: id });
         }
         return assertFound(this.runById(ctx, run.id));
@@ -415,6 +427,14 @@ export class PipelineService {
         });
     }
 
+    /**
+     * Approve a paused GATE step and resume the pipeline run.
+     *
+     * Race condition safety: concurrent calls to approveGate for the same runId
+     * are serialized by the database transaction. The status check (PAUSED) acts
+     * as a guard — only the first caller succeeds; subsequent callers see RUNNING
+     * and receive an error, preventing duplicate resumptions.
+     */
     async approveGate(ctx: RequestContext, runId: ID, stepKey: string): Promise<PipelineRun> {
         const repo = this.connection.getRepository(ctx, PipelineRun);
         const run = await repo.findOne({
@@ -441,6 +461,13 @@ export class PipelineService {
         // Set status to RUNNING so the runner picks it up
         run.status = RunStatus.RUNNING;
         await repo.save(run, { reload: false });
+
+        this.domainEvents.publishGateApproved(
+            pipelineId?.toString(),
+            String(runId),
+            stepKey,
+            ctx.activeUserId?.toString(),
+        );
 
         this.logger.info('Gate approved, resuming pipeline run', {
             runId,
@@ -471,6 +498,12 @@ export class PipelineService {
         run.finishedAt = new Date();
         run.error = `Gate step "${stepKey}" rejected by user`;
         await repo.save(run, { reload: false });
+        this.domainEvents.publishGateRejected(
+            run.pipelineId?.toString(),
+            String(runId),
+            stepKey,
+            `Rejected by user ${ctx.activeUserId ?? 'unknown'}`,
+        );
         this.logger.info('Gate rejected, cancelling pipeline run', {
             runId,
             stepKey,

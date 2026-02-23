@@ -18,6 +18,9 @@ export const MULTI_JOIN_OPERATOR_DEFINITION: AdapterDefinition = {
     code: 'multiJoin',
     description:
         'Join two datasets by matching key fields. Supports INNER, LEFT, RIGHT, and FULL OUTER join types.',
+    category: 'AGGREGATION',
+    categoryLabel: 'Aggregation',
+    categoryOrder: 6,
     pure: false, // Creates/removes records based on join type
     schema: {
         fields: [

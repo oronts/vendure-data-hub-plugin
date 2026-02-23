@@ -28,6 +28,9 @@ DataHubPlugin.init({
     connections: [],
     adapters: [],
     feedGenerators: [],
+    importTemplates: [],
+    exportTemplates: [],
+    scripts: {},
     configPath: undefined,
 
     // Runtime configuration
@@ -153,7 +156,7 @@ interface CodeFirstPipeline {
 ```typescript
 interface CodeFirstSecret {
     code: string;
-    provider: 'inline' | 'env';
+    provider: 'INLINE' | 'ENV';
     value: string;
     metadata?: Record<string, any>;
 }
@@ -186,11 +189,25 @@ interface CodeFirstConnection {
 
 ```typescript
 interface AdapterDefinition {
-    code: string;
-    type: 'EXTRACTOR' | 'OPERATOR' | 'LOADER' | 'FEED';
-    name: string;
-    handler: any;
-    schema?: object;
+    readonly type: 'EXTRACTOR' | 'OPERATOR' | 'LOADER' | 'VALIDATOR' | 'ENRICHER' | 'EXPORTER' | 'FEED' | 'SINK' | 'TRIGGER';
+    readonly code: string;
+    readonly name?: string;
+    readonly description?: string;
+    readonly category?: string;
+    readonly schema: StepConfigSchema;
+    readonly pure?: boolean;           // For operators: whether side-effect free
+    readonly async?: boolean;
+    readonly batchable?: boolean;
+    readonly requires?: readonly string[];
+    readonly icon?: string;
+    readonly version?: string;
+    readonly deprecated?: boolean;
+    readonly experimental?: boolean;
+    readonly entityType?: string;      // For loaders: Vendure entity type
+    readonly formatType?: string;      // For exporters/feeds: output format
+    readonly patchableFields?: readonly string[];
+    readonly editorType?: string;      // For operators: 'map' | 'template' | 'filter'
+    readonly summaryTemplate?: string; // For operators: e.g. "${from} → ${to}"
 }
 ```
 
@@ -198,20 +215,7 @@ Example:
 
 ```typescript
 DataHubPlugin.init({
-    adapters: [
-        {
-            code: 'my-extractor',
-            type: 'EXTRACTOR',
-            name: 'My Custom Extractor',
-            handler: MyExtractorClass,
-        },
-        {
-            code: 'currency-convert',
-            type: 'OPERATOR',
-            name: 'Currency Converter',
-            handler: currencyConvertOperator,
-        },
-    ],
+    adapters: [myCustomExtractor, currencyConvertOperator],
 })
 ```
 
@@ -366,6 +370,136 @@ DataHubPlugin.init({
 
 When configured, GATE steps with `notifyEmail` will send approval notification emails via this SMTP server. Without this configuration, email notifications are skipped with a warning.
 
+### importTemplates
+
+| | |
+|---|---|
+| Type | `CustomImportTemplate[]` |
+| Default | Built-in templates (REST API Sync, JSON Import, Magento CSV, XML Feed, ERP Inventory, CRM Customer) |
+| Description | Custom import templates for the import wizard |
+
+```typescript
+interface CustomImportTemplate {
+    id: string;
+    name: string;
+    description: string;
+    category: string;         // 'products' | 'customers' | 'inventory' | 'catalog'
+    icon?: string;            // lucide-react icon name
+    requiredFields: string[];
+    optionalFields?: string[];
+    featured?: boolean;
+    tags?: string[];
+    formats?: string[];       // 'CSV' | 'JSON' | 'XML' | 'API'
+    definition?: {
+        sourceType?: string;
+        fileFormat?: string;
+        targetEntity?: string;
+        existingRecords?: string;
+        lookupFields?: string[];
+        fieldMappings?: { sourceField: string; targetField: string }[];
+    };
+}
+```
+
+#### Including Connector Templates
+
+Connectors (like Pimcore) ship their own templates. Built-in export templates are served automatically by the `TemplateRegistryService`. To include connector templates in the wizard, pass them via plugin options:
+
+```typescript
+import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
+import { DEFAULT_IMPORT_TEMPLATES } from '@oronts/vendure-data-hub-plugin';
+
+DataHubPlugin.init({
+    importTemplates: [
+        ...DEFAULT_IMPORT_TEMPLATES,
+        ...(PimcoreConnector.importTemplates ?? []),
+    ],
+    exportTemplates: [
+        ...(PimcoreConnector.exportTemplates ?? []),
+    ],
+})
+```
+
+If using `ConnectorRegistry` with multiple connectors:
+
+```typescript
+const connectorTemplates = registry.getPluginTemplates();
+
+DataHubPlugin.init({
+    importTemplates: [...DEFAULT_IMPORT_TEMPLATES, ...connectorTemplates.importTemplates],
+    exportTemplates: connectorTemplates.exportTemplates,
+})
+```
+
+### exportTemplates
+
+| | |
+|---|---|
+| Type | `CustomExportTemplate[]` |
+| Default | Built-in templates (Product XML Feed, Order Analytics CSV, Customer GDPR Export, Inventory Report) |
+| Description | Custom export templates for the export wizard |
+
+```typescript
+interface CustomExportTemplate {
+    id: string;
+    name: string;
+    description: string;
+    icon?: string;
+    format: string;
+    requiredFields?: string[];
+    tags?: string[];
+    definition?: {
+        sourceEntity?: string;
+        fields?: string[];
+        formatOptions?: Record<string, unknown>;
+    };
+}
+```
+
+### scripts
+
+| | |
+|---|---|
+| Type | `Record<string, ScriptFunction>` |
+| Default | `undefined` |
+| Description | Named script functions for use in pipeline hook actions |
+
+Scripts registered via plugin options are auto-registered on startup and can be referenced by name in SCRIPT hook actions within pipeline definitions.
+
+```typescript
+type ScriptFunction = (
+    records: readonly JsonObject[],
+    context: HookContext,
+    args?: JsonObject,
+) => Promise<JsonObject[]> | JsonObject[];
+```
+
+Example:
+
+```typescript
+DataHubPlugin.init({
+    scripts: {
+        'validate-sku': async (records, context) => {
+            return records.filter(r => r.sku && String(r.sku).length > 0);
+        },
+        'enrich-pricing': async (records, context) => {
+            return records.map(r => ({ ...r, priceInCents: Number(r.price) * 100 }));
+        },
+    },
+})
+```
+
+Use in pipeline definitions:
+
+```typescript
+hooks: {
+    AFTER_EXTRACT: [{ type: 'SCRIPT', scriptName: 'validate-sku' }],
+    BEFORE_LOAD: [{ type: 'SCRIPT', scriptName: 'enrich-pricing', args: { currency: 'USD' } }],
+}
+```
+
+Scripts have full access to the `HookContext` (pipelineId, runId, stage) and optional `args` passed from the hook action. They can filter, transform, enrich, or reject records.
+
 ### configPath
 
 | | |
@@ -390,7 +524,7 @@ Use environment variables in configurations:
 
 ```typescript
 secrets: [
-    { code: 'api-key', provider: 'env', value: 'MY_API_KEY' },
+    { code: 'api-key', provider: 'ENV', value: 'MY_API_KEY' },
 ]
 ```
 
@@ -419,7 +553,7 @@ connections: [
 # data-hub.yaml
 secrets:
   - code: supplier-api
-    provider: env
+    provider: ENV
     value: SUPPLIER_API_KEY
 
 connections:
@@ -528,7 +662,7 @@ DataHubPlugin.init({
     debug: true,
     retentionDaysRuns: 7,
     secrets: [
-        { code: 'test-api', provider: 'inline', value: 'test-key' },
+        { code: 'test-api', provider: 'INLINE', value: 'test-key' },
     ],
 })
 ```
@@ -555,7 +689,7 @@ DataHubPlugin.init({
     debug: !isProd,
     retentionDaysRuns: isProd ? 30 : 7,
     secrets: [
-        { code: 'api-key', provider: 'env', value: 'API_KEY' },
+        { code: 'api-key', provider: 'ENV', value: 'API_KEY' },
     ],
     connections: [
         {

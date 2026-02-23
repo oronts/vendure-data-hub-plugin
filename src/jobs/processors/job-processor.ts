@@ -1,4 +1,4 @@
-import { LOGGER_CONTEXTS, HTTP, TIME_UNITS } from '../../constants/index';
+import { LOGGER_CONTEXTS, HTTP } from '../../constants/index';
 import { JobResult, JobContext } from '../types';
 import { DataHubLogger } from '../../services/logger';
 import {
@@ -9,7 +9,7 @@ import {
     DEFAULT_RETRY_CONFIG,
     isRetryableError as isRetryableErrorBase,
 } from '../../utils/retry.utils';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.JOB_PROCESSOR);
 
@@ -69,7 +69,7 @@ export function withJobProcessing<T, R>(
             const durationMs = Date.now() - startTime;
             const errorMessage = getErrorMessage(error);
 
-            logger.error(`Job failed: ${name}`, error instanceof Error ? error : undefined, { durationMs });
+            logger.error(`Job failed: ${name}`, toErrorOrUndefined(error), { durationMs });
 
             return createFailureResult(errorMessage, durationMs);
         }
@@ -156,14 +156,3 @@ export function isRetryableError(
     return false;
 }
 
-export function formatDuration(durationMs: number): string {
-    if (durationMs < TIME_UNITS.SECOND) {
-        return `${durationMs}ms`;
-    }
-    if (durationMs < TIME_UNITS.MINUTE) {
-        return `${(durationMs / TIME_UNITS.SECOND).toFixed(1)}s`;
-    }
-    const minutes = Math.floor(durationMs / TIME_UNITS.MINUTE);
-    const seconds = Math.round((durationMs % TIME_UNITS.MINUTE) / TIME_UNITS.SECOND);
-    return `${minutes}m ${seconds}s`;
-}

@@ -79,3 +79,14 @@ export function formatFileSize(bytes: number): string {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/**
+ * Converts a camelCase field name to a human-readable label.
+ * Example: 'databaseType' -> 'Database Type', 'remotePath' -> 'Remote Path'
+ *
+ * Delegates to {@link formatKey} which handles the same conversion plus
+ * underscores, hyphens, and extra whitespace normalization.
+ */
+export function formatFieldLabel(field: string): string {
+    return formatKey(field);
+}

@@ -6,15 +6,14 @@
 
 import { ExtractorContext } from '../../types/index';
 import { HttpApiExtractorConfig, PaginationState, HTTP_DEFAULTS } from './types';
-import { HttpMethod, PaginationType, HTTP_HEADERS, CONTENT_TYPES, PAGINATION_PARAMS } from '../../constants/index';
-import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
-import { applyAuthentication, AuthConfig, createSecretResolver } from '../../utils/auth-helpers';
-import { buildUrlWithConnection } from '../../utils/url-helpers';
+import { HttpMethod, PaginationType, PAGINATION_PARAMS } from '../../constants/index';
+import { UrlSecurityConfig } from '../../utils/url-security.utils';
+import { buildExtractorUrl, buildExtractorHeaders } from '../shared';
 import { isValidUrl as _isValidUrl } from '../../../shared';
 
 /**
- * Build full URL from config, resolving connection base URL if needed
- * Validates URL against SSRF attacks before returning
+ * Build full URL from config, resolving connection base URL if needed.
+ * Delegates to shared buildExtractorUrl.
  *
  * @param context - Extractor context
  * @param config - HTTP API extractor config
@@ -26,44 +25,18 @@ export async function buildUrl(
     config: HttpApiExtractorConfig,
     ssrfConfig?: UrlSecurityConfig,
 ): Promise<string> {
-    let url = config.url;
-
-    if (config.connectionCode) {
-        const connection = await context.connections.get(config.connectionCode);
-        url = buildUrlWithConnection(config.url, connection);
-    }
-
-    // Validate URL against SSRF attacks
-    await assertUrlSafe(url, ssrfConfig);
-
-    return url;
+    return buildExtractorUrl(context, config, ssrfConfig);
 }
 
 /**
- * Build request headers with authentication
+ * Build request headers with authentication.
+ * Delegates to shared buildExtractorHeaders.
  */
 export async function buildHeaders(
     context: ExtractorContext,
     config: HttpApiExtractorConfig,
 ): Promise<Record<string, string>> {
-    const headers: Record<string, string> = {
-        [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
-        ...config.headers,
-    };
-
-    if (config.connectionCode) {
-        const connection = await context.connections.get(config.connectionCode);
-        if (connection?.headers) {
-            Object.assign(headers, connection.headers);
-        }
-
-        if (connection?.auth) {
-            const secretResolver = createSecretResolver(context.secrets);
-            await applyAuthentication(headers, connection.auth as unknown as AuthConfig, secretResolver);
-        }
-    }
-
-    return headers;
+    return buildExtractorHeaders(context, config);
 }
 
 /**

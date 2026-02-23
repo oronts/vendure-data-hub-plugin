@@ -13,8 +13,6 @@ export const couponsTemplate: ImportTemplate = {
     description: 'Import coupon codes with discount amounts, validity dates, and usage limits for promotional campaigns.',
     category: 'promotions',
     icon: 'percent',
-    difficulty: 'intermediate',
-    estimatedTime: '5 minutes',
     requiredFields: ['name', 'coupon_code'],
     optionalFields: ['discount_percentage', 'discount_amount', 'starts_at', 'ends_at', 'usage_limit'],
     formats: ['csv'],

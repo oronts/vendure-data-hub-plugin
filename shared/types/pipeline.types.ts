@@ -59,10 +59,7 @@ export type SourceType =
 export type FileFormat = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'TSV' | 'PARQUET';
 
 /**
- * Type of export destination (canonical definition).
- *
- * @see src/constants/enums.ts — DESTINATION_TYPE runtime constant (subset, excludes 'DOWNLOAD')
- * @see src/services/destinations/destination.types.ts — DeliveryDestinationType (narrower subset for physical delivery)
+ * Type of export destination.
  */
 export type DestinationType = 'FILE' | 'DOWNLOAD' | 'S3' | 'FTP' | 'SFTP' | 'HTTP' | 'EMAIL' | 'WEBHOOK' | 'LOCAL';
 

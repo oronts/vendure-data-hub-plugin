@@ -5,7 +5,6 @@
 import { JsonValue, JsonObject } from '../../../types/index';
 import { MapperTransformConfig } from '../../types/transform-config.types';
 
-// Import canonical implementations
 import {
     applyTrim as applyTrimCanonical,
     applyLowercase as applyLowercaseCanonical,

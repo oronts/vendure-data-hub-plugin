@@ -6,56 +6,12 @@
 
 import * as React from 'react';
 import { memo } from 'react';
-import {
-    ShoppingBag,
-    Users,
-    Package,
-    FolderTree,
-    Percent,
-    Receipt,
-    Layers,
-    ShoppingCart,
-    Store,
-    DollarSign,
-    MapPin,
-    Warehouse,
-    Folder,
-    Tag,
-    Search,
-    Star,
-    Clock,
-    CheckCircle,
-} from 'lucide-react';
+import { CheckCircle, Package, Search } from 'lucide-react';
 import { Badge, Input } from '@vendure/dashboard';
-import type { TemplateCategory, TemplateDifficulty } from '../../types';
-
-/**
- * Import template interface (matches backend type)
- */
-interface ImportTemplate {
-    id: string;
-    name: string;
-    description: string;
-    category: TemplateCategory;
-    icon?: string;
-    difficulty: TemplateDifficulty;
-    estimatedTime: string;
-    requiredFields: string[];
-    optionalFields: string[];
-    featured?: boolean;
-    tags?: string[];
-}
-
-/**
- * Category info for display
- */
-interface CategoryInfo {
-    category: TemplateCategory;
-    label: string;
-    description: string;
-    icon: string;
-    count: number;
-}
+import type { TemplateCategory } from '../../types';
+import type { ImportTemplate, CategoryInfo } from '../../hooks/use-import-templates';
+import { resolveIconName } from '../../utils';
+import { filterTemplates } from '../../utils/template-helpers';
 
 export interface TemplateGalleryProps {
     templates: ImportTemplate[];
@@ -64,29 +20,6 @@ export interface TemplateGalleryProps {
     onSelectTemplate: (template: ImportTemplate) => void;
     onUseTemplate?: (template: ImportTemplate) => void;
 }
-
-const CATEGORY_ICONS: Record<string, React.ElementType> = {
-    'shopping-bag': ShoppingBag,
-    'users': Users,
-    'package': Package,
-    'folder-tree': FolderTree,
-    'percent': Percent,
-    'receipt': Receipt,
-    'layers': Layers,
-    'shopping-cart': ShoppingCart,
-    'store': Store,
-    'dollar-sign': DollarSign,
-    'map-pin': MapPin,
-    'warehouse': Warehouse,
-    'folder': Folder,
-    'tag': Tag,
-};
-
-const DIFFICULTY_STYLES: Record<TemplateDifficulty, { bg: string; text: string }> = {
-    beginner: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400' },
-    intermediate: { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400' },
-    advanced: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400' },
-};
 
 function TemplateCardComponent({
     template,
@@ -97,8 +30,7 @@ function TemplateCardComponent({
     selected: boolean;
     onSelect: () => void;
 }) {
-    const IconComponent = CATEGORY_ICONS[template.icon ?? 'package'] ?? Package;
-    const difficultyStyle = DIFFICULTY_STYLES[template.difficulty];
+    const IconComponent = resolveIconName(template.icon) ?? Package;
 
     return (
         <button
@@ -112,12 +44,6 @@ function TemplateCardComponent({
                 }
             `}
         >
-            {template.featured && (
-                <div className="absolute top-2 right-2">
-                    <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                </div>
-            )}
-
             <div className="flex items-start gap-3">
                 <div className={`p-2 rounded-md ${selected ? 'bg-primary/10' : 'bg-muted'}`}>
                     <IconComponent className={`h-5 w-5 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />
@@ -130,13 +56,16 @@ function TemplateCardComponent({
                     </p>
 
                     <div className="flex items-center gap-2 mt-3 flex-wrap">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${difficultyStyle.bg} ${difficultyStyle.text}`}>
-                            {template.difficulty}
-                        </span>
-                        <span className="inline-flex items-center text-xs text-muted-foreground">
-                            <Clock className="h-3 w-3 mr-1" />
-                            {template.estimatedTime}
-                        </span>
+                        {template.formats?.map(format => (
+                            <Badge key={format} variant="outline" className="text-xs">
+                                {format.toUpperCase()}
+                            </Badge>
+                        ))}
+                        {template.tags?.map(tag => (
+                            <Badge key={tag} variant="secondary" className="text-xs">
+                                {tag}
+                            </Badge>
+                        ))}
                     </div>
                 </div>
             </div>
@@ -161,7 +90,7 @@ function CategoryTabComponent({
     selected: boolean;
     onSelect: () => void;
 }) {
-    const IconComponent = CATEGORY_ICONS[category.icon] ?? Package;
+    const IconComponent = resolveIconName(category.icon) ?? Package;
 
     return (
         <button
@@ -204,28 +133,8 @@ function TemplateGalleryComponent({
         }
 
         // Filter by search query
-        if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase();
-            filtered = filtered.filter(t =>
-                t.name.toLowerCase().includes(query) ||
-                t.description.toLowerCase().includes(query) ||
-                t.requiredFields.some(f => f.toLowerCase().includes(query)) ||
-                t.tags?.some(tag => tag.toLowerCase().includes(query)),
-            );
-        }
-
-        return filtered;
+        return filterTemplates(filtered, searchQuery);
     }, [templates, selectedCategory, searchQuery]);
-
-    const featuredTemplates = React.useMemo(
-        () => filteredTemplates.filter(t => t.featured),
-        [filteredTemplates],
-    );
-
-    const regularTemplates = React.useMemo(
-        () => filteredTemplates.filter(t => !t.featured),
-        [filteredTemplates],
-    );
 
     return (
         <div className="flex flex-col h-full">
@@ -282,43 +191,15 @@ function TemplateGalleryComponent({
                         </p>
                     </div>
                 ) : (
-                    <div className="space-y-6">
-                        {/* Featured Templates */}
-                        {featuredTemplates.length > 0 && selectedCategory === 'all' && !searchQuery && (
-                            <div>
-                                <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
-                                    <Star className="h-4 w-4 text-yellow-500" />
-                                    Recommended Templates
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {featuredTemplates.map(template => (
-                                        <TemplateCard
-                                            key={template.id}
-                                            template={template}
-                                            selected={selectedTemplate?.id === template.id}
-                                            onSelect={() => onSelectTemplate(template)}
-                                        />
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* All Templates */}
-                        <div>
-                            {featuredTemplates.length > 0 && selectedCategory === 'all' && !searchQuery && (
-                                <h3 className="text-sm font-medium mb-3">All Templates</h3>
-                            )}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {(selectedCategory === 'all' && !searchQuery ? regularTemplates : filteredTemplates).map(template => (
-                                    <TemplateCard
-                                        key={template.id}
-                                        template={template}
-                                        selected={selectedTemplate?.id === template.id}
-                                        onSelect={() => onSelectTemplate(template)}
-                                    />
-                                ))}
-                            </div>
-                        </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {filteredTemplates.map(template => (
+                            <TemplateCard
+                                key={template.id}
+                                template={template}
+                                selected={selectedTemplate?.id === template.id}
+                                onSelect={() => onSelectTemplate(template)}
+                            />
+                        ))}
                     </div>
                 )}
             </div>

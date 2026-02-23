@@ -17,7 +17,13 @@ import {
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+} from '../base';
 import {
     TaxRateInput,
     TAX_RATE_LOADER_METADATA,
@@ -56,6 +62,8 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
     // Cache for resolved IDs to avoid repeated lookups
     private resolverCache = new Map<string, ID>();
 
+    private readonly lookupHelper: EntityLookupHelper<TaxRateService, TaxRate, TaxRateInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private taxRateService: TaxRateService,
@@ -65,6 +73,25 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.TAX_RATE_LOADER);
+        this.lookupHelper = new EntityLookupHelper<TaxRateService, TaxRate, TaxRateInput>(this.taxRateService)
+            .addCustomStrategy({
+                fieldName: 'name',
+                lookup: async (ctx, svc, value) => {
+                    if (!value || typeof value !== 'string') return null;
+                    const taxRates = await svc.findAll(ctx);
+                    const match = taxRates.items.find(tr => tr.name === value);
+                    if (match) {
+                        return { id: match.id, entity: match as TaxRate };
+                    }
+                    return null;
+                },
+            })
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id) as Promise<TaxRate | null>);
+    }
+
+    protected preprocessRecords(records: TaxRateInput[]): TaxRateInput[] {
+        this.resolverCache.clear();
+        return records;
     }
 
     protected getDuplicateErrorMessage(record: TaxRateInput): string {
@@ -76,24 +103,7 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
         lookupFields: string[],
         record: TaxRateInput,
     ): Promise<ExistingEntityLookupResult<TaxRate> | null> {
-        // Primary lookup: by name (within same category and zone if possible)
-        if (record.name && lookupFields.includes('name')) {
-            const taxRates = await this.taxRateService.findAll(ctx);
-            const match = taxRates.items.find(tr => tr.name === record.name);
-            if (match) {
-                return { id: match.id, entity: match as TaxRate };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const taxRate = await this.taxRateService.findOne(ctx, record.id as ID);
-            if (taxRate) {
-                return { id: taxRate.id, entity: taxRate as TaxRate };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -101,32 +111,25 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
         record: TaxRateInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
+        const builder = new ValidationBuilder()
+            .requireStringForCreate('name', record.name, operation, 'Tax rate name is required');
 
         if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
-                errors.push({ field: 'name', message: 'Tax rate name is required', code: 'REQUIRED' });
-            }
-
+            // Tax rate value validation
             if (record.value === undefined || record.value === null) {
-                errors.push({ field: 'value', message: 'Tax rate value is required', code: 'REQUIRED' });
+                builder.addError('value', 'Tax rate value is required', 'REQUIRED');
             } else if (typeof record.value !== 'number' || record.value < 0 || record.value > 100) {
-                errors.push({
-                    field: 'value',
-                    message: 'Tax rate value must be a number between 0 and 100',
-                    code: 'INVALID_VALUE',
-                });
+                builder.addError(
+                    'value',
+                    'Tax rate value must be a number between 0 and 100',
+                    'INVALID_VALUE',
+                );
             }
 
+            // Tax category validation
             if (!record.taxCategoryCode && !record.taxCategoryId) {
-                errors.push({
-                    field: 'taxCategoryCode',
-                    message: 'Tax category code or ID is required',
-                    code: 'REQUIRED',
-                });
+                builder.addError('taxCategoryCode', 'Tax category code or ID is required', 'REQUIRED');
             } else {
-                // Validate that the tax category exists
                 const taxCategoryId = await resolveTaxCategoryId(
                     ctx,
                     this.taxCategoryService,
@@ -134,22 +137,18 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
                     this.resolverCache,
                 );
                 if (!taxCategoryId) {
-                    errors.push({
-                        field: 'taxCategoryCode',
-                        message: `Tax category "${record.taxCategoryCode}" not found`,
-                        code: 'TAX_CATEGORY_NOT_FOUND',
-                    });
+                    builder.addError(
+                        'taxCategoryCode',
+                        `Tax category "${record.taxCategoryCode}" not found`,
+                        'TAX_CATEGORY_NOT_FOUND',
+                    );
                 }
             }
 
+            // Zone validation
             if (!record.zoneCode && !record.zoneId) {
-                errors.push({
-                    field: 'zoneCode',
-                    message: 'Zone code or ID is required',
-                    code: 'REQUIRED',
-                });
+                builder.addError('zoneCode', 'Zone code or ID is required', 'REQUIRED');
             } else {
-                // Validate that the zone exists
                 const zoneId = await resolveZoneId(
                     ctx,
                     this.zoneService,
@@ -157,20 +156,16 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
                     this.resolverCache,
                 );
                 if (!zoneId) {
-                    errors.push({
-                        field: 'zoneCode',
-                        message: `Zone "${record.zoneCode}" not found`,
-                        code: 'ZONE_NOT_FOUND',
-                    });
+                    builder.addError(
+                        'zoneCode',
+                        `Zone "${record.zoneCode}" not found`,
+                        'ZONE_NOT_FOUND',
+                    );
                 }
             }
         }
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

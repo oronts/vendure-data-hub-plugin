@@ -24,6 +24,7 @@ import {
     ConflictStrategyValue,
     FeedType,
 } from '../../../shared/types';
+import { LOAD_STRATEGY } from '../../../shared/constants/enums';
 
 // Re-export canonical types from shared
 export type { AdapterType, AdapterCategory, TriggerType, ChannelStrategy, LanguageStrategyValue, ValidationModeType, ConflictStrategyValue } from '../../../shared/types';
@@ -45,7 +46,7 @@ export interface BaseAdapter<TConfig = JsonObject> {
     /** Description for documentation */
     readonly description?: string;
     /** Category for UI organization */
-    readonly category?: AdapterCategory;
+    readonly category?: AdapterCategory | string;
     /** Configuration schema for UI form generation */
     readonly schema: StepConfigSchema;
     /** For operators: whether side-effect free (stream-safe) */
@@ -70,6 +71,22 @@ export interface BaseAdapter<TConfig = JsonObject> {
     readonly experimental?: boolean;
     /** Message explaining experimental status and limitations */
     readonly experimentalMessage?: string;
+    /** For loaders: the Vendure entity type this loader handles */
+    readonly entityType?: string;
+    /** For exporters/feeds: the base output file format */
+    readonly formatType?: string;
+    /** For loaders: fields that can be patched during error retry */
+    readonly patchableFields?: readonly string[];
+    /** For operators: which custom editor to use in the UI ('map' | 'template' | 'filter') */
+    readonly editorType?: string;
+    /** For operators: template string for config summary display (e.g. "${from} → ${to}") */
+    readonly summaryTemplate?: string;
+    /** Human-readable category label for UI display (e.g. "String", "Numeric") */
+    readonly categoryLabel?: string;
+    /** Sort order for category display in the UI (lower = first) */
+    readonly categoryOrder?: number;
+    /** For operators: whether this operator is suitable for field-level transforms in the export wizard */
+    readonly fieldTransform?: boolean;
 }
 
 /**
@@ -88,7 +105,7 @@ export interface AdapterDefinition {
     readonly code: string;
     readonly name?: string;
     readonly description?: string;
-    readonly category?: AdapterCategory;
+    readonly category?: AdapterCategory | string;
     readonly schema: StepConfigSchema;
     readonly pure?: boolean;
     readonly async?: boolean;
@@ -103,6 +120,26 @@ export interface AdapterDefinition {
     readonly experimental?: boolean;
     /** Message explaining experimental status and limitations */
     readonly experimentalMessage?: string;
+    /** For loaders: the Vendure entity type this loader handles */
+    readonly entityType?: string;
+    /** For exporters/feeds: the base output file format */
+    readonly formatType?: string;
+    /** For loaders: fields that can be patched during error retry */
+    readonly patchableFields?: readonly string[];
+    /** For operators: which custom editor to use in the UI ('map' | 'template' | 'filter') */
+    readonly editorType?: string;
+    /** For operators: template string for config summary display (e.g. "${from} → ${to}") */
+    readonly summaryTemplate?: string;
+    /** Human-readable category label for UI display (e.g. "String", "Numeric") */
+    readonly categoryLabel?: string;
+    /** Sort order for category display in the UI (lower = first) */
+    readonly categoryOrder?: number;
+    /** Whether this adapter should be hidden from wizard UIs (internal/test-only adapters) */
+    readonly wizardHidden?: boolean;
+    /** Whether this adapter is built-in (shipped with the plugin) vs custom (registered via SDK/connectors) */
+    readonly builtIn?: boolean;
+    /** For operators: whether this operator is suitable for field-level transforms in the export wizard */
+    readonly fieldTransform?: boolean;
 }
 
 // RECORD TYPES
@@ -223,8 +260,7 @@ export interface SingleRecordOperator<TConfig = JsonObject> extends BaseAdapter<
 // ChannelStrategy is imported and re-exported from shared/types/step.types.ts above
 // LanguageStrategyValue, ValidationModeType, ConflictStrategyValue are canonical in shared/types
 
-export type LoadStrategy =
-    | 'CREATE' | 'UPDATE' | 'UPSERT' | 'MERGE' | 'SOFT_DELETE' | 'HARD_DELETE';
+export type LoadStrategy = (typeof LOAD_STRATEGY)[keyof typeof LOAD_STRATEGY];
 
 /**
  * Context provided to loader adapters

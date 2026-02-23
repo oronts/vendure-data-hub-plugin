@@ -45,6 +45,7 @@ export const PROMOTION_LOADER_METADATA = {
     entityType: VendureEntityType.PROMOTION,
     name: 'Promotion Loader',
     description: 'Imports promotions, discounts, and coupon codes',
+    adapterCode: 'promotionUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['couponCode', 'id', 'name'],
     requiredFields: ['name'],

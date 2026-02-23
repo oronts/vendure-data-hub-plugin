@@ -9,7 +9,8 @@ import {
     Check,
     LayoutTemplate,
 } from 'lucide-react';
-import type { WizardStep } from '../../../types/wizard';
+import type { WizardStep, ImportStrategies } from '../../../types/wizard';
+import { CLEANUP_STRATEGY, BATCH_SIZES, UI_DEFAULTS } from '../../../constants';
 
 export const IMPORT_STEP_ID = {
     TEMPLATE: 'template',
@@ -23,18 +24,8 @@ export const IMPORT_STEP_ID = {
     REVIEW: 'review',
 } as const;
 
-export {
-    IMPORT_SOURCE_TYPES as SOURCE_TYPES,
-    IMPORT_FILE_FORMATS as FILE_FORMATS,
-    TRANSFORM_TYPES,
-    SOURCE_TYPE_ICONS,
-    FILE_FORMAT_ICONS,
-} from '../shared';
-
 export type {
-    ImportSourceType as SourceTypeId,
-    ImportFileFormat as FileFormatId,
-    TransformTypeId,
+    TransformTypeOption,
 } from '../shared';
 
 export const WIZARD_STEPS: WizardStep[] = [
@@ -95,7 +86,19 @@ export const STEP_CONTENT = {
     },
 } as const;
 
-export const PLACEHOLDERS = {
+export const IMPORT_PLACEHOLDERS = {
     apiUrl: 'https://api.example.com/data',
     configName: 'My Product Import',
 } as const;
+
+export const DEFAULT_IMPORT_STRATEGIES: ImportStrategies = {
+    existingRecords: 'UPDATE',
+    lookupFields: [],
+    newRecords: 'CREATE',
+    publishAfterImport: false,
+    cleanupStrategy: CLEANUP_STRATEGY.NONE,
+    batchSize: BATCH_SIZES.IMPORT_DEFAULT,
+    parallelBatches: 1,
+    errorThreshold: UI_DEFAULTS.DEFAULT_ERROR_THRESHOLD_PERCENT,
+    continueOnError: true,
+};

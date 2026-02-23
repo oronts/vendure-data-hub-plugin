@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useCallback, useMemo, useRef, memo } from 'react';
+import { useCallback, useMemo, memo } from 'react';
 import {
     Label,
     Select,
@@ -11,7 +11,9 @@ import {
     Button,
 } from '@vendure/dashboard';
 import { Plus, Trash2 } from 'lucide-react';
-import { VALIDATION_MODES, ERROR_HANDLING_MODES, PLACEHOLDERS } from '../../../constants';
+import { PLACEHOLDERS } from '../../../constants';
+import { useValidationRuleSchemas, useOptionValues, type TypedOptionValue, type ConnectionSchemaField } from '../../../hooks/api/use-config-options';
+import { useStableIndexIds } from '../../../hooks/use-stable-keys';
 
 interface ValidationRule {
     id?: string;
@@ -30,44 +32,29 @@ interface ValidationRuleWithId extends ValidationRule {
     id: string;
 }
 
+const FALLBACK_RULE_TYPE = 'REQUIRED';
+
+function detectRuleType(spec: ValidationRule['spec'], schemas: TypedOptionValue[]): string {
+    // Check which schema's defaultValues keys match the spec
+    for (const schema of schemas) {
+        if (!schema.defaultValues) continue;
+        const keys = Object.keys(schema.defaultValues);
+        if (keys.some(k => spec[k as keyof typeof spec] !== undefined)) {
+            return schema.value;
+        }
+    }
+    // Check if any field keys from schemas exist in spec
+    for (const schema of schemas) {
+        if (schema.fields.some(f => spec[f.key as keyof typeof spec] !== undefined)) {
+            return schema.value;
+        }
+    }
+    return schemas[0]?.value ?? FALLBACK_RULE_TYPE;
+}
+
 let validationRuleIdCounter = 0;
 function generateValidationRuleId(): string {
     return `validation-rule-${Date.now()}-${++validationRuleIdCounter}`;
-}
-
-/**
- * Hook to ensure all rules have stable IDs.
- * Assigns IDs to rules that don't have them and maintains stability across renders.
- */
-function useRulesWithStableIds(rules: ValidationRule[]): ValidationRuleWithId[] {
-    const idMapRef = useRef<Map<number, string>>(new Map());
-
-    return useMemo(() => {
-        const newIdMap = new Map<number, string>();
-
-        const rulesWithIds = rules.map((rule, index) => {
-            // If rule already has an ID, use it
-            if (rule.id) {
-                newIdMap.set(index, rule.id);
-                return rule as ValidationRuleWithId;
-            }
-
-            // Try to reuse ID from previous render at same index
-            const existingId = idMapRef.current.get(index);
-            if (existingId) {
-                newIdMap.set(index, existingId);
-                return { ...rule, id: existingId } as ValidationRuleWithId;
-            }
-
-            // Generate new ID
-            const newId = generateValidationRuleId();
-            newIdMap.set(index, newId);
-            return { ...rule, id: newId } as ValidationRuleWithId;
-        });
-
-        idMapRef.current = newIdMap;
-        return rulesWithIds;
-    }, [rules]);
 }
 
 export interface ValidateConfigComponentProps {
@@ -78,12 +65,6 @@ export interface ValidateConfigComponentProps {
     readonly showRulesEditor?: boolean;
 }
 
-const RULE_TYPES = [
-    { value: 'required', label: 'Required' },
-    { value: 'range', label: 'Number Range' },
-    { value: 'pattern', label: 'Regex Pattern' },
-];
-
 export function ValidateConfigComponent({
     config,
     onChange,
@@ -91,24 +72,37 @@ export function ValidateConfigComponent({
     showValidationMode = true,
     showRulesEditor = true,
 }: ValidateConfigComponentProps) {
+    const { schemas: ruleTypeSchemas } = useValidationRuleSchemas();
+    const ruleTypes = ruleTypeSchemas;
+    const { options: validationModes } = useOptionValues('validationModes');
+    const errorHandlingOptions = validationModes;
     const errorHandlingMode = (config.errorHandlingMode as string) || 'FAIL_FAST';
     const validationMode = (config.validationMode as string) || 'STRICT';
     const rawRules = (config.rules as ValidationRule[]) || [];
-    const rules = useRulesWithStableIds(rawRules);
+    const stableIds = useStableIndexIds(rawRules, 'validation-rule');
+    const rules = useMemo<ValidationRuleWithId[]>(() =>
+        rawRules.map((rule, index) => ({
+            ...rule,
+            id: rule.id || stableIds[index],
+        })),
+    [rawRules, stableIds]);
 
     const updateField = useCallback((key: string, value: unknown) => {
         onChange({ ...config, [key]: value });
     }, [config, onChange]);
 
     const addRule = useCallback(() => {
+        const defaultRuleType = ruleTypeSchemas[0]?.value ?? FALLBACK_RULE_TYPE;
+        const schema = ruleTypeSchemas.find(s => s.value === defaultRuleType);
+        const defaultSpec = schema?.defaultValues ?? { required: true };
         const newRule: ValidationRuleWithId = {
             id: generateValidationRuleId(),
             type: 'business',
-            spec: { field: '', required: true }
+            spec: { field: '', ...defaultSpec } as ValidationRule['spec'],
         };
         const newRules = [...rawRules, newRule];
         onChange({ ...config, rules: newRules });
-    }, [config, rawRules, onChange]);
+    }, [config, rawRules, onChange, ruleTypeSchemas]);
 
     const updateRule = useCallback((index: number, spec: ValidationRule['spec']) => {
         const newRules = [...rawRules];
@@ -134,7 +128,7 @@ export function ValidateConfigComponent({
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            {VALIDATION_MODES.map((mode) => (
+                            {validationModes.map((mode) => (
                                 <SelectItem key={mode.value} value={mode.value}>
                                     {mode.label}
                                 </SelectItem>
@@ -158,7 +152,7 @@ export function ValidateConfigComponent({
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            {ERROR_HANDLING_MODES.map((mode) => (
+                            {errorHandlingOptions.map((mode) => (
                                 <SelectItem key={mode.value} value={mode.value}>
                                     {mode.label}
                                 </SelectItem>
@@ -198,6 +192,8 @@ export function ValidateConfigComponent({
                             key={rule.id}
                             rule={rule}
                             index={index}
+                            ruleTypes={ruleTypes}
+                            ruleTypeSchemas={ruleTypeSchemas}
                             updateRule={updateRule}
                             removeRule={removeRule}
                         />
@@ -211,6 +207,8 @@ export function ValidateConfigComponent({
 interface ValidationRuleRowProps {
     rule: ValidationRuleWithId;
     index: number;
+    ruleTypes: TypedOptionValue[];
+    ruleTypeSchemas: TypedOptionValue[];
     updateRule: (index: number, spec: ValidationRule['spec']) => void;
     removeRule: (index: number) => void;
 }
@@ -218,6 +216,8 @@ interface ValidationRuleRowProps {
 const ValidationRuleRow = memo(function ValidationRuleRow({
     rule,
     index,
+    ruleTypes,
+    ruleTypeSchemas,
     updateRule,
     removeRule,
 }: ValidationRuleRowProps) {
@@ -226,28 +226,12 @@ const ValidationRuleRow = memo(function ValidationRuleRow({
     }, [index, rule.spec, updateRule]);
 
     const handleTypeChange = useCallback((v: string) => {
-        if (v === 'required') {
-            updateRule(index, { field: rule.spec.field, required: true });
-        } else if (v === 'range') {
-            updateRule(index, { field: rule.spec.field, min: 0 });
-        } else if (v === 'pattern') {
-            updateRule(index, { field: rule.spec.field, pattern: '' });
+        const schema = ruleTypeSchemas.find(s => s.value === v);
+        if (schema) {
+            const defaultSpec = schema.defaultValues ?? {};
+            updateRule(index, { field: rule.spec.field, ...defaultSpec } as ValidationRule['spec']);
         }
-    }, [index, rule.spec.field, updateRule]);
-
-    const handleMinChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = parseFloat(e.target.value);
-        updateRule(index, { ...rule.spec, min: isNaN(val) ? undefined : val });
-    }, [index, rule.spec, updateRule]);
-
-    const handleMaxChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = parseFloat(e.target.value);
-        updateRule(index, { ...rule.spec, max: isNaN(val) ? undefined : val });
-    }, [index, rule.spec, updateRule]);
-
-    const handlePatternChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-        updateRule(index, { ...rule.spec, pattern: e.target.value });
-    }, [index, rule.spec, updateRule]);
+    }, [index, rule.spec.field, updateRule, ruleTypeSchemas]);
 
     const handleErrorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         updateRule(index, { ...rule.spec, error: e.target.value });
@@ -257,7 +241,8 @@ const ValidationRuleRow = memo(function ValidationRuleRow({
         removeRule(index);
     }, [index, removeRule]);
 
-    const currentType = rule.spec.required ? 'required' : rule.spec.min !== undefined ? 'range' : rule.spec.pattern ? 'pattern' : 'required';
+    const currentType = detectRuleType(rule.spec, ruleTypeSchemas);
+    const currentRuleSchema = ruleTypeSchemas.find(s => s.value === currentType);
 
     return (
         <div className="flex items-start gap-2 p-3 border rounded-md bg-muted/30" data-testid={`datahub-validate-rule-row-${index}`}>
@@ -277,7 +262,7 @@ const ValidationRuleRow = memo(function ValidationRuleRow({
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            {RULE_TYPES.map((rt) => (
+                            {ruleTypes.map((rt) => (
                                 <SelectItem key={rt.value} value={rt.value}>
                                     {rt.label}
                                 </SelectItem>
@@ -285,30 +270,18 @@ const ValidationRuleRow = memo(function ValidationRuleRow({
                         </SelectContent>
                     </Select>
                 </div>
-                {rule.spec.min !== undefined && (
+                {currentRuleSchema && currentRuleSchema.fields.length > 0 && (
                     <div className="flex gap-2">
-                        <Input
-                            type="number"
-                            value={rule.spec.min ?? ''}
-                            onChange={handleMinChange}
-                            placeholder="Min"
-                            className="w-24"
-                        />
-                        <Input
-                            type="number"
-                            value={rule.spec.max ?? ''}
-                            onChange={handleMaxChange}
-                            placeholder="Max"
-                            className="w-24"
-                        />
+                        {currentRuleSchema.fields.map(field => (
+                            <SchemaRuleField
+                                key={field.key}
+                                field={field}
+                                spec={rule.spec}
+                                index={index}
+                                updateRule={updateRule}
+                            />
+                        ))}
                     </div>
-                )}
-                {rule.spec.pattern !== undefined && (
-                    <Input
-                        value={rule.spec.pattern || ''}
-                        onChange={handlePatternChange}
-                        placeholder={PLACEHOLDERS.REGEX_PATTERN}
-                    />
                 )}
                 <Input
                     value={rule.spec.error || ''}
@@ -330,3 +303,32 @@ const ValidationRuleRow = memo(function ValidationRuleRow({
         </div>
     );
 });
+
+function SchemaRuleField({
+    field,
+    spec,
+    index,
+    updateRule,
+}: {
+    field: ConnectionSchemaField;
+    spec: ValidationRule['spec'];
+    index: number;
+    updateRule: (index: number, spec: ValidationRule['spec']) => void;
+}) {
+    const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = field.type === 'number'
+            ? (isNaN(parseFloat(e.target.value)) ? undefined : parseFloat(e.target.value))
+            : e.target.value;
+        updateRule(index, { ...spec, [field.key]: value });
+    }, [index, spec, updateRule, field.key, field.type]);
+
+    return (
+        <Input
+            type={field.type === 'number' ? 'number' : 'text'}
+            value={spec[field.key as keyof typeof spec] ?? ''}
+            onChange={handleChange}
+            placeholder={field.placeholder ?? field.label}
+            className={field.type === 'number' ? 'w-24' : undefined}
+        />
+    );
+}

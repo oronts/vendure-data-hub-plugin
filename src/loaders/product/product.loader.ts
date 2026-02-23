@@ -16,8 +16,15 @@ import {
 } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
-import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import { VendureEntityType } from '../../constants/enums';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+    createLookupHelper,
+} from '../base';
 import {
     ProductInput,
     PRODUCT_LOADER_METADATA,
@@ -45,6 +52,8 @@ export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = PRODUCT_LOADER_METADATA;
 
+    private readonly lookupHelper: EntityLookupHelper<ProductService, Product, ProductInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private productService: ProductService,
@@ -54,6 +63,10 @@ export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PRODUCT_LOADER);
+        this.lookupHelper = createLookupHelper<ProductService, Product, ProductInput>(this.productService)
+            .addFilterStrategy('slug', 'slug', (ctx, svc, opts) => svc.findAll(ctx, opts))
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id))
+            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts));
     }
 
     protected getDuplicateErrorMessage(record: ProductInput): string {
@@ -65,37 +78,7 @@ export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
         lookupFields: string[],
         record: ProductInput,
     ): Promise<ExistingEntityLookupResult<Product> | null> {
-        // Primary lookup: by slug
-        if (record.slug && lookupFields.includes('slug')) {
-            const products = await this.productService.findAll(ctx, {
-                filter: { slug: { eq: record.slug } },
-            });
-
-            if (products.totalItems > 0) {
-                return { id: products.items[0].id, entity: products.items[0] };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const product = await this.productService.findOne(ctx, record.id as ID);
-            if (product) {
-                return { id: product.id, entity: product };
-            }
-        }
-
-        // Fallback: by name (exact match)
-        if (record.name && lookupFields.includes('name')) {
-            const products = await this.productService.findAll(ctx, {
-                filter: { name: { eq: record.name } },
-            });
-
-            if (products.totalItems > 0) {
-                return { id: products.items[0].id, entity: products.items[0] };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -103,21 +86,9 @@ export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
         record: ProductInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
-
-        // Required field validation
-        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
-                errors.push({ field: 'name', message: 'Product name is required', code: 'REQUIRED' });
-            }
-        }
-
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return new ValidationBuilder()
+            .requireStringForCreate('name', record.name, operation, 'Product name is required')
+            .build();
     }
 
     getFieldSchema(): EntityFieldSchema {

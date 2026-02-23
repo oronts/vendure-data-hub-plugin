@@ -2,7 +2,8 @@ import * as React from 'react';
 import { memo, useCallback } from 'react';
 import { Button, Badge } from '@vendure/dashboard';
 import { ChevronUp, ChevronDown, Trash2, Play } from 'lucide-react';
-import { STEP_CONFIGS, getStepTypeIcon, FALLBACK_COLORS, ICON_SIZES } from '../../../constants';
+import { getStepTypeIcon, FALLBACK_COLORS, ICON_SIZES } from '../../../constants';
+import { useStepConfigs } from '../../../hooks';
 import type { PipelineStepDefinition } from '../../../types';
 
 export interface StepListItemProps {
@@ -32,7 +33,8 @@ function StepListItemComponent({
     issueCount = 0,
     connectionCount = 0,
 }: StepListItemProps) {
-    const config = STEP_CONFIGS[step.type];
+    const { getStepConfig } = useStepConfigs();
+    const config = getStepConfig(step.type);
     const Icon = getStepTypeIcon(step.type) ?? Play;
 
     const handleMoveUp = useCallback((e: React.MouseEvent) => {

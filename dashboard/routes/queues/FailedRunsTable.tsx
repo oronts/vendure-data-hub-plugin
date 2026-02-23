@@ -1,8 +1,9 @@
 import * as React from 'react';
-import { Button } from '@vendure/dashboard';
 import type { FailedRun } from './types';
 import { formatDateTime } from '../../utils';
 import { COMPONENT_WIDTHS } from '../../constants';
+import { useLoadMore } from '../../hooks';
+import { LoadMoreButton } from '../../components/shared';
 
 // Memoized row component for failed runs
 const FailedRunRow = React.memo(function FailedRunRow({
@@ -40,15 +41,7 @@ export function FailedRunsTable({
     recentFailed: FailedRun[];
     onSelectRun: (id: string) => void;
 }) {
-    const ITEMS_PER_PAGE = 10;
-    const [displayCount, setDisplayCount] = React.useState(ITEMS_PER_PAGE);
-
-    const displayedRuns = recentFailed.slice(0, displayCount);
-    const hasMore = displayCount < recentFailed.length;
-
-    const handleLoadMore = React.useCallback(() => {
-        setDisplayCount(c => c + ITEMS_PER_PAGE);
-    }, []);
+    const { displayed: displayedRuns, hasMore, remaining, loadMore } = useLoadMore(recentFailed);
 
     return (
         <div className="mt-6" data-testid="datahub-failed-runs-table">
@@ -75,13 +68,7 @@ export function FailedRunsTable({
                     )}
                 </tbody>
             </table>
-            {hasMore && (
-                <div className="flex justify-center mt-4">
-                    <Button variant="outline" onClick={handleLoadMore}>
-                        Load More ({recentFailed.length - displayCount} remaining)
-                    </Button>
-                </div>
-            )}
+            {hasMore && <LoadMoreButton remaining={remaining} onClick={loadMore} />}
         </div>
     );
 }

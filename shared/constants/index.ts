@@ -3,6 +3,25 @@
  * Import these instead of duplicating values
  */
 
+export {
+    DESTINATION_TYPE,
+    SOURCE_TYPE,
+    FILE_FORMAT,
+    EXPORT_FORMAT,
+    CLEANUP_STRATEGY,
+    COMPRESSION_TYPE,
+    CHECKPOINT_STRATEGY,
+    QUEUE_TYPE,
+    ACK_MODE,
+    RUN_STATUS,
+    STEP_TYPE,
+    TRIGGER_TYPE,
+    LOAD_STRATEGY,
+    CONFLICT_STRATEGY,
+    VALIDATION_MODE,
+    HOOK_STAGE,
+} from './enums';
+
 export const TIME_UNITS = {
     SECOND: 1000,
     MINUTE: 60 * 1000,
@@ -105,3 +124,58 @@ export const UI_TIMEOUTS = {
     /** Toast notification duration */
     TOAST_DURATION_MS: 5000,
 } as const;
+
+/**
+ * Connection types for external services.
+ *
+ * Core types (HTTP, S3, FTP, SFTP, DATABASE, CUSTOM) are used by both backend
+ * and dashboard. Extended types (POSTGRES, MYSQL, MSSQL, MONGODB, REST, GRAPHQL,
+ * RABBITMQ, SQS, REDIS) are UI-specific subtypes for richer connection configuration.
+ */
+export const CONNECTION_TYPE = {
+    /** Generic HTTP connection */
+    HTTP: 'HTTP',
+    /** REST API connection */
+    REST: 'REST',
+    /** GraphQL API connection */
+    GRAPHQL: 'GRAPHQL',
+    /** PostgreSQL database connection */
+    POSTGRES: 'POSTGRES',
+    /** MySQL database connection */
+    MYSQL: 'MYSQL',
+    /** Microsoft SQL Server connection */
+    MSSQL: 'MSSQL',
+    /** MongoDB connection */
+    MONGO: 'MONGODB',
+    /** Generic database connection (used when specific type unknown) */
+    DATABASE: 'DATABASE',
+    /** AWS S3 or S3-compatible storage */
+    S3: 'S3',
+    /** FTP server connection */
+    FTP: 'FTP',
+    /** SFTP (SSH File Transfer Protocol) connection */
+    SFTP: 'SFTP',
+    /** RabbitMQ message queue */
+    RABBITMQ: 'RABBITMQ',
+    /** AWS Simple Queue Service */
+    SQS: 'SQS',
+    /** Redis cache/queue */
+    REDIS: 'REDIS',
+    /** Custom connection type */
+    CUSTOM: 'CUSTOM',
+} as const;
+
+/**
+ * Union type of all known connection type values.
+ * Includes `(string & {})` to allow unknown/future connection types
+ * while preserving autocomplete for known values.
+ */
+export type UIConnectionType =
+    | typeof CONNECTION_TYPE[keyof typeof CONNECTION_TYPE]
+    | (string & {});
+
+/** Default Vendure channel code used when no specific channel is configured */
+export const DEFAULT_CHANNEL_CODE = '__default_channel__';
+
+export { SHARED_STEP_TYPE_CONFIGS } from './step-type-configs';
+export type { SharedStepTypeConfig } from './step-type-configs';

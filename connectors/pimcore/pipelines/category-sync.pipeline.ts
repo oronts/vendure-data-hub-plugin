@@ -1,7 +1,13 @@
 import { createPipeline } from '../../../src';
 import { PipelineDefinition } from '../../../src/types';
+import { TRIGGER_TYPE, VALIDATION_MODE, HOOK_STAGE } from '../../../shared/constants/enums';
+import { LOADER_CODE } from '../../../src/constants/adapters';
+import { TRANSFORM_OPERATOR, HOOK_ACTION, ROUTE_OPERATOR } from '../../../src/sdk/constants';
+import { pimcoreGraphQLExtractor } from '../extractors/pimcore-graphql.extractor';
 import { PimcoreConnectorConfig } from '../types';
+import { PIMCORE_API_KEY_SECRET, PIMCORE_WEBHOOK_KEY_SECRET, PIMCORE_WEBHOOK_SIGNATURE } from '../index';
 import { buildSafePathFilter } from '../utils/security.utils';
+import { DEFAULT_CHANNEL_CODE } from '../../../shared/constants';
 
 export function createCategorySyncPipeline(config: PimcoreConnectorConfig): PipelineDefinition {
     const {
@@ -9,7 +15,7 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
         sync,
         mapping,
         pipelines,
-        vendureChannel = '__default_channel__',
+        vendureChannel = DEFAULT_CHANNEL_CODE,
         defaultLanguage = 'en',
         languages = ['en'],
     } = config;
@@ -20,7 +26,7 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
         return createPipeline()
             .name('Pimcore Category Sync (Disabled)')
             .description('Category sync is disabled')
-            .trigger('MANUAL', { type: 'MANUAL' })
+            .trigger(TRIGGER_TYPE.MANUAL, { type: TRIGGER_TYPE.MANUAL })
             .build();
     }
 
@@ -31,24 +37,24 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
         ;
 
     if (pipelineConfig.schedule) {
-        pipeline.trigger('scheduled', { type: 'SCHEDULE', cron: pipelineConfig.schedule, timezone: 'UTC' });
+        pipeline.trigger('scheduled', { type: TRIGGER_TYPE.SCHEDULE, cron: pipelineConfig.schedule, timezone: 'UTC' });
     }
 
-    pipeline.trigger('MANUAL', { type: 'MANUAL', enabled: true });
-    pipeline.trigger('WEBHOOK', {
-        type: 'WEBHOOK',
+    pipeline.trigger(TRIGGER_TYPE.MANUAL, { type: TRIGGER_TYPE.MANUAL, enabled: true });
+    pipeline.trigger(TRIGGER_TYPE.WEBHOOK, {
+        type: TRIGGER_TYPE.WEBHOOK,
         webhookCode: 'pimcore-category-sync',
-        signature: 'hmac-sha256',
-        hmacSecretCode: 'pimcore-webhook-key',
+        signature: PIMCORE_WEBHOOK_SIGNATURE,
+        hmacSecretCode: PIMCORE_WEBHOOK_KEY_SECRET,
         rateLimit: 50,
     });
 
     const pathFilter = buildSafePathFilter(pipelineConfig.rootPath ?? sync?.pathFilter);
 
     pipeline.extract('fetch-categories', {
-        adapterCode: 'pimcoreGraphQL',
+        adapterCode: pimcoreGraphQLExtractor.code,
         'connection.endpoint': connection.endpoint,
-        'connection.apiKeySecretCode': connection.apiKeySecretCode ?? 'pimcore-api-key',
+        'connection.apiKeySecretCode': connection.apiKeySecretCode ?? PIMCORE_API_KEY_SECRET,
         entityType: 'category',
         first: sync?.batchSize ?? 200,
         filter: pathFilter,
@@ -56,7 +62,7 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
     });
 
     pipeline.validate('validate-categories', {
-        errorHandlingMode: 'ACCUMULATE',
+        errorHandlingMode: VALIDATION_MODE.ACCUMULATE,
         rules: [
             { type: 'business', spec: { field: 'id', required: true, error: 'Category ID required' } },
             { type: 'business', spec: { field: mapping?.category?.nameField ?? 'name', required: true, error: 'Name required' } },
@@ -70,16 +76,16 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
 
     pipeline.transform('transform-categories', {
         operators: [
-            { op: 'template', args: { template: nameTemplate, target: '_name' } },
-            { op: 'coalesce', args: { paths: [mapping?.category?.slugField ?? 'slug', 'key'], target: '_slugSource' } },
-            { op: 'slugify', args: { source: '_slugSource', target: '_slug' } },
-            { op: 'template', args: { template: 'pimcore:category:${id}', target: 'externalId' } },
-            { op: 'ifThenElse', args: { condition: { field: `${mapping?.category?.parentField ?? 'parent'}.id`, cmp: 'ne', value: null }, thenValue: true, elseValue: false, target: '_hasParent' } },
-            { op: 'template', args: { template: 'pimcore:category:${parent.id}', target: 'parentExternalId', skipIfEmpty: true } },
-            { op: 'coalesce', args: { paths: [mapping?.category?.positionField ?? 'position', 'index'], target: '_position' } },
-            { op: 'toNumber', args: { source: '_position' } },
+            { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: nameTemplate, target: '_name' } },
+            { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: [mapping?.category?.slugField ?? 'slug', 'key'], target: '_slugSource' } },
+            { op: TRANSFORM_OPERATOR.SLUGIFY, args: { source: '_slugSource', target: '_slug' } },
+            { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: 'pimcore:category:${id}', target: 'externalId' } },
+            { op: TRANSFORM_OPERATOR.IF_THEN_ELSE, args: { condition: { field: `${mapping?.category?.parentField ?? 'parent'}.id`, cmp: ROUTE_OPERATOR.NE, value: null }, thenValue: true, elseValue: false, target: '_hasParent' } },
+            { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: 'pimcore:category:${parent.id}', target: 'parentExternalId', skipIfEmpty: true } },
+            { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: [mapping?.category?.positionField ?? 'position', 'index'], target: '_position' } },
+            { op: TRANSFORM_OPERATOR.TO_NUMBER, args: { source: '_position' } },
             {
-                op: 'map',
+                op: TRANSFORM_OPERATOR.MAP,
                 args: {
                     mapping: {
                         externalId: 'externalId',
@@ -94,7 +100,7 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
                     },
                 },
             },
-            { op: 'ifThenElse', args: { condition: { field: 'isPrivate', operator: 'eq', value: true }, thenValue: false, elseValue: true, target: 'isPrivate' } },
+            { op: TRANSFORM_OPERATOR.IF_THEN_ELSE, args: { condition: { field: 'isPrivate', operator: ROUTE_OPERATOR.EQ, value: true }, thenValue: false, elseValue: true, target: 'isPrivate' } },
         ],
     });
 
@@ -105,7 +111,7 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
     });
 
     pipeline.load('upsert-collections', {
-        adapterCode: 'collectionUpsert',
+        adapterCode: LOADER_CODE.COLLECTION_UPSERT,
         channel: vendureChannel,
         slugField: 'slug',
         nameField: 'name',
@@ -113,8 +119,8 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
         descriptionField: 'description',
     });
 
-    pipeline.edge('MANUAL', 'fetch-categories');
-    pipeline.edge('WEBHOOK', 'fetch-categories');
+    pipeline.edge(TRIGGER_TYPE.MANUAL, 'fetch-categories');
+    pipeline.edge(TRIGGER_TYPE.WEBHOOK, 'fetch-categories');
     if (pipelineConfig.schedule) pipeline.edge('scheduled', 'fetch-categories');
     pipeline.edge('fetch-categories', 'validate-categories');
     pipeline.edge('validate-categories', 'transform-categories');
@@ -122,11 +128,9 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
     pipeline.edge('enrich-categories', 'upsert-collections');
 
     pipeline.hooks({
-        PIPELINE_COMPLETED: [{ type: 'LOG', name: 'Log completion' }],
-        PIPELINE_FAILED: [{ type: 'LOG', name: 'Log failure' }],
+        [HOOK_STAGE.PIPELINE_COMPLETED]: [{ type: HOOK_ACTION.LOG, name: 'Log completion' }],
+        [HOOK_STAGE.PIPELINE_FAILED]: [{ type: HOOK_ACTION.LOG, name: 'Log failure' }],
     });
 
     return pipeline.build();
 }
-
-export default createCategorySyncPipeline;

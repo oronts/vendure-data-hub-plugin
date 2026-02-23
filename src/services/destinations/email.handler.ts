@@ -7,10 +7,11 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as nodemailer from 'nodemailer';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { LOGGER_CONTEXTS, CONTENT_TYPES, EXTENSION_MIME_MAP } from '../../constants/index';
 import { EmailDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 import { DataHubLogger } from '../logger';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
+import { securePath } from '../../utils/input-validation.utils';
 
 const logger = new DataHubLogger(LOGGER_CONTEXTS.EMAIL_HANDLER);
 
@@ -92,7 +93,7 @@ export async function deliverToEmail(
         };
     } catch (error) {
         const errorMessage = getErrorMessage(error);
-        logger.error(`Email: Failed to send ${filename}`, error instanceof Error ? error : undefined);
+        logger.error(`Email: Failed to send ${filename}`, toErrorOrUndefined(error));
 
         return {
             success: false,
@@ -111,17 +112,7 @@ export async function deliverToEmail(
  */
 function getMimeType(filename: string): string {
     const ext = path.extname(filename).toLowerCase();
-    const mimeTypes: Record<string, string> = {
-        '.csv': 'text/csv',
-        '.json': 'application/json',
-        '.xml': 'application/xml',
-        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        '.xls': 'application/vnd.ms-excel',
-        '.txt': 'text/plain',
-        '.pdf': 'application/pdf',
-        '.zip': 'application/zip',
-    };
-    return mimeTypes[ext] || 'application/octet-stream';
+    return EXTENSION_MIME_MAP[ext] ?? CONTENT_TYPES.OCTET_STREAM;
 }
 
 /**
@@ -133,7 +124,8 @@ async function saveEmailLocally(
     filename: string,
 ): Promise<DeliveryResult> {
     const localDir = path.join(process.cwd(), 'exports', 'email-staging', config.id);
-    const localPath = path.join(localDir, filename);
+    const localPath = securePath(localDir, filename);
+    const metadataFilename = `${filename}.meta.json`;
 
     // Create directory if it doesn't exist (recursive: true handles both cases)
     await fs.mkdir(localDir, { recursive: true });
@@ -141,7 +133,7 @@ async function saveEmailLocally(
     await fs.writeFile(localPath, content);
 
     // Save email metadata
-    const metadataPath = path.join(localDir, `${filename}.meta.json`);
+    const metadataPath = securePath(localDir, metadataFilename);
     await fs.writeFile(metadataPath, JSON.stringify({
         to: config.to,
         cc: config.cc,

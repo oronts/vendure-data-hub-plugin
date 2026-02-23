@@ -1,13 +1,10 @@
 import { ID, RequestContext, FacetValueService, ProductVariantService } from '@vendure/core';
-import { slugify as canonicalSlugify } from '../operators/helpers';
-import { isValidEmail } from '../utils/input-validation.utils';
+import { slugify } from '../operators/helpers';
 import { DataHubLogger } from '../services/logger';
 import { RecordObject } from '../runtime/executor-types';
 import { JsonValue } from '../types/index';
 
-export const slugify = canonicalSlugify;
-
-export { isValidEmail };
+export { slugify };
 
 // =============================================================================
 // Record Field Accessors

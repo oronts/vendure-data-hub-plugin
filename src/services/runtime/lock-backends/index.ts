@@ -1,5 +1,5 @@
-export { LockBackend, LockState, LockStatus, MemoryLockEntry } from './lock-backend.interface';
-export { MemoryLockBackend } from './memory-lock.backend';
-export { RedisLockBackend } from './redis-lock.backend';
-export { PostgresLockBackend } from './postgres-lock.backend';
-export { LockBackendFactory, BackendFactoryDependencies } from './lock-backend.factory';
+export * from './lock-backend.interface';
+export * from './lock-backend.factory';
+export * from './memory-lock.backend';
+export * from './postgres-lock.backend';
+export * from './redis-lock.backend';

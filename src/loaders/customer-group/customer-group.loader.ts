@@ -15,8 +15,15 @@ import {
 } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
-import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import { VendureEntityType } from '../../constants/enums';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+    createLookupHelper,
+} from '../base';
 import {
     CustomerGroupInput,
     CUSTOMER_GROUP_LOADER_METADATA,
@@ -44,6 +51,8 @@ export class CustomerGroupLoader extends BaseEntityLoader<CustomerGroupInput, Cu
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = CUSTOMER_GROUP_LOADER_METADATA;
 
+    private readonly lookupHelper: EntityLookupHelper<CustomerGroupService, CustomerGroup, CustomerGroupInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private customerGroupService: CustomerGroupService,
@@ -52,6 +61,9 @@ export class CustomerGroupLoader extends BaseEntityLoader<CustomerGroupInput, Cu
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.CUSTOMER_GROUP_LOADER);
+        this.lookupHelper = createLookupHelper<CustomerGroupService, CustomerGroup, CustomerGroupInput>(this.customerGroupService)
+            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts))
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id));
     }
 
     protected getDuplicateErrorMessage(record: CustomerGroupInput): string {
@@ -63,25 +75,7 @@ export class CustomerGroupLoader extends BaseEntityLoader<CustomerGroupInput, Cu
         lookupFields: string[],
         record: CustomerGroupInput,
     ): Promise<ExistingEntityLookupResult<CustomerGroup> | null> {
-        // Primary lookup: by name
-        if (record.name && lookupFields.includes('name')) {
-            const groups = await this.customerGroupService.findAll(ctx, {
-                filter: { name: { eq: record.name } },
-            });
-            if (groups.totalItems > 0) {
-                return { id: groups.items[0].id, entity: groups.items[0] };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const group = await this.customerGroupService.findOne(ctx, record.id as ID);
-            if (group) {
-                return { id: group.id, entity: group };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -89,32 +83,22 @@ export class CustomerGroupLoader extends BaseEntityLoader<CustomerGroupInput, Cu
         record: CustomerGroupInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
-
-        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
-                errors.push({ field: 'name', message: 'Customer group name is required', code: 'REQUIRED' });
-            }
-        }
+        const builder = new ValidationBuilder()
+            .requireStringForCreate('name', record.name, operation, 'Customer group name is required');
 
         // Validate customer emails format if provided
         if (record.customerEmails && Array.isArray(record.customerEmails)) {
             for (let i = 0; i < record.customerEmails.length; i++) {
                 if (!isValidEmail(record.customerEmails[i])) {
-                    warnings.push({
-                        field: `customerEmails[${i}]`,
-                        message: `Invalid email format: ${record.customerEmails[i]}`,
-                    });
+                    builder.addWarning(
+                        `customerEmails[${i}]`,
+                        `Invalid email format: ${record.customerEmails[i]}`,
+                    );
                 }
             }
         }
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

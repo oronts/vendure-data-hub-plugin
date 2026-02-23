@@ -55,6 +55,7 @@ export const STEP_CONFIG_DEFAULTS = {
 export const RETENTION_DEFAULTS = {
     RUNS_DAYS: 7,
     ERROR_DAYS: 30,
+    LOGS_DAYS: 30,
 } as const;
 
 /** Default edge style for ReactFlow pipeline connections */
@@ -65,24 +66,4 @@ export const EDGE_STYLE = {
 /** Canvas CSS class for the ReactFlow editor background */
 export const CANVAS_BG_CLASS = 'bg-gray-50' as const;
 
-/** Run mode options for pipeline execution */
-export const RUN_MODES = [
-    { value: 'SYNC', label: 'Sync (blocking)' },
-    { value: 'ASYNC', label: 'Async (background)' },
-    { value: 'BATCH', label: 'Batch (grouped)' },
-    { value: 'STREAM', label: 'Stream (real-time)' },
-] as const;
-
-/** Default run mode */
-export const DEFAULT_RUN_MODE = 'BATCH' as const;
-
-/** Parallel execution error policy options */
-export const ERROR_POLICIES = [
-    { value: 'FAIL_FAST', label: 'Fail Fast (stop on error)' },
-    { value: 'CONTINUE', label: 'Continue (finish others)' },
-    { value: 'BEST_EFFORT', label: 'Best Effort (ignore errors)' },
-] as const;
-
-/** Default error policy */
-export const DEFAULT_ERROR_POLICY = 'FAIL_FAST' as const;
 

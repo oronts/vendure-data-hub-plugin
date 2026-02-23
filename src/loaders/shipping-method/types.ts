@@ -42,6 +42,7 @@ export const SHIPPING_METHOD_LOADER_METADATA = {
     entityType: VendureEntityType.SHIPPING_METHOD,
     name: 'Shipping Method Loader',
     description: 'Imports shipping methods with calculators and checkers',
+    adapterCode: 'shippingMethodUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['code', 'id', 'name'],
     requiredFields: ['name', 'code', 'fulfillmentHandler', 'calculator'],

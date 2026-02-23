@@ -18,19 +18,23 @@ import {
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+} from '../base';
 import {
     OrderInput,
     ORDER_LOADER_METADATA,
 } from './types';
 import {
-    validateAddress,
     findCustomerByEmail,
     findVariantBySku,
     findShippingMethodByCode,
     shouldUpdateField,
 } from './helpers';
-import { isValidEmail } from '../../utils/input-validation.utils';
 
 /**
  * OrderLoader - Refactored to extend BaseEntityLoader
@@ -43,6 +47,8 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = ORDER_LOADER_METADATA;
 
+    private readonly lookupHelper: EntityLookupHelper<OrderService, Order, OrderInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private orderService: OrderService,
@@ -53,6 +59,19 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.ORDER_LOADER);
+        this.lookupHelper = new EntityLookupHelper<OrderService, Order, OrderInput>(this.orderService)
+            .addCustomStrategy({
+                fieldName: 'code',
+                lookup: async (ctx, svc, value) => {
+                    if (!value || typeof value !== 'string') return null;
+                    const order = await svc.findOneByCode(ctx, value);
+                    if (order) {
+                        return { id: order.id, entity: order };
+                    }
+                    return null;
+                },
+            })
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id));
     }
 
     protected getDuplicateErrorMessage(record: OrderInput): string {
@@ -64,23 +83,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
         lookupFields: string[],
         record: OrderInput,
     ): Promise<ExistingEntityLookupResult<Order> | null> {
-        // Primary lookup: by code
-        if (record.code && lookupFields.includes('code')) {
-            const order = await this.orderService.findOneByCode(ctx, record.code);
-            if (order) {
-                return { id: order.id, entity: order };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const order = await this.orderService.findOne(ctx, record.id as ID);
-            if (order) {
-                return { id: order.id, entity: order };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -88,50 +91,43 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
         record: OrderInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
+        const builder = new ValidationBuilder()
+            .requireEmailForCreate('customerEmail', record.customerEmail, operation, 'Customer email is required')
+            .requireArrayForCreate('lines', record.lines, operation, 'At least one order line is required');
 
-        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.customerEmail || typeof record.customerEmail !== 'string' || record.customerEmail.trim() === '') {
-                errors.push({ field: 'customerEmail', message: 'Customer email is required', code: 'REQUIRED' });
-            } else if (!isValidEmail(record.customerEmail)) {
-                errors.push({ field: 'customerEmail', message: 'Invalid email format', code: 'INVALID_FORMAT' });
-            }
-
-            if (!record.lines || !Array.isArray(record.lines) || record.lines.length === 0) {
-                errors.push({ field: 'lines', message: 'At least one order line is required', code: 'REQUIRED' });
-            } else {
-                for (let i = 0; i < record.lines.length; i++) {
-                    const line = record.lines[i];
-                    if (!line.sku) {
-                        errors.push({ field: `lines[${i}].sku`, message: 'Line SKU is required', code: 'REQUIRED' });
-                    }
-                    if (!line.quantity || line.quantity < 1) {
-                        errors.push({ field: `lines[${i}].quantity`, message: 'Line quantity must be at least 1', code: 'INVALID_VALUE' });
-                    }
+        // Validate individual order lines
+        if (
+            (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) &&
+            record.lines && Array.isArray(record.lines) && record.lines.length > 0
+        ) {
+            builder.validateArrayItems('lines', record.lines, (line) => {
+                const errors: { field: string; message: string; code?: string }[] = [];
+                if (!line.sku) {
+                    errors.push({ field: 'sku', message: 'Line SKU is required', code: 'REQUIRED' });
                 }
-            }
+                if (!line.quantity || line.quantity < 1) {
+                    errors.push({ field: 'quantity', message: 'Line quantity must be at least 1', code: 'INVALID_VALUE' });
+                }
+                return errors;
+            });
+        }
 
+        // Validate addresses
+        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (record.shippingAddress) {
-                const addrErrors = validateAddress(record.shippingAddress, 'shippingAddress');
-                errors.push(...addrErrors);
+                builder.validateAddress(record.shippingAddress, 'shippingAddress');
             }
             if (record.billingAddress) {
-                const addrErrors = validateAddress(record.billingAddress, 'billingAddress');
-                errors.push(...addrErrors);
+                builder.validateAddress(record.billingAddress, 'billingAddress');
             }
         }
 
-        warnings.push({
-            field: '_general',
-            message: 'Order import is intended for migrations only. Normal orders should go through checkout.',
-        });
+        builder.addWarning(
+            '_general',
+            'Order import is intended for migrations only. Normal orders should go through checkout.',
+        );
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

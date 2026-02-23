@@ -13,6 +13,7 @@ import {
     createStepDetail,
 } from './step-strategy.interface';
 import { getAdapterCode } from '../../../types/step-configs';
+import { StepType as StepTypeEnum, DomainEventType, HookStage } from '../../../constants/enums';
 
 /**
  * Strategy for TRANSFORM steps
@@ -45,26 +46,26 @@ export class TransformStepStrategy implements StepStrategy {
             failed: 0,
             detail: createStepDetail(step, { out: out.length }, durationMs),
             counters: { transformed: out.length },
-            event: { type: 'RECORD_TRANSFORMED', data: { stepKey: step.key, count: out.length } },
+            event: { type: DomainEventType.RECORD_TRANSFORMED, data: { stepKey: step.key, count: out.length } },
         };
     }
 
     private async logStepStart(context: StepExecutionContext, recordsIn: number): Promise<void> {
         const { ctx, step, stepLog } = context;
         if (stepLog?.onStepStart) {
-            await stepLog.onStepStart(ctx, step.key, 'TRANSFORM', recordsIn);
+            await stepLog.onStepStart(ctx, step.key, StepTypeEnum.TRANSFORM, recordsIn);
         }
     }
 
     private async runBeforeHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'BEFORE_TRANSFORM', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.BEFORE_TRANSFORM, records, runId, pipelineId);
         return result.records;
     }
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'AFTER_TRANSFORM', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.AFTER_TRANSFORM, records, runId, pipelineId);
         return result.records;
     }
 
@@ -93,7 +94,7 @@ export class TransformStepStrategy implements StepStrategy {
         if (stepLog?.onStepComplete) {
             await stepLog.onStepComplete(ctx, {
                 stepKey: step.key,
-                stepType: 'TRANSFORM',
+                stepType: StepTypeEnum.TRANSFORM,
                 adapterCode,
                 recordsIn,
                 recordsOut,
@@ -124,7 +125,7 @@ export class ValidateStepStrategy implements StepStrategy {
 
         const out = await this.transformExecutor.executeValidate(ctx, step, afterBeforeHook, onRecordError);
         const durationMs = Date.now() - t0;
-        const failedCount = recordsIn - out.length;
+        const failedCount = afterBeforeHook.length - out.length;
 
         const afterAfterHook = await this.runAfterHook(context, out);
 
@@ -137,26 +138,26 @@ export class ValidateStepStrategy implements StepStrategy {
             failed: 0,
             detail: createStepDetail(step, { out: out.length }, durationMs),
             counters: { validated: out.length },
-            event: { type: 'RECORD_VALIDATED', data: { stepKey: step.key, count: out.length } },
+            event: { type: DomainEventType.RECORD_VALIDATED, data: { stepKey: step.key, count: out.length } },
         };
     }
 
     private async logStepStart(context: StepExecutionContext, recordsIn: number): Promise<void> {
         const { ctx, step, stepLog } = context;
         if (stepLog?.onStepStart) {
-            await stepLog.onStepStart(ctx, step.key, 'VALIDATE', recordsIn);
+            await stepLog.onStepStart(ctx, step.key, StepTypeEnum.VALIDATE, recordsIn);
         }
     }
 
     private async runBeforeHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'BEFORE_VALIDATE', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.BEFORE_VALIDATE, records, runId, pipelineId);
         return result.records;
     }
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'AFTER_VALIDATE', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.AFTER_VALIDATE, records, runId, pipelineId);
         return result.records;
     }
 
@@ -172,7 +173,7 @@ export class ValidateStepStrategy implements StepStrategy {
         if (stepLog?.onStepComplete) {
             await stepLog.onStepComplete(ctx, {
                 stepKey: step.key,
-                stepType: 'VALIDATE',
+                stepType: StepTypeEnum.VALIDATE,
                 adapterCode,
                 recordsIn,
                 recordsOut,
@@ -216,26 +217,26 @@ export class EnrichStepStrategy implements StepStrategy {
             failed: 0,
             detail: createStepDetail(step, { out: out.length }, durationMs),
             counters: { enriched: out.length },
-            event: { type: 'RECORD_TRANSFORMED', data: { stepKey: step.key, count: out.length, stage: 'ENRICH' } },
+            event: { type: DomainEventType.RECORD_TRANSFORMED, data: { stepKey: step.key, count: out.length, stage: StepTypeEnum.ENRICH } },
         };
     }
 
     private async logStepStart(context: StepExecutionContext, recordsIn: number): Promise<void> {
         const { ctx, step, stepLog } = context;
         if (stepLog?.onStepStart) {
-            await stepLog.onStepStart(ctx, step.key, 'ENRICH', recordsIn);
+            await stepLog.onStepStart(ctx, step.key, StepTypeEnum.ENRICH, recordsIn);
         }
     }
 
     private async runBeforeHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'BEFORE_ENRICH', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.BEFORE_ENRICH, records, runId, pipelineId);
         return result.records;
     }
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'AFTER_ENRICH', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.AFTER_ENRICH, records, runId, pipelineId);
         return result.records;
     }
 
@@ -250,7 +251,7 @@ export class EnrichStepStrategy implements StepStrategy {
         if (stepLog?.onStepComplete) {
             await stepLog.onStepComplete(ctx, {
                 stepKey: step.key,
-                stepType: 'ENRICH',
+                stepType: StepTypeEnum.ENRICH,
                 adapterCode,
                 recordsIn,
                 recordsOut,
@@ -339,19 +340,19 @@ export class RouteStepStrategy implements StepStrategy {
     private async logStepStart(context: StepExecutionContext, recordsIn: number): Promise<void> {
         const { ctx, step, stepLog } = context;
         if (stepLog?.onStepStart) {
-            await stepLog.onStepStart(ctx, step.key, 'ROUTE', recordsIn);
+            await stepLog.onStepStart(ctx, step.key, StepTypeEnum.ROUTE, recordsIn);
         }
     }
 
     private async runBeforeHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'BEFORE_ROUTE', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.BEFORE_ROUTE, records, runId, pipelineId);
         return result.records;
     }
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'AFTER_ROUTE', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.AFTER_ROUTE, records, runId, pipelineId);
         return result.records;
     }
 
@@ -367,7 +368,7 @@ export class RouteStepStrategy implements StepStrategy {
         if (stepLog?.onStepComplete) {
             await stepLog.onStepComplete(ctx, {
                 stepKey: step.key,
-                stepType: 'ROUTE',
+                stepType: StepTypeEnum.ROUTE,
                 adapterCode,
                 recordsIn,
                 recordsOut,

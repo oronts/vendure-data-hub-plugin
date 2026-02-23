@@ -14,11 +14,11 @@ export function WizardStepContainer({
     className = '',
 }: WizardStepContainerProps) {
     return (
-        <div className={`max-w-4xl mx-auto space-y-6 ${className}`}>
+        <div className={`max-w-4xl mx-auto space-y-4 ${className}`}>
             <div>
-                <h2 className="text-2xl font-semibold mb-2">{title}</h2>
+                <h2 className="text-lg font-semibold mb-1">{title}</h2>
                 {description && (
-                    <p className="text-muted-foreground">{description}</p>
+                    <p className="text-sm text-muted-foreground">{description}</p>
                 )}
             </div>
             {children}

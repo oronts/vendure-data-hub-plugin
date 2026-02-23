@@ -90,13 +90,6 @@ export const PROGRESS_BAR_STYLES = {
 export const SKELETON_WIDTHS = [80, 120, 100, 140] as const;
 
 /**
- * Get a skeleton width based on index (cycles through available widths).
- */
-export function getSkeletonWidth(index: number): number {
-    return SKELETON_WIDTHS[index % SKELETON_WIDTHS.length];
-}
-
-/**
  * Panel widths for drawers and side panels
  */
 export const PANEL_WIDTHS = {

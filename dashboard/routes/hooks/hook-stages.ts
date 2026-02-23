@@ -1,15 +1,6 @@
-import {
-    Play,
-    CheckCircle2,
-    XCircle,
-    AlertTriangle,
-    RefreshCw,
-    Zap,
-    ArrowRight,
-    Database,
-    Filter,
-    Upload,
-} from 'lucide-react';
+import { Circle } from 'lucide-react';
+import type { HookStageConfig } from '../../hooks/api/use-config-options';
+import { resolveIconName } from '../../utils/icon-resolver';
 
 export interface HookStage {
     key: string;
@@ -20,149 +11,42 @@ export interface HookStage {
     examplePayload: Record<string, unknown>;
 }
 
-export const HOOK_STAGES: HookStage[] = [
-    {
-        key: 'PIPELINE_STARTED',
-        label: 'Pipeline Started',
-        description: 'Triggered when a pipeline run begins',
-        icon: Play,
-        category: 'lifecycle',
-        examplePayload: { pipelineCode: 'my-pipeline', runId: '123' },
-    },
-    {
-        key: 'PIPELINE_COMPLETED',
-        label: 'Pipeline Completed',
-        description: 'Triggered when a pipeline finishes successfully',
-        icon: CheckCircle2,
-        category: 'lifecycle',
-        examplePayload: { pipelineCode: 'my-pipeline', runId: '123', recordsProcessed: 100, duration: 5000 },
-    },
-    {
-        key: 'PIPELINE_FAILED',
-        label: 'Pipeline Failed',
-        description: 'Triggered when a pipeline encounters a fatal error',
-        icon: XCircle,
-        category: 'lifecycle',
-        examplePayload: { pipelineCode: 'my-pipeline', runId: '123', error: 'Connection timeout' },
-    },
-    {
-        key: 'BEFORE_EXTRACT',
-        label: 'Before Extract',
-        description: 'Before data is pulled from the source',
-        icon: Database,
-        category: 'data',
-        examplePayload: { stepKey: 'extract', config: {} },
-    },
-    {
-        key: 'AFTER_EXTRACT',
-        label: 'After Extract',
-        description: 'After data has been extracted',
-        icon: Database,
-        category: 'data',
-        examplePayload: { stepKey: 'extract', recordCount: 50, records: [{ id: 1 }] },
-    },
-    {
-        key: 'BEFORE_TRANSFORM',
-        label: 'Before Transform',
-        description: 'Before data transformation begins',
-        icon: Filter,
-        category: 'data',
-        examplePayload: { stepKey: 'transform', recordCount: 50 },
-    },
-    {
-        key: 'AFTER_TRANSFORM',
-        label: 'After Transform',
-        description: 'After data has been transformed',
-        icon: Filter,
-        category: 'data',
-        examplePayload: { stepKey: 'transform', recordCount: 48, dropped: 2 },
-    },
-    {
-        key: 'BEFORE_VALIDATE',
-        label: 'Before Validate',
-        description: 'Before schema validation runs',
-        icon: CheckCircle2,
-        category: 'data',
-        examplePayload: { stepKey: 'validate', schemaCode: 'product-schema' },
-    },
-    {
-        key: 'AFTER_VALIDATE',
-        label: 'After Validate',
-        description: 'After validation completes',
-        icon: CheckCircle2,
-        category: 'data',
-        examplePayload: { stepKey: 'validate', valid: 45, invalid: 3 },
-    },
-    {
-        key: 'BEFORE_ENRICH',
-        label: 'Before Enrich',
-        description: 'Before data enrichment step',
-        icon: Zap,
-        category: 'data',
-        examplePayload: { stepKey: 'enrich' },
-    },
-    {
-        key: 'AFTER_ENRICH',
-        label: 'After Enrich',
-        description: 'After data has been enriched',
-        icon: Zap,
-        category: 'data',
-        examplePayload: { stepKey: 'enrich', enrichedFields: ['category', 'price'] },
-    },
-    {
-        key: 'BEFORE_ROUTE',
-        label: 'Before Route',
-        description: 'Before records are routed to destinations',
-        icon: ArrowRight,
-        category: 'data',
-        examplePayload: { stepKey: 'route', recordCount: 45 },
-    },
-    {
-        key: 'AFTER_ROUTE',
-        label: 'After Route',
-        description: 'After routing decisions are made',
-        icon: ArrowRight,
-        category: 'data',
-        examplePayload: { stepKey: 'route', destinations: { products: 30, inventory: 15 } },
-    },
-    {
-        key: 'BEFORE_LOAD',
-        label: 'Before Load',
-        description: 'Before data is written to destination',
-        icon: Upload,
-        category: 'data',
-        examplePayload: { stepKey: 'load', destination: 'vendure', recordCount: 45 },
-    },
-    {
-        key: 'AFTER_LOAD',
-        label: 'After Load',
-        description: 'After data has been loaded',
-        icon: Upload,
-        category: 'data',
-        examplePayload: { stepKey: 'load', created: 20, updated: 25, errors: 0 },
-    },
-    {
-        key: 'ON_ERROR',
-        label: 'On Error',
-        description: 'When any error occurs during processing',
-        icon: AlertTriangle,
-        category: 'error',
-        examplePayload: { error: 'Validation failed', record: { id: 1 }, stepKey: 'validate' },
-    },
-    {
-        key: 'ON_RETRY',
-        label: 'On Retry',
-        description: 'When a failed record is retried',
-        icon: RefreshCw,
-        category: 'error',
-        examplePayload: { errorId: '456', attempt: 2, maxAttempts: 3 },
-    },
-    {
-        key: 'ON_DEAD_LETTER',
-        label: 'On Dead Letter',
-        description: 'When a record is moved to dead letter queue',
-        icon: XCircle,
-        category: 'error',
-        examplePayload: { errorId: '456', reason: 'Max retries exceeded', record: { id: 1 } },
-    },
-];
+/**
+ * Example payloads for hook testing (frontend-only, keyed by stage).
+ * These are documentation data, not served from the backend.
+ */
+const EXAMPLE_PAYLOADS: Record<string, Record<string, unknown>> = {
+    PIPELINE_STARTED: { pipelineCode: 'my-pipeline', runId: '123' },
+    PIPELINE_COMPLETED: { pipelineCode: 'my-pipeline', runId: '123', recordsProcessed: 100, duration: 5000 },
+    PIPELINE_FAILED: { pipelineCode: 'my-pipeline', runId: '123', error: 'Connection timeout' },
+    BEFORE_EXTRACT: { stepKey: 'extract', config: {} },
+    AFTER_EXTRACT: { stepKey: 'extract', recordCount: 50, records: [{ id: 1 }] },
+    BEFORE_TRANSFORM: { stepKey: 'transform', recordCount: 50 },
+    AFTER_TRANSFORM: { stepKey: 'transform', recordCount: 48, dropped: 2 },
+    BEFORE_VALIDATE: { stepKey: 'validate', schemaCode: 'product-schema' },
+    AFTER_VALIDATE: { stepKey: 'validate', valid: 45, invalid: 3 },
+    BEFORE_ENRICH: { stepKey: 'enrich' },
+    AFTER_ENRICH: { stepKey: 'enrich', enrichedFields: ['category', 'price'] },
+    BEFORE_ROUTE: { stepKey: 'route', recordCount: 45 },
+    AFTER_ROUTE: { stepKey: 'route', destinations: { products: 30, inventory: 15 } },
+    BEFORE_LOAD: { stepKey: 'load', destination: 'vendure', recordCount: 45 },
+    AFTER_LOAD: { stepKey: 'load', created: 20, updated: 25, errors: 0 },
+    ON_ERROR: { error: 'Validation failed', record: { id: 1 }, stepKey: 'validate' },
+    ON_RETRY: { errorId: '456', attempt: 2, maxAttempts: 3 },
+    ON_DEAD_LETTER: { errorId: '456', reason: 'Max retries exceeded', record: { id: 1 } },
+};
+
+/**
+ * Build HookStage objects from backend metadata, merging in frontend-only
+ * examplePayloads and resolving icon names to Lucide components.
+ */
+export function buildHookStages(backendStages: HookStageConfig[]): HookStage[] {
+    return backendStages.map(stage => ({
+        key: stage.key,
+        label: stage.label,
+        description: stage.description,
+        icon: resolveIconName(stage.icon) ?? Circle,
+        category: stage.category as HookStage['category'],
+        examplePayload: EXAMPLE_PAYLOADS[stage.key] ?? {},
+    }));
+}

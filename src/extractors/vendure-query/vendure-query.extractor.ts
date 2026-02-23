@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ID, TransactionalConnection } from '@vendure/core';
-import { BATCH, SortOrder, VendureEntityType } from '../../constants/index';
+import { BATCH, SortOrder } from '../../constants/index';
 import {
     DataExtractor,
     ExtractorContext,
@@ -12,7 +12,8 @@ import {
 } from '../../types/index';
 import { VendureQueryExtractorConfig } from './types';
 import { getEntityClass, applyFilter, entityToRecord, EntityLike, validateFieldName } from './helpers';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
+import { VENDURE_QUERY_EXTRACTOR_SCHEMA } from './schema';
 
 interface EntityWithMeta {
     id: ID;
@@ -24,69 +25,14 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
     readonly type = 'EXTRACTOR' as const;
     readonly code = 'vendureQuery';
     readonly name = 'Vendure Entity Extractor';
-    readonly description = 'Extract data from Vendure entities for export or sync';
     readonly category: ExtractorCategory = 'VENDURE';
-    readonly version = '1.0.0';
-    readonly icon = 'database';
     readonly supportsPagination = true;
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
 
     constructor(private connection: TransactionalConnection) {}
 
-    readonly schema: StepConfigSchema = {
-        fields: [
-            {
-                key: 'entity',
-                label: 'Entity Type',
-                description: 'Vendure entity to extract',
-                type: 'select',
-                required: true,
-                options: [
-                    { value: VendureEntityType.PRODUCT, label: 'Products' },
-                    { value: VendureEntityType.PRODUCT_VARIANT, label: 'Product Variants' },
-                    { value: VendureEntityType.CUSTOMER, label: 'Customers' },
-                    { value: VendureEntityType.ORDER, label: 'Orders' },
-                    { value: VendureEntityType.COLLECTION, label: 'Collections' },
-                    { value: VendureEntityType.FACET, label: 'Facets' },
-                    { value: VendureEntityType.FACET_VALUE, label: 'Facet Values' },
-                    { value: VendureEntityType.PROMOTION, label: 'Promotions' },
-                    { value: VendureEntityType.ASSET, label: 'Assets' },
-                ],
-            },
-            {
-                key: 'relations',
-                label: 'Relations',
-                description: 'Relations to include (comma-separated)',
-                type: 'string',
-                placeholder: 'variants,featuredAsset,translations',
-            },
-            {
-                key: 'batchSize',
-                label: 'Batch Size',
-                description: 'Number of records per batch',
-                type: 'number',
-                defaultValue: BATCH.BULK_SIZE,
-            },
-            {
-                key: 'sortBy',
-                label: 'Sort By',
-                description: 'Field to sort by',
-                type: 'string',
-                defaultValue: 'createdAt',
-            },
-            {
-                key: 'sortOrder',
-                label: 'Sort Order',
-                type: 'select',
-                options: [
-                    { value: SortOrder.ASC, label: 'Ascending' },
-                    { value: SortOrder.DESC, label: 'Descending' },
-                ],
-                defaultValue: SortOrder.ASC,
-            },
-        ],
-    };
+    readonly schema: StepConfigSchema = VENDURE_QUERY_EXTRACTOR_SCHEMA;
 
     async *extract(
         context: ExtractorContext,
@@ -202,7 +148,7 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
                 lastOffset: offset,
             });
         } catch (error) {
-            context.logger.error('Vendure entity extraction failed', error instanceof Error ? error : undefined, { error: getErrorMessage(error) });
+            context.logger.error('Vendure entity extraction failed', toErrorOrUndefined(error), { error: getErrorMessage(error) });
             throw error;
         }
     }

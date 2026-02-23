@@ -1,8 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { DataHubAdapter, AdapterDefinition, AdapterType } from './types';
+import { DataHubAdapter, AdapterDefinition } from './types';
+import { AdapterType } from '../constants/enums';
 
 /** Maximum number of adapter definitions/runtime adapters to prevent unbounded memory growth */
 const MAX_REGISTRY_SIZE = 1000;
+
+/** Valid adapter types derived from the canonical AdapterType enum */
+const VALID_ADAPTER_TYPES = new Set(Object.values(AdapterType));
 
 function validateAdapterCode(code: string): void {
     if (!code || typeof code !== 'string') {
@@ -17,12 +21,11 @@ function validateAdapterCode(code: string): void {
 }
 
 function validateAdapterType(type: string): void {
-    const validTypes = ['EXTRACTOR', 'OPERATOR', 'LOADER', 'VALIDATOR', 'ENRICHER', 'EXPORTER', 'FEED', 'SINK', 'TRIGGER'];
     if (!type || typeof type !== 'string') {
         throw new Error('Adapter type must be a non-empty string');
     }
-    if (!validTypes.includes(type)) {
-        throw new Error(`Invalid adapter type: ${type}. Must be one of: ${validTypes.join(', ')}`);
+    if (!VALID_ADAPTER_TYPES.has(type as AdapterType)) {
+        throw new Error(`Invalid adapter type: ${type}. Must be one of: ${[...VALID_ADAPTER_TYPES].join(', ')}`);
     }
 }
 
@@ -36,7 +39,7 @@ export class DataHubRegistryService {
     private definitions = new Map<string, AdapterDefinition>();
     private runtimeAdapters = new Map<string, DataHubAdapter>();
 
-    register(adapter: AdapterDefinition): void {
+    register(adapter: AdapterDefinition, options?: { builtIn?: boolean }): void {
         if (!adapter) {
             throw new Error('Adapter definition is required');
         }
@@ -50,10 +53,13 @@ export class DataHubRegistryService {
         if (this.definitions.size >= MAX_REGISTRY_SIZE) {
             throw new Error(`Adapter registry is full (max ${MAX_REGISTRY_SIZE}). Unregister an adapter first.`);
         }
-        this.definitions.set(key, adapter);
+        const stamped = options?.builtIn !== undefined
+            ? { ...adapter, builtIn: options.builtIn }
+            : adapter;
+        this.definitions.set(key, stamped);
     }
 
-    registerRuntime(adapter: DataHubAdapter): void {
+    registerRuntime(adapter: DataHubAdapter, options?: { builtIn?: boolean }): void {
         if (!adapter) {
             throw new Error('Runtime adapter is required');
         }
@@ -70,7 +76,10 @@ export class DataHubRegistryService {
             if (this.definitions.size >= MAX_REGISTRY_SIZE) {
                 throw new Error(`Adapter definition registry is full (max ${MAX_REGISTRY_SIZE}). Unregister an adapter first.`);
             }
-            this.definitions.set(key, adapter);
+            const stamped = options?.builtIn !== undefined
+                ? { ...adapter, builtIn: options.builtIn }
+                : adapter;
+            this.definitions.set(key, stamped);
         }
     }
 
@@ -78,13 +87,12 @@ export class DataHubRegistryService {
         return Array.from(this.definitions.values());
     }
 
-    find(type: AdapterType, code: string): AdapterDefinition | undefined {
+    find(type: string, code: string): AdapterDefinition | undefined {
         return this.definitions.get(`${type}:${code}`);
     }
 
-    getRuntime(type: AdapterType, code: string): DataHubAdapter | undefined {
+    getRuntime(type: string, code: string): DataHubAdapter | undefined {
         return this.runtimeAdapters.get(`${type}:${code}`);
     }
 
 }
-

@@ -19,11 +19,11 @@ interface SingleRecordOperator<TConfig = JsonObject> {
     applyOne(
         record: JsonObject,
         config: TConfig,
-        helpers: OperatorHelpers,
+        helpers: AdapterOperatorHelpers,
     ): JsonObject | null;
 }
 
-interface OperatorHelpers {
+interface AdapterOperatorHelpers {
     get(record: JsonObject, path: string): unknown;
     set(record: JsonObject, path: string, value: unknown): void;
 }
@@ -32,7 +32,7 @@ interface OperatorHelpers {
 ## Basic Example
 
 ```typescript
-import { JsonObject, SingleRecordOperator, OperatorHelpers, StepConfigSchema } from '@oronts/vendure-data-hub-plugin';
+import { JsonObject, SingleRecordOperator, AdapterOperatorHelpers, StepConfigSchema } from '@oronts/vendure-data-hub-plugin';
 
 export const currencyConvertSchema: StepConfigSchema = {
     fields: [
@@ -68,7 +68,7 @@ export const currencyConvertOperator: SingleRecordOperator<CurrencyConvertConfig
     icon: 'currency-exchange',
     version: '1.0.0',
 
-    applyOne(record: JsonObject, config: CurrencyConvertConfig, helpers: OperatorHelpers): JsonObject | null {
+    applyOne(record: JsonObject, config: CurrencyConvertConfig, helpers: AdapterOperatorHelpers): JsonObject | null {
         const { field, from, to, targetField } = config;
         const value = helpers.get(record, field);
 
@@ -115,14 +115,14 @@ export class MyOperatorPlugin implements OnModuleInit {
     constructor(private registry: DataHubRegistryService) {}
 
     onModuleInit() {
-        this.registry.registerOperator(currencyConvertOperator);
+        this.registry.registerRuntime(currencyConvertOperator);
     }
 }
 ```
 
 ## Runtime Registration via DataHubRegistryService
 
-In addition to the `adapters` array and `registerOperator()` method shown above, you can register custom operators at runtime using `DataHubRegistryService.registerRuntime()`. This approach is useful for dynamically registering operators from other plugins or modules.
+In addition to the `adapters` array and `registerRuntime()` method shown above, you can register custom operators at runtime using `DataHubRegistryService.registerRuntime()`. This approach is useful for dynamically registering operators from other plugins or modules.
 
 ```typescript
 import { VendurePlugin, OnModuleInit } from '@vendure/core';
@@ -141,6 +141,8 @@ export class MyCustomOperatorPlugin implements OnModuleInit {
             name: 'My Custom Operator',
             description: 'Custom processing logic',
             category: 'CUSTOM',
+            pure: true,
+            schema: { fields: [] },
             async apply(records, config, helpers) {
                 return {
                     records: records.map(r => ({ ...r, processed: true })),
@@ -153,7 +155,7 @@ export class MyCustomOperatorPlugin implements OnModuleInit {
 
 ### How Runtime Registration Works
 
-Custom operators registered via `registerRuntime()` are discovered automatically by the transform executor. When the executor encounters an operator code that is not found in the built-in operator registry, it falls back to the runtime registry where custom operators are stored.
+Custom operators registered via `registerRuntime()` are discovered automatically by the transform executor. When the executor encounters an operator code that is not found in the built-in `OPERATOR_REGISTRY`, it falls back to the `DataHubRegistryService` runtime registry where custom operators are stored. This two-tier lookup (built-in first, then runtime) ensures that built-in operators always take priority while custom operators extend the available set without conflicts.
 
 This means:
 - No changes to the core plugin are needed
@@ -290,7 +292,7 @@ export const httpLookupOperator: SingleRecordOperator<HttpLookupConfig> = {
 The `helpers` object provides utilities for field access:
 
 ```typescript
-interface OperatorHelpers {
+interface AdapterOperatorHelpers {
     get(record: JsonObject, path: string): unknown;
     set(record: JsonObject, path: string, value: unknown): void;
 }

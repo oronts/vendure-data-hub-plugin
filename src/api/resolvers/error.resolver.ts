@@ -1,8 +1,8 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { Allow, Ctx, ID, RequestContext, Transaction, TransactionalConnection } from '@vendure/core';
-import type { JsonObject, PipelineStepDefinition, PipelineDefinition } from '../../types/index';
+import type { JsonObject, PipelineDefinition } from '../../types/index';
 import { LOGGER_CONTEXTS } from '../../constants';
-import { StepType } from '../../constants/enums';
+import { LOADER_ADAPTERS } from '../../runtime/executors/loaders/loader-handler-registry';
 import {
     ReplayDataHubRecordPermission,
     ViewDataHubQuarantinePermission,
@@ -160,10 +160,11 @@ export class DataHubErrorAdminResolver {
 
         // Restrict patch to allowed keys for this loader/step
         const step = (pipeline.definition?.steps ?? []).find(s => s.key === rec.stepKey);
-        const allowed = this.getAllowedPatchKeysForStep(step);
+        const allowed = this.getAllowedPatchKeysForStep(step ?? {});
         const cleanPatch: JsonObject = {};
+        const allowAll = allowed.has('*');
         for (const [k, v] of Object.entries(patch)) {
-            if (allowed.has(k)) cleanPatch[k] = v;
+            if (allowAll || allowed.has(k)) cleanPatch[k] = v;
         }
         const payload: JsonObject = { ...payloadBefore, ...cleanPatch };
 
@@ -202,47 +203,10 @@ export class DataHubErrorAdminResolver {
         return clone;
     }
 
-    private getAllowedPatchKeysForStep(step: PipelineStepDefinition | undefined): Set<string> {
-        const keys = new Set<string>();
-        if (!step || step.type !== StepType.LOAD) return keys;
-
-        const code = (step.config as JsonObject)?.adapterCode as string | undefined;
-        switch (code) {
-            case 'productUpsert':
-                ['slug', 'name', 'description', 'sku', 'price', 'priceByCurrency', 'stockOnHand', 'trackInventory']
-                    .forEach(k => keys.add(k));
-                break;
-            case 'variantUpsert':
-                ['sku', 'name', 'price', 'priceByCurrency', 'stockOnHand']
-                    .forEach(k => keys.add(k));
-                break;
-            case 'customerUpsert':
-                ['email', 'firstName', 'lastName', 'phoneNumber']
-                    .forEach(k => keys.add(k));
-                break;
-            case 'collectionUpsert':
-                ['slug', 'name', 'description', 'parentSlug']
-                    .forEach(k => keys.add(k));
-                break;
-            case 'promotionUpsert':
-                ['code', 'name', 'enabled', 'startsAt', 'endsAt']
-                    .forEach(k => keys.add(k));
-                break;
-            case 'stockAdjust':
-                ['sku', 'stockByLocation']
-                    .forEach(k => keys.add(k));
-                break;
-            case 'orderNote':
-                ['orderId', 'orderCode', 'note', 'isPrivate']
-                    .forEach(k => keys.add(k));
-                break;
-            case 'applyCoupon':
-                ['orderId', 'orderCode', 'coupon']
-                    .forEach(k => keys.add(k));
-                break;
-            default:
-                break;
-        }
-        return keys;
+    private getAllowedPatchKeysForStep(step: { adapterCode?: string }): Set<string> {
+        if (!step.adapterCode) return new Set<string>();
+        const adapter = LOADER_ADAPTERS.find(a => a.code === step.adapterCode);
+        if (!adapter?.patchableFields) return new Set<string>();
+        return new Set(adapter.patchableFields);
     }
 }

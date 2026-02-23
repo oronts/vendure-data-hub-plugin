@@ -5,37 +5,37 @@
  */
 
 // Batch processing
-export * from './batch.defaults';
+export * from './batch-defaults';
 
 // Sink and queues
-export * from './sink.defaults';
+export * from './sink-defaults';
 
 // Scheduler
-export * from './scheduler.defaults';
+export * from './scheduler-defaults';
 
 // Webhooks
-export * from './webhook.defaults';
+export * from './webhook-defaults';
 
 // Storage and files
-export * from './storage.defaults';
+export * from './storage-defaults';
 
 // Security
-export * from './security.defaults';
+export * from './security-defaults';
 
 // HTTP and network
-export * from './http.defaults';
+export * from './http-defaults';
 
 // UI and display
-export * from './ui.defaults';
+export * from './ui-defaults';
 
 // Reliability and performance
-export * from './reliability.defaults';
+export * from './reliability-defaults';
 
 // Runtime execution
-export * from './runtime.defaults';
+export * from './runtime-defaults';
 
 // Parsers and formats
-export * from './parsers.defaults';
+export * from './parsers-defaults';
 
 // Core shared constants
-export * from './core.defaults';
+export * from './core-defaults';

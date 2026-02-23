@@ -23,6 +23,7 @@ export const INVENTORY_LOADER_METADATA = {
     entityType: VendureEntityType.INVENTORY,
     name: 'Inventory Loader',
     description: 'Updates stock levels for product variants by SKU',
+    adapterCode: 'inventoryAdjust',
     supportedOperations: ['UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['sku'],
     requiredFields: ['sku', 'stockOnHand'],

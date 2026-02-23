@@ -20,13 +20,14 @@ import * as nodemailer from 'nodemailer';
 import { PipelineStepDefinition, PipelineContext, JsonValue, JsonObject } from '../../types/index';
 import type { DataHubPluginOptions } from '../../types/index';
 import { RecordObject, ExecutorContext } from '../executor-types';
-import { DATAHUB_PLUGIN_OPTIONS, HTTP_HEADERS, CONTENT_TYPES, INTERNAL_TIMINGS } from '../../constants/index';
+import { DATAHUB_PLUGIN_OPTIONS, HTTP_HEADERS, CONTENT_TYPES, INTERNAL_TIMINGS, TIME } from '../../constants/index';
 import { RunStatus } from '../../constants/enums';
 import { validateUrlSafety } from '../../utils/url-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { deepClone } from '../../utils/object-path.utils';
 import { PipelineRun } from '../../entities/pipeline/pipeline-run.entity';
 import { PipelineService } from '../../services/pipeline/pipeline.service';
+import { DomainEventsService } from '../../services/events/domain-events.service';
 
 const logger = new Logger('DataHub:GateExecutor');
 
@@ -62,6 +63,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         private moduleRef: ModuleRef,
         private connection: TransactionalConnection,
         @Inject(DATAHUB_PLUGIN_OPTIONS) private options: DataHubPluginOptions,
+        private domainEvents: DomainEventsService,
     ) {}
 
     onModuleInit(): void {
@@ -141,7 +143,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
 
         // TIMEOUT mode: save expiry checkpoint for the background checker
         if (config.approvalType === 'TIMEOUT' && config.timeoutSeconds) {
-            const expiresAt = new Date(Date.now() + config.timeoutSeconds * 1000).toISOString();
+            const expiresAt = new Date(Date.now() + config.timeoutSeconds * TIME.SECOND).toISOString();
             this.saveTimeoutToCheckpoint(step.key, expiresAt, executorCtx);
             logger.log(`GATE "${step.key}": TIMEOUT mode, will auto-approve at ${expiresAt}`);
         }
@@ -304,6 +306,11 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
 
     /**
      * Scan PAUSED pipeline runs for expired gate timeouts and auto-approve them.
+     *
+     * This checker runs on a periodic interval, so there is eventual consistency
+     * between when a timeout expires and when the gate is auto-approved. The
+     * actual approval time may lag behind the configured timeout by up to one
+     * check interval (GATE_TIMEOUT_CHECK_INTERVAL_MS).
      */
     private async checkExpiredGates(): Promise<void> {
         if (!this.pipelineService) return;
@@ -328,9 +335,23 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
                 const expiresAt = data?.expiresAt as string | undefined;
                 if (!expiresAt) continue;
 
-                if (new Date(expiresAt).getTime() <= now) {
+                const expiresAtMs = new Date(expiresAt).getTime();
+                if (expiresAtMs <= now) {
                     const stepKey = data.stepKey as string;
-                    logger.log(`GATE "${stepKey}": TIMEOUT expired, auto-approving run ${run.id}`);
+                    const delayMs = now - expiresAtMs;
+                    logger.log(
+                        `GATE "${stepKey}": TIMEOUT expired, auto-approving run ${run.id} ` +
+                        `(expected=${expiresAt}, actual delay=${delayMs}ms)`,
+                    );
+                    try {
+                        this.domainEvents.publishGateTimeout(
+                            undefined,
+                            String(run.id),
+                            stepKey,
+                        );
+                    } catch {
+                        // Gate timeout event is non-critical
+                    }
                     try {
                         await this.pipelineService.approveGate(ctx, run.id, stepKey);
                     } catch (err) {

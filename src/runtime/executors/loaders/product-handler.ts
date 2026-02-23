@@ -65,8 +65,8 @@ interface ProductHandlerConfig {
     channel?: string;
     /** Strategy for handling conflicts */
     strategy?: LoadStrategy;
-    /** Conflict resolution strategy */
-    conflictResolution?: ConflictStrategy;
+    /** Conflict strategy */
+    conflictStrategy?: ConflictStrategy;
     /** Whether to track inventory */
     trackInventory?: string | boolean;
 }
@@ -342,7 +342,7 @@ export class ProductHandler implements LoaderHandler {
         const { ctx, opCtx, cfg, fields } = procCtx;
         const { slug, name, description } = fields;
         const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
-        const conflictResolution = cfg.conflictResolution ?? ConflictStrategy.SOURCE_WINS;
+        const conflictResolution = cfg.conflictStrategy ?? ConflictStrategy.SOURCE_WINS;
 
         const existing = await this.productService.findOneBySlug(opCtx, slug!);
         const productTranslation: ProductTranslationInput = {
@@ -361,7 +361,7 @@ export class ProductHandler implements LoaderHandler {
             if (conflictResolution === ConflictStrategy.VENDURE_WINS) {
                 return { productId: existing.id, existing };
             }
-            // strategy is 'UPDATE' or 'UPSERT', and conflictResolution is 'SOURCE_WINS' or 'MERGE'
+            // strategy is 'UPDATE' or 'UPSERT', and conflictStrategy is 'SOURCE_WINS' or 'MERGE'
             const updateInput: UpdateProductInput = {
                 id: existing.id,
                 translations: [productTranslation],
@@ -418,7 +418,7 @@ export class ProductHandler implements LoaderHandler {
         }
 
         const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
-        const conflictResolution = cfg.conflictResolution ?? ConflictStrategy.SOURCE_WINS;
+        const conflictResolution = cfg.conflictStrategy ?? ConflictStrategy.SOURCE_WINS;
         const targetChannel = cfg.channel;
 
         const existingVariant = await findVariantBySku(this.productVariantService, opCtx, sku);

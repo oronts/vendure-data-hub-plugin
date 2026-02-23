@@ -3,12 +3,13 @@
  */
 
 import { ParseFormatType } from '../constants/enums';
+import { FILE_FORMAT_METADATA } from '../constants/adapter-schema-options';
 import type { CsvDelimiter } from '../../shared/types';
 
 export type FileFormat = ParseFormatType;
 
 /**
- * CSV delimiter options - canonical definition in shared/types/pipeline.types.ts
+ * CSV delimiter options
  */
 export type { CsvDelimiter };
 
@@ -198,24 +199,19 @@ export interface FormatParser<T = Record<string, unknown>> {
 }
 
 /**
- * Content type mappings for file formats
+ * Content type mappings for parseable file formats — auto-derived from FILE_FORMAT_METADATA
  */
-export const FORMAT_CONTENT_TYPES: Record<FileFormat, string[]> = {
-    CSV: ['text/csv', 'text/plain', 'application/csv'],
-    JSON: ['application/json', 'text/json'],
-    XML: ['application/xml', 'text/xml'],
-    XLSX: [
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-excel',
-    ],
-};
+export const FORMAT_CONTENT_TYPES: Record<FileFormat, string[]> = Object.fromEntries(
+    Object.entries(FILE_FORMAT_METADATA)
+        .filter(([, meta]) => meta.parseable)
+        .map(([format, meta]) => [format, meta.mimeTypes]),
+) as Record<FileFormat, string[]>;
 
 /**
- * File extension mappings for file formats
+ * File extension mappings for parseable file formats — auto-derived from FILE_FORMAT_METADATA
  */
-export const FORMAT_EXTENSIONS: Record<FileFormat, string[]> = {
-    CSV: ['csv', 'tsv'],
-    JSON: ['json'],
-    XML: ['xml'],
-    XLSX: ['xlsx', 'xls'],
-};
+export const FORMAT_EXTENSIONS: Record<FileFormat, string[]> = Object.fromEntries(
+    Object.entries(FILE_FORMAT_METADATA)
+        .filter(([, meta]) => meta.parseable)
+        .map(([format, meta]) => [format, meta.extensions]),
+) as Record<FileFormat, string[]>;

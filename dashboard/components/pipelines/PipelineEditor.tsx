@@ -14,13 +14,12 @@ import { StepConfigPanel } from '../shared/step-config';
 import { PipelineSettingsPanel, StepListItem } from './shared';
 import {
     MOVE_DIRECTION,
-    STEP_CONFIGS,
     STEP_TYPES,
-    TRIGGER_TYPES,
-    ERROR_HANDLING_MODES,
     getStepTypeIcon,
     PIPELINE_EDITOR_PANEL,
+    DEFAULT_STEP_CONFIGS,
 } from '../../constants';
+import { useStepConfigs, useTriggerTypes } from '../../hooks';
 import type { MoveDirection, PipelineEditorPanel } from '../../constants';
 import { useAdapterCatalog } from '../../hooks';
 import type {
@@ -32,32 +31,25 @@ import type {
 } from '../../types';
 import { getCombinedTriggers, updateDefinitionWithTriggers } from '../../utils';
 
+const ADDABLE_STEP_TYPES = Object.keys(DEFAULT_STEP_CONFIGS).filter(
+    t => t !== 'ROUTE' && t !== 'GATE'
+) as StepType[];
+
 export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEditorProps) {
     const [selectedStepIndex, setSelectedStepIndex] = useState<number | null>(null);
     const [activePanel, setActivePanel] = useState<PipelineEditorPanel>(PIPELINE_EDITOR_PANEL.STEPS);
 
     const { adapters, connectionCodes, secretOptions } = useAdapterCatalog();
+    const { configList: triggerTypeList, isLoading: isTriggerTypesLoading } = useTriggerTypes();
 
     const steps = definition.steps ?? [];
     const selectedStep = selectedStepIndex !== null ? steps[selectedStepIndex] : null;
 
     const addStep = useCallback((type: StepType) => {
-        const defaultConfig: JsonObject = {};
-
-        switch (type) {
-            case STEP_TYPES.TRIGGER:
-                defaultConfig.type = TRIGGER_TYPES.MANUAL;
-                defaultConfig.enabled = true;
-                break;
-            case STEP_TYPES.VALIDATE:
-                defaultConfig.mode = ERROR_HANDLING_MODES[0].value;
-                break;
-            case STEP_TYPES.ROUTE:
-                defaultConfig.branches = [];
-                break;
-            default:
-                break;
-        }
+        const stepCfg = DEFAULT_STEP_CONFIGS[type];
+        const defaultConfig: JsonObject = stepCfg?.defaultConfig
+            ? { ...stepCfg.defaultConfig }
+            : {};
 
         const newStep: PipelineStepDefinition = {
             key: `${type.toLowerCase()}-${Date.now()}`,
@@ -291,7 +283,7 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                         <div className="p-3 border-t bg-muted/50">
                             <p className="text-xs text-muted-foreground mb-2">Add Step:</p>
                             <div className="grid grid-cols-3 gap-1" data-testid="datahub-editor-add-step-buttons">
-                                {([STEP_TYPES.TRIGGER, STEP_TYPES.EXTRACT, STEP_TYPES.TRANSFORM, STEP_TYPES.VALIDATE, STEP_TYPES.ENRICH, STEP_TYPES.LOAD, STEP_TYPES.EXPORT, STEP_TYPES.FEED, STEP_TYPES.SINK] as StepType[]).map((type) => (
+                                {ADDABLE_STEP_TYPES.map((type) => (
                                     <AddStepButton
                                         key={type}
                                         type={type}
@@ -358,13 +350,23 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                         </p>
                         <div className="mt-4 p-4 bg-muted/50 rounded-lg">
                             <h4 className="text-sm font-medium mb-2">Trigger Types:</h4>
-                            <ul className="text-sm text-muted-foreground space-y-1">
-                                <li><strong>Manual</strong> - Run from dashboard or API</li>
-                                <li><strong>Schedule</strong> - Run on cron schedule</li>
-                                <li><strong>Webhook</strong> - Run when webhook is called</li>
-                                <li><strong>Event</strong> - Run when Vendure event fires</li>
-                                <li><strong>File Watch</strong> - Run when files appear</li>
-                            </ul>
+                            {isTriggerTypesLoading || triggerTypeList.length === 0 ? (
+                                <ul className="text-sm text-muted-foreground space-y-1">
+                                    <li><strong>Manual</strong> - Run from dashboard or API</li>
+                                    <li><strong>Schedule</strong> - Run on cron schedule</li>
+                                    <li><strong>Webhook</strong> - Run when webhook is called</li>
+                                    <li><strong>Event</strong> - Run when Vendure event fires</li>
+                                    <li><strong>File Watch</strong> - Run when files appear</li>
+                                </ul>
+                            ) : (
+                                <ul className="text-sm text-muted-foreground space-y-1">
+                                    {triggerTypeList.map(trigger => (
+                                        <li key={trigger.type}>
+                                            <strong>{trigger.label}</strong> - {trigger.description}
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
                     </div>
                 ) : (
@@ -478,7 +480,8 @@ interface AddStepButtonProps {
 }
 
 const AddStepButton = memo(function AddStepButton({ type, onAddStep }: AddStepButtonProps) {
-    const config = STEP_CONFIGS[type];
+    const { getStepConfig } = useStepConfigs();
+    const config = getStepConfig(type);
     const Icon = getStepTypeIcon(type) ?? Play;
 
     const handleClick = useCallback(() => {

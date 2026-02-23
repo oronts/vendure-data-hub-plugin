@@ -2,16 +2,15 @@
  * S3 File Handlers
  *
  * Utilities for handling S3 object filtering, parsing, and post-processing.
- * Uses shared utilities from extractors/shared to eliminate duplication.
  */
 
 import { S3ObjectInfo, S3ExtractorConfig, S3ObjectMetadata } from './types';
 import { FileParserService } from '../../parsers/file-parser.service';
 import { JsonObject } from '../../types/index';
 import {
-    detectFileFormat as sharedDetectFileFormat,
+    detectFileFormat,
     parseFileContent,
-    parseModifiedAfterDate as sharedParseModifiedAfterDate,
+    parseModifiedAfterDate,
     attachMetadataToRecord as sharedAttachMetadataToRecord,
 } from '../shared';
 
@@ -60,15 +59,10 @@ export function filterObjects(
     return filtered;
 }
 
-/**
- * Detect file format from object key
- * Uses shared implementation to eliminate duplication
- */
-export const detectFileFormat = sharedDetectFileFormat;
+export { detectFileFormat };
 
 /**
  * Parse S3 object content
- * Uses shared parseFileContent to eliminate duplication
  */
 export async function parseS3Content(
     content: Buffer,
@@ -166,11 +160,7 @@ export function isValidPrefix(prefix: string): boolean {
     return !prefix.startsWith('/');
 }
 
-/**
- * Parse ISO date string safely
- * Uses shared implementation to eliminate duplication
- */
-export const parseModifiedAfterDate = sharedParseModifiedAfterDate;
+export { parseModifiedAfterDate };
 
 /**
  * Estimate total objects to process based on listing

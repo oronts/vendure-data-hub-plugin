@@ -1,6 +1,27 @@
 export type { JsonValue, JsonObject, ValidationError } from '../../shared/types';
 
-export * from './pipeline';
+export type {
+    PipelineDefinition,
+    UnifiedPipelineDefinition,
+    PipelineStepDefinition,
+    PipelineTrigger,
+    VendureEntityType,
+    PipelineCheckpoint,
+    PipelineContext,
+    TargetOperation,
+    ErrorHandlingConfig,
+    CheckpointingConfig,
+    ExecutorContext,
+    PipelineEdge,
+    ParallelExecutionConfig,
+    PipelineCapabilities,
+    Throughput,
+    TriggerConfig,
+    MessageTriggerConfig,
+    QueueTypeValue,
+} from '../../shared/types';
+
+export { RunStatus, StepType, HookStage } from '../constants/enums';
 
 export * from './step-configs';
 
@@ -71,6 +92,7 @@ export type {
     InterceptorHookAction,
     ScriptHookAction,
     LogHookAction,
+    LogLevel,
     InterceptorResult,
     ScriptFunction,
     HookContext,

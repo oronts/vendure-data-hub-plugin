@@ -7,7 +7,7 @@
  *   .name('Product Import')
  *   .description('Import products from CSV')
  *   .trigger('start', { type: 'MANUAL' })
- *   .extract('csv', { adapterCode: 'csv', csvPath: '/data/products.csv' })
+ *   .extract('csv', { adapterCode: 'file', path: '/data/products.csv', format: 'CSV' })
  *   .transform('map', {
  *     operators: [
  *       operators.map({ 'SKU': 'sku', 'Name': 'name' }),
@@ -25,13 +25,14 @@
 import {
     PipelineDefinition,
     PipelineStepDefinition,
-    StepType,
     PipelineEdge,
     JsonObject,
     PipelineCapabilities,
     PipelineContext,
     PipelineHooks,
 } from '../../types/index';
+import type { StepType } from '../../../shared/types';
+import { STEP_TYPE } from '../../../shared/constants/enums';
 import {
     TriggerConfig,
     ExtractStepConfig,
@@ -161,7 +162,7 @@ export function createPipeline(): PipelineBuilder {
         trigger(key: string, config: TriggerConfig = { type: DEFAULT_TRIGGER_TYPE }) {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
-            state.steps.push(createStep(key, StepType.TRIGGER, config as unknown as JsonObject));
+            state.steps.push(createStep(key, STEP_TYPE.TRIGGER, config as unknown as JsonObject));
             return this;
         },
         extract(key: string, config: ExtractStepConfig) {
@@ -169,7 +170,7 @@ export function createPipeline(): PipelineBuilder {
             validateUniqueKey(state.steps, key);
             validateNonEmptyString(config.adapterCode, 'Adapter code');
             const { throughput, async: asyncFlag, ...rest } = config;
-            state.steps.push(createStep(key, StepType.EXTRACT, rest as unknown as JsonObject, { throughput, async: asyncFlag }));
+            state.steps.push(createStep(key, STEP_TYPE.EXTRACT, rest as unknown as JsonObject, { throughput, async: asyncFlag }));
             return this;
         },
         transform(key: string, config: TransformStepConfig) {
@@ -179,14 +180,14 @@ export function createPipeline(): PipelineBuilder {
                 throw new Error('Transform step requires an operators array');
             }
             const { throughput, async: asyncFlag, operators, ...rest } = config;
-            state.steps.push(createStep(key, StepType.TRANSFORM, { operators, ...rest } as unknown as JsonObject, { throughput, async: asyncFlag }));
+            state.steps.push(createStep(key, STEP_TYPE.TRANSFORM, { operators, ...rest } as unknown as JsonObject, { throughput, async: asyncFlag }));
             return this;
         },
         validate(key: string, config: ValidateStepConfig) {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
             const { throughput, ...rest } = config;
-            state.steps.push(createStep(key, StepType.VALIDATE, rest as unknown as JsonObject, { throughput }));
+            state.steps.push(createStep(key, STEP_TYPE.VALIDATE, rest as unknown as JsonObject, { throughput }));
             return this;
         },
         enrich(key: string, config: EnrichStepConfig) {
@@ -197,7 +198,7 @@ export function createPipeline(): PipelineBuilder {
             if (!config.adapterCode && !hasBuiltInConfig) {
                 throw new Error('Enrich step requires either adapterCode or built-in config (defaults, set, computed, or sourceType)');
             }
-            state.steps.push(createStep(key, StepType.ENRICH, config as unknown as JsonObject));
+            state.steps.push(createStep(key, STEP_TYPE.ENRICH, config as unknown as JsonObject));
             return this;
         },
         route(key: string, config: RouteStepConfig) {
@@ -206,7 +207,7 @@ export function createPipeline(): PipelineBuilder {
             if (!config.branches || !Array.isArray(config.branches) || config.branches.length === 0) {
                 throw new Error('Route step requires at least one branch');
             }
-            state.steps.push(createStep(key, StepType.ROUTE, config as unknown as JsonObject));
+            state.steps.push(createStep(key, STEP_TYPE.ROUTE, config as unknown as JsonObject));
             return this;
         },
         load(key: string, config: LoadStepConfig) {
@@ -214,7 +215,7 @@ export function createPipeline(): PipelineBuilder {
             validateUniqueKey(state.steps, key);
             validateNonEmptyString(config.adapterCode, 'Adapter code');
             const { throughput, async: asyncFlag, ...rest } = config;
-            state.steps.push(createStep(key, StepType.LOAD, rest as unknown as JsonObject, { throughput, async: asyncFlag }));
+            state.steps.push(createStep(key, STEP_TYPE.LOAD, rest as unknown as JsonObject, { throughput, async: asyncFlag }));
             return this;
         },
         export(key: string, config: ExportStepConfig) {
@@ -222,7 +223,7 @@ export function createPipeline(): PipelineBuilder {
             validateUniqueKey(state.steps, key);
             validateNonEmptyString(config.adapterCode, 'Adapter code');
             const { throughput, async: asyncFlag, ...rest } = config;
-            state.steps.push(createStep(key, StepType.EXPORT, rest as unknown as JsonObject, { throughput, async: asyncFlag }));
+            state.steps.push(createStep(key, STEP_TYPE.EXPORT, rest as unknown as JsonObject, { throughput, async: asyncFlag }));
             return this;
         },
         feed(key: string, config: FeedStepConfig) {
@@ -230,7 +231,7 @@ export function createPipeline(): PipelineBuilder {
             validateUniqueKey(state.steps, key);
             validateNonEmptyString(config.adapterCode, 'Adapter code');
             const { throughput, ...rest } = config;
-            state.steps.push(createStep(key, StepType.FEED, rest as unknown as JsonObject, { throughput }));
+            state.steps.push(createStep(key, STEP_TYPE.FEED, rest as unknown as JsonObject, { throughput }));
             return this;
         },
         sink(key: string, config: SinkStepConfig) {
@@ -238,13 +239,13 @@ export function createPipeline(): PipelineBuilder {
             validateUniqueKey(state.steps, key);
             validateNonEmptyString(config.adapterCode, 'Adapter code');
             const { throughput, async: asyncFlag, ...rest } = config;
-            state.steps.push(createStep(key, StepType.SINK, rest as unknown as JsonObject, { throughput, async: asyncFlag }));
+            state.steps.push(createStep(key, STEP_TYPE.SINK, rest as unknown as JsonObject, { throughput, async: asyncFlag }));
             return this;
         },
         gate(key: string, config: GateStepConfig) {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
-            state.steps.push(createStep(key, StepType.GATE, config as unknown as JsonObject));
+            state.steps.push(createStep(key, STEP_TYPE.GATE, config as unknown as JsonObject));
             return this;
         },
         edge(from: string, to: string, branch?: string) {
@@ -308,27 +309,27 @@ export function step(
 
 export const steps = {
     trigger: (key: string, config: JsonObject = {}, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, StepType.TRIGGER, config, extras),
+        step(key, STEP_TYPE.TRIGGER, config, extras),
     extract: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, StepType.EXTRACT, config, extras),
+        step(key, STEP_TYPE.EXTRACT, config, extras),
     transform: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, StepType.TRANSFORM, config, extras),
+        step(key, STEP_TYPE.TRANSFORM, config, extras),
     validate: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, StepType.VALIDATE, config, extras),
+        step(key, STEP_TYPE.VALIDATE, config, extras),
     enrich: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, StepType.ENRICH, config, extras),
+        step(key, STEP_TYPE.ENRICH, config, extras),
     route: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, StepType.ROUTE, config, extras),
+        step(key, STEP_TYPE.ROUTE, config, extras),
     load: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, StepType.LOAD, config, extras),
+        step(key, STEP_TYPE.LOAD, config, extras),
     export: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, StepType.EXPORT, config, extras),
+        step(key, STEP_TYPE.EXPORT, config, extras),
     feed: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, StepType.FEED, config, extras),
+        step(key, STEP_TYPE.FEED, config, extras),
     sink: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, StepType.SINK, config, extras),
+        step(key, STEP_TYPE.SINK, config, extras),
     gate: (key: string, config: JsonObject, extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>) =>
-        step(key, StepType.GATE, config, extras),
+        step(key, STEP_TYPE.GATE, config, extras),
 };
 
 export function edge(from: string, to: string, branch?: string): PipelineEdge {

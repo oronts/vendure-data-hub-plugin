@@ -14,7 +14,7 @@ import { DataHubSecret } from '../entities/config/secret.entity';
 import { DataHubConnection } from '../entities/config/connection.entity';
 import { SecretProvider, ConnectionType } from '../constants/enums';
 import { DataHubLogger } from '../services/logger';
-import { getErrorMessage } from '../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined } from '../utils/error.utils';
 import { sleep } from '../utils/retry.utils';
 import type { JsonObject, JsonValue } from '../../shared/types';
 import * as fs from 'fs';
@@ -57,7 +57,7 @@ export class ConfigSyncService implements OnApplicationBootstrap {
                 const errorMessage = getErrorMessage(e);
 
                 if (isLastAttempt) {
-                    logger.error('Failed to sync DataHub config after all retries', e instanceof Error ? e : undefined, {
+                    logger.error('Failed to sync DataHub config after all retries', toErrorOrUndefined(e), {
                         attempts: attempt,
                     });
                 } else {
@@ -147,7 +147,7 @@ export class ConfigSyncService implements OnApplicationBootstrap {
             const errorMessage = getErrorMessage(e);
             // Distinguish between parse errors and file read errors
             if (errorMessage.includes('JSON') || errorMessage.includes('YAML') || errorMessage.includes('yaml')) {
-                logger.error(`Failed to parse config file ${configPath}`, e instanceof Error ? e : undefined);
+                logger.error(`Failed to parse config file ${configPath}`, toErrorOrUndefined(e));
                 throw e; // Re-throw parse errors as they indicate invalid configuration
             }
             logger.warn(`Could not load config file ${configPath}`, { error: errorMessage });

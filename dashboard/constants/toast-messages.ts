@@ -92,13 +92,6 @@ export const TOAST_FILE = {
 } as const;
 
 /**
- * Field mapping toast messages
- */
-const TOAST_MAPPING = {
-    AUTO_MAPPED: 'Auto-mapped {count} fields',
-} as const;
-
-/**
  * Wizard-related toast messages
  */
 export const TOAST_WIZARD = {
@@ -107,6 +100,9 @@ export const TOAST_WIZARD = {
     EXPORT_NAME_REQUIRED: 'Please provide a name for the export configuration',
     URL_REQUIRED: 'Please enter a URL first',
     TEMPLATE_SELECTED: 'Template applied',
+    IMPORT_CREATED: 'Import pipeline created',
+    EXPORT_CREATED: 'Export pipeline created',
+    CREATE_FAILED: 'Failed to create pipeline',
 } as const;
 
 /**
@@ -120,9 +116,6 @@ export const TOAST_SECRET = {
 } as const;
 
 /**
- * Settings-related toast messages
- */
-/**
  * Template-related toast messages
  */
 export const TOAST_TEMPLATE = {
@@ -130,26 +123,14 @@ export const TOAST_TEMPLATE = {
     SAMPLE_DOWNLOADED: 'Sample file downloaded',
 } as const;
 
+/**
+ * Settings-related toast messages
+ */
 export const TOAST_SETTINGS = {
     VALIDATION_ERRORS: 'Please fix validation errors before saving',
     SAVE_SUCCESS: 'Settings saved successfully',
     SAVE_ERROR: 'Failed to save settings',
 } as const;
-
-/**
- * Helper to format error messages with details
- */
-export const formatParseError = (error: unknown): string => {
-    const message = getErrorMessage(error);
-    return `${TOAST_FILE.PARSE_ERROR}: ${message}`;
-};
-
-/**
- * Helper to format auto-mapping toast
- */
-export const formatAutoMapped = (count: number): string => {
-    return TOAST_MAPPING.AUTO_MAPPED.replace('{count}', String(count));
-};
 
 /**
  * Helper to format parsed records toast
@@ -159,17 +140,10 @@ export const formatParsedRecords = (count: number): string => {
 };
 
 /**
- * Helper to format parsed rows with columns toast
+ * Helper to format error messages with details
  */
-export const formatParsedRowsColumns = (rows: number, columns: number): string => {
-    return TOAST_FILE.PARSED_ROWS_COLUMNS
-        .replace('{rows}', rows.toLocaleString())
-        .replace('{columns}', String(columns));
+export const formatParseError = (error: unknown): string => {
+    const message = getErrorMessage(error);
+    return `${TOAST_FILE.PARSE_ERROR}: ${message}`;
 };
 
-/**
- * Helper to format missing required fields toast
- */
-export const formatMissingRequired = (fields: string[]): string => {
-    return TOAST_FILE.MISSING_REQUIRED.replace('{fields}', fields.join(', '));
-};

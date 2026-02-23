@@ -6,8 +6,6 @@ import { PipelineRun } from './pipeline-run.entity';
 import { Pipeline } from './pipeline.entity';
 import { TABLE_NAMES } from '../../constants/table-names';
 
-export { LogLevel } from '../../constants/enums';
-
 @Entity(TABLE_NAMES.PIPELINE_LOG)
 @Index(['level'])
 @Index(['stepKey'])

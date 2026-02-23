@@ -84,7 +84,7 @@ function LogsPage() {
                     </TabsContent>
 
                     <TabsContent value="realtime">
-                        <RealtimeLogTab />
+                        {activeTab === 'realtime' && <RealtimeLogTab />}
                     </TabsContent>
                 </Tabs>
             </PageBlock>

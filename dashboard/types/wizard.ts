@@ -9,16 +9,19 @@ export interface WizardStep {
 }
 
 export interface ImportSourceConfig {
-    type: 'FILE' | 'API' | 'DATABASE' | 'WEBHOOK' | 'CDC';
+    type: 'FILE' | 'API' | 'DATABASE' | 'WEBHOOK' | 'CDC' | (string & {});
     fileConfig?: FileSourceConfig;
     apiConfig?: ApiSourceConfig;
     databaseConfig?: DatabaseSourceConfig;
     webhookConfig?: WebhookSourceConfig;
     cdcConfig?: CdcSourceConfig;
+    /** Dynamic source types store their config under `${type.toLowerCase()}Config`. */
+    [key: string]: unknown;
 }
 
 export interface CdcSourceConfig {
     connectionId: string;
+    databaseType: string;
     table: string;
     trackingColumn: string;
     trackingType: 'TIMESTAMP' | 'VERSION';
@@ -47,8 +50,12 @@ export interface ApiSourceConfig {
 }
 
 export interface DatabaseSourceConfig {
-    connectionId: string;
+    connectionCode: string;
+    databaseType: string;
     query: string;
+    host?: string;
+    port?: number;
+    database?: string;
 }
 
 export interface WebhookSourceConfig {
@@ -102,27 +109,25 @@ export interface ExportField {
 }
 
 export interface ExportFormatConfig {
-    type: 'CSV' | 'JSON' | 'XML' | 'GOOGLE_SHOPPING' | 'META_CATALOG' | 'CUSTOM';
-    options: {
-        delimiter?: string;
-        includeHeaders?: boolean;
-        quoteAll?: boolean;
-        encoding?: string;
-        pretty?: boolean;
-        rootElement?: string;
-        xmlRoot?: string;
-        xmlItem?: string;
+    /** Known: CSV, JSON, XML, GOOGLE_SHOPPING, META_CATALOG, AMAZON. Dynamic adapters may add more. */
+    type: 'CSV' | 'JSON' | 'XML' | 'GOOGLE_SHOPPING' | 'META_CATALOG' | 'AMAZON' | (string & {});
+    /** Schema-driven format options. Keys come from exporter adapter schema fields with group 'format-options'. */
+    options: Record<string, unknown> & {
+        /** Feed template identifier for feed-based formats */
         feedTemplate?: string;
     };
 }
 
 export interface DestinationConfig {
-    type: 'FILE' | 'SFTP' | 'HTTP' | 'S3' | 'ASSET' | 'WEBHOOK';
+    type: 'FILE' | 'SFTP' | 'FTP' | 'HTTP' | 'S3' | 'WEBHOOK' | 'DOWNLOAD' | 'EMAIL' | 'LOCAL' | (string & {});
     fileConfig?: FileDestinationConfig;
     sftpConfig?: SftpDestinationConfig;
+    ftpConfig?: FtpDestinationConfig;
     httpConfig?: HttpDestinationConfig;
     s3Config?: S3DestinationConfig;
     webhookConfig?: WebhookDestinationConfig;
+    emailConfig?: EmailDestinationConfig;
+    localConfig?: LocalDestinationConfig;
 }
 
 export interface FileDestinationConfig {
@@ -135,8 +140,8 @@ export interface SftpDestinationConfig {
     host: string;
     port: number;
     username: string;
-    passwordSecretId?: string;
-    keySecretId?: string;
+    passwordSecretCode?: string;
+    privateKeySecretCode?: string;
     remotePath: string;
 }
 
@@ -152,13 +157,35 @@ export interface S3DestinationConfig {
     bucket: string;
     region: string;
     key: string;
-    accessKeyId?: string;
-    secretAccessKeySecretId?: string;
+    accessKeyIdSecretCode?: string;
+    secretAccessKeySecretCode?: string;
+    endpoint?: string;
+    forcePathStyle?: boolean;
+}
+
+export interface FtpDestinationConfig {
+    host: string;
+    port: number;
+    username: string;
+    passwordSecretCode?: string;
+    remotePath: string;
+    secure?: boolean;
 }
 
 export interface WebhookDestinationConfig {
     url: string;
     includeMetadata?: boolean;
+}
+
+export interface EmailDestinationConfig {
+    to: string;
+    subject: string;
+    body?: string;
+    attachFile?: boolean;
+}
+
+export interface LocalDestinationConfig {
+    directory: string;
 }
 
 export interface ExportTriggerConfig {

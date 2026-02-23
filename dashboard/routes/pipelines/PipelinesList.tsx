@@ -8,7 +8,7 @@ import {
     PermissionGuard,
 } from '@vendure/dashboard';
 import { Link } from '@tanstack/react-router';
-import { PlusIcon } from 'lucide-react';
+import { Download, PlusIcon, Upload } from 'lucide-react';
 import { DATAHUB_NAV_ID, DATAHUB_NAV_SECTION, DATAHUB_PERMISSIONS, ROUTES, getStatusBadgeVariant, PIPELINE_STATUS } from '../../constants';
 import { pipelinesListDocument, deletePipelineDocument } from '../../hooks';
 import type { DataHubPipeline } from '../../types';
@@ -62,6 +62,18 @@ export const pipelinesList: DashboardRouteDefinition = {
                 }}
             >
                 <PageActionBarRight>
+                    <Button variant="outline" asChild data-testid="datahub-import-wizard-button">
+                        <Link to="./import-wizard">
+                            <Upload className="mr-2 h-4 w-4" />
+                            Import Wizard
+                        </Link>
+                    </Button>
+                    <Button variant="outline" asChild data-testid="datahub-export-wizard-button">
+                        <Link to="./export-wizard">
+                            <Download className="mr-2 h-4 w-4" />
+                            Export Wizard
+                        </Link>
+                    </Button>
                     <Button asChild data-testid="datahub-pipeline-create-button">
                         <Link to="./new">
                             <PlusIcon className="mr-2 h-4 w-4" />

@@ -2,7 +2,7 @@ import { ID, RequestContext, CustomerGroupService, CustomerService, CountryServi
 import { DataHubLogger } from '../../services/logger';
 import { CustomerAddressInput } from './types';
 
-export { isRecoverableError, shouldUpdateField, isValidEmail } from '../shared-helpers';
+export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
 
 /**
  * Assigns a customer to multiple groups.

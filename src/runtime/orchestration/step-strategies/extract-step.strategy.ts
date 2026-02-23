@@ -13,6 +13,7 @@ import {
     createStepDetail,
 } from './step-strategy.interface';
 import { getAdapterCode } from '../../../types/step-configs';
+import { StepType as StepTypeEnum, DomainEventType, HookStage } from '../../../constants/enums';
 
 export class ExtractStepStrategy implements StepStrategy {
     constructor(private readonly extractExecutor: ExtractExecutor) {}
@@ -42,20 +43,20 @@ export class ExtractStepStrategy implements StepStrategy {
             failed: 0,
             detail: createStepDetail(step, { out: out.length }, durationMs),
             counters: { extracted: out.length },
-            event: { type: 'RECORD_EXTRACTED', data: { stepKey: step.key, count: out.length } },
+            event: { type: DomainEventType.RECORD_EXTRACTED, data: { stepKey: step.key, count: out.length } },
         };
     }
 
     private async logStepStart(context: StepExecutionContext): Promise<void> {
         const { ctx, step, stepLog } = context;
         if (stepLog?.onStepStart) {
-            await stepLog.onStepStart(ctx, step.key, 'EXTRACT', 0);
+            await stepLog.onStepStart(ctx, step.key, StepTypeEnum.EXTRACT, 0);
         }
     }
 
     private async runBeforeHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'BEFORE_EXTRACT', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.BEFORE_EXTRACT, records, runId, pipelineId);
         return result.records;
     }
 
@@ -66,7 +67,7 @@ export class ExtractStepStrategy implements StepStrategy {
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
         const { ctx, definition, hookService, runId, pipelineId } = context;
-        const result = await hookService.runInterceptors(ctx, definition, 'AFTER_EXTRACT', records, runId, pipelineId);
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.AFTER_EXTRACT, records, runId, pipelineId);
         return result.records;
     }
 
@@ -88,7 +89,7 @@ export class ExtractStepStrategy implements StepStrategy {
         if (stepLog?.onStepComplete) {
             await stepLog.onStepComplete(ctx, {
                 stepKey: step.key,
-                stepType: 'EXTRACT',
+                stepType: StepTypeEnum.EXTRACT,
                 adapterCode,
                 recordsIn: 0,
                 recordsOut: count,

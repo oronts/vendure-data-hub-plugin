@@ -6,8 +6,6 @@
  */
 
 import {
-    isValidEmail as sharedIsValidEmail,
-    isValidUrl as sharedIsValidUrl,
     ERROR_MESSAGES as SHARED_ERROR_MESSAGES,
 } from '../../shared';
 
@@ -26,6 +24,3 @@ export const ERROR_MESSAGES = {
     BRANCH_NAME_EMPTY: 'Branch name cannot be empty',
     DUPLICATE_BRANCH_NAMES: 'Branch names must be unique',
 } as const;
-
-export const isValidEmail = sharedIsValidEmail;
-export const isValidUrl = sharedIsValidUrl;

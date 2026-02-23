@@ -8,6 +8,8 @@ import { TIME_UNITS } from '../../../shared/constants';
 import { HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES } from '../../constants/services';
 import { CircuitState, HttpMethod } from '../../constants/enums';
 import { validateUrlSafety } from '../../utils/url-security.utils';
+import { sleep } from '../../utils/retry.utils';
+import { ensureError } from '../../utils/error.utils';
 
 /**
  * In-memory cache for HTTP lookup responses
@@ -178,7 +180,7 @@ async function checkRateLimit(endpoint: string, requestsPerSecond?: number): Pro
 
     // Refill tokens based on time elapsed
     const elapsed = now - state.lastRefill;
-    const tokensToAdd = (elapsed / 1000) * limit;
+    const tokensToAdd = (elapsed / TIME_UNITS.SECOND) * limit;
     state.tokens = Math.min(limit, state.tokens + tokensToAdd);
     state.lastRefill = now;
 
@@ -191,7 +193,7 @@ async function checkRateLimit(endpoint: string, requestsPerSecond?: number): Pro
     // Wait if no tokens available
     if (state.tokens < 1) {
         const waitTime = Math.ceil((1 - state.tokens) * (TIME_UNITS.SECOND / limit));
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+        await sleep(waitTime);
         state.tokens = 1;
     }
 
@@ -462,7 +464,7 @@ export async function applyHttpLookup(
             // Parse response
             let responseData: JsonValue;
             const contentType = response.headers.get('content-type') ?? '';
-            if (contentType.includes('application/json')) {
+            if (contentType.includes(CONTENT_TYPES.JSON)) {
                 responseData = await response.json() as JsonValue;
             } else {
                 responseData = await response.text();
@@ -498,7 +500,7 @@ export async function applyHttpLookup(
             setNestedValue(result, target, extractedData);
             return { record: result };
         } catch (error) {
-            lastError = error instanceof Error ? error : new Error(String(error));
+            lastError = ensureError(error);
 
             // Don't retry on abort (timeout) or non-retryable errors
             if (error instanceof Error && error.name === 'AbortError') {
@@ -514,7 +516,7 @@ export async function applyHttpLookup(
 
             // Exponential backoff for retries
             if (attempt < maxRetries) {
-                await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * SINK.BACKOFF_BASE_DELAY_MS));
+                await sleep(Math.pow(2, attempt) * SINK.BACKOFF_BASE_DELAY_MS);
             }
         }
     }

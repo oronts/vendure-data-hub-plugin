@@ -10,8 +10,6 @@
 export {
     TIME_UNITS,
     PORTS,
-    DEFAULT_HOSTS,
-    SEARCH_SERVICE_PORTS,
     HTTP,
     BATCH,
     RETENTION,

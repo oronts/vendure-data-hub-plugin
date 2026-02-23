@@ -10,6 +10,7 @@ import {
     VendureCategoryInput,
 } from '../types';
 import { JsonObject } from '../../../src/types';
+import { getNestedValue } from '../../../shared/utils/object-path';
 import { priceToCents } from '../utils/math.utils';
 
 // ============================================================================
@@ -181,26 +182,26 @@ export function transformProduct(
     const mapping_ = { ...DEFAULT_PRODUCT_MAPPING, ...mapping };
 
     const sku = String(
-        getField(pimcoreProduct, mapping_.skuField) ??
-        getField(pimcoreProduct, 'itemNumber') ??
+        getNestedValue(pimcoreProduct, mapping_.skuField) ??
+        getNestedValue(pimcoreProduct, 'itemNumber') ??
         pimcoreProduct.key ??
         pimcoreProduct.id
     );
 
-    const rawNameField = getField(pimcoreProduct, mapping_.nameField);
+    const rawNameField = getNestedValue(pimcoreProduct, mapping_.nameField);
     const nameField = toStringOrLocalized(rawNameField);
     const name = extractLocalizedValue(nameField, defaultLanguage);
 
-    const rawSlugField = getField(pimcoreProduct, mapping_.slugField) ?? getField(pimcoreProduct, 'urlKey');
+    const rawSlugField = getNestedValue(pimcoreProduct, mapping_.slugField) ?? getNestedValue(pimcoreProduct, 'urlKey');
     const slugField = toStringOrLocalized(rawSlugField);
     let slug = extractLocalizedValue(slugField, defaultLanguage);
     if (!slug) slug = generateSlug(name || sku);
 
-    const rawDescField = getField(pimcoreProduct, mapping_.descriptionField);
+    const rawDescField = getNestedValue(pimcoreProduct, mapping_.descriptionField);
     const descField = toStringOrLocalized(rawDescField);
     const description = extractLocalizedValue(descField, defaultLanguage);
 
-    const enabledField = getField(pimcoreProduct, mapping_.enabledField);
+    const enabledField = getNestedValue(pimcoreProduct, mapping_.enabledField);
     const enabled = enabledField !== false && enabledField !== 'false' && enabledField !== 0;
 
     const result: VendureProductInput = {
@@ -219,7 +220,7 @@ export function transformProduct(
         );
     }
 
-    const rawAssets = getField(pimcoreProduct, mapping_.assetsField);
+    const rawAssets = getNestedValue(pimcoreProduct, mapping_.assetsField);
     if (isAssetReferenceArray(rawAssets) && rawAssets.length > 0) {
         result.assetIds = rawAssets.map(a => `pimcore:asset:${a.id}`);
         result.featuredAssetId = result.assetIds[0];
@@ -228,7 +229,7 @@ export function transformProduct(
     if (mapping?.customFields) {
         result.customFields = {};
         for (const [vendureField, pimcoreField] of Object.entries(mapping.customFields)) {
-            const value = getField(pimcoreProduct, pimcoreField);
+            const value = getNestedValue(pimcoreProduct, pimcoreField);
             if (value !== undefined) result.customFields[vendureField] = value;
         }
     }
@@ -246,18 +247,18 @@ export function transformVariant(
     const mapping_ = { ...DEFAULT_PRODUCT_MAPPING, ...mapping };
 
     const sku = String(
-        getField(pimcoreVariant, mapping_.skuField) ??
-        getField(pimcoreVariant, 'itemNumber') ??
+        getNestedValue(pimcoreVariant, mapping_.skuField) ??
+        getNestedValue(pimcoreVariant, 'itemNumber') ??
         `${parentSku}-${pimcoreVariant.key ?? pimcoreVariant.id}`
     );
 
-    const rawNameField = getField(pimcoreVariant, mapping_.nameField);
+    const rawNameField = getNestedValue(pimcoreVariant, mapping_.nameField);
     const nameField = toStringOrLocalized(rawNameField);
     const name = extractLocalizedValue(nameField, defaultLanguage) || sku;
 
-    const rawPrice = getField(pimcoreVariant, 'price');
+    const rawPrice = getNestedValue(pimcoreVariant, 'price');
     const price = priceToCents(typeof rawPrice === 'number' || typeof rawPrice === 'string' ? rawPrice : undefined);
-    const rawStockQuantity = getField(pimcoreVariant, 'stockQuantity');
+    const rawStockQuantity = getNestedValue(pimcoreVariant, 'stockQuantity');
     const stockQuantity = typeof rawStockQuantity === 'number' ? rawStockQuantity : undefined;
 
     const result: VendureVariantInput = {
@@ -290,24 +291,24 @@ export function transformCategory(
 ): VendureCategoryInput {
     const mapping_ = { ...DEFAULT_CATEGORY_MAPPING, ...mapping };
 
-    const rawNameField = getField(pimcoreCategory, mapping_.nameField);
+    const rawNameField = getNestedValue(pimcoreCategory, mapping_.nameField);
     const nameField = toStringOrLocalized(rawNameField);
     const name = extractLocalizedValue(nameField, defaultLanguage) ||
         pimcoreCategory.key || String(pimcoreCategory.id);
 
-    const rawSlugField = getField(pimcoreCategory, mapping_.slugField);
+    const rawSlugField = getNestedValue(pimcoreCategory, mapping_.slugField);
     const slugField = toStringOrLocalized(rawSlugField);
     let slug = extractLocalizedValue(slugField, defaultLanguage);
     if (!slug) slug = generateSlug(name);
 
-    const rawDescField = getField(pimcoreCategory, mapping_.descriptionField);
+    const rawDescField = getNestedValue(pimcoreCategory, mapping_.descriptionField);
     const descField = toStringOrLocalized(rawDescField);
     const description = extractLocalizedValue(descField, defaultLanguage);
 
-    const rawParent = getField(pimcoreCategory, mapping_.parentField);
+    const rawParent = getNestedValue(pimcoreCategory, mapping_.parentField);
     const parent = isParentReference(rawParent) ? rawParent : undefined;
     const parentExternalId = parent?.id ? `pimcore:category:${parent.id}` : undefined;
-    const rawPosition = getField(pimcoreCategory, mapping_.positionField);
+    const rawPosition = getNestedValue(pimcoreCategory, mapping_.positionField);
     const position = typeof rawPosition === 'number' ? rawPosition : undefined;
 
     const result: VendureCategoryInput = {
@@ -342,13 +343,13 @@ export function transformAsset(
 ): JsonObject {
     const mapping_ = { ...DEFAULT_ASSET_MAPPING, ...mapping };
 
-    const rawUrl = getField(pimcoreAsset, mapping_.urlField);
+    const rawUrl = getNestedValue(pimcoreAsset, mapping_.urlField);
     let url = typeof rawUrl === 'string' ? rawUrl : undefined;
     if (url && baseUrl && !url.startsWith('http')) {
         url = `${baseUrl.replace(/\/$/, '')}${url.startsWith('/') ? '' : '/'}${url}`;
     }
 
-    const rawAlt = getField(pimcoreAsset, mapping_.altField);
+    const rawAlt = getNestedValue(pimcoreAsset, mapping_.altField);
     const alt = typeof rawAlt === 'string' ? rawAlt : undefined;
     let metaAlt: string | undefined;
     if (pimcoreAsset.metadata) {
@@ -368,16 +369,3 @@ export function transformAsset(
     if (pimcoreAsset.filesize != null) result.fileSize = pimcoreAsset.filesize;
     return result;
 }
-
-function getField(obj: Record<string, unknown>, path: string): unknown {
-    const parts = path.split('.');
-    let current: unknown = obj;
-
-    for (const part of parts) {
-        if (current == null || typeof current !== 'object') return undefined;
-        current = (current as Record<string, unknown>)[part];
-    }
-
-    return current;
-}
-

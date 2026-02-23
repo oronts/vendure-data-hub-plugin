@@ -76,6 +76,8 @@ export const SCRIPT_OPERATOR_DEFINITION: AdapterDefinition = {
     name: 'Script',
     description: 'Execute inline JavaScript code to transform records. Use for complex logic that cannot be expressed with standard operators.',
     category: 'TRANSFORMATION',
+    categoryLabel: 'Scripting',
+    categoryOrder: 8,
     schema: {
         fields: [
             {
@@ -218,7 +220,7 @@ async function executeBatchScript(
         // Create isolated vm context with frozen sandbox globals
         const vmContext = createSafeVmContext({
             ...sandboxGlobals,
-            // Deep-copy records and context to prevent cross-boundary mutation
+            // Intentional: creates new object identity for VM/sandbox isolation (structuredClone not available in VM context)
             __records__: JSON.parse(JSON.stringify([...records])),
             __context__: JSON.parse(JSON.stringify(scriptContext)),
         });
@@ -298,7 +300,7 @@ async function executeSingleRecordScript(
             // Create a fresh isolated context per record with frozen sandbox globals
             const vmContext = createSafeVmContext({
                 ...sandboxGlobals,
-                // Deep-copy record and context to prevent cross-boundary mutation
+                // Intentional: creates new object identity for VM/sandbox isolation (structuredClone not available in VM context)
                 __record__: JSON.parse(JSON.stringify({ ...record })),
                 __index__: i,
                 __context__: JSON.parse(JSON.stringify(scriptContext)),

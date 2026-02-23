@@ -10,13 +10,19 @@ import {
     createFacetSyncPipeline,
 } from './pipelines';
 import { validateEndpointUrl } from './utils/security.utils';
+import { DEFAULT_CHANNEL_CODE } from '../../shared/constants';
 
 export * from './types';
 export * from './extractors';
 export * from './transforms';
 export * from './pipelines';
 
-const DEFAULT_CHANNEL = '__default_channel__';
+/** Default secret code for the Pimcore DataHub API key */
+export const PIMCORE_API_KEY_SECRET = 'pimcore-api-key';
+/** Default secret code for the Pimcore webhook authentication key */
+export const PIMCORE_WEBHOOK_KEY_SECRET = 'pimcore-webhook-key';
+/** Webhook signature algorithm used by Pimcore webhooks */
+export const PIMCORE_WEBHOOK_SIGNATURE = 'hmac-sha256';
 
 export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorConfig> = {
     code: 'pimcore',
@@ -30,9 +36,116 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
     extractors: [pimcoreGraphQLExtractor],
     loaders: [],
 
+    importTemplates: [
+        {
+            id: 'pimcore-product-sync',
+            name: 'Pimcore Product Sync',
+            description: 'Sync products from Pimcore PIM via GraphQL DataHub API. Maps Pimcore product objects to Vendure products with variants, pricing, and assets.',
+            category: 'products',
+            icon: 'database',
+            requiredFields: ['name', 'sku', 'price'],
+            optionalFields: ['description', 'slug', 'images', 'categories', 'variants', 'enabled'],
+            featured: true,
+            tags: ['pimcore', 'pim', 'sync', 'api'],
+            formats: ['API'],
+            definition: {
+                sourceType: 'API',
+                targetEntity: 'Product',
+                existingRecords: 'UPDATE',
+                lookupFields: ['sku'],
+                fieldMappings: [
+                    { sourceField: 'name', targetField: 'name' },
+                    { sourceField: 'sku', targetField: 'sku' },
+                    { sourceField: 'price', targetField: 'price' },
+                    { sourceField: 'description', targetField: 'description' },
+                    { sourceField: 'slug', targetField: 'slug' },
+                ],
+            },
+        },
+        {
+            id: 'pimcore-category-sync',
+            name: 'Pimcore Category Sync',
+            description: 'Sync categories from Pimcore to Vendure collections. Preserves parent-child hierarchy and supports multi-language.',
+            category: 'catalog',
+            icon: 'folder-tree',
+            requiredFields: ['name'],
+            optionalFields: ['slug', 'description', 'parent', 'position'],
+            tags: ['pimcore', 'pim', 'sync', 'api'],
+            formats: ['API'],
+            definition: {
+                sourceType: 'API',
+                targetEntity: 'Collection',
+                existingRecords: 'UPDATE',
+                lookupFields: ['name'],
+                fieldMappings: [
+                    { sourceField: 'name', targetField: 'name' },
+                    { sourceField: 'slug', targetField: 'slug' },
+                    { sourceField: 'description', targetField: 'description' },
+                ],
+            },
+        },
+        {
+            id: 'pimcore-asset-sync',
+            name: 'Pimcore Asset Sync',
+            description: 'Sync digital assets from Pimcore DAM to Vendure. Imports images, documents, and media files with metadata.',
+            category: 'catalog',
+            icon: 'image',
+            requiredFields: ['filename', 'fullPath'],
+            optionalFields: ['mimetype', 'filesize', 'metadata'],
+            tags: ['pimcore', 'dam', 'assets', 'media'],
+            formats: ['API'],
+            definition: {
+                sourceType: 'API',
+                targetEntity: 'Asset',
+                existingRecords: 'UPDATE',
+                lookupFields: ['filename'],
+                fieldMappings: [
+                    { sourceField: 'filename', targetField: 'filename' },
+                    { sourceField: 'fullPath', targetField: 'source' },
+                ],
+            },
+        },
+        {
+            id: 'pimcore-facet-sync',
+            name: 'Pimcore Facet/Attribute Sync',
+            description: 'Sync product attributes and classification data from Pimcore to Vendure facets. Handles attribute groups and select options.',
+            category: 'catalog',
+            icon: 'tag',
+            requiredFields: ['key'],
+            optionalFields: ['title', 'options'],
+            tags: ['pimcore', 'pim', 'attributes', 'facets'],
+            formats: ['API'],
+            definition: {
+                sourceType: 'API',
+                targetEntity: 'Facet',
+                existingRecords: 'UPDATE',
+                lookupFields: ['key'],
+                fieldMappings: [
+                    { sourceField: 'key', targetField: 'code' },
+                    { sourceField: 'title', targetField: 'name' },
+                ],
+            },
+        },
+    ],
+
+    exportTemplates: [
+        {
+            id: 'pimcore-product-export',
+            name: 'Product Export for Pimcore',
+            description: 'Export Vendure product catalog as JSON for import into Pimcore PIM. Includes variants, pricing, and custom fields.',
+            icon: 'upload',
+            format: 'JSON',
+            tags: ['pimcore', 'pim', 'integration'],
+            definition: {
+                sourceEntity: 'Product',
+                formatOptions: { pretty: true, rootElement: 'products' },
+            },
+        },
+    ],
+
     defaultConfig: {
         enabled: true,
-        vendureChannel: DEFAULT_CHANNEL,
+        vendureChannel: DEFAULT_CHANNEL_CODE,
         defaultLanguage: 'en',
         languages: ['en'],
         sync: {
@@ -97,5 +210,3 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
 };
 
 export const PimcoreConnector = defineConnector(pimcoreConnectorDefinition);
-
-export default PimcoreConnector;

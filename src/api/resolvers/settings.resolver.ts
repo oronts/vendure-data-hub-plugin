@@ -1,6 +1,6 @@
 import { Mutation, Query, Resolver, Args } from '@nestjs/graphql';
 import { Inject } from '@nestjs/common';
-import { DATAHUB_PLUGIN_OPTIONS, LogPersistenceLevel, RESOLVER_ERROR_MESSAGES } from '../../constants/index';
+import { DATAHUB_PLUGIN_OPTIONS, LogPersistenceLevel, RESOLVER_ERROR_MESSAGES, RETENTION } from '../../constants/index';
 import { DataHubPluginOptions } from '../../types/index';
 import { Allow, ID, Transaction } from '@vendure/core';
 import { DataHubPipelinePermission, UpdateDataHubSettingsPermission } from '../../permissions';
@@ -29,7 +29,7 @@ interface SettingsGraphQLInput {
     logPersistenceLevel?: string;
 }
 
-const MAX_RETENTION_DAYS = 3650; // 10 years maximum
+const MAX_RETENTION_DAYS = RETENTION.MAX_DAYS;
 
 @Resolver()
 export class DataHubSettingsAdminResolver {

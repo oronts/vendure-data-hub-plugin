@@ -145,5 +145,3 @@ export const shopifyProductsExtractor: ExtractorAdapter<ShopifyProductsConfig> =
         context.logger.info(`Shopify extractor: Completed extracting ${products.length} products`);
     },
 };
-
-export default shopifyProductsExtractor;

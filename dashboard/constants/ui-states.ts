@@ -25,36 +25,4 @@ export const TEST_STATUS = {
     WARNING: 'warning',
 } as const;
 
-/** Checkpoint strategy types */
-export const CHECKPOINT_STRATEGY = {
-    COUNT: 'COUNT',
-    INTERVAL: 'INTERVAL',
-    TIMESTAMP: 'TIMESTAMP',
-} as const;
-export type CheckpointStrategy = typeof CHECKPOINT_STRATEGY[keyof typeof CHECKPOINT_STRATEGY];
-
-/** Adapter type to node type mapping */
-export const ADAPTER_TYPE_TO_NODE_TYPE: Record<string, string> = {
-    EXTRACTOR: 'source',
-    OPERATOR: 'transform',
-    VALIDATOR: 'validate',
-    ENRICHER: 'transform',
-    ROUTER: 'condition',
-    LOADER: 'load',
-    EXPORTER: 'export',
-    FEED: 'feed',
-    SINK: 'sink',
-} as const;
-
-/** Adapter type to category mapping */
-export const ADAPTER_TYPE_TO_CATEGORY: Record<string, string> = {
-    EXTRACTOR: 'SOURCES',
-    OPERATOR: 'TRANSFORMS',
-    VALIDATOR: 'VALIDATION',
-    ENRICHER: 'TRANSFORMS',
-    ROUTER: 'ROUTING',
-    LOADER: 'DESTINATIONS',
-    EXPORTER: 'EXPORTS',
-    FEED: 'FEEDS',
-    SINK: 'SINKS',
-} as const;
+export { CHECKPOINT_STRATEGY } from '../../shared/constants';

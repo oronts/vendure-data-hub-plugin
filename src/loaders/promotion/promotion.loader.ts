@@ -15,7 +15,14 @@ import {
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+    createLookupHelper,
+} from '../base';
 import {
     PromotionInput,
     PROMOTION_LOADER_METADATA,
@@ -43,6 +50,8 @@ export class PromotionLoader extends BaseEntityLoader<PromotionInput, Promotion>
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = PROMOTION_LOADER_METADATA;
 
+    private readonly lookupHelper: EntityLookupHelper<PromotionService, Promotion, PromotionInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private promotionService: PromotionService,
@@ -50,6 +59,10 @@ export class PromotionLoader extends BaseEntityLoader<PromotionInput, Promotion>
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PROMOTION_LOADER);
+        this.lookupHelper = createLookupHelper<PromotionService, Promotion, PromotionInput>(this.promotionService)
+            .addFilterStrategy('couponCode', 'couponCode', (ctx, svc, opts) => svc.findAll(ctx, opts))
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id))
+            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts));
     }
 
     protected getDuplicateErrorMessage(record: PromotionInput): string {
@@ -61,35 +74,7 @@ export class PromotionLoader extends BaseEntityLoader<PromotionInput, Promotion>
         lookupFields: string[],
         record: PromotionInput,
     ): Promise<ExistingEntityLookupResult<Promotion> | null> {
-        // Primary lookup: by coupon code
-        if (record.couponCode && lookupFields.includes('couponCode')) {
-            const promotions = await this.promotionService.findAll(ctx, {
-                filter: { couponCode: { eq: record.couponCode } },
-            });
-            if (promotions.totalItems > 0) {
-                return { id: promotions.items[0].id, entity: promotions.items[0] };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const promotion = await this.promotionService.findOne(ctx, record.id as ID);
-            if (promotion) {
-                return { id: promotion.id, entity: promotion };
-            }
-        }
-
-        // Fallback: by name (exact match)
-        if (record.name && lookupFields.includes('name')) {
-            const promotions = await this.promotionService.findAll(ctx, {
-                filter: { name: { eq: record.name } },
-            });
-            if (promotions.totalItems > 0) {
-                return { id: promotions.items[0].id, entity: promotions.items[0] };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -97,54 +82,43 @@ export class PromotionLoader extends BaseEntityLoader<PromotionInput, Promotion>
         record: PromotionInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
+        const builder = new ValidationBuilder()
+            .requireStringForCreate('name', record.name, operation, 'Promotion name is required');
 
         if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
-                errors.push({ field: 'name', message: 'Promotion name is required', code: 'REQUIRED' });
-            }
-
-            if (!record.actions || record.actions.length === 0) {
-                warnings.push({
-                    field: 'actions',
-                    message: 'No actions specified. Promotion will have no effect.',
-                });
-            }
+            builder.addWarningIf(
+                !record.actions || record.actions.length === 0,
+                'actions',
+                'No actions specified. Promotion will have no effect.',
+            );
         }
 
         if (record.startsAt && record.endsAt) {
             const start = new Date(record.startsAt);
             const end = new Date(record.endsAt);
-            if (start >= end) {
-                errors.push({
-                    field: 'endsAt',
-                    message: 'End date must be after start date',
-                    code: 'INVALID_DATE_RANGE',
-                });
-            }
+            builder.addErrorIf(
+                start >= end,
+                'endsAt',
+                'End date must be after start date',
+                'INVALID_DATE_RANGE',
+            );
         }
 
-        if (record.usageLimit !== undefined && record.usageLimit < 0) {
-            errors.push({
-                field: 'usageLimit',
-                message: 'Usage limit must be non-negative',
-                code: 'INVALID_VALUE',
-            });
-        }
-        if (record.perCustomerUsageLimit !== undefined && record.perCustomerUsageLimit < 0) {
-            errors.push({
-                field: 'perCustomerUsageLimit',
-                message: 'Per-customer usage limit must be non-negative',
-                code: 'INVALID_VALUE',
-            });
-        }
+        builder
+            .addErrorIf(
+                record.usageLimit !== undefined && record.usageLimit < 0,
+                'usageLimit',
+                'Usage limit must be non-negative',
+                'INVALID_VALUE',
+            )
+            .addErrorIf(
+                record.perCustomerUsageLimit !== undefined && record.perCustomerUsageLimit < 0,
+                'perCustomerUsageLimit',
+                'Per-customer usage limit must be non-negative',
+                'INVALID_VALUE',
+            );
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

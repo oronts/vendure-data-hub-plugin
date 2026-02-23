@@ -1,5 +1,4 @@
-// Shared validation utilities - single source of truth for frontend and backend
-// Cron validation, email/URL patterns, confidence scoring, etc.
+// Shared validation utilities for frontend and backend
 
 import { CONFIDENCE_THRESHOLDS } from '../constants';
 
@@ -75,7 +74,7 @@ export function isValidPipelineCode(code: string): boolean {
     return PIPELINE_CODE_PATTERN.test(code);
 }
 
-// ─── Cron validation (single source of truth) ──────────────────────
+// ─── Cron validation ────────────────────────────────────────────────
 
 const WEEKDAY_NAMES: Record<string, number> = {
     sun: 0, sunday: 0,

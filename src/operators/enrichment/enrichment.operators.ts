@@ -13,12 +13,16 @@ import {
     applyDefault,
     applyHttpLookupBatch,
 } from './helpers';
-import { HTTP_METHOD_OPTIONS } from '../constants';
+import { HTTP_METHOD_GET_POST_OPTIONS } from '../../constants/adapter-schema-options';
+import { createRecordOperator } from '../operator-factory';
 
 export const LOOKUP_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'lookup',
     description: 'Lookup value from a map and set to target field.',
+    category: 'ENRICHMENT',
+    categoryLabel: 'Enrichment',
+    categoryOrder: 7,
     pure: true,
     schema: {
         fields: [
@@ -34,6 +38,9 @@ export const ENRICH_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'enrich',
     description: 'Enrich or default fields on records. "set" overwrites, "defaults" only applies to missing fields.',
+    category: 'ENRICHMENT',
+    categoryLabel: 'Enrichment',
+    categoryOrder: 7,
     pure: true,
     schema: {
         fields: [
@@ -57,6 +64,9 @@ export const COALESCE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'coalesce',
     description: 'Return the first non-null value from a list of field paths.',
+    category: 'ENRICHMENT',
+    categoryLabel: 'Enrichment',
+    categoryOrder: 7,
     pure: true,
     schema: {
         fields: [
@@ -77,6 +87,9 @@ export const DEFAULT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'default',
     description: 'Set a default value if field is null or undefined.',
+    category: 'ENRICHMENT',
+    categoryLabel: 'Enrichment',
+    categoryOrder: 7,
     pure: true,
     schema: {
         fields: [
@@ -86,61 +99,38 @@ export const DEFAULT_OPERATOR_DEFINITION: AdapterDefinition = {
     },
 };
 
-export function lookupOperator(
-    records: readonly JsonObject[],
-    config: LookupOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyLookupOperator(record: JsonObject, config: LookupOperatorConfig): JsonObject {
     if (!config.source || !config.map || !config.target) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyLookup(record, config.source, config.map, config.target, config.default),
-    );
-    return { records: results };
+    return applyLookup(record, config.source, config.map, config.target, config.default);
 }
 
-export function enrichOperator(
-    records: readonly JsonObject[],
-    config: EnrichOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record =>
-        applyEnrich(record, config.set, config.defaults),
-    );
-    return { records: results };
+export const lookupOperator = createRecordOperator(applyLookupOperator);
+
+export function applyEnrichOperator(record: JsonObject, config: EnrichOperatorConfig): JsonObject {
+    return applyEnrich(record, config.set, config.defaults);
 }
 
-export function coalesceOperator(
-    records: readonly JsonObject[],
-    config: CoalesceOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const enrichOperator = createRecordOperator(applyEnrichOperator);
+
+export function applyCoalesceOperator(record: JsonObject, config: CoalesceOperatorConfig): JsonObject {
     if (!config.paths || !config.target) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyCoalesce(record, config.paths, config.target, config.default),
-    );
-    return { records: results };
+    return applyCoalesce(record, config.paths, config.target, config.default);
 }
 
-export function defaultOperator(
-    records: readonly JsonObject[],
-    config: DefaultOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const coalesceOperator = createRecordOperator(applyCoalesceOperator);
+
+export function applyDefaultOperator(record: JsonObject, config: DefaultOperatorConfig): JsonObject {
     if (!config.path) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyDefault(record, config.path, config.value),
-    );
-    return { records: results };
+    return applyDefault(record, config.path, config.value);
 }
+
+export const defaultOperator = createRecordOperator(applyDefaultOperator);
 
 export const HTTP_LOOKUP_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
@@ -149,10 +139,12 @@ export const HTTP_LOOKUP_OPERATOR_DEFINITION: AdapterDefinition = {
     pure: false,
     async: true,
     category: 'ENRICHMENT',
+    categoryLabel: 'Enrichment',
+    categoryOrder: 7,
     schema: {
         fields: [
             { key: 'url', label: 'URL', type: 'string', required: true, description: 'HTTP endpoint URL. Use {{field}} for dynamic values.' },
-            { key: 'method', label: 'HTTP Method', type: 'select', options: [...HTTP_METHOD_OPTIONS] },
+            { key: 'method', label: 'HTTP Method', type: 'select', options: HTTP_METHOD_GET_POST_OPTIONS },
             { key: 'target', label: 'Target Field', type: 'string', required: true, description: 'Field path to store the response data.' },
             { key: 'responsePath', label: 'Response Path', type: 'string', description: 'JSON path to extract from response (optional).' },
             { key: 'keyField', label: 'Cache Key Field', type: 'string', description: 'Field to use as cache key. If not set, URL is used.' },

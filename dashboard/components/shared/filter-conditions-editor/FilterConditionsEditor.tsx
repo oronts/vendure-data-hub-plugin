@@ -12,8 +12,10 @@ import {
     Badge,
 } from '@vendure/dashboard';
 import { Plus, Trash2 } from 'lucide-react';
-import { COMPARISON_OPERATORS, COMPONENT_WIDTHS, SENTINEL_VALUES } from '../../../constants';
+import { COMPONENT_WIDTHS, SENTINEL_VALUES } from '../../../constants';
 import type { FilterCondition, FilterOperator } from '../../../types';
+import { useComparisonOperators } from '../../../hooks/api/use-config-options';
+import type { ComparisonOperatorOption } from '../../../hooks/api/use-config-options';
 import { useStableKeys } from '../../../hooks';
 
 export interface FilterConditionsEditorProps {
@@ -44,9 +46,6 @@ export interface FilterConditionsEditorProps {
 /**
  * Shared component for editing filter conditions.
  * Used by pipeline editors and wizards for consistent filter UI.
- *
- * This is the single source of truth for filter condition editing.
- * Use this instead of inline filter UIs.
  */
 export function FilterConditionsEditor({
     conditions,
@@ -61,6 +60,7 @@ export function FilterConditionsEditor({
     addLabel = 'Add Condition',
     compact = false,
 }: FilterConditionsEditorProps) {
+    const { operators: comparisonOperators } = useComparisonOperators();
     const conditionKeys = useStableKeys(conditions, 'condition');
 
     const addCondition = useCallback(() => {
@@ -114,6 +114,7 @@ export function FilterConditionsEditor({
                             key={conditionKeys[index]}
                             condition={condition}
                             fields={fields}
+                            comparisonOperators={comparisonOperators}
                             logic={logic}
                             showLogicBadge={showLogicSelector && index > 0}
                             fieldPlaceholder={fieldPlaceholder}
@@ -132,6 +133,7 @@ export function FilterConditionsEditor({
 interface FilterConditionRowProps {
     condition: FilterCondition;
     fields: string[];
+    comparisonOperators: ComparisonOperatorOption[];
     logic: 'AND' | 'OR';
     showLogicBadge: boolean;
     fieldPlaceholder: string;
@@ -144,6 +146,7 @@ interface FilterConditionRowProps {
 function FilterConditionRow({
     condition,
     fields,
+    comparisonOperators,
     logic,
     showLogicBadge,
     fieldPlaceholder,
@@ -152,7 +155,7 @@ function FilterConditionRow({
     onUpdate,
     onRemove,
 }: FilterConditionRowProps) {
-    const operatorDef = COMPARISON_OPERATORS.find((op) => op.code === condition.operator);
+    const operatorDef = comparisonOperators.find((op) => op.value === condition.operator);
     const showValueInput = !operatorDef?.noValue;
 
     return (
@@ -190,8 +193,8 @@ function FilterConditionRow({
                     <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                    {COMPARISON_OPERATORS.map((op) => (
-                        <SelectItem key={op.code} value={op.code}>
+                    {comparisonOperators.map((op) => (
+                        <SelectItem key={op.value} value={op.value}>
                             {op.label}
                         </SelectItem>
                     ))}

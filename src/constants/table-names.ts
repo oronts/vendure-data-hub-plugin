@@ -18,5 +18,3 @@ export const TABLE_NAMES = {
     RECORD_ERROR: `${TABLE_PREFIX}record_error`,
     RECORD_RETRY_AUDIT: `${TABLE_PREFIX}record_retry_audit`,
 } as const;
-
-export type TableName = (typeof TABLE_NAMES)[keyof typeof TABLE_NAMES];

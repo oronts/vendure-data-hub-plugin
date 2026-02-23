@@ -211,6 +211,59 @@ Syncs Pimcore select options (attributes) as Vendure facets and facet values.
 - Option values as facet values
 - Localized facet names
 
+## Wizard Templates
+
+The Pimcore connector ships 4 import templates and 1 export template for the import/export wizards. Built-in export templates are served automatically by the `TemplateRegistryService`. To add connector templates, include them in your `DataHubPlugin.init()` options:
+
+```typescript
+import { DataHubPlugin, DEFAULT_IMPORT_TEMPLATES } from '@oronts/vendure-data-hub-plugin';
+import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
+
+DataHubPlugin.init({
+    importTemplates: [
+        ...DEFAULT_IMPORT_TEMPLATES,
+        ...(PimcoreConnector.importTemplates ?? []),
+    ],
+    exportTemplates: [
+        ...(PimcoreConnector.exportTemplates ?? []),
+    ],
+    // ... other options
+});
+```
+
+### Available Import Templates
+
+| Template | Category | Description |
+|----------|----------|-------------|
+| Pimcore Product Sync | products | Sync products via GraphQL DataHub API with variants, pricing, and assets |
+| Pimcore Category Sync | catalog | Sync categories to Vendure collections with hierarchy preservation |
+| Pimcore Asset Sync | catalog | Import images and media from Pimcore DAM with metadata |
+| Pimcore Facet/Attribute Sync | catalog | Sync product attributes to Vendure facets and values |
+
+### Available Export Templates
+
+| Template | Format | Description |
+|----------|--------|-------------|
+| Product Export for Pimcore | JSON | Export Vendure products as JSON for Pimcore PIM import |
+
+### Using ConnectorRegistry
+
+If you use `ConnectorRegistry` to manage multiple connectors, use `getPluginTemplates()` for convenience:
+
+```typescript
+import { ConnectorRegistry, PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors';
+
+const registry = new ConnectorRegistry();
+registry.register(PimcoreConnector, pimcoreConfig);
+
+const connectorTemplates = registry.getPluginTemplates();
+
+DataHubPlugin.init({
+    importTemplates: [...DEFAULT_IMPORT_TEMPLATES, ...connectorTemplates.importTemplates],
+    exportTemplates: connectorTemplates.exportTemplates,
+});
+```
+
 ## Secrets Configuration
 
 The connector requires these secrets:
@@ -235,8 +288,8 @@ DataHub supports multiple secret providers:
 DataHubPlugin.init({
   secrets: [
     // Reads from PIMCORE_API_KEY env var at runtime
-    { code: 'pimcore-api-key', provider: 'env', value: 'PIMCORE_API_KEY' },
-    { code: 'pimcore-webhook-key', provider: 'env', value: 'PIMCORE_WEBHOOK_KEY' },
+    { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY' },
+    { code: 'pimcore-webhook-key', provider: 'ENV', value: 'PIMCORE_WEBHOOK_KEY' },
   ],
   pipelines: [PimcoreConnector({ /* ... */ })],
 })
@@ -253,7 +306,7 @@ export PIMCORE_WEBHOOK_KEY="your-webhook-secret"
 ```typescript
 // Fallback syntax: 'ENV_VAR|fallback_value'
 secrets: [
-  { code: 'pimcore-api-key', provider: 'env', value: 'PIMCORE_API_KEY|dev-test-key' },
+  { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY|dev-test-key' },
 ]
 ```
 
@@ -272,7 +325,7 @@ export DATAHUB_MASTER_KEY=$(openssl rand -hex 32)
 DataHubPlugin.init({
   secrets: [
     // Encrypted at rest with AES-256-GCM when DATAHUB_MASTER_KEY is set
-    { code: 'pimcore-api-key', provider: 'inline', value: 'your-api-key' },
+    { code: 'pimcore-api-key', provider: 'INLINE', value: 'your-api-key' },
   ],
 })
 ```
@@ -488,8 +541,6 @@ Add custom validation to your sync pipelines:
 ```typescript
 import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 
-// Build a custom pipeline with additional validation using createPipeline() directly.
-// Each pipeline should be built with the factory function; there is no .from() method.
 const customPipeline = createPipeline()
   .name('Custom Category Sync')
   .description('Category sync with additional validation')
@@ -607,7 +658,6 @@ PimcoreConnector({
   },
 })
 
-// For custom triggers, build a new pipeline with createPipeline():
 import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 
 const customPipeline = createPipeline()
@@ -779,6 +829,11 @@ const externalSyncPipeline = createPipeline()
 | `first` | Take first element of an array | `{ op: 'first', args: { source: 'variants', target: 'defaultVariant' } }` |
 | `last` | Take last element of an array | `{ op: 'last', args: { source: 'variants', target: 'latestVariant' } }` |
 | `unique` | Deduplicate values in an array | `{ op: 'unique', args: { source: 'tags' } }` |
+| `multiJoin` | Join two datasets by matching key fields | `{ op: 'multiJoin', args: { leftKey: 'sku', rightKey: 'sku', rightSource: 'prices' } }` |
+| **File** | | |
+| `imageResize` | Resize images referenced in record fields | `{ op: 'imageResize', args: { source: 'imageUrl', width: 800, height: 600, target: 'resizedUrl' } }` |
+| `imageConvert` | Convert image format (JPEG, PNG, WebP, AVIF, GIF) | `{ op: 'imageConvert', args: { source: 'imageUrl', format: 'webp', target: 'convertedUrl' } }` |
+| `pdfGenerate` | Generate PDF from HTML template with record data | `{ op: 'pdfGenerate', args: { template: '<h1>{{name}}</h1>', target: 'pdfUrl' } }` |
 | **Validation** | | |
 | `validateFormat` | Validate field matches a pattern | `{ op: 'validateFormat', args: { field: 'sku', pattern: '^[A-Z0-9-]+$', error: 'Invalid SKU' } }` |
 | `validateRequired` | Ensure required fields are present | `{ op: 'validateRequired', args: { fields: ['sku', 'name', 'price'] } }` |

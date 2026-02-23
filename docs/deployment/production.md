@@ -55,8 +55,8 @@ DataHubPlugin.init({
     retentionDaysErrors: 90,
 
     secrets: [
-        { code: 'supplier-api', provider: 'env', value: 'SUPPLIER_API_KEY' },
-        { code: 'erp-db-password', provider: 'env', value: 'ERP_DB_PASSWORD' },
+        { code: 'supplier-api', provider: 'ENV', value: 'SUPPLIER_API_KEY' },
+        { code: 'erp-db-password', provider: 'ENV', value: 'ERP_DB_PASSWORD' },
     ],
 
     connections: [

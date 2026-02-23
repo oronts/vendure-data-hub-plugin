@@ -87,7 +87,7 @@ See [Pipeline Builder - route](../developer-guide/dsl/pipeline-builder.md#route)
 
 ## LOAD
 
-Creates, updates, or deletes Vendure entities. Supports 20 entity types
+Creates, updates, or deletes Vendure entities. Supports 22 entity types
 including products, variants, customers, collections, facets, orders,
 promotions, assets, and more.
 
@@ -113,7 +113,7 @@ See [Pipeline Builder - export](../developer-guide/dsl/pipeline-builder.md#expor
 
 Generates product feeds for marketing platforms.
 
-**Feed types:** `GOOGLE_SHOPPING`, `META_CATALOG`, `AMAZON`, `PINTEREST`, `TIKTOK`, `BING_SHOPPING`, `CUSTOM`
+**Feed types:** `GOOGLE_SHOPPING`, `META_CATALOG`, `AMAZON`, `CUSTOM`
 
 See [Feed Generators Reference](./feeds.md) for all feed adapters and their configuration.
 
@@ -123,9 +123,7 @@ See [Feed Generators Reference](./feeds.md) for all feed adapters and their conf
 
 Indexes data to search engines and publishes to message queues.
 
-**Sink types:** `ELASTICSEARCH`, `OPENSEARCH`, `MEILISEARCH`, `ALGOLIA`, `TYPESENSE`, `CUSTOM`
-
-Also supports RabbitMQ queue producer and HTTP webhook sinks.
+**Sink types:** `ELASTICSEARCH`, `OPENSEARCH`, `MEILISEARCH`, `ALGOLIA`, `TYPESENSE`, `WEBHOOK`, `CUSTOM`
 
 See [Sinks Reference](./sinks.md) for all sink adapters and their configuration.
 

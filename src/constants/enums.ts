@@ -144,9 +144,6 @@ export enum LanguageStrategy {
 
 /**
  * Hook stages in pipeline execution lifecycle
- *
- * Note: Values use SCREAMING_SNAKE_CASE to match runtime usage patterns
- * throughout the codebase (hook registrations, configurations, etc.)
  */
 export enum HookStage {
     BEFORE_EXTRACT = 'BEFORE_EXTRACT',
@@ -171,8 +168,6 @@ export enum HookStage {
 
 /**
  * Hook action types
- *
- * Values use SCREAMING_SNAKE_CASE to match the type definition in shared/types
  */
 export enum HookActionType {
     WEBHOOK = 'WEBHOOK',
@@ -252,7 +247,12 @@ export enum ValidationStrictness {
 }
 
 /**
- * Connection types for external services
+ * Connection types for external services.
+ *
+ * These are the core backend connection types used by TypeORM entities and NestJS services.
+ * The shared `CONNECTION_TYPE` in `shared/constants/index.ts` is a superset that includes
+ * UI-specific subtypes (REST, GRAPHQL, POSTGRES, MYSQL, MSSQL, MONGODB, RABBITMQ, SQS, REDIS)
+ * for richer connection configuration in the dashboard.
  */
 export enum ConnectionType {
     HTTP = 'HTTP',
@@ -263,14 +263,8 @@ export enum ConnectionType {
     CUSTOM = 'CUSTOM',
 }
 
-import { ConnectionAuthType } from '../../shared/types';
-
-/**
- * Backend alias for ConnectionAuthType (canonical source: shared/types).
- * Preserved as `AuthType` to avoid widespread backend renames.
- */
-export const AuthType = ConnectionAuthType;
-export type AuthType = ConnectionAuthType;
+import { ConnectionAuthType } from '../../shared/types/adapter-config.types';
+export { ConnectionAuthType };
 
 /**
  * Secret provider types
@@ -293,7 +287,6 @@ export enum DomainEventType {
     RECORD_VALIDATED = 'RECORD_VALIDATED',
     RECORD_LOADED = 'RECORD_LOADED',
     RECORD_REJECTED = 'RECORD_REJECTED',
-    RECORD_RETRIED = 'RECORD_RETRIED',
     RECORD_DEAD_LETTERED = 'RECORD_DEAD_LETTERED',
     RECORD_EXPORTED = 'RECORD_EXPORTED',
     RECORD_INDEXED = 'RECORD_INDEXED',
@@ -437,6 +430,24 @@ export enum LogLevel {
 }
 
 /**
+ * Checkpoint strategies for pipeline resumability
+ */
+export enum CheckpointStrategy {
+    COUNT = 'COUNT',
+    INTERVAL = 'INTERVAL',
+    TIMESTAMP = 'TIMESTAMP',
+}
+
+/**
+ * Error policies for parallel step execution
+ */
+export enum ParallelErrorPolicy {
+    FAIL_FAST = 'FAIL_FAST',
+    CONTINUE = 'CONTINUE',
+    BEST_EFFORT = 'BEST_EFFORT',
+}
+
+/**
  * Message queue types for message triggers and queue sinks
  * Supported adapters:
  * - rabbitmq: RabbitMQ via HTTP Management API (fallback)
@@ -463,8 +474,6 @@ export enum AckMode {
 
 /**
  * Batch transaction status for rollback tracking
- *
- * Values use SCREAMING_SNAKE_CASE to match status conventions
  */
 export enum BatchTransactionStatus {
     PENDING = 'PENDING',
@@ -475,8 +484,6 @@ export enum BatchTransactionStatus {
 
 /**
  * Metric status labels for pipeline run metrics
- *
- * Values use SCREAMING_SNAKE_CASE to match status conventions
  */
 export enum MetricStatus {
     STARTED = 'STARTED',
@@ -497,7 +504,6 @@ export enum RunOutcome {
 
 /**
  * Step execution status within a pipeline run
- * Values use SCREAMING_SNAKE_CASE to match RunStatus enum
  */
 export enum StepStatus {
     PENDING = 'PENDING',
@@ -509,8 +515,6 @@ export enum StepStatus {
 
 /**
  * Severity levels for logging and alerts
- *
- * Values use SCREAMING_SNAKE_CASE to match status/severity conventions
  */
 export enum Severity {
     INFO = 'INFO',
@@ -521,7 +525,6 @@ export enum Severity {
 
 /**
  * Sandbox execution status
- * Values use SCREAMING_SNAKE_CASE to match GraphQL DataHubSandboxStatus enum
  */
 export enum SandboxStatus {
     SUCCESS = 'SUCCESS',
@@ -531,7 +534,6 @@ export enum SandboxStatus {
 
 /**
  * Sandbox step execution status
- * Values use SCREAMING_SNAKE_CASE to match GraphQL DataHubSandboxStepStatus enum
  */
 export enum SandboxStepStatus {
     SUCCESS = 'SUCCESS',
@@ -552,7 +554,6 @@ export enum RecordOutcome {
 
 /**
  * Field diff change types
- * Values use SCREAMING_SNAKE_CASE to match GraphQL DataHubSandboxFieldChangeType enum
  */
 export enum FieldDiffChangeType {
     ADDED = 'ADDED',
@@ -564,7 +565,6 @@ export enum FieldDiffChangeType {
 
 /**
  * Validation issue severity levels
- * Values use SCREAMING_SNAKE_CASE to match GraphQL DataHubSandboxValidationSeverity enum
  */
 export enum ValidationIssueSeverity {
     ERROR = 'ERROR',
@@ -573,8 +573,6 @@ export enum ValidationIssueSeverity {
 
 /**
  * Record lineage final outcome
- *
- * Values use SCREAMING_SNAKE_CASE to match outcome conventions
  */
 export enum LineageOutcome {
     LOADED = 'LOADED',
@@ -585,8 +583,6 @@ export enum LineageOutcome {
 
 /**
  * Record processing state during pipeline execution
- *
- * Values use SCREAMING_SNAKE_CASE to match state conventions
  */
 export enum RecordProcessingState {
     ENTERING = 'ENTERING',
@@ -643,7 +639,6 @@ export enum FlowOutcome {
 
 /**
  * Field change type for impact analysis
- * Values use SCREAMING_SNAKE_CASE to match GraphQL DataHubFieldChangeType enum
  */
 export enum ImpactFieldChangeType {
     SET = 'SET',
@@ -654,8 +649,6 @@ export enum ImpactFieldChangeType {
 
 /**
  * Rollback operation types
- *
- * Values use SCREAMING_SNAKE_CASE to match operation type conventions
  */
 export enum RollbackOperationType {
     CREATE = 'CREATE',
@@ -690,8 +683,6 @@ export enum SandboxLoadResultType {
 
 /**
  * Circuit breaker states for fault tolerance
- *
- * Values use SCREAMING_SNAKE_CASE to match state conventions
  */
 export enum CircuitState {
     CLOSED = 'CLOSED',
@@ -701,8 +692,6 @@ export enum CircuitState {
 
 /**
  * Lock backend types for distributed locking
- *
- * Values use SCREAMING_SNAKE_CASE to match type conventions
  */
 export enum LockBackendType {
     REDIS = 'REDIS',
@@ -776,8 +765,6 @@ export type LoaderOutcomeType = typeof OUTCOME_TYPE[keyof typeof OUTCOME_TYPE];
 
 /**
  * Field types for entity schema definitions
- *
- * Values use SCREAMING_SNAKE_CASE to match type conventions
  */
 export enum FieldType {
     STRING = 'STRING',
@@ -802,8 +789,6 @@ export const DATE_FORMAT = {
 
 /**
  * Event kinds for pipeline event triggers
- *
- * Values use SCREAMING_SNAKE_CASE to match entity type conventions
  */
 export enum EventKind {
     PRODUCT = 'PRODUCT',
@@ -813,11 +798,6 @@ export enum EventKind {
     CUSTOMER = 'CUSTOMER',
     ORDER_STATE = 'ORDER_STATE',
 }
-
-/**
- * Validation error codes - re-exported from shared types
- */
-export { VALIDATION_ERROR_CODE, type ValidationErrorCode } from '../../shared/types';
 
 /**
  * Math operations for numeric transforms
@@ -850,8 +830,6 @@ export enum LookupType {
 
 /**
  * Filter action types
- *
- * Values use SCREAMING_SNAKE_CASE to match GraphQL enum conventions
  */
 export enum FilterAction {
     KEEP = 'KEEP',
@@ -860,9 +838,6 @@ export enum FilterAction {
 
 /**
  * Pipeline validation error codes
- *
- * Error codes follow SCREAMING_SNAKE_CASE convention for consistency
- * with other error codes in the codebase (PipelineErrorCode, ExtractorErrorCode, etc.)
  */
 export const PIPELINE_VALIDATION_ERROR = {
     DUPLICATE_STEP_KEY: 'PIPELINE_DUPLICATE_STEP_KEY',
@@ -888,30 +863,13 @@ export const PIPELINE_VALIDATION_ERROR = {
 } as const;
 
 /**
- * Export destination types for file/data delivery.
- * Use these constants instead of hardcoded string literals.
- *
- * Subset of shared DestinationType (shared/types/pipeline.types.ts) which also
- * includes 'DOWNLOAD'. This constant covers runtime delivery targets only.
- *
- * @see shared/types/pipeline.types.ts — canonical DestinationType union (superset)
- * @see src/services/destinations/destination.types.ts — narrower DeliveryDestinationType subset
+ * Re-export DESTINATION_TYPE from shared constants (single source of truth).
+ * The shared object includes DOWNLOAD (UI-only); runtime code should use the
+ * narrowed DestinationType below for type safety.
  */
-export const DESTINATION_TYPE = {
-    FILE: 'FILE',
-    S3: 'S3',
-    FTP: 'FTP',
-    SFTP: 'SFTP',
-    HTTP: 'HTTP',
-    EMAIL: 'EMAIL',
-    WEBHOOK: 'WEBHOOK',
-    LOCAL: 'LOCAL',
-} as const;
+export { DESTINATION_TYPE } from '../../shared/constants';
 
 /**
- * Runtime delivery destination type — derived from the canonical shared DestinationType
- * by excluding 'DOWNLOAD' (which is UI-only and not a physical delivery target).
- *
- * @see shared/types/pipeline.types.ts — canonical DestinationType (superset)
+ * Runtime delivery destination type -- excludes 'DOWNLOAD' which is UI-only.
  */
 export type DestinationType = Exclude<import('../../shared/types').DestinationType, 'DOWNLOAD'>;

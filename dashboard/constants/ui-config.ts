@@ -1,5 +1,3 @@
-import { LogPersistenceLevel } from '../gql/graphql';
-
 /**
  * Polling intervals in milliseconds for real-time data updates.
  * These values balance responsiveness with server load.
@@ -85,6 +83,7 @@ export const PIPELINE_STATUS = {
     ARCHIVED: 'ARCHIVED',
 } as const;
 
+/** UI-only: maps pipeline status to Shadcn badge variant for CSS styling. Not a config fallback. */
 const PIPELINE_STATUS_VARIANTS = {
     PUBLISHED: 'default',
     REVIEW: 'outline',
@@ -99,6 +98,7 @@ export function getStatusBadgeVariant(status: string): BadgeVariant {
     return PIPELINE_STATUS_VARIANTS[status as PipelineStatus] ?? 'secondary';
 }
 
+/** UI-only: maps run status to Shadcn badge variant for CSS styling. Not a config fallback. */
 const RUN_STATUS_VARIANTS: Record<string, string> = {
     COMPLETED: 'default',
     RUNNING: 'outline',
@@ -114,6 +114,7 @@ export function getRunStatusBadgeVariant(status: string): string {
     return RUN_STATUS_VARIANTS[status] ?? 'secondary';
 }
 
+/** UI-only: maps operator names to placeholder text for input fields. Not a config fallback. */
 const OPERATOR_PLACEHOLDERS: Record<string, string> = {
     in: 'JSON array, e.g. ["A","B"]',
     regex: 'regex pattern',
@@ -124,37 +125,6 @@ export function getOperatorPlaceholder(operator: string): string {
     return OPERATOR_PLACEHOLDERS[operator.toLowerCase()] ?? OPERATOR_PLACEHOLDERS.default;
 }
 
-export const LOG_PERSISTENCE_LEVELS: ReadonlyArray<{
-    value: LogPersistenceLevel;
-    label: string;
-    description: string;
-}> = [
-    { value: LogPersistenceLevel.ERROR_ONLY, label: 'Errors Only', description: 'Only persist errors to database' },
-    { value: LogPersistenceLevel.PIPELINE, label: 'Pipeline Events', description: 'Pipeline start/complete/fail + errors (default)' },
-    { value: LogPersistenceLevel.STEP, label: 'Step Events', description: 'All pipeline events + step start/complete' },
-    { value: LogPersistenceLevel.DEBUG, label: 'Debug', description: 'All events including debug information' },
-];
-
-export type { LogPersistenceLevel } from '../gql/graphql';
-
-export const UI_STRINGS = {
-    CRON_FORMAT_HINT: 'Format: minute hour day month weekday',
-    PLACEHOLDER_OPTIONAL_DESCRIPTION: 'Optional description...',
-    PLACEHOLDER_SELECT_FIELD: 'Select field',
-    PLACEHOLDER_SELECT_SOURCE_FIELD: 'Select source field',
-    PLACEHOLDER_SELECT_TARGET_FIELD: 'Select target field',
-    PLACEHOLDER_SELECT_SECRET: 'Select secret...',
-    PLACEHOLDER_SELECT_EVENT: 'Select event...',
-    PLACEHOLDER_SELECT_CONNECTION: 'Select connection...',
-    VALIDATION_ERRORS_TITLE: 'Please fix the following errors:',
-    LABEL_LOADING: 'Loading...',
-    LABEL_BACK: 'Back',
-    LABEL_NEXT: 'Next',
-    LABEL_CANCEL: 'Cancel',
-    LABEL_NAME_REQUIRED: 'Name *',
-    LABEL_DESCRIPTION: 'Description',
-    GLOB_PATTERN_HINT: 'Glob patterns supported (e.g., *.csv, **/*.json)',
-} as const;
 
 /**
  * Filter dropdown sentinel values.

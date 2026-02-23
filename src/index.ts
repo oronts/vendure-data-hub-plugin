@@ -64,6 +64,24 @@ export {
     EXPORTER_ADAPTERS,
     FEED_ADAPTERS,
     SINK_ADAPTERS,
+    RUN_EVENT_TYPES,
+    WEBHOOK_EVENT_TYPES,
+    STEP_EVENT_TYPES,
+    GATE_EVENT_TYPES,
+    TRIGGER_EVENT_TYPES,
+    LOG_EVENT_TYPES,
+    PIPELINE_EVENT_TYPES,
+    INTERNAL_EVENT_TYPES,
+} from './constants/index';
+
+export type {
+    RunEventType,
+    WebhookEventType,
+    StepEventType,
+    GateEventType,
+    TriggerEventType,
+    LogEventType,
+    PipelineEventType,
 } from './constants/index';
 
 export {
@@ -91,7 +109,10 @@ export {
     CheckpointService,
     RecordErrorService,
     HookService,
+    DomainEventsService,
+    DataHubDomainEvent,
 } from './services';
+export type { DataHubEvent, DomainEventPayload } from './services';
 export {
     FeedGeneratorService,
     FeedConfig,
@@ -106,8 +127,9 @@ export {
 export type { VariantWithCustomFields, ProductWithCustomFields } from './feeds/feed-generator.service';
 export { DataHubScheduleHandler, DataHubRunQueueHandler } from './jobs';
 
-export { createPipeline, definePipeline, step, steps, edge } from './sdk/dsl';
+export { createPipeline, definePipeline, step, steps, edge, operators } from './sdk/dsl';
 export type { PipelineBuilder } from './sdk/dsl';
+export type { ScriptFunction } from '../shared/types';
 
 export type {
     AdapterType,
@@ -147,9 +169,9 @@ export type {
     SchemaFieldType,
     SelectOption,
     FieldValidation,
+    StepConfigSchema,
     StepConfigSchemaField,
     ConnectionType,
-    ConnectionAuthType,
     ConnectionAuth,
     AdapterLogger,
     MessengerType,
@@ -178,7 +200,22 @@ export type {
     AggregationFunction,
     AggregationConfig,
     RecordMeta,
+    OperatorResult,
+    OperatorError,
+    SinkResult,
+    SinkError,
+    ExportError,
+    ExportResult,
+    ValidationResult,
+    InvalidRecord,
+    SdkValidationError,
+    AdapterStepMetrics,
+    AdapterStepError,
+    StepExecutionResult,
 } from './sdk/types';
+
+// ConnectionAuthType is an enum (runtime value), so it needs a value export, not type-only
+export { ConnectionAuthType } from './sdk/types';
 
 export { AdapterRuntimeService } from './runtime/adapter-runtime.service';
 export { ExtractExecutor } from './runtime/executors/extract.executor';
@@ -256,12 +293,15 @@ export {
 
 export { FieldMapperService, AutoMapperService } from './mappers';
 
-export { FileParserService } from './parsers/file-parser.service';
+export { FileParserService, registerParser } from './parsers/file-parser.service';
+export type { FormatParserFn } from './parsers/file-parser.service';
 
 export { TransformExecutor } from './transforms/transform-executor';
 
 export { validatePipelineDefinition } from './validation/pipeline-definition.validator';
 export { PipelineDefinitionError, PipelineDefinitionIssue } from './validation/pipeline-definition-error';
+
+export { sleep } from './utils/retry.utils';
 
 export type {
     PipelineRunJobData,
@@ -316,12 +356,21 @@ export type { CodeSecurityConfig } from './utils/code-security.utils';
 // Security configuration type exports
 export type { ScriptSecurityConfig, SecurityConfig, NotificationSmtpConfig } from './types/plugin-options';
 
+// Custom template registration types
+export type { CustomImportTemplate, CustomExportTemplate } from './types/plugin-options';
+
+// Default template sets shipped with the plugin
+export { DEFAULT_IMPORT_TEMPLATES } from './templates';
+
+// Template registry service for programmatic template registration
+export { TemplateRegistryService } from './services/templates/template-registry.service';
+export type { TemplateCategoryResult } from './services/templates/template-registry.service';
+
 // Import templates exports
 export {
     getImportTemplates,
     getTemplateById,
     getTemplatesByCategory,
-    getTemplatesByDifficulty,
     getTemplatesByTag,
     getFeaturedTemplates,
     searchTemplates,
@@ -332,8 +381,6 @@ export {
     CATEGORY_LABELS,
     CATEGORY_DESCRIPTIONS,
     CATEGORY_ICONS,
-    DIFFICULTY_LABELS,
-    DIFFICULTY_COLORS,
     productTemplates,
     customerTemplates,
     inventoryTemplates,
@@ -343,7 +390,6 @@ export {
 export type {
     ImportTemplate,
     TemplateCategory,
-    TemplateDifficulty,
     TemplateFileFormat,
     TemplateTag,
     TemplateCategoryInfo,

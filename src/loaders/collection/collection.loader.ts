@@ -15,8 +15,15 @@ import {
 } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
-import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
-import { BaseEntityLoader, ExistingEntityLookupResult, LoaderMetadata } from '../base';
+import { VendureEntityType } from '../../constants/enums';
+import {
+    BaseEntityLoader,
+    ExistingEntityLookupResult,
+    LoaderMetadata,
+    ValidationBuilder,
+    EntityLookupHelper,
+    createLookupHelper,
+} from '../base';
 import {
     CollectionInput,
     ConfigurableOperationInput,
@@ -50,6 +57,8 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
     protected readonly logger: DataHubLogger;
     protected readonly metadata: LoaderMetadata = COLLECTION_LOADER_METADATA;
 
+    private readonly lookupHelper: EntityLookupHelper<CollectionService, Collection, CollectionInput>;
+
     constructor(
         private connection: TransactionalConnection,
         private collectionService: CollectionService,
@@ -58,6 +67,10 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.COLLECTION_LOADER);
+        this.lookupHelper = createLookupHelper<CollectionService, Collection, CollectionInput>(this.collectionService)
+            .addFilterStrategy('slug', 'slug', (ctx, svc, opts) => svc.findAll(ctx, opts))
+            .addIdStrategy((ctx, svc, id) => svc.findOne(ctx, id))
+            .addFilterStrategy('name', 'name', (ctx, svc, opts) => svc.findAll(ctx, opts));
     }
 
     /**
@@ -76,35 +89,7 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
         lookupFields: string[],
         record: CollectionInput,
     ): Promise<ExistingEntityLookupResult<Collection> | null> {
-        // Primary lookup: by slug
-        if (record.slug && lookupFields.includes('slug')) {
-            const collections = await this.collectionService.findAll(ctx, {
-                filter: { slug: { eq: record.slug } },
-            });
-            if (collections.totalItems > 0) {
-                return { id: collections.items[0].id, entity: collections.items[0] };
-            }
-        }
-
-        // Fallback: by ID
-        if (record.id && lookupFields.includes('id')) {
-            const collection = await this.collectionService.findOne(ctx, record.id as ID);
-            if (collection) {
-                return { id: collection.id, entity: collection };
-            }
-        }
-
-        // Fallback: by name (exact match)
-        if (record.name && lookupFields.includes('name')) {
-            const collections = await this.collectionService.findAll(ctx, {
-                filter: { name: { eq: record.name } },
-            });
-            if (collections.totalItems > 0) {
-                return { id: collections.items[0].id, entity: collections.items[0] };
-            }
-        }
-
-        return null;
+        return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }
 
     async validate(
@@ -112,34 +97,24 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
         record: CollectionInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
-        const errors: { field: string; message: string; code?: string }[] = [];
-        const warnings: { field: string; message: string }[] = [];
-
-        if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
-            if (!record.name || typeof record.name !== 'string' || record.name.trim() === '') {
-                errors.push({ field: 'name', message: 'Collection name is required', code: 'REQUIRED' });
-            }
-        }
+        const builder = new ValidationBuilder()
+            .requireStringForCreate('name', record.name, operation, 'Collection name is required');
 
         if (record.parentSlug || record.parentId) {
             const parent = await findParentCollection(ctx, this.collectionService, record);
             if (!parent) {
-                warnings.push({
-                    field: 'parent',
-                    message: `Parent collection not found, will create at root level`,
-                });
+                builder.addWarning('parent', 'Parent collection not found, will create at root level');
             }
         }
 
-        if (record.position !== undefined && record.position < 0) {
-            errors.push({ field: 'position', message: 'Position must be non-negative', code: 'INVALID_VALUE' });
-        }
+        builder.addErrorIf(
+            record.position !== undefined && record.position < 0,
+            'position',
+            'Position must be non-negative',
+            'INVALID_VALUE',
+        );
 
-        return {
-            valid: errors.length === 0,
-            errors,
-            warnings,
-        };
+        return builder.build();
     }
 
     getFieldSchema(): EntityFieldSchema {

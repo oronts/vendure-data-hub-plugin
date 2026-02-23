@@ -1,17 +1,17 @@
 import * as nodeCrypto from 'crypto';
 import { JsonObject, JsonValue } from '../types';
-import { isBrowser } from '../../utils/environment';
+import { IS_BROWSER } from '../../utils/environment';
 import { getNestedValue, setNestedValue, removeNestedValue, deepClone } from '../helpers';
 
 function createHash(algorithm: string): nodeCrypto.Hash | null {
-    if (isBrowser) {
+    if (IS_BROWSER) {
         return null; // Hashing not supported in browser environment
     }
     return nodeCrypto.createHash(algorithm);
 }
 
 function randomUUID(): string {
-    if (isBrowser && typeof crypto !== 'undefined' && crypto.randomUUID) {
+    if (IS_BROWSER && typeof crypto !== 'undefined' && crypto.randomUUID) {
         return crypto.randomUUID();
     }
     return nodeCrypto.randomUUID();

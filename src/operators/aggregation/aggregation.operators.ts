@@ -16,11 +16,15 @@ import {
     applyLast,
     applyExpand,
 } from './helpers';
+import { createRecordOperator } from '../operator-factory';
 
 export const AGGREGATE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'aggregate',
     description: 'Compute a simple aggregate over records and set a field on each record.',
+    category: 'AGGREGATION',
+    categoryLabel: 'Aggregation',
+    categoryOrder: 6,
     pure: true,
     schema: {
         fields: [
@@ -47,6 +51,9 @@ export const COUNT_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'count',
     description: 'Count elements in an array or characters in a string.',
+    category: 'AGGREGATION',
+    categoryLabel: 'Aggregation',
+    categoryOrder: 6,
     pure: true,
     schema: {
         fields: [
@@ -60,6 +67,9 @@ export const UNIQUE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'unique',
     description: 'Remove duplicate values from an array field.',
+    category: 'AGGREGATION',
+    categoryLabel: 'Aggregation',
+    categoryOrder: 6,
     pure: true,
     schema: {
         fields: [
@@ -74,6 +84,9 @@ export const FLATTEN_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'flatten',
     description: 'Flatten a nested array into a single-level array.',
+    category: 'AGGREGATION',
+    categoryLabel: 'Aggregation',
+    categoryOrder: 6,
     pure: true,
     schema: {
         fields: [
@@ -88,6 +101,9 @@ export const FIRST_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'first',
     description: 'Get the first element of an array.',
+    category: 'AGGREGATION',
+    categoryLabel: 'Aggregation',
+    categoryOrder: 6,
     pure: true,
     schema: {
         fields: [
@@ -101,6 +117,9 @@ export const LAST_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'last',
     description: 'Get the last element of an array.',
+    category: 'AGGREGATION',
+    categoryLabel: 'Aggregation',
+    categoryOrder: 6,
     pure: true,
     schema: {
         fields: [
@@ -114,6 +133,9 @@ export const EXPAND_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'expand',
     description: 'Expand an array field into multiple records. Each array element becomes a separate record with optional parent field inheritance.',
+    category: 'AGGREGATION',
+    categoryLabel: 'Aggregation',
+    categoryOrder: 6,
     pure: false, // Creates multiple records from one, so not pure
     schema: {
         fields: [
@@ -137,80 +159,50 @@ export function aggregateOperator(
     return { records: results };
 }
 
-export function countOperator(
-    records: readonly JsonObject[],
-    config: CountOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export function applyCountOperator(record: JsonObject, config: CountOperatorConfig): JsonObject {
     if (!config.source || !config.target) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyCount(record, config.source, config.target),
-    );
-    return { records: results };
+    return applyCount(record, config.source, config.target);
 }
 
-export function uniqueOperator(
-    records: readonly JsonObject[],
-    config: UniqueOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const countOperator = createRecordOperator(applyCountOperator);
+
+export function applyUniqueOperator(record: JsonObject, config: UniqueOperatorConfig): JsonObject {
     if (!config.source) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyUnique(record, config.source, config.target, config.by),
-    );
-    return { records: results };
+    return applyUnique(record, config.source, config.target, config.by);
 }
 
-export function flattenOperator(
-    records: readonly JsonObject[],
-    config: FlattenOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const uniqueOperator = createRecordOperator(applyUniqueOperator);
+
+export function applyFlattenOperator(record: JsonObject, config: FlattenOperatorConfig): JsonObject {
     if (!config.source) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyFlatten(record, config.source, config.target, config.depth),
-    );
-    return { records: results };
+    return applyFlatten(record, config.source, config.target, config.depth);
 }
 
-export function firstOperator(
-    records: readonly JsonObject[],
-    config: FirstLastOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const flattenOperator = createRecordOperator(applyFlattenOperator);
+
+export function applyFirstOperator(record: JsonObject, config: FirstLastOperatorConfig): JsonObject {
     if (!config.source || !config.target) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyFirst(record, config.source, config.target),
-    );
-    return { records: results };
+    return applyFirst(record, config.source, config.target);
 }
 
-export function lastOperator(
-    records: readonly JsonObject[],
-    config: FirstLastOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
+export const firstOperator = createRecordOperator(applyFirstOperator);
+
+export function applyLastOperator(record: JsonObject, config: FirstLastOperatorConfig): JsonObject {
     if (!config.source || !config.target) {
-        return { records: [...records] };
+        return record;
     }
-
-    const results = records.map(record =>
-        applyLast(record, config.source, config.target),
-    );
-    return { records: results };
+    return applyLast(record, config.source, config.target);
 }
+
+export const lastOperator = createRecordOperator(applyLastOperator);
 
 export function expandOperator(
     records: readonly JsonObject[],

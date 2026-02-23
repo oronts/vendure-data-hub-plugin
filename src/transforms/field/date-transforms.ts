@@ -24,13 +24,13 @@ export function parseDateWithFormat(value: string, format: string): Date {
         const match = value.match(regex);
         if (match) {
             if (format === DATE_FORMAT.ISO_DATE) {
-                return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
+                return new Date(parseInt(match[1], 10), parseInt(match[2], 10) - 1, parseInt(match[3], 10));
             }
             if (format === DATE_FORMAT.EU_SLASH || format === DATE_FORMAT.EU_DOT) {
-                return new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
+                return new Date(parseInt(match[3], 10), parseInt(match[2], 10) - 1, parseInt(match[1], 10));
             }
             if (format === DATE_FORMAT.US_DATE) {
-                return new Date(parseInt(match[3]), parseInt(match[1]) - 1, parseInt(match[2]));
+                return new Date(parseInt(match[3], 10), parseInt(match[1], 10) - 1, parseInt(match[2], 10));
             }
         }
     }

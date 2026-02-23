@@ -7,7 +7,6 @@ import {
     CheckCircle,
     GitBranch,
     Globe,
-    Layers,
     Sparkles,
     Search,
     Rss,
@@ -15,7 +14,9 @@ import {
     ShieldCheck,
 } from 'lucide-react';
 import type { VisualNodeCategory } from '../../../types';
+import type { StepConfig } from '../../../constants/steps';
 import { CATEGORY_COLORS } from '../../../constants/index';
+import { resolveIconName } from '../../../utils/icon-resolver';
 
 export interface VisualNodeConfig {
     color: string;
@@ -26,6 +27,10 @@ export interface VisualNodeConfig {
     hasTargetHandle: boolean;
 }
 
+/**
+ * Static fallback visual node configs used during loading before backend data arrives.
+ * At runtime, prefer `buildVisualNodeConfigs()` with backend-driven step configs.
+ */
 export const VISUAL_NODE_CONFIGS: Record<VisualNodeCategory, VisualNodeConfig> = {
     trigger: {
         color: CATEGORY_COLORS.trigger,
@@ -124,6 +129,40 @@ export const VISUAL_NODE_CONFIGS: Record<VisualNodeCategory, VisualNodeConfig> =
         hasTargetHandle: true,
     },
 };
+
+/**
+ * Builds visual node configs from backend step config data.
+ *
+ * Uses the step config's icon name (resolved via lucide-react), color, label,
+ * description, and derives handle visibility from inputs/outputs counts.
+ *
+ * Falls back to the static VISUAL_NODE_CONFIGS for any category not covered
+ * by the backend data (e.g. 'filter' which has no step type).
+ */
+export function buildVisualNodeConfigs(
+    stepConfigs: Record<string, StepConfig>,
+): Record<VisualNodeCategory, VisualNodeConfig> {
+    const result = { ...VISUAL_NODE_CONFIGS };
+
+    for (const config of Object.values(stepConfigs)) {
+        const category = config.nodeType as VisualNodeCategory;
+        if (!category) continue;
+
+        const resolvedIcon = resolveIconName(config.icon);
+        const fallback = VISUAL_NODE_CONFIGS[category];
+
+        result[category] = {
+            color: config.color,
+            icon: resolvedIcon ?? fallback?.icon ?? RefreshCw,
+            label: config.label,
+            description: config.description,
+            hasSourceHandle: config.outputs > 0,
+            hasTargetHandle: config.inputs > 0,
+        };
+    }
+
+    return result;
+}
 
 export function getVisualNodeConfig(category: VisualNodeCategory): VisualNodeConfig {
     return VISUAL_NODE_CONFIGS[category] ?? VISUAL_NODE_CONFIGS.transform;

@@ -8,20 +8,9 @@ import {
     DestinationConfig,
     DeliveryResult,
     DeliveryOptions,
-    S3DestinationConfig,
-    SFTPDestinationConfig,
-    FTPDestinationConfig,
-    HTTPDestinationConfig,
-    LocalDestinationConfig,
-    EmailDestinationConfig,
     DESTINATION_TYPE,
 } from './destination.types';
-import { deliverToS3 } from './s3.handler';
-import { deliverToHTTP } from './http.handler';
-import { deliverToLocal, testLocalDestination } from './local.handler';
-import { deliverToSFTP, deliverToFTP } from './ftp.handler';
-import { deliverToEmail } from './email.handler';
-import { assertUrlSafe } from '../../utils/url-security.utils';
+import { DESTINATION_DELIVERY_REGISTRY, DESTINATION_TEST_REGISTRY } from './destination-handler-registry';
 import { getErrorMessage } from '../../utils/error.utils';
 
 export type { DestinationType, DestinationConfig, DeliveryResult };
@@ -113,32 +102,21 @@ export class ExportDestinationService implements OnModuleInit, OnModuleDestroy {
         this.logger.info(`Delivering ${filename} (${buffer.length} bytes) to ${destination.type}:${destinationId}`);
 
         try {
-            switch (destination.type) {
-                case DESTINATION_TYPE.S3:
-                    return await deliverToS3(destination as S3DestinationConfig, buffer, filename, options);
-                case DESTINATION_TYPE.SFTP:
-                    return await deliverToSFTP(destination as SFTPDestinationConfig, buffer, filename, options);
-                case DESTINATION_TYPE.FTP:
-                    return await deliverToFTP(destination as FTPDestinationConfig, buffer, filename, options);
-                case DESTINATION_TYPE.HTTP:
-                    return await deliverToHTTP(destination as HTTPDestinationConfig, buffer, filename, options);
-                case DESTINATION_TYPE.LOCAL:
-                    return await deliverToLocal(destination as LocalDestinationConfig, buffer, filename, options);
-                case DESTINATION_TYPE.EMAIL:
-                    return await deliverToEmail(destination as EmailDestinationConfig, buffer, filename, options);
-                default: {
-                    const unknownDest = destination as { type?: string };
-                    const destType = unknownDest.type ?? 'unknown';
-                    return {
-                        success: false,
-                        destinationId,
-                        destinationType: DESTINATION_TYPE.LOCAL,
-                        filename,
-                        size: buffer.length,
-                        error: `Unsupported destination type: ${destType}`,
-                    };
-                }
+            const handler = DESTINATION_DELIVERY_REGISTRY.get(destination.type);
+            if (handler) {
+                return await handler(destination, buffer, filename, options);
             }
+
+            const unknownDest = destination as { type?: string };
+            const destType = unknownDest.type ?? 'unknown';
+            return {
+                success: false,
+                destinationId,
+                destinationType: destination.type,
+                filename,
+                size: buffer.length,
+                error: `Unsupported destination type: ${destType}`,
+            };
         } catch (error) {
             const errorMessage = getErrorMessage(error);
             this.logger.error(`Delivery failed to ${destinationId}: ${errorMessage}`);
@@ -162,28 +140,13 @@ export class ExportDestinationService implements OnModuleInit, OnModuleDestroy {
         const start = Date.now();
 
         try {
-            switch (destination.type) {
-                case DESTINATION_TYPE.S3:
-                    return { success: true, message: 'S3 connection configured', latencyMs: Date.now() - start };
-
-                case DESTINATION_TYPE.HTTP: {
-                    const httpConfig = destination as HTTPDestinationConfig;
-                    await assertUrlSafe(httpConfig.url);
-                    const response = await fetch(httpConfig.url, { method: 'HEAD' }).catch(() => null);
-                    if (response) {
-                        return { success: true, message: `HTTP endpoint reachable (${response.status})`, latencyMs: Date.now() - start };
-                    }
-                    return { success: false, message: 'HTTP endpoint unreachable' };
-                }
-
-                case DESTINATION_TYPE.LOCAL: {
-                    const result = testLocalDestination(destination as LocalDestinationConfig);
-                    return { ...result, latencyMs: Date.now() - start };
-                }
-
-                default:
-                    return { success: true, message: `${destination.type} configured`, latencyMs: Date.now() - start };
+            const handler = DESTINATION_TEST_REGISTRY.get(destination.type);
+            if (handler) {
+                return await handler(destination, start);
             }
+
+            // Default: report as configured for types without specific test logic
+            return { success: true, message: `${destination.type} configured`, latencyMs: Date.now() - start };
         } catch (error) {
             return {
                 success: false,

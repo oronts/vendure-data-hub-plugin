@@ -5,13 +5,10 @@ import { ConnectionService } from '../config/connection.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 import { LOGGER_CONTEXTS, SCHEDULER } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, toErrorOrUndefined, ensureError } from '../../utils/error.utils';
 import { ConsumerDiscovery, MessageConsumerConfig, getConsumerKey } from './consumer-discovery';
 import { ConsumerLifecycle, ActiveConsumer } from './consumer-lifecycle';
 import { MessageProcessing } from './message-processing';
-
-export type { MessageConsumerConfig } from './consumer-discovery';
-export type { ActiveConsumer } from './consumer-lifecycle';
 
 /**
  * Message Consumer Service
@@ -91,7 +88,7 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
 
         this.refreshTimer = setInterval(() => {
             this.refreshConsumers().catch(err => {
-                this.logger.error('Failed to refresh message consumers', err instanceof Error ? err : new Error(String(err)));
+                this.logger.error('Failed to refresh message consumers', ensureError(err));
             });
         }, SCHEDULER.REFRESH_INTERVAL_MS);
 
@@ -125,7 +122,7 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
                 startedCount++;
             } catch (error) {
                 this.logger.error(`Failed to start consumer for pipeline ${config.pipelineCode}`,
-                    error instanceof Error ? error : undefined, {
+                    toErrorOrUndefined(error), {
                         pipelineCode: config.pipelineCode,
                         triggerKey: config.triggerKey,
                     });
@@ -164,7 +161,7 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
                     await this.startConsumer(config);
                 } catch (error) {
                     this.logger.error(`Failed to start consumer for pipeline ${config.pipelineCode}`,
-                        error instanceof Error ? error : undefined, {
+                        toErrorOrUndefined(error), {
                             pipelineCode: config.pipelineCode,
                             triggerKey: config.triggerKey,
                         });

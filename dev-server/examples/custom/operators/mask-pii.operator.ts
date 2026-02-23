@@ -95,5 +95,3 @@ export const maskPiiOperator: SingleRecordOperator<MaskPiiConfig> = {
         return result;
     },
 };
-
-export default maskPiiOperator;

@@ -81,54 +81,79 @@ Pipelines that must complete before this one can run.
 
 ### Hooks
 
-Pipeline lifecycle hooks using SCREAMING_SNAKE_CASE stage names:
+Pipeline lifecycle hooks using SCREAMING_SNAKE_CASE stage names. Each stage maps to an
+array of `HookAction` objects. Six action types are supported: `INTERCEPTOR`, `SCRIPT`,
+`WEBHOOK`, `EMIT`, `TRIGGER_PIPELINE`, and `LOG`.
+
+**Interceptor Hooks** (modify records inline):
 
 ```typescript
 .hooks({
-    // Pipeline lifecycle
-    PIPELINE_STARTED: async (ctx) => { ... },
-    PIPELINE_COMPLETED: async (ctx, result) => { ... },
-    PIPELINE_FAILED: async (ctx, error) => { ... },
-
-    // Step lifecycle (per-step hooks)
-    BEFORE_EXTRACT: async (ctx) => { ... },
-    AFTER_EXTRACT: async (ctx, records) => { ... },
-    BEFORE_TRANSFORM: async (ctx, records) => { ... },
-    AFTER_TRANSFORM: async (ctx, records) => { ... },
-    BEFORE_VALIDATE: async (ctx, records) => { ... },
-    AFTER_VALIDATE: async (ctx, records) => { ... },
-    BEFORE_ENRICH: async (ctx, records) => { ... },
-    AFTER_ENRICH: async (ctx, records) => { ... },
-    BEFORE_ROUTE: async (ctx, records) => { ... },
-    AFTER_ROUTE: async (ctx, records) => { ... },
-    BEFORE_LOAD: async (ctx, records) => { ... },
-    AFTER_LOAD: async (ctx, result) => { ... },
-
-    // Error handling
-    ON_ERROR: async (ctx, error) => { ... },
-    ON_RETRY: async (ctx, attempt, error) => { ... },
-    ON_DEAD_LETTER: async (ctx, record, error) => { ... },
+    AFTER_EXTRACT: [{
+        type: 'INTERCEPTOR',
+        name: 'Add metadata',
+        code: `return records.map(r => ({ ...r, source: 'api' }));`,
+    }],
+    BEFORE_LOAD: [{
+        type: 'INTERCEPTOR',
+        name: 'Filter invalid',
+        code: `return records.filter(r => r.sku && r.name);`,
+        failOnError: true,
+    }],
 })
 ```
 
-**Hook Actions** - Hooks can also be configured as action objects:
+**Script Hooks** (reference pre-registered functions):
 
 ```typescript
 .hooks({
-    PIPELINE_COMPLETED: {
+    AFTER_TRANSFORM: [{
+        type: 'SCRIPT',
+        scriptName: 'addCustomerSegment',
+        args: { spendThreshold: 5000 },
+    }],
+})
+```
+
+**Webhook Hooks** (notify external systems):
+
+```typescript
+.hooks({
+    PIPELINE_COMPLETED: [{
         type: 'WEBHOOK',
         url: 'https://api.example.com/notify',
-        method: 'POST',
-        retries: 3,
-    },
-    ON_ERROR: {
+        headers: { 'Content-Type': 'application/json' },
+        retryConfig: {
+            maxAttempts: 3,
+            initialDelayMs: 1000,
+            maxDelayMs: 60000,
+            backoffMultiplier: 2,
+        },
+    }],
+    PIPELINE_FAILED: [{
+        type: 'WEBHOOK',
+        url: 'https://pagerduty.example.com/alert',
+    }],
+})
+```
+
+**Other Hook Types:**
+
+```typescript
+.hooks({
+    ON_ERROR: [{
         type: 'EMIT',
         event: 'pipeline.error',
-    },
-    AFTER_LOAD: {
+    }],
+    AFTER_LOAD: [{
         type: 'TRIGGER_PIPELINE',
         pipelineCode: 'post-import-sync',
-    },
+    }],
+    PIPELINE_STARTED: [{
+        type: 'LOG',
+        level: 'INFO',
+        message: 'Pipeline execution started',
+    }],
 })
 ```
 
@@ -317,12 +342,28 @@ Validate records:
 
 ### enrich
 
-Add data from external lookups:
+Add data from external lookups or static enrichment:
 
 ```typescript
 .enrich('step-key', {
-    adapterCode: string,
-    config?: JsonObject,
+    adapterCode?: string,          // Custom enricher adapter (optional if using built-in)
+    defaults?: Record<string, JsonValue>,   // Set fields only if missing
+    set?: Record<string, JsonValue>,        // Always overwrite these fields
+    computed?: Record<string, string>,      // Template expressions: '${field1} ${field2}'
+    sourceType?: 'STATIC' | 'HTTP' | 'VENDURE',
+    endpoint?: string,             // HTTP endpoint URL (for HTTP source type)
+    matchField?: string,           // Field to match for lookups
+    entity?: string,               // Vendure entity type (for VENDURE source type)
+    config?: JsonObject,           // Additional adapter config
+})
+```
+
+**Static Enrichment (no adapter needed):**
+```typescript
+.enrich('add-defaults', {
+    defaults: { currency: 'USD', enabled: false },
+    set: { importSource: 'api-sync' },
+    computed: { fullTitle: '${brand} - ${name}' },
 })
 ```
 
@@ -449,8 +490,8 @@ Generate product feeds:
 
 ```typescript
 .feed('step-key', {
-    adapterCode: 'googleMerchant' | 'metaCatalog' | 'customFeed',
-    feedType?: 'GOOGLE_SHOPPING' | 'META_CATALOG' | 'AMAZON' | 'PINTEREST' | 'TIKTOK' | 'BING_SHOPPING' | 'CUSTOM',
+    adapterCode: 'googleMerchant' | 'metaCatalog' | 'amazonFeed' | 'customFeed',
+    feedType?: 'GOOGLE_SHOPPING' | 'META_CATALOG' | 'AMAZON' | 'CUSTOM',
     format?: 'XML' | 'CSV' | 'TSV' | 'JSON' | 'NDJSON',
     // Feed-specific options...
 })
@@ -459,7 +500,7 @@ Generate product feeds:
 **Google Feed:**
 ```typescript
 .feed('google-shopping', {
-    adapterCode: 'feed-generator',
+    adapterCode: 'googleMerchant',
     feedType: 'GOOGLE_SHOPPING',
     format: 'XML',
     outputPath: '/feeds/google.xml',
@@ -479,7 +520,7 @@ Index data to search engines:
 
 ```typescript
 .sink('step-key', {
-    adapterCode: 'search-sink',
+    adapterCode: 'elasticsearch' | 'meilisearch' | 'algolia' | 'typesense',
     sinkType?: 'ELASTICSEARCH' | 'OPENSEARCH' | 'MEILISEARCH' | 'ALGOLIA' | 'TYPESENSE' | 'CUSTOM',
     indexName: string,
     // Sink-specific options...
@@ -489,7 +530,7 @@ Index data to search engines:
 **Elasticsearch:**
 ```typescript
 .sink('index-products', {
-    adapterCode: 'search-sink',
+    adapterCode: 'elasticsearch',
     sinkType: 'ELASTICSEARCH',
     host: 'localhost',
     port: 9200,

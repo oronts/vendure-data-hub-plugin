@@ -1,5 +1,6 @@
 export * from './pipeline';
 export * from './config';
+export { DataHubRetentionService } from './storage/retention.service';
 export * from './validation';
 export * from './data';
 export * from './storage';
@@ -12,6 +13,5 @@ export * from './runtime';
 export * from './versioning';
 export * from './rate-limit';
 export * from './testing';
-
-// NOTE: Job handlers (DataHubScheduleHandler, DataHubRunQueueHandler) are exported
-// from '../jobs' directly to avoid circular dependencies between services and jobs.
+export { TemplateRegistryService } from './templates/template-registry.service';
+export type { TemplateCategoryResult } from './templates/template-registry.service';

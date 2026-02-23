@@ -12,7 +12,7 @@
  */
 
 import { createPipeline } from '../../../src';
-import { AuthType } from '../../../src/constants/enums';
+import { ConnectionAuthType } from '../../../src';
 
 // =============================================================================
 // 1. MULTI-SOURCE JOIN - Join prices to products by productId
@@ -64,7 +64,7 @@ export const joinDemoPipeline = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'SOURCE_WINS',
+        conflictStrategy: 'SOURCE_WINS',
         nameField: 'name',
         slugField: 'slug',
     })
@@ -188,7 +188,7 @@ export const retryDemoPipeline = createPipeline()
     .load('upsert-products', {
         adapterCode: 'variantUpsert',
         channel: '__default_channel__',
-        conflictResolution: 'SOURCE_WINS',
+        conflictStrategy: 'SOURCE_WINS',
         skuField: 'sku',
         priceField: 'priceInCents',
     })
@@ -235,7 +235,7 @@ export const gateDemoPipeline = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'SOURCE_WINS',
+        conflictStrategy: 'SOURCE_WINS',
         skuField: 'sku',
         nameField: 'name',
         slugField: 'slug',
@@ -301,7 +301,7 @@ export const cdcDemoPipeline = createPipeline()
         adapterCode: 'productUpsert',
         channel: '__default_channel__',
         strategy: 'UPSERT',
-        conflictResolution: 'SOURCE_WINS',
+        conflictStrategy: 'SOURCE_WINS',
         skuField: 'sku',
         nameField: 'name',
         slugField: 'slug',
@@ -363,7 +363,7 @@ export const graphqlMutationDemoPipeline = createPipeline()
             'input.imageUrl': 'imageUrl',
             'input.source': 'source',
         },
-        auth: AuthType.BEARER,
+        auth: ConnectionAuthType.BEARER,
         bearerTokenSecretCode: 'demo-api-key',
         batchMode: 'single',
         retries: 3,

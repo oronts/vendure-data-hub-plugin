@@ -25,11 +25,23 @@ import { Pipeline, PipelineRun } from '../../entities/pipeline';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { RuntimeConfigService } from '../runtime/runtime-config.service';
 import { LOGGER_CONTEXTS, PipelineStatus, RunStatus, EventKind } from '../../constants/index';
+import { TriggerType as TriggerTypeEnum } from '../../constants/enums';
 import type { PipelineDefinition } from '../../types/index';
 import type { EventTriggerServiceConfig } from '../../types/plugin-options';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
+import { DomainEventsService } from './domain-events.service';
 import { findEnabledTriggersByType, parseTriggerConfig } from '../../utils';
-import { getErrorMessage } from '../../utils/error.utils';
+import { getErrorMessage, ensureError } from '../../utils/error.utils';
+
+/** Maps event type pattern prefixes to their corresponding EventKind */
+const EVENT_KIND_PREFIX_MAP: ReadonlyMap<string, EventKind> = new Map<string, EventKind>([
+    ['product', EventKind.PRODUCT],
+    ['variant', EventKind.VARIANT],
+    ['asset', EventKind.ASSET],
+    ['collection', EventKind.COLLECTION],
+    ['customer', EventKind.CUSTOMER],
+    ['order', EventKind.ORDER_STATE],
+]);
 
 /**
  * Cached event trigger entry
@@ -86,6 +98,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
         private requestContextService: RequestContextService,
         private pipelineService: PipelineService,
         private runtimeConfigService: RuntimeConfigService,
+        private domainEvents: DomainEventsService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.EVENT_TRIGGER_SERVICE);
@@ -106,7 +119,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
         const cacheRefreshIntervalMs = this.eventTriggerConfig.cacheRefreshIntervalMs;
         this.refreshTimerHandle = setInterval(
             () => this.refreshCache().catch(err => {
-                this.logger.error('Failed to refresh event trigger cache', err instanceof Error ? err : new Error(String(err)));
+                this.logger.error('Failed to refresh event trigger cache', ensureError(err));
             }),
             cacheRefreshIntervalMs,
         );
@@ -124,42 +137,42 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
             if (ProductEvent) {
                 this.subscriptions.push(
                     this.eventBus.ofType(ProductEvent).subscribe(ev => this.handleEvent(EventKind.PRODUCT, ev).catch(err => {
-                        this.logger.error('Failed to handle product event', err instanceof Error ? err : new Error(String(err)));
+                        this.logger.error('Failed to handle product event', ensureError(err));
                     }))
                 );
             }
             if (ProductVariantEvent) {
                 this.subscriptions.push(
                     this.eventBus.ofType(ProductVariantEvent).subscribe(ev => this.handleEvent(EventKind.VARIANT, ev).catch(err => {
-                        this.logger.error('Failed to handle variant event', err instanceof Error ? err : new Error(String(err)));
+                        this.logger.error('Failed to handle variant event', ensureError(err));
                     }))
                 );
             }
             if (AssetEvent) {
                 this.subscriptions.push(
                     this.eventBus.ofType(AssetEvent).subscribe(ev => this.handleEvent(EventKind.ASSET, ev).catch(err => {
-                        this.logger.error('Failed to handle asset event', err instanceof Error ? err : new Error(String(err)));
+                        this.logger.error('Failed to handle asset event', ensureError(err));
                     }))
                 );
             }
             if (CollectionModificationEvent) {
                 this.subscriptions.push(
                     this.eventBus.ofType(CollectionModificationEvent).subscribe(ev => this.handleEvent(EventKind.COLLECTION, ev).catch(err => {
-                        this.logger.error('Failed to handle collection event', err instanceof Error ? err : new Error(String(err)));
+                        this.logger.error('Failed to handle collection event', ensureError(err));
                     }))
                 );
             }
             if (CustomerEvent) {
                 this.subscriptions.push(
                     this.eventBus.ofType(CustomerEvent).subscribe(ev => this.handleEvent(EventKind.CUSTOMER, ev).catch(err => {
-                        this.logger.error('Failed to handle customer event', err instanceof Error ? err : new Error(String(err)));
+                        this.logger.error('Failed to handle customer event', ensureError(err));
                     }))
                 );
             }
             if (OrderStateTransitionEvent) {
                 this.subscriptions.push(
                     this.eventBus.ofType(OrderStateTransitionEvent).subscribe(ev => this.handleEvent(EventKind.ORDER_STATE, ev).catch(err => {
-                        this.logger.error('Failed to handle order state event', err instanceof Error ? err : new Error(String(err)));
+                        this.logger.error('Failed to handle order state event', ensureError(err));
                     }))
                 );
             }
@@ -235,7 +248,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                 }
 
                 const definition = pipeline.definition as PipelineDefinition | undefined;
-                const eventTriggers = findEnabledTriggersByType(definition, 'EVENT');
+                const eventTriggers = findEnabledTriggersByType(definition, TriggerTypeEnum.EVENT);
 
                 for (const trigger of eventTriggers) {
                     if (cachedCount >= DataHubEventTriggerService.MAX_CACHE_ENTRIES) break;
@@ -282,7 +295,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                 this.logger.debug('Event trigger cache refreshed - no event triggers found', { durationMs });
             }
         } catch (error) {
-            this.logger.error('Failed to refresh event trigger cache', error instanceof Error ? error : new Error(String(error)));
+            this.logger.error('Failed to refresh event trigger cache', ensureError(error));
             throw error;
         } finally {
             this.isRefreshing = false;
@@ -299,12 +312,9 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
             return allKinds;
         }
 
-        if (pattern.startsWith('product')) return [EventKind.PRODUCT];
-        if (pattern.startsWith('variant')) return [EventKind.VARIANT];
-        if (pattern.startsWith('asset')) return [EventKind.ASSET];
-        if (pattern.startsWith('collection')) return [EventKind.COLLECTION];
-        if (pattern.startsWith('customer')) return [EventKind.CUSTOMER];
-        if (pattern.startsWith('order')) return [EventKind.ORDER_STATE];
+        for (const [prefix, kind] of EVENT_KIND_PREFIX_MAP) {
+            if (pattern.startsWith(prefix)) return [kind];
+        }
 
         return allKinds;
     }
@@ -459,12 +469,17 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                             skipPermissionCheck: true,
                             triggeredBy: `event:${trigger.triggerKey}`,
                         });
+                        this.domainEvents.publishTriggerFired(
+                            String(trigger.pipelineId),
+                            'EVENT',
+                            { pipelineCode: trigger.pipelineCode, eventKind: kind, triggerKey: trigger.triggerKey },
+                        );
                     } finally {
                         this.inFlightTriggers.delete(triggerKey);
                     }
                 }
             } catch (error) {
-                this.logger.error('Failed to trigger pipeline from event', error instanceof Error ? error : new Error(String(error)), {
+                this.logger.error('Failed to trigger pipeline from event', ensureError(error), {
                     pipelineCode: trigger.pipelineCode,
                     eventKind: kind,
                 });

@@ -71,26 +71,17 @@ export type {
     WizardFooterProps,
     ConfigurationNameCardProps,
     TriggerSelectorProps,
-    ScheduleConfigProps,
-    WebhookConfigProps,
     PipelineValidationResult,
-    FieldSelectorProps,
     FieldErrorProps,
     TriggersPanelProps,
     TriggersPanelExplicitProps,
     TriggersPanelOnChangeProps,
     TemplateCategory,
-    TemplateDifficulty,
 } from './ui-types';
 
 export type {
-    ParsedColumn,
+    FileType,
 } from '../utils';
-
-export type {
-    UIFieldMapping,
-    ParsedFile,
-} from '../components/common/file-upload-mapper/types';
 
 export type {
     WizardStep,

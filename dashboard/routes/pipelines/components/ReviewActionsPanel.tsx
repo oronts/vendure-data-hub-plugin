@@ -7,7 +7,6 @@ import {
     DialogTitle,
     DialogDescription,
     DialogFooter,
-    Textarea,
 } from '@vendure/dashboard';
 import { toast } from 'sonner';
 import {
@@ -17,7 +16,6 @@ import {
     Clock,
     FileCheck,
     AlertCircle,
-    MessageSquare,
     Archive,
     Play,
 } from 'lucide-react';
@@ -81,7 +79,6 @@ export function ReviewActionsPanel({
     const [approveDialogOpen, setApproveDialogOpen] = React.useState(false);
     const [submitDialogOpen, setSubmitDialogOpen] = React.useState(false);
     const [archiveDialogOpen, setArchiveDialogOpen] = React.useState(false);
-    const [rejectReason, setRejectReason] = React.useState('');
 
     const submitForReview = useSubmitPipelineForReview();
     const approve = useApprovePipeline();
@@ -129,7 +126,7 @@ export function ReviewActionsPanel({
     );
 
     const handleReject = React.useMemo(
-        () => createMutationHandler(reject.mutate, TOAST_PIPELINE.REJECTED, TOAST_PIPELINE.REJECT_ERROR, setRejectDialogOpen, () => setRejectReason('')),
+        () => createMutationHandler(reject.mutate, TOAST_PIPELINE.REJECTED, TOAST_PIPELINE.REJECT_ERROR, setRejectDialogOpen),
         [createMutationHandler, reject.mutate],
     );
 
@@ -286,31 +283,13 @@ export function ReviewActionsPanel({
                     <DialogHeader>
                         <DialogTitle>Reject Pipeline</DialogTitle>
                         <DialogDescription>
-                            Return to draft status with feedback.
+                            This will return the pipeline to draft status for further changes.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="py-2 space-y-3">
-                        <div className="space-y-2">
-                            <label className="flex items-center gap-1.5 text-sm font-medium">
-                                <MessageSquare className="h-4 w-4" />
-                                Notes (optional)
-                            </label>
-                            <Textarea
-                                placeholder="What needs to be changed..."
-                                value={rejectReason}
-                                onChange={e => setRejectReason(e.target.value)}
-                                rows={3}
-                                className="resize-none"
-                            />
-                        </div>
-                    </div>
                     <DialogFooter>
                         <Button
                             variant="outline"
-                            onClick={() => {
-                                setRejectDialogOpen(false);
-                                setRejectReason('');
-                            }}
+                            onClick={() => setRejectDialogOpen(false)}
                             disabled={isSubmitting}
                         >
                             Cancel

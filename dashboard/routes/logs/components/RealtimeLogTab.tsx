@@ -15,7 +15,7 @@ import { useRecentLogs } from '../../../hooks';
 import { ErrorState } from '../../../components/shared';
 import { formatSmartDateTime } from '../../../utils';
 import { LogLevelBadge } from './LogLevelBadge';
-import { UI_LIMITS, SCROLL_HEIGHTS } from '../../../constants';
+import { UI_LIMITS, SCROLL_HEIGHTS, POLLING_INTERVALS } from '../../../constants';
 
 /**
  * Real-time log feed tab that auto-refreshes every 3 seconds.
@@ -52,7 +52,7 @@ export function RealtimeLogTab() {
                             role="status"
                         />
                         <span className="text-sm text-muted-foreground">
-                            {recentLogsQuery.isLoading ? 'Loading...' : 'Auto-refreshing every 3s'}
+                            {recentLogsQuery.isLoading ? 'Loading...' : `Auto-refreshing every ${POLLING_INTERVALS.LIVE_LOGS / 1000}s`}
                         </span>
                         <Button variant="ghost" size="sm" onClick={handleRefetch} disabled={recentLogsQuery.isLoading} data-testid="datahub-realtime-log-refresh-button" aria-label="Refresh real-time logs">
                             <RefreshCw className={`w-4 h-4 ${recentLogsQuery.isLoading ? 'animate-spin' : ''}`} />

@@ -16,6 +16,44 @@ import { parseJson, isJsonLines, parseJsonLines } from './formats/json.parser';
 import { parseXml } from './formats/xml.parser';
 import { parseExcel, isExcelFile } from './formats/excel.parser';
 
+/**
+ * Function signature for format-specific parsers in the registry.
+ */
+export type FormatParserFn = (content: string | Buffer, options?: unknown) => Promise<ParseResult> | ParseResult;
+
+/**
+ * Registry of format parsers. SDK users can register custom parsers via `registerParser()`.
+ */
+const PARSER_REGISTRY = new Map<string, FormatParserFn>([
+    ['CSV', (content, options) => parseCsv(
+        typeof content === 'string' ? content : content.toString((options as { encoding?: BufferEncoding } | undefined)?.encoding ?? 'utf-8'),
+        options as Parameters<typeof parseCsv>[1],
+    )],
+    ['JSON', (content, _options) => {
+        const jsonContent = typeof content === 'string' ? content : content.toString('utf-8');
+        if (isJsonLines(jsonContent)) {
+            return parseJsonLines(jsonContent);
+        }
+        return parseJson(jsonContent, _options as Parameters<typeof parseJson>[1]);
+    }],
+    ['XML', (content, options) => parseXml(
+        typeof content === 'string' ? content : content.toString('utf-8'),
+        options as Parameters<typeof parseXml>[1],
+    )],
+    ['XLSX', (content, options) => parseExcel(
+        Buffer.isBuffer(content) ? content : Buffer.from(content),
+        options as Parameters<typeof parseExcel>[1],
+    )],
+]);
+
+/**
+ * Register a custom file format parser. Allows SDK users to extend
+ * the file parser with additional formats beyond CSV/JSON/XML/XLSX.
+ */
+export function registerParser(format: string, parser: FormatParserFn): void {
+    PARSER_REGISTRY.set(format, parser);
+}
+
 @Injectable()
 export class FileParserService {
     detectFormat(content: string | Buffer, filename?: string): FileFormat {
@@ -54,44 +92,26 @@ export class FileParserService {
     async parse(content: string | Buffer, options: ParseOptions = {}): Promise<ParseResult> {
         const format = options.format ?? this.detectFormat(content);
 
-        switch (format) {
-            case 'CSV':
-                return parseCsv(
-                    typeof content === 'string' ? content : content.toString(options.csv?.encoding ?? 'utf-8'),
-                    options.csv,
-                );
-
-            case 'JSON': {
-                const jsonContent = typeof content === 'string' ? content : content.toString('utf-8');
-                if (isJsonLines(jsonContent)) {
-                    return parseJsonLines(jsonContent);
-                }
-                return parseJson(jsonContent, options.json);
-            }
-
-            case 'XML':
-                return parseXml(
-                    typeof content === 'string' ? content : content.toString('utf-8'),
-                    options.xml,
-                );
-
-            case 'XLSX':
-                return parseExcel(
-                    Buffer.isBuffer(content) ? content : Buffer.from(content),
-                    options.xlsx,
-                );
-
-            default:
-                return {
-                    success: false,
-                    format,
-                    records: [],
-                    fields: [],
-                    totalRows: 0,
-                    errors: [{ message: `Unsupported format: ${format}` }],
-                    warnings: [],
-                };
+        const parser = PARSER_REGISTRY.get(format);
+        if (!parser) {
+            return {
+                success: false,
+                format,
+                records: [],
+                fields: [],
+                totalRows: 0,
+                errors: [{ message: `Unsupported format: ${format}` }],
+                warnings: [],
+            };
         }
+
+        const formatOptions: Record<string, unknown> = {
+            csv: options.csv,
+            json: options.json,
+            xml: options.xml,
+            xlsx: options.xlsx,
+        };
+        return await parser(content, formatOptions[format.toLowerCase()]);
     }
 
     private static readonly MAX_PREVIEW_ROWS = PAGINATION.DATABASE_PAGE_SIZE;

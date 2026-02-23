@@ -43,7 +43,7 @@ import {
     parseJsonOperator, stringifyJsonOperator, pickOperator, omitOperator,
     PARSE_JSON_OPERATOR_DEFINITION, STRINGIFY_JSON_OPERATOR_DEFINITION,
     PICK_OPERATOR_DEFINITION, OMIT_OPERATOR_DEFINITION,
-} from './json';
+} from './json/json.operators';
 
 import {
     mapOperator, setOperator, removeOperator, renameOperator, copyOperator,
@@ -100,7 +100,7 @@ type OperatorFn = (
     helpers: AdapterOperatorHelpers,
 ) => OperatorResult | Promise<OperatorResult>;
 
-interface OperatorRegistryEntry {
+export interface OperatorRegistryEntry {
     definition: AdapterDefinition;
     fn: OperatorFn;
 }
@@ -116,8 +116,11 @@ const op = <T>(fn: T): OperatorFn => fn as unknown as OperatorFn;
 
 /**
  * Operator registry mapping codes to definitions and implementations.
+ *
+ * This is the single source of truth for all built-in operators.
+ * ALL_OPERATOR_DEFINITIONS in operators/index.ts is auto-derived from this registry.
  */
-const OPERATOR_REGISTRY: Record<string, OperatorRegistryEntry> = {
+export const OPERATOR_REGISTRY: Record<string, OperatorRegistryEntry> = {
     // String
     split: { definition: SPLIT_OPERATOR_DEFINITION, fn: op(splitOperator) },
     join: { definition: JOIN_OPERATOR_DEFINITION, fn: op(joinOperator) },
@@ -265,20 +268,4 @@ export function getCustomOperatorRuntime(
         return adapter as OperatorAdapter;
     }
     return undefined;
-}
-
-export function hasOperator(code: string): boolean {
-    return code in OPERATOR_REGISTRY;
-}
-
-export function getOperatorCodes(): string[] {
-    return Object.keys(OPERATOR_REGISTRY);
-}
-
-export function getOperatorCount(): number {
-    return Object.keys(OPERATOR_REGISTRY).length;
-}
-
-export function getAllOperatorDefinitions(): AdapterDefinition[] {
-    return Object.values(OPERATOR_REGISTRY).map(entry => entry.definition);
 }

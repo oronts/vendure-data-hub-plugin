@@ -78,7 +78,6 @@ export class PipelineFormatService {
      * Default node spacing for visual layout
      */
     private readonly defaultNodeSpacingX = 240;
-    private readonly defaultNodeSpacingY = 120;
     private readonly defaultStartX = 120;
     private readonly defaultStartY = 120;
 

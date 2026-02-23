@@ -7,12 +7,8 @@
  * @module services/destinations
  */
 
-import { DeliveryResult, DestinationType, DeliveryOptions } from './destination.types';
-import { LOGGER_CONTEXTS } from '../../constants/index';
-import { DataHubLogger } from '../logger';
+import { DeliveryResult, DestinationType } from './destination.types';
 import { getErrorMessage } from '../../utils/error.utils';
-
-const logger = new DataHubLogger(LOGGER_CONTEXTS.DELIVERY_UTILS);
 
 /**
  * Create a successful delivery result
@@ -60,97 +56,8 @@ export function createFailureResult(
 }
 
 /**
- * Execute a delivery operation with standardized error handling
- */
-export async function executeDelivery<TConfig extends { id: string }>(
-    config: TConfig,
-    destinationType: DestinationType,
-    content: Buffer,
-    filename: string,
-    deliveryFn: () => Promise<DeliveryResult>,
-    _options?: DeliveryOptions,
-): Promise<DeliveryResult> {
-    try {
-        return await deliveryFn();
-    } catch (error) {
-        const errorMessage = getErrorMessage(error);
-        logger.error(
-            `${destinationType.toUpperCase()}: Failed to deliver ${filename}`,
-            error instanceof Error ? error : undefined,
-        );
-
-        return createFailureResult(
-            config.id,
-            destinationType,
-            filename,
-            content.length,
-            errorMessage,
-        );
-    }
-}
-
-/**
- * Connection test result helper
- */
-interface ConnectionTestContext {
-    startTime: number;
-}
-
-/**
- * Start a connection test
- */
-export function startConnectionTest(): ConnectionTestContext {
-    return { startTime: Date.now() };
-}
-
-/**
- * Create a successful connection test result
- */
-export function createTestSuccess(
-    context: ConnectionTestContext,
-    message: string,
-): { success: true; message: string; latencyMs: number } {
-    return {
-        success: true,
-        message,
-        latencyMs: Date.now() - context.startTime,
-    };
-}
-
-/**
- * Create a failed connection test result
- */
-export function createTestFailure(
-    context: ConnectionTestContext,
-    error: unknown,
-): { success: false; message: string; latencyMs: number } {
-    return {
-        success: false,
-        message: getErrorMessage(error),
-        latencyMs: Date.now() - context.startTime,
-    };
-}
-
-/**
- * Extract error message from unknown error
- */
-export function extractUnknownErrorMessage(error: unknown, defaultMessage: string): string {
-    if (error instanceof Error) {
-        return error.message;
-    }
-    return defaultMessage;
-}
-
-/**
  * Normalize a remote path by removing duplicate slashes
  */
 export function normalizeRemotePath(basePath: string, filename: string): string {
     return `${basePath}/${filename}`.replace(/\/+/g, '/');
-}
-
-/**
- * Get MIME type from delivery options with fallback
- */
-export function getConfiguredMimeType(options?: DeliveryOptions): string {
-    return options?.mimeType || 'application/octet-stream';
 }

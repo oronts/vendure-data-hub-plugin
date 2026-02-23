@@ -1,12 +1,17 @@
-import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
+import { AdapterDefinition, JsonObject } from '../types';
 import { TemplateOperatorConfig } from './types';
 import { applyTemplate } from './helpers';
+import { createRecordOperator } from '../operator-factory';
 
 export const TEMPLATE_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'template',
     description: 'Render a string template and set it at target path.',
+    category: 'DATA',
+    categoryLabel: 'Data',
+    categoryOrder: 0,
     pure: true,
+    editorType: 'template',
     schema: {
         fields: [
             {
@@ -43,11 +48,4 @@ export function applyTemplateOperator(
     return applyTemplate(record, config);
 }
 
-export function templateOperator(
-    records: readonly JsonObject[],
-    config: TemplateOperatorConfig,
-    _helpers: AdapterOperatorHelpers,
-): OperatorResult {
-    const results = records.map(record => applyTemplateOperator(record, config));
-    return { records: results };
-}
+export const templateOperator = createRecordOperator(applyTemplateOperator);

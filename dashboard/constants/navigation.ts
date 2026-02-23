@@ -22,14 +22,6 @@ export const DATAHUB_API_BASE = '/data-hub';
 export const DATAHUB_API_UPLOAD = `${DATAHUB_API_BASE}/upload`;
 
 /**
- * Generate file preview API URL.
- * @param fileId - The uploaded file ID
- * @param rows - Number of rows to preview
- */
-const DATAHUB_API_FILE_PREVIEW = (fileId: string, rows: number) =>
-    `${DATAHUB_API_BASE}/files/${fileId}/preview?rows=${rows}`;
-
-/**
  * Generate webhook URL for a pipeline.
  * @param code - The pipeline code
  */

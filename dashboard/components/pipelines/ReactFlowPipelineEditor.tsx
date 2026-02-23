@@ -26,23 +26,19 @@ import {
 import { NodePropertiesPanel } from './shared/NodePropertiesPanel';
 import { pipelineNodeTypes } from './shared/PipelineNode';
 import { useAdapterCatalog, AdapterMetadata } from '../../hooks';
-import { ADAPTER_TYPES, PANEL_WIDTHS, SCROLL_HEIGHTS, EDGE_STYLE, CANVAS_BG_CLASS } from '../../constants';
+import { ADAPTER_TYPES, ADAPTER_TYPE_TO_NODE_TYPE, PANEL_WIDTHS, SCROLL_HEIGHTS, EDGE_STYLE, CANVAS_BG_CLASS } from '../../constants';
 import type { PipelineNodeData, VisualPipelineDefinition, ValidationIssue } from '../../types';
 import {
     Play,
     Save,
     ChevronRight,
     ChevronDown,
-    Download,
-    Upload,
-    RefreshCw,
-    CheckCircle,
-    GitBranch,
-    Globe,
     Layers,
     LayoutGrid,
 } from 'lucide-react';
 import { layoutDagNodes } from '../../routes/pipelines/utils';
+import { VISUAL_NODE_CONFIGS } from './shared/visual-node-config';
+import type { VisualNodeCategory } from '../../types';
 
 export interface ReactFlowPipelineEditorProps {
     definition: VisualPipelineDefinition;
@@ -123,7 +119,7 @@ export function ReactFlowPipelineEditor({
     const onConnect = React.useCallback((connection: Connection) => {
         const newEdge: Edge = {
             ...connection,
-            id: `edge-${Date.now()}`,
+            id: `edge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             markerEnd: { type: MarkerType.ArrowClosed },
             style: { strokeWidth: EDGE_STYLE.STROKE_WIDTH },
         } as Edge;
@@ -329,7 +325,7 @@ export function ReactFlowPipelineEditor({
                         />
                         {nodes.length === 0 && (
                             <Panel position="top-center" className="mt-20">
-                                <div className="text-center text-muted-foreground bg-white/80 p-6 rounded-lg">
+                                <div className="text-center text-muted-foreground bg-background/80 p-6 rounded-lg">
                                     <Layers className="w-12 h-12 mx-auto mb-4 opacity-50" />
                                     <p className="text-lg font-medium">Start Building Your Pipeline</p>
                                     <p className="text-sm mt-1">
@@ -480,27 +476,25 @@ function NodePaletteDynamic({ adapters, onDragStart, onAddNode }: { adapters: Ad
         setExpanded(e => ({ ...e, [sectionKey]: !e[sectionKey] }));
     }, []);
 
-    const sources = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.EXTRACTOR), [adapters]);
-    const transforms = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.OPERATOR), [adapters]);
-    const enrichers = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.ENRICHER), [adapters]);
-    const validation = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.VALIDATOR), [adapters]);
-    const routing = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.ROUTER), [adapters]);
-    const destinations = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.LOADER), [adapters]);
-    const feeds = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.FEED), [adapters]);
-    const exports = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.EXPORTER), [adapters]);
-    const sinks = React.useMemo(() => adapters.filter(a => a.type === ADAPTER_TYPES.SINK), [adapters]);
-
-    const sections = React.useMemo(() => [
-        { key: 'sources', label: 'Data Sources', items: sources, category: 'source', icon: Download },
-        { key: 'transforms', label: 'Transforms', items: transforms, category: 'transform', icon: RefreshCw },
-        { key: 'enrichers', label: 'Enrichers', items: enrichers, category: 'enrich', icon: RefreshCw },
-        { key: 'validation', label: 'Validation', items: validation, category: 'validate', icon: CheckCircle },
-        { key: 'routing', label: 'Routing', items: routing, category: 'condition', icon: GitBranch },
-        { key: 'destinations', label: 'Destinations', items: destinations, category: 'load', icon: Upload },
-        { key: 'feeds', label: 'Feeds', items: feeds, category: 'feed', icon: Globe },
-        { key: 'exports', label: 'Exports', items: exports, category: 'export', icon: Globe },
-        { key: 'sinks', label: 'Sinks', items: sinks, category: 'sink', icon: Layers },
-    ].filter(s => s.items.length > 0), [sources, transforms, enrichers, validation, routing, destinations, feeds, exports, sinks]);
+    const sections = React.useMemo(() => {
+        const adapterTypeEntries = Object.values(ADAPTER_TYPES) as string[];
+        return adapterTypeEntries
+            .map(adapterType => {
+                const category = ADAPTER_TYPE_TO_NODE_TYPE[adapterType] as VisualNodeCategory | undefined;
+                if (!category) return null;
+                const config = VISUAL_NODE_CONFIGS[category];
+                if (!config) return null;
+                const items = adapters.filter(a => a.type === adapterType);
+                return {
+                    key: category,
+                    label: config.label === 'Source' ? 'Data Sources' : `${config.label}s`,
+                    items,
+                    category,
+                    icon: config.icon,
+                };
+            })
+            .filter((s): s is NonNullable<typeof s> => s !== null && s.items.length > 0);
+    }, [adapters]);
 
     return (
         <Card className={`${PANEL_WIDTHS.NODE_PALETTE} h-full overflow-hidden flex flex-col`}>

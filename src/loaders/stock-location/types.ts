@@ -17,6 +17,7 @@ export const STOCK_LOCATION_LOADER_METADATA = {
     entityType: VendureEntityType.STOCK_LOCATION,
     name: 'Stock Location Loader',
     description: 'Imports stock locations/warehouses for inventory management',
+    adapterCode: 'stockLocationUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
     lookupFields: ['name', 'id'],
     requiredFields: ['name'],

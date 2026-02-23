@@ -1,5 +1,5 @@
 import { HTTP, WEBHOOK } from '../constants/index';
-import { getErrorMessage } from './error.utils';
+import { getErrorMessage, ensureError } from './error.utils';
 import type { RetryConfig } from '../../shared/types';
 
 export type { RetryConfig };
@@ -47,7 +47,7 @@ export async function executeWithRetry<T>(
         try {
             return await fn();
         } catch (error) {
-            lastError = error instanceof Error ? error : new Error(String(error));
+            lastError = ensureError(error);
 
             if (attempt >= config.maxAttempts || !isRetryable(error)) {
                 break;

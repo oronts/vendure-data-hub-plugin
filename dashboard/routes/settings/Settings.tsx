@@ -22,11 +22,11 @@ import {
 } from '@vendure/dashboard';
 import { toast } from 'sonner';
 import { Save, Clock, Info, FileText } from 'lucide-react';
-import { DATAHUB_NAV_SECTION, LOG_PERSISTENCE_LEVELS, ROUTES, DATAHUB_PERMISSIONS, RETENTION, TOAST_SETTINGS, ERROR_MESSAGES, RETENTION_DEFAULTS } from '../../constants';
+import { DATAHUB_NAV_SECTION, ROUTES, DATAHUB_PERMISSIONS, RETENTION, TOAST_SETTINGS, ERROR_MESSAGES, RETENTION_DEFAULTS } from '../../constants';
 import { FieldError } from '../../components/common';
 import { LoadingState, ErrorState } from '../../components/shared';
 import { getErrorMessage } from '../../../shared';
-import { useSettings, useUpdateSettings } from '../../hooks';
+import { useSettings, useUpdateSettings, useOptionValues } from '../../hooks';
 
 export const settingsPage: DashboardRouteDefinition = {
     navMenuItem: {
@@ -47,6 +47,7 @@ export const settingsPage: DashboardRouteDefinition = {
 function SettingsPage() {
     const { data: settings, isLoading, isError, error, refetch } = useSettings();
     const updateSettings = useUpdateSettings();
+    const { options: logPersistenceOptions, isLoading: isLoadingOptions } = useOptionValues('logPersistenceLevels');
 
     const [runsDays, setRunsDays] = React.useState<string>('');
     const [errorsDays, setErrorsDays] = React.useState<string>('');
@@ -283,12 +284,12 @@ function SettingsPage() {
                             <div className="grid grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <Label htmlFor="log-level">Log Persistence Level</Label>
-                                    <Select value={logLevel} onValueChange={handleLogLevelChange}>
+                                    <Select value={logLevel} onValueChange={handleLogLevelChange} disabled={isLoadingOptions}>
                                         <SelectTrigger id="log-level" data-testid="settings-log-level-select">
-                                            <SelectValue placeholder="Select level..." />
+                                            <SelectValue placeholder={isLoadingOptions ? 'Loading...' : 'Select level...'} />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {LOG_PERSISTENCE_LEVELS.map(level => (
+                                            {logPersistenceOptions.map(level => (
                                                 <SelectItem key={level.value} value={level.value}>
                                                     <div className="flex flex-col">
                                                         <span>{level.label}</span>
@@ -298,7 +299,7 @@ function SettingsPage() {
                                         </SelectContent>
                                     </Select>
                                     <p className="text-xs text-muted-foreground">
-                                        {LOG_PERSISTENCE_LEVELS.find(l => l.value === logLevel)?.description}
+                                        {logPersistenceOptions.find(l => l.value === logLevel)?.description}
                                     </p>
                                 </div>
                                 <div className="space-y-2">
@@ -308,7 +309,7 @@ function SettingsPage() {
                                         type="number"
                                         min="1"
                                         max={String(RETENTION.MAX_DAYS)}
-                                        placeholder={String(RETENTION_DEFAULTS.ERROR_DAYS)}
+                                        placeholder={String(RETENTION_DEFAULTS.LOGS_DAYS)}
                                         value={logsDays}
                                         onChange={e => handleLogsDaysChange(e.target.value)}
                                         onBlur={() => handleBlur('logsDays')}

@@ -11,7 +11,8 @@ import { LoaderHandler } from './types';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
 import { HTTP } from '../../../../shared/constants';
-import { getMimeType } from '../../../loaders/asset/helpers';
+import { sleep } from '../../../utils/retry.utils';
+import { getMimeType, extractFilenameFromUrl } from '../../../loaders/asset/helpers';
 
 interface AssetImportConfig {
     channel?: string;
@@ -49,7 +50,7 @@ export class AssetImportHandler implements LoaderHandler {
                 const filenameField = cfg.filenameField ?? 'filename';
                 const nameField = cfg.nameField ?? 'name';
                 const sourceUrl = String(record[sourceUrlField] ?? '');
-                const filename = String(record[filenameField] ?? extractFilename(sourceUrl));
+                const filename = String(record[filenameField] ?? extractFilenameFromUrl(sourceUrl));
                 const name = String(record[nameField] ?? filename);
 
                 if (!sourceUrl) { fail++; continue; }
@@ -110,17 +111,6 @@ export class AssetImportHandler implements LoaderHandler {
     }
 }
 
-function extractFilename(url: string): string {
-    try {
-        const pathname = new URL(url).pathname;
-        const segments = pathname.split('/');
-        return segments[segments.length - 1] || 'asset';
-    } catch {
-        return 'asset';
-    }
-}
-
-
 async function downloadFile(url: string): Promise<Buffer | null> {
     await assertUrlSafe(url);
     for (let attempt = 0; attempt <= HTTP.MAX_RETRIES; attempt++) {
@@ -137,7 +127,7 @@ async function downloadFile(url: string): Promise<Buffer | null> {
             return Buffer.from(arrayBuffer);
         } catch {
             if (attempt === HTTP.MAX_RETRIES) return null;
-            await new Promise(r => setTimeout(r, HTTP.RETRY_DELAY_MS * (attempt + 1)));
+            await sleep(HTTP.RETRY_DELAY_MS * (attempt + 1));
         }
     }
     return null;

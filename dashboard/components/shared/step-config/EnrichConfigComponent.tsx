@@ -11,6 +11,9 @@ import {
     Button,
 } from '@vendure/dashboard';
 import { Plus, Trash2 } from 'lucide-react';
+import { useEntityLoaders } from '../../../hooks/api/use-entity-loaders';
+import { useEnrichmentSourceSchemas, type ConnectionSchemaField } from '../../../hooks/api/use-config-options';
+import { useStableIndexIds } from '../../../hooks/use-stable-keys';
 
 export interface EnrichConfigComponentProps {
     readonly config: Record<string, unknown>;
@@ -28,71 +31,19 @@ function generateDefaultValueId(): string {
     return `default-value-${Date.now()}-${++defaultValueIdCounter}`;
 }
 
-/**
- * Hook to maintain stable IDs for list items across renders.
- * Maps field names to stable IDs, generating new IDs only for new fields.
- */
-function useStableIds(fields: string[]): Map<number, string> {
-    const idMapRef = useRef<Map<number, string>>(new Map());
-    const previousFieldsRef = useRef<string[]>([]);
-
-    return useMemo(() => {
-        const newIdMap = new Map<number, string>();
-        const previousFields = previousFieldsRef.current;
-        const previousIdMap = idMapRef.current;
-
-        fields.forEach((field, index) => {
-            // Try to find a matching previous item by index first (most common case)
-            if (index < previousFields.length && previousIdMap.has(index)) {
-                // Reuse the ID from the same position
-                newIdMap.set(index, previousIdMap.get(index)!);
-            } else {
-                // Generate a new ID for new items
-                newIdMap.set(index, generateDefaultValueId());
-            }
-        });
-
-        previousFieldsRef.current = [...fields];
-        idMapRef.current = newIdMap;
-
-        return newIdMap;
-    }, [fields]);
-}
-
-const SOURCE_TYPES = [
-    { value: 'STATIC', label: 'Static Values', description: 'Set fixed values on records' },
-    { value: 'HTTP', label: 'HTTP Lookup', description: 'Fetch data from external API' },
-    { value: 'VENDURE', label: 'Vendure Entity', description: 'Lookup from Vendure data' },
-];
-
-const VENDURE_ENTITY_OPTIONS = [
-    { value: 'PRODUCT', label: 'Product' },
-    { value: 'PRODUCT_VARIANT', label: 'Product Variant' },
-    { value: 'CUSTOMER', label: 'Customer' },
-    { value: 'CUSTOMER_GROUP', label: 'Customer Group' },
-    { value: 'ORDER', label: 'Order' },
-    { value: 'COLLECTION', label: 'Collection' },
-    { value: 'FACET', label: 'Facet' },
-    { value: 'FACET_VALUE', label: 'Facet Value' },
-    { value: 'PROMOTION', label: 'Promotion' },
-    { value: 'ASSET', label: 'Asset' },
-    { value: 'SHIPPING_METHOD', label: 'Shipping Method' },
-    { value: 'PAYMENT_METHOD', label: 'Payment Method' },
-    { value: 'TAX_CATEGORY', label: 'Tax Category' },
-    { value: 'TAX_RATE', label: 'Tax Rate' },
-    { value: 'COUNTRY', label: 'Country' },
-    { value: 'ZONE', label: 'Zone' },
-    { value: 'CHANNEL', label: 'Channel' },
-    { value: 'TAG', label: 'Tag' },
-    { value: 'STOCK_LOCATION', label: 'Stock Location' },
-    { value: 'INVENTORY', label: 'Inventory' },
-] as const;
-
 export function EnrichConfigComponent({
     config,
     onChange,
 }: EnrichConfigComponentProps) {
+    const { schemas: sourceTypeSchemas } = useEnrichmentSourceSchemas();
+    const { entities } = useEntityLoaders();
+    const entityOptions = useMemo(
+        () => entities.map(e => ({ value: e.code, label: e.name })),
+        [entities],
+    );
+
     const sourceType = (config.sourceType as string) || 'STATIC';
+    const currentSourceSchema = sourceTypeSchemas.find(s => s.value === sourceType);
 
     // Use refs to avoid stale closures in the initialization effect
     const configRef = useRef(config);
@@ -107,15 +58,12 @@ export function EnrichConfigComponent({
         }
     }, []);
     const defaults = (config.defaults as Record<string, unknown>) || {};
-    const endpoint = (config.endpoint as string) || '';
-    const entity = (config.entity as string) || '';
-    const matchField = (config.matchField as string) || '';
 
     const defaultsEntries = Object.entries(defaults);
-    const stableIds = useStableIds(defaultsEntries.map(([field]) => field));
+    const stableIds = useStableIndexIds(defaultsEntries, 'default-value');
 
     const defaultsList: DefaultValue[] = defaultsEntries.map(([field, value], index) => ({
-        id: stableIds.get(index) || generateDefaultValueId(),
+        id: stableIds[index] || generateDefaultValueId(),
         field,
         value: typeof value === 'string' ? value : JSON.stringify(value),
     }));
@@ -165,7 +113,7 @@ export function EnrichConfigComponent({
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        {SOURCE_TYPES.map((st) => (
+                        {sourceTypeSchemas.map((st) => (
                             <SelectItem key={st.value} value={st.value}>
                                 {st.label}
                             </SelectItem>
@@ -173,106 +121,124 @@ export function EnrichConfigComponent({
                     </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                    {SOURCE_TYPES.find(st => st.value === sourceType)?.description}
+                    {currentSourceSchema?.description}
                 </p>
             </div>
 
-            {sourceType === 'STATIC' && (
+            {currentSourceSchema && currentSourceSchema.fields.length > 0 && (
                 <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                        <Label className="text-sm font-medium">Default Values</Label>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={addDefault}
-                            aria-label="Add default field value"
-                            data-testid="datahub-enrich-add-default-btn"
-                        >
-                            <Plus className="h-3 w-3 mr-1" />
-                            Add Field
-                        </Button>
-                    </div>
-
-                    {defaultsList.length === 0 && (
-                        <p className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md">
-                            No default values defined. Add fields to set on each record.
-                        </p>
-                    )}
-
-                    {defaultsList.map((item, index) => (
-                        <DefaultValueRow
-                            key={item.id}
-                            item={item}
-                            index={index}
+                    {currentSourceSchema.fields.map(field => (
+                        <EnrichSchemaField
+                            key={field.key}
+                            field={field}
+                            value={field.type === 'keyValuePairs' ? defaults : (config[field.key] as string || '')}
+                            onChange={(value) => {
+                                if (field.type === 'keyValuePairs') {
+                                    onChange({ ...config, defaults: value });
+                                } else {
+                                    updateField(field.key, value);
+                                }
+                            }}
+                            entityOptions={entityOptions}
+                            defaultsList={defaultsList}
+                            addDefault={addDefault}
                             updateDefaultItem={updateDefaultItem}
                             removeDefault={removeDefault}
                         />
                     ))}
                 </div>
             )}
+        </div>
+    );
+}
 
-            {sourceType === 'HTTP' && (
-                <div className="space-y-3">
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">API Endpoint</Label>
-                        <Input
-                            value={endpoint}
-                            onChange={(e) => updateField('endpoint', e.target.value)}
-                            placeholder="https://api.example.com/lookup"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            URL to fetch enrichment data. Use {'{{field}}'} for dynamic values.
-                        </p>
-                    </div>
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Match Field</Label>
-                        <Input
-                            value={matchField}
-                            onChange={(e) => updateField('matchField', e.target.value)}
-                            placeholder="sku"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            Record field to use for lookup matching
-                        </p>
-                    </div>
-                </div>
+interface EnrichSchemaFieldProps {
+    field: ConnectionSchemaField;
+    value: unknown;
+    onChange: (value: unknown) => void;
+    entityOptions: Array<{ value: string; label: string }>;
+    defaultsList: DefaultValue[];
+    addDefault: () => void;
+    updateDefaultItem: (index: number, field: string, value: string) => void;
+    removeDefault: (index: number) => void;
+}
+
+/** Field type renderer registry -- maps field.type to a render function. */
+type EnrichFieldRenderer = (props: EnrichSchemaFieldProps) => React.JSX.Element;
+
+const ENRICH_FIELD_RENDERERS: Record<string, EnrichFieldRenderer> = {
+    keyValuePairs: ({ field, defaultsList, addDefault, updateDefaultItem, removeDefault }) => (
+        <div className="space-y-3">
+            <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">{field.label}</Label>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={addDefault}
+                    aria-label="Add default field value"
+                    data-testid="datahub-enrich-add-default-btn"
+                >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Field
+                </Button>
+            </div>
+            {defaultsList.length === 0 && (
+                <p className="text-sm text-muted-foreground p-3 bg-muted/50 rounded-md">
+                    No default values defined. Add fields to set on each record.
+                </p>
             )}
+            {defaultsList.map((item, index) => (
+                <DefaultValueRow
+                    key={item.id}
+                    item={item}
+                    index={index}
+                    updateDefaultItem={updateDefaultItem}
+                    removeDefault={removeDefault}
+                />
+            ))}
+        </div>
+    ),
 
-            {sourceType === 'VENDURE' && (
-                <div className="space-y-3">
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Entity Type</Label>
-                        <Select
-                            value={entity}
-                            onValueChange={(v) => updateField('entity', v)}
-                        >
-                            <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Select entity..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {VENDURE_ENTITY_OPTIONS.map((opt) => (
-                                    <SelectItem key={opt.value} value={opt.value}>
-                                        {opt.label}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="space-y-2">
-                        <Label className="text-sm font-medium">Match Field</Label>
-                        <Input
-                            value={matchField}
-                            onChange={(e) => updateField('matchField', e.target.value)}
-                            placeholder="sku"
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            Record field to match against Vendure entity
-                        </p>
-                    </div>
-                </div>
+    entitySelect: ({ field, value, onChange, entityOptions }) => (
+        <div className="space-y-2">
+            <Label className="text-sm font-medium">{field.label}</Label>
+            <Select value={String(value || '')} onValueChange={(v) => onChange(v)}>
+                <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select entity..." />
+                </SelectTrigger>
+                <SelectContent>
+                    {entityOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+            {field.description && (
+                <p className="text-xs text-muted-foreground">{field.description}</p>
+            )}
+        </div>
+    ),
+};
+
+/** Default renderer for unrecognized field types (text input). */
+function defaultEnrichFieldRenderer({ field, value, onChange }: EnrichSchemaFieldProps): React.JSX.Element {
+    return (
+        <div className="space-y-2">
+            <Label className="text-sm font-medium">{field.label}</Label>
+            <Input
+                value={String(value || '')}
+                onChange={(e) => onChange(e.target.value)}
+                placeholder={field.placeholder ?? undefined}
+            />
+            {field.description && (
+                <p className="text-xs text-muted-foreground">{field.description}</p>
             )}
         </div>
     );
+}
+
+function EnrichSchemaField(props: EnrichSchemaFieldProps) {
+    const renderer = ENRICH_FIELD_RENDERERS[props.field.type] ?? defaultEnrichFieldRenderer;
+    return renderer(props);
 }
 
 interface DefaultValueRowProps {

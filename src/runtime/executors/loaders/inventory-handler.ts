@@ -5,7 +5,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
     RequestContext,
     ProductVariantService,
-    ListQueryOptions,
     StockLocationService,
     ProductVariant,
     ID,
@@ -14,6 +13,7 @@ import { StockLevelInput, UpdateProductVariantInput } from '@vendure/common/lib/
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
+import { findVariantBySku as findVariantBySkuLookup } from './shared-lookups';
 import { getErrorMessage } from '../../../utils/error.utils';
 
 /**
@@ -119,10 +119,7 @@ export class StockAdjustHandler implements LoaderHandler {
     }
 
     private async findVariantBySku(ctx: RequestContext, sku: string): Promise<ProductVariant | undefined> {
-        const result = await this.productVariantService.findAll(ctx, {
-            filter: { sku: { eq: sku } },
-        } as ListQueryOptions<ProductVariant>);
-        return result.items[0];
+        return findVariantBySkuLookup(this.productVariantService, ctx, sku);
     }
 
     private async resolveStockLevelsByCode(ctx: RequestContext, stockByLocation?: Record<string, number>): Promise<StockLevelInput[] | undefined> {

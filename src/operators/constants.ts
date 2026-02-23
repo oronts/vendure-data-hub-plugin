@@ -1,4 +1,4 @@
-import { HttpMethod } from '../constants/enums';
+import { HTTP_METHOD_GET_POST_OPTIONS } from '../constants/adapter-schema-options';
 
 /**
  * Validation rule types for operator validation errors.
@@ -25,10 +25,7 @@ export const TRIM_MODES = [
     { value: 'end', label: 'End' },
 ] as const;
 
-export const HTTP_METHOD_OPTIONS = [
-    { value: HttpMethod.GET, label: 'GET' },
-    { value: HttpMethod.POST, label: 'POST' },
-] as const;
+export const HTTP_METHOD_OPTIONS = HTTP_METHOD_GET_POST_OPTIONS;
 
 export const UNIT_OPTIONS = [
     { value: 'g', label: 'g (grams)' },

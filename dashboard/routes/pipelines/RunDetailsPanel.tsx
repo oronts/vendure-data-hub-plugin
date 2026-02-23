@@ -1,6 +1,12 @@
 import * as React from 'react';
 import {
     Button,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
     PermissionGuard,
     Json,
 } from '@vendure/dashboard';
@@ -36,6 +42,7 @@ function findPausedGateStep(metrics: IndividualRunMetrics): string | undefined {
 }
 
 export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCancelling }: RunDetailsPanelProps) {
+    const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false);
     const { data: runData, refetch, isFetching } = usePipelineRun(runId);
     const { data: errors } = useRunErrors(runId);
     const retryError = useRetryError();
@@ -62,7 +69,12 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
     }, [retryError.mutateAsync]);
 
     const handleCancel = React.useCallback(() => {
+        setCancelDialogOpen(true);
+    }, []);
+
+    const handleConfirmCancel = React.useCallback(() => {
         onCancel(run?.id ?? runId);
+        setCancelDialogOpen(false);
     }, [onCancel, run?.id, runId]);
 
     const handleRerun = React.useCallback(() => {
@@ -195,6 +207,32 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
                     />
                 </PermissionGuard>
             </div>
+
+            <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Cancel Pipeline Run</DialogTitle>
+                        <DialogDescription>
+                            This will request cancellation of the running pipeline. This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setCancelDialogOpen(false)}
+                        >
+                            Keep Running
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleConfirmCancel}
+                            disabled={isCancelling}
+                        >
+                            {isCancelling ? 'Cancelling...' : 'Cancel Run'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

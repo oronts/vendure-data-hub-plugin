@@ -1,74 +1,45 @@
 /**
  * Adapter Code Constants
  *
- * Centralized constants for adapter codes used throughout the DataHub plugin.
+ * Centralized constants for adapter codes and mappings used throughout the DataHub plugin.
+ *
+ * CODE constants are auto-derived from handler registries -- adding a new adapter
+ * to a registry automatically generates its SCREAMING_SNAKE_CASE constant here.
  */
 
-/** Extractor adapter codes */
-export const EXTRACTOR_CODE = {
-    HTTP_API: 'httpApi',
-    DATABASE: 'database',
-    FILE: 'file',
-    S3: 's3',
-    FTP: 'ftp',
-    GRAPHQL: 'graphql',
-    VENDURE_QUERY: 'vendureQuery',
-    WEBHOOK: 'webhook',
-    CSV: 'csv',
-    JSON: 'json',
-    XML: 'xml',
-    IN_MEMORY: 'inMemory',
-    GENERATOR: 'generator',
-    CDC: 'cdc',
-} as const;
+import { AdapterType, StepType } from '../../shared/types';
+import { SHARED_STEP_TYPE_CONFIGS } from '../../shared/constants/step-type-configs';
+
+// Re-export auto-derived code constants from handler registries (single source of truth)
+export { EXTRACTOR_CODE } from '../extractors/extractor-handler-registry';
+export { LOADER_CODE } from '../runtime/executors/loaders/loader-handler-registry';
+export { EXPORTER_CODE, EXPORT_ADAPTER_CODES } from '../runtime/executors/exporters/export-handler-registry';
+export { FEED_CODE, FEED_ADAPTER_CODES } from '../runtime/executors/feeds/feed-handler-registry';
+export { SINK_CODE } from '../runtime/executors/sink-handler-registry';
 
 /** Type representing valid extractor adapter codes */
-export type ExtractorCode = typeof EXTRACTOR_CODE[keyof typeof EXTRACTOR_CODE];
-
-/** Loader adapter codes */
-export const LOADER_CODE = {
-    PRODUCT_UPSERT: 'productUpsert',
-    VARIANT_UPSERT: 'variantUpsert',
-    CUSTOMER_UPSERT: 'customerUpsert',
-    ORDER_NOTE: 'orderNote',
-    STOCK_ADJUST: 'stockAdjust',
-    APPLY_COUPON: 'applyCoupon',
-    COLLECTION_UPSERT: 'collectionUpsert',
-    PROMOTION_UPSERT: 'promotionUpsert',
-    ASSET_ATTACH: 'assetAttach',
-    ASSET_IMPORT: 'assetImport',
-    FACET_UPSERT: 'facetUpsert',
-    FACET_VALUE_UPSERT: 'facetValueUpsert',
-    ORDER_TRANSITION: 'orderTransition',
-    REST_POST: 'restPost',
-    GRAPHQL_MUTATION: 'graphqlMutation',
-    TAX_RATE_UPSERT: 'taxRateUpsert',
-    PAYMENT_METHOD_UPSERT: 'paymentMethodUpsert',
-    CHANNEL_UPSERT: 'channelUpsert',
-} as const;
+export type ExtractorCode = string;
 
 /** Type representing valid loader adapter codes */
-export type LoaderCode = typeof LOADER_CODE[keyof typeof LOADER_CODE];
-
-/** Exporter adapter codes */
-export const EXPORTER_CODE = {
-    CSV: 'csvExport',
-    JSON: 'jsonExport',
-    XML: 'xmlExport',
-    REST_POST: 'restPostExport',
-    WEBHOOK: 'webhookExport',
-} as const;
+export type LoaderCode = string;
 
 /** Type representing valid exporter adapter codes */
-export type ExporterCode = typeof EXPORTER_CODE[keyof typeof EXPORTER_CODE];
-
-/** Feed adapter codes */
-export const FEED_CODE = {
-    GOOGLE_MERCHANT: 'googleMerchant',
-    META_CATALOG: 'metaCatalog',
-    AMAZON: 'amazonFeed',
-    CUSTOM: 'customFeed',
-} as const;
+export type ExporterCode = string;
 
 /** Type representing valid feed adapter codes */
-export type FeedCode = typeof FEED_CODE[keyof typeof FEED_CODE];
+export type FeedCode = string;
+
+/**
+ * Maps step types to their corresponding adapter types for registry lookup.
+ *
+ * Auto-derived from SHARED_STEP_TYPE_CONFIGS.
+ * Only step types with non-null adapterType are included.
+ * Step types like GATE (adapterType: null) are intentionally omitted.
+ *
+ * Used by validation to look up adapters in the registry.
+ */
+export const STEP_TYPE_TO_ADAPTER_TYPE: Partial<Record<StepType, AdapterType>> = Object.fromEntries(
+    SHARED_STEP_TYPE_CONFIGS
+        .filter(config => config.adapterType !== null)
+        .map(config => [config.type, config.adapterType as AdapterType])
+);

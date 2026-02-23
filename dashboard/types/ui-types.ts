@@ -71,7 +71,7 @@ export interface SchemaFormRendererProps {
 }
 
 export interface LoadingStateProps {
-    type?: 'table' | 'form' | 'card' | 'list' | 'spinner';
+    type?: 'TABLE' | 'FORM' | 'CARD' | 'LIST' | 'SPINNER';
     rows?: number;
     message?: string;
     className?: string;
@@ -112,7 +112,7 @@ export interface StatCardProps {
     icon?: React.ReactNode;
     trend?: {
         value: number;
-        direction: 'up' | 'down' | 'neutral';
+        direction: 'UP' | 'DOWN' | 'neutral';
         label?: string;
     };
     variant?: 'default' | 'success' | 'warning' | 'error' | 'info';
@@ -121,13 +121,7 @@ export interface StatCardProps {
     className?: string;
 }
 
-export type UIConnectionType =
-    | 'HTTP'
-    | 'POSTGRES'
-    | 'MYSQL'
-    | 'S3'
-    | 'FTP'
-    | 'SFTP';
+export type { UIConnectionType } from '../../shared/constants';
 
 export interface HttpConnectionConfig {
     baseUrl: string;
@@ -338,6 +332,7 @@ export interface WizardFooterProps {
     onCancel: () => void;
     completeLabel?: string;
     completeIcon?: React.FC<{ className?: string }>;
+    isSubmitting?: boolean;
 }
 
 /**
@@ -365,24 +360,6 @@ export interface TriggerSelectorProps {
 }
 
 /**
- * Props for ScheduleConfig component (wizard-trigger/)
- */
-export interface ScheduleConfigProps {
-    cron: string;
-    onChange: (cron: string) => void;
-    showCard?: boolean;
-}
-
-/**
- * Props for WebhookConfig component (wizard-trigger/)
- */
-export interface WebhookConfigProps {
-    webhookPath: string;
-    onChange: (path: string) => void;
-    showCard?: boolean;
-}
-
-/**
  * Props for FieldError component (validation-feedback)
  */
 export interface FieldErrorProps {
@@ -390,20 +367,6 @@ export interface FieldErrorProps {
     touched?: boolean;
     showImmediately?: boolean;
     className?: string;
-}
-
-/**
- * Props for FieldSelector component (field-selector/)
- */
-export interface FieldSelectorProps {
-    value: string;
-    onChange: (value: string) => void;
-    fields: string[];
-    placeholder?: string;
-    className?: string;
-    disabled?: boolean;
-    allowEmpty?: boolean;
-    emptyLabel?: string;
 }
 
 /**
@@ -434,5 +397,4 @@ export interface TriggersPanelOnChangeProps {
 
 export type TriggersPanelProps = TriggersPanelExplicitProps | TriggersPanelOnChangeProps;
 
-// TEMPLATE TYPES (canonical source: shared/types/template.types.ts)
-export type { TemplateCategory, TemplateDifficulty } from '../../shared/types';
+export type { TemplateCategory } from '../../shared/types';

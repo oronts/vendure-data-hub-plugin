@@ -5,8 +5,6 @@ export const WEIGHT_UNITS = {
     OUNCE: 'oz',
 } as const;
 
-export type WeightUnit = typeof WEIGHT_UNITS[keyof typeof WEIGHT_UNITS];
-
 /**
  * Length unit identifiers
  */
@@ -18,8 +16,6 @@ export const LENGTH_UNITS = {
     FOOT: 'ft',
 } as const;
 
-export type LengthUnit = typeof LENGTH_UNITS[keyof typeof LENGTH_UNITS];
-
 /**
  * Volume unit identifiers
  */
@@ -28,8 +24,6 @@ export const VOLUME_UNITS = {
     LITER: 'l',
     GALLON: 'gal',
 } as const;
-
-export type VolumeUnit = typeof VOLUME_UNITS[keyof typeof VOLUME_UNITS];
 
 /**
  * Unit conversion factors

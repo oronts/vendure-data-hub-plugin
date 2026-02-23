@@ -18,8 +18,10 @@ import {
 import {
     useLogStats,
     usePipelines,
+    useLoadMore,
 } from '../../../hooks';
-import { ErrorState, LoadingState, StatCard } from '../../../components/shared';
+import { useOptionValues } from '../../../hooks/api/use-config-options';
+import { ErrorState, LoadingState, StatCard, LoadMoreButton } from '../../../components/shared';
 import { QUERY_LIMITS, UI_DEFAULTS } from '../../../constants';
 import { LevelBadge } from './LogLevelBadge';
 import type { DataHubPipeline } from '../../../types';
@@ -28,7 +30,7 @@ import type { DataHubPipeline } from '../../../types';
  * Pipeline statistics card showing log counts and performance metrics
  */
 const PipelineStatCard = React.memo(function PipelineStatCard({ pipeline }: { pipeline: Pick<DataHubPipeline, 'id' | 'code' | 'name'> }) {
-    const { data: stats } = useLogStats(pipeline.id);
+    const { data: stats, isLoading } = useLogStats(pipeline.id);
 
     return (
         <div className="border rounded-lg p-3">
@@ -38,14 +40,14 @@ const PipelineStatCard = React.memo(function PipelineStatCard({ pipeline }: { pi
             </div>
             <div className="flex gap-3 text-sm">
                 <span className="text-muted-foreground">
-                    <span className="font-medium text-foreground">{stats?.total ?? 0}</span> logs
+                    <span className="font-medium text-foreground">{isLoading ? '\u2014' : (stats?.total ?? 0)}</span> logs
                 </span>
-                {(stats?.errorsToday ?? 0) > 0 && (
+                {!isLoading && (stats?.errorsToday ?? 0) > 0 && (
                     <span className="text-red-600">
                         {stats?.errorsToday} errors today
                     </span>
                 )}
-                {(stats?.avgDurationMs ?? 0) > 0 && (
+                {!isLoading && (stats?.avgDurationMs ?? 0) > 0 && (
                     <span className="text-muted-foreground">
                         avg {stats?.avgDurationMs}ms
                     </span>
@@ -62,19 +64,13 @@ const PIPELINE_HEALTH_PAGE_SIZE = 6;
  * Shows total logs, errors, warnings, average duration, and per-pipeline metrics.
  */
 export function LogsOverviewTab() {
+    const { options: logLevels } = useOptionValues('logLevels');
     const statsQuery = useLogStats();
     const pipelinesQuery = usePipelines({ take: QUERY_LIMITS.ALL_ITEMS });
-    const [displayCount, setDisplayCount] = React.useState(PIPELINE_HEALTH_PAGE_SIZE);
-
     const stats = statsQuery.data;
     const pipelines = pipelinesQuery.data?.items ?? [];
 
-    const displayedPipelines = pipelines.slice(0, displayCount);
-    const hasMorePipelines = displayCount < pipelines.length;
-
-    const handleLoadMore = React.useCallback(() => {
-        setDisplayCount(c => c + PIPELINE_HEALTH_PAGE_SIZE);
-    }, []);
+    const { displayed: displayedPipelines, hasMore: hasMorePipelines, remaining, loadMore } = useLoadMore(pipelines, { pageSize: PIPELINE_HEALTH_PAGE_SIZE });
 
     const handleRefetch = React.useCallback(() => statsQuery.refetch(), [statsQuery.refetch]);
 
@@ -139,10 +135,13 @@ export function LogsOverviewTab() {
                         <div className="border rounded-lg p-3 bg-muted/30">
                             <div className="text-xs text-muted-foreground mb-2">By Level</div>
                             <div className="flex gap-2">
-                                <LevelBadge level="DEBUG" count={stats?.byLevel?.DEBUG ?? 0} />
-                                <LevelBadge level="INFO" count={stats?.byLevel?.INFO ?? 0} />
-                                <LevelBadge level="WARN" count={stats?.byLevel?.WARN ?? 0} />
-                                <LevelBadge level="ERROR" count={stats?.byLevel?.ERROR ?? 0} />
+                                {logLevels.map(level => (
+                                    <LevelBadge
+                                        key={level.value}
+                                        level={level.value}
+                                        count={(stats?.byLevel as Record<string, number> | undefined)?.[level.value] ?? 0}
+                                    />
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -166,13 +165,7 @@ export function LogsOverviewTab() {
                             <PipelineStatCard key={p.id} pipeline={p} />
                         ))}
                     </div>
-                    {hasMorePipelines && (
-                        <div className="flex justify-center mt-4">
-                            <Button variant="outline" onClick={handleLoadMore}>
-                                Load More ({pipelines.length - displayCount} remaining)
-                            </Button>
-                        </div>
-                    )}
+                    {hasMorePipelines && <LoadMoreButton remaining={remaining} onClick={loadMore} />}
                     {pipelines.length === 0 && (
                         <div className="text-center py-8 text-muted-foreground">
                             No pipelines found

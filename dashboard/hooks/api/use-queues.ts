@@ -2,13 +2,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { createMutationErrorHandler } from './mutation-helpers';
+import { createQueryKeys } from '../../utils/query-key-factory';
 import { POLLING_INTERVALS } from '../../constants';
 
+const base = createQueryKeys('queues');
 export const queueKeys = {
-    all: ['queues'] as const,
-    stats: () => [...queueKeys.all, 'stats'] as const,
-    deadLetters: () => [...queueKeys.all, 'deadLetters'] as const,
-    consumers: () => [...queueKeys.all, 'consumers'] as const,
+    ...base,
+    stats: () => [...base.all, 'stats'] as const,
+    deadLetters: () => [...base.all, 'deadLetters'] as const,
+    consumers: () => [...base.all, 'consumers'] as const,
 };
 
 const statsDocument = graphql(`

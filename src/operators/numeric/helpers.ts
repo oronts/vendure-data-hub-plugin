@@ -7,6 +7,12 @@ import {
     VOLUME_UNITS,
     convertUnit,
 } from '../../constants/units';
+import { TRANSFORM_LIMITS } from '../../constants/index';
+
+/** Clamp decimal places to a safe range to prevent Math.pow(10, n) overflow. */
+function clampDecimals(decimals: number): number {
+    return Math.min(Math.max(0, Math.floor(decimals)), TRANSFORM_LIMITS.MAX_DECIMAL_PLACES);
+}
 
 function applyRoundingMode(value: number, mode: string): number {
     switch (mode) {
@@ -80,7 +86,8 @@ export function applyMath(
         case 'floor':
         case 'ceil': {
             if (decimals !== undefined && decimals >= 0) {
-                const factor = Math.pow(10, decimals);
+                const safeDecimals = clampDecimals(decimals);
+                const factor = Math.pow(10, safeDecimals);
                 computedValue = applyRoundingMode(sourceValue * factor, operation) / factor;
             } else {
                 computedValue = applyRoundingMode(sourceValue, operation);
@@ -96,7 +103,8 @@ export function applyMath(
 
     // Apply decimal rounding if specified (for non-rounding operations)
     if (decimals !== undefined && decimals >= 0 && operation !== 'round' && operation !== 'floor' && operation !== 'ceil') {
-        const factor = Math.pow(10, decimals);
+        const safeDecimals = clampDecimals(decimals);
+        const factor = Math.pow(10, safeDecimals);
         computedValue = Math.round(computedValue * factor) / factor;
     }
 
@@ -118,7 +126,8 @@ export function applyCurrency(
         return result;
     }
 
-    const factor = Math.pow(10, decimals);
+    const safeDecimals = clampDecimals(decimals);
+    const factor = Math.pow(10, safeDecimals);
     const minorUnits = applyRoundingMode(value * factor, round);
 
     setNestedValue(result, target, minorUnits);
@@ -350,7 +359,8 @@ export function applyRound(
         return result;
     }
 
-    const factor = Math.pow(10, decimals);
+    const safeDecimals = clampDecimals(decimals);
+    const factor = Math.pow(10, safeDecimals);
     const rounded = applyRoundingMode(value * factor, mode) / factor;
 
     setNestedValue(result, targetPath, rounded);

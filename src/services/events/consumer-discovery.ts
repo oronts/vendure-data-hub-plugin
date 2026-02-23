@@ -1,6 +1,7 @@
 import { TransactionalConnection, RequestContextService, ID } from '@vendure/core';
 import { Pipeline } from '../../entities/pipeline';
 import { PipelineStatus, AckMode, SCHEDULER } from '../../constants/index';
+import { TriggerType as TriggerTypeEnum, QueueType } from '../../constants/enums';
 import type { PipelineDefinition } from '../../types/index';
 import { DataHubLogger } from '../logger';
 import { findEnabledTriggersByType, parseTriggerConfig } from '../../utils';
@@ -92,7 +93,7 @@ export class ConsumerDiscovery {
      */
     extractMessageConfigs(pipeline: Pipeline): MessageConsumerConfig[] {
         const definition = pipeline.definition as PipelineDefinition | undefined;
-        const triggers = findEnabledTriggersByType(definition, 'MESSAGE');
+        const triggers = findEnabledTriggersByType(definition, TriggerTypeEnum.MESSAGE);
         if (triggers.length === 0) return [];
 
         const configs: MessageConsumerConfig[] = [];
@@ -106,7 +107,7 @@ export class ConsumerDiscovery {
                 pipelineId: pipeline.id,
                 pipelineCode: pipeline.code,
                 triggerKey: trigger.key,
-                queueType: String(config.queueType ?? 'rabbitmq'),
+                queueType: String(config.queueType ?? QueueType.RABBITMQ),
                 connectionCode: String(config.connectionCode ?? ''),
                 queueName: String(config.queueName ?? ''),
                 consumerGroup: config.consumerGroup as string | undefined,

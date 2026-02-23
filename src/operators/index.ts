@@ -2,81 +2,31 @@ export * from './types';
 export * from './helpers';
 export * from './operator-runtime-registry';
 export * from './data';
-export { DATA_OPERATOR_DEFINITIONS } from './data';
-
 export * from './string';
-export { STRING_OPERATOR_DEFINITIONS } from './string';
-
-export {
-    WhenOperatorConfig,
-    IfThenElseOperatorConfig,
-    SwitchOperatorConfig,
-    DeltaFilterOperatorConfig,
-    SwitchCase,
-    evaluateCondition,
-    evaluateSwitch,
-    filterRecords,
-    applyIfThenElse,
-    applySwitch,
-    calculateRecordHash,
-    WHEN_OPERATOR_DEFINITION,
-    IF_THEN_ELSE_OPERATOR_DEFINITION,
-    SWITCH_OPERATOR_DEFINITION,
-    DELTA_FILTER_OPERATOR_DEFINITION,
-    whenOperator,
-    ifThenElseOperator,
-    switchOperator,
-    deltaFilterOperator,
-    LOGIC_OPERATOR_DEFINITIONS,
-} from './logic';
-
+export * from './logic';
 export * from './enrichment';
-export { ENRICHMENT_OPERATOR_DEFINITIONS } from './enrichment';
-
 export * from './aggregation';
-export { AGGREGATION_OPERATOR_DEFINITIONS } from './aggregation';
-
 export * from './numeric';
-export { NUMERIC_OPERATOR_DEFINITIONS } from './numeric';
-
 export * from './date';
-export { DATE_OPERATOR_DEFINITIONS } from './date';
-
-export * from './json';
-export { JSON_OPERATOR_DEFINITIONS } from './json';
-
+export * from './json/json.operators';
 export * from './validation';
-export { VALIDATION_OPERATOR_DEFINITIONS } from './validation';
-
 export * from './script';
-export { SCRIPT_OPERATOR_DEFINITION } from './script';
-
 export * from './file';
-export { FILE_OPERATOR_DEFINITIONS } from './file';
 
 import { AdapterDefinition } from './types';
-import { DATA_OPERATOR_DEFINITIONS } from './data';
-import { STRING_OPERATOR_DEFINITIONS } from './string';
-import { LOGIC_OPERATOR_DEFINITIONS } from './logic';
-import { ENRICHMENT_OPERATOR_DEFINITIONS } from './enrichment';
-import { AGGREGATION_OPERATOR_DEFINITIONS } from './aggregation';
-import { NUMERIC_OPERATOR_DEFINITIONS } from './numeric';
-import { DATE_OPERATOR_DEFINITIONS } from './date';
-import { JSON_OPERATOR_DEFINITIONS } from './json';
-import { VALIDATION_OPERATOR_DEFINITIONS } from './validation';
-import { SCRIPT_OPERATOR_DEFINITION } from './script';
-import { FILE_OPERATOR_DEFINITIONS } from './file';
+import { OPERATOR_REGISTRY } from './operator-runtime-registry';
+import type { OptionValue } from '../constants/enum-metadata';
 
-export const ALL_OPERATOR_DEFINITIONS: AdapterDefinition[] = [
-    ...DATA_OPERATOR_DEFINITIONS,
-    ...STRING_OPERATOR_DEFINITIONS,
-    ...LOGIC_OPERATOR_DEFINITIONS,
-    ...ENRICHMENT_OPERATOR_DEFINITIONS,
-    ...AGGREGATION_OPERATOR_DEFINITIONS,
-    ...NUMERIC_OPERATOR_DEFINITIONS,
-    ...DATE_OPERATOR_DEFINITIONS,
-    ...JSON_OPERATOR_DEFINITIONS,
-    ...VALIDATION_OPERATOR_DEFINITIONS,
-    SCRIPT_OPERATOR_DEFINITION,
-    ...FILE_OPERATOR_DEFINITIONS,
-];
+/** Auto-derived from OPERATOR_REGISTRY -- no manual maintenance needed. */
+export const ALL_OPERATOR_DEFINITIONS: AdapterDefinition[] = Object.values(OPERATOR_REGISTRY).map(
+    entry => entry.definition,
+);
+
+/** Auto-derived from OPERATOR_REGISTRY: operators flagged as field transforms for the export wizard. */
+export const FIELD_TRANSFORM_TYPES: OptionValue[] = Object.entries(OPERATOR_REGISTRY)
+    .filter(([, entry]) => entry.definition.fieldTransform === true)
+    .map(([code, entry]) => ({
+        value: code,
+        label: entry.definition.name ?? code.charAt(0).toUpperCase() + code.slice(1).replace(/([A-Z])/g, ' $1'),
+        category: entry.definition.categoryLabel,
+    }));

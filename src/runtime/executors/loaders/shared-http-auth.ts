@@ -7,7 +7,7 @@
  */
 import { RequestContext } from '@vendure/core';
 import { SecretService } from '../../../services/config/secret.service';
-import { AuthType, HTTP_HEADERS, AUTH_SCHEMES } from '../../../constants/index';
+import { ConnectionAuthType, HTTP_HEADERS, AUTH_SCHEMES } from '../../../constants/index';
 
 export interface AuthConfig {
     auth?: string;
@@ -31,14 +31,14 @@ export async function resolveAuthHeaders(
     baseHeaders: Record<string, string>,
 ): Promise<Record<string, string>> {
     let headers = baseHeaders;
-    const auth = String(cfg.auth ?? AuthType.NONE);
+    const auth = String(cfg.auth ?? ConnectionAuthType.NONE);
 
-    if (auth === AuthType.BEARER && cfg.bearerTokenSecretCode) {
+    if (auth === ConnectionAuthType.BEARER && cfg.bearerTokenSecretCode) {
         const token = await secretService.resolve(ctx, String(cfg.bearerTokenSecretCode));
         if (token) {
             headers = { ...headers, [HTTP_HEADERS.AUTHORIZATION]: `${AUTH_SCHEMES.BEARER} ${token}` };
         }
-    } else if (auth === AuthType.BASIC && cfg.basicSecretCode) {
+    } else if (auth === ConnectionAuthType.BASIC && cfg.basicSecretCode) {
         const credentials = await secretService.resolve(ctx, String(cfg.basicSecretCode));
         if (credentials && credentials.includes(':')) {
             const token = Buffer.from(credentials).toString('base64');

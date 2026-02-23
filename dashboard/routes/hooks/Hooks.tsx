@@ -22,7 +22,7 @@ import {
     Label,
 } from '@vendure/dashboard';
 import { toast } from 'sonner';
-import { DATAHUB_NAV_SECTION, UI_DEFAULTS, UI_LIMITS, QUERY_LIMITS, ROUTES, DATAHUB_PERMISSIONS, TOAST_HOOK } from '../../constants';
+import { DATAHUB_NAV_SECTION, UI_DEFAULTS, UI_LIMITS, QUERY_LIMITS, ROUTES, DATAHUB_PERMISSIONS, TOAST_HOOK, FALLBACK_STAGE_CATEGORIES } from '../../constants';
 import { formatDateTime } from '../../utils';
 import {
     Play,
@@ -39,10 +39,13 @@ import {
     usePipelineHooks,
     useEvents,
     useTestHook,
+    useHookStages,
+    useHookStageCategories,
     handleMutationError,
 } from '../../hooks';
+import type { HookStageCategoryConfig } from '../../hooks';
 import { ErrorState, LoadingState } from '../../components/shared';
-import { HOOK_STAGES } from './hook-stages';
+import { buildHookStages } from './hook-stages';
 import type { HookStage } from './hook-stages';
 
 export const hooksPage: DashboardRouteDefinition = {
@@ -61,14 +64,9 @@ export const hooksPage: DashboardRouteDefinition = {
     ),
 };
 
-const STAGE_CATEGORIES = {
-    lifecycle: { label: 'Lifecycle', color: 'bg-blue-100 text-blue-800', description: 'Track pipeline start, completion, and failure', gridClass: 'grid-cols-3' },
-    data: { label: 'Data Processing', color: 'bg-green-100 text-green-800', description: 'Intercept data at each processing step', gridClass: 'grid-cols-4' },
-    error: { label: 'Error Handling', color: 'bg-red-100 text-red-800', description: 'Handle errors and retries', gridClass: 'grid-cols-3' },
-} as const;
-
 interface HookStageSectionProps {
-    category: keyof typeof STAGE_CATEGORIES;
+    categoryInfo: HookStageCategoryConfig;
+    stages: HookStage[];
     hooks: Record<string, unknown>;
     selectedStage: HookStage | null;
     isPending: boolean;
@@ -77,9 +75,8 @@ interface HookStageSectionProps {
     disabled: boolean;
 }
 
-function HookStageSection({ category, hooks, selectedStage, isPending, testResult, onTest, disabled }: HookStageSectionProps) {
-    const categoryInfo = STAGE_CATEGORIES[category];
-    const stages = HOOK_STAGES.filter(s => s.category === category);
+function HookStageSection({ categoryInfo, stages: allStages, hooks, selectedStage, isPending, testResult, onTest, disabled }: HookStageSectionProps) {
+    const stages = allStages.filter(s => s.category === categoryInfo.key);
 
     return (
         <div className="mb-6">
@@ -115,14 +112,22 @@ function HooksPage() {
     const hooksQuery = usePipelineHooks(pipelineId || undefined);
     const eventsQuery = useEvents(UI_DEFAULTS.EVENTS_LIMIT);
     const testMutation = useTestHook();
+    const { hookStages: backendStages } = useHookStages();
+    const { categories: backendCategories } = useHookStageCategories();
+
+    const stages = React.useMemo(() => buildHookStages(backendStages), [backendStages]);
+    const stageCategories = React.useMemo(
+        () => backendCategories.length > 0 ? backendCategories : FALLBACK_STAGE_CATEGORIES,
+        [backendCategories],
+    );
 
     const hooks = hooksQuery.data ?? {};
     const pipelines = pipelinesQuery.data?.items ?? [];
     const selectedPipeline = pipelines.find(p => p.id === pipelineId);
 
     const isLoading = pipelinesQuery.isLoading;
-    const hasError = pipelinesQuery.isError || eventsQuery.isError;
-    const errorMessage = pipelinesQuery.error?.message || eventsQuery.error?.message;
+    const hasError = pipelinesQuery.isError || eventsQuery.isError || hooksQuery.isError;
+    const errorMessage = pipelinesQuery.error?.message || eventsQuery.error?.message || hooksQuery.error?.message;
 
     const handleRetry = React.useCallback(() => {
         pipelinesQuery.refetch();
@@ -240,35 +245,19 @@ function HooksPage() {
                     </p>
                 </div>
 
-                <HookStageSection
-                    category="lifecycle"
-                    hooks={hooks as Record<string, unknown>}
-                    selectedStage={selectedStage}
-                    isPending={testMutation.isPending}
-                    testResult={testResult}
-                    onTest={runTest}
-                    disabled={!pipelineId}
-                />
-
-                <HookStageSection
-                    category="data"
-                    hooks={hooks as Record<string, unknown>}
-                    selectedStage={selectedStage}
-                    isPending={testMutation.isPending}
-                    testResult={testResult}
-                    onTest={runTest}
-                    disabled={!pipelineId}
-                />
-
-                <HookStageSection
-                    category="error"
-                    hooks={hooks as Record<string, unknown>}
-                    selectedStage={selectedStage}
-                    isPending={testMutation.isPending}
-                    testResult={testResult}
-                    onTest={runTest}
-                    disabled={!pipelineId}
-                />
+                {stageCategories.map(cat => (
+                    <HookStageSection
+                        key={cat.key}
+                        categoryInfo={cat}
+                        stages={stages}
+                        hooks={hooks as Record<string, unknown>}
+                        selectedStage={selectedStage}
+                        isPending={testMutation.isPending}
+                        testResult={testResult}
+                        onTest={runTest}
+                        disabled={!pipelineId}
+                    />
+                ))}
             </PageBlock>
 
             {pipelineId && Object.keys(hooks).length > 0 && (

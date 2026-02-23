@@ -19,6 +19,9 @@ This guide covers the code-first DSL, architecture, and extending the Data Hub p
    - [Custom Extractors](./extending/custom-extractors.md)
    - [Custom Loaders](./extending/custom-loaders.md)
    - [Custom Operators](./extending/custom-operators.md)
+   - [Event Subscriptions](./extending/events.md) - Subscribe to pipeline lifecycle events
+   - **Hook Scripts** - Register functions for data modification at any pipeline stage
+   - **Wizard Templates** - Add custom templates for import/export wizards
 4. [GraphQL API](./graphql-api.md) - API reference for integration
 
 ## When to Use Code-First
@@ -69,6 +72,31 @@ const pipeline = createPipeline()
     .edge('map-fields', 'upsert-products')
     .build();
 ```
+
+## Hook Scripts
+
+Register functions that can modify records at any pipeline stage:
+
+```typescript
+DataHubPlugin.init({
+    scripts: {
+        'validate-sku': async (records, context) => {
+            return records.filter(r => r.sku && String(r.sku).length > 0);
+        },
+    },
+})
+
+// Then in pipeline:
+const pipeline = createPipeline()
+    .name('Product Sync')
+    // ... steps ...
+    .hooks({
+        AFTER_EXTRACT: [{ type: 'SCRIPT', scriptName: 'validate-sku' }],
+    })
+    .build();
+```
+
+18 hook stages are available: BEFORE/AFTER_EXTRACT, TRANSFORM, VALIDATE, ENRICH, ROUTE, LOAD + PIPELINE_STARTED/COMPLETED/FAILED + ON_ERROR/ON_RETRY/ON_DEAD_LETTER.
 
 ## Type Safety
 

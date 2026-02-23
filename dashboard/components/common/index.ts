@@ -1,19 +1,10 @@
-export { FileUploadMapper } from './file-upload-mapper';
-export type {
-    FileUploadMapperProps,
-    MappingTargetField,
-} from './file-upload-mapper';
-
-export { JsonTextarea } from './JsonTextarea';
+export { HeadersEditor } from './HeadersEditor';
 
 export { FieldError } from './ValidationFeedback';
 
-export { ConnectionConfigEditor, CONNECTION_TYPE_OPTIONS, createDefaultConnectionConfig, normalizeConnectionConfig } from './ConnectionConfigEditor';
+export { ConnectionConfigEditor, useConnectionTypeOptions, createDefaultConnectionConfig, normalizeConnectionConfig } from './ConnectionConfigEditor';
 export type { ConnectionConfigEditorProps } from './ConnectionConfigEditor';
-
-export { FieldSelector } from './field-selector';
 
 export type {
     FieldErrorProps,
-    FieldSelectorProps,
 } from '../../types';

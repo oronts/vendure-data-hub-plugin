@@ -10,8 +10,9 @@ import {
     ExtractorCategory,
 } from '../../types/index';
 import { FileParserService } from '../../parsers/file-parser.service';
-import { FileFormat } from '../../constants/enums';
 import { getErrorMessage } from '../../utils/error.utils';
+import { TRANSFORM_LIMITS } from '../../constants/defaults/core-defaults';
+import { FTP_EXTRACTOR_SCHEMA } from './schema';
 
 import {
     FtpProtocol,
@@ -37,214 +38,21 @@ import {
 import { isBlockedHostname } from '../../utils/url-security.utils';
 import { parseModifiedAfterDate } from '../shared';
 
+const MAX_PREVIEW_FILES = TRANSFORM_LIMITS.MAX_PREVIEW_FILES;
+
 @Injectable()
 export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
     readonly type = 'EXTRACTOR' as const;
     readonly code = 'ftp';
     readonly name = 'FTP/SFTP Extractor';
-    readonly description = 'Extract data from FTP/SFTP servers';
     readonly category: ExtractorCategory = 'FILE_SYSTEM';
-    readonly version = '1.0.0';
-    readonly icon = 'server';
     readonly supportsPagination = false;
     readonly supportsIncremental = true;
     readonly supportsCancellation = true;
 
     constructor(private readonly fileParser: FileParserService) {}
 
-    readonly schema: StepConfigSchema = {
-        groups: [
-            { id: 'connection', label: 'Connection', description: 'FTP/SFTP connection settings' },
-            { id: 'auth', label: 'Authentication', description: 'Authentication settings' },
-            { id: 'source', label: 'Source', description: 'Remote file settings' },
-            { id: 'format', label: 'Format', description: 'File format options' },
-            { id: 'postProcess', label: 'Post-Processing', description: 'Actions after processing' },
-            { id: 'advanced', label: 'Advanced', description: 'Advanced options' },
-        ],
-        fields: [
-            // Connection
-            {
-                key: 'connectionCode',
-                label: 'Connection',
-                description: 'Use a saved FTP/SFTP connection',
-                type: 'connection',
-                group: 'connection',
-            },
-            {
-                key: 'protocol',
-                label: 'Protocol',
-                type: 'select',
-                required: true,
-                options: [
-                    { value: FTP_PROTOCOLS.FTP, label: 'FTP' },
-                    { value: FTP_PROTOCOLS.SFTP, label: 'SFTP' },
-                ],
-                defaultValue: FTP_PROTOCOLS.SFTP,
-                group: 'connection',
-            },
-            {
-                key: 'host',
-                label: 'Host',
-                description: 'FTP/SFTP server hostname or IP',
-                type: 'string',
-                required: true,
-                placeholder: 'ftp.example.com',
-                group: 'connection',
-            },
-            {
-                key: 'port',
-                label: 'Port',
-                description: 'Server port (FTP: 21, SFTP: 22)',
-                type: 'number',
-                group: 'connection',
-            },
-            {
-                key: 'secure',
-                label: 'Use FTPS',
-                description: 'Enable secure FTP (TLS)',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'connection',
-                dependsOn: { field: 'protocol', value: FTP_PROTOCOLS.FTP },
-            },
-            {
-                key: 'passiveMode',
-                label: 'Passive Mode',
-                description: 'Use passive mode for FTP',
-                type: 'boolean',
-                defaultValue: true,
-                group: 'connection',
-                dependsOn: { field: 'protocol', value: FTP_PROTOCOLS.FTP },
-            },
-            // Authentication
-            {
-                key: 'username',
-                label: 'Username',
-                type: 'string',
-                placeholder: 'ftpuser',
-                group: 'auth',
-            },
-            {
-                key: 'passwordSecretCode',
-                label: 'Password',
-                description: 'Secret code for password',
-                type: 'secret',
-                group: 'auth',
-            },
-            {
-                key: 'privateKeySecretCode',
-                label: 'Private Key',
-                description: 'Secret code for SSH private key (SFTP)',
-                type: 'secret',
-                group: 'auth',
-                dependsOn: { field: 'protocol', value: FTP_PROTOCOLS.SFTP },
-            },
-            {
-                key: 'passphraseSecretCode',
-                label: 'Key Passphrase',
-                description: 'Secret code for private key passphrase',
-                type: 'secret',
-                group: 'auth',
-                dependsOn: { field: 'protocol', value: FTP_PROTOCOLS.SFTP },
-            },
-            // Source
-            {
-                key: 'remotePath',
-                label: 'Remote Path',
-                description: 'Remote directory path',
-                type: 'string',
-                required: true,
-                placeholder: '/data/exports',
-                group: 'source',
-            },
-            {
-                key: 'filePattern',
-                label: 'File Pattern',
-                description: 'File name pattern (e.g., *.csv, products-*.json)',
-                type: 'string',
-                placeholder: '*.csv',
-                group: 'source',
-            },
-            {
-                key: 'format',
-                label: 'File Format',
-                type: 'select',
-                options: [
-                    { value: '', label: 'Auto-detect' },
-                    { value: FileFormat.CSV, label: 'CSV' },
-                    { value: FileFormat.JSON, label: 'JSON' },
-                    { value: FileFormat.XML, label: 'XML' },
-                    { value: FileFormat.XLSX, label: 'Excel (XLSX)' },
-                ],
-                group: 'format',
-            },
-            // Post-Processing
-            {
-                key: 'deleteAfterProcess',
-                label: 'Delete After Processing',
-                description: 'Delete files from server after successful processing',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'postProcess',
-            },
-            {
-                key: 'moveAfterProcess.enabled',
-                label: 'Move After Processing',
-                description: 'Move files to another directory after processing',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'postProcess',
-            },
-            {
-                key: 'moveAfterProcess.destinationPath',
-                label: 'Destination Path',
-                description: 'Path to move processed files',
-                type: 'string',
-                placeholder: '/data/processed',
-                group: 'postProcess',
-                dependsOn: { field: 'moveAfterProcess.enabled', value: true },
-            },
-            // Advanced
-            {
-                key: 'modifiedAfter',
-                label: 'Modified After',
-                description: 'Only process files modified after this date',
-                type: 'string',
-                placeholder: '2024-01-01T00:00:00Z',
-                group: 'advanced',
-            },
-            {
-                key: 'maxFiles',
-                label: 'Max Files',
-                description: 'Maximum number of files to process',
-                type: 'number',
-                defaultValue: FTP_DEFAULTS.maxFiles,
-                group: 'advanced',
-            },
-            {
-                key: 'includeFileMetadata',
-                label: 'Include File Metadata',
-                type: 'boolean',
-                defaultValue: false,
-                group: 'advanced',
-            },
-            {
-                key: 'continueOnError',
-                label: 'Continue on Error',
-                type: 'boolean',
-                defaultValue: true,
-                group: 'advanced',
-            },
-            {
-                key: 'timeoutMs',
-                label: 'Timeout (ms)',
-                description: 'Connection timeout in milliseconds',
-                type: 'number',
-                defaultValue: FTP_DEFAULTS.timeoutMs,
-                group: 'advanced',
-            },
-        ],
-    };
+    readonly schema: StepConfigSchema = FTP_EXTRACTOR_SCHEMA;
 
     async *extract(
         context: ExtractorContext,
@@ -264,6 +72,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
             const maxFiles = config.maxFiles || FTP_DEFAULTS.maxFiles;
 
             let filesProcessed = 0;
+            let lastSuccessfulFile: typeof files[number] | undefined;
 
             for (const file of files) {
                 if (await context.isCancelled()) break;
@@ -303,17 +112,17 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
                     }
 
                     filesProcessed++;
+                    lastSuccessfulFile = file;
                 } catch (error) {
                     if (!config.continueOnError) throw error;
                     context.logger.warn(`Failed to process ${file.path}: ${error}`);
                 }
             }
 
-            if (files.length > 0) {
-                const lastFile = files[files.length - 1];
+            if (lastSuccessfulFile) {
                 context.setCheckpoint({
-                    lastProcessedFile: lastFile.path,
-                    lastModifiedAt: lastFile.modifiedAt.toISOString(),
+                    lastProcessedFile: lastSuccessfulFile.path,
+                    lastModifiedAt: lastSuccessfulFile.modifiedAt.toISOString(),
                 });
             }
 
@@ -387,7 +196,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
 
         if (config.deleteAfterProcess && config.moveAfterProcess?.enabled) {
             warnings.push({
-                message: 'Both delete and move after processing are enabled. Move will take precedence.',
+                message: 'Both delete and move after processing are enabled. Delete will take precedence.',
             });
         }
 
@@ -437,7 +246,7 @@ export class FtpExtractor implements DataExtractor<FtpExtractorConfig> {
 
             try {
                 const allFiles = await client.list(config.remotePath);
-                const files = filterFiles(allFiles, config).slice(0, 5);
+                const files = filterFiles(allFiles, config).slice(0, MAX_PREVIEW_FILES);
 
                 for (const file of files) {
                     if (records.length >= limit) break;

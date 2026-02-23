@@ -20,7 +20,7 @@ import { isValidEmail } from '../../utils/input-validation.utils';
  * optimized for entity loader validation use cases where field and
  * message are always required but rule/severity/context are not needed.
  *
- * @see shared/types/validation.types.ts for the canonical ValidationError type
+ * @see shared/types/validation.types.ts ValidationError
  */
 export interface LoaderValidationError {
     field: string;
@@ -279,8 +279,6 @@ interface AddressInput {
     countryCode?: string;
     phoneNumber?: string;
 }
-
-export { isValidEmail };
 
 /**
  * Factory function to create a validation result directly

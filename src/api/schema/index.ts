@@ -19,6 +19,8 @@ import { entitySchemaSchema, entitySchemaQueries } from './entity-schema.schema'
 import { versioningSchema, versioningQueries, versioningMutations } from './versioning.schema';
 import { sandboxSchema, sandboxQueries, sandboxMutations } from './sandbox.schema';
 import { gateSchema, gateQueries, gateMutations } from './gate.schema';
+import { templateSchema, templateQueries } from './template.schema';
+import { configOptionsSchema, configOptionsQueries } from './config-options.schema';
 
 export const adminApiExtensions = gql`
     ${pipelineSchema}
@@ -40,6 +42,8 @@ export const adminApiExtensions = gql`
     ${versioningSchema}
     ${sandboxSchema}
     ${gateSchema}
+    ${templateSchema}
+    ${configOptionsSchema}
 
     ${pipelineQueries}
     ${testQueries}
@@ -59,6 +63,8 @@ export const adminApiExtensions = gql`
     ${versioningQueries}
     ${sandboxQueries}
     ${gateQueries}
+    ${templateQueries}
+    ${configOptionsQueries}
 
     ${pipelineMutations}
     ${testMutations}
@@ -93,3 +99,5 @@ export * from './entity-schema.schema';
 export * from './versioning.schema';
 export * from './sandbox.schema';
 export * from './gate.schema';
+export * from './template.schema';
+export * from './config-options.schema';

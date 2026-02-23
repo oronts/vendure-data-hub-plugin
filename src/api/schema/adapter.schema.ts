@@ -15,10 +15,20 @@ export const adapterSchema = `
         version: String
         deprecated: Boolean
         deprecatedMessage: String
+        entityType: String
+        formatType: String
+        patchableFields: [String!]
+        editorType: String
+        summaryTemplate: String
+        categoryLabel: String
+        categoryOrder: Int
+        wizardHidden: Boolean
+        builtIn: Boolean
     }
 
     type DataHubStepConfigSchema {
         fields: [DataHubStepConfigSchemaField!]!
+        groups: [DataHubConfigFieldGroup!]
     }
 
     type DataHubStepConfigSchemaField {
@@ -30,6 +40,24 @@ export const adapterSchema = `
         defaultValue: JSON
         placeholder: String
         options: [DataHubOption!]
+        group: String
+        dependsOn: DataHubFieldDependency
+        validation: DataHubFieldValidation
+    }
+
+    type DataHubFieldValidation {
+        min: Float
+        max: Float
+        minLength: Int
+        maxLength: Int
+        pattern: String
+        patternMessage: String
+    }
+
+    type DataHubConfigFieldGroup {
+        id: String!
+        label: String!
+        description: String
     }
 
     type DataHubOption {

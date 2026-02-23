@@ -1,4 +1,4 @@
-import { JsonObject, LoaderAdapter, LoadContext, LoadResult, StepConfigSchema, BATCH, HTTP, WEBHOOK, SINK } from '../../../../src';
+import { JsonObject, LoaderAdapter, LoadContext, LoadResult, StepConfigSchema, BATCH, HTTP, WEBHOOK, SINK, sleep } from '../../../../src';
 
 export const webhookNotifySchema: StepConfigSchema = {
     fields: [
@@ -89,7 +89,7 @@ async function sendWebhook(
             lastError = (err as Error).message || 'Unknown error';
         }
 
-        if (attempt < retries) await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * HTTP.RETRY_DELAY_MS));
+        if (attempt < retries) await sleep(Math.pow(2, attempt) * HTTP.RETRY_DELAY_MS);
     }
 
     return { success: false, error: lastError };
@@ -144,5 +144,3 @@ export const webhookNotifyLoader: LoaderAdapter<WebhookNotifyConfig> = {
         return { succeeded, failed, errors };
     },
 };
-
-export default webhookNotifyLoader;
