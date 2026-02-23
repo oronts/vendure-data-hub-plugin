@@ -42,11 +42,10 @@ import {
     TRIGGER_TYPE_SCHEMAS,
     WIZARD_STRATEGY_MAPPINGS,
     QUERY_TYPE_OPTIONS,
-    FILE_FORMAT_ICONS,
-    FILE_FORMAT_COLORS,
     CRON_PRESETS,
     ACK_MODE_OPTIONS,
 } from '../../constants/adapter-schema-options';
+import { FILE_FORMAT_METADATA } from '../../constants/file-format-metadata';
 import { EXPORT_ADAPTER_CODES, FEED_ADAPTER_CODES } from '../../constants/adapters';
 import { FIELD_TRANSFORM_TYPES } from '../../operators';
 
@@ -66,7 +65,7 @@ export class DataHubConfigOptionsAdminResolver {
             httpMethods: enumToOptions(HttpMethod),
             authTypes: enumToOptions(ConnectionAuthType),
             destinationTypes: DESTINATION_TYPES,
-            fileFormats: enumToOptions(FileFormat, undefined, FILE_FORMAT_ICONS, FILE_FORMAT_COLORS),
+            fileFormats: Object.values(FILE_FORMAT_METADATA),
             cleanupStrategies: CLEANUP_STRATEGIES,
             newRecordStrategies: NEW_RECORD_STRATEGIES,
             validationModes: enumToOptions(ValidationMode),

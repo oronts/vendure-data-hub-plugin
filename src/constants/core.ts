@@ -89,6 +89,7 @@ export const LOGGER_CONTEXTS = {
     DEFINITION_VALIDATOR: 'DefinitionValidator',
     EVENT_TRIGGER_SERVICE: 'EventTriggerService',
     MESSAGE_CONSUMER: 'MessageConsumerService',
+    FILE_WATCH: 'FileWatchService',
     RATE_LIMIT: 'RateLimitService',
     WEBHOOK: 'WebhookController',
     EXPORT_DESTINATION: 'ExportDestinationService',

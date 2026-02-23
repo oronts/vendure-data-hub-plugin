@@ -1,19 +1,24 @@
 /**
- * GraphQL Code Generation Configuration for DataHub Plugin
- *
- * Usage:
- * 1. Start dev server: npm run start
- * 2. Generate types: npm run codegen
- *
- * Or with watch mode:
- * npm run codegen:watch
+ * GraphQL codegen + shared enum generation
+ * Run: npm run codegen
  */
 
 import type { CodegenConfig } from '@graphql-codegen/cli';
+import { execSync } from 'child_process';
 
 const config: CodegenConfig = {
     overwrite: true,
     schema: 'http://localhost:3000/admin-api',
+    hooks: {
+        beforeAllFileWrite: () => {
+            console.log('🔄 Generating shared enums...');
+            try {
+                execSync('ts-node scripts/generate-shared-enums.ts', { stdio: 'inherit' });
+            } catch (error) {
+                console.error('⚠️  Failed to generate shared enums:', error);
+            }
+        },
+    },
     config: {
         strict: true,
         maybeValue: 'T',

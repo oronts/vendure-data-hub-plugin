@@ -28,7 +28,7 @@ const configOptionsDocument = graphql(`
             httpMethods { value label description icon }
             authTypes { value label description icon }
             destinationTypes { value label description icon }
-            fileFormats { value label description icon color }
+            fileFormats { value label extensions mimeTypes supportsPreview requiresClientParser description }
             cleanupStrategies { value label description icon }
             newRecordStrategies { value label description icon }
             validationModes { value label description icon }

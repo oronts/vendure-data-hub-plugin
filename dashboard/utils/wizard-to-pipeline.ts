@@ -100,24 +100,23 @@ const defaultResolver: AdapterResolver = {
     getFeedAdapterCode: () => undefined,
 };
 
-/** Fallback strategy maps used when backend mappings are not available */
-const FALLBACK_STRATEGY_MAPPINGS: WizardStrategyMapping[] = [
-    { wizardValue: 'SKIP', label: 'Skip existing', loadStrategy: 'CREATE', conflictStrategy: 'SOURCE_WINS' },
-    { wizardValue: 'UPDATE', label: 'Update existing', loadStrategy: 'UPSERT', conflictStrategy: 'MERGE' },
-    { wizardValue: 'REPLACE', label: 'Replace existing', loadStrategy: 'UPSERT', conflictStrategy: 'SOURCE_WINS' },
-    { wizardValue: 'ERROR', label: 'Error on existing', loadStrategy: 'CREATE', conflictStrategy: 'SOURCE_WINS' },
-];
-
-/** Resolve load strategy and conflict strategy from wizard value using backend mappings */
 function resolveStrategyMapping(
     wizardValue: string,
-    mappings?: WizardStrategyMapping[],
+    mappings: WizardStrategyMapping[],
 ): { loadStrategy: string; conflictStrategy: string } {
-    const source = mappings?.length ? mappings : FALLBACK_STRATEGY_MAPPINGS;
-    const mapping = source.find(m => m.wizardValue === wizardValue);
+    if (!mappings?.length) {
+        throw new Error('Strategy mappings not loaded from backend');
+    }
+
+    const mapping = mappings.find(m => m.wizardValue === wizardValue);
+
+    if (!mapping) {
+        throw new Error(`Unknown strategy: ${wizardValue}`);
+    }
+
     return {
-        loadStrategy: mapping?.loadStrategy ?? 'UPSERT',
-        conflictStrategy: mapping?.conflictStrategy ?? 'SOURCE_WINS',
+        loadStrategy: mapping.loadStrategy,
+        conflictStrategy: mapping.conflictStrategy,
     };
 }
 
@@ -318,8 +317,8 @@ function buildImportTransformStep(config: ImportConfiguration): PipelineStepDefi
 function buildImportLoadStep(
     config: ImportConfiguration,
     resolver: AdapterResolver,
-    loaderAdapters?: LoaderAdapterInfo[],
-    strategyMappings?: WizardStrategyMapping[],
+    loaderAdapters: LoaderAdapterInfo[] | undefined,
+    strategyMappings: WizardStrategyMapping[],
 ): PipelineStepDefinition {
     const adapterCode = resolver.getLoaderAdapterCode(config.targetEntity) ?? resolveLoaderCode(config.targetEntity);
     const { loadStrategy, conflictStrategy } = resolveStrategyMapping(config.strategies.existingRecords, strategyMappings);
@@ -353,20 +352,12 @@ function buildImportLoadStep(
     };
 }
 
-/**
- * Convert an import wizard configuration into a PipelineDefinition.
- * Accepts an optional AdapterResolver for dynamic adapter code lookups,
- * optional loader adapter metadata for field mapping resolution,
- * optional trigger type schemas for schema-driven trigger config building,
- * and optional strategy mappings for wizard-to-backend strategy resolution.
- * Falls back to convention-based defaults when adapter data is not provided.
- */
 export function importConfigToPipelineDefinition(
     config: ImportConfiguration,
     resolver: AdapterResolver = defaultResolver,
     loaderAdapters?: LoaderAdapterInfo[],
     triggerSchemas?: TypedOptionValue[],
-    strategyMappings?: WizardStrategyMapping[],
+    strategyMappings: WizardStrategyMapping[],
 ): PipelineDefinition {
     const trigger = buildImportTriggerStep(config, triggerSchemas);
     const extract = buildImportExtractStep(config);

@@ -15,7 +15,9 @@ import { getErrorMessage, toErrorOrUndefined } from '../utils/error.utils';
 import { getBuiltinOperatorRuntimes } from '../operators/operator-runtime-registry';
 import { configureScriptOperators } from '../operators/script';
 import { BUILT_IN_ENRICHERS } from '../enrichers';
-import { getAllAdapters as getModuleLevelAdapters } from '../adapters/registry';
+import { getAllAdapters as getModuleLevelAdapters, getModuleLevelTransforms, getModuleLevelScripts } from '../adapters/registry';
+import { TransformExecutor } from '../transforms/transform-executor';
+import { HookService } from '../services/events/hook.service';
 
 function isDataHubAdapter(value: unknown): value is DataHubAdapter {
     if (value == null || typeof value !== 'object') {
@@ -66,6 +68,8 @@ export class AdapterBootstrapService implements OnModuleInit {
         @Inject(DATAHUB_PLUGIN_OPTIONS) private options: DataHubPluginOptions,
         private registry: DataHubRegistryService,
         private feedGeneratorService: FeedGeneratorService,
+        private transformExecutor: TransformExecutor,
+        private hookService: HookService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.BOOTSTRAP);
@@ -79,6 +83,8 @@ export class AdapterBootstrapService implements OnModuleInit {
         let feedGeneratorsRegistered = 0;
         let sdkBridgedAdapters = 0;
         let connectorBridgedAdapters = 0;
+        let sdkBridgedTransforms = 0;
+        let sdkBridgedScripts = 0;
 
         try {
             // Configure script operator security settings
@@ -161,6 +167,12 @@ export class AdapterBootstrapService implements OnModuleInit {
             // Bridge connector registries: extractors and loaders from registered connectors
             connectorBridgedAdapters = this.bridgeConnectorAdapters();
 
+            // Bridge SDK module-level transforms: transforms registered via registerTransform()
+            sdkBridgedTransforms = this.bridgeSdkTransforms();
+
+            // Bridge SDK module-level scripts: hook scripts registered via registerScript()
+            sdkBridgedScripts = this.bridgeSdkScripts();
+
             if (this.options.feedGenerators?.length) {
                 this.logger.debug('Registering custom feed generators', {
                     generatorCount: this.options.feedGenerators.length,
@@ -185,6 +197,8 @@ export class AdapterBootstrapService implements OnModuleInit {
                 customAdaptersRegistered,
                 sdkBridgedAdapters,
                 connectorBridgedAdapters,
+                sdkBridgedTransforms,
+                sdkBridgedScripts,
                 feedGeneratorsRegistered,
                 durationMs,
             });
@@ -196,6 +210,8 @@ export class AdapterBootstrapService implements OnModuleInit {
                 customAdaptersRegistered,
                 sdkBridgedAdapters,
                 connectorBridgedAdapters,
+                sdkBridgedTransforms,
+                sdkBridgedScripts,
                 feedGeneratorsRegistered,
                 durationMs,
             });
@@ -331,6 +347,78 @@ export class AdapterBootstrapService implements OnModuleInit {
 
         if (bridged > 0) {
             this.logger.info('Bridged connector adapters', { bridged });
+        }
+
+        return bridged;
+    }
+
+    /**
+     * Bridge custom transforms from the SDK module-level registry (registered via
+     * registerTransform()) into the TransformExecutor so they can be used in
+     * TransformConfig chains.
+     */
+    private bridgeSdkTransforms(): number {
+        let bridged = 0;
+        const sdkTransforms = getModuleLevelTransforms();
+
+        if (sdkTransforms.length === 0) {
+            return 0;
+        }
+
+        this.logger.debug('Bridging SDK module-level transforms', {
+            transformCount: sdkTransforms.length,
+        });
+
+        for (const transform of sdkTransforms) {
+            try {
+                this.transformExecutor.registerCustomTransform(transform);
+                bridged++;
+            } catch (err) {
+                this.logger.warn('Failed to bridge custom transform', {
+                    transformType: transform.type,
+                    error: getErrorMessage(err),
+                });
+            }
+        }
+
+        if (bridged > 0) {
+            this.logger.info('Bridged SDK custom transforms', { bridged });
+        }
+
+        return bridged;
+    }
+
+    /**
+     * Bridge hook scripts from the SDK module-level registry (registered via
+     * registerScript()) into the HookService so they can be used in hook
+     * configurations.
+     */
+    private bridgeSdkScripts(): number {
+        let bridged = 0;
+        const sdkScripts = getModuleLevelScripts();
+
+        if (sdkScripts.length === 0) {
+            return 0;
+        }
+
+        this.logger.debug('Bridging SDK module-level hook scripts', {
+            scriptCount: sdkScripts.length,
+        });
+
+        for (const script of sdkScripts) {
+            try {
+                this.hookService.registerScript(script.name, script.fn);
+                bridged++;
+            } catch (err) {
+                this.logger.warn('Failed to bridge hook script', {
+                    scriptName: script.name,
+                    error: getErrorMessage(err),
+                });
+            }
+        }
+
+        if (bridged > 0) {
+            this.logger.info('Bridged SDK hook scripts', { bridged });
         }
 
         return bridged;

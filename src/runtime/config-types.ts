@@ -32,8 +32,6 @@ export interface BaseFeedConfig extends BaseStepConfig {
     availabilityField?: string;
     /** Currency code */
     currency?: string;
-    /** Alias for currency (for compatibility) */
-    currencyCode?: string;
     /** Channel ID for feed context */
     channelId?: string;
     /** Language code for translations */

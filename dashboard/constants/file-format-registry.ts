@@ -1,45 +1,30 @@
-/**
- * Unified file format registry.
- *
- * Adding a new import file format (e.g. PARQUET) requires a single entry
- * here instead of touching 5 separate files. Every consumer -- ImportWizard,
- * FileDropzone and column-analysis -- reads from this map.
- */
-
-import { FILE_FORMAT } from '../../shared/constants';
+import { useConfigOptions } from '../hooks/api';
 import { parseCSVLine } from '../../shared/utils/csv-parse';
 import type { FileType } from '../utils/column-analysis';
 
-/** Result returned by a format parser. */
 export interface FileParseResult {
-    /** Extracted column/header names */
     headers: string[];
-    /** Parsed data rows (up to preview limit) */
     rows: Record<string, unknown>[];
 }
 
-/** Options forwarded to format parsers that need them. */
 export interface FileParseOptions {
-    /** CSV delimiter character (default: ',') */
     delimiter?: string;
-    /** Whether CSV has a header row (default: true) */
     hasHeaders?: boolean;
-    /** Maximum rows to return for preview */
     maxRows?: number;
 }
 
-/** Metadata and parser for a single file format. */
 export interface FileFormatEntry {
-    /** File extensions accepted (with leading dot), e.g. ['.csv', '.tsv'] */
+    value: string;
+    label: string;
     extensions: string[];
-    /** MIME types for the HTML accept attribute */
     mimeTypes: string[];
-    /** Parse a File into headers + rows. Options only used by formats that need them. */
+    supportsPreview: boolean;
+    description?: string;
     parse: (file: File, options?: FileParseOptions) => Promise<FileParseResult>;
 }
 
 // ---------------------------------------------------------------------------
-// Parse helpers
+// Client-side parsers (ONLY formats that need browser preview)
 // ---------------------------------------------------------------------------
 
 const DEFAULT_MAX_ROWS = 100;
@@ -93,8 +78,6 @@ async function parseXlsxFile(file: File, options?: FileParseOptions): Promise<Fi
 }
 
 async function parseXmlFile(file: File, _options?: FileParseOptions): Promise<FileParseResult> {
-    // XML files are not client-side parsed for preview -- return empty result.
-    // The backend extractor handles real XML parsing at runtime.
     void file;
     return { headers: [], rows: [] };
 }
@@ -112,51 +95,96 @@ async function parseNdjsonFile(file: File, options?: FileParseOptions): Promise<
     return { headers, rows: items };
 }
 
-// ---------------------------------------------------------------------------
-// Registry
-// ---------------------------------------------------------------------------
+const PARSERS: Record<string, (file: File, options?: FileParseOptions) => Promise<FileParseResult>> = {
+    CSV: parseCsvFile,
+    TSV: parseCsvFile,
+    JSON: parseJsonFile,
+    XLSX: parseXlsxFile,
+    XML: parseXmlFile,
+    NDJSON: parseNdjsonFile,
+};
+
+function buildFileFormatRegistry(
+    backendFormats: Array<{
+        value: string;
+        label: string;
+        extensions: string[];
+        mimeTypes: string[];
+        supportsPreview: boolean;
+        requiresClientParser: boolean;
+        description?: string;
+    }>
+): Map<string, FileFormatEntry> {
+    const registry = new Map<string, FileFormatEntry>();
+
+    for (const format of backendFormats) {
+        if (format.requiresClientParser && PARSERS[format.value]) {
+            registry.set(format.value, {
+                ...format,
+                parse: PARSERS[format.value],
+            });
+        }
+    }
+
+    return registry;
+}
+
+export function useFileFormatRegistry(): Map<string, FileFormatEntry> {
+    const { fileFormats } = useConfigOptions();
+    return buildFileFormatRegistry(fileFormats);
+}
 
 export const FILE_FORMAT_REGISTRY = new Map<string, FileFormatEntry>([
-    [FILE_FORMAT.CSV, {
+    ['CSV', {
+        value: 'CSV',
+        label: 'CSV',
         extensions: ['.csv', '.tsv'],
         mimeTypes: ['text/csv', 'text/tab-separated-values'],
+        supportsPreview: true,
         parse: parseCsvFile,
     }],
-    [FILE_FORMAT.JSON, {
+    ['JSON', {
+        value: 'JSON',
+        label: 'JSON',
         extensions: ['.json'],
         mimeTypes: ['application/json'],
+        supportsPreview: true,
         parse: parseJsonFile,
     }],
-    [FILE_FORMAT.XML, {
+    ['XML', {
+        value: 'XML',
+        label: 'XML',
         extensions: ['.xml'],
         mimeTypes: ['text/xml', 'application/xml'],
+        supportsPreview: false,
         parse: parseXmlFile,
     }],
-    [FILE_FORMAT.XLSX, {
+    ['XLSX', {
+        value: 'XLSX',
+        label: 'Excel',
         extensions: ['.xlsx', '.xls'],
         mimeTypes: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'],
+        supportsPreview: true,
         parse: parseXlsxFile,
     }],
-    [FILE_FORMAT.NDJSON, {
+    ['NDJSON', {
+        value: 'NDJSON',
+        label: 'NDJSON',
         extensions: ['.ndjson', '.jsonl'],
         mimeTypes: ['application/x-ndjson'],
+        supportsPreview: true,
         parse: parseNdjsonFile,
     }],
 ]);
 
-// ---------------------------------------------------------------------------
-// Derived helpers (used by consumer files)
-// ---------------------------------------------------------------------------
-
-/**
- * Build an HTML `accept` attribute string from an array of allowed format keys.
- * If no types are specified, returns '*' (accept all).
- */
-export function buildAcceptString(allowedTypes?: string[]): string {
+export function buildAcceptString(
+    allowedTypes?: string[],
+    registry: Map<string, FileFormatEntry> = FILE_FORMAT_REGISTRY
+): string {
     if (!allowedTypes || allowedTypes.length === 0) return '*';
     const extensions: string[] = [];
     for (const type of allowedTypes) {
-        const entry = FILE_FORMAT_REGISTRY.get(type);
+        const entry = registry.get(type);
         if (entry) {
             extensions.push(...entry.extensions);
         }
@@ -164,13 +192,12 @@ export function buildAcceptString(allowedTypes?: string[]): string {
     return extensions.length > 0 ? extensions.join(',') : '*';
 }
 
-/**
- * Detect file format from a filename extension.
- * Returns the FILE_FORMAT constant string, or null if unrecognized.
- */
-export function detectFileFormat(fileName: string): FileType {
+export function detectFileFormat(
+    fileName: string,
+    registry: Map<string, FileFormatEntry> = FILE_FORMAT_REGISTRY
+): FileType {
     const ext = '.' + (fileName.split('.').pop()?.toLowerCase() ?? '');
-    for (const [format, entry] of FILE_FORMAT_REGISTRY) {
+    for (const [format, entry] of registry) {
         if (entry.extensions.includes(ext)) {
             return format as NonNullable<FileType>;
         }

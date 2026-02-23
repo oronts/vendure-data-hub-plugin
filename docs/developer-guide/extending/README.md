@@ -6,11 +6,11 @@ Create custom extractors, loaders, operators, sinks, feeds, and triggers to exte
 
 1. [Custom Extractors](./custom-extractors.md) - Pull data from new sources
 2. [Custom Loaders](./custom-loaders.md) - Load data to new entity types
-3. [Custom Operators](./custom-operators.md) - Add new transform operations
-4. [Custom Sinks](./custom-sinks.md) - Index to custom search engines
-5. [Custom Feeds](./custom-feeds.md) - Generate custom product feeds
-6. [Custom Triggers](./custom-triggers.md) - Add new trigger types (queues, etc.)
-7. [Event Subscriptions](./events.md) - Subscribe to pipeline lifecycle events
+3. [Event Subscriptions](./events.md) - Subscribe to pipeline lifecycle events (monitoring/alerting)
+4. [Custom Operators](./custom-operators.md) - Add new transform operations
+5. [Custom Sinks](./custom-sinks.md) - Index to custom search engines
+6. [Custom Feeds](./custom-feeds.md) - Generate custom product feeds
+7. [Custom Triggers](./custom-triggers.md) - Add new trigger types (queues, etc.)
 8. [Validator Adapters](#validator-adapters) - Validate records against rules
 9. [Enricher Adapters](#enricher-adapters) - Enrich records with external data
 10. [Exporter Adapters](#exporter-adapters) - Export to external systems

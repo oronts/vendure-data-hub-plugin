@@ -1736,7 +1736,8 @@ export type DataHubConfigOptions = {
   /** Operator codes suitable for field-level transforms in the export wizard */
   fieldTransformTypes: Array<DataHubOptionValue>;
   fileEncodings: Array<DataHubOptionValue>;
-  fileFormats: Array<DataHubOptionValue>;
+  /** File format metadata with extensions, MIME types, and preview support */
+  fileFormats: Array<DataHubFileFormatMetadata>;
   hookStageCategories: Array<DataHubHookStageCategory>;
   hookStages: Array<DataHubHookStage>;
   httpMethods: Array<DataHubOptionValue>;
@@ -2222,6 +2223,24 @@ export type DataHubFieldValidation = {
   minLength?: Maybe<Scalars['Int']['output']>;
   pattern?: Maybe<Scalars['String']['output']>;
   patternMessage?: Maybe<Scalars['String']['output']>;
+};
+
+export type DataHubFileFormatMetadata = {
+  __typename?: 'DataHubFileFormatMetadata';
+  /** Optional description for UI tooltips */
+  description?: Maybe<Scalars['String']['output']>;
+  /** File extensions with leading dot (e.g. ['.csv', '.tsv']) */
+  extensions: Array<Scalars['String']['output']>;
+  /** Display label */
+  label: Scalars['String']['output'];
+  /** MIME types for validation and HTML accept attribute */
+  mimeTypes: Array<Scalars['String']['output']>;
+  /** Whether frontend needs JavaScript parser (vs backend-only parsing) */
+  requiresClientParser: Scalars['Boolean']['output'];
+  /** Whether this format supports client-side preview in ImportWizard */
+  supportsPreview: Scalars['Boolean']['output'];
+  /** Format code (matches FileFormat enum, e.g. CSV, JSON, XLSX) */
+  value: Scalars['String']['output'];
 };
 
 /** Result of format conversion operation */

@@ -147,6 +147,23 @@ export const configOptionsSchema = `
         conflictStrategy: String!
     }
 
+    type DataHubFileFormatMetadata {
+        "Format code (matches FileFormat enum, e.g. CSV, JSON, XLSX)"
+        value: String!
+        "Display label"
+        label: String!
+        "File extensions with leading dot (e.g. ['.csv', '.tsv'])"
+        extensions: [String!]!
+        "MIME types for validation and HTML accept attribute"
+        mimeTypes: [String!]!
+        "Whether this format supports client-side preview in ImportWizard"
+        supportsPreview: Boolean!
+        "Whether frontend needs JavaScript parser (vs backend-only parsing)"
+        requiresClientParser: Boolean!
+        "Optional description for UI tooltips"
+        description: String
+    }
+
     type DataHubConfigOptions {
         stepTypes: [DataHubStepTypeConfig!]!
         loadStrategies: [DataHubOptionValue!]!
@@ -158,7 +175,8 @@ export const configOptionsSchema = `
         httpMethods: [DataHubOptionValue!]!
         authTypes: [DataHubOptionValue!]!
         destinationTypes: [DataHubOptionValue!]!
-        fileFormats: [DataHubOptionValue!]!
+        "File format metadata with extensions, MIME types, and preview support"
+        fileFormats: [DataHubFileFormatMetadata!]!
         cleanupStrategies: [DataHubOptionValue!]!
         newRecordStrategies: [DataHubOptionValue!]!
         validationModes: [DataHubOptionValue!]!

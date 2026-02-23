@@ -9,6 +9,8 @@
  */
 import { AdapterDefinition, AdapterType } from '../sdk/types';
 import { DataHubLogger } from '../services/logger/datahub-logger';
+import { CustomTransformInfo } from '../transforms/types';
+import { ScriptFunction } from '../../shared/types';
 
 const MAX_ADAPTERS = 200;
 const adapterRegistry = new Map<string, AdapterDefinition>();
@@ -303,4 +305,184 @@ export function getRegistrySummary(): {
         byType: getAdapterCountByType(),
         codes: getAdapterCodes(),
     };
+}
+
+// ==========================================
+// Transform Registry
+// ==========================================
+
+const MAX_TRANSFORMS = 100;
+const transformRegistry = new Map<string, CustomTransformInfo>();
+
+/**
+ * Register a custom field-level transform
+ *
+ * Custom transforms allow plugins to add new field transformation types
+ * that can be used in TransformConfig alongside built-in transforms.
+ *
+ * @example
+ * ```typescript
+ * registerTransform({
+ *     type: 'REVERSE_STRING',
+ *     name: 'Reverse String',
+ *     description: 'Reverses the characters in a string',
+ *     transform: (ctx, value) => {
+ *         if (typeof value !== 'string') return value;
+ *         return value.split('').reverse().join('');
+ *     }
+ * });
+ * ```
+ */
+export function registerTransform(transform: CustomTransformInfo): void {
+    if (!transform.type) {
+        throw new Error('Transform type is required');
+    }
+    if (!transform.name) {
+        throw new Error('Transform name is required');
+    }
+    if (!transform.transform || typeof transform.transform !== 'function') {
+        throw new Error('Transform function is required');
+    }
+    if (transformRegistry.has(transform.type)) {
+        throw new Error(`Transform with type '${transform.type}' is already registered`);
+    }
+    if (transformRegistry.size >= MAX_TRANSFORMS) {
+        throw new Error(`Transform registry is full (max ${MAX_TRANSFORMS})`);
+    }
+
+    transformRegistry.set(transform.type, transform);
+    logger.info(`Registered custom transform: ${transform.type}`, {
+        type: transform.type,
+        name: transform.name,
+    });
+}
+
+/**
+ * Get all registered custom transforms
+ * Used by the bootstrap process to propagate module-level registrations to DI services
+ */
+export function getModuleLevelTransforms(): CustomTransformInfo[] {
+    return Array.from(transformRegistry.values());
+}
+
+/**
+ * Check if a transform type is registered
+ */
+export function hasTransform(type: string): boolean {
+    return transformRegistry.has(type);
+}
+
+/**
+ * Get a specific transform by type
+ */
+export function getTransform(type: string): CustomTransformInfo | undefined {
+    return transformRegistry.get(type);
+}
+
+/**
+ * Get all registered transform types
+ */
+export function getTransformTypes(): string[] {
+    return Array.from(transformRegistry.keys());
+}
+
+/**
+ * Get count of registered custom transforms
+ */
+export function getTransformCount(): number {
+    return transformRegistry.size;
+}
+
+/**
+ * Clear all registered custom transforms (primarily for testing)
+ */
+export function clearTransforms(): void {
+    transformRegistry.clear();
+    logger.info('Cleared all custom transforms');
+}
+
+// ==========================================
+// Hook Script Registry
+// ==========================================
+
+const MAX_SCRIPTS = 100;
+const scriptRegistry = new Map<string, ScriptFunction>();
+
+/**
+ * Register a custom hook script function
+ *
+ * Hook scripts allow plugins to add custom code that can be executed
+ * during pipeline execution via script hooks. Scripts are referenced by
+ * name in hook configurations.
+ *
+ * @example
+ * ```typescript
+ * registerScript('myValidation', async (ctx, record) => {
+ *     if (!record.email) {
+ *         throw new Error('Email is required');
+ *     }
+ *     return record;
+ * });
+ * ```
+ */
+export function registerScript(name: string, fn: ScriptFunction): void {
+    if (!name) {
+        throw new Error('Script name is required');
+    }
+    if (typeof fn !== 'function') {
+        throw new Error('Script function is required');
+    }
+    if (scriptRegistry.has(name)) {
+        logger.warn(`Script "${name}" is being overwritten`);
+    }
+    if (scriptRegistry.size >= MAX_SCRIPTS) {
+        throw new Error(`Script registry is full (max ${MAX_SCRIPTS})`);
+    }
+
+    scriptRegistry.set(name, fn);
+    logger.info(`Registered hook script: ${name}`);
+}
+
+/**
+ * Get all registered custom hook scripts
+ * Used by the bootstrap process to propagate module-level registrations to HookService
+ */
+export function getModuleLevelScripts(): Array<{ name: string; fn: ScriptFunction }> {
+    return Array.from(scriptRegistry.entries()).map(([name, fn]) => ({ name, fn }));
+}
+
+/**
+ * Check if a script is registered
+ */
+export function hasScript(name: string): boolean {
+    return scriptRegistry.has(name);
+}
+
+/**
+ * Get a specific script by name
+ */
+export function getScript(name: string): ScriptFunction | undefined {
+    return scriptRegistry.get(name);
+}
+
+/**
+ * Get all registered script names
+ */
+export function getScriptNames(): string[] {
+    return Array.from(scriptRegistry.keys());
+}
+
+/**
+ * Get count of registered scripts
+ */
+export function getScriptCount(): number {
+    return scriptRegistry.size;
+}
+
+/**
+ * Clear all registered scripts (primarily for testing)
+ */
+export function clearScripts(): void {
+    scriptRegistry.clear();
+    logger.info('Cleared all hook scripts');
 }

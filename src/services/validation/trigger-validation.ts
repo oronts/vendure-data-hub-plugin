@@ -3,6 +3,7 @@ import {
     PipelineDefinition,
     TriggerConfig,
     MessageTriggerConfig,
+    FileWatchTriggerConfig,
     QueueTypeValue,
 } from '../../types/index';
 import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
@@ -15,6 +16,7 @@ interface TriggerStepConfig extends TriggerConfig {
     message?: MessageTriggerConfig & {
         queue?: string;
     };
+    fileWatch?: FileWatchTriggerConfig;
 }
 
 // ============================================================================
@@ -99,6 +101,8 @@ export function validateTrigger(
 
     if (triggerType === 'message') {
         validateMessageTrigger(triggerStep.key, cfg, issues);
+    } else if (triggerType === 'file') {
+        validateFileTrigger(triggerStep.key, cfg, issues);
     }
 }
 
@@ -155,5 +159,51 @@ function validateMessageTrigger(
             stepKey,
             errorCode: 'missing-queue',
         });
+    }
+}
+
+function validateFileTrigger(
+    stepKey: string,
+    cfg: TriggerStepConfig,
+    issues: PipelineDefinitionIssue[],
+): void {
+    const fileWatchConfig = cfg.fileWatch;
+
+    if (!fileWatchConfig) {
+        issues.push({
+            message: `Step "${stepKey}": file trigger requires fileWatch configuration`,
+            stepKey,
+            errorCode: 'missing-file-watch-config',
+        });
+        return;
+    }
+
+    // Validate connectionCode
+    if (!fileWatchConfig.connectionCode || typeof fileWatchConfig.connectionCode !== 'string') {
+        issues.push({
+            message: `Step "${stepKey}": file trigger requires connectionCode (connection to FTP/S3/SFTP)`,
+            stepKey,
+            errorCode: 'missing-connection-code',
+        });
+    }
+
+    // Validate path
+    if (!fileWatchConfig.path || typeof fileWatchConfig.path !== 'string') {
+        issues.push({
+            message: `Step "${stepKey}": file trigger requires path to watch`,
+            stepKey,
+            errorCode: 'missing-watch-path',
+        });
+    }
+
+    // Validate pollIntervalMs if provided
+    if (fileWatchConfig.pollIntervalMs !== undefined) {
+        if (typeof fileWatchConfig.pollIntervalMs !== 'number' || fileWatchConfig.pollIntervalMs < 30000) {
+            issues.push({
+                message: `Step "${stepKey}": pollIntervalMs must be at least 30000 (30 seconds)`,
+                stepKey,
+                errorCode: 'invalid-poll-interval',
+            });
+        }
     }
 }

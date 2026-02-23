@@ -126,7 +126,7 @@ export class FeedExecutor {
             ...createBaseAdapterContext(ctx, step.key, this.secretService, this.connectionService, this.logger, pipelineContext),
             channelId: cfg?.channelId,
             languageCode: cfg?.languageCode,
-            currencyCode: cfg?.currency ?? cfg?.currencyCode,
+            currencyCode: cfg?.currency,
         };
 
         try {

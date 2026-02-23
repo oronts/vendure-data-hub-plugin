@@ -18,6 +18,7 @@ export type {
     Throughput,
     TriggerConfig,
     MessageTriggerConfig,
+    FileWatchTriggerConfig,
     QueueTypeValue,
 } from '../../shared/types';
 
@@ -26,6 +27,8 @@ export { RunStatus, StepType, HookStage } from '../constants/enums';
 export * from './step-configs';
 
 export * from './extractor-interfaces';
+
+export type { CustomTransformFn, CustomTransformInfo } from '../transforms/types';
 
 export type {
     StringValidation,

@@ -42,6 +42,7 @@ import {
     MessageConsumerService,
     StepTestService,
     TemplateRegistryService,
+    FileWatchService,
 } from './services';
 import { RateLimitServiceHolder } from './decorators';
 import { DATAHUB_PERMISSION_DEFINITIONS } from './permissions';
@@ -137,6 +138,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         HookService,
         DataHubEventTriggerService,
         MessageConsumerService,
+        FileWatchService,
         DataHubRetentionService,
         ConnectionService,
         DomainEventsService,

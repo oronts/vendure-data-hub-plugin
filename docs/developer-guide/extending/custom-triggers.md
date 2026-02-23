@@ -12,10 +12,10 @@ Data Hub supports several built-in trigger types:
 | `SCHEDULE` | Cron-based scheduling | ✅ Implemented |
 | `WEBHOOK` | HTTP webhook endpoint | ✅ Implemented |
 | `EVENT` | Vendure event subscription | ✅ Implemented |
-| `FILE` | File watch (FTP/S3) | ⚠️ Defined, partial |
-| `MESSAGE` | Queue/messaging | ❌ Not implemented |
+| `FILE` | File watch (FTP/S3/SFTP) | ✅ Implemented |
+| `MESSAGE` | Queue/messaging | ✅ Implemented |
 
-This guide covers how to implement custom trigger handlers, including the `message` trigger type for queue-based systems.
+This guide covers how to implement custom trigger handlers. For production use, the built-in FILE and MESSAGE triggers cover most event-driven scenarios.
 
 ## Trigger Architecture
 
@@ -652,6 +652,304 @@ const dlqProcessingPipeline = createPipeline()
     })
     .build();
 ```
+
+## FILE Triggers - Automatic File Detection
+
+FILE triggers automatically monitor remote file systems (FTP, SFTP, S3) and trigger pipelines when new files are detected.
+
+### How It Works
+
+1. **Poll for Files**: Service polls remote path at configured intervals
+2. **Pattern Matching**: Filters files using glob patterns (e.g., `*.csv`, `orders-*.json`)
+3. **Change Detection**: Tracks processed files using timestamps
+4. **Auto-Trigger**: Executes pipeline with file metadata when new files appear
+5. **Distributed Lock**: Prevents duplicate processing in multi-instance deployments
+
+### Configuration
+
+```typescript
+import { createPipeline } from '@oronts/vendure-data-hub-plugin';
+
+const autoImportPipeline = createPipeline()
+    .name('auto-import-orders')
+    .description('Automatically import orders from FTP when files arrive')
+    .trigger('file-watcher', {
+        type: 'FILE',
+        fileWatch: {
+            connectionCode: 'sftp-main',      // FTP/SFTP/S3 connection
+            path: '/incoming/orders',          // Remote path to watch
+            pattern: 'orders-*.csv',           // Glob pattern (optional)
+            pollIntervalMs: 60000,             // Poll every 60 seconds
+            minFileAge: 30,                    // Wait 30 sec after modification
+            recursive: true,                   // Watch subdirectories
+        },
+    })
+    .extract('read-file', {
+        adapterCode: 'ftp',
+        connectionCode: 'sftp-main',
+        remotePath: '{{ triggerData.path }}',  // Use detected file path
+        format: 'csv',
+    })
+    .transform('validate', {
+        adapterCode: 'validateRequired',
+        fields: ['orderId', 'customerId'],
+    })
+    .load('create-orders', {
+        adapterCode: 'orderLoader',
+    })
+    .build();
+```
+
+### Connection Setup
+
+#### FTP/SFTP Connection
+
+```typescript
+DataHubPlugin.init({
+    connections: [
+        {
+            code: 'sftp-main',
+            type: 'sftp',
+            name: 'SFTP Server',
+            config: {
+                host: 'ftp.example.com',
+                port: 22,
+                username: 'ftpuser',
+                password: 'secret',
+                // Or use private key
+                // privateKey: fs.readFileSync('/path/to/key'),
+            },
+        },
+    ],
+});
+```
+
+#### S3 Connection
+
+```typescript
+DataHubPlugin.init({
+    connections: [
+        {
+            code: 's3-bucket',
+            type: 's3',
+            name: 'AWS S3',
+            config: {
+                region: 'us-east-1',
+                bucket: 'my-data-bucket',
+                accessKeyId: 'AKIA...',
+                secretAccessKey: 'secret',
+            },
+        },
+    ],
+});
+```
+
+### Trigger Payload
+
+When a file is detected, the pipeline receives:
+
+```typescript
+{
+    type: 'FILE',
+    timestamp: '2026-02-23T10:30:00.000Z',
+    data: {
+        path: '/incoming/orders/orders-2026-02-23.csv',
+        name: 'orders-2026-02-23.csv',
+        modifiedAt: '2026-02-23T10:29:45.000Z',
+        size: 1024000,  // bytes
+        connectionCode: 'sftp-main',
+    },
+    meta: {
+        triggerKey: 'file-watcher',
+        watchPath: '/incoming/orders',
+        pattern: 'orders-*.csv',
+    },
+}
+```
+
+### Accessing File Data in Pipeline
+
+Use template expressions to access trigger data:
+
+```typescript
+.extract('read-file', {
+    adapterCode: 'ftp',
+    connectionCode: '{{ triggerData.connectionCode }}',
+    remotePath: '{{ triggerData.path }}',  // Detected file path
+    format: 'csv',
+})
+```
+
+### Glob Patterns
+
+FILE triggers support powerful glob patterns:
+
+| Pattern | Matches | Example |
+|---------|---------|---------|
+| `*.csv` | All CSV files | `orders.csv`, `products.csv` |
+| `orders-*.json` | Files starting with "orders-" | `orders-2026-02-23.json` |
+| `**/*.xml` | XML files in any subdirectory | `2026/02/data.xml` |
+| `{orders,products}-*.csv` | Multiple prefixes | `orders-*.csv`, `products-*.csv` |
+
+### Advanced Configuration
+
+#### Multiple Watch Paths
+
+Create separate triggers for different paths:
+
+```typescript
+const pipeline = createPipeline()
+    .name('multi-source-import')
+    .trigger('watch-orders', {
+        type: 'FILE',
+        fileWatch: {
+            connectionCode: 'sftp-main',
+            path: '/incoming/orders',
+            pattern: '*.csv',
+            pollIntervalMs: 60000,
+        },
+    })
+    .trigger('watch-products', {
+        type: 'FILE',
+        fileWatch: {
+            connectionCode: 'sftp-main',
+            path: '/incoming/products',
+            pattern: '*.json',
+            pollIntervalMs: 120000,  // Poll less frequently
+        },
+    })
+    // ... extraction and loading steps
+    .build();
+```
+
+#### Conditional Processing with ROUTE Step
+
+Process different file types differently:
+
+```typescript
+const pipeline = createPipeline()
+    .name('smart-file-processor')
+    .trigger('watch-all', {
+        type: 'FILE',
+        fileWatch: {
+            connectionCode: 's3-bucket',
+            path: '/incoming',
+            pattern: '*',  // Watch all files
+        },
+    })
+    .extract('read-file', {
+        adapterCode: 's3',
+        // ... config
+    })
+    .route('by-file-type', {
+        routes: [
+            {
+                condition: '{{ triggerData.name.endsWith(".csv") }}',
+                stepKey: 'csv-transform',
+            },
+            {
+                condition: '{{ triggerData.name.endsWith(".json") }}',
+                stepKey: 'json-transform',
+            },
+        ],
+    })
+    // ... different transform steps
+    .build();
+```
+
+### File Age Filtering
+
+`minFileAge` prevents processing files that are still being written:
+
+```typescript
+fileWatch: {
+    minFileAge: 60,  // Wait 60 seconds after last modification
+}
+```
+
+**Why This Matters:**
+- Large files take time to upload
+- Prevents processing incomplete files
+- Ensures data integrity
+
+### Polling Interval Tuning
+
+Choose based on your requirements:
+
+| Interval | Use Case | Trade-off |
+|----------|----------|-----------|
+| 30s | Real-time processing | Higher load on file system |
+| 5 min | Standard batch imports | Balanced |
+| 1 hour | Large file processing | Lower overhead |
+
+**Minimum:** 30 seconds (enforced)
+
+### Checkpoint Management
+
+FILE triggers automatically track processed files:
+- Stores timestamp of last processed file
+- On restart, resumes from last checkpoint
+- Prevents duplicate processing
+- Checkpoint per pipeline + trigger combination
+
+### Distributed Deployment
+
+FILE triggers use distributed locks:
+- ✅ Safe for multi-instance Vendure deployments
+- ✅ Only one instance processes each file
+- ✅ Automatic failover if instance crashes
+- ⚠️ Requires Redis or database-backed DistributedLockService
+
+### Error Handling
+
+If file processing fails:
+1. Error logged with file details
+2. Checkpoint NOT updated (file will be retried on next poll)
+3. Configure pipeline-level retry/error handling
+4. Use GATE step for manual review of problematic files
+
+### Monitoring
+
+Monitor file trigger activity:
+- Pipeline run logs show `triggerType: FILE`
+- File path and size in run metadata
+- Track files processed per day via analytics
+- Set up alerts for processing failures
+
+### Best Practices
+
+1. **Use Specific Patterns**: Narrow patterns reduce false matches
+   ```typescript
+   pattern: 'orders-YYYY-MM-DD-*.csv'  // Good
+   pattern: '*'                          // Too broad
+   ```
+
+2. **Set Appropriate minFileAge**: Allow time for uploads to complete
+   ```typescript
+   minFileAge: 60  // Good for large files
+   minFileAge: 0   // Risk processing incomplete files
+   ```
+
+3. **Test Poll Intervals**: Balance responsiveness vs. system load
+   ```typescript
+   pollIntervalMs: 300000  // 5 min - good default
+   ```
+
+4. **Use Archive Pattern**: Move processed files to archive folder
+   ```typescript
+   // After successful load, use webhook or custom step to archive
+   .sink('archive-file', {
+       adapterCode: 'ftp',
+       operation: 'move',
+       sourcePath: '{{ triggerData.path }}',
+       targetPath: '/archive/{{ triggerData.name }}',
+   })
+   ```
+
+5. **Handle File Conflicts**: Use timestamps in filenames
+   ```typescript
+   pattern: 'orders-{{ timestamp }}-*.csv'  // Prevents overwrites
+   ```
 
 ## Testing Triggers
 
