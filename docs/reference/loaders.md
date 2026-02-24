@@ -2,6 +2,31 @@
 
 Complete reference for all entity loaders (22 operation-specific adapters across 16 entity types).
 
+## Table of Contents
+
+### [Common Configuration](#common-configuration)
+- [Loader Adapter Codes](#loader-adapter-codes) - Complete list of all 22 loaders
+- [Load Strategies](#load-strategies) - CREATE, UPDATE, UPSERT, MERGE, SOFT_DELETE, HARD_DELETE
+- [Conflict Strategies](#conflict-strategies) - SOURCE_WINS, VENDURE_WINS, MERGE, MANUAL_QUEUE
+
+### Entity Loaders
+- [Product Loader](#product-loader) - Create/update products with facets and assets
+- [Product Variant Loader](#product-variant-loader) - Update variants by SKU with prices
+- [Customer Loader](#customer-loader) - Create/update customers with addresses and groups
+- [Collection Loader](#collection-loader) - Create/update collections with parent relationships
+- [Inventory Loader](#inventory-loader) - Update stock levels by SKU
+- [Additional Loaders](#additional-loaders) - Order, Customer Group, Facet, Facet Value, Asset, Promotion, Shipping Method, Stock Location, Tax Rate, Payment Method, Channel
+
+### External System Loaders
+- [GraphQL Mutation Loader](#graphql-mutation-loader) - Send records as GraphQL mutations to external APIs
+- [Using Sinks for External Systems](#using-sinks-for-external-systems) - Alternative for search engines and message queues
+
+### [Quick Reference](#quick-reference-1)
+- Summary table of all 22 loaders with descriptions
+- Required permissions for each loader
+
+---
+
 ## Common Configuration
 
 All loaders are configured using the `.load()` step in the pipeline DSL:

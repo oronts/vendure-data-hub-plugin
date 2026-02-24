@@ -11,13 +11,15 @@ This guide covers using the Data Hub Admin UI to create and manage data pipeline
 ## Contents
 
 1. [Creating Pipelines](./pipelines.md) - Build and edit pipelines with the visual editor
-2. [Managing Connections](./connections.md) - Set up database and API connections
-3. [Secrets Management](./secrets.md) - Store API keys and credentials securely
-4. [Scheduling Pipelines](./scheduling.md) - Automate pipeline execution
-5. [Monitoring & Logs](./monitoring.md) - Track runs and debug issues
-6. [Product Feeds](./feeds.md) - Generate feeds for Google, Meta, and more
-7. [Queue & Messaging](./queue-messaging.md) - Consume from and produce to message queues
-8. [External Integrations](./external-integrations.md) - Search engines, webhooks, and external APIs
+2. [Import/Export Wizards](./wizards.md) - Step-by-step guide to data import and export wizards
+3. [Advanced Recipes](./recipes.md) - Real-world pipeline examples and patterns
+4. [Managing Connections](./connections.md) - Set up database and API connections
+5. [Secrets Management](./secrets.md) - Store API keys and credentials securely
+6. [Scheduling Pipelines](./scheduling.md) - Automate pipeline execution
+7. [Monitoring & Logs](./monitoring.md) - Track runs and debug issues
+8. [Product Feeds](./feeds.md) - Generate feeds for Google, Meta, and more
+9. [Queue & Messaging](./queue-messaging.md) - Consume from and produce to message queues
+10. [External Integrations](./external-integrations.md) - Search engines, webhooks, and external APIs
 
 ## Accessing Data Hub
 

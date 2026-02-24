@@ -35,6 +35,8 @@ New to Data Hub? Start here for installation, basic setup, and your first pipeli
 Learn how to use the Data Hub Admin UI to create and manage pipelines.
 
 - [Creating Pipelines](./user-guide/pipelines.md)
+- [Import/Export Wizards](./user-guide/wizards.md) - Step-by-step wizard guides
+- [Advanced Recipes](./user-guide/recipes.md) - Real-world pipeline examples
 - [Managing Connections](./user-guide/connections.md)
 - [Secrets Management](./user-guide/secrets.md)
 - [Scheduling Pipelines](./user-guide/scheduling.md)
@@ -49,8 +51,10 @@ For developers who want to use the code-first DSL or extend the plugin.
 - [Architecture Overview](./developer-guide/architecture.md)
 - [DSL Reference](./developer-guide/dsl/README.md)
   - [Pipeline Builder](./developer-guide/dsl/pipeline-builder.md)
+  - [Schema Reference](./developer-guide/dsl/schema-reference.md) - Complete TypeScript interface reference
   - [Operators](./developer-guide/dsl/operators.md)
   - [Examples](./developer-guide/dsl/examples.md)
+- [Testing Guide](./developer-guide/testing.md) - Unit, integration, and E2E testing
 - [Extending the Plugin](./developer-guide/extending/README.md)
   - [Custom Extractors](./developer-guide/extending/custom-extractors.md)
   - [Custom Loaders](./developer-guide/extending/custom-loaders.md)
@@ -68,6 +72,8 @@ Production deployment and configuration guidance.
 - [Configuration Options](./deployment/configuration.md)
 - [Permissions](./deployment/permissions.md)
 - [Production Setup](./deployment/production.md)
+- [Performance Tuning](./deployment/performance.md) - Optimization strategies
+- [Migrations](./deployment/migrations.md) - Version upgrade guide
 - [Troubleshooting](./deployment/troubleshooting.md)
 
 ### [Reference](./reference/README.md)
@@ -86,13 +92,19 @@ Complete reference documentation for all adapters and operators.
 | Install the plugin | [Installation](./getting-started/installation.md) |
 | Create your first pipeline | [Quick Start](./getting-started/quick-start.md) |
 | Import products from API | [REST API Extractor](./reference/extractors.md#rest-api-extractor) |
+| Use import/export wizards | [Wizards Guide](./user-guide/wizards.md) |
+| Real-world pipeline examples | [Advanced Recipes](./user-guide/recipes.md) |
 | Sync to search engine | [Search Sinks](./reference/sinks.md) |
 | Generate Google feed | [Product Feeds](./user-guide/feeds.md) |
 | Use code-first DSL | [Pipeline Builder](./developer-guide/dsl/pipeline-builder.md) |
+| DSL type reference | [Schema Reference](./developer-guide/dsl/schema-reference.md) |
+| Test your pipelines | [Testing Guide](./developer-guide/testing.md) |
 | Create custom extractor | [Custom Extractors](./developer-guide/extending/custom-extractors.md) |
-| Use import/export wizards | [Pipelines Guide](./user-guide/pipelines.md#import--export-wizards) |
 | Register pipeline hooks | [Configuration](./deployment/configuration.md#scripts) |
 | Add custom templates | [Extending](./developer-guide/extending/README.md#template-registration) |
+| Optimize performance | [Performance Tuning](./deployment/performance.md) |
+| Upgrade between versions | [Migrations](./deployment/migrations.md) |
+| Debug pipeline issues | [Troubleshooting](./deployment/troubleshooting.md) |
 
 ---
 

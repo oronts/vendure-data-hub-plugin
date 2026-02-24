@@ -7,7 +7,9 @@ Deployment configuration and production setup for the Data Hub plugin.
 1. [Configuration Options](./configuration.md) - All plugin options
 2. [Permissions](./permissions.md) - Permission system
 3. [Production Setup](./production.md) - Production deployment guide
-4. [Troubleshooting](./troubleshooting.md) - Common issues and solutions
+4. [Performance Tuning](./performance.md) - Optimization strategies and best practices
+5. [Migrations](./migrations.md) - Version upgrade and migration guide
+6. [Troubleshooting](./troubleshooting.md) - Common issues and solutions
 
 ## Quick Checklist
 

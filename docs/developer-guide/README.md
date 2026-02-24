@@ -13,16 +13,18 @@ This guide covers the code-first DSL, architecture, and extending the Data Hub p
 1. [Architecture Overview](./architecture.md) - How the plugin works internally
 2. [DSL Reference](./dsl/README.md)
    - [Pipeline Builder](./dsl/pipeline-builder.md) - Building pipelines with TypeScript
+   - [Schema Reference](./dsl/schema-reference.md) - Complete TypeScript interface reference
    - [Operators](./dsl/operators.md) - All transform operators
    - [Examples](./dsl/examples.md) - Real-world pipeline examples
-3. [Extending the Plugin](./extending/README.md)
+3. [Testing Guide](./testing.md) - Unit, integration, and end-to-end testing
+4. [Extending the Plugin](./extending/README.md)
    - [Custom Extractors](./extending/custom-extractors.md)
    - [Custom Loaders](./extending/custom-loaders.md)
    - [Custom Operators](./extending/custom-operators.md)
    - [Event Subscriptions](./extending/events.md) - Subscribe to pipeline lifecycle events
    - **Hook Scripts** - Register functions for data modification at any pipeline stage
    - **Wizard Templates** - Add custom templates for import/export wizards
-4. [GraphQL API](./graphql-api.md) - API reference for integration
+5. [GraphQL API](./graphql-api.md) - API reference for integration
 
 ## When to Use Code-First
 

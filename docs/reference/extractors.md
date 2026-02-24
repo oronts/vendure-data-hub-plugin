@@ -2,6 +2,21 @@
 
 Complete reference for all data extractors.
 
+## Table of Contents
+
+- [HTTP API Extractor](#http-api-extractor) - Fetch data from REST APIs with pagination and authentication
+- [File Extractor](#file-extractor) - Parse files in multiple formats (CSV, JSON, XML, XLSX, NDJSON, TSV)
+- [GraphQL Extractor](#graphql-extractor) - Query external GraphQL endpoints with pagination
+- [Vendure Query Extractor](#vendure-query-extractor) - Extract data directly from Vendure entities
+- [S3 Extractor](#s3-extractor) - Fetch and parse files from S3-compatible storage
+- [FTP/SFTP Extractor](#ftpsftp-extractor) - Fetch and parse files from FTP or SFTP servers
+- [Database Extractor](#database-extractor) - Query SQL databases with pagination
+- [Webhook Extractor](#webhook-extractor) - Receive data from webhook payloads
+- [CDC (Change Data Capture) Extractor](#cdc-change-data-capture-extractor) - Poll database tables for changes
+- [Quick Reference](#quick-reference) - Summary table of all extractors
+
+---
+
 ## HTTP API Extractor
 
 Code: `httpApi`

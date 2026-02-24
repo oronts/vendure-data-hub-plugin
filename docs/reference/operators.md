@@ -2,6 +2,95 @@
 
 Complete reference for all transform operators.
 
+## Table of Contents
+
+### [Data Operators](#data-operators)
+- [set](#set) - Set a static value at a path
+- [copy](#copy) - Copy a field value to another path
+- [rename](#rename) - Rename a field
+- [remove](#remove) - Remove a field at path
+- [map](#map) - Transform records via field mapping
+- [template](#template) - Render a string template
+- [hash](#hash) - Generate a cryptographic hash
+- [uuid](#uuid) - Generate a UUID
+
+### [Enrichment Operators](#enrichment-operators)
+- [lookup](#lookup) - Lookup value from a map
+- [enrich](#enrich) - Set or default fields on records
+- [coalesce](#coalesce) - Return first non-null value from paths
+- [default](#default) - Set a default value if field is null
+- [httpLookup](#httplookup) - Enrich records by fetching data from HTTP endpoints
+
+### [String Operators](#string-operators)
+- [trim](#trim) - Trim whitespace from a string
+- [uppercase](#uppercase) - Convert to uppercase
+- [lowercase](#lowercase) - Convert to lowercase
+- [slugify](#slugify) - Generate a URL-friendly slug
+- [split](#split) - Split string into array
+- [join](#join) - Join array into string
+- [concat](#concat) - Concatenate multiple string fields
+- [replace](#replace) - Replace text in a string
+- [extractRegex](#extractregex) - Extract text using regex capture groups
+- [replaceRegex](#replaceregex) - Replace text using regex pattern
+- [stripHtml](#striphtml) - Remove HTML tags from a string
+- [truncate](#truncate) - Truncate a string to a maximum length
+
+### [Numeric Operators](#numeric-operators)
+- [math](#math) - Perform math operations
+- [toNumber](#tonumber) - Convert string to number
+- [toString](#tostring) - Convert value to string
+- [currency](#currency) - Convert floats to minor units
+- [unit](#unit) - Convert units (g to kg, cm to m, etc)
+- [parseNumber](#parsenumber) - Parse locale-formatted number strings
+- [formatNumber](#formatnumber) - Format numbers with locale support
+- [toCents](#tocents) - Convert decimal amount to cents
+- [round](#round) - Round a number to specified decimal places
+
+### [Date Operators](#date-operators)
+- [dateFormat](#dateformat) - Format a date to a string
+- [dateParse](#dateparse) - Parse a string to a date
+- [dateAdd](#dateadd) - Add or subtract time from a date
+- [dateDiff](#datediff) - Calculate difference between two dates
+- [now](#now) - Set the current timestamp
+
+### [Logic Operators](#logic-operators)
+- [when](#when) - Filter records by conditions
+- [ifThenElse](#ifthenelse) - Set a value based on a condition
+- [switch](#switch) - Set a value based on multiple conditions
+- [deltaFilter](#deltafilter) - Filter out unchanged records using stable hashing
+
+### [JSON Operators](#json-operators)
+- [pick](#pick) - Keep only specified fields
+- [omit](#omit) - Remove specified fields
+- [parseJson](#parsejson) - Parse a JSON string to an object
+- [stringifyJson](#stringifyjson) - Convert object to JSON string
+
+### [Array Operators](#array-operators)
+- [flatten](#flatten) - Flatten a nested array
+- [unique](#unique) - Remove duplicate values from an array
+- [first](#first) - Get the first element of an array
+- [last](#last) - Get the last element of an array
+- [count](#count) - Count elements in an array
+- [expand](#expand) - Expand an array field into multiple records
+
+### [Aggregation Operators](#aggregation-operators)
+- [aggregate](#aggregate) - Compute aggregates over records
+- [multiJoin](#multijoin) - Merge records from two datasets by key
+
+### [File Operators](#file-operators)
+- [imageResize](#imageresize) - Resize base64-encoded images
+- [imageConvert](#imageconvert) - Convert image format
+- [pdfGenerate](#pdfgenerate) - Generate PDF from HTML template
+
+### [Validation Operators](#validation-operators)
+- [validateRequired](#validaterequired) - Mark records as invalid if required fields are missing
+- [validateFormat](#validateformat) - Validate field format using regex
+
+### [Script Operator](#script-operator)
+- [script](#script) - Execute custom JavaScript for complex transformations
+
+---
+
 ## Data Operators
 
 ### set
