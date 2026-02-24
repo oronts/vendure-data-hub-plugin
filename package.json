@@ -1,6 +1,6 @@
 {
   "name": "@oronts/vendure-data-hub-plugin",
-  "version": "1.1.0",
+  "version": "0.1.0",
   "description": "ETL data integration plugin for Vendure e-commerce",
   "author": {
     "name": "Oronts Website",
@@ -110,10 +110,10 @@
     "@types/ssh2-sftp-client": "^9.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
-    "@vendure/asset-server-plugin": "^3.5.2",
-    "@vendure/core": "^3.5.2",
-    "@vendure/dashboard": "^3.5.2",
-    "@vendure/testing": "^3.5.2",
+    "@vendure/asset-server-plugin": "^3.5.4",
+    "@vendure/core": "^3.5.4",
+    "@vendure/dashboard": "^3.5.4",
+    "@vendure/testing": "^3.5.4",
     "@vitejs/plugin-react": "^4.3.0",
     "better-sqlite3": "^11.0.0",
     "eslint": "^8.57.0",
