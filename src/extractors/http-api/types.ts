@@ -1,6 +1,9 @@
 import { ExtractorConfig, PaginationConfig, RetryConfig } from '../../types/index';
 import { JsonObject } from '../../types/index';
-import { HttpMethod, HTTP, PAGINATION, WEBHOOK } from '../../constants/index';
+import { HttpMethod } from '../../constants/enums';
+import { HTTP } from '../../../shared/constants';
+import { PAGINATION } from '../../constants/defaults/ui-defaults';
+import { WEBHOOK } from '../../constants/defaults/webhook-defaults';
 
 export type { RetryConfig };
 
@@ -56,6 +59,10 @@ export interface UpdatedPaginationState {
 
 export const RETRYABLE_NETWORK_CODES = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND'] as const;
 
+/**
+ * HTTP extractor default configuration
+ * Imports from source files directly to avoid circular dependencies
+ */
 export const HTTP_DEFAULTS = {
     method: HttpMethod.GET,
     timeoutMs: HTTP.TIMEOUT_MS,

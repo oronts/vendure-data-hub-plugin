@@ -1,5 +1,5 @@
 import { ParseResult, ParseError, JsonParseOptions } from '../types';
-import { CODE_SECURITY } from '../../constants';
+import { CODE_SECURITY } from '../../constants/defaults/security-defaults';
 import { extractFields } from '../helpers/field-extraction';
 import { getErrorMessage } from '../../utils/error.utils';
 

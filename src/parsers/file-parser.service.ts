@@ -8,7 +8,7 @@ import {
     FieldType,
     FORMAT_EXTENSIONS,
 } from './types';
-import { TRUNCATION, PAGINATION } from '../constants/index';
+import { TRUNCATION, PAGINATION } from '../constants/defaults/ui-defaults';
 
 export { FileFormat, ParseOptions, ParseResult, FilePreview, FieldInfo, FieldType } from './types';
 import { parseCsv } from './formats/csv.parser';

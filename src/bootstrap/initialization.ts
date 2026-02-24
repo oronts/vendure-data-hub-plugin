@@ -5,7 +5,7 @@
  */
 
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
-import { DATAHUB_PLUGIN_OPTIONS, BUILTIN_ADAPTERS, LOGGER_CONTEXTS } from '../constants/index';
+import { DATAHUB_PLUGIN_OPTIONS, getBuiltInAdapters, LOGGER_CONTEXTS } from '../constants/index';
 import { DataHubPluginOptions } from '../types/index';
 import { DataHubRegistryService } from '../sdk/registry.service';
 import { DataHubAdapter, AdapterDefinition } from '../sdk/types/adapter-types';
@@ -91,10 +91,11 @@ export class AdapterBootstrapService implements OnModuleInit {
             this.configureScriptSecurity();
 
             if (this.options.registerBuiltinAdapters !== false) {
+                const builtinAdapters = getBuiltInAdapters();
                 this.logger.debug('Registering built-in adapter definitions', {
-                    adapterCount: BUILTIN_ADAPTERS.length,
+                    adapterCount: builtinAdapters.length,
                 });
-                for (const adapter of BUILTIN_ADAPTERS) {
+                for (const adapter of builtinAdapters) {
                     try {
                         this.registry.register(adapter, { builtIn: true });
                         builtinAdaptersRegistered++;

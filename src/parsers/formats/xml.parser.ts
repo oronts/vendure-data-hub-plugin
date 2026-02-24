@@ -1,5 +1,5 @@
 import { ParseResult, ParseError, XmlParseOptions } from '../types';
-import { XML_PARSER } from '../../constants';
+import { XML_PARSER } from '../../constants/defaults/parsers-defaults';
 import { extractFields } from '../helpers/field-extraction';
 import { getErrorMessage } from '../../utils/error.utils';
 

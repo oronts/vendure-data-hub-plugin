@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common';
 import * as fs from 'fs/promises';
 import { JsonObject } from '../../types/index';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
-import { PAGINATION, TRANSFORM_LIMITS } from '../../constants/index';
+import { PAGINATION } from '../../constants/defaults/ui-defaults';
+import { TRANSFORM_LIMITS } from '../../constants/defaults/core-defaults';
 import {
     DataExtractor,
     ExtractorContext,

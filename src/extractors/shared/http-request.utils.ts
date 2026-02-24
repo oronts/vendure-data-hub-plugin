@@ -6,7 +6,7 @@
  */
 
 import { ExtractorContext } from '../../types/index';
-import { HTTP_HEADERS, CONTENT_TYPES } from '../../constants/index';
+import { HTTP_HEADERS, CONTENT_TYPES } from '../../constants/services';
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 import { applyAuthentication, AuthConfig, createSecretResolver } from '../../utils/auth-helpers';
 import { buildUrlWithConnection } from '../../utils/url-helpers';

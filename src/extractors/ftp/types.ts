@@ -1,6 +1,7 @@
 import { ExtractorConfig } from '../../types/index';
 import { FileFormat } from '../../parsers/types';
-import { PORTS, HTTP } from '../../constants/index';
+import { PORTS } from '../../constants/defaults/core-defaults';
+import { HTTP } from '../../../shared/constants';
 import type { FtpFileInfo } from '../../../shared/types/extractor.types';
 
 export type FtpProtocol = 'ftp' | 'sftp';

@@ -1,4 +1,5 @@
-import { HTTP, WEBHOOK } from '../constants/index';
+import { HTTP } from '../../shared/constants';
+import { WEBHOOK } from '../constants/defaults/webhook-defaults';
 import { getErrorMessage, ensureError } from './error.utils';
 import type { RetryConfig } from '../../shared/types';
 
