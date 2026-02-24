@@ -15,7 +15,7 @@ vendure.sqlite
 # Generated output
 analytics/
 exports/
-feeds/
+/feeds/
 imports/errors/
 
 # Test output

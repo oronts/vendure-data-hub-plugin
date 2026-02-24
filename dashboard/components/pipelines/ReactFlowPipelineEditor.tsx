@@ -301,7 +301,7 @@ export function ReactFlowPipelineEditor({
                     </div>
                 </div>
 
-                <div className="flex-1 border rounded-lg overflow-hidden" ref={reactFlowRef} data-testid="datahub-pipeline-editor-canvas">
+                <div className="flex-1 border rounded-lg overflow-hidden" ref={reactFlowRef} data-testid="datahub-pipeline-editor-canvas" aria-label="Pipeline editor canvas" role="application">
                     <ReactFlow
                         nodes={nodes}
                         edges={edges}

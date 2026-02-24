@@ -197,7 +197,7 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
                             </span>
                         </div>
                     )}
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3" data-testid="datahub-logs-filters">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3" data-testid="datahub-logs-filters">
                         <div className="relative">
                             <Hash className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                             <Input
