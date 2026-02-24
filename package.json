@@ -1,6 +1,6 @@
 {
   "name": "@oronts/vendure-data-hub-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ETL data integration plugin for Vendure e-commerce",
   "author": {
     "name": "Oronts Website",

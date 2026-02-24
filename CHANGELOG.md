@@ -2,6 +2,11 @@
 
 All notable changes to the Data Hub Plugin are documented here.
 
+## [0.1.1] - 2026-02-24
+
+### Fixed
+- Fixed package.json entry points: Updated `main` and `types` paths from `dist/index.js` to `dist/src/index.js` to match actual build output structure
+
 ## [0.1.0] - 2026-02-24
 
 Initial production release of the Data Hub Plugin for Vendure.
