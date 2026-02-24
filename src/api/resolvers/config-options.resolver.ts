@@ -8,7 +8,6 @@ import {
     HttpMethod,
     ValidationMode,
     QueueType,
-    FileFormat,
     LogLevel,
     RunMode,
     CheckpointStrategy,

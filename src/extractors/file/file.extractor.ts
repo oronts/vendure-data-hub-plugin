@@ -17,7 +17,6 @@ import {
 import { FileParserService, ParseOptions } from '../../parsers/file-parser.service';
 import { FileExtractorConfig, FILE_EXTRACTOR_DEFAULTS } from './types';
 import { getFiles, resolvePath } from './helpers';
-import { FileFormat } from '../../constants/enums';
 import { FILE_FORMAT_METADATA } from '../../constants/adapter-schema-options';
 import { FILE_EXTRACTOR_SCHEMA } from './schema';
 

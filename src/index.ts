@@ -58,7 +58,6 @@ export {
     FEED_NAMESPACES,
     CONTENT_TYPES,
     HTTP_HEADERS,
-    getBuiltInAdapters,
     EXTRACTOR_ADAPTERS,
     LOADER_ADAPTERS,
     EXPORTER_ADAPTERS,
@@ -416,3 +415,6 @@ export type {
     TemplateCategoryInfo,
 } from './templates';
 
+
+// Built-in adapters (exported from separate file to avoid circular dependencies)
+export { BUILTIN_ADAPTERS } from './constants/builtin-adapters';

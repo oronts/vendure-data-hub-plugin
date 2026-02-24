@@ -150,36 +150,7 @@ export {
     ACK_MODE_OPTIONS,
 } from './adapter-schema-options';
 
-import type { AdapterDefinition } from '../sdk/types';
-
-/**
- * Get all built-in adapter definitions.
- * Lazy loaded to avoid circular dependencies during module initialization.
- *
- * IMPORTANT: Do not call this at module initialization time. Only call when needed.
- */
-export function getBuiltInAdapters(): AdapterDefinition[] {
-    // Dynamic imports to avoid circular dependencies
-    // These are loaded on-demand when this function is called
-    const { EXTRACTOR_ADAPTERS } = require('../extractors/extractor-handler-registry');
-    const { LOADER_ADAPTERS } = require('../runtime/executors/loaders/loader-handler-registry');
-    const { EXPORTER_ADAPTERS } = require('../runtime/executors/exporters/export-handler-registry');
-    const { FEED_ADAPTERS } = require('../runtime/executors/feeds/feed-handler-registry');
-    const { SINK_ADAPTERS } = require('../runtime/executors/sink-handler-registry');
-    const { ALL_OPERATOR_DEFINITIONS } = require('../operators');
-    const { ENRICHER_ADAPTER_DEFINITIONS } = require('../enrichers');
-
-    return [
-        ...EXTRACTOR_ADAPTERS,
-        ...ALL_OPERATOR_DEFINITIONS,
-        ...LOADER_ADAPTERS,
-        ...EXPORTER_ADAPTERS,
-        ...FEED_ADAPTERS,
-        ...SINK_ADAPTERS,
-        ...ENRICHER_ADAPTER_DEFINITIONS,
-    ];
-}
-
+export { BUILTIN_ADAPTERS } from './builtin-adapters';
 export { EXTRACTOR_ADAPTERS } from '../extractors/extractor-handler-registry';
 export { LOADER_ADAPTERS } from '../runtime/executors/loaders/loader-handler-registry';
 export { EXPORTER_ADAPTERS } from '../runtime/executors/exporters/export-handler-registry';

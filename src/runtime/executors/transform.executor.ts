@@ -69,7 +69,7 @@ export class TransformExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        executorCtx: ExecutorContext,
+        __executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;
@@ -87,7 +87,7 @@ export class TransformExecutor {
 
         // Handle multi-operator array format
         if (operatorsArray && operatorsArray.length > 0) {
-            return await this.executeOperatorsArray(ctx, step, input, operatorsArray, executorCtx, pipelineContext);
+            return await this.executeOperatorsArray(ctx, step, input, operatorsArray, __executorCtx, pipelineContext);
         }
 
         // Handle single operator format
@@ -96,7 +96,7 @@ export class TransformExecutor {
             return input;
         }
 
-        return await this.executeSingleOperator(ctx, step, input, adapterCode, cfg, executorCtx, pipelineContext);
+        return await this.executeSingleOperator(ctx, step, input, adapterCode, cfg, __executorCtx, pipelineContext);
     }
 
     /**
@@ -109,7 +109,7 @@ export class TransformExecutor {
         input: RecordObject[],
         adapterCode: string,
         cfg: JsonObject,
-        executorCtx: ExecutorContext,
+        _executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
     ): Promise<RecordObject[]> {
         // Try built-in first
@@ -147,7 +147,7 @@ export class TransformExecutor {
         step: PipelineStepDefinition,
         input: RecordObject[],
         operators: OperatorConfig[],
-        executorCtx: ExecutorContext,
+        _executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
     ): Promise<RecordObject[]> {
         let currentRecords = input;
@@ -174,7 +174,7 @@ export class TransformExecutor {
                 currentRecords,
                 opCode,
                 { adapterCode: opCode, ...args } as JsonObject,
-                executorCtx,
+                _executorCtx,
                 pipelineContext,
             );
         }
@@ -602,7 +602,7 @@ export class TransformExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        executorCtx?: ExecutorContext,
+        _executorCtx?: ExecutorContext,
     ): Promise<RecordObject[]> {
         const cfg = (step.config ?? {}) as Record<string, unknown>;
 

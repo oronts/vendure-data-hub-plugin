@@ -27,7 +27,6 @@ import {
     type VendureQueryExtractorConfig,
     type WebhookExtractorConfig,
     type DatabaseExtractorConfig,
-    type CdcExtractorConfig,
     type GenericExtractorConfig,
     type TypedExtractorConfig,
     type MapOperatorConfig,
@@ -72,7 +71,6 @@ import {
     type UpdateOrderLoaders,
     type UpdatePromotionLoaders,
     type UpdateDataHubSettingsLoaders,
-    type LoaderAdapterCode,
 } from '../../shared/types';
 
 export type {
@@ -84,7 +82,6 @@ export type {
     VendureQueryExtractorConfig,
     WebhookExtractorConfig,
     DatabaseExtractorConfig,
-    CdcExtractorConfig,
     GenericExtractorConfig,
     TypedExtractorConfig,
     MapOperatorConfig,
@@ -129,7 +126,6 @@ export type {
     UpdateOrderLoaders,
     UpdatePromotionLoaders,
     UpdateDataHubSettingsLoaders,
-    LoaderAdapterCode,
 } from '../../shared/types';
 
 // ============================================================================
