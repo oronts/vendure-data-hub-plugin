@@ -1,6 +1,6 @@
 {
   "name": "@oronts/vendure-data-hub-plugin",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "ETL data integration plugin for Vendure e-commerce",
   "author": {
     "name": "Oronts Website",
@@ -53,7 +53,7 @@
     "dev": "npm run build:dev && npm run start",
     "start": "ts-node dev-server/index.ts",
     "populate": "ts-node dev-server/populate.ts",
-    "build": "rimraf dist && npm run compile && npm run build:dashboard",
+    "build": "rimraf dist && npm run compile && cp -r dashboard dist/dashboard && npm run build:dashboard",
     "build:dev": "vite build --config vite.dev.config.mts",
     "build:dashboard": "vite build",
     "compile": "tsc -p tsconfig.build.json",

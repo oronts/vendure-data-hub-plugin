@@ -2,6 +2,11 @@
 
 All notable changes to the Data Hub Plugin are documented here.
 
+## [0.1.2] - 2026-02-24
+
+### Fixed
+- Fixed dashboard extension path: Copy `dashboard/` into `dist/` during build so the relative path `../dashboard/index.tsx` resolves correctly from both source (`src/`) and compiled (`dist/src/`) locations
+
 ## [0.1.1] - 2026-02-24
 
 ### Fixed
