@@ -1,6 +1,6 @@
 # Loaders Reference
 
-Complete reference for all entity loaders (22 operation-specific adapters across 16 entity types).
+Complete reference for all built-in loaders: 16 entity loaders and 6 operation loaders.
 
 ## Table of Contents
 

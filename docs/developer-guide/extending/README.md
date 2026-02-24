@@ -145,7 +145,7 @@ export class MyPlugin implements OnModuleInit {
 }
 ```
 
-Scripts can modify records at any of the 18 hook stages. They receive the records array, a `HookContext` with pipeline/run metadata, and optional `args` from the hook action config.
+Scripts can modify records at any of the 24 hook stages (18 for step types and 6 global). They receive the records array, a `HookContext` with pipeline/run metadata, and optional `args` from the hook action config.
 
 ### Template Registration
 

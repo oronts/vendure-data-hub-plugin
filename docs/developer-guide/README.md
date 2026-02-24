@@ -98,7 +98,7 @@ const pipeline = createPipeline()
     .build();
 ```
 
-18 hook stages are available: BEFORE/AFTER_EXTRACT, TRANSFORM, VALIDATE, ENRICH, ROUTE, LOAD + PIPELINE_STARTED/COMPLETED/FAILED + ON_ERROR/ON_RETRY/ON_DEAD_LETTER.
+24 hook stages are available (18 for step types and 6 global): BEFORE/AFTER for each step type (EXTRACT, TRANSFORM, VALIDATE, ENRICH, ROUTE, LOAD, EXPORT, FEED, SINK), plus PIPELINE_STARTED/COMPLETED/FAILED, ON_ERROR/ON_RETRY/ON_DEAD_LETTER.
 
 ## Type Safety
 

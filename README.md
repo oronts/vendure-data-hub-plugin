@@ -41,7 +41,7 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
 - **61 Transform Operators** - String (12), Date (5), Numeric (9), Logic (4), JSON (4), Data (8), Enrichment (5), Aggregation (8), Validation (2), Script (1), File (3) - **includes HTTP Lookup with caching, circuit breaker, and rate limiting**
 - **4 Feed Generators** - Google Merchant Center, Meta/Facebook Catalog, Amazon Seller Central, Custom Feed (CSV/JSON/XML/TSV)
 - **7 Search & Integration Sinks** - Elasticsearch, OpenSearch, MeiliSearch, Algolia, Typesense, Queue Producer (RabbitMQ/SQS/Redis), Webhook
-- **18 Hook Stages** - Interceptors and scripts to modify data at any pipeline stage
+- **24 Hook Stages** (18 for step types and 6 global) - Interceptors and scripts to modify data at any pipeline stage
 - **7 Connection Types** - HTTP/REST, S3, FTP, SFTP, Database (PostgreSQL/MySQL/SQLite/MSSQL/Oracle), Message Queue (RabbitMQ/SQS/Redis), Custom
 - **6 Trigger Types** - Manual, Scheduled (cron), Webhook, Vendure Events, File Watch, **Message Queue Consumer**
 - **Bi-directional Queue Support** - Consume from and produce to RabbitMQ (AMQP), Amazon SQS, Redis Streams
@@ -869,7 +869,7 @@ The plugin includes a full-featured admin dashboard:
 - Retry failed records with payload patching
 
 ### Hooks Testing
-- Test any of the 18 hook stages
+- Test any of the 24 hook stages (18 for step types and 6 global)
 - View recent events
 - Hook configuration viewer
 
