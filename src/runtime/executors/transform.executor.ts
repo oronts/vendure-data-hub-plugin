@@ -22,7 +22,7 @@ import { LoaderRegistryService } from '../../loaders/registry';
 import { applyHttpLookupBatch } from '../../operators/enrichment/helpers';
 import type { HttpLookupOperatorConfig } from '../../operators/enrichment/types';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
-import { sleep } from '../../utils/retry.utils';
+import { sleep, calculateSimpleBackoff } from '../../utils/retry.utils';
 import {
     getAdapterCode,
     isTransformStepConfig,
@@ -344,7 +344,7 @@ export class TransformExecutor {
 
                 const delay = retryConfig.retryDelayMs ?? 100;
                 const waitMs = retryConfig.backoff === 'EXPONENTIAL'
-                    ? delay * Math.pow(2, attempt)
+                    ? calculateSimpleBackoff(attempt, delay)
                     : delay * (attempt + 1);
                 await sleep(waitMs);
             }

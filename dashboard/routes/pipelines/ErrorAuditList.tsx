@@ -17,7 +17,7 @@ export function ErrorAuditList({ errorId }: { errorId: string }) {
                         <div className="text-muted-foreground">
                             {formatDateTime(String(a.createdAt))} · user {a.userId ?? '—'}
                         </div>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                             <div>
                                 <div className="font-medium">Previous</div>
                                 <Json value={a.previousPayload} />

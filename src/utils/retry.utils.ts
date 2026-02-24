@@ -25,6 +25,18 @@ export function calculateBackoff(attempt: number, config: ResolvedRetryConfig): 
     return Math.min(baseDelay + jitter, config.maxDelayMs);
 }
 
+/**
+ * Calculate simple exponential backoff delay without jitter.
+ * Used for webhook/sink retry scenarios where deterministic delays are preferred.
+ *
+ * @param attempt - Current retry attempt (0-indexed)
+ * @param baseDelayMs - Base delay in milliseconds
+ * @returns Calculated delay in milliseconds (baseDelayMs * 2^attempt)
+ */
+export function calculateSimpleBackoff(attempt: number, baseDelayMs: number): number {
+    return Math.pow(2, attempt) * baseDelayMs;
+}
+
 interface ExecuteWithRetryOptions {
     config: ResolvedRetryConfig;
     onRetry?: (attempt: number, error: Error, delayMs: number) => void;

@@ -8,7 +8,7 @@ import { TIME_UNITS } from '../../../shared/constants';
 import { HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES } from '../../constants/services';
 import { CircuitState, HttpMethod } from '../../constants/enums';
 import { validateUrlSafety } from '../../utils/url-security.utils';
-import { sleep } from '../../utils/retry.utils';
+import { sleep, calculateSimpleBackoff } from '../../utils/retry.utils';
 import { ensureError } from '../../utils/error.utils';
 
 /**
@@ -516,7 +516,7 @@ export async function applyHttpLookup(
 
             // Exponential backoff for retries
             if (attempt < maxRetries) {
-                await sleep(Math.pow(2, attempt) * SINK.BACKOFF_BASE_DELAY_MS);
+                await sleep(calculateSimpleBackoff(attempt, SINK.BACKOFF_BASE_DELAY_MS));
             }
         }
     }

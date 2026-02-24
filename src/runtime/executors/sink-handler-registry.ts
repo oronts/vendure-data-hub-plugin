@@ -37,7 +37,7 @@ export type SinkAdapterCode = typeof SINK_ADAPTER_CODES[keyof typeof SINK_ADAPTE
 import { queueAdapterRegistry, QueueMessage, QueueConnectionConfig } from '../../sdk/adapters/queue';
 import { getAdapterCode } from '../../types/step-configs';
 import { assertUrlSafe } from '../../utils/url-security.utils';
-import { sleep } from '../../utils/retry.utils';
+import { sleep, calculateSimpleBackoff } from '../../utils/retry.utils';
 import { getErrorMessage, ensureError } from '../../utils/error.utils';
 import type { SecretService } from '../../services/config/secret.service';
 import type { ConnectionService } from '../../services/config/connection.service';
@@ -490,7 +490,7 @@ async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): 
                 }
 
                 if (attempt < maxRetries) {
-                    await sleep(Math.pow(2, attempt) * SINK.BACKOFF_BASE_DELAY_MS);
+                    await sleep(calculateSimpleBackoff(attempt, SINK.BACKOFF_BASE_DELAY_MS));
                 }
             } finally {
                 clearTimeout(timeoutId);

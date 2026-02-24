@@ -185,7 +185,7 @@ function NewRecordsCard({ strategies, updateConfig, options }: NewRecordsCardPro
                 <CardDescription>What to do with records that don't exist yet</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-3 gap-3" role="group" aria-label="New records strategy options">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3" role="group" aria-label="New records strategy options">
                     {options.map(option => (
                         <StrategyOptionButton
                             key={option.value}

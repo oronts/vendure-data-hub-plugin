@@ -180,27 +180,29 @@ function QueuesPage() {
 
                         <div className="mt-6">
                             <div className="text-sm font-medium mb-2">Queue by Pipeline</div>
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="bg-muted">
-                                        <th className="text-left px-3 py-2">Pipeline</th>
-                                        <th className="text-left px-3 py-2">Pending</th>
-                                        <th className="text-left px-3 py-2">Running</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(stats?.byPipeline ?? []).map((r) => (
-                                        <tr key={r.code} className="border-t">
-                                            <td className="px-3 py-2 font-mono text-muted-foreground">{r.code}</td>
-                                            <td className="px-3 py-2">{r.pending}</td>
-                                            <td className="px-3 py-2">{r.running}</td>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="bg-muted">
+                                            <th className="text-left px-3 py-2">Pipeline</th>
+                                            <th className="text-left px-3 py-2">Pending</th>
+                                            <th className="text-left px-3 py-2">Running</th>
                                         </tr>
-                                    ))}
-                                    {(stats?.byPipeline ?? []).length === 0 && (
-                                        <tr><td className="px-3 py-4 text-muted-foreground" colSpan={3}>No active pipelines</td></tr>
-                                    )}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {(stats?.byPipeline ?? []).map((r) => (
+                                            <tr key={r.code} className="border-t">
+                                                <td className="px-3 py-2 font-mono text-muted-foreground">{r.code}</td>
+                                                <td className="px-3 py-2">{r.pending}</td>
+                                                <td className="px-3 py-2">{r.running}</td>
+                                            </tr>
+                                        ))}
+                                        {(stats?.byPipeline ?? []).length === 0 && (
+                                            <tr><td className="px-3 py-4 text-muted-foreground" colSpan={3}>No active pipelines</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
 
                         <FailedRunsTable

@@ -29,7 +29,7 @@ export function RetryPatchHelper({ onChange }: { onChange: (p: Record<string, un
     }, [handleFieldChange]);
 
     return (
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <div>
                 <label htmlFor="retry-slug" className="text-xs text-muted-foreground">slug</label>
                 <Input id="retry-slug" value={String(values.slug ?? '')} onChange={handleSlugChange} />

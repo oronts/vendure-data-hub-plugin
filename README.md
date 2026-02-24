@@ -97,6 +97,18 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
   <em>Queues - Monitor pipeline execution and dead letters</em>
 </p>
 
+<p align="center">
+  <img src="docs/images/13-import-wizard.png" alt="Import Wizard" width="800">
+  <br>
+  <em>Import Wizard - Step-by-step guided data import with templates</em>
+</p>
+
+<p align="center">
+  <img src="docs/images/14-export-wizard.png" alt="Export Wizard" width="800">
+  <br>
+  <em>Export Wizard - Generate product feeds for Google, Facebook, Amazon</em>
+</p>
+
 </details>
 
 ## Installation

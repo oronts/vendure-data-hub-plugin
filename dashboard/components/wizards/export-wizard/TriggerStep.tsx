@@ -109,7 +109,7 @@ function ExportOptionsCard({ options, updateConfig }: ExportOptionsCardProps) {
                 <CardTitle>Export Options</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                         <Label>Batch Size</Label>
                         <Input

@@ -61,7 +61,7 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-4 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div>
                                 <div className="text-xs text-muted-foreground">Step</div>
                                 <div className="font-mono text-sm">{log.stepKey ?? '—'}</div>

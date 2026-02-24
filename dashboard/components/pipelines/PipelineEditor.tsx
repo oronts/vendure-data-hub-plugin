@@ -282,7 +282,7 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                         </div>
                         <div className="p-3 border-t bg-muted/50">
                             <p className="text-xs text-muted-foreground mb-2">Add Step:</p>
-                            <div className="grid grid-cols-3 gap-1" data-testid="datahub-editor-add-step-buttons">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-1" data-testid="datahub-editor-add-step-buttons">
                                 {ADDABLE_STEP_TYPES.map((type) => (
                                     <AddStepButton
                                         key={type}

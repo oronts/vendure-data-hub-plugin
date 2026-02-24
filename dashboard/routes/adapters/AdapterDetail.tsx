@@ -64,7 +64,7 @@ export function AdapterDetail({ adapter }: Readonly<{ adapter: DataHubAdapter }>
     return (
         <div className="p-5 space-y-6">
             {/* Quick info cards */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border">
                     <div className="p-2 rounded-lg bg-primary/10 text-primary">
                         {Icon ? <Icon className="w-4 h-4" /> : <Puzzle className="w-4 h-4" />}
