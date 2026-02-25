@@ -15,6 +15,7 @@ import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
 import { getErrorMessage, toErrorOrUndefined } from '../utils/error.utils';
 import { getBuiltinOperatorRuntimes } from '../operators/operator-runtime-registry';
 import { configureScriptOperators } from '../operators/script';
+import { configureGlobalSsrfProtection } from '../utils/url-security.utils';
 import { BUILT_IN_ENRICHERS } from '../enrichers';
 import { getAllAdapters as getModuleLevelAdapters, getModuleLevelTransforms, getModuleLevelScripts } from '../adapters/registry';
 import { TransformExecutor } from '../transforms/transform-executor';
@@ -90,6 +91,12 @@ export class AdapterBootstrapService implements OnModuleInit {
         try {
             // Configure script operator security settings
             this.configureScriptSecurity();
+
+            // Configure global SSRF protection settings from plugin options
+            const ssrfConfig = this.options.security?.ssrf;
+            if (ssrfConfig) {
+                configureGlobalSsrfProtection(ssrfConfig);
+            }
 
             if (this.options.registerBuiltinAdapters !== false) {
                 this.logger.debug('Registering built-in adapter definitions', {

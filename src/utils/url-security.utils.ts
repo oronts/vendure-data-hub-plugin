@@ -13,6 +13,22 @@ export interface UrlSecurityConfig {
     allowPrivateIPs?: boolean;
 }
 
+/**
+ * Global default SSRF config set during plugin bootstrap.
+ * Applied automatically when assertUrlSafe/validateUrlSafety are called without explicit config.
+ */
+let globalSsrfConfig: UrlSecurityConfig | undefined;
+
+/** Configure the global default SSRF config (called during plugin bootstrap) */
+export function configureGlobalSsrfProtection(config: UrlSecurityConfig): void {
+    globalSsrfConfig = config;
+}
+
+/** Get the effective SSRF config: explicit > global > undefined */
+function getEffectiveConfig(config?: UrlSecurityConfig): UrlSecurityConfig | undefined {
+    return config ?? globalSsrfConfig;
+}
+
 export interface UrlSafetyResult {
     safe: boolean;
     reason?: string;
@@ -191,8 +207,9 @@ export function isBlockedHostname(hostname: string, additionalBlocked?: string[]
 /** SSRF protection: validates scheme, hostname blocklist, and DNS resolution */
 export async function validateUrlSafety(
     url: string,
-    config?: UrlSecurityConfig,
+    explicitConfig?: UrlSecurityConfig,
 ): Promise<UrlSafetyResult> {
+    const config = getEffectiveConfig(explicitConfig);
     // If SSRF protection is disabled, allow all URLs
     if (config?.disableSsrfProtection) {
         return { safe: true };
@@ -303,8 +320,9 @@ export async function validateUrlSafety(
 /** Synchronous validation without DNS resolution (DNS rebinding attacks may bypass) */
 export function validateUrlSafetySync(
     url: string,
-    config?: UrlSecurityConfig,
+    explicitConfig?: UrlSecurityConfig,
 ): UrlSafetyResult {
+    const config = getEffectiveConfig(explicitConfig);
     // If SSRF protection is disabled, allow all URLs
     if (config?.disableSsrfProtection) {
         return { safe: true };
@@ -356,8 +374,8 @@ export function validateUrlSafetySync(
     return { safe: true };
 }
 
-export async function assertUrlSafe(url: string, config?: UrlSecurityConfig): Promise<void> {
-    const result = await validateUrlSafety(url, config);
+export async function assertUrlSafe(url: string, explicitConfig?: UrlSecurityConfig): Promise<void> {
+    const result = await validateUrlSafety(url, explicitConfig);
     if (!result.safe) {
         throw new Error(`SSRF protection: ${result.reason}`);
     }
