@@ -28,6 +28,7 @@ export class RecordErrorService {
         stepKey: string,
         message: string,
         payload: JsonObject,
+        stackTrace?: string,
     ): Promise<DataHubRecordError> {
         const repo = this.connection.getRepository(ctx, DataHubRecordError);
         const run = await this.connection.getEntityOrThrow(ctx, PipelineRun, runId);
@@ -38,6 +39,9 @@ export class RecordErrorService {
         errorEntity.message = message;
         errorEntity.payload = payload;
         errorEntity.deadLetter = false;
+        if (stackTrace) {
+            errorEntity.stackTrace = stackTrace;
+        }
         const entity = await repo.save(errorEntity);
         try {
             const runWithPipeline = await this.connection.getRepository(ctx, PipelineRun).findOne({

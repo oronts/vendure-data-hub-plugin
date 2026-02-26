@@ -19,7 +19,9 @@ import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../.
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { safeJson } from '../../utils';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { LoadStrategy } from '../../../constants/enums';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
+import { getObjectValue } from '../../../loaders/shared-helpers';
 
 /**
  * Configuration interface for the promotion handler step
@@ -41,6 +43,10 @@ interface PromotionHandlerConfig {
     actionsField?: string;
     /** Optional channel token for multi-channel assignment */
     channel?: string;
+    /** Field name for custom fields object */
+    customFieldsField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: LoadStrategy;
 }
 
 /**
@@ -66,7 +72,8 @@ function isPromotionHandlerConfig(value: unknown): value is PromotionHandlerConf
         (config.endsAtField === undefined || typeof config.endsAtField === 'string') &&
         (config.conditionsField === undefined || typeof config.conditionsField === 'string') &&
         (config.actionsField === undefined || typeof config.actionsField === 'string') &&
-        (config.channel === undefined || typeof config.channel === 'string')
+        (config.channel === undefined || typeof config.channel === 'string') &&
+        (config.customFieldsField === undefined || typeof config.customFieldsField === 'string')
     );
 }
 
@@ -219,6 +226,9 @@ export class PromotionHandler implements LoaderHandler {
                 const conditions = parseConfigurableOperations(conditionsRaw ?? []);
                 const actions = parseConfigurableOperations(actionsRaw ?? []);
 
+                const customFieldsKey = config.customFieldsField ?? 'customFields';
+                const customFields = getObjectValue(rec, customFieldsKey);
+
                 // Find existing promotion by coupon code
                 const list = await this.promotionService.findAll(ctx, {
                     filter: { couponCode: { eq: code } },
@@ -238,7 +248,13 @@ export class PromotionHandler implements LoaderHandler {
                     }
                 }
 
+                const strategy = config.strategy ?? LoadStrategy.UPSERT;
+
                 if (existing && isPromotion(existing)) {
+                    if (strategy === LoadStrategy.CREATE) {
+                        ok++;
+                        continue;
+                    }
                     const updateInput: UpdatePromotionInput = {
                         id: existing.id,
                         enabled,
@@ -254,6 +270,7 @@ export class PromotionHandler implements LoaderHandler {
                                 description: '',
                             },
                         ],
+                        ...(customFields ? { customFields } : {}),
                     };
                     const updated = await this.promotionService.updatePromotion(
                         opCtx,
@@ -277,6 +294,13 @@ export class PromotionHandler implements LoaderHandler {
                         }
                     }
                 } else {
+                    if (strategy === LoadStrategy.UPDATE) {
+                        fail++;
+                        if (onRecordError) {
+                            await onRecordError(step.key, `Promotion not found for update: ${code}`, rec);
+                        }
+                        continue;
+                    }
                     const createInput: CreatePromotionInput = {
                         enabled,
                         startsAt,
@@ -291,6 +315,7 @@ export class PromotionHandler implements LoaderHandler {
                                 description: '',
                             },
                         ],
+                        ...(customFields ? { customFields } : {}),
                     };
                     const created = await this.promotionService.createPromotion(
                         opCtx,
@@ -321,6 +346,7 @@ export class PromotionHandler implements LoaderHandler {
                         step.key,
                         getErrorMessage(e) || 'promotionUpsert failed',
                         rec,
+                        getErrorStack(e),
                     );
                 }
                 fail++;

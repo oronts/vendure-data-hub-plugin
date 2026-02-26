@@ -67,6 +67,7 @@ import {
 const PORT = process.env.PORT ? +process.env.PORT : 3000;
 const VENDURE_BASE_URL = process.env.VENDURE_BASE_URL || `http://localhost:${PORT}`;
 const VITE_DEV_PORT = process.env.VITE_DEV_PORT ? +process.env.VITE_DEV_PORT : 5173;
+const PIMCORE_API_URL = process.env.PIMCORE_API_URL || 'http://localhost:3333';
 
 // =============================================================================
 // EXAMPLE PIPELINES
@@ -227,6 +228,398 @@ const transformOperatorsExample = createPipeline()
     .edge('process', 'save')
     .build();
 
+// =============================================================================
+// PIM OPTION GROUP TEST — Simple pipeline testing variant option group
+// auto-creation from PIM product attributes (size, color, volume, etc.)
+// =============================================================================
+const pimOptionGroupTest = createPipeline()
+    .name('PIM Option Group Test')
+    .description('Test variant option group auto-creation from PIM attributes')
+    .capabilities({ requires: ['UpdateCatalog'] })
+    .trigger('start', { type: 'MANUAL' })
+    .extract('fetch-listing', {
+        adapterCode: 'httpApi',
+        url: `${PIMCORE_API_URL}/api/products?limit=100`,
+        method: 'GET',
+        headers: { apiKey: 'test-pimcore-api-key' },
+        itemsField: 'products',
+    })
+    .transform('enrich-detail', {
+        operators: [
+            {
+                op: 'httpLookup',
+                args: {
+                    url: `${PIMCORE_API_URL}/api/products/{{id}}`,
+                    headers: { apiKey: 'test-pimcore-api-key' },
+                    target: '_detail',
+                    cacheTtlSec: 300,
+                },
+            },
+        ],
+    })
+    .transform('map-products', {
+        operators: [
+            { op: 'copy', args: { source: '_detail.product.itemNumber', target: 'sku' } },
+            { op: 'copy', args: { source: '_detail.product.title', target: 'name' } },
+            { op: 'copy', args: { source: '_detail.product.description', target: 'description' } },
+            { op: 'copy', args: { source: '_detail.product.published', target: 'enabled' } },
+            { op: 'copy', args: { source: '_detail.variants', target: '_variants' } },
+            { op: 'slugify', args: { source: 'sku', target: 'slug' } },
+            { op: 'stripHtml', args: { source: 'description', target: 'description' } },
+            { op: 'validateRequired', args: { fields: ['sku', 'name'] } },
+            { op: 'when', args: { conditions: [{ field: 'enabled', cmp: 'eq', value: true }], action: 'keep' } },
+            { op: 'omit', args: { fields: ['_detail', 'id', 'type', 'variantCount', 'channels', 'modifiedAt'] } },
+        ],
+    })
+    .load('upsert-products', {
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        conflictStrategy: 'SOURCE_WINS',
+        channel: '__default_channel__',
+        matchField: 'slug',
+        nameField: 'name',
+        slugField: 'slug',
+        descriptionField: 'description',
+        enabledField: 'enabled',
+        createVariants: false,
+    })
+    .transform('expand-variants', {
+        operators: [
+            { op: 'expand', args: { path: '_variants', parentFields: { productSlug: 'slug' } } },
+        ],
+    })
+    .transform('map-variants', {
+        operators: [
+            { op: 'copy', args: { source: 'itemNumber', target: 'sku' } },
+            { op: 'copy', args: { source: 'title', target: 'name' } },
+            { op: 'copy', args: { source: 'attributes', target: 'options' } },
+            {
+                op: 'script',
+                args: {
+                    code: `
+                        const price = record.price;
+                        if (price && typeof price === 'object' && price.value != null) {
+                            record.priceValue = Number(price.value);
+                        } else if (typeof price === 'number') {
+                            record.priceValue = price;
+                        } else {
+                            record.priceValue = 0;
+                        }
+                        return record;
+                    `,
+                },
+            },
+            { op: 'validateRequired', args: { fields: ['sku'] } },
+            { op: 'pick', args: { fields: ['sku', 'name', 'productSlug', 'priceValue', 'options'] } },
+        ],
+    })
+    .load('upsert-variants', {
+        adapterCode: 'variantUpsert',
+        strategy: 'UPSERT',
+        channel: '__default_channel__',
+        skuField: 'sku',
+        nameField: 'name',
+        priceField: 'priceValue',
+        optionGroupsField: 'options',
+    })
+    .edge('start', 'fetch-listing')
+    .edge('fetch-listing', 'enrich-detail')
+    .edge('enrich-detail', 'map-products')
+    .edge('map-products', 'upsert-products')
+    .edge('map-products', 'expand-variants')
+    .edge('expand-variants', 'map-variants')
+    .edge('map-variants', 'upsert-variants')
+    .edge('upsert-products', 'upsert-variants')
+    .build();
+
+// =============================================================================
+// PIM ENTERPRISE SYNC — Full enterprise integration pipeline.
+// 6 parallel branches, 25 steps, 3 triggers (manual / schedule / webhook).
+// Syncs: products, variants (with option groups), facets, facet values,
+// collections, promotions, stock locations, and inventory levels.
+// Requires: npx ts-node dev-server/mock-pimcore-api.ts (port 3333)
+// =============================================================================
+const pimEnterpriseSync = createPipeline()
+    .name('PIM Enterprise Sync')
+    .description('Full enterprise sync: products, variants (option groups), facets, facet values, collections, promotions, stock locations, inventory')
+    .capabilities({ requires: ['UpdateCatalog', 'UpdatePromotion'] })
+    // Triggers
+    .trigger('manual-trigger', { type: 'MANUAL' })
+    .trigger('scheduled-sync', { type: 'SCHEDULE', cron: '0 */4 * * *', timezone: 'Europe/Berlin' })
+    .trigger('webhook-trigger', { type: 'WEBHOOK', authentication: 'API_KEY', apiKeySecretCode: 'pimcore-webhook-key', apiKeyHeaderName: 'x-api-key' })
+
+    // Branch 1: Facets + Facet Values
+    .extract('extract-facets', {
+        adapterCode: 'httpApi',
+        url: `${PIMCORE_API_URL}/api/facets`,
+        method: 'GET',
+        headers: { apiKey: 'test-pimcore-api-key' },
+        itemsField: 'facets',
+    })
+    .transform('map-facets', {
+        operators: [
+            { op: 'copy', args: { source: 'code', target: 'facetCode' } },
+            { op: 'copy', args: { source: 'name', target: 'facetName' } },
+            { op: 'pick', args: { fields: ['facetCode', 'facetName', 'values'] } },
+        ],
+    })
+    .load('upsert-facets', {
+        adapterCode: 'facetUpsert',
+        strategy: 'UPSERT',
+        codeField: 'facetCode',
+        nameField: 'facetName',
+    })
+    .transform('expand-fv', {
+        operators: [
+            { op: 'expand', args: { path: 'values', parentFields: { facetCode: 'facetCode' } } },
+        ],
+    })
+    .transform('map-fv', {
+        operators: [
+            { op: 'copy', args: { source: 'code', target: 'valueCode' } },
+            { op: 'copy', args: { source: 'name', target: 'valueName' } },
+            { op: 'pick', args: { fields: ['facetCode', 'valueCode', 'valueName'] } },
+        ],
+    })
+    .load('upsert-fv', {
+        adapterCode: 'facetValueUpsert',
+        strategy: 'UPSERT',
+        facetCodeField: 'facetCode',
+        codeField: 'valueCode',
+        nameField: 'valueName',
+    })
+
+    // Branch 2: Categories → Collections
+    .extract('extract-categories', {
+        adapterCode: 'httpApi',
+        url: `${PIMCORE_API_URL}/api/categories`,
+        method: 'GET',
+        headers: { apiKey: 'test-pimcore-api-key' },
+        itemsField: 'categories',
+    })
+    .transform('map-categories', {
+        operators: [
+            { op: 'copy', args: { source: 'code', target: 'slug' } },
+            { op: 'copy', args: { source: 'name', target: 'collName' } },
+            { op: 'copy', args: { source: 'description', target: 'collDesc' } },
+            { op: 'copy', args: { source: 'parentCode', target: 'parentSlug' } },
+            { op: 'pick', args: { fields: ['slug', 'collName', 'collDesc', 'parentSlug'] } },
+        ],
+    })
+    .load('upsert-collections', {
+        adapterCode: 'collectionUpsert',
+        strategy: 'UPSERT',
+        channel: '__default_channel__',
+        slugField: 'slug',
+        nameField: 'collName',
+        descriptionField: 'collDesc',
+        parentSlugField: 'parentSlug',
+    })
+
+    // Branch 3: Products + Variants (with option groups)
+    .extract('extract-products', {
+        adapterCode: 'httpApi',
+        url: `${PIMCORE_API_URL}/api/products?limit=100`,
+        method: 'GET',
+        headers: { apiKey: 'test-pimcore-api-key' },
+        itemsField: 'products',
+    })
+    .transform('enrich-detail', {
+        operators: [
+            {
+                op: 'httpLookup',
+                args: {
+                    url: `${PIMCORE_API_URL}/api/products/{{id}}`,
+                    headers: { apiKey: 'test-pimcore-api-key' },
+                    target: '_detail',
+                    cacheTtlSec: 300,
+                },
+            },
+        ],
+    })
+    .transform('map-products', {
+        operators: [
+            { op: 'copy', args: { source: '_detail.product.itemNumber', target: 'sku' } },
+            { op: 'copy', args: { source: '_detail.product.title', target: 'name' } },
+            { op: 'copy', args: { source: '_detail.product.description', target: 'description' } },
+            { op: 'copy', args: { source: '_detail.product.published', target: 'enabled' } },
+            { op: 'copy', args: { source: '_detail.variants', target: '_variants' } },
+            { op: 'slugify', args: { source: 'sku', target: 'slug' } },
+            { op: 'stripHtml', args: { source: 'description', target: 'description' } },
+            { op: 'validateRequired', args: { fields: ['sku', 'name'] } },
+            { op: 'when', args: { conditions: [{ field: 'enabled', cmp: 'eq', value: true }], action: 'keep' } },
+            { op: 'omit', args: { fields: ['_detail', 'id', 'type', 'variantCount', 'channels', 'modifiedAt', 'categoryCode'] } },
+        ],
+    })
+    .load('upsert-products', {
+        adapterCode: 'productUpsert',
+        strategy: 'UPSERT',
+        conflictStrategy: 'SOURCE_WINS',
+        channel: '__default_channel__',
+        matchField: 'slug',
+        nameField: 'name',
+        slugField: 'slug',
+        descriptionField: 'description',
+        enabledField: 'enabled',
+        createVariants: false,
+    })
+    .transform('expand-variants', {
+        operators: [
+            { op: 'expand', args: { path: '_variants', parentFields: { productSlug: 'slug' } } },
+        ],
+    })
+    .transform('map-variants', {
+        operators: [
+            { op: 'copy', args: { source: 'itemNumber', target: 'sku' } },
+            { op: 'copy', args: { source: 'title', target: 'name' } },
+            { op: 'copy', args: { source: 'attributes', target: 'options' } },
+            { op: 'copy', args: { source: 'price.EUR', target: 'priceValue' } },
+            { op: 'validateRequired', args: { fields: ['sku'] } },
+            { op: 'pick', args: { fields: ['sku', 'name', 'productSlug', 'priceValue', 'options'] } },
+        ],
+    })
+    .load('upsert-variants', {
+        adapterCode: 'variantUpsert',
+        strategy: 'UPSERT',
+        skuField: 'sku',
+        nameField: 'name',
+        priceField: 'priceValue',
+        optionGroupsField: 'options',
+    })
+
+    // Branch 4: Promotions
+    .extract('extract-promotions', {
+        adapterCode: 'httpApi',
+        url: `${PIMCORE_API_URL}/api/promotions`,
+        method: 'GET',
+        headers: { apiKey: 'test-pimcore-api-key' },
+        itemsField: 'promotions',
+    })
+    .transform('map-promotions', {
+        operators: [
+            { op: 'copy', args: { source: 'code', target: 'promoCode' } },
+            { op: 'copy', args: { source: 'name', target: 'promoName' } },
+            {
+                op: 'script',
+                args: {
+                    code: `
+                        // Build Vendure ConfigurableOperationInput format
+                        if (record.type === 'percentage' && record.discountPercent) {
+                            record.actions = [{ code: 'order_percentage_discount', arguments: [{ name: 'discount', value: String(record.discountPercent) }] }];
+                        } else if (record.type === 'fixed' && record.discountFixed) {
+                            record.actions = [{ code: 'order_fixed_discount', arguments: [{ name: 'discount', value: String(record.discountFixed) }] }];
+                        } else {
+                            record.actions = [];
+                        }
+                        record.conditions = [];
+                        if (record.minQuantity) {
+                            record.conditions.push({ code: 'minimum_order_amount', arguments: [{ name: 'amount', value: String(record.minQuantity * 100) }, { name: 'taxInclusive', value: 'false' }] });
+                        }
+                        return record;
+                    `,
+                },
+            },
+            { op: 'pick', args: { fields: ['promoCode', 'promoName', 'enabled', 'startsAt', 'endsAt', 'conditions', 'actions'] } },
+        ],
+    })
+    .load('upsert-promotions', {
+        adapterCode: 'promotionUpsert',
+        strategy: 'UPSERT',
+        codeField: 'promoCode',
+        nameField: 'promoName',
+        enabledField: 'enabled',
+        startsAtField: 'startsAt',
+        endsAtField: 'endsAt',
+        conditionsField: 'conditions',
+        actionsField: 'actions',
+    })
+
+    // Branch 5: Stock Locations
+    .extract('extract-locations', {
+        adapterCode: 'csv',
+        rows: [
+            { locName: 'Hauptlager', locDesc: 'Main warehouse' },
+            { locName: 'Aussenlager', locDesc: 'External warehouse' },
+        ],
+    })
+    .load('upsert-locations', {
+        adapterCode: 'stockLocationUpsert',
+        strategy: 'UPSERT',
+        nameField: 'locName',
+        descriptionField: 'locDesc',
+    })
+
+    // Branch 6: Inventory Levels
+    .extract('extract-stock', {
+        adapterCode: 'httpApi',
+        url: `${PIMCORE_API_URL}/api/stock`,
+        method: 'GET',
+        headers: { apiKey: 'test-pimcore-api-key' },
+        itemsField: 'stock',
+    })
+    .transform('map-stock', {
+        operators: [
+            { op: 'rename', args: { from: 'qty', to: 'stockOnHand' } },
+            { op: 'rename', args: { from: 'location', to: 'locationName' } },
+        ],
+    })
+    .load('adjust-inventory', {
+        adapterCode: 'inventoryAdjust',
+        strategy: 'UPSERT',
+        skuField: 'sku',
+        stockOnHandField: 'stockOnHand',
+        stockLocationNameField: 'locationName',
+    })
+
+    // Graph edges: all triggers → 6 parallel extract branches
+    .edge('manual-trigger', 'extract-facets')
+    .edge('manual-trigger', 'extract-categories')
+    .edge('manual-trigger', 'extract-products')
+    .edge('manual-trigger', 'extract-promotions')
+    .edge('manual-trigger', 'extract-locations')
+    .edge('manual-trigger', 'extract-stock')
+    .edge('scheduled-sync', 'extract-facets')
+    .edge('scheduled-sync', 'extract-categories')
+    .edge('scheduled-sync', 'extract-products')
+    .edge('scheduled-sync', 'extract-promotions')
+    .edge('scheduled-sync', 'extract-locations')
+    .edge('scheduled-sync', 'extract-stock')
+    .edge('webhook-trigger', 'extract-facets')
+    .edge('webhook-trigger', 'extract-categories')
+    .edge('webhook-trigger', 'extract-products')
+    .edge('webhook-trigger', 'extract-promotions')
+    .edge('webhook-trigger', 'extract-locations')
+    .edge('webhook-trigger', 'extract-stock')
+    // Facets
+    .edge('extract-facets', 'map-facets')
+    .edge('map-facets', 'upsert-facets')
+    .edge('map-facets', 'expand-fv')
+    .edge('expand-fv', 'map-fv')
+    .edge('map-fv', 'upsert-fv')
+    .edge('upsert-facets', 'upsert-fv')
+    // Categories
+    .edge('extract-categories', 'map-categories')
+    .edge('map-categories', 'upsert-collections')
+    // Products + Variants
+    .edge('extract-products', 'enrich-detail')
+    .edge('enrich-detail', 'map-products')
+    .edge('map-products', 'upsert-products')
+    .edge('map-products', 'expand-variants')
+    .edge('expand-variants', 'map-variants')
+    .edge('map-variants', 'upsert-variants')
+    .edge('upsert-products', 'upsert-variants')
+    // Promotions
+    .edge('extract-promotions', 'map-promotions')
+    .edge('map-promotions', 'upsert-promotions')
+    // Stock locations
+    .edge('extract-locations', 'upsert-locations')
+    // Inventory (depends on variants + locations being created first)
+    .edge('extract-stock', 'map-stock')
+    .edge('map-stock', 'adjust-inventory')
+    .edge('upsert-variants', 'adjust-inventory')
+    .edge('upsert-locations', 'adjust-inventory')
+    .build();
+
 const customAdapterExample = createPipeline()
     .name('Custom Adapters Demo')
     .description('Generator + currency convert + PII mask')
@@ -357,11 +750,10 @@ const orderExportExample = createPipeline()
     .build();
 
 // =============================================================================
-// PIMCORE CONNECTOR (Example Configuration)
+// PIMCORE CONNECTOR
 // =============================================================================
 const pimcoreConfig: PimcoreConnectorConfig = {
     connection: {
-        // Demo endpoint - replace with actual Pimcore DataHub URL
         endpoint: process.env.PIMCORE_ENDPOINT || 'https://pimcore.example.com/pimcore-datahub-webservices/shop',
         apiKeySecretCode: 'pimcore-api-key',
     },
@@ -427,6 +819,9 @@ export const config: VendureConfig = {
             registerBuiltinAdapters: true,
             retentionDaysRuns: 30,
             retentionDaysErrors: 90,
+            security: {
+                ssrf: { disableSsrfProtection: true }, // Allow localhost for mock APIs in dev
+            },
 
             connectors: [
                 { definition: pimcoreConnectorDefinition, config: pimcoreConfig },
@@ -520,6 +915,12 @@ export const config: VendureConfig = {
                 { code: 'file-transform-demo', name: 'File Transformation Demo', definition: fileTransformDemoPipeline, enabled: true },
 
                 // =====================================================================
+                // PIM INTEGRATION (mock PIM API on port 3333)
+                // =====================================================================
+                { code: 'pim-option-group-test', name: 'PIM Option Group Test', definition: pimOptionGroupTest, enabled: true },
+                { code: 'pim-enterprise-sync', name: 'PIM Enterprise Sync', definition: pimEnterpriseSync, enabled: true },
+
+                // =====================================================================
                 // PIMCORE CONNECTOR PIPELINES
                 // =====================================================================
                 { code: 'pimcore-product-sync', name: 'Pimcore Product Sync', definition: pimcorePipelines[0], enabled: true },
@@ -528,34 +929,22 @@ export const config: VendureConfig = {
                 { code: 'pimcore-facet-sync', name: 'Pimcore Facet Sync', definition: pimcorePipelines[3], enabled: true },
             ],
 
-            // Secrets for API authentication
-            // Providers: 'INLINE' (stored in DB, encrypted if DATAHUB_MASTER_KEY set)
-            //            'ENV' (reads from environment variable at runtime)
-            // Env provider supports fallback syntax: 'ENV_VAR|fallback_value'
             secrets: [
                 { code: 'demo-api-key', provider: 'INLINE', value: 'demo-key-12345' },
                 { code: 'crm-api-key', provider: 'INLINE', value: 'crm-demo-key-67890' },
                 { code: 'webhook-api-key', provider: 'INLINE', value: 'webhook-secret-abcdef' },
                 { code: 'google-merchant-key', provider: 'INLINE', value: 'google-merchant-demo-key' },
                 { code: 'facebook-catalog-key', provider: 'INLINE', value: 'fb-catalog-demo-key' },
-                // Pimcore connector secrets - use env provider with fallback for dev
-                // In production: set PIMCORE_API_KEY environment variable
-                // For testing: uses 'demo-pimcore-key' fallback (will fail auth but allows pipeline validation)
                 { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY|demo-pimcore-key' },
                 { code: 'pimcore-webhook-key', provider: 'ENV', value: 'PIMCORE_WEBHOOK_KEY|demo-webhook-key' },
-                // CDC demo: PostgreSQL password
-                // Set DEMO_PG_PASSWORD env var, or defaults to 'postgres' for local dev
                 { code: 'demo-pg-password', provider: 'ENV', value: 'DEMO_PG_PASSWORD|postgres' },
             ],
 
-            // Database connections
             connections: [
                 {
                     code: 'demo-postgres',
                     type: 'DATABASE',
                     name: 'Demo PostgreSQL',
-                    // CDC demo requires a real PostgreSQL with a "products" table.
-                    // Override via env: DEMO_PG_HOST, DEMO_PG_DATABASE, DEMO_PG_USER, DEMO_PG_PASSWORD
                     settings: {
                         host: process.env.DEMO_PG_HOST || 'localhost',
                         port: 5432,

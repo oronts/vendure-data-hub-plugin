@@ -57,7 +57,7 @@ interface ProcessingContext {
 /** Callbacks for pipeline execution */
 interface ProcessingCallbacks {
     onCancelRequested: () => Promise<boolean>;
-    onRecordError: (stepKey: string, message: string, payload: Record<string, unknown>) => Promise<void>;
+    onRecordError: (stepKey: string, message: string, payload: Record<string, unknown>, stackTrace?: string) => Promise<void>;
 }
 
 @Injectable()
@@ -427,9 +427,10 @@ export class PipelineRunnerService {
             stepKey: string,
             message: string,
             payload: Record<string, unknown>,
+            stackTrace?: string,
         ): Promise<void> => {
-            await this.recordErrorService.record(ctx, runId, stepKey, message, payload as JsonObject);
-            await this.executionLogger.logRecordError(ctx, stepKey, message, payload, { pipelineId, runId });
+            await this.recordErrorService.record(ctx, runId, stepKey, message, payload as JsonObject, stackTrace);
+            await this.executionLogger.logRecordError(ctx, stepKey, message, payload, { pipelineId, runId }, stackTrace);
         };
 
         return { onCancelRequested, onRecordError };

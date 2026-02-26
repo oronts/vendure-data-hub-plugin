@@ -14,7 +14,7 @@ import {
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 
 /**
  * Configuration for asset attachment step
@@ -98,7 +98,7 @@ export class AssetAttachHandler implements LoaderHandler {
                 }
                 ok++;
             } catch (e: unknown) {
-                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'assetAttach failed', rec as JsonObject);
+                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'assetAttach failed', rec as JsonObject, getErrorStack(e));
                 fail++;
             }
         }

@@ -138,8 +138,7 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
      * If UPSERT operation is used and variant doesn't exist, this will fail.
      */
     protected async createEntity(_context: LoaderContext, record: InventoryInput): Promise<ID | null> {
-        this.logger.warn(`Cannot create inventory for non-existent SKU "${record.sku}". Variant must exist first.`);
-        return null;
+        throw new Error(`Cannot adjust inventory for non-existent SKU "${record.sku}". Variant must exist before stock can be adjusted.`);
     }
 
     protected async updateEntity(context: LoaderContext, variantId: ID, record: InventoryInput): Promise<void> {

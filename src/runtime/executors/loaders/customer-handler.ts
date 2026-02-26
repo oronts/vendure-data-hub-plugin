@@ -26,12 +26,13 @@ import {
 } from '../../../types/index';
 import type { CustomerUpsertLoaderConfig } from '../../../../shared/types';
 import { LOGGER_CONTEXTS } from '../../../constants/index';
+import { LoadStrategy } from '../../../constants/enums';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { toStringOrUndefined } from '../../utils';
 import { LoaderHandler } from './types';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { getErrorMessage } from '../../../utils/error.utils';
-import { getStringValue, getArrayValue } from '../../../loaders/shared-helpers';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
+import { getStringValue, getArrayValue, getObjectValue } from '../../../loaders/shared-helpers';
 
 /**
  * Configuration extracted from step.config for customer upsert operations.
@@ -45,6 +46,8 @@ interface CustomerStepConfig {
     addressesField?: string;
     groupsField?: string;
     groupsMode?: 'add' | 'set';
+    customFieldsField?: string;
+    strategy?: LoadStrategy;
 }
 
 /**
@@ -75,6 +78,7 @@ interface CustomerCreateOrUpdateInput {
     firstName?: string;
     lastName?: string;
     phoneNumber?: string;
+    customFields?: Record<string, unknown>;
 }
 
 /**
@@ -93,7 +97,8 @@ function hasCustomerLoaderConfigShape(config: unknown): config is Partial<Custom
         (cfg.phoneNumberField === undefined || typeof cfg.phoneNumberField === 'string') &&
         (cfg.addressesField === undefined || typeof cfg.addressesField === 'string') &&
         (cfg.groupsField === undefined || typeof cfg.groupsField === 'string') &&
-        (cfg.groupsMode === undefined || typeof cfg.groupsMode === 'string')
+        (cfg.groupsMode === undefined || typeof cfg.groupsMode === 'string') &&
+        (cfg.customFieldsField === undefined || typeof cfg.customFieldsField === 'string')
     );
 }
 
@@ -147,6 +152,8 @@ export class CustomerHandler implements LoaderHandler {
         // Extract and validate config
         const config = this.extractConfig(step.config);
 
+        const strategy = config.strategy ?? LoadStrategy.UPSERT;
+
         for (const rec of input) {
             try {
                 const email = getStringValue(rec, config.emailField ?? 'email');
@@ -155,9 +162,34 @@ export class CustomerHandler implements LoaderHandler {
                     continue;
                 }
 
+                // Strategy check: look up existing customer by email
+                if (strategy !== LoadStrategy.UPSERT) {
+                    const listOptions: ListQueryOptions<Customer> = {
+                        filter: { emailAddress: { eq: email } },
+                        take: 1,
+                    };
+                    const list = await this.customerService.findAll(ctx, listOptions);
+                    const exists = list.items.length > 0;
+
+                    if (exists && strategy === LoadStrategy.CREATE) {
+                        ok++;
+                        continue;
+                    }
+                    if (!exists && strategy === LoadStrategy.UPDATE) {
+                        fail++;
+                        if (onRecordError) {
+                            await onRecordError(step.key, `Customer not found for update: ${email}`, rec);
+                        }
+                        continue;
+                    }
+                }
+
                 const firstName = toStringOrUndefined(getStringValue(rec, config.firstNameField ?? 'firstName'));
                 const lastName = toStringOrUndefined(getStringValue(rec, config.lastNameField ?? 'lastName'));
                 const phoneNumber = toStringOrUndefined(getStringValue(rec, config.phoneNumberField ?? 'phoneNumber'));
+
+                const customFieldsKey = config.customFieldsField ?? 'customFields';
+                const customFields = getObjectValue(rec, customFieldsKey);
 
                 const customerInput: CustomerCreateOrUpdateInput = {
                     emailAddress: email,
@@ -165,6 +197,9 @@ export class CustomerHandler implements LoaderHandler {
                     lastName: lastName ?? undefined,
                     phoneNumber: phoneNumber ?? undefined,
                 };
+                if (customFields) {
+                    customerInput.customFields = customFields;
+                }
 
                 const createdOrError = await this.customerService.createOrUpdate(ctx, customerInput);
 
@@ -189,7 +224,7 @@ export class CustomerHandler implements LoaderHandler {
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, getErrorMessage(e) || 'customerUpsert failed', rec);
+                    await onRecordError(step.key, getErrorMessage(e) || 'customerUpsert failed', rec, getErrorStack(e));
                 }
                 fail++;
             }
@@ -231,6 +266,7 @@ export class CustomerHandler implements LoaderHandler {
      */
     private extractConfig(stepConfig: JsonObject): CustomerStepConfig {
         if (hasCustomerLoaderConfigShape(stepConfig)) {
+            const cfg = stepConfig as Record<string, unknown>;
             return {
                 emailField: (stepConfig.emailField as string | undefined) ?? 'email',
                 firstNameField: stepConfig.firstNameField as string | undefined,
@@ -239,6 +275,8 @@ export class CustomerHandler implements LoaderHandler {
                 addressesField: stepConfig.addressesField as string | undefined,
                 groupsField: stepConfig.groupsField as string | undefined,
                 groupsMode: stepConfig.groupsMode as CustomerStepConfig['groupsMode'],
+                customFieldsField: stepConfig.customFieldsField as string | undefined,
+                strategy: cfg.strategy as LoadStrategy | undefined,
             };
         }
         // Return defaults if config is invalid

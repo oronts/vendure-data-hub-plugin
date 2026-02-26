@@ -14,7 +14,7 @@ import type { OrderState } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getIdValue } from '../../../loaders/shared-helpers';
 
 // ============================================================================
@@ -125,7 +125,7 @@ export class OrderNoteHandler implements LoaderHandler {
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, getErrorMessage(e) || 'orderNote failed', rec);
+                    await onRecordError(step.key, getErrorMessage(e) || 'orderNote failed', rec, getErrorStack(e));
                 }
                 fail++;
             }
@@ -174,7 +174,7 @@ export class ApplyCouponHandler implements LoaderHandler {
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, getErrorMessage(e) || 'applyCoupon failed', rec);
+                    await onRecordError(step.key, getErrorMessage(e) || 'applyCoupon failed', rec, getErrorStack(e));
                 }
                 fail++;
             }
@@ -222,7 +222,7 @@ export class OrderTransitionHandler implements LoaderHandler {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        _onRecordError?: OnRecordErrorCallback,
+        onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
     ): Promise<ExecutionResult> {
         let ok = 0, fail = 0;
@@ -245,7 +245,10 @@ export class OrderTransitionHandler implements LoaderHandler {
                 await this.orderService.transitionToState(ctx, orderId, state as OrderState);
                 ok++;
             } catch (error) {
-                this.logger.warn(`Failed to transition order ${String(orderId)} to state '${state}': ${getErrorMessage(error)}`);
+                const msg = `Failed to transition order ${String(orderId)} to state '${state}': ${getErrorMessage(error)}`;
+                if (onRecordError) {
+                    await onRecordError(step.key, msg, rec, getErrorStack(error));
+                }
                 fail++;
             }
         }

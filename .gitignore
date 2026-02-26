@@ -50,6 +50,9 @@ yarn-error.log*
 # Package
 *.tgz
 
+# Design plans (ephemeral)
+docs/plans/
+
 # Temporary
 tmp/
 temp/

@@ -432,7 +432,7 @@ Execute custom JavaScript for complex transformations:
 | Loader | Adapter Code | Description |
 |--------|--------------|-------------|
 | Product Loader | `productUpsert` | Create/update products with variants, prices, tax, and stock |
-| Variant Loader | `variantUpsert` | Update product variants by SKU with multi-currency prices |
+| Variant Loader | `variantUpsert` | Update product variants by SKU with multi-currency prices and auto-create option groups |
 | Customer Loader | `customerUpsert` | Create/update customers with addresses and group memberships |
 | Customer Group Loader | `customerGroupUpsert` | Create/update customer groups by name; assign customers by email |
 | Collection Loader | `collectionUpsert` | Create/update collections with parent relationships |
@@ -1133,6 +1133,10 @@ const pipeline = createPipeline()
     },
 })
 ```
+
+### Stack Traces
+
+Failed records automatically capture JavaScript stack traces when errors originate from exceptions. Stack traces are stored on the error record and visible in the dashboard error viewer and dead letter queue, aiding production debugging.
 
 ---
 

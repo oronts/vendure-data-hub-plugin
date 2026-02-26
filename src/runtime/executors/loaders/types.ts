@@ -43,4 +43,6 @@ export interface CoercedProductFields {
     trackInventory?: boolean;
     stockOnHand?: number;
     stockByLocation?: Record<string, number>;
+    customFields?: Record<string, unknown>;
+    enabled?: boolean;
 }

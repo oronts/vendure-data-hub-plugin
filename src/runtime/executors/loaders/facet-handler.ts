@@ -10,13 +10,17 @@ import {
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { LoadStrategy } from '../../../constants/enums';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
+import { getObjectValue } from '../../../loaders/shared-helpers';
 
 interface FacetUpsertConfig {
     channel?: string;
     codeField?: string;
     nameField?: string;
     privateField?: string;
+    customFieldsField?: string;
+    strategy?: LoadStrategy;
 }
 
 interface FacetValueUpsertConfig {
@@ -24,6 +28,8 @@ interface FacetValueUpsertConfig {
     facetCodeField?: string;
     codeField?: string;
     nameField?: string;
+    customFieldsField?: string;
+    strategy?: LoadStrategy;
 }
 
 interface FacetRecord {
@@ -58,6 +64,9 @@ export class FacetHandler implements LoaderHandler {
 
                 if (!code) { fail++; continue; }
 
+                const customFieldsKey = cfg.customFieldsField ?? 'customFields';
+                const customFields = getObjectValue(rec, customFieldsKey);
+
                 let opCtx = ctx;
                 if (cfg.channel) {
                     const req = await this.requestContextService.create({ apiType: ctx.apiType, channelOrToken: cfg.channel });
@@ -65,8 +74,13 @@ export class FacetHandler implements LoaderHandler {
                 }
 
                 const existing = await this.facetService.findByCode(opCtx, code, opCtx.languageCode || LanguageCode.en);
+                const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
 
                 if (existing) {
+                    if (strategy === LoadStrategy.CREATE) {
+                        ok++;
+                        continue;
+                    }
                     await this.facetService.update(opCtx, {
                         id: existing.id,
                         isPrivate: cfg.privateField ? Boolean(record[cfg.privateField]) : existing.isPrivate,
@@ -74,8 +88,14 @@ export class FacetHandler implements LoaderHandler {
                             languageCode: opCtx.languageCode || LanguageCode.en,
                             name,
                         }],
+                        ...(customFields ? { customFields } : {}),
                     });
                 } else {
+                    if (strategy === LoadStrategy.UPDATE) {
+                        fail++;
+                        if (onRecordError) await onRecordError(step.key, `Facet not found for update: ${code}`, rec as JsonObject);
+                        continue;
+                    }
                     await this.facetService.create(opCtx, {
                         code,
                         isPrivate: cfg.privateField ? Boolean(record[cfg.privateField]) : false,
@@ -83,11 +103,12 @@ export class FacetHandler implements LoaderHandler {
                             languageCode: opCtx.languageCode || LanguageCode.en,
                             name,
                         }],
+                        ...(customFields ? { customFields } : {}),
                     });
                 }
                 ok++;
             } catch (e: unknown) {
-                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'facetUpsert failed', rec as JsonObject);
+                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'facetUpsert failed', rec as JsonObject, getErrorStack(e));
                 fail++;
             }
         }
@@ -125,6 +146,9 @@ export class FacetValueHandler implements LoaderHandler {
 
                 if (!facetCode || !code) { fail++; continue; }
 
+                const customFieldsKey = cfg.customFieldsField ?? 'customFields';
+                const customFields = getObjectValue(rec, customFieldsKey);
+
                 let opCtx = ctx;
                 if (cfg.channel) {
                     const req = await this.requestContextService.create({ apiType: ctx.apiType, channelOrToken: cfg.channel });
@@ -140,27 +164,39 @@ export class FacetValueHandler implements LoaderHandler {
 
                 const existingValues = await this.facetValueService.findByFacetId(opCtx, facet.id);
                 const existing = existingValues.find(v => v.code === code);
+                const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
 
                 if (existing) {
+                    if (strategy === LoadStrategy.CREATE) {
+                        ok++;
+                        continue;
+                    }
                     await this.facetValueService.update(opCtx, {
                         id: existing.id,
                         translations: [{
                             languageCode: opCtx.languageCode || LanguageCode.en,
                             name,
                         }],
+                        ...(customFields ? { customFields } : {}),
                     });
                 } else {
+                    if (strategy === LoadStrategy.UPDATE) {
+                        fail++;
+                        if (onRecordError) await onRecordError(step.key, `Facet value not found for update: ${code}`, rec as JsonObject);
+                        continue;
+                    }
                     await this.facetValueService.create(opCtx, facet, {
                         code,
                         translations: [{
                             languageCode: opCtx.languageCode || LanguageCode.en,
                             name,
                         }],
+                        ...(customFields ? { customFields } : {}),
                     });
                 }
                 ok++;
             } catch (e: unknown) {
-                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'facetValueUpsert failed', rec as JsonObject);
+                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'facetValueUpsert failed', rec as JsonObject, getErrorStack(e));
                 fail++;
             }
         }

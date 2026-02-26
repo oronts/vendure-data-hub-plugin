@@ -16,7 +16,8 @@ import {
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { LoadStrategy } from '../../../constants/enums';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getNumberValue } from '../../../loaders/shared-helpers';
 
 /**
@@ -30,6 +31,7 @@ interface TaxRateHandlerConfig {
     taxCategoryIdField?: string;
     zoneCodeField?: string;
     zoneIdField?: string;
+    strategy?: LoadStrategy;
 }
 
 /**
@@ -124,8 +126,13 @@ export class TaxRateHandler implements LoaderHandler {
 
                 // Find existing by name
                 const existing = await this.findExistingByName(ctx, name);
+                const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
 
                 if (existing) {
+                    if (strategy === LoadStrategy.CREATE) {
+                        ok++;
+                        continue;
+                    }
                     await this.taxRateService.update(ctx, {
                         id: existing.id,
                         name,
@@ -135,6 +142,13 @@ export class TaxRateHandler implements LoaderHandler {
                         zoneId,
                     });
                 } else {
+                    if (strategy === LoadStrategy.UPDATE) {
+                        fail++;
+                        if (onRecordError) {
+                            await onRecordError(step.key, `Tax rate not found for update: ${name}`, rec);
+                        }
+                        continue;
+                    }
                     await this.taxRateService.create(ctx, {
                         name,
                         value,
@@ -146,7 +160,7 @@ export class TaxRateHandler implements LoaderHandler {
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, getErrorMessage(e) || 'taxRateUpsert failed', rec);
+                    await onRecordError(step.key, getErrorMessage(e) || 'taxRateUpsert failed', rec, getErrorStack(e));
                 }
                 fail++;
             }

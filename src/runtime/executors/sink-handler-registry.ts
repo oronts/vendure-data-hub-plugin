@@ -38,7 +38,7 @@ import { queueAdapterRegistry, QueueMessage, QueueConnectionConfig } from '../..
 import { getAdapterCode } from '../../types/step-configs';
 import { assertUrlSafe } from '../../utils/url-security.utils';
 import { sleep, calculateSimpleBackoff } from '../../utils/retry.utils';
-import { getErrorMessage, ensureError } from '../../utils/error.utils';
+import { getErrorMessage, getErrorStack, ensureError } from '../../utils/error.utils';
 import type { SecretService } from '../../services/config/secret.service';
 import type { ConnectionService } from '../../services/config/connection.service';
 import type { CircuitBreakerService } from '../../services/runtime';
@@ -197,7 +197,7 @@ async function executeBatchedSearchSink(
             fail += batch.length;
             const message = getErrorMessage(e);
             services.circuitBreaker.recordFailure(circuitKey);
-            if (onRecordError) await onRecordError(stepKey, message, {});
+            if (onRecordError) await onRecordError(stepKey, message, {}, getErrorStack(e));
         }
     }
 
@@ -501,7 +501,7 @@ async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): 
             fail += batch.length;
             services.circuitBreaker.recordFailure(circuitKey);
             if (onRecordError) {
-                await onRecordError(step.key, lastError?.message ?? 'Webhook request failed', {});
+                await onRecordError(step.key, lastError?.message ?? 'Webhook request failed', {}, lastError?.stack);
             }
         }
     }

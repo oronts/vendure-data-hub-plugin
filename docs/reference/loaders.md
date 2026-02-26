@@ -129,7 +129,7 @@ Products can be matched by: `slug`, `id`, or `customFields.externalId`
 
 Adapter Code: `variantUpsert`
 
-Update product variants by SKU with multi-currency prices.
+Update product variants by SKU with multi-currency prices and auto-create option groups.
 
 ### Input Fields
 
@@ -142,14 +142,51 @@ Update product variants by SKU with multi-currency prices.
 | `taxCategoryName` | string | No | Tax category to assign |
 | `stockOnHand` | number | No | Stock level |
 | `enabled` | boolean | No | Whether variant is enabled |
+| `customFields` | object | No | Custom field values to set on the variant |
+
+### Config Fields
+
+| Config Field | Type | Required | Description |
+|-------------|------|----------|-------------|
+| `skuField` | string | Yes | Record field containing the SKU |
+| `priceField` | string | No | Record field for price in minor units |
+| `priceByCurrencyField` | string | No | Record field for multi-currency prices object |
+| `nameField` | string | No | Record field for variant name |
+| `customFieldsField` | string | No | Record field containing custom fields object |
+| `optionGroupsField` | string | No | Record field containing option group key-value pairs (auto-creates groups) |
+| `optionIdsField` | string | No | Record field containing pre-existing Vendure option IDs array |
+| `optionCodesField` | string | No | Record field containing option codes array for lookup |
+| `strategy` | string | No | Load strategy: `UPSERT` (default), `CREATE`, or `UPDATE` |
+
+### Option Group Assignment
+
+Variants can be assigned to option groups in three ways:
+
+**Auto-create from key-value pairs** (`optionGroupsField`): Pass an object like `{ size: 'S', color: 'Blue' }`. The loader auto-creates option groups and options if they don't exist, assigns them to the parent product, and links the variant.
+
+```typescript
+.load('import-variants', {
+    adapterCode: 'variantUpsert',
+    matchField: 'sku',
+    skuField: 'sku',
+    optionGroupsField: 'options',  // record field: { size: 'S', color: 'Blue' }
+})
+```
+
+**Direct ID passthrough** (`optionIdsField`): Pass an array of Vendure option IDs directly.
+
+**Code lookup** (`optionCodesField`): Pass an array of option codes like `['size-s', 'color-blue']` to resolve by code.
 
 ### Example
 
 ```typescript
 .load('import-variants', {
     adapterCode: 'variantUpsert',
-    strategy: 'UPDATE',
+    strategy: 'UPSERT',
     matchField: 'sku',
+    skuField: 'sku',
+    priceField: 'priceValue',
+    optionGroupsField: 'options',
 })
 ```
 

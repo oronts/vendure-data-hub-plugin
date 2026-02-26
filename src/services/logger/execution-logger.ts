@@ -327,17 +327,19 @@ export class ExecutionLogger {
         errorMessage: string,
         payload: Record<string, unknown>,
         options: LogEventOptions,
+        stackTrace?: string,
     ): Promise<void> {
         const message = `Record error in step "${stepKey}": ${errorMessage}`;
 
-        // Always log to console
+        // Always log to console (include stack trace for developer visibility)
         this.consoleLogger.warn(message, {
             stepKey,
             error: errorMessage,
+            ...(stackTrace ? { stack: stackTrace } : {}),
             ...options.context,
         });
 
-        // Always persist record errors (with sanitized payload)
+        // Always persist record errors (with sanitized payload + stack trace)
         const level = await this.getPersistenceLevel();
         if (this.shouldPersist('record.error', level)) {
             await this.pipelineLogService.warn(ctx, message, {
@@ -345,7 +347,10 @@ export class ExecutionLogger {
                 runId: options.runId,
                 stepKey,
                 context: { error: errorMessage, ...options.context },
-                metadata: sanitizeRecord(payload) as JsonObject,
+                metadata: {
+                    ...sanitizeRecord(payload) as JsonObject,
+                    ...(stackTrace ? { stack: stackTrace } : {}),
+                },
             });
         }
     }

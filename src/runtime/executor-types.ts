@@ -21,9 +21,10 @@ export function isBranchOutput(val: unknown): val is BranchOutput {
 }
 
 /**
- * Callback for reporting record-level errors during pipeline execution
+ * Callback for reporting record-level errors during pipeline execution.
+ * The optional stackTrace parameter carries the JS stack for debugging.
  */
-export type OnRecordErrorCallback = (stepKey: string, message: string, payload: RecordObject) => Promise<void>;
+export type OnRecordErrorCallback = (stepKey: string, message: string, payload: RecordObject, stackTrace?: string) => Promise<void>;
 
 /**
  * Common interface for checkpoint data management.

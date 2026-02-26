@@ -16,8 +16,9 @@ import {
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../utils/error.utils';
-import { getStringValue } from '../../../loaders/shared-helpers';
+import { LoadStrategy } from '../../../constants/enums';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
+import { getStringValue, getObjectValue } from '../../../loaders/shared-helpers';
 
 /**
  * Configuration for collection handler step
@@ -31,10 +32,14 @@ interface CollectionHandlerConfig {
     descriptionField?: string;
     /** Field name for parent collection slug */
     parentSlugField?: string;
+    /** Field name for custom fields object */
+    customFieldsField?: string;
     /** Target channel token */
     channel?: string;
     /** Whether to trigger filter application after upsert */
     applyFilters?: boolean;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: LoadStrategy;
 }
 
 /**
@@ -101,18 +106,25 @@ export class CollectionHandler implements LoaderHandler {
                     continue;
                 }
 
+                const customFieldsKey = cfg.customFieldsField ?? 'customFields';
+                const customFields = getObjectValue(rec, customFieldsKey);
+                const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
+
                 const opCtx = await this.resolveRequestContext(ctx, cfg);
-                const collectionId = await this.upsertCollection(opCtx, slug, name, description, parentSlug);
+                const collectionId = await this.upsertCollection(opCtx, slug, name, description, parentSlug, customFields, strategy);
 
                 if (collectionId) {
                     await this.maybeApplyFilters(opCtx, cfg, collectionId);
                     ok++;
                 } else {
+                    if (onRecordError) {
+                        await onRecordError(step.key, `Collection not found for update: ${slug}`, rec);
+                    }
                     fail++;
                 }
             } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, getErrorMessage(e) || 'collectionUpsert failed', rec);
+                    await onRecordError(step.key, getErrorMessage(e) || 'collectionUpsert failed', rec, getErrorStack(e));
                 }
                 fail++;
             }
@@ -154,10 +166,15 @@ export class CollectionHandler implements LoaderHandler {
         name: string,
         description: string | undefined,
         parentSlug: string | undefined,
+        customFields: Record<string, unknown> | undefined,
+        strategy: LoadStrategy,
     ): Promise<ID | undefined> {
         const existing = await this.collectionService.findOneBySlug(opCtx, slug);
 
         if (existing) {
+            if (strategy === LoadStrategy.CREATE) {
+                return existing.id;
+            }
             const updateInput: UpdateCollectionInput = {
                 id: existing.id,
                 translations: [{
@@ -167,8 +184,15 @@ export class CollectionHandler implements LoaderHandler {
                     description,
                 }],
             };
+            if (customFields) {
+                updateInput.customFields = customFields;
+            }
             const updated = await this.collectionService.update(opCtx, updateInput);
             return updated.id;
+        }
+
+        if (strategy === LoadStrategy.UPDATE) {
+            return undefined;
         }
 
         // Creating new collection
@@ -190,6 +214,9 @@ export class CollectionHandler implements LoaderHandler {
                 description: description ?? '',
             }],
         };
+        if (customFields) {
+            createInput.customFields = customFields;
+        }
         const created = await this.collectionService.create(opCtx, createInput);
         return created.id;
     }

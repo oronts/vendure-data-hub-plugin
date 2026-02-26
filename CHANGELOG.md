@@ -2,6 +2,18 @@
 
 All notable changes to the Data Hub Plugin are documented here.
 
+## [0.1.3] - 2026-02-26
+
+### Added
+- **Option group auto-creation** in variant loader: new `optionGroupsField` config auto-creates option groups and options from key-value pairs (e.g. `{ size: 'S', color: 'Blue' }`), assigns them to the parent product, and links variants. Also supports `optionIdsField` (direct IDs) and `optionCodesField` (code lookup)
+- **Stack traces on error records**: failed records now capture JavaScript stack traces for debugging. Visible in dashboard error viewer and dead letter queue
+- **Load strategy support** for all entity loaders: configurable `strategy` field (`UPSERT`, `CREATE`, `UPDATE`) controls whether records are created, updated, or both
+- **Custom fields support** for product, variant, customer, collection, promotion, facet, and facet value loaders via `customFieldsField` config
+- **SSRF protection wiring**: global SSRF config from plugin options now passed to all loader handlers for URL validation
+
+### Fixed
+- SSRF protection config was not propagated from plugin-level `security.ssrf` settings to individual loader handlers
+
 ## [0.1.2] - 2026-02-24
 
 ### Fixed

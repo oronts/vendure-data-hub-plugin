@@ -14,7 +14,7 @@ import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/inde
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { findVariantBySku as findVariantBySkuLookup } from './shared-lookups';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 
 /**
  * Configuration for the stock adjustment handler
@@ -103,14 +103,14 @@ export class StockAdjustHandler implements LoaderHandler {
                 }));
 
                 const update: UpdateProductVariantInput = {
-                    id: String(variant.id),
+                    id: variant.id,
                     stockLevels,
                 };
                 await this.productVariantService.update(ctx, [update]);
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, getErrorMessage(e) || 'stockAdjust failed', rec);
+                    await onRecordError(step.key, getErrorMessage(e) || 'stockAdjust failed', rec, getErrorStack(e));
                 }
                 fail++;
             }
@@ -135,7 +135,7 @@ export class StockAdjustHandler implements LoaderHandler {
                 const stockLocation = list.items[0];
                 if (stockLocation) {
                     result.push({
-                        stockLocationId: String(stockLocation.id) as ID,
+                        stockLocationId: stockLocation.id,
                         stockOnHand: Math.max(0, Math.floor(qty)),
                     });
                 }

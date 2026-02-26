@@ -23,3 +23,14 @@ export function ensureError(error: unknown): Error {
 export function toErrorOrUndefined(error: unknown): Error | undefined {
     return error instanceof Error ? error : undefined;
 }
+
+/**
+ * Extracts the stack trace from an unknown caught value.
+ * Returns undefined if the value is not an Error or has no stack.
+ */
+export function getErrorStack(error: unknown): string | undefined {
+    if (error instanceof Error && error.stack) {
+        return error.stack;
+    }
+    return undefined;
+}
