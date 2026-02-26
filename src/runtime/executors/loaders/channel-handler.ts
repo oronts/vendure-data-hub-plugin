@@ -16,7 +16,8 @@ import {
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { LoadStrategy } from '../../../constants/enums';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getArrayValue } from '../../../loaders/shared-helpers';
 import { generateChannelToken, parseCurrencyCode, parseLanguageCode } from '../../../loaders/channel/helpers';
 
@@ -34,6 +35,7 @@ interface ChannelHandlerConfig {
     defaultTaxZoneCodeField?: string;
     defaultShippingZoneCodeField?: string;
     sellerIdField?: string;
+    strategy?: LoadStrategy;
 }
 
 /**
@@ -154,8 +156,13 @@ export class ChannelHandler implements LoaderHandler {
 
                 // Find existing channel by code
                 const existing = await this.findExistingByCode(ctx, code);
+                const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
 
                 if (existing) {
+                    if (strategy === LoadStrategy.CREATE) {
+                        ok++;
+                        continue;
+                    }
                     const updateInput: Record<string, unknown> = {
                         id: existing.id,
                         code,
@@ -173,6 +180,13 @@ export class ChannelHandler implements LoaderHandler {
                         updateInput as Parameters<typeof this.channelService.update>[1],
                     );
                 } else {
+                    if (strategy === LoadStrategy.UPDATE) {
+                        fail++;
+                        if (onRecordError) {
+                            await onRecordError(step.key, `Channel not found for update: ${code}`, rec);
+                        }
+                        continue;
+                    }
                     const createInput: Record<string, unknown> = {
                         code,
                         token,
@@ -198,7 +212,7 @@ export class ChannelHandler implements LoaderHandler {
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, getErrorMessage(e) || 'channelUpsert failed', rec);
+                    await onRecordError(step.key, getErrorMessage(e) || 'channelUpsert failed', rec, getErrorStack(e));
                 }
                 fail++;
             }

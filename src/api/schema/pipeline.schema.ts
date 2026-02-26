@@ -120,6 +120,8 @@ export const pipelineSchema = `
         message: String!
         "The record data that failed to process"
         payload: JSON!
+        "JavaScript stack trace for debugging (only present when the error originated from an exception)"
+        stackTrace: String
     }
 
     """

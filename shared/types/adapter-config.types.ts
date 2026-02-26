@@ -324,26 +324,36 @@ export type TypedOperatorConfig =
 /** Product Upsert Loader */
 export interface ProductUpsertLoaderConfig {
     adapterCode: 'productUpsert';
-    /** Channel code (required) */
-    channel: string;
-    /** Merge strategy */
-    strategy: 'CREATE_ONLY' | 'UPDATE_ONLY' | 'SOURCE_WINS' | 'TARGET_WINS' | 'MERGE';
+    /** Channel code */
+    channel?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+    /** Conflict strategy: SOURCE_WINS (default), VENDURE_WINS, or MERGE */
+    conflictStrategy?: 'SOURCE_WINS' | 'VENDURE_WINS' | 'MERGE';
     /** Field containing product name */
     nameField?: string;
     /** Field containing slug */
     slugField?: string;
     /** Field containing description */
     descriptionField?: string;
+    /** Field containing product enabled/published flag */
+    enabledField?: string;
     /** Field containing SKU */
     skuField?: string;
     /** Field containing price */
     priceField?: string;
     /** Field containing stock quantity */
     stockField?: string;
+    /** Field containing stock by location map */
+    stockByLocationField?: string;
     /** Track inventory flag */
     trackInventory?: string | boolean;
     /** Tax category name */
     taxCategoryName?: string;
+    /** Field containing custom fields object */
+    customFieldsField?: string;
+    /** Whether to create/update variants alongside the product (default: true). Set to false when variants are handled by a separate variantUpsert step. */
+    createVariants?: boolean;
 }
 
 /** Variant Upsert Loader */
@@ -353,12 +363,31 @@ export interface VariantUpsertLoaderConfig {
     channel?: string;
     /** Field containing SKU */
     skuField?: string;
-    /** Field containing price */
+    /** Field containing variant name */
+    nameField?: string;
+    /** Field containing price (major units, auto-converted to minor) */
     priceField?: string;
-    /** Field containing stock */
+    /** Field containing price map by currency code (object, e.g. { USD: 19.99, EUR: 17.50 }) */
+    priceByCurrencyField?: string;
+    /** Field containing stock on hand */
     stockField?: string;
+    /** Field containing stock by location map (object, e.g. { "Warehouse A": 100, "Warehouse B": 50 }) */
+    stockByLocationField?: string;
     /** Tax category name */
     taxCategoryName?: string;
+    /** Field containing custom fields object */
+    customFieldsField?: string;
+    /** Field containing option group→value pairs (object, e.g. { size: 'S', color: 'Blue' }). Auto-creates option groups and assigns them to the parent product. */
+    optionGroupsField?: string;
+    /** Field containing pre-existing Vendure option IDs (array, e.g. [1, 2, 3]). Passed directly without lookup. */
+    optionIdsField?: string;
+    /** Field containing option codes (array, e.g. ['size-s', 'color-blue']). Resolved to IDs by code lookup. */
+    optionCodesField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE.
+     *  UPSERT: update existing or create new (record must contain productSlug, productId, or productName for creation).
+     *  CREATE: only create new variants, skip existing.
+     *  UPDATE: only update existing variants, skip missing. */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
 }
 
 /** Customer Upsert Loader */
@@ -378,6 +407,10 @@ export interface CustomerUpsertLoaderConfig {
     groupsField?: string;
     /** Groups mode */
     groupsMode?: 'add' | 'set';
+    /** Field containing custom fields object */
+    customFieldsField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
 }
 
 /** Stock Adjust Loader */
@@ -453,6 +486,8 @@ export interface CollectionUpsertLoaderConfig {
     adapterCode: 'collectionUpsert';
     /** Channel code */
     channel?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
     /** Field containing name */
     nameField?: string;
     /** Field containing slug */
@@ -461,6 +496,10 @@ export interface CollectionUpsertLoaderConfig {
     descriptionField?: string;
     /** Field containing parent slug */
     parentSlugField?: string;
+    /** Apply collection filters after upsert */
+    applyFilters?: boolean;
+    /** Field containing custom fields object */
+    customFieldsField?: string;
 }
 
 /** Asset Attach Loader */
@@ -492,6 +531,8 @@ export interface PromotionUpsertLoaderConfig {
     codeField: string;
     /** Field containing name */
     nameField?: string;
+    /** Field containing enabled flag */
+    enabledField?: string;
     /** Field containing starts at date */
     startsAtField?: string;
     /** Field containing ends at date */
@@ -502,6 +543,215 @@ export interface PromotionUpsertLoaderConfig {
     conditionsField?: string;
     /** Field containing actions */
     actionsField?: string;
+    /** Channel code */
+    channel?: string;
+    /** Field containing custom fields object */
+    customFieldsField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+}
+
+/** GraphQL Mutation Loader */
+export interface GraphqlMutationLoaderConfig {
+    adapterCode: 'graphqlMutation';
+    /** GraphQL endpoint URL (required) */
+    endpoint: string;
+    /** GraphQL mutation string (required) */
+    mutation: string;
+    /** Variable mapping: { "input.name": "productName" } (required) */
+    variableMapping: Record<string, string>;
+    /** Request headers */
+    headers?: Record<string, string>;
+    /** Auth preset */
+    auth?: 'NONE' | 'BEARER' | 'BASIC';
+    /** Bearer token secret code */
+    bearerTokenSecretCode?: string;
+    /** Basic auth secret code */
+    basicSecretCode?: string;
+    /** Batch mode */
+    batchMode?: 'SINGLE' | 'BATCH';
+    /** Max records per batch */
+    maxBatchSize?: number;
+    /** Number of retries */
+    retries?: number;
+    /** Delay between retries (ms) */
+    retryDelayMs?: number;
+    /** Request timeout (ms) */
+    timeoutMs?: number;
+}
+
+/** Facet Upsert Loader */
+export interface FacetUpsertLoaderConfig {
+    adapterCode: 'facetUpsert';
+    /** Field containing facet code (required) */
+    codeField: string;
+    /** Field containing facet name (required) */
+    nameField: string;
+    /** Field containing private flag */
+    privateField?: string;
+    /** Channel code */
+    channel?: string;
+    /** Field containing custom fields object */
+    customFieldsField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+}
+
+/** Facet Value Upsert Loader */
+export interface FacetValueUpsertLoaderConfig {
+    adapterCode: 'facetValueUpsert';
+    /** Field containing parent facet code (required) */
+    facetCodeField: string;
+    /** Field containing value code (required) */
+    codeField: string;
+    /** Field containing value name (required) */
+    nameField: string;
+    /** Channel code */
+    channel?: string;
+    /** Field containing custom fields object */
+    customFieldsField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+}
+
+/** Asset Import Loader */
+export interface AssetImportLoaderConfig {
+    adapterCode: 'assetImport';
+    /** Field containing source URL to download (required) */
+    sourceUrlField: string;
+    /** Field containing target filename */
+    filenameField?: string;
+    /** Field containing asset name */
+    nameField?: string;
+    /** Field containing tags (array) */
+    tagsField?: string;
+    /** Channel code */
+    channel?: string;
+}
+
+/** Tax Rate Upsert Loader */
+export interface TaxRateUpsertLoaderConfig {
+    adapterCode: 'taxRateUpsert';
+    /** Field containing tax rate name (required) */
+    nameField: string;
+    /** Field containing tax rate percentage 0-100 (required) */
+    valueField: string;
+    /** Field containing enabled flag */
+    enabledField?: string;
+    /** Field containing tax category code/name (required) */
+    taxCategoryCodeField: string;
+    /** Field containing tax category ID (alternative) */
+    taxCategoryIdField?: string;
+    /** Field containing zone code/name (required) */
+    zoneCodeField: string;
+    /** Field containing zone ID (alternative) */
+    zoneIdField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+}
+
+/** Payment Method Upsert Loader */
+export interface PaymentMethodUpsertLoaderConfig {
+    adapterCode: 'paymentMethodUpsert';
+    /** Field containing payment method name (required) */
+    nameField: string;
+    /** Field containing unique code (required) */
+    codeField: string;
+    /** Field containing description */
+    descriptionField?: string;
+    /** Field containing enabled flag */
+    enabledField?: string;
+    /** Field containing handler config { code, args } (required) */
+    handlerField: string;
+    /** Field containing eligibility checker config { code, args } */
+    checkerField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+}
+
+/** Channel Upsert Loader */
+export interface ChannelUpsertLoaderConfig {
+    adapterCode: 'channelUpsert';
+    /** Field containing unique channel code (required) */
+    codeField: string;
+    /** Field containing channel token */
+    tokenField?: string;
+    /** Field containing default language code (required) */
+    defaultLanguageCodeField: string;
+    /** Field containing available language codes (array) */
+    availableLanguageCodesField?: string;
+    /** Field containing default currency code (required) */
+    defaultCurrencyCodeField: string;
+    /** Field containing available currency codes (array) */
+    availableCurrencyCodesField?: string;
+    /** Field containing prices-include-tax flag */
+    pricesIncludeTaxField?: string;
+    /** Field containing default tax zone code */
+    defaultTaxZoneCodeField?: string;
+    /** Field containing default shipping zone code */
+    defaultShippingZoneCodeField?: string;
+    /** Field containing seller ID (for multi-vendor) */
+    sellerIdField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+}
+
+/** Shipping Method Upsert Loader */
+export interface ShippingMethodUpsertLoaderConfig {
+    adapterCode: 'shippingMethodUpsert';
+    /** Field containing display name (required) */
+    nameField: string;
+    /** Field containing unique code (required) */
+    codeField: string;
+    /** Field containing description */
+    descriptionField?: string;
+    /** Field containing fulfillment handler code (required) */
+    fulfillmentHandlerField: string;
+    /** Field containing calculator config { code, args } (required) */
+    calculatorField: string;
+    /** Field containing eligibility checker config { code, args } */
+    checkerField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+}
+
+/** Customer Group Upsert Loader */
+export interface CustomerGroupUpsertLoaderConfig {
+    adapterCode: 'customerGroupUpsert';
+    /** Field containing group name (required) */
+    nameField: string;
+    /** Field containing customer email addresses (array) */
+    customerEmailsField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+}
+
+/** Stock Location Upsert Loader */
+export interface StockLocationUpsertLoaderConfig {
+    adapterCode: 'stockLocationUpsert';
+    /** Field containing stock location name (required) */
+    nameField: string;
+    /** Field containing location description */
+    descriptionField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+}
+
+/** Inventory Adjust Loader */
+export interface InventoryAdjustLoaderConfig {
+    adapterCode: 'inventoryAdjust';
+    /** Field containing variant SKU (required) */
+    skuField: string;
+    /** Field containing stock on hand quantity (required) */
+    stockOnHandField: string;
+    /** Field containing stock location name */
+    stockLocationNameField?: string;
+    /** Field containing stock location ID (alternative) */
+    stockLocationIdField?: string;
+    /** Field containing adjustment reason */
+    reasonField?: string;
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
 }
 
 /** Generic config for custom loader adapters */
@@ -517,12 +767,23 @@ export type TypedLoaderConfig =
     | CustomerUpsertLoaderConfig
     | StockAdjustLoaderConfig
     | RestPostLoaderConfig
+    | GraphqlMutationLoaderConfig
     | OrderNoteLoaderConfig
     | OrderTransitionLoaderConfig
     | CollectionUpsertLoaderConfig
     | AssetAttachLoaderConfig
+    | AssetImportLoaderConfig
     | ApplyCouponLoaderConfig
     | PromotionUpsertLoaderConfig
+    | FacetUpsertLoaderConfig
+    | FacetValueUpsertLoaderConfig
+    | TaxRateUpsertLoaderConfig
+    | PaymentMethodUpsertLoaderConfig
+    | ChannelUpsertLoaderConfig
+    | ShippingMethodUpsertLoaderConfig
+    | CustomerGroupUpsertLoaderConfig
+    | StockLocationUpsertLoaderConfig
+    | InventoryAdjustLoaderConfig
     | GenericLoaderConfig;
 
 // EXPORTER CONFIGS
@@ -711,10 +972,10 @@ export interface RouteConfig {
 // PERMISSION MAPPINGS
 
 /** Loader adapter codes that require UpdateCatalog permission */
-export type UpdateCatalogLoaders = 'productUpsert' | 'variantUpsert' | 'stockAdjust' | 'collectionUpsert' | 'assetAttach';
+export type UpdateCatalogLoaders = 'productUpsert' | 'variantUpsert' | 'stockAdjust' | 'collectionUpsert' | 'assetAttach' | 'assetImport' | 'facetUpsert' | 'facetValueUpsert' | 'stockLocationUpsert' | 'inventoryAdjust';
 
 /** Loader adapter codes that require UpdateCustomer permission */
-export type UpdateCustomerLoaders = 'customerUpsert';
+export type UpdateCustomerLoaders = 'customerUpsert' | 'customerGroupUpsert';
 
 /** Loader adapter codes that require UpdateOrder permission */
 export type UpdateOrderLoaders = 'orderNote' | 'orderTransition' | 'applyCoupon';
@@ -722,8 +983,14 @@ export type UpdateOrderLoaders = 'orderNote' | 'orderTransition' | 'applyCoupon'
 /** Loader adapter codes that require UpdatePromotion permission */
 export type UpdatePromotionLoaders = 'promotionUpsert';
 
+/** Loader adapter codes that require UpdateSettings permission */
+export type UpdateSettingsLoaders = 'taxRateUpsert' | 'paymentMethodUpsert' | 'channelUpsert';
+
+/** Loader adapter codes that require UpdateShippingMethod permission */
+export type UpdateShippingMethodLoaders = 'shippingMethodUpsert';
+
 /** Loader adapter codes that require UpdateDataHubSettings permission */
-export type UpdateDataHubSettingsLoaders = 'restPost';
+export type UpdateDataHubSettingsLoaders = 'restPost' | 'graphqlMutation';
 
 /** All loader adapter codes */
 export type LoaderAdapterCode =
@@ -731,5 +998,7 @@ export type LoaderAdapterCode =
     | UpdateCustomerLoaders
     | UpdateOrderLoaders
     | UpdatePromotionLoaders
+    | UpdateSettingsLoaders
+    | UpdateShippingMethodLoaders
     | UpdateDataHubSettingsLoaders;
 

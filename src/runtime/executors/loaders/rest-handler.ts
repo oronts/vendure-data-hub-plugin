@@ -12,7 +12,7 @@ import { chunk } from '../../utils';
 import { LoaderHandler } from './types';
 import { TIME, LOGGER_CONTEXTS, ConnectionAuthType, HttpMethod, HTTP_HEADERS, CONTENT_TYPES } from '../../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
 import { resolveAuthHeaders } from './shared-http-auth';
 import { doHttpFetch, execHttpWithRetry, deriveCircuitKey, resolveHttpRetryConfig, HttpFetchResult } from './shared-http-client';
@@ -172,7 +172,7 @@ export class RestPostHandler implements LoaderHandler {
             const unprocessed = input.slice(processedCount);
             fail += unprocessed.length;
             for (const rec of unprocessed) {
-                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'restPost failed', rec as JsonObject);
+                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'restPost failed', rec as JsonObject, getErrorStack(e));
             }
         }
         return { ok, fail };

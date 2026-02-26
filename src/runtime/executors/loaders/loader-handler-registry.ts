@@ -78,7 +78,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             icon: 'box',
             color: '#6366f1',
             entityType: toEntityCode(VendureEntityType.PRODUCT),
-            patchableFields: ['slug', 'name', 'description', 'sku', 'price', 'priceByCurrency', 'stockOnHand', 'trackInventory'],
+            patchableFields: ['slug', 'name', 'description', 'sku', 'price', 'priceByCurrency', 'stockOnHand', 'trackInventory', 'enabled', 'customFields'],
             schema: {
                 fields: [
                     { key: 'channel', label: 'Channel code', type: 'string', required: true },
@@ -87,12 +87,15 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
                     { key: 'nameField', label: 'Name field (from record)', type: 'string' },
                     { key: 'slugField', label: 'Slug field (from record)', type: 'string' },
                     { key: 'descriptionField', label: 'Description field (from record)', type: 'string' },
+                    { key: 'enabledField', label: 'Enabled field (from record)', type: 'string', description: 'Record field containing product enabled/published flag (defaults to "enabled")' },
                     { key: 'skuField', label: 'SKU field (from record)', type: 'string' },
                     { key: 'priceField', label: 'Price field (from record)', type: 'string' },
                     { key: 'taxCategoryName', label: 'Tax category name', type: 'string' },
                     { key: 'trackInventory', label: 'Track inventory', type: 'select', options: BOOLEAN_SELECT_OPTIONS },
                     { key: 'stockField', label: 'Stock on hand field', type: 'string' },
                     { key: 'stockByLocationField', label: 'Stock by location field (object)', type: 'string' },
+                    { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
+                    { key: 'createVariants', label: 'Create variants', type: 'boolean', description: 'Create/update a default variant alongside the product. Set to false when variants are handled by a separate variantUpsert step.' },
                 ],
             },
         },
@@ -102,15 +105,16 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
         definition: {
             type: 'LOADER',
             code: 'variantUpsert',
-            description: 'Upsert ProductVariant by SKU. Supports channel, prices, stock, tax.',
+            description: 'Upsert ProductVariant by SKU. Supports create/update/upsert strategy, channel, prices, stock, tax, option groups, and custom fields. For creation, record must contain productSlug, productId, or productName to resolve the parent product.',
             requires: ['UpdateCatalog'],
             icon: 'package',
             color: '#14b8a6',
             entityType: toEntityCode(VendureEntityType.PRODUCT_VARIANT),
-            patchableFields: ['sku', 'name', 'price', 'priceByCurrency', 'stockOnHand'],
+            patchableFields: ['sku', 'name', 'price', 'priceByCurrency', 'stockOnHand', 'optionGroups', 'optionIds', 'optionCodes', 'customFields'],
             schema: {
                 fields: [
                     { key: 'channel', label: 'Channel code', type: 'string' },
+                    { key: 'strategy', label: 'Load strategy', type: 'select', required: true, options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'skuField', label: 'SKU field (from record)', type: 'string', required: true },
                     { key: 'nameField', label: 'Name field (from record)', type: 'string' },
                     { key: 'priceField', label: 'Price field (from record)', type: 'string' },
@@ -118,6 +122,10 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
                     { key: 'taxCategoryName', label: 'Tax category name', type: 'string' },
                     { key: 'stockField', label: 'Stock on hand field', type: 'string' },
                     { key: 'stockByLocationField', label: 'Stock by location field (object)', type: 'string' },
+                    { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
+                    { key: 'optionGroupsField', label: 'Option groups field (object)', type: 'string', description: 'Record field containing option group→value pairs (e.g. { size: "S", color: "Blue" }). Auto-creates option groups and assigns to product.' },
+                    { key: 'optionIdsField', label: 'Option IDs field (array)', type: 'string', description: 'Record field containing pre-existing Vendure option IDs (e.g. [1, 2, 3]). Passed directly without lookup.' },
+                    { key: 'optionCodesField', label: 'Option codes field (array)', type: 'string', description: 'Record field containing option codes (e.g. ["size-s", "color-blue"]). Resolved to IDs by code lookup.' },
                 ],
             },
         },
@@ -132,9 +140,10 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             icon: 'users',
             color: '#10b981',
             entityType: toEntityCode(VendureEntityType.CUSTOMER),
-            patchableFields: ['email', 'firstName', 'lastName', 'phoneNumber'],
+            patchableFields: ['email', 'firstName', 'lastName', 'phoneNumber', 'customFields'],
             schema: {
                 fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'emailField', label: 'Email field', type: 'string', required: true },
                     { key: 'firstNameField', label: 'First name field', type: 'string' },
                     { key: 'lastNameField', label: 'Last name field', type: 'string' },
@@ -142,6 +151,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
                     { key: 'addressesField', label: 'Addresses array field', type: 'string' },
                     { key: 'groupsField', label: 'Group codes array field', type: 'string' },
                     { key: 'groupsMode', label: 'Groups mode', type: 'select', options: GROUPS_MODE_OPTIONS },
+                    { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
                 ],
             },
         },
@@ -212,20 +222,22 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
         definition: {
             type: 'LOADER',
             code: 'collectionUpsert',
-            description: 'Upsert Collection by slug/code; assign to channel.',
+            description: 'Upsert Collection by slug/code; supports create/update/upsert strategy, channel, and custom fields.',
             requires: ['UpdateCatalog'],
             icon: 'layers',
             color: '#8b5cf6',
             entityType: toEntityCode(VendureEntityType.COLLECTION),
-            patchableFields: ['slug', 'name', 'description', 'parentSlug'],
+            patchableFields: ['slug', 'name', 'description', 'parentSlug', 'customFields'],
             schema: {
                 fields: [
                     { key: 'channel', label: 'Channel code', type: 'string' },
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'slugField', label: 'Slug field', type: 'string', required: true },
                     { key: 'nameField', label: 'Name field', type: 'string', required: true },
                     { key: 'parentSlugField', label: 'Parent slug field', type: 'string' },
                     { key: 'descriptionField', label: 'Description field', type: 'string' },
                     { key: 'applyFilters', label: 'Apply filters job', type: 'boolean' },
+                    { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
                 ],
             },
         },
@@ -235,14 +247,15 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
         definition: {
             type: 'LOADER',
             code: 'promotionUpsert',
-            description: 'Upsert Promotion by couponCode; create/update enabled dates/actions/conditions.',
+            description: 'Upsert Promotion by couponCode; create/update enabled dates/actions/conditions. Supports custom fields.',
             requires: ['UpdatePromotion'],
             icon: 'zap',
             color: '#ec4899',
             entityType: toEntityCode(VendureEntityType.PROMOTION),
-            patchableFields: ['code', 'name', 'enabled', 'startsAt', 'endsAt'],
+            patchableFields: ['code', 'name', 'enabled', 'startsAt', 'endsAt', 'customFields'],
             schema: {
                 fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'codeField', label: 'Coupon code field', type: 'string', required: true },
                     { key: 'nameField', label: 'Name field', type: 'string' },
                     { key: 'enabledField', label: 'Enabled field', type: 'string' },
@@ -251,6 +264,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
                     { key: 'conditionsField', label: 'Conditions field (JSON)', type: 'string' },
                     { key: 'actionsField', label: 'Actions field (JSON)', type: 'string' },
                     { key: 'channel', label: 'Channel code', type: 'string' },
+                    { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
                 ],
             },
         },
@@ -323,7 +337,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
         definition: {
             type: 'LOADER',
             code: 'facetUpsert',
-            description: 'Upsert Facet by code; create or update facet.',
+            description: 'Upsert Facet by code; create or update facet. Supports custom fields.',
             requires: ['UpdateCatalog'],
             icon: 'filter',
             color: '#3b82f6',
@@ -331,10 +345,12 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             patchableFields: ['code', 'name', 'translations', 'customFields'],
             schema: {
                 fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'codeField', label: 'Code field', type: 'string', required: true },
                     { key: 'nameField', label: 'Name field', type: 'string', required: true },
                     { key: 'privateField', label: 'Private field', type: 'string' },
                     { key: 'channel', label: 'Channel code', type: 'string' },
+                    { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
                 ],
             },
         },
@@ -344,7 +360,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
         definition: {
             type: 'LOADER',
             code: 'facetValueUpsert',
-            description: 'Upsert FacetValue by code; requires facet to exist.',
+            description: 'Upsert FacetValue by code; requires facet to exist. Supports custom fields.',
             requires: ['UpdateCatalog'],
             icon: 'filter',
             color: '#3b82f6',
@@ -352,10 +368,12 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             patchableFields: ['code', 'name', 'facetCode', 'translations', 'customFields'],
             schema: {
                 fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'facetCodeField', label: 'Facet code field', type: 'string', required: true },
                     { key: 'codeField', label: 'Value code field', type: 'string', required: true },
                     { key: 'nameField', label: 'Value name field', type: 'string', required: true },
                     { key: 'channel', label: 'Channel code', type: 'string' },
+                    { key: 'customFieldsField', label: 'Custom fields field (object)', type: 'string', description: 'Record field containing custom field values (defaults to "customFields")' },
                 ],
             },
         },
@@ -431,6 +449,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             patchableFields: ['name', 'value', 'enabled', 'taxCategoryCode', 'zoneCode', 'customFields'],
             schema: {
                 fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'nameField', label: 'Name field', type: 'string', required: true, description: 'Field containing tax rate name' },
                     { key: 'valueField', label: 'Value field', type: 'string', required: true, description: 'Field containing tax rate percentage (0-100)' },
                     { key: 'enabledField', label: 'Enabled field', type: 'string', description: 'Field indicating if rate is active' },
@@ -455,6 +474,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             patchableFields: ['name', 'code', 'description', 'enabled', 'handler', 'checker', 'customFields'],
             schema: {
                 fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'nameField', label: 'Name field', type: 'string', required: true, description: 'Field containing payment method name' },
                     { key: 'codeField', label: 'Code field', type: 'string', required: true, description: 'Field containing unique payment method code' },
                     { key: 'descriptionField', label: 'Description field', type: 'string', description: 'Field containing description shown to customers' },
@@ -478,6 +498,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             patchableFields: ['code', 'token', 'defaultLanguageCode', 'defaultCurrencyCode', 'pricesIncludeTax', 'customFields'],
             schema: {
                 fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'codeField', label: 'Code field', type: 'string', required: true, description: 'Field containing unique channel code' },
                     { key: 'tokenField', label: 'Token field', type: 'string', description: 'Field containing channel token (auto-generated if not provided)' },
                     { key: 'defaultLanguageCodeField', label: 'Default language code field', type: 'string', required: true, description: 'Field containing default language (e.g., "en")' },
@@ -505,6 +526,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             patchableFields: ['name', 'code', 'description', 'fulfillmentHandler', 'calculator', 'checker', 'customFields'],
             schema: {
                 fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'nameField', label: 'Name field', type: 'string', required: true, description: 'Field containing shipping method display name' },
                     { key: 'codeField', label: 'Code field', type: 'string', required: true, description: 'Field containing unique shipping method code' },
                     { key: 'descriptionField', label: 'Description field', type: 'string', description: 'Field containing description shown to customers' },
@@ -528,6 +550,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             patchableFields: ['name', 'customerEmailAddresses', 'customFields'],
             schema: {
                 fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'nameField', label: 'Name field', type: 'string', required: true, description: 'Field containing unique customer group name' },
                     { key: 'customerEmailsField', label: 'Customer emails field', type: 'string', description: 'Field containing array of customer email addresses to add' },
                 ],
@@ -547,6 +570,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             patchableFields: ['name', 'description', 'customFields'],
             schema: {
                 fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'nameField', label: 'Name field', type: 'string', required: true, description: 'Field containing stock location name' },
                     { key: 'descriptionField', label: 'Description field', type: 'string', description: 'Field containing location description' },
                 ],
@@ -566,6 +590,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             patchableFields: ['sku', 'stockOnHand', 'stockByLocation'],
             schema: {
                 fields: [
+                    { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
                     { key: 'skuField', label: 'SKU field', type: 'string', required: true, description: 'Field containing the product variant SKU' },
                     { key: 'stockOnHandField', label: 'Stock on hand field', type: 'string', required: true, description: 'Field containing the new absolute stock level' },
                     { key: 'stockLocationNameField', label: 'Stock location name field', type: 'string', description: 'Field containing stock location name (uses default if not specified)' },

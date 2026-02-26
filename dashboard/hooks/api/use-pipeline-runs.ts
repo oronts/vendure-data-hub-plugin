@@ -57,6 +57,7 @@ const runErrorsDocument = graphql(`
             stepKey
             message
             payload
+            stackTrace
         }
     }
 `);

@@ -31,4 +31,7 @@ export class DataHubRecordError extends VendureEntity {
 
     @Column({ type: 'boolean', default: false })
     deadLetter!: boolean;
+
+    @Column({ type: 'text', nullable: true })
+    stackTrace?: string;
 }

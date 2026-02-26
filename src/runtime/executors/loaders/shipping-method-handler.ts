@@ -10,7 +10,7 @@ import { RequestContext } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject, LoaderContext } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult, SANDBOX_PIPELINE_ID } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { TARGET_OPERATION } from '../../../constants/enums';
+import { TARGET_OPERATION, LoadStrategy } from '../../../constants/enums';
 import { ShippingMethodLoader } from '../../../loaders/shipping-method';
 import { ShippingMethodInput } from '../../../loaders/shipping-method/types';
 import { getStringValue, getObjectValue } from '../../../loaders/shared-helpers';
@@ -27,6 +27,7 @@ interface ShippingMethodHandlerConfig {
     checkerField?: string;
     operation?: string;
     lookupFields?: string[];
+    strategy?: LoadStrategy;
 }
 
 /**
@@ -39,8 +40,16 @@ function getConfig(config: JsonObject): ShippingMethodHandlerConfig {
 /**
  * Build a LoaderContext from executor parameters
  */
+function mapStrategyToOperation(strategy: LoadStrategy): string {
+    switch (strategy) {
+        case LoadStrategy.CREATE: return TARGET_OPERATION.CREATE;
+        case LoadStrategy.UPDATE: return TARGET_OPERATION.UPDATE;
+        default: return TARGET_OPERATION.UPSERT;
+    }
+}
+
 function buildLoaderContext(ctx: RequestContext, cfg: ShippingMethodHandlerConfig): LoaderContext {
-    const operation = cfg.operation ?? TARGET_OPERATION.UPSERT;
+    const operation = cfg.strategy ? mapStrategyToOperation(cfg.strategy) : (cfg.operation ?? TARGET_OPERATION.UPSERT);
     return {
         ctx,
         pipelineId: SANDBOX_PIPELINE_ID,

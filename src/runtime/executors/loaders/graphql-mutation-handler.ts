@@ -14,7 +14,7 @@ import { sleep, chunk } from '../../utils';
 import { LoaderHandler } from './types';
 import { LOGGER_CONTEXTS, HTTP_HEADERS, CONTENT_TYPES } from '../../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
 import { setNestedValue } from '../../../utils/object-path.utils';
 import { resolveAuthHeaders } from './shared-http-auth';
@@ -204,7 +204,7 @@ export class GraphqlMutationHandler implements LoaderHandler {
             const unprocessed = input.slice(processedCount);
             fail += unprocessed.length;
             for (const rec of unprocessed) {
-                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'graphqlMutation failed', rec as JsonObject);
+                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'graphqlMutation failed', rec as JsonObject, getErrorStack(e));
             }
         }
         return { ok, fail };

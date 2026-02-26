@@ -42,6 +42,7 @@ const deadLettersDocument = graphql(`
             stepKey
             message
             payload
+            stackTrace
         }
     }
 `);

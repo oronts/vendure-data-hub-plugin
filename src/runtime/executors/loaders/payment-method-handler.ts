@@ -13,7 +13,8 @@ import {
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { LoadStrategy } from '../../../constants/enums';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue } from '../../../loaders/shared-helpers';
 
 /**
@@ -26,6 +27,7 @@ interface PaymentMethodHandlerConfig {
     enabledField?: string;
     handlerField?: string;
     checkerField?: string;
+    strategy?: LoadStrategy;
 }
 
 /**
@@ -116,8 +118,13 @@ export class PaymentMethodHandler implements LoaderHandler {
 
                 // Find existing by code
                 const existing = await this.findExistingByCode(ctx, code);
+                const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
 
                 if (existing) {
+                    if (strategy === LoadStrategy.CREATE) {
+                        ok++;
+                        continue;
+                    }
                     const updateInput: Record<string, unknown> = {
                         id: existing.id,
                         code,
@@ -137,6 +144,13 @@ export class PaymentMethodHandler implements LoaderHandler {
                         updateInput as Parameters<typeof this.paymentMethodService.update>[1],
                     );
                 } else {
+                    if (strategy === LoadStrategy.UPDATE) {
+                        fail++;
+                        if (onRecordError) {
+                            await onRecordError(step.key, `Payment method not found for update: ${code}`, rec);
+                        }
+                        continue;
+                    }
                     const createInput: Record<string, unknown> = {
                         code,
                         enabled,
@@ -158,7 +172,7 @@ export class PaymentMethodHandler implements LoaderHandler {
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, getErrorMessage(e) || 'paymentMethodUpsert failed', rec);
+                    await onRecordError(step.key, getErrorMessage(e) || 'paymentMethodUpsert failed', rec, getErrorStack(e));
                 }
                 fail++;
             }

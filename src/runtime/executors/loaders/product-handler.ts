@@ -38,7 +38,7 @@ import {
 import { TRANSFORM_LIMITS, LOGGER_CONTEXTS } from '../../../constants/index';
 import { LoadStrategy, ConflictStrategy } from '../../../constants/enums';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getNumberValue, getObjectValue } from '../../../loaders/shared-helpers';
 
 /**
@@ -69,6 +69,12 @@ interface ProductHandlerConfig {
     conflictStrategy?: ConflictStrategy;
     /** Whether to track inventory */
     trackInventory?: string | boolean;
+    /** Field name for custom fields object */
+    customFieldsField?: string;
+    /** Field name for product enabled flag */
+    enabledField?: string;
+    /** Whether to create/update variants alongside the product (default: true) */
+    createVariants?: boolean;
 }
 
 /**
@@ -282,17 +288,22 @@ export class ProductHandler implements LoaderHandler {
 
                 const productResult = await this.createOrUpdateProduct(procCtx);
                 if (!productResult.productId) {
+                    if (onRecordError) {
+                        await onRecordError(step.key, `Product not found for update: ${fields.slug}`, rec);
+                    }
                     fail++;
                     continue;
                 }
 
                 await this.assignProductToChannel(procCtx, productResult.productId);
-                await this.handleProductVariants(procCtx, productResult.productId);
+                if (cfg.createVariants !== false) {
+                    await this.handleProductVariants(procCtx, productResult.productId);
+                }
 
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
-                    await onRecordError(step.key, getErrorMessage(e) || 'productUpsert failed', rec);
+                    await onRecordError(step.key, getErrorMessage(e) || 'productUpsert failed', rec, getErrorStack(e));
                 }
                 fail++;
             }
@@ -340,7 +351,7 @@ export class ProductHandler implements LoaderHandler {
         procCtx: ProductProcessingContext,
     ): Promise<{ productId: ID | undefined; existing: Product | undefined }> {
         const { ctx, opCtx, cfg, fields } = procCtx;
-        const { slug, name, description } = fields;
+        const { slug, name, description, customFields, enabled } = fields;
         const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
         const conflictResolution = cfg.conflictStrategy ?? ConflictStrategy.SOURCE_WINS;
 
@@ -365,6 +376,8 @@ export class ProductHandler implements LoaderHandler {
             const updateInput: UpdateProductInput = {
                 id: existing.id,
                 translations: [productTranslation],
+                ...(typeof enabled === 'boolean' ? { enabled } : {}),
+                ...(customFields ? { customFields } : {}),
             };
             const updated = await this.productService.update(opCtx, updateInput);
             return { productId: updated.id, existing };
@@ -378,6 +391,8 @@ export class ProductHandler implements LoaderHandler {
         // strategy is 'create' or 'upsert' - create the product
         const createInput: CreateProductInput = {
             translations: [productTranslation],
+            ...(typeof enabled === 'boolean' ? { enabled } : {}),
+            ...(customFields ? { customFields } : {}),
         };
         const created = await this.productService.create(opCtx, createInput);
         return { productId: created.id, existing: undefined };
@@ -411,7 +426,7 @@ export class ProductHandler implements LoaderHandler {
      */
     private async handleProductVariants(procCtx: ProductProcessingContext, productId: ID): Promise<void> {
         const { ctx, opCtx, step, cfg, fields } = procCtx;
-        const { sku, name, priceMinor, priceByCurrency, trackInventory, stockOnHand, stockByLocation } = fields;
+        const { sku, name, priceMinor, priceByCurrency, trackInventory, stockOnHand, stockByLocation, customFields } = fields;
 
         if (!sku) {
             return;
@@ -436,12 +451,12 @@ export class ProductHandler implements LoaderHandler {
         if (shouldUpdateVariant && existingVariant) {
             await this.updateExistingVariant(
                 opCtx, step, existingVariant, variantTranslation, taxCategoryId, stockLevels,
-                priceMinor, priceByCurrency, stockOnHand, trackInventory, targetChannel,
+                priceMinor, priceByCurrency, stockOnHand, trackInventory, targetChannel, customFields,
             );
         } else if (shouldCreateVariant) {
             await this.createNewVariant(
                 opCtx, step, productId, sku, variantTranslation, taxCategoryId,
-                priceMinor, priceByCurrency, stockOnHand, stockByLocation, trackInventory, targetChannel,
+                priceMinor, priceByCurrency, stockOnHand, stockByLocation, trackInventory, targetChannel, customFields,
             );
         }
     }
@@ -458,6 +473,7 @@ export class ProductHandler implements LoaderHandler {
         stockOnHand: number | undefined,
         stockLevels: StockLevelInput[] | undefined,
         trackInventory: boolean | undefined,
+        customFields: Record<string, unknown> | undefined,
     ): UpdateProductVariantInput {
         const priceFields = buildVariantPrices(priceMinor, priceByCurrency);
         const stockFields = buildVariantStockFields(stockOnHand, stockLevels, trackInventory);
@@ -468,6 +484,7 @@ export class ProductHandler implements LoaderHandler {
             ...priceFields,
             ...stockFields,
             ...(taxCategoryId ? { taxCategoryId } : {}),
+            ...(customFields ? { customFields } : {}),
         };
     }
 
@@ -486,10 +503,11 @@ export class ProductHandler implements LoaderHandler {
         stockOnHand: number | undefined,
         trackInventory: boolean | undefined,
         targetChannel: string | undefined,
+        customFields: Record<string, unknown> | undefined,
     ): Promise<void> {
         const updateVariant = this.buildUpdateVariantInput(
             existingVariant.id, variantTranslation, taxCategoryId,
-            priceMinor, priceByCurrency, stockOnHand, stockLevels, trackInventory,
+            priceMinor, priceByCurrency, stockOnHand, stockLevels, trackInventory, customFields,
         );
 
         const updatedVariants = await this.productVariantService.update(opCtx, [updateVariant]);
@@ -512,6 +530,7 @@ export class ProductHandler implements LoaderHandler {
         stockOnHand: number | undefined,
         stockLevels: StockLevelInput[] | undefined,
         trackInventory: boolean | undefined,
+        customFields: Record<string, unknown> | undefined,
     ): CreateProductVariantInput {
         const priceFields = buildVariantPrices(priceMinor, priceByCurrency);
         const stockFields = buildVariantStockFields(stockOnHand, stockLevels, trackInventory);
@@ -523,6 +542,7 @@ export class ProductHandler implements LoaderHandler {
             ...priceFields,
             ...stockFields,
             ...(taxCategoryId ? { taxCategoryId } : {}),
+            ...(customFields ? { customFields } : {}),
         };
     }
 
@@ -574,11 +594,12 @@ export class ProductHandler implements LoaderHandler {
         stockByLocation: Record<string, number> | undefined,
         trackInventory: boolean | undefined,
         targetChannel: string | undefined,
+        customFields: Record<string, unknown> | undefined,
     ): Promise<void> {
         const stockLevels = await resolveStockLevels(this.stockLocationService, opCtx, stockByLocation, this.logger);
         const input = this.buildVariantInput(
             productId, sku, variantTranslation, taxCategoryId,
-            priceMinor, priceByCurrency, stockOnHand, stockLevels, trackInventory,
+            priceMinor, priceByCurrency, stockOnHand, stockLevels, trackInventory, customFields,
         );
 
         const createdVariant = await this.createVariantRecord(opCtx, input);
@@ -651,6 +672,15 @@ export class ProductHandler implements LoaderHandler {
         const { stockOnHand, stockByLocation } = extractStockFields(rec, cfg);
         const trackInventory = parseTrackInventory(cfg);
 
-        return { slug, name, description, sku, priceMinor, priceByCurrency, trackInventory, stockOnHand, stockByLocation };
+        const customFieldsKey = cfg?.customFieldsField ?? 'customFields';
+        const customFields = getObjectValue(rec, customFieldsKey);
+
+        const enabledKey = cfg?.enabledField ?? 'enabled';
+        const enabledRaw = rec[enabledKey];
+        const enabled = enabledRaw != null
+            ? (typeof enabledRaw === 'boolean' ? enabledRaw : String(enabledRaw).toLowerCase() === 'true')
+            : undefined;
+
+        return { slug, name, description, sku, priceMinor, priceByCurrency, trackInventory, stockOnHand, stockByLocation, customFields, enabled };
     }
 }

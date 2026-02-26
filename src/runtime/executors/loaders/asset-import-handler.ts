@@ -8,7 +8,7 @@ import {
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { assertUrlSafe } from '../../../utils/url-security.utils';
 import { HTTP } from '../../../../shared/constants';
 import { sleep } from '../../../utils/retry.utils';
@@ -95,7 +95,7 @@ export class AssetImportHandler implements LoaderHandler {
 
                 ok++;
             } catch (e: unknown) {
-                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'assetImport failed', rec as JsonObject);
+                if (onRecordError) await onRecordError(step.key, getErrorMessage(e) || 'assetImport failed', rec as JsonObject, getErrorStack(e));
                 fail++;
             }
         }
