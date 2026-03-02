@@ -8,31 +8,20 @@
 import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
 import { XMLBuilder } from 'fast-xml-parser';
-import { SERVICE_DEFAULTS, FEED_NAMESPACES, TRUNCATION } from '../../constants/index';
+import { SERVICE_DEFAULTS, FEED_NAMESPACES } from '../../constants/index';
 import {
     FeedConfig,
     VariantWithCustomFields,
-    ProductWithCustomFields,
     FacebookCatalogItem,
 } from './feed-types';
 import {
-    formatPrice,
     getFacebookAvailability,
-    buildProductUrl,
-    getImageUrl,
-    extractFacetValue,
-    getProductType,
-    getOptionValue,
-    truncate,
-    stripHtml,
     csvEscape,
-    toStringOrUndefined,
-    toStringOrEmpty,
-    extractCustomLabels,
 } from './feed-helpers';
-import { PRODUCT_CONDITIONS, FEED_LIMITS, FEED_DEFAULTS } from './feed-constants';
+import { PRODUCT_CONDITIONS } from './feed-constants';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
+import { buildBaseFeedItem } from './feed-item-builder';
 
 const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
@@ -75,60 +64,42 @@ export async function generateFacebookCatalogFeed(
     config: FeedConfig,
     connection: TransactionalConnection,
 ): Promise<string> {
-    const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
-
     const rows: string[][] = [FACEBOOK_CATALOG_HEADERS];
 
     for (const variant of products) {
         try {
-            const product = variant.product as ProductWithCustomFields | undefined;
-            const customFields = variant.customFields || {};
-            const productCustomFields = product?.customFields || {};
             const sku = variant.sku || variant.id.toString();
-            const price = formatPrice(variant.priceWithTax, currency);
-
-            if (price === null) {
-                feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${currency}")`);
+            const item = await buildBaseFeedItem(ctx, variant, config, connection, getFacebookAvailability, PRODUCT_CONDITIONS.NEW);
+            if (!item) {
+                feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${config.options?.currency || ''}")`);
                 continue;
             }
 
-            // Build sale price if available
-            const salePrice = customFields.salePrice
-                ? formatPrice(customFields.salePrice as number, currency) ?? ''
-                : '';
-
-            // Get product type from collections
-            const productType = await getProductType(ctx, product, connection);
-
-            // Extract custom labels using helper
-            const customLabels = extractCustomLabels(productCustomFields);
-
             const row = [
-                sku,
-                csvEscape(truncate(variant.name || product?.name || '', FEED_LIMITS.TITLE_MAX_LENGTH)),
-                csvEscape(truncate(stripHtml(product?.description || ''), TRUNCATION.FEED_DESCRIPTION_MAX_LENGTH)),
-                getFacebookAvailability(variant),
-                PRODUCT_CONDITIONS.NEW,
-                price,
-                buildProductUrl(baseUrl, variant, config.options?.utmParams),
-                getImageUrl(variant, product, baseUrl),
-                csvEscape(extractFacetValue(product, 'brand') || toStringOrEmpty(productCustomFields.brand)),
-                toStringOrEmpty(customFields.gtin) || toStringOrEmpty(customFields.ean),
-                variant.sku || '',
-                toStringOrEmpty(productCustomFields.googleProductCategory),
-                productType || '',
-                salePrice,
-                product?.id.toString() || '',
-                getOptionValue(variant, 'color') || '',
-                getOptionValue(variant, 'size') || '',
-                toStringOrEmpty(productCustomFields.gender),
-                toStringOrEmpty(productCustomFields.ageGroup),
-                customLabels.customLabel0 || '',
-                customLabels.customLabel1 || '',
-                customLabels.customLabel2 || '',
-                customLabels.customLabel3 || '',
-                customLabels.customLabel4 || '',
+                item.id,
+                csvEscape(item.title),
+                csvEscape(item.description),
+                item.availability,
+                item.condition,
+                item.price,
+                item.link,
+                item.imageUrl,
+                csvEscape(item.brand || ''),
+                item.gtin || '',
+                item.mpn || '',
+                item.googleProductCategory || '',
+                item.productType || '',
+                item.salePrice || '',
+                item.itemGroupId || '',
+                item.color || '',
+                item.size || '',
+                item.gender || '',
+                item.ageGroup || '',
+                item.customLabels.customLabel0 || '',
+                item.customLabels.customLabel1 || '',
+                item.customLabels.customLabel2 || '',
+                item.customLabels.customLabel3 || '',
+                item.customLabels.customLabel4 || '',
             ];
 
             rows.push(row);
@@ -151,102 +122,49 @@ export async function generateFacebookCatalogXMLFeed(
     connection: TransactionalConnection,
 ): Promise<string> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
 
     const items: FacebookCatalogItem[] = [];
 
     for (const variant of products) {
         try {
-            const product = variant.product as ProductWithCustomFields | undefined;
-            const customFields = variant.customFields || {};
-            const productCustomFields = product?.customFields || {};
             const sku = variant.sku || variant.id.toString();
-
-            const price = formatPrice(variant.priceWithTax, currency);
-            if (price === null) {
-                feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${currency}")`);
+            const item = await buildBaseFeedItem(ctx, variant, config, connection, getFacebookAvailability, PRODUCT_CONDITIONS.NEW);
+            if (!item) {
+                feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${config.options?.currency || ''}")`);
                 continue;
             }
 
-            const item: FacebookCatalogItem = {
-                id: sku,
-                title: truncate(variant.name || product?.name || '', FEED_LIMITS.TITLE_MAX_LENGTH),
-                description: truncate(stripHtml(product?.description || ''), TRUNCATION.FEED_DESCRIPTION_MAX_LENGTH),
+            const fbItem: FacebookCatalogItem = {
+                id: item.id,
+                title: item.title,
+                description: item.description,
                 availability: getFacebookAvailability(variant),
                 condition: PRODUCT_CONDITIONS.NEW,
-                price,
-                link: buildProductUrl(baseUrl, variant, config.options?.utmParams),
-                image_link: getImageUrl(variant, product, baseUrl),
+                price: item.price,
+                link: item.link,
+                image_link: item.imageUrl,
             };
 
-            // Brand
-            const brand = extractFacetValue(product, 'brand') || toStringOrUndefined(productCustomFields.brand);
-            if (brand) {
-                item.brand = brand;
-            }
+            if (item.brand) fbItem.brand = item.brand;
+            if (item.gtin) fbItem.gtin = item.gtin;
+            if (item.mpn) fbItem.mpn = item.mpn;
+            if (item.googleProductCategory) fbItem.google_product_category = item.googleProductCategory;
+            if (item.productType) fbItem.product_type = item.productType;
+            if (item.salePrice) fbItem.sale_price = item.salePrice;
+            if (item.itemGroupId) fbItem.item_group_id = item.itemGroupId;
+            if (item.color) fbItem.color = item.color;
+            if (item.size) fbItem.size = item.size;
+            if (item.gender) fbItem.gender = item.gender;
+            if (item.ageGroup) fbItem.age_group = item.ageGroup;
 
-            // GTIN/EAN
-            const gtin = toStringOrUndefined(customFields.gtin) || toStringOrUndefined(customFields.ean);
-            if (gtin) {
-                item.gtin = gtin;
-            }
+            // Custom labels (0-4)
+            if (item.customLabels.customLabel0) fbItem.custom_label_0 = item.customLabels.customLabel0;
+            if (item.customLabels.customLabel1) fbItem.custom_label_1 = item.customLabels.customLabel1;
+            if (item.customLabels.customLabel2) fbItem.custom_label_2 = item.customLabels.customLabel2;
+            if (item.customLabels.customLabel3) fbItem.custom_label_3 = item.customLabels.customLabel3;
+            if (item.customLabels.customLabel4) fbItem.custom_label_4 = item.customLabels.customLabel4;
 
-            // MPN
-            if (variant.sku) {
-                item.mpn = variant.sku;
-            }
-
-            // Google Product Category
-            const googleProductCategory = toStringOrUndefined(productCustomFields.googleProductCategory);
-            if (googleProductCategory) {
-                item.google_product_category = googleProductCategory;
-            }
-
-            // Product type from collections
-            const productType = await getProductType(ctx, product, connection);
-            if (productType) {
-                item.product_type = productType;
-            }
-
-            // Sale price
-            if (customFields.salePrice) {
-                const salePriceFormatted = formatPrice(customFields.salePrice as number, currency);
-                if (salePriceFormatted) {
-                    item.sale_price = salePriceFormatted;
-                }
-            }
-
-            // Item group for variants
-            if (product) {
-                item.item_group_id = product.id.toString();
-            }
-
-            // Variant options
-            const color = getOptionValue(variant, 'color');
-            if (color) item.color = color;
-
-            const size = getOptionValue(variant, 'size');
-            if (size) item.size = size;
-
-            // Gender and age group from custom fields
-            const gender = toStringOrUndefined(productCustomFields.gender);
-            if (gender) {
-                item.gender = gender;
-            }
-            const ageGroup = toStringOrUndefined(productCustomFields.ageGroup);
-            if (ageGroup) {
-                item.age_group = ageGroup;
-            }
-
-            // Custom labels (0-4) using helper
-            const customLabels = extractCustomLabels(productCustomFields);
-            if (customLabels.customLabel0) item.custom_label_0 = customLabels.customLabel0;
-            if (customLabels.customLabel1) item.custom_label_1 = customLabels.customLabel1;
-            if (customLabels.customLabel2) item.custom_label_2 = customLabels.customLabel2;
-            if (customLabels.customLabel3) item.custom_label_3 = customLabels.customLabel3;
-            if (customLabels.customLabel4) item.custom_label_4 = customLabels.customLabel4;
-
-            items.push(item);
+            items.push(fbItem);
         } catch (error) {
             feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
         }

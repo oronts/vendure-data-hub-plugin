@@ -102,7 +102,31 @@ export function applyFilter<T extends ObjectLiteral>(
     }
 }
 
-/** Entity-like object with common Vendure entity properties */
+/** Maximum recursion depth for nested object serialization to prevent circular reference loops */
+const MAX_SERIALIZATION_DEPTH = 3;
+
+/** Check if a value is a JSON-compatible primitive (string, number, boolean, or null) */
+function isJsonPrimitive(value: unknown): value is string | number | boolean | null {
+    return value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+}
+
+/**
+ * Flatten translation fields into a target record.
+ * Extracts key-value pairs from a translation object, skipping metadata fields
+ * (languageCode, id) and non-serializable values (functions, undefined).
+ */
+function flattenTranslationFields(translation: Record<string, unknown>, target: JsonObject): void {
+    for (const [transKey, transValue] of Object.entries(translation)) {
+        if (transKey === 'languageCode' || transKey === 'id') continue;
+        if (typeof transValue === 'function' || transValue === undefined) continue;
+        if (transValue instanceof Date) {
+            target[transKey] = transValue.toISOString();
+        } else if (isJsonPrimitive(transValue)) {
+            target[transKey] = transValue;
+        }
+    }
+}
+
 export interface EntityLike {
     id?: unknown;
     createdAt?: Date;
@@ -142,17 +166,7 @@ export function entityToRecord(entity: EntityLike, config: VendureQueryExtractor
         if (key === 'translations' && shouldFlatten && Array.isArray(value) && value.length > 0) {
             const translation = findTranslation(value, languageCode);
             if (translation) {
-                // Merge translation fields into root record
-                for (const [transKey, transValue] of Object.entries(translation)) {
-                    // Skip languageCode and id from translation
-                    if (transKey === 'languageCode' || transKey === 'id') continue;
-                    if (typeof transValue === 'function' || transValue === undefined) continue;
-                    if (transValue instanceof Date) {
-                        record[transKey] = transValue.toISOString();
-                    } else if (transValue === null || typeof transValue === 'string' || typeof transValue === 'number' || typeof transValue === 'boolean') {
-                        record[transKey] = transValue;
-                    }
-                }
+                flattenTranslationFields(translation, record);
             }
             continue; // Don't add raw translations array
         }
@@ -173,7 +187,7 @@ export function entityToRecord(entity: EntityLike, config: VendureQueryExtractor
             }
         }
         // Primitive values (string, number, boolean, null)
-        else if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        else if (isJsonPrimitive(value)) {
             record[key] = value;
         }
     }
@@ -234,8 +248,8 @@ function findTranslation(translations: unknown[], languageCode?: string): Record
 /**
  * Serialize object to JSON-compatible format with depth-limited recursion.
  * Flattens translations in nested entities when languageCode is provided
- * (or uses first available translation). Recurses up to 3 levels deep to
- * handle nested relations without infinite loops from circular references.
+ * (or uses first available translation). Recurses up to MAX_SERIALIZATION_DEPTH
+ * levels deep to handle nested relations without infinite loops from circular references.
  */
 export function serializeObject(
     obj: Record<string, unknown> | null,
@@ -243,7 +257,7 @@ export function serializeObject(
     depth: number = 0,
     flattenTranslations: boolean = true,
 ): JsonObject | null {
-    if (obj === null || depth > 3) return null;
+    if (obj === null || depth > MAX_SERIALIZATION_DEPTH) return null;
 
     const result: JsonObject = {};
 
@@ -252,15 +266,7 @@ export function serializeObject(
     if (flattenTranslations && Array.isArray(obj.translations) && obj.translations.length > 0) {
         const translation = findTranslation(obj.translations as unknown[], languageCode);
         if (translation) {
-            for (const [transKey, transValue] of Object.entries(translation)) {
-                if (transKey === 'languageCode' || transKey === 'id') continue;
-                if (typeof transValue === 'function' || transValue === undefined) continue;
-                if (transValue instanceof Date) {
-                    result[transKey] = transValue.toISOString();
-                } else if (transValue === null || typeof transValue === 'string' || typeof transValue === 'number' || typeof transValue === 'boolean') {
-                    result[transKey] = transValue;
-                }
-            }
+            flattenTranslationFields(translation, result);
         }
     }
 

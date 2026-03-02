@@ -4,7 +4,7 @@
  * Shared utility functions for feed generators
  */
 
-import { Collection, Product, ProductVariant, RequestContext } from '@vendure/core';
+import { Collection, Product, RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
 import { VariantWithCustomFields } from './feed-types';
 import {
@@ -56,16 +56,8 @@ export function getGoogleAvailability(variant: VariantWithCustomFields): GoogleA
     return GOOGLE_AVAILABILITY.OUT_OF_STOCK;
 }
 
-/**
- * Valid Facebook availability values for custom field override matching
- */
-const VALID_FACEBOOK_AVAILABILITY_VALUES: readonly string[] = [
-    FACEBOOK_AVAILABILITY.IN_STOCK,
-    FACEBOOK_AVAILABILITY.OUT_OF_STOCK,
-    FACEBOOK_AVAILABILITY.PREORDER,
-    FACEBOOK_AVAILABILITY.AVAILABLE_FOR_ORDER,
-    FACEBOOK_AVAILABILITY.DISCONTINUED,
-];
+/** Valid Facebook availability values, derived from the FACEBOOK_AVAILABILITY constant */
+const VALID_FACEBOOK_AVAILABILITY_VALUES: readonly string[] = Object.values(FACEBOOK_AVAILABILITY);
 
 /**
  * Get Facebook Catalog availability status.
@@ -92,7 +84,7 @@ export function getFacebookAvailability(variant: VariantWithCustomFields): Faceb
  */
 export function buildProductUrl(
     baseUrl: string,
-    variant: ProductVariant,
+    variant: VariantWithCustomFields,
     utmParams?: Record<string, string>,
 ): string {
     const product = variant.product;
@@ -115,7 +107,7 @@ export function buildProductUrl(
  * Get image URL for variant/product
  */
 export function getImageUrl(
-    variant: ProductVariant,
+    variant: VariantWithCustomFields,
     product: Product | undefined,
     baseUrl: string,
 ): string {
@@ -143,7 +135,7 @@ export function getGenericAvailability(variant: VariantWithCustomFields): Generi
  * Get additional image URLs for variant/product
  */
 export function getAdditionalImages(
-    _variant: ProductVariant,
+    _variant: VariantWithCustomFields,
     product: Product | undefined,
     baseUrl: string,
 ): string[] {
@@ -186,7 +178,10 @@ export async function getProductType(
 ): Promise<string | undefined> {
     if (!product) return undefined;
 
-    // Get product type from collections using channel-scoped repository
+    // Get product type from collections using channel-scoped repository.
+    // NOTE: 'collection_product_variants_product_variant' is the TypeORM-generated join table
+    // for the Collection.productVariants ManyToMany relation. If Vendure changes its entity
+    // relationships or table naming strategy, this join table name may need updating.
     try {
         const collections = await connection.getRepository(ctx, Collection)
             .createQueryBuilder('c')
@@ -218,7 +213,7 @@ export async function getProductType(
 /**
  * Get option value from variant
  */
-export function getOptionValue(variant: ProductVariant, groupName: string): string | undefined {
+export function getOptionValue(variant: VariantWithCustomFields, groupName: string): string | undefined {
     const option = variant.options?.find(
         o =>
             o.group?.name?.toLowerCase() === groupName.toLowerCase() ||
