@@ -8,7 +8,10 @@ import {
     ProductVariantService,
     ShippingMethodService,
     Order,
+    OrderLine,
 } from '@vendure/core';
+import type { FulfillOrderInput } from '@vendure/common/lib/generated-types';
+import type { FulfillmentState } from '@vendure/core';
 import {
     LoaderContext,
     EntityValidationResult,
@@ -28,13 +31,16 @@ import {
 import {
     OrderInput,
     ORDER_LOADER_METADATA,
+    STATE_RANK,
 } from './types';
 import {
     findCustomerByEmail,
     findVariantBySku,
     findShippingMethodByCode,
     shouldUpdateField,
+    handleOrderLines,
 } from './helpers';
+import type { OrderUpsertLoaderConfig } from '../../../shared/types';
 
 /**
  * OrderLoader - Refactored to extend BaseEntityLoader
@@ -91,7 +97,12 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
         record: OrderInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
+        // Build identifier for better error messages
+        const identifier = record.code || record.customerEmail || record.id || 'unknown';
+
         const builder = new ValidationBuilder()
+            .withIdentifier(`code="${identifier}"`)
+            .withLineNumber(ValidationBuilder.getLineNumber(record as Record<string, unknown>))
             .requireEmailForCreate('customerEmail', record.customerEmail, operation, 'Customer email is required')
             .requireArrayForCreate('lines', record.lines, operation, 'At least one order line is required');
 
@@ -159,7 +170,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
                     children: [
                         { key: 'sku', label: 'Product SKU', type: 'string', required: true },
                         { key: 'quantity', label: 'Quantity', type: 'number', required: true },
-                        { key: 'unitPrice', label: 'Unit Price', type: 'number', description: 'Override price (uses variant price if not set)' },
+                        { key: 'unitPrice', label: 'Unit Price', type: 'number', description: 'Unit price in minor units (informational — Vendure uses variant price at time of import)' },
                         { key: 'customFields', label: 'Custom Fields', type: 'object' },
                     ],
                 },
@@ -189,8 +200,15 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
                     key: 'shippingMethodCode',
                     label: 'Shipping Method',
                     type: 'string',
-                    description: 'Code of the shipping method to use',
+                    description: 'Code of the shipping method to use (auto-resolved if not provided)',
                     example: 'standard-shipping',
+                },
+                {
+                    key: 'paymentMethodCode',
+                    label: 'Payment Method',
+                    type: 'string',
+                    description: 'Code of the payment method for state transitions (auto-resolved if not provided)',
+                    example: 'standard-payment',
                 },
                 {
                     key: 'state',
@@ -210,7 +228,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
                     key: 'metadata',
                     label: 'Metadata',
                     type: 'object',
-                    description: 'Additional metadata from source system',
+                    description: 'Additional metadata from source system (stored via customFields — Vendure has no native metadata field)',
                 },
                 {
                     key: 'customFields',
@@ -232,41 +250,71 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
                 return null;
             }
 
-            const order = await this.orderService.create(ctx, customer.id);
+            // Create order without userId — migration-imported customers may not have a User account.
+            // OrderService.create(ctx, userId) calls findOneByUserId which only works for
+            // customers with a linked User entity. Instead, create the order and directly
+            // associate the customer via repository update.
+            const order = await this.orderService.create(ctx);
+            await this.connection.getRepository(ctx, Order).update(
+                { id: order.id },
+                { customer: { id: customer.id } as any }, // TypeORM accepts relation-by-ID pattern
+            );
 
-            for (const line of record.lines) {
-                const variant = await findVariantBySku(this.productVariantService, ctx, line.sku);
-                if (!variant) {
-                    this.logger.warn(`Variant with SKU "${line.sku}" not found, skipping line`);
-                    continue;
-                }
-
-                await this.orderService.addItemToOrder(ctx, order.id, variant.id, line.quantity);
+            // Preserve PIM order code (Vendure auto-generates codes; we override with source system code for idempotency)
+            if (record.code) {
+                await this.connection.getRepository(ctx, Order).update(
+                    { id: order.id },
+                    { code: record.code },
+                );
             }
+
+            // Handle order lines with mode (default: APPEND_ONLY for create to match current behavior)
+            const linesMode = (context.options.config as unknown as OrderUpsertLoaderConfig)?.linesMode ?? 'APPEND_ONLY';
+            await handleOrderLines(
+                ctx,
+                this.orderService,
+                this.productVariantService,
+                order.id,
+                record.lines,
+                linesMode,
+                this.logger,
+            );
 
             if (record.shippingAddress) {
                 await this.orderService.setShippingAddress(ctx, order.id, record.shippingAddress);
             }
-            if (record.billingAddress) {
-                await this.orderService.setBillingAddress(ctx, order.id, record.billingAddress);
+            // Billing address defaults to shipping address if not provided
+            const billingAddr = record.billingAddress ?? record.shippingAddress;
+            if (billingAddr) {
+                await this.orderService.setBillingAddress(ctx, order.id, billingAddr);
             }
 
-            if (record.shippingMethodCode) {
-                const shippingMethod = await findShippingMethodByCode(ctx, this.shippingMethodService, record.shippingMethodCode);
-                if (shippingMethod) {
-                    const eligibleMethods = await this.orderService.getEligibleShippingMethods(ctx, order.id);
-                    const method = eligibleMethods.find(m => m.id === shippingMethod.id);
-                    if (method) {
-                        await this.orderService.setShippingMethod(ctx, order.id, [shippingMethod.id]);
-                    }
-                }
-            }
+            // Set shipping method (explicit or auto-resolve first eligible — required for state transitions)
+            await this.ensureShippingMethod(ctx, order.id, record.shippingMethodCode);
 
             if (record.customFields) {
                 await this.orderService.updateCustomFields(ctx, order.id, record.customFields);
             }
 
-            this.logger.log(`Created order for ${record.customerEmail} (ID: ${order.id})`);
+            // Walk the order state machine to target state (migration flow)
+            if (record.state) {
+                await this.walkOrderStateMachine(ctx, order.id, record.state, record);
+            }
+
+            // Backdate order placement date (direct repository update — OrderService has no setter)
+            if (record.orderPlacedAt) {
+                const placedAt = record.orderPlacedAt instanceof Date
+                    ? record.orderPlacedAt
+                    : new Date(String(record.orderPlacedAt));
+                if (!isNaN(placedAt.getTime())) {
+                    await this.connection.getRepository(ctx, Order).update(
+                        { id: order.id },
+                        { orderPlacedAt: placedAt },
+                    );
+                }
+            }
+
+            this.logger.log(`Created order ${record.code ?? order.id} for ${record.customerEmail} (ID: ${order.id})`);
             return order.id;
         } catch (error) {
             this.logger.error(`Failed to create order: ${error}`);
@@ -276,6 +324,20 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
 
     protected async updateEntity(context: LoaderContext, orderId: ID, record: OrderInput): Promise<void> {
         const { ctx, options } = context;
+
+        // Handle order lines with mode (default: REPLACE_ALL for backwards compatibility)
+        if (record.lines && record.lines.length > 0 && shouldUpdateField('lines', options.updateOnlyFields)) {
+            const linesMode = (options.config as unknown as OrderUpsertLoaderConfig)?.linesMode ?? 'REPLACE_ALL';
+            await handleOrderLines(
+                ctx,
+                this.orderService,
+                this.productVariantService,
+                orderId,
+                record.lines,
+                linesMode,
+                this.logger,
+            );
+        }
 
         if (record.shippingAddress && shouldUpdateField('shippingAddress', options.updateOnlyFields)) {
             await this.orderService.setShippingAddress(ctx, orderId, record.shippingAddress);
@@ -288,6 +350,239 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
             await this.orderService.updateCustomFields(ctx, orderId, record.customFields);
         }
 
+        // Walk the state machine for updates too (handles intermediate transitions)
+        // Ensure shipping method is set before state walking (required before ArrangingPayment)
+        if (record.state && shouldUpdateField('state', options.updateOnlyFields)) {
+            await this.ensureShippingMethod(ctx, orderId, record.shippingMethodCode);
+            await this.walkOrderStateMachine(ctx, orderId, record.state, record);
+        }
+
+        if (record.orderPlacedAt && shouldUpdateField('orderPlacedAt', options.updateOnlyFields)) {
+            const placedAt = record.orderPlacedAt instanceof Date
+                ? record.orderPlacedAt
+                : new Date(String(record.orderPlacedAt));
+            if (!isNaN(placedAt.getTime())) {
+                await this.connection.getRepository(ctx, Order).update(
+                    { id: orderId },
+                    { orderPlacedAt: placedAt },
+                );
+            }
+        }
+
         this.logger.debug(`Updated order (ID: ${orderId})`);
+    }
+
+    /**
+     * Ensure a shipping method is set on the order. Required before transitioning
+     * to ArrangingPayment. If no explicit code is provided, auto-resolves
+     * the first eligible shipping method.
+     */
+    private async ensureShippingMethod(ctx: RequestContext, orderId: ID, shippingMethodCode?: string): Promise<void> {
+        if (shippingMethodCode) {
+            const shippingMethod = await findShippingMethodByCode(ctx, this.shippingMethodService, shippingMethodCode);
+            if (shippingMethod) {
+                const eligibleMethods = await this.orderService.getEligibleShippingMethods(ctx, orderId);
+                const method = eligibleMethods.find(m => m.id === shippingMethod.id);
+                if (method) {
+                    await this.orderService.setShippingMethod(ctx, orderId, [shippingMethod.id]);
+                    return;
+                }
+                this.logger.warn(`Shipping method "${shippingMethodCode}" not eligible for order ${orderId}, falling back to auto-resolve`);
+            } else {
+                this.logger.warn(`Shipping method "${shippingMethodCode}" not found, falling back to auto-resolve`);
+            }
+        }
+
+        // Auto-resolve: use first eligible shipping method
+        const eligible = await this.orderService.getEligibleShippingMethods(ctx, orderId);
+        if (eligible.length > 0) {
+            await this.orderService.setShippingMethod(ctx, orderId, [eligible[0].id]);
+        } else {
+            this.logger.warn(`No eligible shipping methods found for order ${orderId}`);
+        }
+    }
+
+    /**
+     * Walk the order state machine from current state to target state.
+     * Handles Vendure 3.x states in ranked order:
+     *   Created/Draft(0) → AddingItems(1) → ArrangingPayment(2)
+     *   → PaymentAuthorized(3) → PaymentSettled(4) → PartiallyShipped(5) → Shipped(6)
+     *   → PartiallyDelivered(7) → Delivered(8)
+     *
+     * Note: Vendure 3.x removed ArrangingShipping. Shipping method must be set
+     * while in AddingItems state (via ensureShippingMethod) before transitioning
+     * to ArrangingPayment.
+     *
+     * Special requirements per transition:
+     * - AddingItems → ArrangingPayment: shipping method must be set first
+     * - ArrangingPayment → PaymentSettled: requires addPaymentToOrder() (not transitionToState)
+     * - PartiallyShipped/Shipped/PartiallyDelivered/Delivered: simple transitionToState()
+     */
+    private async walkOrderStateMachine(
+        ctx: RequestContext,
+        orderId: ID,
+        targetState: string,
+        record: OrderInput,
+    ): Promise<void> {
+        const targetRank = STATE_RANK[targetState];
+        if (targetRank === undefined) {
+            // Unknown/custom state — try direct transition
+            await this.tryTransition(ctx, orderId, targetState);
+            return;
+        }
+
+        let order = await this.orderService.findOne(ctx, orderId);
+        if (!order) return;
+
+        const rank = () => STATE_RANK[order!.state] ?? -1;
+        const refresh = async () => { order = await this.orderService.findOne(ctx, orderId); };
+
+        // Step 1: → ArrangingPayment (shipping method must be set before this transition)
+        if (targetRank >= 2 && rank() < 2) {
+            if (!await this.tryTransition(ctx, orderId, 'ArrangingPayment')) return;
+            await refresh();
+        }
+
+        // Step 2: → PaymentAuthorized/PaymentSettled (via addPaymentToOrder, not transitionToState)
+        if (targetRank >= 3 && rank() < 3) {
+            await this.addPaymentForMigration(ctx, orderId, record.paymentMethodCode);
+            await refresh();
+        }
+
+        // Step 2b: → PaymentSettled (if payment was authorized but not yet settled).
+        // With dummyPaymentHandler (automaticSettle: true) rank may already be 4 (PaymentSettled).
+        // With non-auto-settling handlers rank will be 3 (PaymentAuthorized) and needs explicit transition.
+        if (targetRank >= 4 && rank() < 4) {
+            if (!await this.tryTransition(ctx, orderId, 'PaymentSettled')) return;
+            await refresh();
+        }
+
+        // Step 3: Create fulfillment and transition to shipping/delivery states.
+        // Vendure requires fulfillments before Shipped/Delivered transitions.
+        // The fulfillment auto-transitions the order to Shipped (or Delivered).
+        if (targetRank >= 5 && rank() < 5) {
+            const fulfillTarget = targetRank >= 8 ? 'Delivered' as const : 'Shipped' as const;
+            await this.addFulfillmentForMigration(ctx, orderId, fulfillTarget);
+            await refresh();
+        }
+    }
+
+    /**
+     * Attempt a single state transition, logging warnings on failure.
+     */
+    private async tryTransition(ctx: RequestContext, orderId: ID, state: string): Promise<boolean> {
+        try {
+            const result = await this.orderService.transitionToState(
+                ctx, orderId, state as Parameters<typeof this.orderService.transitionToState>[2],
+            );
+            if (result && typeof result === 'object' && 'errorCode' in result) {
+                this.logger.warn(
+                    `Cannot transition order ${orderId} to "${state}": ${(result as { message?: string; errorCode?: string }).message ?? (result as { errorCode?: string }).errorCode}`,
+                );
+                return false;
+            }
+            return true;
+        } catch (err) {
+            this.logger.warn(`Failed to transition order ${orderId} to "${state}": ${err}`);
+            return false;
+        }
+    }
+
+    /**
+     * Add a payment to the order for migration purposes. Uses the specified payment
+     * method code, or auto-resolves the first eligible payment method.
+     * With dummyPaymentHandler (automaticSettle: true), this auto-transitions to PaymentSettled.
+     */
+    private async addPaymentForMigration(ctx: RequestContext, orderId: ID, paymentMethodCode?: string): Promise<void> {
+        let methodCode = paymentMethodCode;
+
+        if (!methodCode) {
+            const eligible = await this.orderService.getEligiblePaymentMethods(ctx, orderId);
+            if (eligible.length > 0) {
+                methodCode = eligible[0].code;
+            }
+        }
+
+        if (!methodCode) {
+            this.logger.warn(`No payment method available for order ${orderId} migration`);
+            return;
+        }
+
+        const result = await this.orderService.addPaymentToOrder(ctx, orderId, {
+            method: methodCode,
+            metadata: { migrationImport: true },
+        });
+
+        if (result && typeof result === 'object' && 'errorCode' in result) {
+            this.logger.warn(
+                `Failed to add payment to order ${orderId}: ${(result as { message?: string; errorCode?: string }).message ?? (result as { errorCode?: string }).errorCode}`,
+            );
+        }
+    }
+
+    /**
+     * Create a fulfillment for all order lines and transition it to Shipped.
+     * Required before the order can transition to Shipped/Delivered states.
+     */
+    private async addFulfillmentForMigration(
+        ctx: RequestContext,
+        orderId: ID,
+        targetFulfillmentState: 'Shipped' | 'Delivered' = 'Shipped',
+    ): Promise<void> {
+        const orderLines = await this.connection.getRepository(ctx, OrderLine).find({
+            where: { order: { id: orderId } },
+        });
+
+        if (orderLines.length === 0) {
+            this.logger.warn(`No order lines found for order ${orderId} — cannot create fulfillment`);
+            return;
+        }
+
+        const input: FulfillOrderInput = {
+            lines: orderLines.map(line => ({
+                orderLineId: line.id,
+                quantity: line.quantity,
+            })),
+            handler: {
+                code: 'manual-fulfillment',
+                arguments: [
+                    { name: 'method', value: 'Migration' },
+                    { name: 'trackingCode', value: '' },
+                ],
+            },
+        };
+
+        const fulfillment = await this.orderService.createFulfillment(ctx, input);
+        if (fulfillment && typeof fulfillment === 'object' && 'errorCode' in fulfillment) {
+            this.logger.warn(
+                `Failed to create fulfillment for order ${orderId}: ${(fulfillment as { message?: string; errorCode?: string }).message ?? (fulfillment as { errorCode?: string }).errorCode}`,
+            );
+            return;
+        }
+
+        const fulfillmentId = (fulfillment as { id: ID }).id;
+
+        // Transition fulfillment to Shipped
+        const shipped = await this.orderService.transitionFulfillmentToState(
+            ctx, fulfillmentId, 'Shipped' as FulfillmentState,
+        );
+        if (shipped && typeof shipped === 'object' && 'errorCode' in shipped) {
+            this.logger.warn(
+                `Failed to ship fulfillment for order ${orderId}: ${(shipped as { message?: string; errorCode?: string }).message ?? (shipped as { errorCode?: string }).errorCode}`,
+            );
+            return;
+        }
+
+        // If target is Delivered, also transition fulfillment to Delivered
+        if (targetFulfillmentState === 'Delivered') {
+            const delivered = await this.orderService.transitionFulfillmentToState(
+                ctx, fulfillmentId, 'Delivered' as FulfillmentState,
+            );
+            if (delivered && typeof delivered === 'object' && 'errorCode' in delivered) {
+                this.logger.warn(
+                    `Failed to deliver fulfillment for order ${orderId}: ${(delivered as { message?: string; errorCode?: string }).message ?? (delivered as { errorCode?: string }).errorCode}`,
+                );
+            }
+        }
     }
 }

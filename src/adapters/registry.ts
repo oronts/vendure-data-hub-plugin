@@ -9,13 +9,14 @@
  */
 import { AdapterDefinition, AdapterType } from '../sdk/types';
 import { DataHubLogger } from '../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../constants/core';
 import { CustomTransformInfo } from '../transforms/types';
 import { ScriptFunction } from '../../shared/types';
 
 const MAX_ADAPTERS = 200;
 const adapterRegistry = new Map<string, AdapterDefinition>();
 const adaptersByType = new Map<AdapterType, Set<string>>();
-const logger = new DataHubLogger('AdapterRegistry');
+const logger = new DataHubLogger(LOGGER_CONTEXTS.ADAPTER_REGISTRY);
 
 /** Register extractor adapter (pulls data from REST, GraphQL, CSV, etc.) */
 export function registerExtractor(adapter: AdapterDefinition): void {

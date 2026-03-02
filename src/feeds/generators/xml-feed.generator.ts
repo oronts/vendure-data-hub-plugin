@@ -4,7 +4,7 @@
  * Generates generic XML product feeds for custom integrations
  */
 
-import { RequestContext, Logger } from '@vendure/core';
+import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
 import { XMLBuilder } from 'fast-xml-parser';
 import { SERVICE_DEFAULTS, XML_NAMESPACES, TRANSFORM_LIMITS } from '../../constants/index';
@@ -22,8 +22,10 @@ import {
     stripHtml,
 } from './feed-helpers';
 import { FEED_DEFAULTS, GenericAvailabilityStatus } from './feed-constants';
+import { LOGGER_CONTEXTS } from '../../constants/core';
+import { DataHubLoggerFactory } from '../../services/logger';
 
-const LOG_CONTEXT = 'XMLFeedGenerator';
+const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
 /**
  * XML feed item structure
@@ -175,7 +177,7 @@ export async function generateXMLFeed(
             const item = await transformVariantToXMLItem(ctx, variant, config, connection, opts);
             items.push(item);
         } catch (error) {
-            Logger.warn(`Failed to process variant ${variant.id}: ${error}`, LOG_CONTEXT);
+            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
         }
     }
 
@@ -260,7 +262,7 @@ export async function generateAtomFeed(
                     'stock:availability': availability,
                 };
             } catch (error) {
-                Logger.warn(`Failed to process variant ${variant.id}: ${error}`, LOG_CONTEXT);
+                feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
                 return null;
             }
         }),
@@ -320,7 +322,7 @@ export async function generateRSSFeed(
                     },
                 };
             } catch (error) {
-                Logger.warn(`Failed to process variant ${variant.id}: ${error}`, LOG_CONTEXT);
+                feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
                 return null;
             }
         }),

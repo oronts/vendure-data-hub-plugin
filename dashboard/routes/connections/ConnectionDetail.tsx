@@ -24,7 +24,13 @@ import {
 
 export const connectionDetail: DashboardRouteDefinition = {
     path: `${ROUTES.CONNECTIONS}/$id`,
-    loader: detailPageRouteLoader({ queryDocument: connectionDetailDocument, breadcrumb: (isNew, entity) => ['Data Hub', 'Connections', isNew ? 'New connection' : (entity?.code ?? '')] }),
+    loader: detailPageRouteLoader({
+        queryDocument: connectionDetailDocument,
+        breadcrumb: (isNew, entity) => [
+            { path: ROUTES.CONNECTIONS, label: 'Connections' },
+            isNew ? 'New connection' : (entity?.code ?? ''),
+        ],
+    }),
     component: route => (
         <PermissionGuard requires={[DATAHUB_PERMISSIONS.MANAGE_CONNECTIONS]}>
             <ConnectionDetailPage route={route} />

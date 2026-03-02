@@ -249,6 +249,90 @@ export const GROUPS_MODE_OPTIONS = [
     { value: 'set', label: 'Set (replace)' },
 ];
 
+// ---------------------------------------------------------------------------
+// Nested Entity Mode Options
+// ---------------------------------------------------------------------------
+
+/** Addresses mode options for customer loader */
+export const ADDRESSES_MODE_OPTIONS = [
+    { value: 'UPSERT_BY_MATCH', label: 'Upsert by match', description: 'Smart match by street+city+postal (prevents duplicates - recommended)' },
+    { value: 'REPLACE_ALL', label: 'Replace all', description: 'Delete all existing addresses, create from record' },
+    { value: 'APPEND_ONLY', label: 'Append only', description: 'Always create new addresses (may cause duplicates)' },
+    { value: 'UPDATE_BY_ID', label: 'Update by ID', description: 'Update addresses by Vendure ID (requires id field in record)' },
+    { value: 'SKIP', label: 'Skip', description: 'Don\'t modify addresses' },
+];
+
+/** Facet values mode options for product/variant loaders */
+export const FACET_VALUES_MODE_OPTIONS = [
+    { value: 'REPLACE_ALL', label: 'Replace all', description: 'Replace all facet values with those in record' },
+    { value: 'MERGE', label: 'Merge', description: 'Add new facet values, keep existing' },
+    { value: 'REMOVE', label: 'Remove', description: 'Remove specified facet values' },
+    { value: 'SKIP', label: 'Skip', description: 'Don\'t modify facet values' },
+];
+
+/** Order lines mode options for order loader */
+export const LINES_MODE_OPTIONS = [
+    { value: 'REPLACE_ALL', label: 'Replace all', description: 'Remove all lines, add new' },
+    { value: 'MERGE_BY_SKU', label: 'Merge by SKU', description: 'Update quantity for existing SKU, add new SKUs' },
+    { value: 'APPEND_ONLY', label: 'Append only', description: 'Always add new lines' },
+    { value: 'UPDATE_BY_ID', label: 'Update by ID', description: 'Update lines by Vendure line ID (requires id field in record)' },
+    { value: 'SKIP', label: 'Skip', description: 'Don\'t modify order lines' },
+];
+
+/** Assets mode options for product/variant/collection loaders */
+export const ASSETS_MODE_OPTIONS = [
+    { value: 'UPSERT_BY_URL', label: 'Upsert by URL', description: 'Smart match by source URL (prevents duplicates - recommended)' },
+    { value: 'REPLACE_ALL', label: 'Replace all', description: 'Delete all existing assets, create from record' },
+    { value: 'APPEND_ONLY', label: 'Append only', description: 'Always create new assets (may cause duplicates)' },
+    { value: 'SKIP', label: 'Skip', description: 'Don\'t modify assets' },
+];
+
+/** Featured asset mode options for product/variant loaders */
+export const FEATURED_ASSET_MODE_OPTIONS = [
+    { value: 'UPSERT_BY_URL', label: 'Upsert by URL', description: 'Set or update featured asset by source URL' },
+    { value: 'REPLACE', label: 'Replace', description: 'Replace featured asset with the one in record' },
+    { value: 'SKIP', label: 'Skip', description: 'Don\'t modify featured asset' },
+];
+
+// ---------------------------------------------------------------------------
+// Localization Schema Fields (shared across sink, feed, and export adapters)
+// ---------------------------------------------------------------------------
+
+/** Localization schema fields for multi-language/channel support in sinks, feeds, and exports */
+export const LOCALIZATION_SCHEMA_FIELDS = [
+    { key: 'languageCode', label: 'Language code', type: 'string' as const, description: 'ISO language code (e.g., en, de). Flattens translations for this language.' },
+    { key: 'translationsField', label: 'Translations field', type: 'string' as const, description: 'Record field containing translations array (default: translations)' },
+    { key: 'channelCode', label: 'Channel code', type: 'string' as const, description: 'Filter records by Vendure channel code' },
+];
+
+/** Variant options mode options for variant loader */
+export const OPTIONS_MODE_OPTIONS = [
+    { value: 'REPLACE_ALL', label: 'Replace all', description: 'Replace all options with those in record' },
+    { value: 'MERGE', label: 'Merge', description: 'Add new options, keep existing' },
+    { value: 'SKIP', label: 'Skip', description: 'Don\'t modify options' },
+];
+
+/** Collection filters mode options for collection loader */
+export const FILTERS_MODE_OPTIONS = [
+    { value: 'REPLACE_ALL', label: 'Replace all', description: 'Replace all filters with those in record' },
+    { value: 'MERGE', label: 'Merge', description: 'Add new filters, keep existing' },
+    { value: 'SKIP', label: 'Skip', description: 'Don\'t modify filters' },
+];
+
+/** Promotion conditions mode options for promotion loader */
+export const CONDITIONS_MODE_OPTIONS = [
+    { value: 'REPLACE_ALL', label: 'Replace all', description: 'Replace all conditions with those in record' },
+    { value: 'MERGE', label: 'Merge', description: 'Add new conditions, keep existing' },
+    { value: 'SKIP', label: 'Skip', description: 'Don\'t modify conditions' },
+];
+
+/** Promotion actions mode options for promotion loader */
+export const ACTIONS_MODE_OPTIONS = [
+    { value: 'REPLACE_ALL', label: 'Replace all', description: 'Replace all actions with those in record' },
+    { value: 'MERGE', label: 'Merge', description: 'Add new actions, keep existing' },
+    { value: 'SKIP', label: 'Skip', description: 'Don\'t modify actions' },
+];
+
 /** Entity type options for asset attachment (Product or Collection) */
 export const ASSET_ENTITY_TYPE_OPTIONS = [
     { value: VendureEntityType.PRODUCT, label: 'Product' },
@@ -496,7 +580,7 @@ export const TRIGGER_TYPE_SCHEMAS: TypedOptionValue[] = [
         description: 'Trigger on Vendure events',
         icon: 'zap',
         fields: [
-            { key: 'eventType', label: 'Event Type', type: 'select', required: true, optionsRef: 'vendureEvents', placeholder: 'Select event...' },
+            { key: 'event', label: 'Event Type', type: 'select', required: true, optionsRef: 'vendureEvents', placeholder: 'Select event...' },
         ],
         wizardScopes: ['export'],
     },

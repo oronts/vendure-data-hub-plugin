@@ -101,7 +101,12 @@ export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
         record: AssetInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
+        // Build identifier for better error messages
+        const identifier = record.sourceUrl || record.name || record.id || 'unknown';
+
         const builder = new ValidationBuilder()
+            .withIdentifier(`source="${identifier}"`)
+            .withLineNumber(ValidationBuilder.getLineNumber(record as Record<string, unknown>))
             .requireStringForCreate('sourceUrl', record.sourceUrl, operation, 'Source URL is required');
 
         // URL format validation (only if sourceUrl passed the required check)
@@ -112,7 +117,7 @@ export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
             try {
                 new URL(record.sourceUrl);
             } catch {
-                builder.addError('sourceUrl', 'Invalid URL format', 'INVALID_FORMAT');
+                builder.addFormatError('sourceUrl', 'valid URL (e.g., https://example.com/image.jpg)', record.sourceUrl);
             }
         }
 

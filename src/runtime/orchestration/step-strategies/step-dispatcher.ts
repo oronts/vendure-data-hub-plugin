@@ -5,7 +5,6 @@
  * Converts between StepStrategyResult and StepExecutionResult for graph execution.
  */
 
-import { Logger } from '@nestjs/common';
 import { RequestContext, ID } from '@vendure/core';
 import { PipelineDefinition, PipelineStepDefinition, StepType } from '../../../types/index';
 import { StepType as StepTypeEnum } from '../../../constants/enums';
@@ -43,8 +42,10 @@ import { ExportStepStrategy } from './export-step.strategy';
 import { FeedStepStrategy } from './feed-step.strategy';
 import { SinkStepStrategy } from './sink-step.strategy';
 import { GateStepStrategy } from './gate-step.strategy';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { DataHubLoggerFactory } from '../../../services/logger';
 
-const logger = new Logger('DataHub:StepDispatcher');
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.STEP_DISPATCHER);
 
 /**
  * Dependencies required by the step dispatcher
@@ -143,7 +144,7 @@ export class StepDispatcher {
                 return this.executeRoute(context);
 
             case StepType.LOAD:
-                return this.executeWithStrategy(this.loadStrategy, context, true);
+                return this.executeWithStrategy(this.loadStrategy, context);
 
             case StepType.EXPORT:
                 return this.executeWithStrategy(this.exportStrategy, context, true);

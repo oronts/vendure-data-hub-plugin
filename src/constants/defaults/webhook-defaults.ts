@@ -34,4 +34,6 @@ export const WEBHOOK = {
     REQUIRED_JWT_ALGORITHM: 'HS256',
     /** Allowed HMAC signing algorithms */
     ALLOWED_HMAC_ALGORITHMS: ['sha256', 'sha512'] as readonly string[],
+    /** Maximum webhook payload size in bytes (10 MB) */
+    MAX_PAYLOAD_SIZE: 10 * 1024 * 1024,
 } as const;

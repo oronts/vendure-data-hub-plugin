@@ -88,6 +88,27 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
             }
         }
 
+        // Lookup by name — query via translations join for accurate matching
+        if (record.name && lookupFields.includes('name')) {
+            const qb = this.connection
+                .getRepository(ctx, FacetValue)
+                .createQueryBuilder('fv')
+                .leftJoinAndSelect('fv.translations', 't')
+                .leftJoinAndSelect('fv.facet', 'facet')
+                .where('t.name = :name', { name: record.name });
+
+            // Scope to parent facet if available for precision
+            const facetId = record.facetId || await resolveFacetIdFromCode(ctx, this.facetService, record.facetCode);
+            if (facetId) {
+                qb.andWhere('fv.facet.id = :facetId', { facetId });
+            }
+
+            const match = await qb.getOne();
+            if (match) {
+                return { id: match.id, entity: match };
+            }
+        }
+
         // Fallback: by ID (delegated to lookup helper)
         return this.lookupHelper.findExisting(ctx, lookupFields, record);
     }

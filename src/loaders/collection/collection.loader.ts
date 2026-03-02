@@ -36,7 +36,10 @@ import {
     buildConfigurableOperation,
     slugify,
     shouldUpdateField,
+    handleCollectionFilters,
 } from './helpers';
+import { handleAssets } from '../shared-helpers';
+import type { CollectionUpsertLoaderConfig } from '../../../shared/types';
 
 /**
  * CollectionLoader - Refactored to extend BaseEntityLoader
@@ -239,6 +242,20 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
             }
         }
 
+        // Handle assets with mode (default: UPSERT_BY_URL for create)
+        if (record.assetUrls && record.assetUrls.length > 0) {
+            const assetsMode = (context.options.config as unknown as CollectionUpsertLoaderConfig)?.assetsMode ?? 'UPSERT_BY_URL';
+            await handleAssets(
+                ctx,
+                this.assetService,
+                this.collectionService,
+                collection.id,
+                record.assetUrls,
+                assetsMode,
+                this.logger,
+            );
+        }
+
         this.logger.log(`Created collection ${record.name} (ID: ${collection.id})`);
         return collection.id;
     }
@@ -270,8 +287,24 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
             updateInput.customFields = record.customFields;
         }
 
+        // Handle filters with mode
         if (record.filters && shouldUpdateField('filters', options.updateOnlyFields)) {
-            updateInput.filters = record.filters.map(f => buildConfigurableOperation(f));
+            const filtersMode = (options.config as unknown as CollectionUpsertLoaderConfig)?.filtersMode ?? 'REPLACE_ALL';
+            if (filtersMode === 'SKIP') {
+                // Don't update filters
+            } else {
+                const filters = await handleCollectionFilters(
+                    ctx,
+                    this.collectionService,
+                    collectionId,
+                    record.filters,
+                    filtersMode,
+                    this.logger,
+                );
+                if (filters.length > 0 || filtersMode === 'REPLACE_ALL') {
+                    updateInput.filters = filters;
+                }
+            }
         }
 
         await this.collectionService.update(ctx, updateInput as Parameters<typeof this.collectionService.update>[1]);
@@ -285,6 +318,20 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
                     index: record.position ?? 0,
                 });
             }
+        }
+
+        // Handle assets with mode (default: UPSERT_BY_URL for update)
+        if (record.assetUrls && record.assetUrls.length > 0 && shouldUpdateField('assetUrls', options.updateOnlyFields)) {
+            const assetsMode = (options.config as unknown as CollectionUpsertLoaderConfig)?.assetsMode ?? 'UPSERT_BY_URL';
+            await handleAssets(
+                ctx,
+                this.assetService,
+                this.collectionService,
+                collectionId,
+                record.assetUrls,
+                assetsMode,
+                this.logger,
+            );
         }
 
         this.logger.debug(`Updated collection ${record.name} (ID: ${collectionId})`);

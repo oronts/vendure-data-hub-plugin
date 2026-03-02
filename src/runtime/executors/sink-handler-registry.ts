@@ -9,15 +9,16 @@
  * BUILTIN_ADAPTERS, SINK_CODE, and the SinkExecutor
  * all derive from this registry automatically.
  */
+import * as crypto from 'crypto';
 import { RequestContext } from '@vendure/core';
 import { AdapterDefinition } from '../../sdk/types';
 import { PipelineStepDefinition, JsonObject } from '../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../executor-types';
 import { getPath, chunk } from '../utils';
 import { HTTP, SINK, TRUNCATION, CIRCUIT_BREAKER } from '../../constants/defaults';
-import { TIME, SERVICE_DEFAULTS, SERVICE_URL_TEMPLATES, CONTENT_TYPES, HTTP_HEADERS, AUTH_SCHEMES } from '../../constants';
+import { TIME, SERVICE_DEFAULTS, SERVICE_URL_TEMPLATES, CONTENT_TYPES, HTTP_HEADERS, AUTH_SCHEMES, WEBHOOK } from '../../constants';
 import { HttpMethod, QueueType, CircuitState } from '../../constants/enums';
-import { HTTP_METHOD_EXPORT_OPTIONS, PROTOCOL_OPTIONS, QUEUE_TYPE_OPTIONS } from '../../constants/adapter-schema-options';
+import { HTTP_METHOD_EXPORT_OPTIONS, PROTOCOL_OPTIONS, QUEUE_TYPE_OPTIONS, LOCALIZATION_SCHEMA_FIELDS } from '../../constants/adapter-schema-options';
 
 /**
  * Sink adapter codes - file-internal convenience for typed circuit breaker keys.
@@ -56,6 +57,9 @@ interface BaseSinkCfg {
     excludeFields?: string[];
     host?: string;
     hosts?: string[];
+    node?: string;
+    port?: number;
+    protocol?: string;
     apiKeySecretCode?: string;
     basicSecretCode?: string;
     applicationId?: string;
@@ -88,6 +92,8 @@ interface WebhookSinkCfg extends BaseSinkCfg {
     headers?: Record<string, string>;
     bearerTokenSecretCode?: string;
     apiKeyHeader?: string;
+    hmacSecretCode?: string;
+    signatureHeaderName?: string;
     batchSize?: number;
     timeoutMs?: number;
     retries?: number;
@@ -215,6 +221,38 @@ async function handleMeiliSearch(hCtx: SinkHandlerContext, services: SinkService
 
     await assertUrlSafe(host);
 
+    // Configure index settings if provided
+    // Fields can be JSON arrays or comma-separated strings
+    const parseFieldList = (val: unknown): string[] | undefined => {
+        if (Array.isArray(val)) return val.map(String);
+        if (typeof val === 'string' && val.trim()) return val.split(',').map(s => s.trim()).filter(Boolean);
+        return undefined;
+    };
+    const searchableFields = parseFieldList((hCtx.cfg as Record<string, unknown>).searchableFields);
+    const filterableFields = parseFieldList((hCtx.cfg as Record<string, unknown>).filterableFields);
+    const sortableFields = parseFieldList((hCtx.cfg as Record<string, unknown>).sortableFields);
+
+    if (searchableFields || filterableFields || sortableFields) {
+        const settingsHeaders: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON };
+        if (apiKey) settingsHeaders[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${apiKey}`;
+        try {
+            const settingsResponse = await fetch(`${host}/indexes/${indexName}/settings`, {
+                method: HttpMethod.PATCH,
+                headers: settingsHeaders,
+                body: JSON.stringify({
+                    ...(searchableFields ? { searchableAttributes: searchableFields } : {}),
+                    ...(filterableFields ? { filterableAttributes: filterableFields } : {}),
+                    ...(sortableFields ? { sortableAttributes: sortableFields } : {}),
+                }),
+            });
+            if (!settingsResponse.ok) {
+                services.logger.warn(`MeiliSearch settings update failed: ${settingsResponse.status}`, { stepKey: hCtx.step.key, indexName });
+            }
+        } catch (e: unknown) {
+            services.logger.warn(`Failed to update MeiliSearch index settings`, { error: getErrorMessage(e), stepKey: hCtx.step.key });
+        }
+    }
+
     return executeBatchedSearchSink(
         services, input, bulkSize, circuitKey, 'MeiliSearch', host, step.key, onRecordError,
         async (batch) => {
@@ -234,8 +272,8 @@ async function handleMeiliSearch(hCtx: SinkHandlerContext, services: SinkService
 async function handleElasticsearch(hCtx: SinkHandlerContext, services: SinkServices): Promise<ExecutionResult> {
     const { ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError } = hCtx;
     const adapterCode = getAdapterCode(step) || undefined;
-    const hosts = cfg.hosts ?? [cfg.host ?? SERVICE_DEFAULTS.ELASTICSEARCH_URL];
-    const host = hosts[0];
+    const nodes = cfg.node ? [cfg.node] : (cfg.hosts ?? (cfg.host ? [cfg.host] : [SERVICE_DEFAULTS.ELASTICSEARCH_URL]));
+    const host = nodes[0];
     const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
     const basicAuth = await resolveSecret(services, ctx, cfg.basicSecretCode);
     const effectiveAdapterCode = adapterCode ?? SINK_ADAPTER_CODES.ELASTICSEARCH;
@@ -304,7 +342,11 @@ async function handleAlgolia(hCtx: SinkHandlerContext, services: SinkServices): 
 
 async function handleTypesense(hCtx: SinkHandlerContext, services: SinkServices): Promise<ExecutionResult> {
     const { ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError } = hCtx;
-    const host = cfg.host ?? SERVICE_DEFAULTS.TYPESENSE_URL;
+    // Construct URL from protocol/host/port parts (schema defines separate fields)
+    const protocol = cfg.protocol ?? 'http';
+    const rawHost = cfg.host ?? 'localhost';
+    const port = cfg.port ?? 8108;
+    const host = rawHost.includes('://') ? rawHost : `${protocol}://${rawHost}:${port}`;
     const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
     const collectionName = cfg.collectionName ?? indexName;
     const circuitKey = getCircuitKey(SINK_ADAPTER_CODES.TYPESENSE, host);
@@ -447,6 +489,11 @@ async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): 
         }
     }
 
+    // Resolve HMAC signing secret (if configured)
+    const hmacSecretCode = cfg.hmacSecretCode;
+    const signatureHeaderName = cfg.signatureHeaderName ?? WEBHOOK.SIGNATURE_HEADER;
+    const hmacSecret = hmacSecretCode ? await resolveSecret(services, ctx, hmacSecretCode) : undefined;
+
     const batches = chunk(input, batchSize);
     for (const batch of batches) {
         const circuitResult = checkCircuit(services, circuitKey);
@@ -466,10 +513,19 @@ async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): 
             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
             try {
+                const body = JSON.stringify(batch);
+                const batchHeaders = { ...headers };
+
+                // Compute HMAC-SHA256 signature for the request body
+                if (hmacSecret) {
+                    const signature = crypto.createHmac('sha256', hmacSecret).update(body).digest('hex');
+                    batchHeaders[signatureHeaderName] = `sha256=${signature}`;
+                }
+
                 const response = await fetch(url, {
                     method,
-                    headers,
-                    body: JSON.stringify(batch),
+                    headers: batchHeaders,
+                    body,
                     signal: controller.signal,
                 });
 
@@ -543,6 +599,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'searchableFields', label: 'Searchable fields', type: 'json', description: 'Array of field names' },
                     { key: 'filterableFields', label: 'Filterable fields', type: 'json', description: 'Array of field names' },
                     { key: 'sortableFields', label: 'Sortable fields', type: 'json', description: 'Array of field names' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -566,6 +623,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'idField', label: 'Document ID field', type: 'string', required: true },
                     { key: 'batchSize', label: 'Batch size', type: 'number' },
                     { key: 'refresh', label: 'Refresh after indexing', type: 'boolean' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -589,6 +647,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'idField', label: 'Document ID field', type: 'string', required: true },
                     { key: 'batchSize', label: 'Batch size', type: 'number' },
                     { key: 'refresh', label: 'Refresh after indexing', type: 'boolean' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -609,6 +668,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'indexName', label: 'Index name', type: 'string', required: true },
                     { key: 'idField', label: 'Object ID field', type: 'string', required: true },
                     { key: 'batchSize', label: 'Batch size', type: 'number' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -631,6 +691,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'collectionName', label: 'Collection name', type: 'string', required: true },
                     { key: 'idField', label: 'Document ID field', type: 'string', required: true },
                     { key: 'batchSize', label: 'Batch size', type: 'number' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -721,6 +782,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                         type: 'number',
                         description: 'Message time-to-live in milliseconds.',
                     },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -775,6 +837,19 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                         description: 'Header name for API key.',
                     },
                     {
+                        key: 'hmacSecretCode',
+                        label: 'HMAC Signing Secret',
+                        type: 'string',
+                        description: 'Secret code for HMAC-SHA256 request signing. Adds X-DataHub-Signature header.',
+                    },
+                    {
+                        key: 'signatureHeaderName',
+                        label: 'Signature Header',
+                        type: 'string',
+                        placeholder: 'X-DataHub-Signature',
+                        description: 'Header name for HMAC signature (default: X-DataHub-Signature).',
+                    },
+                    {
                         key: 'batchSize',
                         label: 'Batch Size',
                         type: 'number',
@@ -794,6 +869,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                         placeholder: '3',
                         description: 'Maximum retry attempts on failure.',
                     },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },

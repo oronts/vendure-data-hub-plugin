@@ -15,7 +15,7 @@ export function buildTopology(
     steps: { key: string }[],
     edges: PipelineEdge[],
 ): TopologyData {
-    const preds = new Map<string, Array<{ from: string; branch?: string }>>();
+    const preds = new Map<string, Array<{ from: string; branch?: string; dependencyOnly?: boolean }>>();
     const indeg = new Map<string, number>();
 
     for (const s of steps) indeg.set(s.key, 0);
@@ -23,7 +23,7 @@ export function buildTopology(
     for (const e of edges ?? []) {
         indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
         const list = preds.get(e.to) ?? [];
-        list.push({ from: e.from, branch: e.branch });
+        list.push({ from: e.from, branch: e.branch, dependencyOnly: e.dependencyOnly });
         preds.set(e.to, list);
     }
 
@@ -36,17 +36,22 @@ export function buildTopology(
 }
 
 /**
- * Gather input from predecessor outputs
+ * Gather input from predecessor outputs.
+ * Edges marked as `dependencyOnly` enforce execution order but do NOT
+ * contribute records to the target step's input.
  */
 export function gatherInput(
     key: string,
-    preds: Map<string, Array<{ from: string; branch?: string }>>,
+    preds: Map<string, Array<{ from: string; branch?: string; dependencyOnly?: boolean }>>,
     outputs: Map<string, RecordObject[] | BranchOutput>,
 ): RecordObject[] {
     let input: RecordObject[] = [];
     const parents = preds.get(key) ?? [];
 
     for (const p of parents) {
+        // Dependency-only edges enforce ordering without data flow
+        if (p.dependencyOnly) continue;
+
         const out = outputs.get(p.from);
         if (!out) continue;
 

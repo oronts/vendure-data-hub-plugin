@@ -6,12 +6,12 @@ import { createRecordOperator } from '../operator-factory';
 export const COPY_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'copy',
-    description: 'Copy a field value to another path.',
+    description: 'Copy a field value to a new field (source field is preserved)',
     category: 'DATA',
     categoryLabel: 'Data',
     categoryOrder: 0,
     pure: true,
-    summaryTemplate: '${from} \u2192 ${to}',
+    summaryTemplate: '${source} \u2192 ${target}',
     schema: {
         fields: [
             {

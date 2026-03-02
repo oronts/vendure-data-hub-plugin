@@ -4,3 +4,4 @@ export * from './rabbitmq.adapter';
 export * from './rabbitmq-amqp.adapter';
 export * from './sqs.adapter';
 export * from './redis-streams.adapter';
+export * from './internal.adapter';

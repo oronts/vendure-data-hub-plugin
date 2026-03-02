@@ -171,9 +171,12 @@ export class PipelineService {
     async delete(ctx: RequestContext, id: ID): Promise<DeletionResponse> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         const entity = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
+        // Capture id and code before remove() — TypeORM clears entity.id after deletion
+        const deletedId = entity.id.toString();
+        const deletedCode = entity.code;
         try {
             await repo.remove(entity);
-            this.domainEvents.publishPipelineDeleted(entity.id.toString(), entity.code);
+            this.domainEvents.publishPipelineDeleted(deletedId, deletedCode);
             return { result: DeletionResult.DELETED };
         } catch (e) {
             return { result: DeletionResult.NOT_DELETED, message: getErrorMessage(e) };
@@ -300,8 +303,11 @@ export class PipelineService {
         pipelineId?: ID,
     ): Promise<PaginatedList<PipelineRun>> {
         const qb = this.listQueryBuilder.build(PipelineRun, options, { ctx });
+        // Always join the pipeline relation — required because the GraphQL schema
+        // exposes pipeline as a non-nullable field on PipelineRun.
+        qb.leftJoinAndSelect(`${qb.alias}.pipeline`, 'pipeline');
         if (pipelineId) {
-            qb.andWhere('pipelineRun.pipelineId = :pid', { pid: pipelineId });
+            qb.andWhere(`${qb.alias}.pipelineId = :pid`, { pid: pipelineId });
         }
         const [items, totalItems] = await qb.getManyAndCount();
         return { items, totalItems };

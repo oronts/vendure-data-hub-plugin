@@ -84,22 +84,26 @@ export class ConsumerLifecycle {
             });
         }
 
-        // Validate connection exists - release lock on any failure
-        let conn;
-        try {
-            const ctx = await this.requestContextService.create({ apiType: 'admin' });
-            conn = await this.connectionService.getByCode(ctx, config.connectionCode);
-        } catch (error) {
-            if (lockToken && this.distributedLock) {
-                await this.distributedLock.release(lockKey, lockToken);
+        // Validate connection exists - release lock on any failure.
+        // INTERNAL queue type has no external connection (in-process buffer).
+        const isInternal = config.queueType.toLowerCase() === 'internal';
+        if (!isInternal) {
+            let conn;
+            try {
+                const ctx = await this.requestContextService.create({ apiType: 'admin' });
+                conn = await this.connectionService.getByCode(ctx, config.connectionCode);
+            } catch (error) {
+                if (lockToken && this.distributedLock) {
+                    await this.distributedLock.release(lockKey, lockToken);
+                }
+                throw error;
             }
-            throw error;
-        }
-        if (!conn) {
-            if (lockToken && this.distributedLock) {
-                await this.distributedLock.release(lockKey, lockToken);
+            if (!conn) {
+                if (lockToken && this.distributedLock) {
+                    await this.distributedLock.release(lockKey, lockToken);
+                }
+                throw new Error(`Connection not found: ${config.connectionCode}`);
             }
-            throw new Error(`Connection not found: ${config.connectionCode}`);
         }
 
         const consumer: ActiveConsumer = {

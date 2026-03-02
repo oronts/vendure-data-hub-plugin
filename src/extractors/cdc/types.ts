@@ -4,7 +4,7 @@ import { ExtractorConfig } from '../../types/index';
 export type CdcTrackingType = 'TIMESTAMP' | 'VERSION';
 
 /** CDC operation types added to output records */
-export type CdcOperation = 'INSERT' | 'UPDATE' | 'DELETE';
+export type CdcOperation = 'INSERT' | 'UPDATE' | 'UPSERT' | 'DELETE';
 
 export interface CdcExtractorConfig extends ExtractorConfig {
     adapterCode: 'cdc';

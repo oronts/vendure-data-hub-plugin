@@ -21,6 +21,6 @@ export const FACET_VALUE_LOADER_METADATA = {
     description: 'Imports facet values (attribute options) with parent facet resolution',
     adapterCode: 'facetValueUpsert',
     supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
-    lookupFields: ['code', 'id'],
+    lookupFields: ['code', 'id', 'name'],
     requiredFields: ['name', 'code', 'facetCode'],
 } as const;

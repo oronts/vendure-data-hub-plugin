@@ -16,6 +16,7 @@ import {
     FILE_ENCODING_OPTIONS,
     JSON_EXPORT_FORMAT_OPTIONS,
     BATCH_MODE_EXPORT_OPTIONS,
+    LOCALIZATION_SCHEMA_FIELDS,
 } from '../../../constants/adapter-schema-options';
 import { ExportHandlerFn } from './export-handler.types';
 import { csvExportHandler } from './csv-export.handler';
@@ -56,6 +57,7 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
                     { key: 'columns', label: 'Columns', type: 'json', description: 'Array of column definitions: [{ field: "name", header: "Name" }]' },
                     { key: 'encoding', label: 'Encoding', type: 'select', options: FILE_ENCODING_OPTIONS, group: 'format-options' },
                     { key: 'connectionCode', label: 'Connection', type: 'string', description: 'SFTP/S3 connection for remote upload' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -78,6 +80,7 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
                     { key: 'format', label: 'Format', type: 'select', options: JSON_EXPORT_FORMAT_OPTIONS, group: 'format-options' },
                     { key: 'pretty', label: 'Pretty print', type: 'boolean', group: 'format-options' },
                     { key: 'connectionCode', label: 'Connection', type: 'string' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -101,6 +104,7 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
                     { key: 'itemElement', label: 'Item element', type: 'string', defaultValue: 'item', description: 'e.g., product', group: 'format-options' },
                     { key: 'declaration', label: 'Include XML declaration', type: 'boolean', group: 'format-options' },
                     { key: 'connectionCode', label: 'Connection', type: 'string' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -124,6 +128,7 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
                     { key: 'connectionCode', label: 'Connection', type: 'string' },
                     { key: 'bearerTokenSecretCode', label: 'Bearer token secret', type: 'string' },
                     { key: 'retryCount', label: 'Retry count', type: 'number' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -145,6 +150,7 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
                     { key: 'headers', label: 'Custom headers', type: 'json' },
                     { key: 'retryCount', label: 'Retry count', type: 'number' },
                     { key: 'timeoutMs', label: 'Timeout (ms)', type: 'number' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },

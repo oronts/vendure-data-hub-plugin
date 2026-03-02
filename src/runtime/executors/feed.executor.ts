@@ -13,6 +13,8 @@ import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { FEED_HANDLER_REGISTRY } from './feeds/feed-handler-registry';
 import { FeedFieldMappings } from './feeds/feed-handler.types';
+import { applyLocalization } from '../executor-helpers';
+import { getAdapterCode } from '../../types/step-configs';
 
 @Injectable()
 export class FeedExecutor {
@@ -35,7 +37,7 @@ export class FeedExecutor {
         pipelineContext?: PipelineContext,
     ): Promise<FeedExecutionResult> {
         const cfg = step.config as BaseFeedConfig;
-        const adapterCode = cfg.adapterCode;
+        const adapterCode = getAdapterCode(step) || undefined;
         const startTime = Date.now();
         let ok = 0;
         let fail = 0;
@@ -60,13 +62,21 @@ export class FeedExecutor {
             currency: cfg.currency ?? 'USD',
         };
 
+        // Apply localization (translation flattening + channel filtering)
+        const localizedInput = applyLocalization(input, {
+            languageCode: cfg.languageCode,
+            translationsField: cfg.translationsField,
+            channelCode: cfg.channelCode,
+            channelField: cfg.channelField,
+        });
+
         // Try built-in handlers first
         const entry = adapterCode ? FEED_HANDLER_REGISTRY.get(adapterCode) : undefined;
         if (entry) {
             const result = await entry.handler({
                 stepKey: step.key,
                 config: cfg,
-                records: input,
+                records: localizedInput,
                 fields,
                 onRecordError,
                 logger: this.logger,

@@ -675,6 +675,16 @@ export class DataHubLoggerFactory {
     }
 
     /**
+     * Static factory method for creating loggers in non-DI contexts
+     * (module-level code, standalone functions, etc.)
+     *
+     * Creates a lightweight DataHubLogger without shared metrics registry.
+     */
+    static create(componentName: string, baseContext?: LogContext): DataHubLogger {
+        return new DataHubLogger(componentName, baseContext);
+    }
+
+    /**
      * Get or create a cached logger instance (for static contexts)
      */
     getLogger(componentName: string): DataHubLogger {

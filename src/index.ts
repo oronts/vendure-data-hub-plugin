@@ -130,6 +130,39 @@ export { createPipeline, definePipeline, step, steps, edge, operators } from './
 export type { PipelineBuilder } from './sdk/dsl';
 export type { ScriptFunction } from '../shared/types';
 
+// Auto-generated loader configuration types for IDE auto-complete
+export type {
+    LoaderConfig,
+    LoaderConfigMap,
+    ConfigByCode,
+    LoaderCode,
+    ProductUpsertConfig,
+    VariantUpsertConfig,
+    CustomerUpsertConfig,
+    OrderUpsertConfig,
+    OrderNoteConfig,
+    StockAdjustConfig,
+    ApplyCouponConfig,
+    CollectionUpsertConfig,
+    PromotionUpsertConfig,
+    OrderTransitionConfig,
+    AssetAttachConfig,
+    AssetImportConfig,
+    FacetUpsertConfig,
+    FacetValueUpsertConfig,
+    RestPostConfig,
+    GraphqlMutationConfig,
+    TaxRateUpsertConfig,
+    PaymentMethodUpsertConfig,
+    ChannelUpsertConfig,
+    ShippingMethodUpsertConfig,
+    CustomerGroupUpsertConfig,
+    StockLocationUpsertConfig,
+    InventoryAdjustConfig,
+    EntityDeletionConfig,
+} from './types/loader-configs';
+export { LOADER_CODES } from './types/loader-configs';
+
 export type {
     AdapterType,
     AdapterCategory,
@@ -364,6 +397,7 @@ export type { EvaluationResult, SafeEvaluatorConfig } from './runtime/sandbox';
 // Code security utilities exports
 export {
     validateUserCode,
+    validateScriptBlock,
     validateConditionExpression,
     createCodeSandbox,
     DANGEROUS_PATTERNS,

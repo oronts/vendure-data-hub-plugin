@@ -15,8 +15,26 @@ import { ALL_OPERATOR_DEFINITIONS } from '../operators';
 import { ENRICHER_ADAPTER_DEFINITIONS } from '../enrichers';
 
 /**
+ * Built-in ROUTER adapter: condition-based routing for ROUTE steps.
+ * Routes records to named branches by evaluating field conditions (first match wins).
+ */
+const ROUTER_ADAPTERS: AdapterDefinition[] = [
+    {
+        type: 'ROUTER',
+        code: 'condition',
+        name: 'Condition-Based',
+        description: 'Route records to branches based on field conditions (first match wins)',
+        category: 'routing',
+        icon: 'GitBranch',
+        schema: {
+            fields: [],
+        },
+    },
+];
+
+/**
  * All built-in adapter definitions for the Data Hub plugin.
- * Includes extractors, operators, loaders, exporters, feeds, sinks, and enrichers.
+ * Includes extractors, operators, loaders, exporters, feeds, sinks, enrichers, and routers.
  */
 export const BUILTIN_ADAPTERS: AdapterDefinition[] = [
     ...EXTRACTOR_ADAPTERS,
@@ -26,4 +44,5 @@ export const BUILTIN_ADAPTERS: AdapterDefinition[] = [
     ...FEED_ADAPTERS,
     ...SINK_ADAPTERS,
     ...ENRICHER_ADAPTER_DEFINITIONS,
+    ...ROUTER_ADAPTERS,
 ];

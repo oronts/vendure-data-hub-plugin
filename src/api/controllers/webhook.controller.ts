@@ -53,6 +53,12 @@ export class DataHubWebhookController {
             throw new HttpException('Invalid pipeline code format', HttpStatus.BAD_REQUEST);
         }
 
+        // Reject oversized payloads early (413 instead of downstream 500)
+        const contentLength = parseInt(req.headers['content-length'] as string, 10);
+        if (!isNaN(contentLength) && contentLength > WEBHOOK.MAX_PAYLOAD_SIZE) {
+            throw new HttpException('Payload too large', HttpStatus.PAYLOAD_TOO_LARGE);
+        }
+
         const ip = req.ip || (req as Request & { connection?: { remoteAddress?: string } }).connection?.remoteAddress || 'unknown';
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
         const repo = this.connection.getRepository(ctx, Pipeline);
@@ -81,7 +87,7 @@ export class DataHubWebhookController {
 
         for (const trigger of webhookTriggers) {
             const cfg = (trigger.config ?? {}) as unknown as Partial<PipelineTrigger>;
-            const authType = cfg.authentication || ConnectionAuthType.NONE;
+            const authType = this.resolveWebhookAuthType(cfg);
 
             try {
                 const strategy = this.authStrategies[authType];
@@ -143,13 +149,9 @@ export class DataHubWebhookController {
             }
         }
 
-        const authType = cfg.authentication || ConnectionAuthType.NONE;
+        const authType = this.resolveWebhookAuthType(cfg);
 
-        const records: JsonValue[] = Array.isArray(body)
-            ? (body as JsonValue[])
-            : (Array.isArray((body as Record<string, unknown>)?.records)
-                ? ((body as Record<string, unknown>).records as JsonValue[])
-                : [body as JsonValue]);
+        const records: JsonValue[] = this.extractRecordsFromBody(body, definition);
 
         await this.pipelineService.startRunWithSeed(ctx, pipeline.id, records, {
             skipPermissionCheck: true,
@@ -226,7 +228,8 @@ export class DataHubWebhookController {
             throw new HttpException('Invalid signature format', HttpStatus.BAD_REQUEST);
         }
 
-        const secretCode = cfg.secretCode;
+        const rawCfg = cfg as Record<string, unknown>;
+        const secretCode = cfg.secretCode || (rawCfg.hmacSecretCode as string | undefined);
         if (!secretCode) {
             throw new HttpException('HMAC secret code not configured', HttpStatus.INTERNAL_SERVER_ERROR);
         }
@@ -288,7 +291,7 @@ export class DataHubWebhookController {
 
         const secretCode = cfg.basicSecretCode;
         if (!secretCode) {
-            throw new HttpException('Basic auth secret code not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new HttpException('Authentication configuration error', HttpStatus.UNAUTHORIZED);
         }
 
         const secretValue = await this.secretService.resolve(ctx, secretCode);
@@ -327,7 +330,7 @@ export class DataHubWebhookController {
 
         const secretCode = cfg.jwtSecretCode;
         if (!secretCode) {
-            throw new HttpException('JWT secret code not configured', HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new HttpException('Authentication configuration error', HttpStatus.UNAUTHORIZED);
         }
 
         const secretValue = await this.secretService.resolve(ctx, secretCode);
@@ -388,6 +391,54 @@ export class DataHubWebhookController {
             }
             throw new HttpException('Invalid JWT payload', HttpStatus.UNAUTHORIZED);
         }
+    }
+
+    /**
+     * Extracts records from webhook body, using the pipeline's extract step itemsField
+     * to unwrap nested payloads (e.g., {"orders":[...]} with itemsField: 'orders').
+     */
+    private extractRecordsFromBody(
+        body: Record<string, unknown> | unknown[],
+        definition?: PipelineDefinition,
+    ): JsonValue[] {
+        if (Array.isArray(body)) {
+            return body as JsonValue[];
+        }
+
+        // Check if any extract step defines an itemsField — use it to unwrap the body
+        const extractStep = definition?.steps?.find(
+            s => s.type === 'EXTRACT' && (s.config as Record<string, unknown>)?.itemsField,
+        );
+        if (extractStep) {
+            const itemsField = (extractStep.config as Record<string, unknown>).itemsField as string;
+            const items = (body as Record<string, unknown>)[itemsField];
+            if (Array.isArray(items)) {
+                return items as JsonValue[];
+            }
+        }
+
+        // Fallback: check for 'records' key (convention)
+        if (Array.isArray((body as Record<string, unknown>)?.records)) {
+            return (body as Record<string, unknown>).records as JsonValue[];
+        }
+
+        return [body as JsonValue];
+    }
+
+    /**
+     * Resolves the webhook auth type from trigger config, supporting both
+     * canonical field names (authentication: 'HMAC') and DSL shorthand (signature: 'hmac-sha256').
+     */
+    private resolveWebhookAuthType(cfg: Partial<PipelineTrigger>): ConnectionAuthType {
+        if (cfg.authentication) {
+            return cfg.authentication as ConnectionAuthType;
+        }
+        const rawCfg = cfg as Record<string, unknown>;
+        const signature = rawCfg.signature as string | undefined;
+        if (signature && signature !== 'none') {
+            return ConnectionAuthType.HMAC;
+        }
+        return ConnectionAuthType.NONE;
     }
 
     private timingSafeCompare(expected: string, provided: string): boolean {

@@ -18,8 +18,10 @@ import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../exec
 import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getArrayValue } from '../../../loaders/shared-helpers';
+import { getStringValue, getArrayValue, getObjectValue } from '../../../loaders/shared-helpers';
 import { generateChannelToken, parseCurrencyCode, parseLanguageCode } from '../../../loaders/channel/helpers';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { LOGGER_CONTEXTS } from '../../../constants/index';
 
 /**
  * Configuration for the channel handler step (mirrors loader-handler-registry.ts schema)
@@ -35,6 +37,7 @@ interface ChannelHandlerConfig {
     defaultTaxZoneCodeField?: string;
     defaultShippingZoneCodeField?: string;
     sellerIdField?: string;
+    customFieldsField?: string;
     strategy?: LoadStrategy;
 }
 
@@ -47,12 +50,16 @@ function getConfig(config: JsonObject): ChannelHandlerConfig {
 
 @Injectable()
 export class ChannelHandler implements LoaderHandler {
+    private readonly logger: DataHubLogger;
     private zoneCache = new Map<string, ID>();
 
     constructor(
         private channelService: ChannelService,
         private zoneService: ZoneService,
-    ) {}
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.CHANNEL_LOADER);
+    }
 
     async execute(
         ctx: RequestContext,
@@ -150,6 +157,8 @@ export class ChannelHandler implements LoaderHandler {
                 const taxZoneCode = getStringValue(rec, defaultTaxZoneCodeField);
                 const shippingZoneCode = getStringValue(rec, defaultShippingZoneCodeField);
                 const sellerId = getStringValue(rec, sellerIdField);
+                const customFieldsKey = cfg.customFieldsField ?? 'customFields';
+                const customFields = getObjectValue(rec, customFieldsKey);
 
                 const defaultTaxZoneId = taxZoneCode ? await this.resolveZoneId(ctx, taxZoneCode) : undefined;
                 const defaultShippingZoneId = shippingZoneCode ? await this.resolveZoneId(ctx, shippingZoneCode) : undefined;
@@ -174,6 +183,7 @@ export class ChannelHandler implements LoaderHandler {
                     };
                     if (defaultTaxZoneId) updateInput.defaultTaxZoneId = defaultTaxZoneId;
                     if (defaultShippingZoneId) updateInput.defaultShippingZoneId = defaultShippingZoneId;
+                    if (customFields) updateInput.customFields = customFields;
 
                     await this.channelService.update(
                         ctx,
@@ -199,6 +209,7 @@ export class ChannelHandler implements LoaderHandler {
                     if (defaultTaxZoneId) createInput.defaultTaxZoneId = defaultTaxZoneId;
                     if (defaultShippingZoneId) createInput.defaultShippingZoneId = defaultShippingZoneId;
                     if (sellerId) createInput.sellerId = sellerId;
+                    if (customFields) createInput.customFields = customFields;
 
                     const result = await this.channelService.create(
                         ctx,
@@ -221,8 +232,8 @@ export class ChannelHandler implements LoaderHandler {
     }
 
     private async findExistingByCode(ctx: RequestContext, code: string): Promise<{ id: ID } | null> {
-        const channels = await this.channelService.findAll(ctx);
-        const channelsList = channels as unknown as Array<{ id: ID; code: string }>;
+        const result = await this.channelService.findAll(ctx);
+        const channelsList = (result as { items?: Array<{ id: ID; code: string }> }).items ?? result as unknown as Array<{ id: ID; code: string }>;
         const match = channelsList.find(c => c.code === code);
         return match ? { id: match.id } : null;
     }

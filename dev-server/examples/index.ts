@@ -1,15 +1,8 @@
 /**
  * Data Hub Plugin Examples
  *
- * Custom adapter examples (operators, extractors, loaders) and production-quality
- * pipeline examples for common use cases.
- *
- * Pipeline Categories:
- * - EXPORTS: Product, Customer, Order, Inventory exports
- * - IMPORTS: CSV imports with validation and transformation
- * - SYNC: Google Shopping, Facebook Catalog, REST API integration
- * - PROCESSING: Data enrichment, analytics, customer segmentation
- * - SCHEDULED: Cron-based sync, webhooks, event triggers
+ * Custom adapter examples (operators, extractors, loaders) and 37 production-quality
+ * pipeline examples covering all DataHub capabilities.
  */
 
 export {
@@ -32,37 +25,18 @@ export {
 } from './custom';
 
 export {
-    productExportFull,
-    customerExportFull,
-    orderExportFull,
-    inventoryExport,
-    productImportCsv,
-    customerImportCsv,
-    stockUpdateCsv,
-    priceUpdateCsv,
-    googleShoppingFeed,
-    facebookCatalogFeed,
-    restApiImport,
-    productEnrichment,
-    orderAnalytics,
-    customerSegmentation,
-    dailyStockSync,
-    hourlyPriceSync,
-    weeklyCustomerCleanup,
-    webhookOrderSync,
-    lowStockAlert,
-    webhookApiKeyAuth,
-    webhookJwtAuth,
-    webhookBasicAuth,
-    multiTriggerPipeline,
-    customerImportWithValidationAndEnrichment,
-    productCatalogEnrichment,
-    interceptorHooksPipeline,
-    scriptHooksPipeline,
-    scriptOperatorPipeline,
-    advancedValidationPipeline,
-    allHookStagesPipeline,
-    customAdapterPipeline,
+    pimCatalogSync,
+    magentoProductMigration,
+    shopifyInventorySync,
+    csvCustomerImport,
+    productFeedGenerator,
+    webhookOrderImport,
+    cdcProductSync,
+    eventStockAlert,
+    customerAnalyticsExport,
+    entityLifecycleOps,
+    searchIndexSync,
+    multiFeedExport,
     examplePipelines,
     allExamplePipelines,
 } from './pipelines';

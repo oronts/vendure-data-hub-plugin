@@ -34,6 +34,8 @@ import {
     findVariantBySku,
     resolveTaxCategoryId,
     resolveStockLevels,
+    resolveChannelIds,
+    parseTranslationsInput,
 } from './shared-lookups';
 import { TRANSFORM_LIMITS, LOGGER_CONTEXTS } from '../../../constants/index';
 import { LoadStrategy, ConflictStrategy } from '../../../constants/enums';
@@ -75,6 +77,10 @@ interface ProductHandlerConfig {
     enabledField?: string;
     /** Whether to create/update variants alongside the product (default: true) */
     createVariants?: boolean;
+    /** Record field containing channel codes (array or comma-separated string) for dynamic per-record channel assignment */
+    channelsField?: string;
+    /** Record field containing a translations array or object map for multi-language support */
+    translationsField?: string;
 }
 
 /**
@@ -86,6 +92,7 @@ interface ProductProcessingContext {
     step: PipelineStepDefinition;
     cfg: ProductHandlerConfig;
     fields: CoercedProductFields;
+    rec: RecordObject;
 }
 
 /**
@@ -130,18 +137,17 @@ function buildVariantPrices(
     priceMinor: number | undefined,
     priceByCurrency: Record<string, number> | undefined,
 ): { prices?: Array<{ currencyCode: CurrencyCode; price: number }>; price?: number } {
+    const result: { prices?: Array<{ currencyCode: CurrencyCode; price: number }>; price?: number } = {};
     if (priceByCurrency) {
-        return {
-            prices: Object.entries(priceByCurrency).map(([cc, minor]) => ({
-                currencyCode: cc as CurrencyCode,
-                price: minor,
-            })),
-        };
+        result.prices = Object.entries(priceByCurrency).map(([cc, minor]) => ({
+            currencyCode: cc as CurrencyCode,
+            price: minor,
+        }));
     }
     if (typeof priceMinor === 'number') {
-        return { price: priceMinor };
+        result.price = priceMinor;
     }
-    return {};
+    return result;
 }
 
 /**
@@ -274,17 +280,40 @@ export class ProductHandler implements LoaderHandler {
         let ok = 0;
         let fail = 0;
         const cfg = getConfig(step.config);
+        const channelCache = new Map<string, ID>();
 
         for (const rec of input) {
             try {
                 const fields = this.prepareProductData(rec, cfg);
+
+                // When translationsField is configured, extract name/slug from the first translation
+                // if they're missing from the top-level record (multi-language input pattern)
+                if ((!fields.name || !fields.slug) && cfg.translationsField) {
+                    const raw = rec[cfg.translationsField];
+                    if (raw) {
+                        const parsed = parseTranslationsInput(raw);
+                        if (parsed.length > 0) {
+                            const first = parsed[0];
+                            const firstName = first.name != null ? String(first.name) : undefined;
+                            if (!fields.name && firstName) fields.name = firstName;
+                            if (!fields.slug && firstName) {
+                                fields.slug = first.slug != null ? String(first.slug) : slugify(firstName);
+                            }
+                        }
+                    }
+                }
+
                 if (!fields.slug || !fields.name) {
+                    if (onRecordError) {
+                        const missing = !fields.name ? 'name' : 'slug';
+                        await onRecordError(step.key, `Missing required field "${missing}" for productUpsert`, rec);
+                    }
                     fail++;
                     continue;
                 }
 
                 const opCtx = await this.resolveRequestContext(ctx, step, cfg);
-                const procCtx: ProductProcessingContext = { ctx, opCtx, step, cfg, fields };
+                const procCtx: ProductProcessingContext = { ctx, opCtx, step, cfg, fields, rec };
 
                 const productResult = await this.createOrUpdateProduct(procCtx);
                 if (!productResult.productId) {
@@ -296,6 +325,7 @@ export class ProductHandler implements LoaderHandler {
                 }
 
                 await this.assignProductToChannel(procCtx, productResult.productId);
+                await this.assignToRecordChannels(opCtx, rec, cfg, productResult.productId, channelCache);
                 if (cfg.createVariants !== false) {
                     await this.handleProductVariants(procCtx, productResult.productId);
                 }
@@ -350,18 +380,15 @@ export class ProductHandler implements LoaderHandler {
     private async createOrUpdateProduct(
         procCtx: ProductProcessingContext,
     ): Promise<{ productId: ID | undefined; existing: Product | undefined }> {
-        const { ctx, opCtx, cfg, fields } = procCtx;
+        const { ctx, opCtx, cfg, fields, rec } = procCtx;
         const { slug, name, description, customFields, enabled } = fields;
         const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
         const conflictResolution = cfg.conflictStrategy ?? ConflictStrategy.SOURCE_WINS;
 
         const existing = await this.productService.findOneBySlug(opCtx, slug!);
-        const productTranslation: ProductTranslationInput = {
-            languageCode: ctx.languageCode as LanguageCode,
-            name: name!,
-            slug: slug!,
-            description: description ?? undefined,
-        };
+
+        // Build translations — multi-language from record field, or single-language default
+        const translations = this.buildProductTranslations(ctx, rec, cfg, fields);
 
         if (existing) {
             // Skip if strategy is 'create' only (don't update existing)
@@ -375,7 +402,7 @@ export class ProductHandler implements LoaderHandler {
             // strategy is 'UPDATE' or 'UPSERT', and conflictStrategy is 'SOURCE_WINS' or 'MERGE'
             const updateInput: UpdateProductInput = {
                 id: existing.id,
-                translations: [productTranslation],
+                translations,
                 ...(typeof enabled === 'boolean' ? { enabled } : {}),
                 ...(customFields ? { customFields } : {}),
             };
@@ -390,12 +417,50 @@ export class ProductHandler implements LoaderHandler {
 
         // strategy is 'create' or 'upsert' - create the product
         const createInput: CreateProductInput = {
-            translations: [productTranslation],
+            translations,
             ...(typeof enabled === 'boolean' ? { enabled } : {}),
             ...(customFields ? { customFields } : {}),
         };
         const created = await this.productService.create(opCtx, createInput);
         return { productId: created.id, existing: undefined };
+    }
+
+    /**
+     * Build product translations from record.
+     * If translationsField is set, reads multi-language array/object from the record.
+     * Otherwise builds a single translation from nameField/slugField/descriptionField.
+     */
+    private buildProductTranslations(
+        ctx: RequestContext,
+        rec: RecordObject,
+        cfg: ProductHandlerConfig,
+        fields: CoercedProductFields,
+    ): ProductTranslationInput[] {
+        if (cfg.translationsField) {
+            const raw = rec[cfg.translationsField];
+            if (raw) {
+                const parsed = parseTranslationsInput(raw);
+                if (parsed.length > 0) {
+                    return parsed.map(t => {
+                        const tName = String(t.name ?? fields.name!);
+                        return {
+                            languageCode: t.languageCode as LanguageCode,
+                            name: tName,
+                            slug: t.slug != null ? String(t.slug) : slugify(tName),
+                            description: t.description != null ? String(t.description) : '',
+                        };
+                    });
+                }
+            }
+        }
+
+        // Single-language fallback
+        return [{
+            languageCode: ctx.languageCode as LanguageCode,
+            name: fields.name!,
+            slug: fields.slug!,
+            description: fields.description ?? '',
+        }];
     }
 
     /**
@@ -416,6 +481,34 @@ export class ProductHandler implements LoaderHandler {
                 stepKey: step.key,
                 productId,
                 targetChannel,
+                error: getErrorMessage(error),
+            });
+        }
+    }
+
+    /**
+     * Assign product to dynamically resolved channels from a record field
+     */
+    private async assignToRecordChannels(
+        opCtx: RequestContext,
+        rec: RecordObject,
+        cfg: ProductHandlerConfig,
+        productId: ID,
+        channelCache: Map<string, ID>,
+    ): Promise<void> {
+        if (!cfg.channelsField) return;
+        const rawValue = rec[cfg.channelsField];
+        if (rawValue == null) return;
+
+        const channelIds = await resolveChannelIds(this.channelService, opCtx, rawValue, channelCache, this.logger);
+        if (channelIds.length === 0) return;
+
+        try {
+            await this.channelService.assignToChannels(opCtx, Product, productId, channelIds);
+        } catch (error) {
+            this.logger.warn('Failed to assign product to record channels', {
+                productId,
+                channelIds,
                 error: getErrorMessage(error),
             });
         }

@@ -69,7 +69,7 @@ export class FileExtractHandler implements ExtractHandler {
     async extract(context: ExtractHandlerContext): Promise<RecordObject[]> {
         const { step } = context;
         const cfg = getExtractConfig<CsvExtractConfig | JsonExtractConfig | XmlExtractConfig>(step);
-        const adapterCode = cfg.adapterCode;
+        const adapterCode = step.adapterCode ?? cfg.adapterCode;
 
         if (adapterCode === EXTRACTOR_CODE.CSV) {
             return this.extractCsv(context);
@@ -91,7 +91,8 @@ export class FileExtractHandler implements ExtractHandler {
 
         const delimiter = cfg.delimiter ?? ',';
         const hasHeader = cfg.hasHeader !== false;
-        const offset = getCheckpointValue(executorCtx, step.key, 'offset', 0);
+        const resetCheckpoint = (cfg as Record<string, unknown>).resetCheckpoint === true;
+        const offset = resetCheckpoint ? 0 : getCheckpointValue(executorCtx, step.key, 'offset', 0);
 
         const records = await this.loadCsvRecords(cfg, step.key, delimiter, hasHeader);
         return this.applyOffsetAndCheckpoint(records, offset, executorCtx, step.key);
@@ -108,9 +109,11 @@ export class FileExtractHandler implements ExtractHandler {
             return this.loadCsvFromUpload(cfg.fileId, stepKey, delimiter, hasHeader);
         }
 
-        // Priority 2: rows - inline array
-        if (Array.isArray(cfg.rows)) {
-            return this.loadCsvFromRows(cfg.rows, hasHeader);
+        // Priority 2: rows - inline array (handle both direct and nested config shapes)
+        const nestedConfig = (cfg as Record<string, unknown>).config as Record<string, unknown> | undefined;
+        const rows = cfg.rows ?? nestedConfig?.rows;
+        if (Array.isArray(rows)) {
+            return this.loadCsvFromRows(rows, hasHeader);
         }
 
         // Priority 3: csvText - inline string
@@ -173,8 +176,13 @@ export class FileExtractHandler implements ExtractHandler {
             const content = await fs.promises.readFile(csvPath, 'utf8');
             return parseCsv(content, delimiter, hasHeader) as RecordObject[];
         } catch (err) {
-            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-                this.logger.warn('Failed to parse CSV file', {
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+                this.logger.warn(`File not found: "${csvPath}" — returning 0 records`, {
+                    stepKey,
+                    path: csvPath,
+                });
+            } else {
+                this.logger.warn(`Failed to parse CSV file: "${csvPath}"`, {
                     stepKey,
                     path: csvPath,
                     error: getErrorMessage(err),
@@ -187,7 +195,8 @@ export class FileExtractHandler implements ExtractHandler {
     async extractJson(context: ExtractHandlerContext): Promise<RecordObject[]> {
         const { step, executorCtx } = context;
         const cfg = getExtractConfig<JsonExtractConfig>(step);
-        const offset = getCheckpointValue(executorCtx, step.key, 'offset', 0);
+        const resetCheckpoint = (cfg as Record<string, unknown>).resetCheckpoint === true;
+        const offset = resetCheckpoint ? 0 : getCheckpointValue(executorCtx, step.key, 'offset', 0);
 
         const data = await this.loadJsonData(cfg, step.key);
         if (data === null) {
@@ -248,8 +257,13 @@ export class FileExtractHandler implements ExtractHandler {
             this.logger.debug('Parsed JSON from file path', { stepKey, jsonPath });
             return data;
         } catch (err) {
-            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-                this.logger.warn('Failed to read/parse JSON file', {
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+                this.logger.warn(`File not found: "${jsonPath}" — returning 0 records`, {
+                    stepKey,
+                    path: jsonPath,
+                });
+            } else {
+                this.logger.warn(`Failed to read/parse JSON file: "${jsonPath}"`, {
                     stepKey,
                     path: jsonPath,
                     error: getErrorMessage(err),
@@ -289,7 +303,8 @@ export class FileExtractHandler implements ExtractHandler {
     async extractXml(context: ExtractHandlerContext): Promise<RecordObject[]> {
         const { step, executorCtx } = context;
         const cfg = getExtractConfig<XmlExtractConfig>(step);
-        const offset = getCheckpointValue(executorCtx, step.key, 'offset', 0);
+        const resetCheckpoint = (cfg as Record<string, unknown>).resetCheckpoint === true;
+        const offset = resetCheckpoint ? 0 : getCheckpointValue(executorCtx, step.key, 'offset', 0);
 
         const content = await this.loadXmlContent(cfg, step.key);
         if (!content) {
@@ -335,8 +350,10 @@ export class FileExtractHandler implements ExtractHandler {
                 await fs.promises.access(cfg.xmlPath);
                 return await fs.promises.readFile(cfg.xmlPath, 'utf8');
             } catch (err) {
-                if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-                    this.logger.warn('Failed to read XML file', { stepKey, path: cfg.xmlPath, error: getErrorMessage(err) });
+                if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+                    this.logger.warn(`File not found: "${cfg.xmlPath}" — returning 0 records`, { stepKey, path: cfg.xmlPath });
+                } else {
+                    this.logger.warn(`Failed to read XML file: "${cfg.xmlPath}"`, { stepKey, path: cfg.xmlPath, error: getErrorMessage(err) });
                 }
                 return null;
             }

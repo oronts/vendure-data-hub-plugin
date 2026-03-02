@@ -62,6 +62,8 @@ export const pipelineSchema = `
         metrics: JSON
         "Error message if run failed"
         error: String
+        "Alias for error — error message if the run failed"
+        errorMessage: String
         """
         Checkpoint data for resumable pipelines: { lastProcessedId, cursor, state }
         """
@@ -70,6 +72,8 @@ export const pipelineSchema = `
         startedByUserId: String
         "Trigger source identifier (e.g., 'manual', 'webhook:key', 'schedule:key', 'event:key')"
         triggeredBy: String
+        "Alias for finishedAt — when the run reached a terminal state"
+        completedAt: DateTime
     }
 
     """

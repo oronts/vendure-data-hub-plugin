@@ -31,7 +31,10 @@ import {
 import {
     buildConfigurableOperations,
     shouldUpdateField,
+    handlePromotionConditions,
+    handlePromotionActions,
 } from './helpers';
+import type { PromotionUpsertLoaderConfig } from '../../../shared/types';
 
 /**
  * PromotionLoader - Refactored to extend BaseEntityLoader
@@ -289,12 +292,36 @@ export class PromotionLoader extends BaseEntityLoader<PromotionInput, Promotion>
             ];
         }
 
+        // Handle conditions with mode
         if (record.conditions && shouldUpdateField('conditions', options.updateOnlyFields)) {
-            updateInput.conditions = buildConfigurableOperations(record.conditions);
+            const conditionsMode = (options.config as unknown as PromotionUpsertLoaderConfig)?.conditionsMode ?? 'REPLACE_ALL';
+            const conditions = await handlePromotionConditions(
+                ctx,
+                this.promotionService,
+                promotionId,
+                record.conditions,
+                conditionsMode,
+                this.logger,
+            );
+            if (conditions !== null) {
+                updateInput.conditions = conditions;
+            }
         }
 
+        // Handle actions with mode
         if (record.actions && shouldUpdateField('actions', options.updateOnlyFields)) {
-            updateInput.actions = buildConfigurableOperations(record.actions);
+            const actionsMode = (options.config as unknown as PromotionUpsertLoaderConfig)?.actionsMode ?? 'REPLACE_ALL';
+            const actions = await handlePromotionActions(
+                ctx,
+                this.promotionService,
+                promotionId,
+                record.actions,
+                actionsMode,
+                this.logger,
+            );
+            if (actions !== null) {
+                updateInput.actions = actions;
+            }
         }
 
         const result = await this.promotionService.updatePromotion(ctx, updateInput as Parameters<typeof this.promotionService.updatePromotion>[1]);

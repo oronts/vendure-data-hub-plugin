@@ -40,7 +40,7 @@ export async function httpExportHandler(params: ExportHandlerParams): Promise<Ex
 
     if (!endpoint) {
         if (onRecordError) {
-            await onRecordError(stepKey, 'Export endpoint is not configured', {});
+            await onRecordError(stepKey, 'Export endpoint is not configured', { _configError: true, recordCount: records.length });
         }
         return { ok: 0, fail: records.length };
     }
@@ -56,7 +56,7 @@ export async function httpExportHandler(params: ExportHandlerParams): Promise<Ex
             finalHeaders[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${token}`;
         } else {
             if (onRecordError) {
-                await onRecordError(stepKey, `Bearer token secret "${bearerSecret}" could not be resolved`, {});
+                await onRecordError(stepKey, `Bearer token secret "${bearerSecret}" could not be resolved`, { _configError: true, secretCode: bearerSecret });
             }
             return { ok: 0, fail: records.length };
         }
@@ -67,7 +67,7 @@ export async function httpExportHandler(params: ExportHandlerParams): Promise<Ex
             finalHeaders[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${Buffer.from(creds).toString('base64')}`;
         } else {
             if (onRecordError) {
-                await onRecordError(stepKey, `Basic auth secret "${basicSecret}" could not be resolved`, {});
+                await onRecordError(stepKey, `Basic auth secret "${basicSecret}" could not be resolved`, { _configError: true, secretCode: basicSecret });
             }
             return { ok: 0, fail: records.length };
         }
@@ -113,7 +113,7 @@ export async function httpExportHandler(params: ExportHandlerParams): Promise<Ex
             fail += batch.length;
             const message = getErrorMessage(e);
             if (onRecordError) {
-                await onRecordError(stepKey, message, {});
+                await onRecordError(stepKey, message, { _batchError: true, endpoint, batchSize: batch.length });
             }
         }
     }

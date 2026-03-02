@@ -31,6 +31,19 @@ export const VENDURE_QUERY_EXTRACTOR_SCHEMA: StepConfigSchema = {
             placeholder: 'variants,featuredAsset,translations',
         },
         {
+            key: 'languageCode',
+            label: 'Language Code',
+            description: 'ISO language code for translations (e.g., en, de). If set, translations are flattened to this language.',
+            type: 'string',
+        },
+        {
+            key: 'flattenTranslations',
+            label: 'Flatten Translations',
+            description: 'Merge translation fields into root record. Set to false to preserve raw translations array for per-sink language flattening.',
+            type: 'boolean',
+            defaultValue: true,
+        },
+        {
             key: 'batchSize',
             label: 'Batch Size',
             description: 'Number of records per batch',

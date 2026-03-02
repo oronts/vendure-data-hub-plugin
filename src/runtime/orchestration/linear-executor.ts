@@ -7,7 +7,6 @@
  * Uses the Strategy pattern for step execution.
  */
 
-import { Logger } from '@nestjs/common';
 import { RequestContext, ID } from '@vendure/core';
 import { PipelineDefinition, PipelineStepDefinition, StepType } from '../../types/index';
 import { StepType as StepTypeEnum, RunStatus } from '../../constants/enums';
@@ -47,8 +46,10 @@ import { FeedStepStrategy } from './step-strategies/feed-step.strategy';
 import { SinkStepStrategy } from './step-strategies/sink-step.strategy';
 import { GateStepStrategy } from './step-strategies/gate-step.strategy';
 import { getErrorMessage } from '../../utils/error.utils';
+import { LOGGER_CONTEXTS } from '../../constants/core';
+import { DataHubLoggerFactory } from '../../services/logger';
 
-const logger = new Logger('DataHub:LinearExecutor');
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.LINEAR_EXECUTOR);
 
 /**
  * Linear execution result

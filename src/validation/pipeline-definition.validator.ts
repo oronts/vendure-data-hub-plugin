@@ -207,7 +207,8 @@ function validateEdges(
             } else {
                 const branches = ((fromStep.config as JsonObject)?.branches ?? []) as Array<{ name: string }>;
                 const names = new Set<string>(branches.map(b => String(b?.name ?? '')));
-                if (!names.has(edge.branch)) {
+                // 'default' is a built-in branch for unmatched records — always valid
+                if (edge.branch !== 'default' && !names.has(edge.branch)) {
                     errors.push(createIssue(
                         `Edge from "${edge.from}" references unknown branch "${edge.branch}"`,
                         PIPELINE_VALIDATION_ERROR.EDGE_UNKNOWN_BRANCH,

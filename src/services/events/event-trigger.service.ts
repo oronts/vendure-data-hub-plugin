@@ -256,7 +256,8 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                     const cfg = parseTriggerConfig(trigger);
                     if (!cfg) continue;
 
-                    const eventTypePattern = String((cfg as { eventType?: string }).eventType ?? '');
+                    // Support both 'eventType' and shorthand 'event' field names
+                    const eventTypePattern = String((cfg as { eventType?: string; event?: string }).eventType ?? (cfg as { event?: string }).event ?? '');
                     const eventKinds = this.getEventKindsForPattern(eventTypePattern);
 
                     const cachedTrigger: CachedEventTrigger = {

@@ -16,6 +16,7 @@ import { rabbitmqAdapter } from './rabbitmq.adapter';
 import { rabbitmqAmqpAdapter } from './rabbitmq-amqp.adapter';
 import { sqsAdapter } from './sqs.adapter';
 import { redisStreamsAdapter } from './redis-streams.adapter';
+import { internalQueueAdapter } from './internal.adapter';
 
 /**
  * Validate adapter code format
@@ -47,6 +48,8 @@ class QueueAdapterRegistry {
         this.register(sqsAdapter);
         // Redis Streams adapter for high-performance messaging
         this.register(redisStreamsAdapter);
+        // Internal in-process adapter for testing and development
+        this.register(internalQueueAdapter);
     }
 
     /**

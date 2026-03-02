@@ -1,6 +1,5 @@
 import * as React from 'react';
 import {
-    GitBranch,
     Settings,
     type LucideIcon,
 } from 'lucide-react';
@@ -143,24 +142,6 @@ function buildAdapterMetadata(adapter: {
     };
 }
 
-const CORE_ADAPTERS: AdapterMetadata[] = [
-    {
-        code: 'condition',
-        type: 'ROUTER',
-        name: 'Condition',
-        description: 'Route records based on conditions',
-        icon: GitBranch,
-        color: '#f97316',
-        category: UI_ADAPTER_CATEGORY.ROUTING,
-        nodeType: 'condition',
-        schema: {
-            fields: [
-                { key: 'expression', label: 'Condition Expression', type: 'text', required: true, description: 'JavaScript expression to evaluate (e.g., price > 100)' },
-            ],
-        },
-    },
-];
-
 interface UseAdapterCatalogResult {
     catalog: AdapterCatalog;
     adapters: AdapterMetadata[];
@@ -178,19 +159,10 @@ export function useAdapterCatalog(): UseAdapterCatalogResult {
     const { data: connectionCodesData } = useConnectionCodes();
     const { data: secretsData } = useSecrets({ take: QUERY_LIMITS.SECRETS_LIST });
 
-    const adapters: AdapterMetadata[] = React.useMemo(() => {
-        const rawAdapters = adaptersData ?? [];
-        const mapped = rawAdapters.map(buildAdapterMetadata);
-
-        const codes = new Set(mapped.map(a => a.code));
-        for (const core of CORE_ADAPTERS) {
-            if (!codes.has(core.code)) {
-                mapped.push(core);
-            }
-        }
-
-        return mapped;
-    }, [adaptersData]);
+    const adapters: AdapterMetadata[] = React.useMemo(
+        () => (adaptersData ?? []).map(buildAdapterMetadata),
+        [adaptersData],
+    );
 
     const catalog: AdapterCatalog = React.useMemo(() => {
         const sources = adapters.filter(a => a.category === UI_ADAPTER_CATEGORY.SOURCES);

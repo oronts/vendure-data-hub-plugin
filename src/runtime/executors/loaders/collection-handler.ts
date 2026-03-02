@@ -1,15 +1,18 @@
 /**
  * Collection upsert loader handler
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
     RequestContext,
     CollectionService,
     RequestContextService,
+    ChannelService,
+    Collection,
     ID,
 } from '@vendure/core';
 import {
     LanguageCode,
+    CreateCollectionTranslationInput,
     CreateCollectionInput,
     UpdateCollectionInput,
 } from '@vendure/common/lib/generated-types';
@@ -19,6 +22,10 @@ import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getObjectValue } from '../../../loaders/shared-helpers';
+import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
+import { slugify } from '../../utils';
+import { LOGGER_CONTEXTS } from '../../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 
 /**
  * Configuration for collection handler step
@@ -40,6 +47,12 @@ interface CollectionHandlerConfig {
     applyFilters?: boolean;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
     strategy?: LoadStrategy;
+    /** Record field containing multi-language translations (array or object map) */
+    translationsField?: string;
+    /** Record field containing channel codes for dynamic per-record channel assignment */
+    channelsField?: string;
+    /** Record field containing isPrivate flag */
+    isPrivateField?: string;
 }
 
 /**
@@ -78,12 +91,16 @@ function coerceCollectionFields(rec: RecordObject, cfg: CollectionHandlerConfig)
 
 @Injectable()
 export class CollectionHandler implements LoaderHandler {
-    private readonly logger = new Logger(CollectionHandler.name);
+    private readonly logger: DataHubLogger;
 
     constructor(
         private collectionService: CollectionService,
         private requestContextService: RequestContextService,
-    ) {}
+        private channelService: ChannelService,
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.COLLECTION_LOADER);
+    }
 
     async execute(
         ctx: RequestContext,
@@ -96,12 +113,31 @@ export class CollectionHandler implements LoaderHandler {
         let fail = 0;
         const cfg = getConfig(step.config);
 
+        const channelCache = new Map<string, ID>();
+
         for (const rec of input) {
             try {
                 const fields = coerceCollectionFields(rec, cfg);
-                const { slug, name, description, parentSlug } = fields;
+                let { slug, name, description } = fields;
+                const { parentSlug } = fields;
+
+                // Multi-language: extract name/slug from first translation if missing
+                if ((!name || !slug) && cfg.translationsField) {
+                    const raw = rec[cfg.translationsField];
+                    if (raw) {
+                        const parsed = parseTranslationsInput(raw);
+                        if (parsed.length > 0) {
+                            const first = parsed[0];
+                            if (!name) name = String(first.name ?? '');
+                            if (!slug) slug = first.slug != null ? String(first.slug) : slugify(String(first.name ?? ''));
+                        }
+                    }
+                }
 
                 if (!slug || !name) {
+                    if (onRecordError) {
+                        await onRecordError(step.key, 'Missing required field: name or slug', rec);
+                    }
                     fail++;
                     continue;
                 }
@@ -110,11 +146,20 @@ export class CollectionHandler implements LoaderHandler {
                 const customFields = getObjectValue(rec, customFieldsKey);
                 const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
 
+                // Resolve isPrivate from record
+                const isPrivate = cfg.isPrivateField
+                    ? Boolean(rec[cfg.isPrivateField])
+                    : undefined;
+
+                // Build translations
+                const translations = this.buildTranslations(ctx, rec, cfg, name, slug, description);
+
                 const opCtx = await this.resolveRequestContext(ctx, cfg);
-                const collectionId = await this.upsertCollection(opCtx, slug, name, description, parentSlug, customFields, strategy);
+                const collectionId = await this.upsertCollection(opCtx, slug, name, description, parentSlug, customFields, strategy, translations, isPrivate);
 
                 if (collectionId) {
                     await this.maybeApplyFilters(opCtx, cfg, collectionId);
+                    await this.assignToRecordChannels(opCtx, rec, cfg, collectionId, channelCache);
                     ok++;
                 } else {
                     if (onRecordError) {
@@ -152,8 +197,70 @@ export class CollectionHandler implements LoaderHandler {
         } catch (err) {
             // Channel resolution failed - fall back to original context
             // This is expected when the channel token is invalid
-            Logger.debug(`Failed to resolve channel context: ${getErrorMessage(err)}`, 'CollectionHandler');
+            this.logger.warn(`Failed to resolve channel context: ${getErrorMessage(err)}`);
             return ctx;
+        }
+    }
+
+    /**
+     * Build collection translations from record.
+     * If translationsField is set, reads multi-language array/object from the record.
+     * Otherwise builds a single translation from name/slug/description.
+     */
+    private buildTranslations(
+        ctx: RequestContext,
+        rec: RecordObject,
+        cfg: CollectionHandlerConfig,
+        name: string,
+        slug: string,
+        description: string | undefined,
+    ): CreateCollectionTranslationInput[] {
+        if (cfg.translationsField) {
+            const raw = rec[cfg.translationsField];
+            if (raw) {
+                const parsed = parseTranslationsInput(raw);
+                if (parsed.length > 0) {
+                    return parsed.map(t => ({
+                        languageCode: String(t.languageCode) as LanguageCode,
+                        name: String(t.name ?? name),
+                        slug: t.slug != null ? String(t.slug) : slugify(String(t.name ?? name)),
+                        description: t.description != null ? String(t.description) : '',
+                    }));
+                }
+            }
+        }
+
+        return [{
+            languageCode: ctx.languageCode as LanguageCode,
+            name,
+            slug,
+            description: description ?? '',
+        }];
+    }
+
+    /**
+     * Assign collection to dynamically resolved channels from a record field
+     */
+    private async assignToRecordChannels(
+        opCtx: RequestContext,
+        rec: RecordObject,
+        cfg: CollectionHandlerConfig,
+        collectionId: ID,
+        channelCache: Map<string, ID>,
+    ): Promise<void> {
+        if (!cfg.channelsField) return;
+        const rawValue = rec[cfg.channelsField];
+        if (rawValue == null) return;
+
+        const channelIds = await resolveChannelIds(this.channelService, opCtx, rawValue, channelCache, this.logger);
+        if (channelIds.length === 0) return;
+
+        try {
+            await this.channelService.assignToChannels(opCtx, Collection, collectionId, channelIds);
+        } catch (error) {
+            this.logger.warn(
+                `Failed to assign collection ${String(collectionId)} to channels: ${getErrorMessage(error)}`,
+            );
         }
     }
 
@@ -168,6 +275,8 @@ export class CollectionHandler implements LoaderHandler {
         parentSlug: string | undefined,
         customFields: Record<string, unknown> | undefined,
         strategy: LoadStrategy,
+        translations: CreateCollectionTranslationInput[],
+        isPrivate: boolean | undefined,
     ): Promise<ID | undefined> {
         const existing = await this.collectionService.findOneBySlug(opCtx, slug);
 
@@ -177,12 +286,8 @@ export class CollectionHandler implements LoaderHandler {
             }
             const updateInput: UpdateCollectionInput = {
                 id: existing.id,
-                translations: [{
-                    languageCode: opCtx.languageCode as LanguageCode,
-                    name,
-                    slug,
-                    description,
-                }],
+                translations,
+                ...(typeof isPrivate === 'boolean' ? { isPrivate } : {}),
             };
             if (customFields) {
                 updateInput.customFields = customFields;
@@ -207,12 +312,8 @@ export class CollectionHandler implements LoaderHandler {
         const createInput: CreateCollectionInput = {
             parentId,
             filters: [], // Required field - empty array for manual collections
-            translations: [{
-                languageCode: opCtx.languageCode as LanguageCode,
-                name,
-                slug,
-                description: description ?? '',
-            }],
+            translations,
+            ...(typeof isPrivate === 'boolean' ? { isPrivate } : {}),
         };
         if (customFields) {
             createInput.customFields = customFields;

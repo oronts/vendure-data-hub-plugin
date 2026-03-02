@@ -37,9 +37,13 @@ export function getStockOnHand(variant: VariantWithCustomFields): number {
 }
 
 /**
- * Format price with currency
+ * Format price with currency.
+ * Returns null if priceInCents is NaN/undefined/null or currency is empty/undefined.
  */
-export function formatPrice(priceInCents: number, currency: string): string {
+export function formatPrice(priceInCents: number, currency: string): string | null {
+    if (!currency || typeof priceInCents !== 'number' || isNaN(priceInCents)) {
+        return null;
+    }
     return `${(priceInCents / 100).toFixed(2)} ${currency}`;
 }
 
@@ -53,9 +57,31 @@ export function getGoogleAvailability(variant: VariantWithCustomFields): GoogleA
 }
 
 /**
- * Get Facebook Catalog availability status
+ * Valid Facebook availability values for custom field override matching
+ */
+const VALID_FACEBOOK_AVAILABILITY_VALUES: readonly string[] = [
+    FACEBOOK_AVAILABILITY.IN_STOCK,
+    FACEBOOK_AVAILABILITY.OUT_OF_STOCK,
+    FACEBOOK_AVAILABILITY.PREORDER,
+    FACEBOOK_AVAILABILITY.AVAILABLE_FOR_ORDER,
+    FACEBOOK_AVAILABILITY.DISCONTINUED,
+];
+
+/**
+ * Get Facebook Catalog availability status.
+ * Checks for explicit availability override in customFields before falling back to stock-based derivation.
  */
 export function getFacebookAvailability(variant: VariantWithCustomFields): FacebookAvailabilityStatus {
+    // Check for explicit availability override in customFields or direct field
+    const customFields = variant.customFields as Record<string, unknown> | undefined;
+    const customAvailability = customFields?.availability ?? (variant as unknown as Record<string, unknown>).availability;
+    if (typeof customAvailability === 'string') {
+        const normalized = customAvailability.toLowerCase().replace(/[_-]/g, ' ');
+        if (VALID_FACEBOOK_AVAILABILITY_VALUES.includes(normalized)) {
+            return normalized as FacebookAvailabilityStatus;
+        }
+    }
+    // Default: derive from stock
     const stockOnHand = getStockOnHand(variant);
     if (stockOnHand > 0) return FACEBOOK_AVAILABILITY.IN_STOCK;
     return FACEBOOK_AVAILABILITY.OUT_OF_STOCK;

@@ -111,12 +111,15 @@ export interface EntityLike {
 }
 
 /**
- * Convert entity to JSON record
+ * Convert entity to JSON record.
+ * Automatically flattens translations when present (uses languageCode if configured,
+ * falls back to first available translation). Also resolves computed price fields
+ * from productVariantPrices relation when loaded.
  */
 export function entityToRecord(entity: EntityLike, config: VendureQueryExtractorConfig): JsonObject {
     const record: JsonObject = {};
     const languageCode = config.languageCode;
-    const shouldFlatten = config.flattenTranslations !== false && !!languageCode;
+    const shouldFlatten = config.flattenTranslations !== false;
 
     // Get all enumerable properties
     for (const [key, value] of Object.entries(entity)) {
@@ -135,8 +138,8 @@ export function entityToRecord(entity: EntityLike, config: VendureQueryExtractor
             continue;
         }
 
-        // Handle translations array - flatten if language is specified
-        if (key === 'translations' && shouldFlatten && Array.isArray(value)) {
+        // Handle translations array - flatten if present
+        if (key === 'translations' && shouldFlatten && Array.isArray(value) && value.length > 0) {
             const translation = findTranslation(value, languageCode);
             if (translation) {
                 // Merge translation fields into root record
@@ -163,10 +166,10 @@ export function entityToRecord(entity: EntityLike, config: VendureQueryExtractor
             if (Array.isArray(value)) {
                 record[key] = value.map(item =>
                     item instanceof Date ? item.toISOString() :
-                    typeof item === 'object' ? (serializeObject(item as Record<string, unknown>) ?? null) : item
+                    typeof item === 'object' ? (serializeObject(item as Record<string, unknown>, languageCode, 0, shouldFlatten) ?? null) : item
                 ) as JsonValue;
             } else {
-                record[key] = serializeObject(value as Record<string, unknown>) ?? null;
+                record[key] = serializeObject(value as Record<string, unknown>, languageCode, 0, shouldFlatten) ?? null;
             }
         }
         // Primitive values (string, number, boolean, null)
@@ -175,21 +178,51 @@ export function entityToRecord(entity: EntityLike, config: VendureQueryExtractor
         }
     }
 
+    // Resolve computed price fields from productVariantPrices relation
+    resolveVariantPriceFields(entity, record);
+
     return record;
 }
 
 /**
- * Find translation for a specific language code
- * Falls back to first translation if exact match not found
+ * Auto-resolve price/priceWithTax/currencyCode from productVariantPrices relation.
+ * These are getter/calculated fields on ProductVariant that TypeORM doesn't populate
+ * when loading via raw QueryBuilder. Resolves from the best available price entry
+ * (prefers non-zero prices since zero-price entries may be stale channel defaults).
  */
-function findTranslation(translations: unknown[], languageCode: string): Record<string, unknown> | null {
+function resolveVariantPriceFields(entity: EntityLike, record: JsonObject): void {
+    if (!Array.isArray(entity.productVariantPrices) || entity.productVariantPrices.length === 0) return;
+    const prices = entity.productVariantPrices as Array<Record<string, unknown>>;
+
+    // Prefer a non-zero price entry (zero may be an uninitialized channel price)
+    const bestPrice = prices.find(p => typeof p.price === 'number' && p.price > 0) ?? prices[0];
+    if (!bestPrice || typeof bestPrice.price !== 'number') return;
+
+    // Override zero/undefined prices. TypeORM loads ProductVariant getters (price, priceWithTax)
+    // as own properties returning 0 since listPrice is not populated by raw query builder.
+    // The real price lives in productVariantPrices entries.
+    if (!record.price || record.price === 0) record.price = bestPrice.price;
+    if (!record.listPrice || record.listPrice === 0) record.listPrice = bestPrice.price;
+    if (!record.priceWithTax || record.priceWithTax === 0) record.priceWithTax = bestPrice.price;
+    if (record.currencyCode === undefined && typeof bestPrice.currencyCode === 'string') {
+        record.currencyCode = bestPrice.currencyCode;
+    }
+}
+
+/**
+ * Find translation for a specific language code.
+ * Falls back to first translation if exact match not found or languageCode is undefined.
+ */
+function findTranslation(translations: unknown[], languageCode?: string): Record<string, unknown> | null {
     if (!translations || translations.length === 0) return null;
 
-    // First try exact match
-    const exactMatch = translations.find((t: unknown) =>
-        t && typeof t === 'object' && (t as Record<string, unknown>).languageCode === languageCode
-    );
-    if (exactMatch) return exactMatch as Record<string, unknown>;
+    // First try exact match if languageCode is provided
+    if (languageCode) {
+        const exactMatch = translations.find((t: unknown) =>
+            t && typeof t === 'object' && (t as Record<string, unknown>).languageCode === languageCode
+        );
+        if (exactMatch) return exactMatch as Record<string, unknown>;
+    }
 
     // Fall back to first translation
     const first = translations[0];
@@ -199,19 +232,54 @@ function findTranslation(translations: unknown[], languageCode: string): Record<
 }
 
 /**
- * Serialize object to JSON-compatible format
+ * Serialize object to JSON-compatible format with depth-limited recursion.
+ * Flattens translations in nested entities when languageCode is provided
+ * (or uses first available translation). Recurses up to 3 levels deep to
+ * handle nested relations without infinite loops from circular references.
  */
-export function serializeObject(obj: Record<string, unknown> | null): JsonObject | null {
-    if (obj === null) return null;
+export function serializeObject(
+    obj: Record<string, unknown> | null,
+    languageCode?: string,
+    depth: number = 0,
+    flattenTranslations: boolean = true,
+): JsonObject | null {
+    if (obj === null || depth > 3) return null;
 
     const result: JsonObject = {};
+
+    // Flatten translations for nested entities (e.g., product.translations → product.name)
+    // Only flatten if flattenTranslations is true; otherwise preserve raw translations arrays
+    if (flattenTranslations && Array.isArray(obj.translations) && obj.translations.length > 0) {
+        const translation = findTranslation(obj.translations as unknown[], languageCode);
+        if (translation) {
+            for (const [transKey, transValue] of Object.entries(translation)) {
+                if (transKey === 'languageCode' || transKey === 'id') continue;
+                if (typeof transValue === 'function' || transValue === undefined) continue;
+                if (transValue instanceof Date) {
+                    result[transKey] = transValue.toISOString();
+                } else if (transValue === null || typeof transValue === 'string' || typeof transValue === 'number' || typeof transValue === 'boolean') {
+                    result[transKey] = transValue;
+                }
+            }
+        }
+    }
+
     for (const [key, value] of Object.entries(obj)) {
+        // Skip translations only if we flattened them above
+        if (key === 'translations' && Array.isArray(value) && flattenTranslations) continue;
         if (typeof value === 'function' || value === undefined) continue;
         if (value instanceof Date) {
             result[key] = value.toISOString();
         } else if (typeof value === 'object' && value !== null) {
-            // Don't recurse too deep
-            result[key] = Array.isArray(value) ? value.length : '[object]';
+            if (Array.isArray(value)) {
+                result[key] = value.map(item =>
+                    item instanceof Date ? item.toISOString() :
+                    typeof item === 'object' && item !== null ? (serializeObject(item as Record<string, unknown>, languageCode, depth + 1, flattenTranslations) ?? null) :
+                    item
+                ) as JsonValue;
+            } else {
+                result[key] = serializeObject(value as Record<string, unknown>, languageCode, depth + 1, flattenTranslations) ?? null;
+            }
         } else {
             result[key] = value as JsonValue;
         }

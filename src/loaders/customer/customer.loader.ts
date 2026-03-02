@@ -31,7 +31,7 @@ import {
 } from './types';
 import {
     assignCustomerGroups,
-    createAddresses,
+    handleCustomerAddresses,
     shouldUpdateField,
 } from './helpers';
 
@@ -85,7 +85,12 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
         record: CustomerInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
+        // Build identifier for better error messages
+        const identifier = record.emailAddress || record.id || 'unknown';
+
         const builder = new ValidationBuilder()
+            .withIdentifier(`email="${identifier}"`)
+            .withLineNumber(ValidationBuilder.getLineNumber(record as Record<string, unknown>))
             .requireEmailForCreate('emailAddress', record.emailAddress, operation)
             .requireStringForCreate('firstName', record.firstName, operation, 'First name is required')
             .requireStringForCreate('lastName', record.lastName, operation, 'Last name is required');
@@ -207,7 +212,16 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
         }
 
         if (record.addresses && record.addresses.length > 0) {
-            await createAddresses(ctx, this.customerService, this.countryService, customer.id, record.addresses, this.logger);
+            // Use APPEND_ONLY mode for createEntity to preserve existing behavior
+            await handleCustomerAddresses(
+                ctx,
+                this.customerService,
+                this.countryService,
+                customer.id,
+                record.addresses,
+                { mode: 'APPEND_ONLY', matchFields: [] },
+                this.logger
+            );
         }
 
         this.logger.log(`Created customer ${record.emailAddress} (ID: ${customer.id})`);
@@ -239,6 +253,23 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
 
         if (record.groupCodes && shouldUpdateField('groupCodes', options.updateOnlyFields)) {
             await assignCustomerGroups(ctx, this.customerGroupService, customerId, record.groupCodes, this.logger);
+        }
+
+        // FIX: Add address handling to updateEntity() - this was missing and caused duplicates
+        if (record.addresses && shouldUpdateField('addresses', options.updateOnlyFields)) {
+            const addressesMode = (options.config?.addressesMode as string) || 'UPSERT_BY_MATCH';
+            const matchFieldsStr = (options.config?.addressMatchFields as string) || 'streetLine1,city,countryCode';
+            const matchFields = matchFieldsStr.split(',').map(f => f.trim());
+
+            await handleCustomerAddresses(
+                ctx,
+                this.customerService,
+                this.countryService,
+                customerId,
+                record.addresses,
+                { mode: addressesMode as any, matchFields },
+                this.logger
+            );
         }
 
         this.logger.debug(`Updated customer ${record.emailAddress} (ID: ${customerId})`);

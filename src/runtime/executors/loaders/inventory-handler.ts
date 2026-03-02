@@ -1,7 +1,7 @@
 /**
  * Inventory/Stock adjustment loader handler
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
     RequestContext,
     ProductVariantService,
@@ -15,6 +15,8 @@ import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../exec
 import { LoaderHandler } from './types';
 import { findVariantBySku as findVariantBySkuLookup } from './shared-lookups';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { LOGGER_CONTEXTS } from '../../../constants/index';
 
 /**
  * Configuration for the stock adjustment handler
@@ -60,12 +62,15 @@ function getRecordField(record: RecordObject, key: string): unknown {
 
 @Injectable()
 export class StockAdjustHandler implements LoaderHandler {
-    private readonly logger = new Logger(StockAdjustHandler.name);
+    private readonly logger: DataHubLogger;
 
     constructor(
         private productVariantService: ProductVariantService,
         private stockLocationService: StockLocationService,
-    ) {}
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.INVENTORY_LOADER);
+    }
 
     async execute(
         ctx: RequestContext,

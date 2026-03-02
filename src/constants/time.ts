@@ -14,6 +14,8 @@ const TIME_INTERVALS = {
     THIRTY_DAYS_MS: 30 * TIME_UNITS.DAY,
     NINETY_DAYS_MS: 90 * TIME_UNITS.DAY,
     // Execution timeouts
+    /** Maximum allowed duration for a single pipeline run before it is marked as timed out (1 hour) */
+    MAX_RUN_DURATION_MS: TIME_UNITS.HOUR,
     /** Pipeline execution timeout (30 minutes) */
     PIPELINE_EXECUTION_TIMEOUT_MS: 30 * TIME_UNITS.MINUTE,
     /** Step execution timeout (5 minutes) */

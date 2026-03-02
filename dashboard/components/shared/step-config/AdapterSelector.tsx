@@ -44,7 +44,7 @@ export function AdapterSelector({
     }
 
     return (
-        <Select value={value} onValueChange={onChange} disabled={disabled}>
+        <Select value={value ?? ''} onValueChange={onChange} disabled={disabled}>
             <SelectTrigger className="w-full">
                 <SelectValue placeholder={placeholder}>
                     {selectedAdapter && (
@@ -92,7 +92,7 @@ export function AdapterSelector({
                                         <div className="flex flex-col gap-0.5">
                                             <span className="font-medium">{adapter.name}</span>
                                             {adapter.description && (
-                                                <span className="text-xs text-muted-foreground line-clamp-1">
+                                                <span className="text-xs text-muted-foreground line-clamp-2">
                                                     {adapter.description}
                                                 </span>
                                             )}

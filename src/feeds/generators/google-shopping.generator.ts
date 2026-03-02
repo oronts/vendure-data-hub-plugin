@@ -4,7 +4,7 @@
  * Generates product feeds in Google Shopping XML format
  */
 
-import { RequestContext, Logger } from '@vendure/core';
+import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
 import { XMLBuilder } from 'fast-xml-parser';
 import { FEED_NAMESPACES, TRUNCATION } from '../../constants/index';
@@ -29,8 +29,10 @@ import {
 } from './feed-helpers';
 import { SERVICE_DEFAULTS } from '../../constants/index';
 import { PRODUCT_CONDITIONS, FEED_LIMITS, FEED_DEFAULTS } from './feed-constants';
+import { LOGGER_CONTEXTS } from '../../constants/core';
+import { DataHubLoggerFactory } from '../../services/logger';
 
-const LOG_CONTEXT = 'GoogleShoppingGenerator';
+const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
 /**
  * Generate Google Shopping XML feed
@@ -51,14 +53,25 @@ export async function generateGoogleShoppingFeed(
             const product = variant.product as ProductWithCustomFields | undefined;
             const customFields = variant.customFields || {};
             const productCustomFields = product?.customFields || {};
+            const sku = variant.sku || variant.id.toString();
 
             const price = formatPrice(variant.priceWithTax, currency);
+            if (price === null) {
+                feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${currency}")`);
+                continue;
+            }
+
+            // Validate price format matches Google's requirement: number + space + 3-letter currency code
+            if (!/^\d+\.\d{2}\s[A-Z]{3}$/.test(price)) {
+                feedLogger.warn(`Invalid price format for SKU ${sku}: "${price}"`);
+            }
+
             const salePrice = customFields.salePrice
                 ? formatPrice(customFields.salePrice as number, currency)
                 : undefined;
 
             const item: GoogleShoppingItem = {
-                'g:id': variant.sku || variant.id.toString(),
+                'g:id': sku,
                 'g:title': truncate(variant.name || product?.name || '', FEED_LIMITS.TITLE_MAX_LENGTH),
                 'g:description': truncate(stripHtml(product?.description || ''), TRUNCATION.FEED_DESCRIPTION_MAX_LENGTH),
                 'g:link': buildProductUrl(baseUrl, variant, config.options?.utmParams),
@@ -128,7 +141,7 @@ export async function generateGoogleShoppingFeed(
 
             items.push(item);
         } catch (error) {
-            Logger.warn(`Failed to process variant ${variant.id}: ${error}`, LOG_CONTEXT);
+            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
         }
     }
 

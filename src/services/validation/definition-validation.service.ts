@@ -219,7 +219,10 @@ export class DefinitionValidationService {
 
         for (const step of definition.steps) {
             const type = step.type as StepType;
-            const cfg = (step.config ?? {}) as AdapterStepConfig;
+            const rawConfig = (step.config ?? {}) as AdapterStepConfig;
+            const cfg = step.adapterCode && !rawConfig.adapterCode
+                ? { ...rawConfig, adapterCode: step.adapterCode }
+                : rawConfig;
             const adapterType = adapterTypeFor(type);
 
             if (!adapterType) {

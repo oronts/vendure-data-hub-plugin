@@ -41,7 +41,7 @@ export class MemoryExtractHandler implements ExtractHandler {
     async extract(context: ExtractHandlerContext): Promise<RecordObject[]> {
         const { step } = context;
         const cfg = getExtractConfig<InMemoryExtractConfig | GeneratorExtractConfig>(step);
-        const adapterCode = cfg.adapterCode;
+        const adapterCode = step.adapterCode ?? cfg.adapterCode;
 
         if (adapterCode === EXTRACTOR_CODE.IN_MEMORY) {
             return this.extractInMemory(context);
@@ -85,7 +85,7 @@ export class MemoryExtractHandler implements ExtractHandler {
         const records: RecordObject[] = [];
 
         for (let i = 0; i < count; i++) {
-            const record = this.generateRecord(i, template);
+            const record = this.generateRecord(i, count, template);
             records.push(record);
         }
 
@@ -93,12 +93,12 @@ export class MemoryExtractHandler implements ExtractHandler {
         return records;
     }
 
-    private generateRecord(index: number, template?: Record<string, unknown>): RecordObject {
+    private generateRecord(index: number, total: number, template?: Record<string, unknown>): RecordObject {
         const record: Record<string, unknown> = { _index: index };
 
         if (template && typeof template === 'object') {
             for (const [key, generator] of Object.entries(template)) {
-                record[key] = this.generateValue(generator, index);
+                record[key] = this.generateValue(generator, index, total);
             }
         } else {
             this.applyDefaultTemplate(record, index);
@@ -114,15 +114,15 @@ export class MemoryExtractHandler implements ExtractHandler {
         record.createdAt = new Date().toISOString();
     }
 
-    private generateValue(generator: unknown, index: number): unknown {
+    private generateValue(generator: unknown, index: number, total: number): unknown {
         if (typeof generator !== 'string') {
             return generator;
         }
 
-        return this.handleStringGenerator(generator, index);
+        return this.handleStringGenerator(generator, index, total);
     }
 
-    private handleStringGenerator(generator: string, index: number): unknown {
+    private handleStringGenerator(generator: string, index: number, total: number): unknown {
         switch (generator) {
             case 'uuid':
                 return this.generateUuid();
@@ -133,16 +133,24 @@ export class MemoryExtractHandler implements ExtractHandler {
             case 'index':
                 return index;
             default:
-                return this.handlePrefixedGenerator(generator, index);
+                return this.handlePrefixedGenerator(generator, index, total);
         }
     }
 
-    private handlePrefixedGenerator(generator: string, index: number): unknown {
+    private handlePrefixedGenerator(generator: string, index: number, total: number): unknown {
         if (generator.startsWith('random:')) {
             return this.generateRandom(generator);
         }
         if (generator.startsWith('seq:')) {
             return this.generateSequence(generator, index);
+        }
+        // Interpolate {{index}}, {{count}}, and {{total}} templates in literal string values
+        if (generator.includes('{{')) {
+            let result = generator;
+            result = result.replace(/\{\{index\}\}/g, String(index));
+            result = result.replace(/\{\{count\}\}/g, String(total));
+            result = result.replace(/\{\{total\}\}/g, String(total));
+            return result;
         }
         // Return as literal value
         return generator;

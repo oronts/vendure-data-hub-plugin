@@ -29,8 +29,9 @@ import { HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, HTTP_STATUS } from '../../..
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { DataHubLogger } from '../../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
 
-const logger = new DataHubLogger('RabbitMQHttpAdapter');
+const logger = new DataHubLogger(LOGGER_CONTEXTS.RABBITMQ_HTTP_ADAPTER);
 
 export class RabbitMQAdapter implements QueueAdapter {
     readonly code = 'rabbitmq';

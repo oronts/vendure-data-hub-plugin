@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Inject } from '@nestjs/common';
 import { RequestContextService, TransactionalConnection } from '@vendure/core';
 import { DATAHUB_PLUGIN_OPTIONS, TIME, LOGGER_CONTEXTS, SCHEDULER, RETENTION } from '../../constants/index';
+import { RunStatus } from '../../constants/enums';
 import { DataHubPluginOptions } from '../../types/index';
 import { PipelineRun } from '../../entities/pipeline';
 import { DataHubRecordError } from '../../entities/data';
@@ -61,6 +62,29 @@ export class DataHubRetentionService implements OnModuleInit, OnModuleDestroy {
 
         let runsDeleted = 0;
         let errorsDeleted = 0;
+
+        // Detect and fail stale RUNNING runs that exceed the maximum allowed duration
+        const staleRunCutoff = new Date(now.getTime() - TIME.MAX_RUN_DURATION_MS);
+        const runRepo = this.connection.getRepository(ctx, PipelineRun);
+        const staleRuns = await runRepo
+            .createQueryBuilder('run')
+            .where('run.status = :status', { status: RunStatus.RUNNING })
+            .andWhere('run.startedAt IS NOT NULL AND run.startedAt < :cutoff', { cutoff: staleRunCutoff.toISOString() })
+            .getMany();
+
+        for (const staleRun of staleRuns) {
+            staleRun.status = RunStatus.TIMEOUT;
+            staleRun.finishedAt = now;
+            staleRun.error = `Run timed out (exceeded maximum duration of ${TIME.MAX_RUN_DURATION_MS / TIME.MINUTE} minutes)`;
+            await runRepo.save(staleRun, { reload: false });
+            this.logger.warn('Marked stale run as TIMEOUT', {
+                runId: String(staleRun.id),
+                startedAt: staleRun.startedAt?.toISOString(),
+            });
+        }
+        if (staleRuns.length > 0) {
+            this.logger.info('Cleaned up stale RUNNING runs', { count: staleRuns.length });
+        }
 
         if (daysRuns > 0) {
             const cutoff = new Date(now.getTime() - daysRuns * TIME.DAY);

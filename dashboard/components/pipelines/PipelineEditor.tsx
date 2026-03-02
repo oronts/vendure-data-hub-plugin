@@ -192,7 +192,8 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
             ...selectedStep,
             key: updated.key,
             type: updated.type as StepType,
-            config: { ...updated.config, adapterCode: updated.adapterCode },
+            adapterCode: updated.adapterCode || selectedStep.adapterCode,
+            config: updated.config,
         });
     }, [selectedStepIndex, selectedStep, updateStep]);
 
@@ -319,7 +320,7 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                                 key: selectedStep.key,
                                 type: selectedStep.type,
                                 config: selectedStep.config ?? {},
-                                adapterCode: selectedStep.config?.adapterCode as string | undefined,
+                                adapterCode: selectedStep.adapterCode ?? selectedStep.config?.adapterCode as string | undefined,
                             }}
                             onChange={handleSelectedStepChange}
                             catalog={adapters}

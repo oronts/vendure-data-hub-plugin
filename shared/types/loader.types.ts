@@ -23,6 +23,8 @@ export interface LoaderOptions {
     skipDuplicates?: boolean;
     /** Language code for translations */
     languageCode?: string;
+    /** Loader-specific configuration (e.g., nested entity modes) */
+    config?: Record<string, unknown>;
 }
 
 // LOAD RESULT (Entity-specific, distinct from pipeline LoadResult)
@@ -51,6 +53,8 @@ export interface EntityValidationResult {
     valid: boolean;
     errors: EntityValidationError[];
     warnings: EntityValidationWarning[];
+    /** Formatted error message with full context (only present when valid=false) */
+    errorMessage?: string;
 }
 
 export interface EntityValidationError {

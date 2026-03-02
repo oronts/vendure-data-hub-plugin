@@ -6,6 +6,7 @@ import { ConnectionService } from '../../services/config/connection.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../executor-types';
 import { getPath } from '../utils';
+import { applyLocalization, resolveIndexName } from '../executor-helpers';
 import { BATCH, LOGGER_CONTEXTS, SINK } from '../../constants/index';
 import { CircuitState, AdapterType } from '../../constants/enums';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -101,8 +102,17 @@ export class SinkExecutor {
             return result;
         };
 
+        // Apply localization (translation flattening + channel filtering)
+        const languageCode = (cfg as Record<string, unknown>).languageCode as string | undefined;
+        const translationsField = (cfg as Record<string, unknown>).translationsField as string | undefined;
+        const channelCode = (cfg as Record<string, unknown>).channelCode as string | undefined;
+        const channelField = (cfg as Record<string, unknown>).channelField as string | undefined;
+
+        const localizedInput = applyLocalization(input, { languageCode, translationsField, channelCode, channelField });
+        const resolvedIndexName = resolveIndexName(indexName, languageCode);
+
         const handlerCtx: SinkHandlerContext = {
-            ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError,
+            ctx, step, input: localizedInput, cfg, indexName: resolvedIndexName, idField, bulkSize, prepareDoc, onRecordError,
         };
 
         // Try built-in handlers first

@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useCallback } from 'react';
 import { Textarea } from '@vendure/dashboard';
 import type { AdapterSchemaField } from '../../../../types';
+import { CodeEditorWithExpand } from '../../CodeEditor';
 
 export interface TextareaFieldProps {
     field: AdapterSchemaField;
@@ -17,15 +18,29 @@ export function TextareaField({ field, value, onChange, compact, disabled, isCod
         onChange(e.target.value);
     }, [onChange]);
 
+    if (!isCode) {
+        return (
+            <Textarea
+                id={field.key}
+                value={value ?? field.default ?? ''}
+                onChange={handleChange}
+                placeholder={field.placeholder}
+                disabled={disabled}
+                rows={compact ? 2 : 5}
+                className={compact ? 'text-sm' : ''}
+            />
+        );
+    }
+
     return (
-        <Textarea
+        <CodeEditorWithExpand
             id={field.key}
+            label={field.label || field.key}
             value={value ?? field.default ?? ''}
-            onChange={handleChange}
+            onChange={onChange}
             placeholder={field.placeholder}
             disabled={disabled}
-            rows={compact ? 2 : 5}
-            className={isCode ? 'font-mono text-sm' : (compact ? 'text-sm' : '')}
+            rows={compact ? 6 : 12}
         />
     );
 }

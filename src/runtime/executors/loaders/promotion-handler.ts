@@ -1,11 +1,12 @@
 /**
  * Promotion upsert loader handler
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
     RequestContext,
     PromotionService,
     RequestContextService,
+    ChannelService,
     Promotion,
     ID,
 } from '@vendure/core';
@@ -14,6 +15,8 @@ import {
     CreatePromotionInput,
     UpdatePromotionInput,
     AssignPromotionsToChannelInput,
+    LanguageCode,
+    PromotionTranslationInput,
 } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
@@ -22,6 +25,9 @@ import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getObjectValue } from '../../../loaders/shared-helpers';
+import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
+import { LOGGER_CONTEXTS } from '../../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 
 /**
  * Configuration interface for the promotion handler step
@@ -47,6 +53,14 @@ interface PromotionHandlerConfig {
     customFieldsField?: string;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
     strategy?: LoadStrategy;
+    /** Record field containing multi-language translations (array or object map) */
+    translationsField?: string;
+    /** Record field containing channel codes for dynamic per-record channel assignment */
+    channelsField?: string;
+    /** Field name in record containing the description (default: not set → '') */
+    descriptionField?: string;
+    /** Field name in record containing the per-customer usage limit */
+    perCustomerUsageLimitField?: string;
 }
 
 /**
@@ -57,35 +71,10 @@ interface PromotionResult {
 }
 
 /**
- * Type guard to check if a value is a valid PromotionHandlerConfig
+ * Safely cast step config to PromotionHandlerConfig
  */
-function isPromotionHandlerConfig(value: unknown): value is PromotionHandlerConfig {
-    if (typeof value !== 'object' || value === null) {
-        return false;
-    }
-    const config = value as Record<string, unknown>;
-    return (
-        (config.codeField === undefined || typeof config.codeField === 'string') &&
-        (config.enabledField === undefined || typeof config.enabledField === 'string') &&
-        (config.nameField === undefined || typeof config.nameField === 'string') &&
-        (config.startsAtField === undefined || typeof config.startsAtField === 'string') &&
-        (config.endsAtField === undefined || typeof config.endsAtField === 'string') &&
-        (config.conditionsField === undefined || typeof config.conditionsField === 'string') &&
-        (config.actionsField === undefined || typeof config.actionsField === 'string') &&
-        (config.channel === undefined || typeof config.channel === 'string') &&
-        (config.customFieldsField === undefined || typeof config.customFieldsField === 'string')
-    );
-}
-
-/**
- * Safely get a typed config from step.config
- */
-function getTypedConfig(config: JsonObject): PromotionHandlerConfig {
-    if (isPromotionHandlerConfig(config)) {
-        return config;
-    }
-    // Return empty config with defaults if validation fails
-    return {};
+function getConfig(config: JsonObject): PromotionHandlerConfig {
+    return config as unknown as PromotionHandlerConfig;
 }
 
 /**
@@ -168,12 +157,16 @@ function toDateOrUndefined(value: unknown): Date | undefined {
 
 @Injectable()
 export class PromotionHandler implements LoaderHandler {
-    private readonly logger = new Logger(PromotionHandler.name);
+    private readonly logger: DataHubLogger;
 
     constructor(
         private promotionService: PromotionService,
         private requestContextService: RequestContextService,
-    ) {}
+        private channelService: ChannelService,
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PROMOTION_LOADER);
+    }
 
     async execute(
         ctx: RequestContext,
@@ -184,7 +177,9 @@ export class PromotionHandler implements LoaderHandler {
     ): Promise<ExecutionResult> {
         let ok = 0,
             fail = 0;
-        const config = getTypedConfig(step.config);
+        const config = getConfig(step.config);
+
+        const channelCache = new Map<string, ID>();
 
         for (const rec of input) {
             try {
@@ -193,17 +188,35 @@ export class PromotionHandler implements LoaderHandler {
                 const code = codeValue ? String(codeValue) : '';
 
                 if (!code) {
+                    if (onRecordError) {
+                        await onRecordError(step.key, 'Missing required field: code', rec);
+                    }
                     fail++;
                     continue;
                 }
 
                 const enabledFieldName = config.enabledField ?? 'enabled';
                 const enabledVal = getRecordField(rec, enabledFieldName);
-                const enabled = toBoolean(enabledVal);
+                const enabled = enabledVal != null ? toBoolean(enabledVal) : true;
 
                 const nameFieldName = config.nameField ?? 'name';
                 const nameValue = getRecordField(rec, nameFieldName);
-                const name = nameValue ? String(nameValue) : code;
+                let name = nameValue ? String(nameValue) : code;
+
+                // Multi-language: extract name from first translation if missing
+                if (name === code && config.translationsField) {
+                    const raw = rec[config.translationsField];
+                    if (raw) {
+                        const parsed = parseTranslationsInput(raw);
+                        if (parsed.length > 0 && parsed[0].name) {
+                            name = String(parsed[0].name);
+                        }
+                    }
+                }
+
+                const descFieldName = config.descriptionField ?? 'description';
+                const descriptionRaw = getRecordField(rec, descFieldName);
+                const description = descriptionRaw != null ? String(descriptionRaw) : '';
 
                 const startsAtFieldName = config.startsAtField ?? 'startsAt';
                 const startsAtRaw = getRecordField(rec, startsAtFieldName);
@@ -229,6 +242,21 @@ export class PromotionHandler implements LoaderHandler {
                 const customFieldsKey = config.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
 
+                // Per-customer usage limit
+                let perCustomerUsageLimit: number | undefined;
+                if (config.perCustomerUsageLimitField) {
+                    const limitRaw = getRecordField(rec, config.perCustomerUsageLimitField);
+                    if (limitRaw != null) {
+                        const limitVal = Number(limitRaw);
+                        if (!isNaN(limitVal)) {
+                            perCustomerUsageLimit = Math.floor(limitVal);
+                        }
+                    }
+                }
+
+                // Build translations
+                const translations = this.buildTranslations(ctx, rec, config, name, description);
+
                 // Find existing promotion by coupon code
                 const list = await this.promotionService.findAll(ctx, {
                     filter: { couponCode: { eq: code } },
@@ -249,6 +277,7 @@ export class PromotionHandler implements LoaderHandler {
                 }
 
                 const strategy = config.strategy ?? LoadStrategy.UPSERT;
+                let promotionId: ID | undefined;
 
                 if (existing && isPromotion(existing)) {
                     if (strategy === LoadStrategy.CREATE) {
@@ -263,34 +292,32 @@ export class PromotionHandler implements LoaderHandler {
                         couponCode: code,
                         conditions,
                         actions,
-                        translations: [
-                            {
-                                languageCode: opCtx.languageCode,
-                                name,
-                                description: '',
-                            },
-                        ],
+                        translations,
                         ...(customFields ? { customFields } : {}),
+                        ...(perCustomerUsageLimit !== undefined ? { perCustomerUsageLimit } : {}),
                     };
                     const updated = await this.promotionService.updatePromotion(
                         opCtx,
                         updateInput,
                     );
 
-                    if (channel && hasId(updated)) {
-                        try {
-                            const assignInput: AssignPromotionsToChannelInput = {
-                                promotionIds: [updated.id],
-                                channelId: opCtx.channelId,
-                            };
-                            await this.promotionService.assignPromotionsToChannel(
-                                opCtx,
-                                assignInput,
-                            );
-                        } catch (error) {
-                            this.logger.warn(
-                                `Failed to assign promotion ${updated.id} to channel: ${getErrorMessage(error)}`,
-                            );
+                    if (hasId(updated)) {
+                        promotionId = updated.id;
+                        if (channel) {
+                            try {
+                                const assignInput: AssignPromotionsToChannelInput = {
+                                    promotionIds: [updated.id],
+                                    channelId: opCtx.channelId,
+                                };
+                                await this.promotionService.assignPromotionsToChannel(
+                                    opCtx,
+                                    assignInput,
+                                );
+                            } catch (error) {
+                                this.logger.warn(
+                                    `Failed to assign promotion ${updated.id} to channel: ${getErrorMessage(error)}`,
+                                );
+                            }
                         }
                     }
                 } else {
@@ -308,37 +335,49 @@ export class PromotionHandler implements LoaderHandler {
                         couponCode: code,
                         conditions,
                         actions,
-                        translations: [
-                            {
-                                languageCode: opCtx.languageCode,
-                                name,
-                                description: '',
-                            },
-                        ],
+                        translations,
                         ...(customFields ? { customFields } : {}),
+                        ...(perCustomerUsageLimit !== undefined ? { perCustomerUsageLimit } : {}),
                     };
                     const created = await this.promotionService.createPromotion(
                         opCtx,
                         createInput,
                     );
 
-                    if (channel && hasId(created)) {
-                        try {
-                            const assignInput: AssignPromotionsToChannelInput = {
-                                promotionIds: [created.id],
-                                channelId: opCtx.channelId,
-                            };
-                            await this.promotionService.assignPromotionsToChannel(
-                                opCtx,
-                                assignInput,
-                            );
-                        } catch (error) {
-                            this.logger.warn(
-                                `Failed to assign promotion ${created.id} to channel: ${getErrorMessage(error)}`,
-                            );
+                    if (hasId(created)) {
+                        promotionId = created.id;
+                        if (channel) {
+                            try {
+                                const assignInput: AssignPromotionsToChannelInput = {
+                                    promotionIds: [created.id],
+                                    channelId: opCtx.channelId,
+                                };
+                                await this.promotionService.assignPromotionsToChannel(
+                                    opCtx,
+                                    assignInput,
+                                );
+                            } catch (error) {
+                                this.logger.warn(
+                                    `Failed to assign promotion ${created.id} to channel: ${getErrorMessage(error)}`,
+                                );
+                            }
                         }
                     }
                 }
+
+                // Assign to per-record channels
+                if (promotionId && config.channelsField) {
+                    const rawValue = rec[config.channelsField];
+                    if (rawValue != null) {
+                        const channelIds = await resolveChannelIds(this.channelService, opCtx, rawValue, channelCache, this.logger);
+                        if (channelIds.length > 0) {
+                            try {
+                                await this.channelService.assignToChannels(opCtx, Promotion, promotionId, channelIds);
+                            } catch { /* channel assignment is best-effort */ }
+                        }
+                    }
+                }
+
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
@@ -355,6 +394,37 @@ export class PromotionHandler implements LoaderHandler {
         return { ok, fail };
     }
 
+    /**
+     * Build promotion translations. Multi-language from translationsField, or single-language fallback.
+     * Promotion translations have {languageCode, name, description}.
+     */
+    private buildTranslations(
+        ctx: RequestContext,
+        rec: RecordObject,
+        cfg: PromotionHandlerConfig,
+        name: string,
+        description: string,
+    ): PromotionTranslationInput[] {
+        if (cfg.translationsField) {
+            const raw = rec[cfg.translationsField];
+            if (raw) {
+                const parsed = parseTranslationsInput(raw);
+                if (parsed.length > 0) {
+                    return parsed.map(t => ({
+                        languageCode: String(t.languageCode) as LanguageCode,
+                        name: String(t.name ?? name),
+                        description: t.description != null ? String(t.description) : '',
+                    }));
+                }
+            }
+        }
+        return [{
+            languageCode: ctx.languageCode as LanguageCode,
+            name,
+            description,
+        }];
+    }
+
     async simulate(
         ctx: RequestContext,
         step: PipelineStepDefinition,
@@ -362,7 +432,7 @@ export class PromotionHandler implements LoaderHandler {
     ): Promise<Record<string, unknown>> {
         let exists = 0,
             missing = 0;
-        const config = getTypedConfig(step.config);
+        const config = getConfig(step.config);
 
         for (const rec of input) {
             const codeFieldName = config.codeField ?? 'code';

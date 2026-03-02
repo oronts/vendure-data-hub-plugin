@@ -14,6 +14,7 @@ import {
     GOOGLE_MERCHANT_FORMAT_OPTIONS,
     META_CATALOG_FORMAT_OPTIONS,
     CUSTOM_FEED_FORMAT_OPTIONS,
+    LOCALIZATION_SCHEMA_FIELDS,
 } from '../../../constants/adapter-schema-options';
 import { FeedHandlerFn } from './feed-handler.types';
 import { googleMerchantFeedHandler } from './google-merchant-feed.handler';
@@ -57,6 +58,7 @@ export const FEED_HANDLER_REGISTRY = new Map<string, FeedRegistryEntry>([
                     { key: 'storeName', label: 'Store name', type: 'string' },
                     { key: 'storeUrl', label: 'Store URL', type: 'string', required: true },
                     { key: 'shippingInfo', label: 'Shipping info', type: 'json', description: 'Default shipping configuration' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -81,6 +83,7 @@ export const FEED_HANDLER_REGISTRY = new Map<string, FeedRegistryEntry>([
                     { key: 'brandField', label: 'Brand field', type: 'string', description: 'Field path for brand' },
                     { key: 'categoryField', label: 'Category field', type: 'string', description: 'Field path for Google category' },
                     { key: 'includeVariants', label: 'Include variants', type: 'boolean' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -107,6 +110,7 @@ export const FEED_HANDLER_REGISTRY = new Map<string, FeedRegistryEntry>([
                     { key: 'imageField', label: 'Image field', type: 'string', description: 'Field path for main image URL' },
                     { key: 'brandField', label: 'Brand field', type: 'string', description: 'Field path for brand' },
                     { key: 'gtinField', label: 'GTIN field', type: 'string', description: 'Field path for UPC/EAN/GTIN' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
@@ -130,6 +134,7 @@ export const FEED_HANDLER_REGISTRY = new Map<string, FeedRegistryEntry>([
                     { key: 'rootElement', label: 'Root element (XML)', type: 'string' },
                     { key: 'itemElement', label: 'Item element (XML)', type: 'string' },
                     { key: 'connectionCode', label: 'Upload connection', type: 'string' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },

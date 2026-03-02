@@ -5,7 +5,7 @@
  * Supports both XML and CSV output formats
  */
 
-import { RequestContext, Logger } from '@vendure/core';
+import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
 import { XMLBuilder } from 'fast-xml-parser';
 import { SERVICE_DEFAULTS, FEED_NAMESPACES, TRUNCATION } from '../../constants/index';
@@ -31,8 +31,10 @@ import {
     extractCustomLabels,
 } from './feed-helpers';
 import { PRODUCT_CONDITIONS, FEED_LIMITS, FEED_DEFAULTS } from './feed-constants';
+import { LOGGER_CONTEXTS } from '../../constants/core';
+import { DataHubLoggerFactory } from '../../services/logger';
 
-const LOG_CONTEXT = 'FacebookCatalogGenerator';
+const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
 /**
  * Facebook Catalog CSV headers
@@ -83,11 +85,17 @@ export async function generateFacebookCatalogFeed(
             const product = variant.product as ProductWithCustomFields | undefined;
             const customFields = variant.customFields || {};
             const productCustomFields = product?.customFields || {};
+            const sku = variant.sku || variant.id.toString();
             const price = formatPrice(variant.priceWithTax, currency);
+
+            if (price === null) {
+                feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${currency}")`);
+                continue;
+            }
 
             // Build sale price if available
             const salePrice = customFields.salePrice
-                ? formatPrice(customFields.salePrice as number, currency)
+                ? formatPrice(customFields.salePrice as number, currency) ?? ''
                 : '';
 
             // Get product type from collections
@@ -97,7 +105,7 @@ export async function generateFacebookCatalogFeed(
             const customLabels = extractCustomLabels(productCustomFields);
 
             const row = [
-                variant.sku || variant.id.toString(),
+                sku,
                 csvEscape(truncate(variant.name || product?.name || '', FEED_LIMITS.TITLE_MAX_LENGTH)),
                 csvEscape(truncate(stripHtml(product?.description || ''), TRUNCATION.FEED_DESCRIPTION_MAX_LENGTH)),
                 getFacebookAvailability(variant),
@@ -125,7 +133,7 @@ export async function generateFacebookCatalogFeed(
 
             rows.push(row);
         } catch (error) {
-            Logger.warn(`Failed to process variant ${variant.id}: ${error}`, LOG_CONTEXT);
+            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
         }
     }
 
@@ -152,14 +160,21 @@ export async function generateFacebookCatalogXMLFeed(
             const product = variant.product as ProductWithCustomFields | undefined;
             const customFields = variant.customFields || {};
             const productCustomFields = product?.customFields || {};
+            const sku = variant.sku || variant.id.toString();
+
+            const price = formatPrice(variant.priceWithTax, currency);
+            if (price === null) {
+                feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${currency}")`);
+                continue;
+            }
 
             const item: FacebookCatalogItem = {
-                id: variant.sku || variant.id.toString(),
+                id: sku,
                 title: truncate(variant.name || product?.name || '', FEED_LIMITS.TITLE_MAX_LENGTH),
                 description: truncate(stripHtml(product?.description || ''), TRUNCATION.FEED_DESCRIPTION_MAX_LENGTH),
                 availability: getFacebookAvailability(variant),
                 condition: PRODUCT_CONDITIONS.NEW,
-                price: formatPrice(variant.priceWithTax, currency),
+                price,
                 link: buildProductUrl(baseUrl, variant, config.options?.utmParams),
                 image_link: getImageUrl(variant, product, baseUrl),
             };
@@ -195,7 +210,10 @@ export async function generateFacebookCatalogXMLFeed(
 
             // Sale price
             if (customFields.salePrice) {
-                item.sale_price = formatPrice(customFields.salePrice as number, currency);
+                const salePriceFormatted = formatPrice(customFields.salePrice as number, currency);
+                if (salePriceFormatted) {
+                    item.sale_price = salePriceFormatted;
+                }
             }
 
             // Item group for variants
@@ -230,7 +248,7 @@ export async function generateFacebookCatalogXMLFeed(
 
             items.push(item);
         } catch (error) {
-            Logger.warn(`Failed to process variant ${variant.id}: ${error}`, LOG_CONTEXT);
+            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
         }
     }
 

@@ -96,9 +96,9 @@ function StepListItemComponent({
                         {config?.label ?? step.type}
                     </Badge>
                 </div>
-                {step.config?.adapterCode && (
+                {(step.adapterCode || step.config?.adapterCode) && (
                     <p className="text-xs text-muted-foreground truncate">
-                        {String(step.config.adapterCode)}
+                        {String(step.adapterCode || step.config?.adapterCode)}
                     </p>
                 )}
             </div>

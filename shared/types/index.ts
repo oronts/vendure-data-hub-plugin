@@ -305,6 +305,16 @@ export type {
 } from './runtime-config.types';
 
 export type {
+    AddressesMode,
+    FacetValuesMode,
+    LinesMode,
+    AssetsMode,
+    FeaturedAssetMode,
+    OptionsMode,
+    FiltersMode,
+    ConditionsMode,
+    ActionsMode,
+    GroupsMode,
     CsvExtractorConfig,
     JsonExtractorConfig,
     ExcelExtractorConfig,
@@ -330,6 +340,7 @@ export type {
     ProductUpsertLoaderConfig,
     VariantUpsertLoaderConfig,
     CustomerUpsertLoaderConfig,
+    OrderUpsertLoaderConfig,
     StockAdjustLoaderConfig,
     RestPostLoaderConfig,
     GraphqlMutationLoaderConfig,
@@ -349,6 +360,7 @@ export type {
     CustomerGroupUpsertLoaderConfig,
     StockLocationUpsertLoaderConfig,
     InventoryAdjustLoaderConfig,
+    EntityDeletionLoaderConfig,
     GenericLoaderConfig,
     TypedLoaderConfig,
     CsvExportConfig,

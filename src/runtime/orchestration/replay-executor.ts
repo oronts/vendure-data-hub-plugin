@@ -5,7 +5,6 @@
  * supporting both linear and graph-based pipelines.
  */
 
-import { Logger } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import { PipelineDefinition, StepType } from '../../types/index';
 import {
@@ -22,8 +21,10 @@ import {
     FeedExecutor,
     SinkExecutor,
 } from '../executors';
+import { LOGGER_CONTEXTS } from '../../constants/core';
+import { DataHubLoggerFactory } from '../../services/logger';
 
-const logger = new Logger('DataHub:ReplayExecutor');
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.REPLAY_EXECUTOR);
 
 /**
  * Replay from a specific step in a linear pipeline

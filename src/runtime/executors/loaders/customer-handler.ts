@@ -44,6 +44,8 @@ interface CustomerStepConfig {
     lastNameField?: string;
     phoneNumberField?: string;
     addressesField?: string;
+    addressesMode?: string;
+    addressMatchFields?: string;
     groupsField?: string;
     groupsMode?: 'add' | 'set';
     customFieldsField?: string;
@@ -273,6 +275,8 @@ export class CustomerHandler implements LoaderHandler {
                 lastNameField: stepConfig.lastNameField as string | undefined,
                 phoneNumberField: stepConfig.phoneNumberField as string | undefined,
                 addressesField: stepConfig.addressesField as string | undefined,
+                addressesMode: (stepConfig as Record<string, unknown>).addressesMode as string | undefined,
+                addressMatchFields: (stepConfig as Record<string, unknown>).addressMatchFields as string | undefined,
                 groupsField: stepConfig.groupsField as string | undefined,
                 groupsMode: stepConfig.groupsMode as CustomerStepConfig['groupsMode'],
                 customFieldsField: stepConfig.customFieldsField as string | undefined,
@@ -303,7 +307,8 @@ export class CustomerHandler implements LoaderHandler {
     }
 
     /**
-     * Process addresses for a customer
+     * Process addresses for a customer.
+     * Supports addressesMode: APPEND_ONLY (default legacy), UPSERT_BY_MATCH, REPLACE_ALL, SKIP.
      */
     private async processAddresses(
         ctx: RequestContext,
@@ -322,27 +327,107 @@ export class CustomerHandler implements LoaderHandler {
             return;
         }
 
-        for (const addr of addresses) {
-            if (!isAddressRecord(addr)) {
-                continue;
-            }
+        const mode = config.addressesMode || 'UPSERT_BY_MATCH';
 
+        if (mode === 'SKIP') {
+            return;
+        }
+
+        // Load existing addresses with country relation for matching
+        const customerWithAddresses = await this.customerService.findOne(ctx, customer.id, ['addresses', 'addresses.country']);
+        const existingAddresses = customerWithAddresses?.addresses || [];
+
+        if (mode === 'REPLACE_ALL') {
+            // Delete all existing addresses first
+            for (const existing of existingAddresses) {
+                try {
+                    await this.customerService.deleteAddress(ctx, existing.id);
+                } catch (error) {
+                    this.logger.warn('Failed to delete address during REPLACE_ALL', {
+                        stepKey, addressId: existing.id, error: getErrorMessage(error),
+                    });
+                }
+            }
+            // Then create all new addresses
+            for (const addr of addresses) {
+                if (!isAddressRecord(addr)) continue;
+                try {
+                    await this.customerService.createAddress(ctx, customer.id, toCreateAddressInput(addr));
+                } catch (error) {
+                    this.logger.warn('Failed to create customer address', {
+                        stepKey, customerId: customer.id, error: getErrorMessage(error),
+                    });
+                }
+            }
+            return;
+        }
+
+        if (mode === 'UPSERT_BY_MATCH') {
+            const matchFieldsStr = config.addressMatchFields || 'streetLine1,city,countryCode';
+            const matchFields = matchFieldsStr.split(',').map(f => f.trim());
+
+            for (const addr of addresses) {
+                if (!isAddressRecord(addr)) continue;
+                const newInput = toCreateAddressInput(addr);
+
+                // Find matching existing address
+                const match = existingAddresses.find(existing => {
+                    return matchFields.every(field => {
+                        const existingVal = this.getAddressFieldValue(existing as unknown as Record<string, unknown>, field);
+                        const newVal = this.getAddressFieldValue(newInput as unknown as Record<string, unknown>, field);
+                        return existingVal !== undefined && newVal !== undefined &&
+                            String(existingVal).trim().toLowerCase() === String(newVal).trim().toLowerCase();
+                    });
+                });
+
+                try {
+                    if (match) {
+                        // Update existing address
+                        await this.customerService.updateAddress(ctx, {
+                            id: match.id,
+                            ...newInput,
+                        });
+                        this.logger.debug(`Updated existing address ${match.id} for customer ${customer.id}`);
+                    } else {
+                        // Create new address (no match found)
+                        await this.customerService.createAddress(ctx, customer.id, newInput);
+                        this.logger.debug(`Created new address for customer ${customer.id}`);
+                    }
+                } catch (error) {
+                    this.logger.warn('Failed to upsert customer address', {
+                        stepKey, customerId: customer.id, error: getErrorMessage(error),
+                    });
+                }
+            }
+            return;
+        }
+
+        // APPEND_ONLY: always create (legacy behavior)
+        for (const addr of addresses) {
+            if (!isAddressRecord(addr)) continue;
             try {
-                // Address field fallbacks support common import naming conventions:
-                // - streetLine1/streetLine2: Vendure standard fields
-                // - address1/address2: Common alternative naming in CSV imports
-                // - postalCode/zip: Vendure standard vs US-centric naming
-                const addressInput = toCreateAddressInput(addr);
-                await this.customerService.createAddress(ctx, customer.id, addressInput);
+                await this.customerService.createAddress(ctx, customer.id, toCreateAddressInput(addr));
             } catch (error) {
                 this.logger.warn('Failed to create customer address', {
-                    stepKey,
-                    customerId: customer.id,
-                    addressCity: addr.city,
-                    error: getErrorMessage(error),
+                    stepKey, customerId: customer.id, addressCity: addr.city, error: getErrorMessage(error),
                 });
             }
         }
+    }
+
+    /**
+     * Get a field value from an address, handling the country relation object.
+     */
+    private getAddressFieldValue(addr: Record<string, unknown>, field: string): unknown {
+        if (field === 'countryCode') {
+            // Handle both Vendure Address entity (country.code) and CreateAddressInput (countryCode)
+            const country = addr.country;
+            if (country && typeof country === 'object' && 'code' in country) {
+                return (country as Record<string, unknown>).code;
+            }
+            return addr.countryCode;
+        }
+        return addr[field];
     }
 
     /**

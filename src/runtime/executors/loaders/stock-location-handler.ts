@@ -7,10 +7,11 @@
  */
 import { Injectable } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
-import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject, LoaderContext } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult, SANDBOX_PIPELINE_ID } from '../../executor-types';
+import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
+import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { buildSandboxLoaderContext, SandboxHandlerConfig } from '../../executor-helpers';
 import { LoaderHandler } from './types';
-import { TARGET_OPERATION, LoadStrategy } from '../../../constants/enums';
+import { LoadStrategy } from '../../../constants/enums';
 import { StockLocationLoader } from '../../../loaders/stock-location';
 import { StockLocationInput } from '../../../loaders/stock-location/types';
 import { getStringValue } from '../../../loaders/shared-helpers';
@@ -18,11 +19,9 @@ import { getStringValue } from '../../../loaders/shared-helpers';
 /**
  * Configuration for the stock location handler step (mirrors loader-handler-registry.ts schema)
  */
-interface StockLocationHandlerConfig {
+interface StockLocationHandlerConfig extends SandboxHandlerConfig {
     nameField?: string;
     descriptionField?: string;
-    operation?: string;
-    lookupFields?: string[];
     strategy?: LoadStrategy;
 }
 
@@ -31,32 +30,6 @@ interface StockLocationHandlerConfig {
  */
 function getConfig(config: JsonObject): StockLocationHandlerConfig {
     return config as unknown as StockLocationHandlerConfig;
-}
-
-/**
- * Build a LoaderContext from executor parameters
- */
-function mapStrategyToOperation(strategy: LoadStrategy): string {
-    switch (strategy) {
-        case LoadStrategy.CREATE: return TARGET_OPERATION.CREATE;
-        case LoadStrategy.UPDATE: return TARGET_OPERATION.UPDATE;
-        default: return TARGET_OPERATION.UPSERT;
-    }
-}
-
-function buildLoaderContext(ctx: RequestContext, cfg: StockLocationHandlerConfig): LoaderContext {
-    const operation = cfg.strategy ? mapStrategyToOperation(cfg.strategy) : (cfg.operation ?? TARGET_OPERATION.UPSERT);
-    return {
-        ctx,
-        pipelineId: SANDBOX_PIPELINE_ID,
-        runId: '0',
-        operation: operation as LoaderContext['operation'],
-        lookupFields: cfg.lookupFields ?? ['name'],
-        dryRun: false,
-        options: {
-            skipDuplicates: false,
-        },
-    };
 }
 
 @Injectable()
@@ -73,7 +46,7 @@ export class StockLocationHandler implements LoaderHandler {
         _errorHandling?: ErrorHandlingConfig,
     ): Promise<ExecutionResult> {
         const cfg = getConfig(step.config);
-        const loaderContext = buildLoaderContext(ctx, cfg);
+        const loaderContext = buildSandboxLoaderContext(ctx, cfg, ['name']);
 
         // Remap input records using configurable field names
         const records = input.map(rec => this.remapRecord(rec, cfg)) as StockLocationInput[];

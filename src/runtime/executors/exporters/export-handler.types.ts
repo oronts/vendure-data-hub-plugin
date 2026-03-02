@@ -9,6 +9,7 @@ import { RequestContext } from '@vendure/core';
 import { JsonValue } from '../../../types/index';
 import { SecretService } from '../../../services/config/secret.service';
 import { DataHubLogger } from '../../../services/logger';
+import type { FileStorageService } from '../../../services/storage/file-storage.service';
 import { OnRecordErrorCallback, RecordObject } from '../../executor-types';
 import { formatDate } from '../../../transforms/field/date-transforms';
 import { securePath } from '../../../utils/input-validation.utils';
@@ -24,6 +25,8 @@ export interface ExportHandlerParams {
     onRecordError?: OnRecordErrorCallback;
     secretService: SecretService;
     logger: DataHubLogger;
+    /** Optional file storage service for registering exported files in the REST API */
+    fileStorageService?: FileStorageService;
 }
 
 /**

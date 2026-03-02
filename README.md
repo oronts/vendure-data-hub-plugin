@@ -37,18 +37,19 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
 - **Visual Pipeline Builder** - Drag-and-drop workflow editor with live validation
 - **Code-First DSL** - TypeScript API for defining pipelines programmatically
 - **9 Data Extractors** - HTTP/REST API, GraphQL, Vendure Query, File (CSV/JSON/XML/XLSX/NDJSON/TSV), Database (SQL), S3, FTP/SFTP, Webhook, CDC (Change Data Capture)
-- **22 Entity Loaders (16 entity types with multiple operations)** - Products, Variants, Customers, Customer Groups, Collections, Facets, Facet Values, Promotions, Orders (notes, transitions, coupons), Shipping Methods, Stock Locations, Stock/Inventory, Assets, Tax Rates, Payment Methods, Channels, REST POST, GraphQL Mutation
+- **24 Entity Loaders (16 entity types, 4 order operations, 1 deletion, 2 external API, 1 inventory)** - Products, Variants, Customers, Customer Groups, Collections, Facets, Facet Values, Promotions, Orders (upsert, notes, transitions, coupons), Shipping Methods, Stock Locations, Stock/Inventory, Assets, Tax Rates, Payment Methods, Channels, Entity Deletion, REST POST, GraphQL Mutation
 - **61 Transform Operators** - String (12), Date (5), Numeric (9), Logic (4), JSON (4), Data (8), Enrichment (5), Aggregation (8), Validation (2), Script (1), File (3) - **includes HTTP Lookup with caching, circuit breaker, and rate limiting**
 - **4 Feed Generators** - Google Merchant Center, Meta/Facebook Catalog, Amazon Seller Central, Custom Feed (CSV/JSON/XML/TSV)
-- **7 Search & Integration Sinks** - Elasticsearch, OpenSearch, MeiliSearch, Algolia, Typesense, Queue Producer (RabbitMQ/SQS/Redis), Webhook
+- **7 Search & Integration Sinks** - Elasticsearch, OpenSearch, MeiliSearch, Algolia, Typesense, Queue Producer (RabbitMQ/SQS/Redis), Webhook (with HMAC signing)
 - **24 Hook Stages** (18 for step types and 6 global) - Interceptors and scripts to modify data at any pipeline stage
 - **7 Connection Types** - HTTP/REST, S3, FTP, SFTP, Database (PostgreSQL/MySQL/SQLite/MSSQL/Oracle), Message Queue (RabbitMQ/SQS/Redis), Custom
 - **6 Trigger Types** - Manual, Scheduled (cron), Webhook, Vendure Events, File Watch, **Message Queue Consumer**
-- **Bi-directional Queue Support** - Consume from and produce to RabbitMQ (AMQP), Amazon SQS, Redis Streams
+- **Bi-directional Queue Support** - Consume from and produce to RabbitMQ (AMQP), Amazon SQS, Redis Streams, and internal queue adapter
 - **Horizontal Scaling** - Distributed locks via Redis or PostgreSQL for multi-instance deployments
 - **Checkpoint Recovery** - Resume failed pipelines from last successful record
 - **File Upload** - Drag-and-drop CSV/JSON file upload with automatic processing
 - **Real-time Monitoring** - Logs, analytics, error tracking, and dead letter queue
+- **Nested Entity Modes** - Configurable behavior for all nested entities (addresses, facet values, order lines, assets, etc.) to prevent duplicates and provide full control over data management
 
 ## Screenshots
 
@@ -339,7 +340,7 @@ Math operations: `add`, `subtract`, `multiply`, `divide`, `modulo`, `power`, `ro
 | `ifThenElse` | Conditional value | `{ op: 'ifThenElse', args: { condition: { field: 'type', cmp: 'eq', value: 'digital' }, thenValue: true, elseValue: false, target: 'isDigital' } }` |
 | `switch` | Multi-case mapping | `{ op: 'switch', args: { source: 'code', cases: [{ value: 'A', result: 'Active' }], default: 'Unknown', target: 'status' } }` |
 
-Comparison operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `contains`, `notContains`, `startsWith`, `endsWith`, `regex`, `exists`, `isNull`
+Comparison operators (19): `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `contains`, `notContains`, `startsWith`, `endsWith`, `regex`, `exists`, `notExists`, `isNull`, `isEmpty`, `isNotEmpty`, `matches` (glob)
 
 ### Validation Operators
 
@@ -437,6 +438,7 @@ Execute custom JavaScript for complex transformations:
 | Customer Group Loader | `customerGroupUpsert` | Create/update customer groups by name; assign customers by email |
 | Collection Loader | `collectionUpsert` | Create/update collections with parent relationships |
 | Promotion Loader | `promotionUpsert` | Create/update promotions with conditions and actions |
+| Order Upsert Loader | `orderUpsert` | Order create/update for migrations with state transitions and line management |
 | Order Note Loader | `orderNote` | Attach notes to orders by code or id |
 | Order Transition Loader | `orderTransition` | Transition orders to new states |
 | Stock Adjust Loader | `stockAdjust` | Adjust inventory levels by SKU and stock location map |
@@ -450,6 +452,7 @@ Execute custom JavaScript for complex transformations:
 | Stock Location Loader | `stockLocationUpsert` | Create/update stock locations and warehouses |
 | Facet Loader | `facetUpsert` | Create/update facets with translations |
 | Facet Value Loader | `facetValueUpsert` | Create/update facet values with translations |
+| Entity Deletion Loader | `entityDeletion` | Soft-delete any of 13 entity types (Products, Variants, Collections, Facets, FacetValues, Customers, CustomerGroups, Promotions, ShippingMethods, PaymentMethods, TaxRates, Assets, StockLocations) by slug, SKU, ID, code, email, or name |
 | GraphQL Mutation Loader | `graphqlMutation` | Execute arbitrary GraphQL mutations against Vendure |
 | Asset Import Loader | `assetImport` | Import assets from URLs or file paths |
 | REST POST Loader | `restPost` | POST/PUT records to external REST endpoints |
@@ -506,25 +509,41 @@ Execute custom JavaScript for complex transformations:
 })
 ```
 
+### Condition-Based Routing (ROUTE Step)
+
+Route records to different branches based on field conditions using 19 comparison operators. Supports AND logic (multiple conditions per branch), automatic `default` branch for unmatched records, and `dependencyOnly` edges for execution ordering without data flow.
+
+```typescript
+.route('split-by-type', {
+    branches: [
+        { name: 'physical', when: [{ field: 'type', cmp: 'eq', value: 'physical' }] },
+        { name: 'digital', when: [{ field: 'type', cmp: 'eq', value: 'digital' }] },
+    ],
+})
+```
+
 ---
 
 ## Hooks
 
-Hooks let you run code at 18 different pipeline stages. Two types:
+Hooks let you run code at 24 different pipeline stages (18 step-level + 6 global). Two types:
 - **Interceptors**: Modify the record array (return modified records)
 - **Observation hooks**: Side effects only (webhooks, events, logging)
 
 ### Hook Stages
 
-**Data Processing:**
+**Data Processing (18 step-level):**
 - `BEFORE_EXTRACT`, `AFTER_EXTRACT`
 - `BEFORE_TRANSFORM`, `AFTER_TRANSFORM`
 - `BEFORE_VALIDATE`, `AFTER_VALIDATE`
 - `BEFORE_ENRICH`, `AFTER_ENRICH`
 - `BEFORE_ROUTE`, `AFTER_ROUTE`
 - `BEFORE_LOAD`, `AFTER_LOAD`
+- `BEFORE_EXPORT`, `AFTER_EXPORT`
+- `BEFORE_FEED`, `AFTER_FEED`
+- `BEFORE_SINK`, `AFTER_SINK`
 
-**Pipeline Lifecycle:**
+**Pipeline Lifecycle (6 global):**
 - `PIPELINE_STARTED`, `PIPELINE_COMPLETED`, `PIPELINE_FAILED`
 - `ON_ERROR`, `ON_RETRY`, `ON_DEAD_LETTER`
 
@@ -850,6 +869,8 @@ The plugin includes a full-featured admin dashboard:
 - **Visual Mode**: Drag-and-drop workflow builder with node palette
 - Live validation with error highlighting
 - Step tester for testing individual steps
+- `dependencyOnly` edges for execution ordering without data flow in graph mode
+- Stale run cleanup with automatic TIMEOUT status for stuck pipeline runs
 
 ### Dry Run
 - Execute pipeline without persisting changes
@@ -862,6 +883,7 @@ The plugin includes a full-featured admin dashboard:
 - Analytics dashboard with metrics
 - Per-pipeline health stats
 - Error rate tracking
+- `completedAt` and `errorMessage` fields on pipeline runs for precise tracking
 
 ### Queue Management
 - View pending, running, and failed jobs
@@ -890,7 +912,7 @@ DataHubPlugin.init({
 
 ### Code-First Connections
 
-Supported connection types: `http`, `postgres`, `mysql`, `s3`, `ftp`, `sftp`
+Supported connection types: `http`, `postgres`, `mysql`, `s3`, `ftp`, `sftp`, `rabbitmq`, `custom`
 
 ```typescript
 DataHubPlugin.init({

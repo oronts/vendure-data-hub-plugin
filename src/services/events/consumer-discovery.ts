@@ -107,7 +107,7 @@ export class ConsumerDiscovery {
                 pipelineId: pipeline.id,
                 pipelineCode: pipeline.code,
                 triggerKey: trigger.key,
-                queueType: String(config.queueType ?? QueueType.RABBITMQ),
+                queueType: String(config.queueType ?? QueueType.RABBITMQ).toLowerCase(),
                 connectionCode: String(config.connectionCode ?? ''),
                 queueName: String(config.queueName ?? ''),
                 consumerGroup: config.consumerGroup as string | undefined,
@@ -118,6 +118,7 @@ export class ConsumerDiscovery {
                 deadLetterQueue: config.deadLetterQueue as string | undefined,
                 pollIntervalMs: Number(config.pollIntervalMs) || SCHEDULER.MIN_INTERVAL_MS,
                 autoStart: config.autoStart !== false,
+                prefetch: config.prefetch ? Number(config.prefetch) : undefined,
             });
         }
 

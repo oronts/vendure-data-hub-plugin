@@ -14,6 +14,7 @@ import {
     StockLevelService,
     Product,
     ProductVariant,
+    LanguageCode,
 } from '@vendure/core';
 import { GlobalFlag } from '@vendure/common/lib/generated-types';
 import {
@@ -41,7 +42,12 @@ import {
     resolveFacetValueIds,
     slugify,
     shouldUpdateField,
+    handleFacetValues,
+    handleAssets,
+    handleFeaturedAsset,
 } from '../shared-helpers';
+import { handleOptions } from './helpers';
+import { VariantUpsertLoaderConfig, FacetValuesMode, OptionsMode, AssetsMode, FeaturedAssetMode } from '../../types/index';
 
 /**
  * ProductVariantLoader - Refactored to extend BaseEntityLoader
@@ -254,6 +260,12 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
                     description: 'URLs of images to attach',
                 },
                 {
+                    key: 'featuredAssetUrl',
+                    label: 'Featured Asset URL',
+                    type: 'string',
+                    description: 'URL of the featured/main image',
+                },
+                {
                     key: 'customFields',
                     label: 'Custom Fields',
                     type: 'object',
@@ -284,16 +296,30 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
             this.logger,
         );
 
+        // Build translations — multi-language from record field, or single-language default
+        const translations: Array<{ languageCode: LanguageCode; name: string }> = [];
+        if (record.translations && record.translations.length > 0) {
+            for (const t of record.translations) {
+                translations.push({
+                    languageCode: t.languageCode as LanguageCode,
+                    name: t.name || record.name || record.sku,
+                });
+            }
+        }
+        // Ensure at least the context language is present
+        const hasCtxLang = translations.some(t => t.languageCode === ctx.languageCode);
+        if (!hasCtxLang) {
+            translations.unshift({
+                languageCode: ctx.languageCode,
+                name: record.name || record.sku,
+            });
+        }
+
         const variant = await this.variantService.create(ctx, [
             {
                 productId: product.id,
                 sku: record.sku,
-                translations: [
-                    {
-                        languageCode: ctx.languageCode,
-                        name: record.name || record.sku,
-                    },
-                ],
+                translations,
                 price: record.price,
                 taxCategoryId,
                 facetValueIds,
@@ -303,6 +329,20 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
         ]);
 
         const createdVariant = variant[0];
+
+        // Apply additional translations for non-context languages.
+        // Vendure's create() only persists the translation matching ctx.languageCode.
+        // We need a subsequent update() call to persist the remaining translations.
+        const additionalTranslations = translations.filter(t => t.languageCode !== ctx.languageCode);
+        if (additionalTranslations.length > 0) {
+            await this.variantService.update(ctx, [{
+                id: createdVariant.id,
+                translations: additionalTranslations,
+            }]);
+            this.logger.debug(
+                `Applied ${additionalTranslations.length} additional translation(s) for variant ${record.sku}`,
+            );
+        }
 
         this.logger.log(`Created variant ${record.sku} (ID: ${createdVariant.id})`);
         return createdVariant.id;
@@ -337,16 +377,63 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
             }
         }
 
+        await this.variantService.update(ctx, [updateInput as Parameters<typeof this.variantService.update>[1][0]]);
+
+        // Handle facet values with configurable mode
         if (record.facetValueCodes && shouldUpdateField('facetValueCodes', options.updateOnlyFields)) {
-            updateInput.facetValueIds = await resolveFacetValueIds(
+            const mode = (options.config as unknown as VariantUpsertLoaderConfig)?.facetValuesMode ?? 'REPLACE_ALL';
+            await handleFacetValues(
                 ctx,
+                this.variantService,
                 this.facetValueService,
+                variantId,
                 record.facetValueCodes,
+                mode,
                 this.logger,
             );
         }
 
-        await this.variantService.update(ctx, [updateInput as Parameters<typeof this.variantService.update>[1][0]]);
+        // Handle options with configurable mode
+        if (record.optionCodes && shouldUpdateField('optionCodes', options.updateOnlyFields)) {
+            const mode = (options.config as unknown as VariantUpsertLoaderConfig)?.optionsMode ?? 'REPLACE_ALL';
+            await handleOptions(
+                ctx,
+                this.optionService,
+                this.variantService,
+                variantId,
+                record.optionCodes,
+                mode,
+                this.logger,
+            );
+        }
+
+        // Handle assets with configurable mode
+        if (record.assetUrls && shouldUpdateField('assetUrls', options.updateOnlyFields)) {
+            const mode = (options.config as unknown as VariantUpsertLoaderConfig)?.assetsMode ?? 'UPSERT_BY_URL';
+            await handleAssets(
+                ctx,
+                this.assetService,
+                this.variantService,
+                variantId,
+                record.assetUrls,
+                mode,
+                this.logger,
+            );
+        }
+
+        // Handle featured asset with configurable mode
+        if (record.featuredAssetUrl && shouldUpdateField('featuredAssetUrl', options.updateOnlyFields)) {
+            const mode = (options.config as unknown as VariantUpsertLoaderConfig)?.featuredAssetMode ?? 'UPSERT_BY_URL';
+            await handleFeaturedAsset(
+                ctx,
+                this.assetService,
+                this.variantService,
+                variantId,
+                record.featuredAssetUrl,
+                mode,
+                this.logger,
+            );
+        }
 
         if (record.stockOnHand !== undefined && shouldUpdateField('stockOnHand', options.updateOnlyFields)) {
             await this.updateStock(ctx, variantId, record.stockOnHand);

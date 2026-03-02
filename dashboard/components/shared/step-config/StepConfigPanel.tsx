@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useEffect } from 'react';
 import {
     Button,
     Input,
@@ -158,9 +158,11 @@ export function StepConfigPanel({
         [stepType, data.config?.operators]
     );
 
+    const hasSpecialConfigEditor = stepType in SPECIAL_CONFIG_EDITORS;
+
     const needsAdapterSelection = useMemo(
-        () => !adapterCode && !hasMultiOperatorConfig && stepType !== STEP_TYPE.TRIGGER,
-        [adapterCode, hasMultiOperatorConfig, stepType]
+        () => !adapterCode && !hasMultiOperatorConfig && stepType !== STEP_TYPE.TRIGGER && !hasSpecialConfigEditor,
+        [adapterCode, hasMultiOperatorConfig, stepType, hasSpecialConfigEditor]
     );
 
     const dynamicFields = React.useMemo<AdapterSchemaField[]>(
@@ -194,7 +196,6 @@ export function StepConfigPanel({
         onChange({
             ...data,
             adapterCode: code,
-            config: { ...data.config, adapterCode: code },
         });
     }, [onChange, data]);
 
@@ -210,10 +211,23 @@ export function StepConfigPanel({
     }, [updateKey]);
 
     const handleAdapterCodeChange = useCallback((code: string) => {
-        if (code !== adapterCode) {
+        if (code && code !== adapterCode) {
             updateAdapterCode(code);
         }
     }, [adapterCode, updateAdapterCode]);
+
+    // Auto-select the sole adapter for step types with a special config editor
+    // (e.g., ROUTE has exactly one ROUTER adapter: "condition"). This prevents
+    // the user from having to manually pick the only available adapter.
+    useEffect(() => {
+        if (
+            stepType in SPECIAL_CONFIG_EDITORS &&
+            !adapterCode &&
+            availableAdapters.length === 1
+        ) {
+            handleAdapterCodeChange(availableAdapters[0].code);
+        }
+    }, [stepType, adapterCode, availableAdapters, handleAdapterCodeChange]);
 
     const handleResetDefaults = useCallback(() => {
         const defaults: Record<string, unknown> = {};
@@ -235,7 +249,6 @@ export function StepConfigPanel({
             authentication: trigger.authentication,
             secretCode: trigger.secretCode,
             event: trigger.eventType,
-            eventType: trigger.eventType,
         });
     }, [updateConfigBatch]);
 
@@ -339,6 +352,7 @@ export function StepConfigPanel({
                 trigger={triggerValue}
                 onChange={handleTriggerChange}
                 compact={compact}
+                secretCodes={secretOptions.map(s => s.code)}
             />
         );
     };
@@ -404,16 +418,16 @@ export function StepConfigPanel({
                 )}
 
                 {selectedAdapter && (
-                    <div className="flex items-center gap-2 p-2 bg-muted/50 rounded border">
+                    <div className="flex items-start gap-2 p-2 bg-muted/50 rounded border">
                         <div
-                            className="w-7 h-7 rounded flex items-center justify-center text-white shrink-0"
+                            className="w-7 h-7 rounded flex items-center justify-center text-white shrink-0 mt-0.5"
                             style={{ backgroundColor: selectedAdapter.color }}
                         >
                             <selectedAdapter.icon className="w-3.5 h-3.5" />
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                             <div className="font-medium text-sm truncate">{selectedAdapter.name}</div>
-                            <div className="text-xs text-muted-foreground truncate">
+                            <div className="text-xs text-muted-foreground line-clamp-2">
                                 {selectedAdapter.description}
                             </div>
                         </div>

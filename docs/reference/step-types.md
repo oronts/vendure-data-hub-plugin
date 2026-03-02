@@ -78,8 +78,15 @@ See [Pipeline Builder - enrich](../developer-guide/dsl/pipeline-builder.md#enric
 
 Splits data flow based on field conditions. Each branch defines a set of
 conditions using comparison operators (`eq`, `ne`, `gt`, `lt`, `in`,
-`contains`, `regex`, etc.). An optional `defaultTo` branch handles
-unmatched records.
+`contains`, `regex`, etc.).
+
+> **Unmatched records:** In graph execution mode, records that don't match any
+> branch condition are collected into a `default` branch. In linear execution
+> mode, if no branch matches any records, the step returns an empty result and
+> unmatched records are silently dropped. A warning is logged when records are
+> dropped. To ensure all records are handled, add a catch-all branch with
+> `{ name: 'fallback', when: [] }` (no conditions = always matches) as the
+> last branch.
 
 See [Pipeline Builder - route](../developer-guide/dsl/pipeline-builder.md#route) for configuration.
 
@@ -87,9 +94,9 @@ See [Pipeline Builder - route](../developer-guide/dsl/pipeline-builder.md#route)
 
 ## LOAD
 
-Creates, updates, or deletes Vendure entities. Supports 22 entity types
-including products, variants, customers, collections, facets, orders,
-promotions, assets, and more.
+Creates, updates, or deletes Vendure entities. Supports 24 loader codes
+including products, variants, customers, collections, facets, orders (upsert, notes, transitions, coupons),
+promotions, assets, inventory, entity deletion, and more.
 
 **Strategies:** `CREATE`, `UPDATE`, `UPSERT`, `MERGE`, `SOFT_DELETE`, `HARD_DELETE`
 
