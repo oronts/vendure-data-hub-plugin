@@ -381,7 +381,7 @@ export class ProductHandler implements LoaderHandler {
         procCtx: ProductProcessingContext,
     ): Promise<{ productId: ID | undefined; existing: Product | undefined }> {
         const { ctx, opCtx, cfg, fields, rec } = procCtx;
-        const { slug, name, description, customFields, enabled } = fields;
+        const { slug, customFields, enabled } = fields;
         const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
         const conflictResolution = cfg.conflictStrategy ?? ConflictStrategy.SOURCE_WINS;
 

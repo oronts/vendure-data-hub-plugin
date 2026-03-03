@@ -1,4 +1,4 @@
-import { ID, RequestContext, CollectionService, Collection } from '@vendure/core';
+import { ID, RequestContext, CollectionService } from '@vendure/core';
 import { ConfigurableOperationInput } from '@vendure/common/lib/generated-types';
 import { CollectionInput, CollectionFilterInput } from './types';
 import { FiltersMode } from '../../../shared/types';

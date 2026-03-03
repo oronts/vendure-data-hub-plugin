@@ -1,4 +1,4 @@
-import { ID, RequestContext, FacetValueService, ProductVariantService, ProductService, Product, ProductVariant, AssetService, CollectionService, Asset } from '@vendure/core';
+import { ID, RequestContext, FacetValueService, ProductVariantService, ProductService, AssetService, CollectionService, Asset } from '@vendure/core';
 import { Readable } from 'stream';
 import { slugify } from '../operators/helpers';
 import { DataHubLogger } from '../services/logger';

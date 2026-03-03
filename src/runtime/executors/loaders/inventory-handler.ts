@@ -7,7 +7,6 @@ import {
     ProductVariantService,
     StockLocationService,
     ProductVariant,
-    ID,
 } from '@vendure/core';
 import { StockLevelInput, UpdateProductVariantInput } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';

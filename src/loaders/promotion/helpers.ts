@@ -1,4 +1,4 @@
-import { ID, RequestContext, PromotionService, Promotion } from '@vendure/core';
+import { ID, RequestContext, PromotionService } from '@vendure/core';
 import { ConfigurableOperationInput } from '@vendure/common/lib/generated-types';
 import { PromotionConditionInput, PromotionActionInput } from './types';
 import { ConditionsMode, ActionsMode } from '../../../shared/types';

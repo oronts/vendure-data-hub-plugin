@@ -37,7 +37,7 @@ import {
     handleAssets,
     handleFeaturedAsset,
 } from '../shared-helpers';
-import { ProductUpsertLoaderConfig, FacetValuesMode, AssetsMode, FeaturedAssetMode } from '../../types/index';
+import { ProductUpsertLoaderConfig } from '../../types/index';
 
 /**
  * ProductLoader - Refactored to extend BaseEntityLoader

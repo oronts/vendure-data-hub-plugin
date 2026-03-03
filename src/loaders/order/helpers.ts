@@ -1,4 +1,4 @@
-import { ID, RequestContext, CustomerService, ShippingMethodService, OrderService, ProductVariantService, Order } from '@vendure/core';
+import { ID, RequestContext, CustomerService, ShippingMethodService, OrderService, ProductVariantService } from '@vendure/core';
 import { OrderAddressInput, OrderLineInput } from './types';
 import { LinesMode } from '../../../shared/types';
 import { DataHubLogger } from '../../services/logger';
@@ -98,7 +98,7 @@ export async function handleOrderLines(
             }
             break;
 
-        case 'MERGE_BY_SKU':
+        case 'MERGE_BY_SKU': {
             // Smart merge: add quantities for existing SKUs, add new SKUs
             const order = await orderService.findOne(ctx, orderId, ['lines', 'lines.productVariant']);
             if (!order || !order.lines) {
@@ -136,6 +136,7 @@ export async function handleOrderLines(
                 }
             }
             break;
+        }
 
         case 'REPLACE_ALL': {
             // Remove all existing lines, add new ones (destructive)

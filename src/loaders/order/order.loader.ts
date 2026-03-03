@@ -35,7 +35,6 @@ import {
 } from './types';
 import {
     findCustomerByEmail,
-    findVariantBySku,
     findShippingMethodByCode,
     shouldUpdateField,
     handleOrderLines,

@@ -118,7 +118,8 @@ export class CollectionHandler implements LoaderHandler {
         for (const rec of input) {
             try {
                 const fields = coerceCollectionFields(rec, cfg);
-                let { slug, name, description } = fields;
+                let { slug, name } = fields;
+                const { description } = fields;
                 const { parentSlug } = fields;
 
                 // Multi-language: extract name/slug from first translation if missing

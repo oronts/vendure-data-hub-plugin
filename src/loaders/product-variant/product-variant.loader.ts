@@ -47,7 +47,7 @@ import {
     handleFeaturedAsset,
 } from '../shared-helpers';
 import { handleOptions } from './helpers';
-import { VariantUpsertLoaderConfig, FacetValuesMode, OptionsMode, AssetsMode, FeaturedAssetMode } from '../../types/index';
+import { VariantUpsertLoaderConfig } from '../../types/index';
 
 /**
  * ProductVariantLoader - Refactored to extend BaseEntityLoader
