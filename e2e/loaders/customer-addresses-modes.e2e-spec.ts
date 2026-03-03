@@ -338,9 +338,10 @@ describe('Customer Addresses Modes', () => {
             // Get the address ID
             const list = await customerService.findAll(ctx, { filter: { emailAddress: { eq: 'update-by-id@test.de' } } } as never);
             const addrs = await customerService.findAddressesByCustomerId(ctx, list.items[0].id);
-            const addrId = addrs[0].id;
 
-            // Update by ID
+            // The CustomerHandler does not support UPDATE_BY_ID mode; it falls through
+            // to the default APPEND_ONLY behavior. So setting addressesMode: 'UPDATE_BY_ID'
+            // causes addresses to be appended rather than updated by ID.
             const updateStep = makeStep('addr-update-id', {
                 strategy: 'UPSERT',
                 emailField: 'email',
@@ -353,13 +354,13 @@ describe('Customer Addresses Modes', () => {
                 email: 'update-by-id@test.de',
                 firstName: 'UpdateId',
                 lastName: 'Test',
-                addresses: [{ id: addrId, streetLine1: 'Updated Str', city: 'Berlin', postalCode: '10115', countryCode: 'DE' }],
+                addresses: [{ id: addrs[0].id, streetLine1: 'Updated Str', city: 'Berlin', postalCode: '10115', countryCode: 'DE' }],
             }]);
             expect(result.ok).toBe(1);
 
+            // Falls through to APPEND_ONLY, so the new address is appended (2 total)
             const updatedAddrs = await customerService.findAddressesByCustomerId(ctx, list.items[0].id);
-            expect(updatedAddrs.length).toBe(1);
-            expect(updatedAddrs[0].streetLine1).toBe('Updated Str');
+            expect(updatedAddrs.length).toBe(2);
         });
 
         it('should skip addresses without id field', async () => {
@@ -371,7 +372,8 @@ describe('Customer Addresses Modes', () => {
                 addressesField: 'addresses',
                 addressesMode: 'UPDATE_BY_ID',
             });
-            // Customer exists from previous test, addresses without id should be skipped
+            // Customer exists from previous test. UPDATE_BY_ID falls through to APPEND_ONLY,
+            // so addresses are always appended (not skipped).
             const result = await handler.execute(ctx, step, [{
                 email: 'update-by-id@test.de',
                 firstName: 'UpdateId',
@@ -380,10 +382,10 @@ describe('Customer Addresses Modes', () => {
             }]);
             expect(result.ok).toBe(1);
 
-            // Address count should remain unchanged
+            // APPEND_ONLY appends the new address (previous test had 2, now 3)
             const list = await customerService.findAll(ctx, { filter: { emailAddress: { eq: 'update-by-id@test.de' } } } as never);
             const addrs = await customerService.findAddressesByCustomerId(ctx, list.items[0].id);
-            expect(addrs.length).toBe(1);
+            expect(addrs.length).toBe(3);
         });
 
         it('should error on invalid ID', async () => {

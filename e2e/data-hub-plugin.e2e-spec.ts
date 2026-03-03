@@ -325,10 +325,9 @@ describe('DataHub Plugin', () => {
     describe('Pipeline Validation', () => {
         it('validates an empty pipeline', async () => {
             const { validateDataHubPipelineDefinition } = await adminClient.query(gql`
-                mutation Validate($definition: JSON!) {
+                query Validate($definition: JSON!) {
                     validateDataHubPipelineDefinition(definition: $definition) {
                         isValid
-                        errors
                         issues { message stepKey }
                     }
                 }
@@ -338,17 +337,15 @@ describe('DataHub Plugin', () => {
 
             expect(validateDataHubPipelineDefinition).toMatchObject({
                 isValid: expect.any(Boolean),
-                errors: expect.any(Array),
                 issues: expect.any(Array),
             });
         });
 
         it('validates a pipeline with extract step', async () => {
             const { validateDataHubPipelineDefinition } = await adminClient.query(gql`
-                mutation Validate($definition: JSON!) {
+                query Validate($definition: JSON!) {
                     validateDataHubPipelineDefinition(definition: $definition) {
                         isValid
-                        errors
                         issues { message stepKey }
                     }
                 }
@@ -366,17 +363,15 @@ describe('DataHub Plugin', () => {
 
             expect(validateDataHubPipelineDefinition).toMatchObject({
                 isValid: expect.any(Boolean),
-                errors: expect.any(Array),
                 issues: expect.any(Array),
             });
         });
 
         it('detects invalid step configuration', async () => {
             const { validateDataHubPipelineDefinition } = await adminClient.query(gql`
-                mutation Validate($definition: JSON!) {
+                query Validate($definition: JSON!) {
                     validateDataHubPipelineDefinition(definition: $definition) {
                         isValid
-                        errors
                         issues { message stepKey }
                     }
                 }

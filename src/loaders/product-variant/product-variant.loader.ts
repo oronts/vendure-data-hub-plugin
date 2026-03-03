@@ -353,8 +353,26 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
 
         const updateInput: Record<string, unknown> = { id: variantId };
 
-        if (record.name !== undefined && shouldUpdateField('name', options.updateOnlyFields)) {
-            updateInput.name = record.name;
+        // Build translations for the update — Vendure requires translations array
+        if (shouldUpdateField('name', options.updateOnlyFields)) {
+            const variantName = record.name || record.sku;
+            const translations: Array<{ languageCode: LanguageCode; name: string }> = [];
+            if (record.translations && record.translations.length > 0) {
+                for (const t of record.translations) {
+                    translations.push({
+                        languageCode: t.languageCode as LanguageCode,
+                        name: t.name || variantName,
+                    });
+                }
+            }
+            const hasCtxLang = translations.some(t => t.languageCode === ctx.languageCode);
+            if (!hasCtxLang) {
+                translations.unshift({
+                    languageCode: ctx.languageCode,
+                    name: variantName,
+                });
+            }
+            updateInput.translations = translations;
         }
         if (record.sku !== undefined && shouldUpdateField('sku', options.updateOnlyFields)) {
             updateInput.sku = record.sku;

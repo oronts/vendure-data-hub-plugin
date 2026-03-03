@@ -13,6 +13,26 @@ import { getNestedValue } from '../utils/object-path.utils';
 export { slugify };
 
 // =============================================================================
+// Vendure Service Helpers
+// =============================================================================
+
+/**
+ * Update an entity via Vendure service, handling the signature difference between
+ * ProductService.update(ctx, input) and ProductVariantService.update(ctx, input[]).
+ */
+async function updateViaService(
+    ctx: RequestContext,
+    service: ProductService | ProductVariantService | CollectionService,
+    input: Record<string, unknown>,
+): Promise<void> {
+    if (service instanceof ProductVariantService) {
+        await (service as ProductVariantService).update(ctx, [input as any]);
+    } else {
+        await (service as ProductService | CollectionService).update(ctx, input as any);
+    }
+}
+
+// =============================================================================
 // Record Field Accessors
 // =============================================================================
 
@@ -401,8 +421,7 @@ export async function handleFacetValues(
 
     // REPLACE_ALL mode - replace all facet values (current behavior)
     if (mode === 'REPLACE_ALL') {
-        // Vendure API accepts facetValueIds on update but union type (ProductService | ProductVariantService) doesn't expose it
-        await service.update(ctx, { id: entityId, facetValueIds: newFacetValueIds } as any);
+        await updateViaService(ctx, service, { id: entityId, facetValueIds: newFacetValueIds });
         logger.debug(`Replaced all facet values with ${newFacetValueIds.length} values (mode: REPLACE_ALL)`);
         return;
     }
@@ -417,7 +436,7 @@ export async function handleFacetValues(
         const mergedIds = [...new Set([...existingIds, ...newFacetValueIds])];
         const addedCount = mergedIds.length - existingIds.length;
 
-        await service.update(ctx, { id: entityId, facetValueIds: mergedIds } as any);
+        await updateViaService(ctx, service, { id: entityId, facetValueIds: mergedIds });
         logger.debug(
             `Merged facet values: ${existingIds.length} existing + ${newFacetValueIds.length} new = ${mergedIds.length} total (${addedCount} added, mode: MERGE)`,
         );
@@ -430,7 +449,7 @@ export async function handleFacetValues(
         const remainingIds = existingIds.filter(id => !newIdSet.has(id));
         const removedCount = existingIds.length - remainingIds.length;
 
-        await service.update(ctx, { id: entityId, facetValueIds: remainingIds } as any);
+        await updateViaService(ctx, service, { id: entityId, facetValueIds: remainingIds });
         logger.debug(
             `Removed ${removedCount} facet values: ${existingIds.length} existing - ${removedCount} removed = ${remainingIds.length} remaining (mode: REMOVE)`,
         );
@@ -487,7 +506,7 @@ export async function handleAssets(
                 // Match by source URL, create if not exists
                 const assetIds = await upsertAssetsByUrl(ctx, assetService, assetUrls, existingAssets, logger);
                 if (assetIds.length > 0) {
-                    await service.update(ctx, { id: entityId, assetIds } as any);
+                    await updateViaService(ctx, service, { id: entityId, assetIds });
                     logger.debug(
                         `UPSERT_BY_URL: Set ${assetIds.length} assets on entity ${entityId} (${assetUrls.length} URLs processed)`,
                     );
@@ -499,7 +518,7 @@ export async function handleAssets(
                 // Remove all existing, create from URLs
                 const assetIds = await createAssetsFromUrls(ctx, assetService, assetUrls, logger);
                 if (assetIds.length > 0 || existingAssets.length > 0) {
-                    await service.update(ctx, { id: entityId, assetIds } as any);
+                    await updateViaService(ctx, service, { id: entityId, assetIds });
                     logger.debug(
                         `REPLACE_ALL: Replaced ${existingAssets.length} existing with ${assetIds.length} new assets on entity ${entityId}`,
                     );
@@ -512,7 +531,7 @@ export async function handleAssets(
                 const newAssetIds = await createAssetsFromUrls(ctx, assetService, assetUrls, logger);
                 const existingIds = existingAssets.map((a: any) => a.assetId || a.asset?.id).filter(Boolean);
                 const allAssetIds = [...existingIds, ...newAssetIds];
-                await service.update(ctx, { id: entityId, assetIds: allAssetIds } as any);
+                await updateViaService(ctx, service, { id: entityId, assetIds: allAssetIds });
                 logger.debug(
                     `APPEND_ONLY: Added ${newAssetIds.length} new assets to ${existingIds.length} existing = ${allAssetIds.length} total on entity ${entityId}`,
                 );
@@ -595,7 +614,7 @@ export async function handleFeaturedAsset(
 
         // Set as featured asset if we got an asset ID
         if (assetId) {
-            await service.update(ctx, { id: entityId, featuredAssetId: assetId } as any);
+            await updateViaService(ctx, service, { id: entityId, featuredAssetId: assetId });
             logger.debug(`Set featured asset ${assetId} on entity ${entityId}`);
         } else {
             logger.warn(`Failed to create/find asset for URL: ${featuredAssetUrl}`);
