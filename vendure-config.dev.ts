@@ -1,7 +1,7 @@
 /**
  * Data Hub Plugin Dev Server Configuration
  *
- * 37 example pipelines + 4 custom adapter demos + 4 Pimcore connector pipelines = 45 total
+ * 37 example pipelines + 4 custom adapter demos + 5 hook demos + 4 Pimcore connector pipelines = 50 total
  */
 import { DefaultJobQueuePlugin, DefaultSchedulerPlugin, DefaultSearchPlugin, dummyPaymentHandler, VendureConfig } from '@vendure/core';
 import { AssetServerPlugin } from '@vendure/asset-server-plugin';
@@ -56,6 +56,12 @@ import {
     biDirectionalSyncA,
     biDirectionalSyncB,
     multiSinkFanOut,
+    hookScripts,
+    interceptorHookDemo,
+    scriptHookDemo,
+    searchEnrichmentHookDemo,
+    multiHookChainDemo,
+    allStagesHookDemo,
 } from './dev-server/examples/pipelines';
 
 const PORT = process.env.PORT ? +process.env.PORT : 3000;
@@ -144,6 +150,8 @@ export const config: VendureConfig = {
 
             feedGenerators: [...allCustomFeedGenerators],
 
+            scripts: hookScripts,
+
             pipelines: [
                 // =================================================================
                 // 20 PRODUCTION-QUALITY EXAMPLE PIPELINES
@@ -215,6 +223,15 @@ export const config: VendureConfig = {
                 { code: 'custom-extractors-demo', name: 'Custom Extractors Demo', definition: customExtractorsPipelineExample, enabled: true },
                 { code: 'custom-loaders-demo', name: 'Custom Loaders Demo', definition: customLoadersPipelineExample, enabled: true },
                 { code: 'full-custom-demo', name: 'Full Custom Adapters Demo', definition: customAdapterPipelineExample, enabled: true },
+
+                // =================================================================
+                // HOOK DEMO PIPELINES (5)
+                // =================================================================
+                { code: 'hook-interceptor-demo', name: 'Hook Demo: Interceptors', definition: interceptorHookDemo, enabled: true },
+                { code: 'hook-script-demo', name: 'Hook Demo: Scripts', definition: scriptHookDemo, enabled: true },
+                { code: 'hook-search-enrichment', name: 'Hook Demo: Search Enrichment', definition: searchEnrichmentHookDemo, enabled: true },
+                { code: 'hook-multi-chain', name: 'Hook Demo: Multi-Stage Chain', definition: multiHookChainDemo, enabled: true },
+                { code: 'hook-all-stages', name: 'Hook Demo: All Stages', definition: allStagesHookDemo, enabled: true },
 
                 // =================================================================
                 // PIMCORE CONNECTOR PIPELINES (4)

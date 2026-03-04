@@ -5,7 +5,7 @@
  * - Catalog (3): PIM sync, Magento migration, Shopify inventory
  * - Operations (7): CSV customer import, feed generation, webhook orders (3 auth modes), file watch, message queue
  * - Integration (8): CDC sync, event alerts, analytics, entity lifecycle, PIM customer sync, PIM order import, Magento customer migration, resilience test
- * - Sink & Feed (2): Search index sync (5 engines), multi-feed export (4 marketplaces)
+ * - Sink & Feed (3): Search index sync (5 engines), multi-feed export (4 marketplaces), CRUD sync (operation-aware delete)
  * - ERP Complex (5): Full product import, customer sync, order import, delta sync, channel catalog
  * - Enterprise Complex (1): Full enterprise pipeline
  * - Enterprise Test (5): Operator stress, customer lifecycle, order state, transform chain, reconciliation
@@ -42,6 +42,7 @@ export {
 export {
     searchIndexSync,
     multiFeedExport,
+    searchIndexCrudSync,
 } from './sink-feed-pipelines';
 
 export {
@@ -70,6 +71,15 @@ export {
     biDirectionalSyncB,
     multiSinkFanOut,
 } from './multi-source-pipelines';
+
+export {
+    hookScripts,
+    interceptorHookDemo,
+    scriptHookDemo,
+    searchEnrichmentHookDemo,
+    multiHookChainDemo,
+    allStagesHookDemo,
+} from './hook-examples-pipelines';
 
 import {
     pimCatalogSync,
@@ -101,6 +111,7 @@ import {
 import {
     searchIndexSync,
     multiFeedExport,
+    searchIndexCrudSync,
 } from './sink-feed-pipelines';
 
 import {
@@ -129,6 +140,14 @@ import {
     biDirectionalSyncB,
     multiSinkFanOut,
 } from './multi-source-pipelines';
+
+import {
+    interceptorHookDemo,
+    scriptHookDemo,
+    searchEnrichmentHookDemo,
+    multiHookChainDemo,
+    allStagesHookDemo,
+} from './hook-examples-pipelines';
 
 export const examplePipelines = {
     catalog: {
@@ -167,6 +186,7 @@ export const examplePipelines = {
     sinkAndFeed: {
         searchIndexSync,
         multiFeedExport,
+        searchIndexCrudSync,
     },
     enterprise: {
         enterpriseComplexPipeline,
@@ -185,6 +205,13 @@ export const examplePipelines = {
         biDirectionalSyncA,
         biDirectionalSyncB,
         multiSinkFanOut,
+    },
+    hooks: {
+        interceptorHookDemo,
+        scriptHookDemo,
+        searchEnrichmentHookDemo,
+        multiHookChainDemo,
+        allStagesHookDemo,
     },
 };
 
@@ -209,6 +236,7 @@ export const allExamplePipelines = [
     resilienceTest,
     searchIndexSync,
     multiFeedExport,
+    searchIndexCrudSync,
     erpFullProductImport,
     erpCustomerSync,
     erpOrderImport,
@@ -226,4 +254,9 @@ export const allExamplePipelines = [
     biDirectionalSyncA,
     biDirectionalSyncB,
     multiSinkFanOut,
+    interceptorHookDemo,
+    scriptHookDemo,
+    searchEnrichmentHookDemo,
+    multiHookChainDemo,
+    allStagesHookDemo,
 ];

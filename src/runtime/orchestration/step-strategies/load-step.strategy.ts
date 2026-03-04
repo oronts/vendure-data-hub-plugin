@@ -55,12 +55,12 @@ export class LoadStepStrategy implements StepStrategy {
         const { ok, fail } = await this.executeLoad(context, batch);
         const durationMs = Date.now() - t0;
 
-        await this.runAfterHook(context, afterBeforeHook);
+        const afterAfterHook = await this.runAfterHook(context, afterBeforeHook);
 
         await this.logStepComplete(context, adapterCode, batch.length, ok, fail, durationMs, batch[0]);
 
         return {
-            records: afterBeforeHook,
+            records: afterAfterHook,
             processed: 0,
             succeeded: ok,
             failed: fail,

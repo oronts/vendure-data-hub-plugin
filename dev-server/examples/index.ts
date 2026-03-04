@@ -37,6 +37,12 @@ export {
     entityLifecycleOps,
     searchIndexSync,
     multiFeedExport,
+    searchIndexCrudSync,
     examplePipelines,
     allExamplePipelines,
+    hookScripts,
+    interceptorHookDemo,
+    scriptHookDemo,
+    searchEnrichmentHookDemo,
+    multiHookChainDemo,
 } from './pipelines';

@@ -442,6 +442,11 @@ export const HASH_ENCODING_OPTIONS = [
     { value: 'base64', label: 'Base64' },
 ];
 
+export const SINK_OPERATION_OPTIONS = [
+    { value: 'UPSERT', label: 'Upsert (Index)' },
+    { value: 'DELETE', label: 'Delete' },
+];
+
 /** Vendure entity type options for query extractors */
 export const VENDURE_ENTITY_TYPE_OPTIONS = [
     { value: VendureEntityType.PRODUCT, label: 'Products' },

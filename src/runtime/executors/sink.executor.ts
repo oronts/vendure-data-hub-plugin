@@ -34,6 +34,7 @@ interface BaseSinkCfg {
     appId?: string;
     collectionName?: string;
     primaryKey?: string;
+    defaultOperation?: string;
 }
 
 @Injectable()
@@ -111,35 +112,78 @@ export class SinkExecutor {
         const localizedInput = applyLocalization(input, { languageCode, translationsField, channelCode, channelField });
         const resolvedIndexName = resolveIndexName(indexName, languageCode);
 
-        const handlerCtx: SinkHandlerContext = {
-            ctx, step, input: localizedInput, cfg, indexName: resolvedIndexName, idField, bulkSize, prepareDoc, onRecordError,
-        };
+        const defaultOp = cfg.defaultOperation ?? 'UPSERT';
+        const upsertRecords: RecordObject[] = [];
+        const deleteRecords: RecordObject[] = [];
+        for (const rec of localizedInput) {
+            const op = String(rec.__operation ?? defaultOp).toUpperCase();
+            const { __operation: _, ...cleanRec } = rec;
+            if (op === 'DELETE') {
+                deleteRecords.push(cleanRec);
+            } else {
+                upsertRecords.push(cleanRec);
+            }
+        }
 
         // Try built-in handlers first
         const entry = adapterCode ? SINK_HANDLER_REGISTRY.get(adapterCode) : undefined;
         if (entry) {
-            const result = await entry.handler(handlerCtx, this.services);
-            ok = result.ok;
-            fail = result.fail;
+            if (upsertRecords.length > 0) {
+                const handlerCtx: SinkHandlerContext = {
+                    ctx, step, input: upsertRecords, cfg, indexName: resolvedIndexName, idField, bulkSize, prepareDoc, onRecordError, operation: 'UPSERT',
+                };
+                const result = await entry.handler(handlerCtx, this.services);
+                ok += result.ok;
+                fail += result.fail;
+            }
+            if (deleteRecords.length > 0) {
+                if (entry.deleteHandler) {
+                    const ids = deleteRecords.map(r => String(getPath(r, idField) ?? ''));
+                    const handlerCtx: SinkHandlerContext = {
+                        ctx, step, input: deleteRecords, cfg, indexName: resolvedIndexName, idField, bulkSize, prepareDoc, onRecordError, operation: 'DELETE',
+                    };
+                    const result = await entry.deleteHandler(handlerCtx, this.services, ids);
+                    ok += result.ok;
+                    fail += result.fail;
+                } else {
+                    this.logger.warn(`Sink "${adapterCode}" does not support DELETE`, { stepKey: step.key, count: deleteRecords.length });
+                    fail += deleteRecords.length;
+                }
+            }
         } else {
             // Try custom sinks from registry
             if (adapterCode && this.registry) {
                 const customSink = this.registry.getRuntime(AdapterType.SINK, adapterCode) as SinkAdapter<JsonObject> | undefined;
                 if (customSink && typeof customSink.index === 'function') {
-                    const result = await this.executeCustomSink(ctx, step, input, customSink, pipelineContext);
-                    ok = result.ok;
-                    fail = result.fail;
+                    if (upsertRecords.length > 0) {
+                        const result = await this.executeCustomSink(ctx, step, upsertRecords, customSink, pipelineContext);
+                        ok += result.ok;
+                        fail += result.fail;
+                    }
+                    if (deleteRecords.length > 0) {
+                        if (typeof customSink.delete === 'function') {
+                            const ids = deleteRecords.map(r => String(getPath(r, idField) ?? ''));
+                            const result = await this.executeCustomSinkDelete(ctx, step, ids, customSink, pipelineContext);
+                            ok += result.ok;
+                            fail += result.fail;
+                        } else {
+                            this.logger.warn(`Custom sink "${adapterCode}" does not support DELETE`, { stepKey: step.key, count: deleteRecords.length });
+                            fail += deleteRecords.length;
+                        }
+                    }
                 } else {
                     this.logger.warn(`Unknown sink adapter`, { stepKey: step.key, adapterCode });
-                    ok = input.length;
+                    ok = localizedInput.length;
                 }
             } else {
                 this.logger.warn(`Unknown sink adapter`, { stepKey: step.key, adapterCode });
-                ok = input.length;
+                ok = localizedInput.length;
             }
         }
 
-        this.logOperationResult(adapterCode ?? 'unknown', 'index', ok, fail, startTime, step.key);
+        const opLabel = deleteRecords.length > 0 && upsertRecords.length > 0 ? 'index+delete'
+            : deleteRecords.length > 0 ? 'delete' : 'index';
+        this.logOperationResult(adapterCode ?? 'unknown', opLabel, ok, fail, startTime, step.key);
 
         return { ok, fail };
     }
@@ -176,6 +220,29 @@ export class SinkExecutor {
             };
         } catch (error) {
             return handleCustomAdapterError(error, this.logger, 'Custom sink', sink.code, step.key, input.length);
+        }
+    }
+
+    private async executeCustomSinkDelete(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        ids: string[],
+        sink: SinkAdapter<JsonObject>,
+        pipelineContext?: PipelineContext,
+    ): Promise<ExecutionResult> {
+        const cfg = step.config as JsonObject;
+        const sinkContext: SinkContext = {
+            ...createBaseAdapterContext(ctx, step.key, this.secretService, this.connectionService, this.logger, pipelineContext),
+        };
+
+        try {
+            const result = await sink.delete!(sinkContext, cfg, ids);
+            return {
+                ok: result.deleted,
+                fail: result.failed,
+            };
+        } catch (error) {
+            return handleCustomAdapterError(error, this.logger, 'Custom sink delete', sink.code, step.key, ids.length);
         }
     }
 

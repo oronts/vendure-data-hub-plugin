@@ -125,27 +125,247 @@ DataHubPlugin.init({
 })
 ```
 
-**Via Service Injection:**
+**Via Service Injection (with DI Access):**
 
 ```typescript
-import { HookService } from '@oronts/vendure-data-hub-plugin';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { VendurePlugin, PluginCommonModule, TransactionalConnection, ProductService } from '@vendure/core';
+import { DataHubPlugin, HookService } from '@oronts/vendure-data-hub-plugin';
 
-@VendurePlugin({ imports: [DataHubPlugin] })
-export class MyPlugin implements OnModuleInit {
-    constructor(private hookService: HookService) {}
+@VendurePlugin({
+    imports: [PluginCommonModule, DataHubPlugin],
+    providers: [MyHooksService],
+})
+export class MyPlugin {}
+
+@Injectable()
+class MyHooksService implements OnModuleInit {
+    constructor(
+        private hookService: HookService,
+        private connection: TransactionalConnection,
+        private productService: ProductService,
+    ) {}
 
     onModuleInit() {
-        this.hookService.registerScript('normalize-prices', async (records) => {
-            return records.map(r => ({
-                ...r,
-                price: Math.round(Number(r.price) * 100),
-            }));
+        // DI services are available via closure capture
+        this.hookService.registerScript('validate-after-load', async (records, context) => {
+            for (const record of records) {
+                const product = await this.connection.rawConnection
+                    .getRepository('Product')
+                    .findOne({ where: { slug: record.slug } });
+
+                if (product) {
+                    await this.callExternalValidationApi(product.id, record);
+                }
+            }
+            return records;
         });
+    }
+
+    private async callExternalValidationApi(entityId: string, record: any): Promise<void> {
+        // Your external API call here
     }
 }
 ```
 
 Scripts can modify records at any of the 24 hook stages (18 for step types and 6 global). They receive the records array, a `HookContext` with pipeline/run metadata, and optional `args` from the hook action config.
+
+### Hook Capabilities & Limitations
+
+#### What Hooks Can Do
+
+| Capability | How |
+|------------|-----|
+| Modify records at any of 24 stages | INTERCEPTOR or SCRIPT hook |
+| Access NestJS DI services (DB, APIs, Vendure services) | `HookService.registerScript()` in `onModuleInit()` — closures capture injected services |
+| Query Vendure DB for entity IDs after load | Inject `TransactionalConnection`, query by match field (sku/slug) |
+| Call external APIs | `fetch()` or inject your own HTTP client service |
+| Filter/remove records from pipeline | Return a filtered array from the hook |
+| Fail the pipeline from a hook | Throw an error with `failOnError: true` |
+| Trigger other pipelines | Use `TRIGGER_PIPELINE` hook action |
+| Configure Meilisearch index settings | Use sink config: `sortableFields`, `filterableFields`, `searchableFields` |
+
+#### INTERCEPTOR vs SCRIPT Hooks
+
+| | INTERCEPTOR | SCRIPT |
+|--|-------------|--------|
+| **Code location** | Inline JavaScript string in pipeline definition | Pre-registered TypeScript function |
+| **Execution** | Sandboxed Node.js `vm` — no `require`, `import`, `fetch`, `async/await`, `process` | Full Node.js process — all APIs available |
+| **DI access** | No — isolated sandbox | Yes — closures capture injected services |
+| **Use case** | Simple field mapping, filtering, adding static fields | DB queries, external APIs, complex business logic |
+| **Security** | Safe for user-provided code (UI pipeline editor) | Must be registered at server startup by trusted code |
+
+#### What Hooks Cannot Do (and alternatives)
+
+| Limitation | Alternative |
+|------------|------------|
+| Modify operator logic mid-execution | Register a custom operator via `registerOperator()` or `DataHubPlugin.init({ adapters: [...] })` |
+| Change Meilisearch index settings from hooks | Use sink configuration fields (`sortableFields`, etc.) or call the Meilisearch API directly from a BEFORE_SINK script |
+| Access loaded entity IDs directly in AFTER_LOAD records | Query the DB by match field (sku/slug) in a DI-injected script (records retain their pre-load shape) |
+| Use `async/await` or `fetch` in INTERCEPTOR hooks | Use a SCRIPT hook instead — INTERCEPTORs run in a sandboxed VM without async support |
+| Run hooks on global lifecycle stages (PIPELINE_STARTED, etc.) | INTERCEPTOR/SCRIPT are ignored on lifecycle stages. Use WEBHOOK, EMIT, LOG, or TRIGGER_PIPELINE actions instead |
+| Modify pipeline context (shared config) from hooks | Add fields to records instead — records are the mutable data carrier between steps |
+
+#### AFTER_LOAD: Getting Entity IDs
+
+AFTER_LOAD hooks receive the **same records that entered the load step** — entity IDs are not automatically added. To access created/updated entity IDs, query the database in a DI-injected script:
+
+```typescript
+this.hookService.registerScript('post-load-sync', async (records, context) => {
+    for (const record of records) {
+        // Query Vendure for the entity created/updated by the loader
+        const product = await this.connection.rawConnection
+            .getRepository('Product')
+            .findOne({ where: { slug: record.slug } });
+
+        if (product) {
+            // Now you have the entity ID — call external system
+            await fetch('https://erp.example.com/api/confirm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vendureId: product.id, sku: record.sku }),
+            });
+        }
+    }
+    return records;
+});
+```
+
+#### BEFORE_SINK: Modifying Records Before Search Indexing
+
+Add computed search fields, build facets, or normalize text before records reach Meilisearch/Elasticsearch:
+
+```typescript
+this.hookService.registerScript('enrich-for-search', async (records) => {
+    return records.map(r => ({
+        ...r,
+        searchText: [r.name, r.sku, r.description].filter(Boolean).join(' ').toLowerCase(),
+        facetTags: (r.tags || '').split(',').map(t => t.trim()).filter(Boolean),
+        priceRange: r.price < 5000 ? 'budget' : r.price < 20000 ? 'mid' : 'premium',
+    }));
+});
+```
+
+For index settings (sortable, filterable, searchable attributes), use the sink configuration directly — see [Sinks Reference](../../reference/sinks.md).
+
+#### Hook Timeout
+
+Scripts have a default timeout (~5 seconds). For hooks that call external APIs, set a higher timeout:
+
+```typescript
+.hooks({
+    AFTER_LOAD: [{
+        type: 'SCRIPT',
+        scriptName: 'post-load-sync',
+        timeout: 30000,  // 30 seconds for external API calls
+    }],
+})
+```
+
+#### Extending Operators
+
+Hooks cannot intercept operator execution, but you can:
+
+1. **Pre/post-process around operators** with `BEFORE_TRANSFORM` / `AFTER_TRANSFORM` hooks
+2. **Register a custom operator** for reusable business logic:
+
+```typescript
+import { registerOperator } from '@oronts/vendure-data-hub-plugin';
+
+registerOperator({
+    type: 'OPERATOR',
+    code: 'business-pricing',
+    name: 'Business Pricing Rules',
+    description: 'Applies margin and rounding rules',
+    pure: true,
+    schema: {
+        fields: [
+            { key: 'marginPercent', label: 'Margin %', type: 'number', required: true },
+        ],
+    },
+    execute: async (ctx, config, records) => {
+        return records.map(r => ({
+            ...r,
+            price: Math.round(r.costPrice * (1 + config.marginPercent / 100)),
+        }));
+    },
+});
+```
+
+Custom operators appear in the dashboard alongside the 61 built-in operators. See [Custom Operators](./custom-operators.md) for full details.
+
+#### Custom Loader Match Strategies
+
+By default, loaders match existing entities by standard fields (`sku`, `slug`, `email`, `code`). To upsert by a custom field, register a custom lookup strategy:
+
+```typescript
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { TransactionalConnection } from '@vendure/core';
+import { HookService } from '@oronts/vendure-data-hub-plugin';
+
+@Injectable()
+class MyCustomLoaderHooks implements OnModuleInit {
+    constructor(
+        private hookService: HookService,
+        private connection: TransactionalConnection,
+    ) {}
+
+    onModuleInit() {
+        // BEFORE_LOAD: Enrich records with existing entity IDs for custom matching
+        this.hookService.registerScript('match-by-external-id', async (records, context) => {
+            for (const record of records) {
+                const existing = await this.connection.rawConnection
+                    .getRepository('Product')
+                    .findOne({
+                        where: { customFields: { externalId: record.externalId } },
+                    });
+                if (existing) {
+                    // Add the Vendure ID so the loader can match it
+                    record.id = existing.id;
+                }
+            }
+            return records;
+        });
+    }
+}
+
+// Use in pipeline:
+.hooks({
+    BEFORE_LOAD: [{
+        type: 'SCRIPT',
+        scriptName: 'match-by-external-id',
+    }],
+})
+```
+
+Built-in loaders also support `addCustomStrategy()` for extending the match logic directly. See [Custom Loaders](./custom-loaders.md) for details on the `EntityLookupHelper` API.
+
+#### Error & Dead Letter Hooks
+
+Three error-handling hook stages fire automatically:
+
+| Stage | When | Example Use |
+|-------|------|-------------|
+| `ON_ERROR` | When any record fails during processing | Send Slack alert, log to external system |
+| `ON_RETRY` | When a failed record is retried | Track retry counts |
+| `ON_DEAD_LETTER` | When a record is moved to the dead letter queue | Notify support team |
+
+These are lifecycle-only stages — they support `WEBHOOK`, `EMIT`, `LOG`, and `TRIGGER_PIPELINE` actions (not `INTERCEPTOR`/`SCRIPT`):
+
+```typescript
+.hooks({
+    ON_ERROR: [{
+        type: 'WEBHOOK',
+        url: 'https://slack.example.com/webhook',
+        headers: { 'Content-Type': 'application/json' },
+    }],
+    ON_DEAD_LETTER: [{
+        type: 'LOG',
+        level: 'ERROR',
+        message: 'Record moved to dead letter queue',
+    }],
+})
+```
 
 ### Template Registration
 

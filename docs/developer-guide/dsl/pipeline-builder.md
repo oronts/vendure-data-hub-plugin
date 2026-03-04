@@ -115,6 +115,18 @@ array of `HookAction` objects. Six action types are supported: `INTERCEPTOR`, `S
 })
 ```
 
+**Modify records before search engine indexing:**
+
+```typescript
+.hooks({
+    BEFORE_SINK: [{
+        type: 'SCRIPT',
+        scriptName: 'enrichForSearch',
+        args: { boostFeatured: true },
+    }],
+})
+```
+
 **Webhook Hooks** (notify external systems):
 
 ```typescript

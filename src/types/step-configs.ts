@@ -142,6 +142,8 @@ export interface SinkStepConfig {
     connectionCode?: string;
     destination?: string;
     format?: string;
+
+    defaultOperation?: 'UPSERT' | 'DELETE';
     [key: string]: unknown;
 }
 

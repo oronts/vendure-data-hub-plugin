@@ -410,6 +410,8 @@ export interface GateStepConfig {
 export interface SinkStepConfig {
     adapterCode: string;
     sinkType?: SinkType;
+
+    defaultOperation?: 'UPSERT' | 'DELETE';
     // Connection
     host?: string;
     hosts?: string[];

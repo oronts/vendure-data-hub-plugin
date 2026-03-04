@@ -114,7 +114,7 @@ function NodePropertiesPanelComponent({
         <Sheet open={!!node} onOpenChange={() => onClose()}>
             <SheetContent
                 side="right"
-                className="overflow-y-auto p-0 relative !max-w-none"
+                className="overflow-y-auto p-0 !max-w-none"
                 style={{ width: `${width}px`, maxWidth: PANEL_WIDTHS.MAX_VW }}
             >
                 {/* Resize drag handle (left edge) */}

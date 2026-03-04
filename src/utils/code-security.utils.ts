@@ -181,7 +181,6 @@ export const DISALLOWED_KEYWORDS = [
  */
 const DISALLOWED_KEYWORDS_PATTERN = new RegExp(
     `\\b(${DISALLOWED_KEYWORDS.join('|')})\\b`,
-    'i',
 );
 
 /**
@@ -203,7 +202,6 @@ const SCRIPT_DISALLOWED_KEYWORDS = DISALLOWED_KEYWORDS.filter(
 
 const SCRIPT_DISALLOWED_KEYWORDS_PATTERN = new RegExp(
     `\\b(${SCRIPT_DISALLOWED_KEYWORDS.join('|')})\\b`,
-    'i',
 );
 
 /**

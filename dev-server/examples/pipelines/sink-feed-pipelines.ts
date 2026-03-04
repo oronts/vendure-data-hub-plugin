@@ -6,6 +6,8 @@
  *        with multi-language indexing (separate indices per language using languageCode + index templating)
  * - P12: Multi-marketplace product feed export (Google Merchant, Meta Catalog, Amazon, Custom JSON + CSV backup)
  *        with localized feed output (languageCode flattens translations before feed generation)
+ * - P13: Operation-aware CRUD sync — event trigger injects __operation (CREATE/UPDATE/DELETE),
+ *        sink executor partitions records to upsert vs delete APIs automatically
  */
 
 import { createPipeline } from '../../../src';
@@ -392,5 +394,40 @@ export const multiFeedExport = createPipeline()
     .edge('format-prices', 'feed-amazon')
     .edge('format-prices', 'feed-custom')
     .edge('format-prices', 'export-backup')
+
+    .build();
+
+// =============================================================================
+// P13: SEARCH INDEX CRUD SYNC — Operation-aware create/update/delete
+// =============================================================================
+
+export const searchIndexCrudSync = createPipeline()
+    .name('Search Index CRUD Sync')
+    .description('Event-driven search sync with automatic delete support — handles create, update, and delete in one pipeline')
+    .capabilities({ requires: ['ReadCatalog'] })
+
+    .trigger('on-product-change', { type: 'EVENT', event: 'product.*' })
+
+    .extract('query-product', {
+        adapterCode: 'vendureQuery',
+        entity: 'PRODUCT',
+        relations: 'translations,featuredAsset',
+    })
+
+    .transform('prepare-doc', {
+        operators: [
+            { op: 'set', args: { field: 'objectID', expression: '`product-${record.id}`' } },
+            { op: 'pick', args: { fields: ['objectID', 'name', 'slug', 'description', '__operation'] } },
+        ],
+    })
+
+    .sink('index-meili', {
+        adapterCode: 'meilisearch',
+        host: 'http://localhost:7700',
+        apiKeySecretCode: 'meilisearch-api-key',
+        indexName: 'products',
+        primaryKey: 'objectID',
+        defaultOperation: 'UPSERT',
+    })
 
     .build();

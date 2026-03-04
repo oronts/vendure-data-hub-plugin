@@ -172,6 +172,48 @@ export const HOOK_STAGE_METADATA: HookStageMetadata[] = [
         icon: 'upload',
         category: 'data',
     },
+    {
+        key: HookStage.BEFORE_EXPORT,
+        label: 'Before Export',
+        description: 'Before data is exported to file',
+        icon: 'file-output',
+        category: 'data',
+    },
+    {
+        key: HookStage.AFTER_EXPORT,
+        label: 'After Export',
+        description: 'After data has been exported',
+        icon: 'file-output',
+        category: 'data',
+    },
+    {
+        key: HookStage.BEFORE_FEED,
+        label: 'Before Feed',
+        description: 'Before feed generation begins',
+        icon: 'rss',
+        category: 'data',
+    },
+    {
+        key: HookStage.AFTER_FEED,
+        label: 'After Feed',
+        description: 'After feed has been generated',
+        icon: 'rss',
+        category: 'data',
+    },
+    {
+        key: HookStage.BEFORE_SINK,
+        label: 'Before Sink',
+        description: 'Before records are sent to search index',
+        icon: 'search',
+        category: 'data',
+    },
+    {
+        key: HookStage.AFTER_SINK,
+        label: 'After Sink',
+        description: 'After records have been indexed',
+        icon: 'search',
+        category: 'data',
+    },
 
     // Error handling stages
     {

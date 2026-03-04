@@ -7,6 +7,7 @@ export const PIPELINE_EDITOR_PANEL = {
     STEPS: 'steps',
     TRIGGERS: 'triggers',
     SETTINGS: 'settings',
+    HOOKS: 'hooks',
 } as const;
 export type PipelineEditorPanel = typeof PIPELINE_EDITOR_PANEL[keyof typeof PIPELINE_EDITOR_PANEL];
 

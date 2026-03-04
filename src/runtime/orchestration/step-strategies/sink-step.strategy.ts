@@ -5,6 +5,7 @@
  */
 
 import { SinkExecutor } from '../../executors';
+import { RecordObject } from '../../executor-types';
 import {
     StepStrategy,
     StepExecutionContext,
@@ -25,19 +26,17 @@ export class SinkStepStrategy implements StepStrategy {
 
         await this.logStepStart(context, recordsIn);
 
-        // Run BEFORE_SINK hook (observation only, SINK is terminal)
-        await this.runBeforeHook(context, records);
+        const interceptedRecords = await this.runBeforeHook(context, records);
 
-        const { ok, fail } = await this.executeSink(context);
+        const { ok, fail } = await this.executeSink(context, interceptedRecords);
         const durationMs = Date.now() - t0;
 
-        // Run AFTER_SINK hook (observation only, SINK is terminal)
-        await this.runAfterHook(context, records);
+        const afterAfterHook = await this.runAfterHook(context, interceptedRecords);
 
         await this.logStepComplete(context, adapterCode, recordsIn, ok, fail, durationMs);
 
         return {
-            records,
+            records: afterAfterHook,
             processed: recordsIn,
             succeeded: ok,
             failed: fail,
@@ -63,19 +62,21 @@ export class SinkStepStrategy implements StepStrategy {
         }
     }
 
-    private async runBeforeHook(context: StepExecutionContext, records: import('../../executor-types').RecordObject[]): Promise<void> {
-        const { ctx, definition, hookService, runId } = context;
-        await hookService.run(ctx, definition, HookStage.BEFORE_SINK, records, undefined, runId);
+    private async runBeforeHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
+        const { ctx, definition, hookService, runId, pipelineId } = context;
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.BEFORE_SINK, records, runId, pipelineId);
+        return result.records;
     }
 
-    private async executeSink(context: StepExecutionContext): Promise<{ ok: number; fail: number }> {
-        const { ctx, step, records, onRecordError } = context;
+    private async executeSink(context: StepExecutionContext, records: RecordObject[]): Promise<{ ok: number; fail: number }> {
+        const { ctx, step, onRecordError } = context;
         return this.sinkExecutor.execute(ctx, step, records, onRecordError);
     }
 
-    private async runAfterHook(context: StepExecutionContext, records: import('../../executor-types').RecordObject[]): Promise<void> {
-        const { ctx, definition, hookService, runId } = context;
-        await hookService.run(ctx, definition, HookStage.AFTER_SINK, records, undefined, runId);
+    private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
+        const { ctx, definition, hookService, runId, pipelineId } = context;
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.AFTER_SINK, records, runId, pipelineId);
+        return result.records;
     }
 
     private async logStepComplete(

@@ -8,6 +8,7 @@ import {
     AlertTriangle,
     Zap,
     Bell,
+    Webhook,
 } from 'lucide-react';
 import { TriggersPanel } from '../shared/triggers-panel';
 import { StepConfigPanel } from '../shared/step-config';
@@ -19,9 +20,10 @@ import {
     PIPELINE_EDITOR_PANEL,
     DEFAULT_STEP_CONFIGS,
 } from '../../constants';
-import { useStepConfigs, useTriggerTypes } from '../../hooks';
+import { useStepConfigs, useTriggerTypes, useHookStages, useHookStageCategories } from '../../hooks';
 import type { MoveDirection, PipelineEditorPanel } from '../../constants';
 import { useAdapterCatalog } from '../../hooks';
+import { FALLBACK_STAGE_CATEGORIES } from '../../constants';
 import type {
     StepType,
     PipelineStepDefinition,
@@ -29,7 +31,7 @@ import type {
     PipelineEditorProps,
     JsonObject,
 } from '../../types';
-import { getCombinedTriggers, updateDefinitionWithTriggers } from '../../utils';
+import { getCombinedTriggers, updateDefinitionWithTriggers, resolveIconName } from '../../utils';
 
 const ADDABLE_STEP_TYPES = Object.keys(DEFAULT_STEP_CONFIGS).filter(
     t => t !== STEP_TYPE.ROUTE && t !== STEP_TYPE.GATE
@@ -157,10 +159,21 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
     // Get combined triggers from both steps and triggers array
     const combinedTriggers = useMemo(() => getCombinedTriggers(definition), [definition]);
 
+    // Hook stage metadata
+    const { hookStages: backendStages } = useHookStages();
+    const { categories: backendCategories } = useHookStageCategories();
+    const stageCategories = useMemo(
+        () => backendCategories.length > 0 ? backendCategories : FALLBACK_STAGE_CATEGORIES,
+        [backendCategories],
+    );
+    const hooks = definition.hooks ?? {};
+    const hookCount = useMemo(() => Object.values(hooks).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0), [hooks]);
+
     // Panel switch handlers
     const handleSwitchToSteps = useCallback(() => setActivePanel(PIPELINE_EDITOR_PANEL.STEPS), []);
     const handleSwitchToTriggers = useCallback(() => setActivePanel(PIPELINE_EDITOR_PANEL.TRIGGERS), []);
     const handleSwitchToSettings = useCallback(() => setActivePanel(PIPELINE_EDITOR_PANEL.SETTINGS), []);
+    const handleSwitchToHooks = useCallback(() => setActivePanel(PIPELINE_EDITOR_PANEL.HOOKS), []);
 
     // Settings change handler
     const handleContextChange = useCallback((context: JsonObject) => {
@@ -250,6 +263,25 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                             <Settings className="h-3 w-3 inline mr-1" />
                             Settings
                         </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activePanel === PIPELINE_EDITOR_PANEL.HOOKS}
+                            aria-controls="panel-hooks"
+                            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+                                activePanel === PIPELINE_EDITOR_PANEL.HOOKS
+                                    ? 'bg-primary/10 text-primary border-b-2 border-primary'
+                                    : 'text-muted-foreground hover:bg-muted'
+                            }`}
+                            onClick={handleSwitchToHooks}
+                            data-testid="datahub-editor-tab-hooks"
+                        >
+                            <Webhook className="h-3 w-3 inline mr-1" />
+                            Hooks
+                            {hookCount > 0 && (
+                                <span className="ml-1 px-1 py-0.5 text-[10px] rounded-full bg-primary/20 text-primary">{hookCount}</span>
+                            )}
+                        </button>
                     </div>
                 </div>
 
@@ -309,6 +341,58 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                         context={definition.context ?? {}}
                         onChange={handleContextChange}
                     />
+                )}
+
+                {activePanel === PIPELINE_EDITOR_PANEL.HOOKS && (
+                    <div className="flex-1 overflow-auto">
+                        <div className="p-3 border-b bg-muted/50">
+                            <h3 className="font-semibold text-sm">Pipeline Hooks</h3>
+                            <p className="text-xs text-muted-foreground">
+                                {hookCount > 0 ? `${hookCount} hook${hookCount === 1 ? '' : 's'} configured (read-only)` : 'No hooks configured'}
+                            </p>
+                        </div>
+                        <div className="p-2 space-y-3">
+                            {stageCategories.map(cat => {
+                                const catStages = backendStages.filter(s => s.category === cat.key);
+                                const configuredStages = catStages.filter(s => {
+                                    const stageHooks = (hooks as Record<string, unknown[]>)[s.key];
+                                    return Array.isArray(stageHooks) && stageHooks.length > 0;
+                                });
+                                if (configuredStages.length === 0) return null;
+                                return (
+                                    <div key={cat.key}>
+                                        <div className="flex items-center gap-1.5 mb-1.5 px-1">
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${cat.color}`}>
+                                                {cat.label}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-1">
+                                            {configuredStages.map(stage => {
+                                                const stageHooks = (hooks as Record<string, unknown[]>)[stage.key] ?? [];
+                                                const StageIcon = resolveIconName(stage.icon) ?? Zap;
+                                                return (
+                                                    <div key={stage.key} className="px-2 py-1.5 rounded bg-muted/50 border text-xs">
+                                                        <div className="flex items-center gap-1.5 font-medium">
+                                                            <StageIcon className="h-3 w-3 text-muted-foreground" />
+                                                            {stage.label}
+                                                            <span className="text-muted-foreground">({stageHooks.length})</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {hookCount === 0 && (
+                                <div className="p-4 text-center text-muted-foreground text-xs">
+                                    <Webhook className="h-6 w-6 mx-auto mb-2 opacity-30" />
+                                    <p>No hooks configured.</p>
+                                    <p className="mt-1">Hooks are defined in code via the pipeline builder DSL.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 )}
             </div>
 
@@ -370,7 +454,7 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                             )}
                         </div>
                     </div>
-                ) : (
+                ) : activePanel === PIPELINE_EDITOR_PANEL.SETTINGS ? (
                     <div className="p-6">
                         <h3 className="font-semibold mb-4">Pipeline Settings</h3>
                         <p className="text-sm text-muted-foreground">
@@ -406,6 +490,75 @@ export function PipelineEditor({ definition, onChange, issues = [] }: PipelineEd
                                 </p>
                             </div>
                         </div>
+                    </div>
+                ) : (
+                    <div className="p-6">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Webhook className="h-5 w-5 text-primary" />
+                            <h3 className="font-semibold">Pipeline Hooks</h3>
+                            <span className="text-xs text-muted-foreground">(read-only)</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-4">
+                            Hooks run custom code at specific points during pipeline execution.
+                            They are defined in code via the pipeline builder DSL.
+                        </p>
+                        {hookCount > 0 ? (
+                            <div className="space-y-4">
+                                {stageCategories.map(cat => {
+                                    const catStages = backendStages.filter(s => s.category === cat.key);
+                                    const configuredStages = catStages.filter(s => {
+                                        const stageHooks = (hooks as Record<string, unknown[]>)[s.key];
+                                        return Array.isArray(stageHooks) && stageHooks.length > 0;
+                                    });
+                                    if (configuredStages.length === 0) return null;
+                                    return (
+                                        <div key={cat.key}>
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cat.color}`}>
+                                                    {cat.label}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground">{cat.description}</span>
+                                            </div>
+                                            <div className="space-y-2">
+                                                {configuredStages.map(stage => {
+                                                    const stageHooks = (hooks as Record<string, Array<Record<string, unknown>>>)[stage.key] ?? [];
+                                                    const StageIcon = resolveIconName(stage.icon) ?? Zap;
+                                                    return (
+                                                        <div key={stage.key} className="p-3 rounded-lg border bg-muted/30">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <StageIcon className="h-4 w-4 text-primary" />
+                                                                <span className="text-sm font-medium">{stage.label}</span>
+                                                            </div>
+                                                            <p className="text-xs text-muted-foreground mb-2">{stage.description}</p>
+                                                            <div className="space-y-1">
+                                                                {stageHooks.map((hook, i) => (
+                                                                    <div key={i} className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-background border">
+                                                                        <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono">
+                                                                            {String(hook.type || 'UNKNOWN')}
+                                                                        </span>
+                                                                        <span className="text-muted-foreground truncate">
+                                                                            {String(hook.name || hook.scriptName || hook.event || hook.message || '')}
+                                                                        </span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                                <Webhook className="h-12 w-12 mb-4 opacity-20" />
+                                <p className="text-sm font-medium">No hooks configured</p>
+                                <p className="text-xs mt-1 text-center max-w-xs">
+                                    Add hooks via the pipeline builder DSL using <code className="px-1 py-0.5 bg-muted rounded text-xs">.hooks()</code>
+                                </p>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
