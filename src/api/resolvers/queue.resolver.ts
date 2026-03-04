@@ -4,9 +4,7 @@ import { ViewDataHubRunsPermission, DataHubPipelinePermission } from '../../perm
 import { PipelineRun, Pipeline } from '../../entities/pipeline';
 import { MessageConsumerService } from '../../services/events/message-consumer.service';
 import { RunStatus, SortOrder, LOGGER_CONTEXTS, QUEUE } from '../../constants/index';
-import { DataHubLogger } from '../../services/logger';
-
-const logger = new DataHubLogger(LOGGER_CONTEXTS.QUEUE_RESOLVER);
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 
 interface QueueStats {
     pending: number;
@@ -29,10 +27,15 @@ interface ConsumerStatus {
 
 @Resolver()
 export class DataHubQueueAdminResolver {
+    private readonly logger: DataHubLogger;
+
     constructor(
         private connection: TransactionalConnection,
         private messageConsumer: MessageConsumerService,
-    ) {}
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.QUEUE_RESOLVER);
+    }
 
     @Query()
     @Allow(ViewDataHubRunsPermission.Permission)
@@ -122,7 +125,7 @@ export class DataHubQueueAdminResolver {
             await this.messageConsumer.startConsumerByCode(args.pipelineCode);
             return true;
         } catch (error) {
-            logger.debug(`Consumer start failed for pipeline ${args.pipelineCode}`, { error });
+            this.logger.debug(`Consumer start failed for pipeline ${args.pipelineCode}`, { error });
             return false;
         }
     }
@@ -138,7 +141,7 @@ export class DataHubQueueAdminResolver {
             await this.messageConsumer.stopConsumerByCode(args.pipelineCode);
             return true;
         } catch (error) {
-            logger.debug(`Consumer stop failed for pipeline ${args.pipelineCode}`, { error });
+            this.logger.debug(`Consumer stop failed for pipeline ${args.pipelineCode}`, { error });
             return false;
         }
     }

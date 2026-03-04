@@ -13,6 +13,7 @@ Complete reference for all data extractors.
 - [Database Extractor](#database-extractor) - Query SQL databases with pagination
 - [Webhook Extractor](#webhook-extractor) - Receive data from webhook payloads
 - [CDC (Change Data Capture) Extractor](#cdc-change-data-capture-extractor) - Poll database tables for changes
+- [In-Memory Extractor](#in-memory-extractor) - Inline data for testing and seed data
 - [Quick Reference](#quick-reference) - Summary table of all extractors
 
 ---
@@ -545,6 +546,34 @@ Poll a database table for changes using a timestamp or version column. Tracks IN
 
 ---
 
+## In-Memory Extractor
+
+Code: `inMemory`
+
+Reads records directly from inline data provided in the step configuration. Useful for testing, seed data, and webhook-triggered pipelines where data is passed at runtime.
+
+**Note:** The inMemory extractor reads records from the `data` field (not `records`). The `data` field accepts an array of objects or a single object (which will be wrapped in an array).
+
+### Configuration
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `data` | array/object | Yes | Inline records to extract. An array of objects, or a single object. |
+
+### Example
+
+```typescript
+.extract('inline-data', {
+    adapterCode: 'inMemory',
+    data: [
+        { sku: 'ABC-001', name: 'Widget A', price: 1999 },
+        { sku: 'ABC-002', name: 'Widget B', price: 2999 },
+    ],
+})
+```
+
+---
+
 ## Quick Reference
 
 | Code | Source Type | Use Case |
@@ -558,6 +587,7 @@ Poll a database table for changes using a timestamp or version column. Tracks IN
 | `database` | SQL Database | Query PostgreSQL, MySQL, SQLite, MSSQL, Oracle databases |
 | `cdc` | CDC | Poll database tables for changes using timestamp or version tracking |
 | `webhook` | Webhook | Receive data from webhook payloads |
+| `inMemory` | In-Memory | Inline data for testing, seed data, and webhook payloads |
 
 ### Authentication Options
 

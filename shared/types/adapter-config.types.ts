@@ -338,6 +338,12 @@ export interface ProductUpsertLoaderConfig {
     descriptionField?: string;
     /** Field containing product enabled/published flag */
     enabledField?: string;
+    /** Record field containing channel codes (array or comma-separated) for dynamic per-record channel assignment */
+    channelsField?: string;
+    /** Record field containing translations array or object map for multi-language support.
+     *  Array format: [{ languageCode: 'en', name: '...', slug?: '...', description?: '...' }, ...]
+     *  Object map: { en: { name, slug?, description? }, de: { ... } } */
+    translationsField?: string;
     /** Field containing SKU */
     skuField?: string;
     /** Field containing price */
@@ -354,6 +360,12 @@ export interface ProductUpsertLoaderConfig {
     customFieldsField?: string;
     /** Whether to create/update variants alongside the product (default: true). Set to false when variants are handled by a separate variantUpsert step. */
     createVariants?: boolean;
+    /** How to handle product facet values on update */
+    facetValuesMode?: FacetValuesMode;
+    /** How to handle product assets on update */
+    assetsMode?: AssetsMode;
+    /** How to handle product featured asset on update */
+    featuredAssetMode?: FeaturedAssetMode;
 }
 
 /** Variant Upsert Loader */
@@ -365,6 +377,14 @@ export interface VariantUpsertLoaderConfig {
     skuField?: string;
     /** Field containing variant name */
     nameField?: string;
+    /** Field containing variant enabled/published flag (defaults to "enabled") */
+    enabledField?: string;
+    /** Record field containing channel codes (array or comma-separated) for dynamic per-record channel assignment */
+    channelsField?: string;
+    /** Record field containing translations array or object map for multi-language support.
+     *  Array format: [{ languageCode: 'en', name: '...' }, ...]
+     *  Object map: { en: { name: '...' }, de: { name: '...' } } */
+    translationsField?: string;
     /** Field containing price (major units, auto-converted to minor) */
     priceField?: string;
     /** Field containing price map by currency code (object, e.g. { USD: 19.99, EUR: 17.50 }) */
@@ -388,7 +408,47 @@ export interface VariantUpsertLoaderConfig {
      *  CREATE: only create new variants, skip existing.
      *  UPDATE: only update existing variants, skip missing. */
     strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+    /** How to handle variant facet values on update */
+    facetValuesMode?: FacetValuesMode;
+    /** How to handle variant assets on update */
+    assetsMode?: AssetsMode;
+    /** How to handle variant featured asset on update */
+    featuredAssetMode?: FeaturedAssetMode;
+    /** How to handle variant options on update */
+    optionsMode?: OptionsMode;
 }
+
+// NESTED ENTITY MODE TYPES
+
+/** How to handle customer addresses on update */
+export type AddressesMode = 'UPSERT_BY_MATCH' | 'REPLACE_ALL' | 'APPEND_ONLY' | 'UPDATE_BY_ID' | 'SKIP';
+
+/** How to handle facet values on product/variant update */
+export type FacetValuesMode = 'REPLACE_ALL' | 'MERGE' | 'REMOVE' | 'SKIP';
+
+/** How to handle order lines on order update */
+export type LinesMode = 'REPLACE_ALL' | 'MERGE_BY_SKU' | 'APPEND_ONLY' | 'UPDATE_BY_ID' | 'SKIP';
+
+/** How to handle assets (product/variant/collection) */
+export type AssetsMode = 'UPSERT_BY_URL' | 'REPLACE_ALL' | 'APPEND_ONLY' | 'SKIP';
+
+/** How to handle featured asset (product/variant) */
+export type FeaturedAssetMode = 'UPSERT_BY_URL' | 'REPLACE' | 'SKIP';
+
+/** How to handle variant options */
+export type OptionsMode = 'REPLACE_ALL' | 'MERGE' | 'SKIP';
+
+/** How to handle collection filters */
+export type FiltersMode = 'REPLACE_ALL' | 'MERGE' | 'SKIP';
+
+/** How to handle promotion conditions */
+export type ConditionsMode = 'REPLACE_ALL' | 'MERGE' | 'SKIP';
+
+/** How to handle promotion actions */
+export type ActionsMode = 'REPLACE_ALL' | 'MERGE' | 'SKIP';
+
+/** How to handle customer groups */
+export type GroupsMode = 'add' | 'set';
 
 /** Customer Upsert Loader */
 export interface CustomerUpsertLoaderConfig {
@@ -403,10 +463,14 @@ export interface CustomerUpsertLoaderConfig {
     phoneNumberField?: string;
     /** Field containing addresses array */
     addressesField?: string;
+    /** How to handle customer addresses on update */
+    addressesMode?: AddressesMode;
+    /** Comma-separated fields to match existing addresses (for UPSERT_BY_MATCH mode) */
+    addressMatchFields?: string;
     /** Field containing group codes */
     groupsField?: string;
     /** Groups mode */
-    groupsMode?: 'add' | 'set';
+    groupsMode?: GroupsMode;
     /** Field containing custom fields object */
     customFieldsField?: string;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
@@ -457,6 +521,43 @@ export interface RestPostLoaderConfig {
     timeoutMs?: number;
 }
 
+/** Order Upsert Loader */
+export interface OrderUpsertLoaderConfig {
+    adapterCode: 'orderUpsert';
+    /** Load strategy: UPSERT (default), CREATE, or UPDATE */
+    strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+    /** Lookup fields for matching existing orders */
+    lookupFields?: string;
+    /** Field containing order code */
+    codeField?: string;
+    /** Field containing customer email */
+    customerEmailField?: string;
+    /** Field containing order lines array */
+    linesField?: string;
+    /** How to handle order lines on update */
+    linesMode?: LinesMode;
+    /** Field to match order lines by (for MERGE_BY_SKU and UPDATE_BY_ID modes, default: 'sku') */
+    linesMatchBy?: string;
+    /** Field containing shipping address */
+    shippingAddressField?: string;
+    /** Field containing billing address */
+    billingAddressField?: string;
+    /** Field containing shipping method code */
+    shippingMethodCodeField?: string;
+    /** Payment method code */
+    paymentMethodCode?: string;
+    /** Field containing payment method code */
+    paymentMethodCodeField?: string;
+    /** Target state */
+    state?: string;
+    /** Field containing state */
+    stateField?: string;
+    /** Field containing order placed at date */
+    orderPlacedAtField?: string;
+    /** Field containing custom fields object */
+    customFieldsField?: string;
+}
+
 /** Order Note Loader */
 export interface OrderNoteLoaderConfig {
     adapterCode: 'orderNote';
@@ -498,8 +599,18 @@ export interface CollectionUpsertLoaderConfig {
     parentSlugField?: string;
     /** Apply collection filters after upsert */
     applyFilters?: boolean;
+    /** Field containing multi-language translations (array or object map) */
+    translationsField?: string;
+    /** Field containing channel codes for per-record channel assignment */
+    channelsField?: string;
+    /** Field containing isPrivate flag */
+    isPrivateField?: string;
     /** Field containing custom fields object */
     customFieldsField?: string;
+    /** How to handle collection assets on update */
+    assetsMode?: AssetsMode;
+    /** How to handle collection filters on update */
+    filtersMode?: FiltersMode;
 }
 
 /** Asset Attach Loader */
@@ -541,14 +652,24 @@ export interface PromotionUpsertLoaderConfig {
     perCustomerUsageLimitField?: string;
     /** Field containing conditions */
     conditionsField?: string;
+    /** How to handle promotion conditions on update */
+    conditionsMode?: ConditionsMode;
     /** Field containing actions */
     actionsField?: string;
+    /** How to handle promotion actions on update */
+    actionsMode?: ActionsMode;
     /** Channel code */
     channel?: string;
     /** Field containing custom fields object */
     customFieldsField?: string;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
     strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+    /** Field containing multi-language translations (array or object map) */
+    translationsField?: string;
+    /** Field containing channel codes for per-record channel assignment */
+    channelsField?: string;
+    /** Field containing promotion description */
+    descriptionField?: string;
 }
 
 /** GraphQL Mutation Loader */
@@ -595,6 +716,10 @@ export interface FacetUpsertLoaderConfig {
     customFieldsField?: string;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
     strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+    /** Field containing multi-language translations (array or object map) */
+    translationsField?: string;
+    /** Field containing channel codes for per-record channel assignment */
+    channelsField?: string;
 }
 
 /** Facet Value Upsert Loader */
@@ -612,6 +737,10 @@ export interface FacetValueUpsertLoaderConfig {
     customFieldsField?: string;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
     strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+    /** Field containing multi-language translations (array or object map) */
+    translationsField?: string;
+    /** Field containing channel codes for per-record channel assignment */
+    channelsField?: string;
 }
 
 /** Asset Import Loader */
@@ -665,8 +794,14 @@ export interface PaymentMethodUpsertLoaderConfig {
     handlerField: string;
     /** Field containing eligibility checker config { code, args } */
     checkerField?: string;
+    /** Field containing custom fields object */
+    customFieldsField?: string;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
     strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+    /** Field containing multi-language translations (array or object map) */
+    translationsField?: string;
+    /** Field containing channel codes for per-record channel assignment */
+    channelsField?: string;
 }
 
 /** Channel Upsert Loader */
@@ -692,6 +827,8 @@ export interface ChannelUpsertLoaderConfig {
     defaultShippingZoneCodeField?: string;
     /** Field containing seller ID (for multi-vendor) */
     sellerIdField?: string;
+    /** Field containing custom fields object */
+    customFieldsField?: string;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
     strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
 }
@@ -711,8 +848,14 @@ export interface ShippingMethodUpsertLoaderConfig {
     calculatorField: string;
     /** Field containing eligibility checker config { code, args } */
     checkerField?: string;
+    /** Field containing custom fields object */
+    customFieldsField?: string;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
     strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
+    /** Field containing multi-language translations (array or object map) */
+    translationsField?: string;
+    /** Field containing channel codes for per-record channel assignment */
+    channelsField?: string;
 }
 
 /** Customer Group Upsert Loader */
@@ -754,6 +897,21 @@ export interface InventoryAdjustLoaderConfig {
     strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
 }
 
+/** Entity Deletion Loader - Delete entities */
+export interface EntityDeletionLoaderConfig {
+    adapterCode: 'entityDeletion';
+    /** Entity type to delete (default: 'product') */
+    entityType?: 'product' | 'variant' | 'collection' | 'promotion' | 'shipping-method' | 'customer' | 'payment-method' | 'facet' | 'facet-value' | 'customer-group' | 'tax-rate' | 'asset' | 'stock-location';
+    /** Record field containing the identifier to match (default depends on entity type) */
+    identifierField?: string;
+    /** How to match the entity (default depends on entity type) */
+    matchBy?: 'slug' | 'sku' | 'id' | 'code' | 'email' | 'name';
+    /** Delete variants when deleting a product (default: true) */
+    cascadeVariants?: boolean;
+    /** Channel code */
+    channel?: string;
+}
+
 /** Generic config for custom loader adapters */
 export interface GenericLoaderConfig {
     adapterCode: string;
@@ -765,6 +923,7 @@ export type TypedLoaderConfig =
     | ProductUpsertLoaderConfig
     | VariantUpsertLoaderConfig
     | CustomerUpsertLoaderConfig
+    | OrderUpsertLoaderConfig
     | StockAdjustLoaderConfig
     | RestPostLoaderConfig
     | GraphqlMutationLoaderConfig
@@ -784,6 +943,7 @@ export type TypedLoaderConfig =
     | CustomerGroupUpsertLoaderConfig
     | StockLocationUpsertLoaderConfig
     | InventoryAdjustLoaderConfig
+    | EntityDeletionLoaderConfig
     | GenericLoaderConfig;
 
 // EXPORTER CONFIGS
@@ -972,7 +1132,7 @@ export interface RouteConfig {
 // PERMISSION MAPPINGS
 
 /** Loader adapter codes that require UpdateCatalog permission */
-export type UpdateCatalogLoaders = 'productUpsert' | 'variantUpsert' | 'stockAdjust' | 'collectionUpsert' | 'assetAttach' | 'assetImport' | 'facetUpsert' | 'facetValueUpsert' | 'stockLocationUpsert' | 'inventoryAdjust';
+export type UpdateCatalogLoaders = 'productUpsert' | 'variantUpsert' | 'stockAdjust' | 'collectionUpsert' | 'assetAttach' | 'assetImport' | 'facetUpsert' | 'facetValueUpsert' | 'stockLocationUpsert' | 'inventoryAdjust' | 'entityDeletion';
 
 /** Loader adapter codes that require UpdateCustomer permission */
 export type UpdateCustomerLoaders = 'customerUpsert' | 'customerGroupUpsert';

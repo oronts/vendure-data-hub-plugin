@@ -58,11 +58,30 @@ export class StepTestService {
         stepConfig: JsonObject,
         options: ExtractPreviewOptions = {},
     ): Promise<ExtractPreviewResult> {
+        // Normalize config: handle double-nested config.config structure (e.g., from dashboard)
+        const rawConfig = (stepConfig ?? {}) as Record<string, unknown>;
+        const nestedConfig = rawConfig.config as Record<string, unknown> | undefined;
+
+        // For CSV inline rows: check both config.rows and config.config.rows
+        if (!rawConfig.rows && nestedConfig?.rows) {
+            rawConfig.rows = nestedConfig.rows;
+        }
+
+        // For generator: ensure template and count are at top level
+        if (nestedConfig) {
+            if (!rawConfig.template && nestedConfig.template) {
+                rawConfig.template = nestedConfig.template;
+            }
+            if (!rawConfig.count && nestedConfig.count) {
+                rawConfig.count = nestedConfig.count;
+            }
+        }
+
         const step: PipelineStepDefinition = {
             key: 'test-extract',
             type: StepType.EXTRACT,
             name: 'Test Extract',
-            config: stepConfig ?? {},
+            config: rawConfig as JsonObject,
         };
 
         const executorCtx = this.createTestExecutorContext();

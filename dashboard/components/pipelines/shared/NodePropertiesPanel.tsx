@@ -16,6 +16,9 @@ import { useAdapterCatalog, AdapterMetadata } from '../../../hooks';
 import { StepConfigPanel, StepConfigData, OperatorCheatSheetButton } from '../../shared/step-config';
 import { PANEL_WIDTHS, SCROLL_HEIGHTS } from '../../../constants';
 
+/** Minimum panel width (pixels) when resizing */
+const MIN_PANEL_WIDTH = parseInt(PANEL_WIDTHS.PROPERTIES_MIN, 10) || 380;
+
 export interface NodePropertiesPanelProps {
     node: Node<PipelineNodeData> | null;
     onUpdate: (node: Node<PipelineNodeData>) => void;
@@ -48,6 +51,31 @@ function NodePropertiesPanelComponent({
     const connectionCodes = externalConnectionCodes ?? hookResult.connectionCodes;
     const secretOptions = externalSecretOptions ?? hookResult.secretOptions;
 
+    // Resizable panel width
+    const defaultWidth = parseInt(panelWidth, 10) || 520;
+    const [width, setWidth] = React.useState(defaultWidth);
+    const dragging = React.useRef(false);
+
+    const onResizeStart = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        dragging.current = true;
+        const startX = e.clientX;
+        const startW = width;
+        const onMove = (ev: MouseEvent) => {
+            if (!dragging.current) return;
+            // Panel opens from right — dragging left increases width
+            const delta = startX - ev.clientX;
+            setWidth(Math.max(MIN_PANEL_WIDTH, Math.min(window.innerWidth * 0.9, startW + delta)));
+        };
+        const onUp = () => {
+            dragging.current = false;
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }, [width]);
+
     const data = node?.data;
 
     const selectedAdapter = useMemo(
@@ -73,8 +101,8 @@ function NodePropertiesPanelComponent({
                 ...data,
                 label: updated.key,
                 type: updated.type,
-                config: { ...updated.config, adapterCode: updated.adapterCode },
-                adapterCode: updated.adapterCode,
+                config: updated.config,
+                adapterCode: updated.adapterCode || data.adapterCode,
             },
         });
     }, [node, data, onUpdate]);
@@ -85,9 +113,19 @@ function NodePropertiesPanelComponent({
     return (
         <Sheet open={!!node} onOpenChange={() => onClose()}>
             <SheetContent
-                className="overflow-y-auto p-0"
-                style={{ width: panelWidth, maxWidth: PANEL_WIDTHS.MAX_VW }}
+                side="right"
+                className="overflow-y-auto p-0 !max-w-none"
+                style={{ width: `${width}px`, maxWidth: PANEL_WIDTHS.MAX_VW }}
             >
+                {/* Resize drag handle (left edge) */}
+                <div
+                    className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-50
+                               hover:bg-primary/20 active:bg-primary/30 transition-colors"
+                    onMouseDown={onResizeStart}
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize panel"
+                />
                 <SheetHeader className="px-4 py-3 border-b bg-muted/30">
                     <SheetTitle className="flex items-center justify-between">
                         <div className="flex items-center gap-2">

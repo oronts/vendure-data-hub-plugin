@@ -256,7 +256,8 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                     const cfg = parseTriggerConfig(trigger);
                     if (!cfg) continue;
 
-                    const eventTypePattern = String((cfg as { eventType?: string }).eventType ?? '');
+                    // Support both 'eventType' and shorthand 'event' field names
+                    const eventTypePattern = String((cfg as { eventType?: string; event?: string }).eventType ?? (cfg as { event?: string }).event ?? '');
                     const eventKinds = this.getEventKindsForPattern(eventTypePattern);
 
                     const cachedTrigger: CachedEventTrigger = {
@@ -406,6 +407,8 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                 let seed: Record<string, unknown>[] = [];
 
                 if (kind === EventKind.PRODUCT || kind === EventKind.VARIANT || kind === EventKind.ASSET || kind === EventKind.COLLECTION || kind === EventKind.CUSTOMER) {
+                    // VendureEntityEvent subclasses carry .type ('created'/'updated'/'deleted').
+                    // CollectionModificationEvent does not carry .type — action defaults to '', yielding __operation='UPDATE'.
                     const action = String(eventPayload?.type ?? '').toLowerCase();
                     const ns = kind;
                     const matchesAction = !evType || evType === `${ns}.*` || evType === `${ns}.${action}`;
@@ -419,7 +422,10 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                             entityId = (entity as { id?: unknown }).id;
                         }
                         const idMaybe = String(entityId ?? eventPayload?.entityId ?? eventPayload?.product?.id ?? eventPayload?.asset?.id ?? eventPayload?.collection?.id ?? eventPayload?.customer?.id ?? '');
-                        seed = [{ id: idMaybe }];
+                        const __operation = action === 'deleted' ? 'DELETE'
+                            : action === 'created' ? 'CREATE'
+                            : 'UPDATE';
+                        seed = [{ id: idMaybe, __operation }];
                         shouldTrigger = true;
                     }
                 } else if (kind === EventKind.ORDER_STATE) {
@@ -430,7 +436,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                     const matches = target === 'order.stateTransition.*' || target === normalized;
 
                     if (matches) {
-                        seed = [{ id: String(eventPayload?.order?.id ?? eventPayload?.orderId ?? ''), toState, fromState }];
+                        seed = [{ id: String(eventPayload?.order?.id ?? eventPayload?.orderId ?? ''), toState, fromState, __operation: 'UPDATE' }];
                         shouldTrigger = true;
                     }
                 }

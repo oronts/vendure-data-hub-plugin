@@ -140,6 +140,7 @@ export const customExtractorsPipelineExample = createPipeline()
     })
     .load('upsert', {
         adapterCode: 'variantUpsert',
+        strategy: 'UPSERT',
         channel: '__default_channel__',
         skuField: 'sku',
         priceField: 'price',
@@ -212,6 +213,7 @@ export const customAdapterPipelineExample = createPipeline()
     })
     .load('save', {
         adapterCode: 'variantUpsert',
+        strategy: 'UPSERT',
         channel: '__default_channel__',
         skuField: 'sku',
         priceField: 'priceUSD',

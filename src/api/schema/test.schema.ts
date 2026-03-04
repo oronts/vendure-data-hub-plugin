@@ -34,7 +34,11 @@ export const testMutations = `
         "Preview extract step - runs extractor and returns sample records"
         previewDataHubExtract(step: JSON!, limit: Int = 20): DataHubPreviewResult!
 
-        "Simulate transform step - applies transforms to input records"
+        """
+        Simulate transform step - applies transforms to input records.
+        The step argument expects a JSON object with shape:
+        { config: { operators: [{ op: string, args: Record<string, any> }] } }
+        """
         simulateDataHubTransform(step: JSON!, records: JSON!): [JSON!]!
 
         "Simulate validate step - runs validation rules on input records"

@@ -2,7 +2,7 @@
  * Operator Runtime Registry - bridges operator definitions with runtime implementations
  */
 
-import { OperatorAdapter, AdapterOperatorHelpers, AdapterDefinition } from '../sdk/types';
+import { OperatorAdapter, AdapterOperatorHelpers, AdapterDefinition, SingleRecordOperator } from '../sdk/types';
 import { DataHubRegistryService } from '../sdk/registry.service';
 import { JsonObject } from '../types';
 
@@ -261,11 +261,11 @@ export function getOperatorRuntime(code: string): OperatorAdapter | undefined {
 export function getCustomOperatorRuntime(
     registry: DataHubRegistryService | undefined,
     code: string,
-): OperatorAdapter | undefined {
+): OperatorAdapter | SingleRecordOperator | undefined {
     if (!registry) return undefined;
     const adapter = registry.getRuntime('OPERATOR', code);
-    if (adapter && 'apply' in adapter) {
-        return adapter as OperatorAdapter;
+    if (adapter && ('apply' in adapter || 'applyOne' in adapter)) {
+        return adapter as OperatorAdapter | SingleRecordOperator;
     }
     return undefined;
 }

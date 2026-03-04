@@ -265,13 +265,16 @@ Data Hub has two systems for reacting to pipeline activity. Choose the right one
 | **Can halt pipeline** | Yes (throw error or filter all records) | No |
 | **Performance impact** | Adds latency to pipeline execution | Negligible |
 | **Configuration** | Pipeline definition `hooks` section | Code in `onModuleInit` |
-| **Stages** | 18 specific stages (BEFORE_EXTRACT, AFTER_LOAD, etc.) | All event types listed above |
+| **Stages** | 24 specific stages (BEFORE/AFTER for all 9 step types + 6 global) | All event types listed above |
 | **Use case** | Data validation, transformation, enrichment | Monitoring, notifications, analytics |
 
 ### When to Use Hooks
 
 - Validate or filter records at specific pipeline stages
 - Enrich records with external data during processing
+- **Modify records before search indexing** (add computed fields, normalize text, build facets)
+- **Transform records before file export** (format currencies, dates, flatten nested data)
+- **Customize feed output** (add custom attributes, filter products per channel)
 - Send per-pipeline webhooks at specific stages
 - Trigger other pipelines from hook actions
 

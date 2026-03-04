@@ -81,8 +81,8 @@ export const ROUTE_OPERATOR = {
     IS_NULL: RouteConditionOperator.IS_NULL,
 } as const;
 
-/** Route operator type - union of all ROUTE_OPERATOR values */
-export type RouteOperator = typeof ROUTE_OPERATOR[keyof typeof ROUTE_OPERATOR];
+/** Route operator type - union of all ROUTE_OPERATOR values, accepts both enum members and string literals */
+export type RouteOperator = `${typeof ROUTE_OPERATOR[keyof typeof ROUTE_OPERATOR]}`;
 
 /**
  * Transform step operators.

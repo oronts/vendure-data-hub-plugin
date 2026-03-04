@@ -9,15 +9,16 @@
  * BUILTIN_ADAPTERS, SINK_CODE, and the SinkExecutor
  * all derive from this registry automatically.
  */
+import * as crypto from 'crypto';
 import { RequestContext } from '@vendure/core';
 import { AdapterDefinition } from '../../sdk/types';
 import { PipelineStepDefinition, JsonObject } from '../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../executor-types';
 import { getPath, chunk } from '../utils';
 import { HTTP, SINK, TRUNCATION, CIRCUIT_BREAKER } from '../../constants/defaults';
-import { TIME, SERVICE_DEFAULTS, SERVICE_URL_TEMPLATES, CONTENT_TYPES, HTTP_HEADERS, AUTH_SCHEMES } from '../../constants';
+import { TIME, SERVICE_DEFAULTS, SERVICE_URL_TEMPLATES, CONTENT_TYPES, HTTP_HEADERS, AUTH_SCHEMES, WEBHOOK } from '../../constants';
 import { HttpMethod, QueueType, CircuitState } from '../../constants/enums';
-import { HTTP_METHOD_EXPORT_OPTIONS, PROTOCOL_OPTIONS, QUEUE_TYPE_OPTIONS } from '../../constants/adapter-schema-options';
+import { HTTP_METHOD_EXPORT_OPTIONS, PROTOCOL_OPTIONS, QUEUE_TYPE_OPTIONS, LOCALIZATION_SCHEMA_FIELDS, SINK_OPERATION_OPTIONS } from '../../constants/adapter-schema-options';
 
 /**
  * Sink adapter codes - file-internal convenience for typed circuit breaker keys.
@@ -56,12 +57,16 @@ interface BaseSinkCfg {
     excludeFields?: string[];
     host?: string;
     hosts?: string[];
+    node?: string;
+    port?: number;
+    protocol?: string;
     apiKeySecretCode?: string;
     basicSecretCode?: string;
     applicationId?: string;
     appId?: string;
     collectionName?: string;
     primaryKey?: string;
+    defaultOperation?: string;
 }
 
 /**
@@ -88,6 +93,8 @@ interface WebhookSinkCfg extends BaseSinkCfg {
     headers?: Record<string, string>;
     bearerTokenSecretCode?: string;
     apiKeyHeader?: string;
+    hmacSecretCode?: string;
+    signatureHeaderName?: string;
     batchSize?: number;
     timeoutMs?: number;
     retries?: number;
@@ -106,6 +113,8 @@ export interface SinkHandlerContext {
     bulkSize: number;
     prepareDoc: (rec: RecordObject) => RecordObject;
     onRecordError?: OnRecordErrorCallback;
+
+    operation?: string;
 }
 
 /**
@@ -122,6 +131,12 @@ export interface SinkServices {
  * Handler function type for built-in sink adapters
  */
 export type SinkHandler = (handlerCtx: SinkHandlerContext, services: SinkServices) => Promise<ExecutionResult>;
+
+export type SinkDeleteHandler = (
+    handlerCtx: SinkHandlerContext,
+    services: SinkServices,
+    ids: string[],
+) => Promise<ExecutionResult>;
 
 // ─── Shared utilities ────────────────────────────────────────────────
 
@@ -142,6 +157,15 @@ function getCircuitKey(adapterCode: string, host: string): string {
     } catch {
         return `sink:${adapterCode}:${host.replace(/\/+$/, '')}`;
     }
+}
+
+function resolveTypesenseHost(cfg: BaseSinkCfg): string {
+    if (cfg.host) {
+        const protocol = cfg.protocol ?? 'https';
+        const port = cfg.port ?? 8108;
+        return cfg.host.includes('://') ? cfg.host : `${protocol}://${cfg.host}:${port}`;
+    }
+    return SERVICE_DEFAULTS.TYPESENSE_URL;
 }
 
 function checkCircuit(services: SinkServices, circuitKey: string): { allowed: boolean; state: CircuitState; resetTimeoutMs: number } {
@@ -215,6 +239,38 @@ async function handleMeiliSearch(hCtx: SinkHandlerContext, services: SinkService
 
     await assertUrlSafe(host);
 
+    // Configure index settings if provided
+    // Fields can be JSON arrays or comma-separated strings
+    const parseFieldList = (val: unknown): string[] | undefined => {
+        if (Array.isArray(val)) return val.map(String);
+        if (typeof val === 'string' && val.trim()) return val.split(',').map(s => s.trim()).filter(Boolean);
+        return undefined;
+    };
+    const searchableFields = parseFieldList((hCtx.cfg as Record<string, unknown>).searchableFields);
+    const filterableFields = parseFieldList((hCtx.cfg as Record<string, unknown>).filterableFields);
+    const sortableFields = parseFieldList((hCtx.cfg as Record<string, unknown>).sortableFields);
+
+    if (searchableFields || filterableFields || sortableFields) {
+        const settingsHeaders: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON };
+        if (apiKey) settingsHeaders[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${apiKey}`;
+        try {
+            const settingsResponse = await fetch(`${host}/indexes/${indexName}/settings`, {
+                method: HttpMethod.PATCH,
+                headers: settingsHeaders,
+                body: JSON.stringify({
+                    ...(searchableFields ? { searchableAttributes: searchableFields } : {}),
+                    ...(filterableFields ? { filterableAttributes: filterableFields } : {}),
+                    ...(sortableFields ? { sortableAttributes: sortableFields } : {}),
+                }),
+            });
+            if (!settingsResponse.ok) {
+                services.logger.warn(`MeiliSearch settings update failed: ${settingsResponse.status}`, { stepKey: hCtx.step.key, indexName });
+            }
+        } catch (e: unknown) {
+            services.logger.warn(`Failed to update MeiliSearch index settings`, { error: getErrorMessage(e), stepKey: hCtx.step.key });
+        }
+    }
+
     return executeBatchedSearchSink(
         services, input, bulkSize, circuitKey, 'MeiliSearch', host, step.key, onRecordError,
         async (batch) => {
@@ -234,8 +290,8 @@ async function handleMeiliSearch(hCtx: SinkHandlerContext, services: SinkService
 async function handleElasticsearch(hCtx: SinkHandlerContext, services: SinkServices): Promise<ExecutionResult> {
     const { ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError } = hCtx;
     const adapterCode = getAdapterCode(step) || undefined;
-    const hosts = cfg.hosts ?? [cfg.host ?? SERVICE_DEFAULTS.ELASTICSEARCH_URL];
-    const host = hosts[0];
+    const nodes = cfg.node ? [cfg.node] : (cfg.hosts ?? (cfg.host ? [cfg.host] : [SERVICE_DEFAULTS.ELASTICSEARCH_URL]));
+    const host = nodes[0];
     const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
     const basicAuth = await resolveSecret(services, ctx, cfg.basicSecretCode);
     const effectiveAdapterCode = adapterCode ?? SINK_ADAPTER_CODES.ELASTICSEARCH;
@@ -304,7 +360,7 @@ async function handleAlgolia(hCtx: SinkHandlerContext, services: SinkServices): 
 
 async function handleTypesense(hCtx: SinkHandlerContext, services: SinkServices): Promise<ExecutionResult> {
     const { ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError } = hCtx;
-    const host = cfg.host ?? SERVICE_DEFAULTS.TYPESENSE_URL;
+    const host = resolveTypesenseHost(cfg);
     const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
     const collectionName = cfg.collectionName ?? indexName;
     const circuitKey = getCircuitKey(SINK_ADAPTER_CODES.TYPESENSE, host);
@@ -377,11 +433,12 @@ async function handleQueueProducer(hCtx: SinkHandlerContext, services: SinkServi
     const batches = chunk(input, batchSize);
 
     for (const batch of batches) {
+        const operationHeader = hCtx.operation ?? 'UPSERT';
         const messages: QueueMessage[] = batch.map(record => ({
             id: idField ? String(getPath(record, idField) ?? crypto.randomUUID()) : crypto.randomUUID(),
             payload: record as JsonObject,
             routingKey,
-            headers,
+            headers: { ...headers, 'x-datahub-operation': operationHeader },
             priority,
             ttlMs,
             persistent,
@@ -406,7 +463,7 @@ async function handleQueueProducer(hCtx: SinkHandlerContext, services: SinkServi
 
 async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): Promise<ExecutionResult> {
     const { ctx, step, input, onRecordError } = hCtx;
-    const cfg = step.config as WebhookSinkCfg;
+    const cfg = hCtx.cfg as WebhookSinkCfg;
     const url = cfg.url;
     const method = (cfg.method ?? HttpMethod.POST).toUpperCase();
     const staticHeaders = cfg.headers;
@@ -447,6 +504,11 @@ async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): 
         }
     }
 
+    // Resolve HMAC signing secret (if configured)
+    const hmacSecretCode = cfg.hmacSecretCode;
+    const signatureHeaderName = cfg.signatureHeaderName ?? WEBHOOK.SIGNATURE_HEADER;
+    const hmacSecret = hmacSecretCode ? await resolveSecret(services, ctx, hmacSecretCode) : undefined;
+
     const batches = chunk(input, batchSize);
     for (const batch of batches) {
         const circuitResult = checkCircuit(services, circuitKey);
@@ -466,10 +528,19 @@ async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): 
             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
             try {
+                const body = JSON.stringify(batch);
+                const batchHeaders = { ...headers };
+
+                // Compute HMAC-SHA256 signature for the request body
+                if (hmacSecret) {
+                    const signature = crypto.createHmac('sha256', hmacSecret).update(body).digest('hex');
+                    batchHeaders[signatureHeaderName] = `sha256=${signature}`;
+                }
+
                 const response = await fetch(url, {
                     method,
-                    headers,
-                    body: JSON.stringify(batch),
+                    headers: batchHeaders,
+                    body,
                     signal: controller.signal,
                 });
 
@@ -509,6 +580,238 @@ async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): 
     return { ok, fail };
 }
 
+// ─── Delete handlers ─────────────────────────────────────────────────
+
+async function handleMeiliSearchDelete(hCtx: SinkHandlerContext, services: SinkServices, ids: string[]): Promise<ExecutionResult> {
+    const { ctx, step, cfg, indexName, bulkSize, onRecordError } = hCtx;
+    const host = cfg.host ?? SERVICE_DEFAULTS.MEILISEARCH_URL;
+    const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
+    const circuitKey = getCircuitKey(SINK_ADAPTER_CODES.MEILISEARCH, host);
+
+    await assertUrlSafe(host);
+
+    const batches = chunk(ids, bulkSize);
+    let ok = 0;
+    let fail = 0;
+
+    for (const batch of batches) {
+        const circuitResult = checkCircuit(services, circuitKey);
+        if (!circuitResult.allowed) {
+            fail += batch.length;
+            const errorMsg = `Circuit breaker open for MeiliSearch (${host}), retry in ${Math.ceil(circuitResult.resetTimeoutMs / TIME.SECOND)}s`;
+            services.logger.warn(errorMsg, { circuitKey, state: circuitResult.state, stepKey: step.key });
+            if (onRecordError) await onRecordError(step.key, errorMsg, {});
+            continue;
+        }
+
+        try {
+            const headers: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON };
+            if (apiKey) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${apiKey}`;
+            const response = await fetch(`${host}/indexes/${indexName}/documents/delete-batch`, {
+                method: HttpMethod.POST,
+                headers,
+                body: JSON.stringify(batch),
+            });
+            if (response.ok) {
+                ok += batch.length;
+                services.circuitBreaker.recordSuccess(circuitKey);
+            } else {
+                fail += batch.length;
+                services.circuitBreaker.recordFailure(circuitKey);
+                if (onRecordError) await onRecordError(step.key, `MeiliSearch delete error: ${response.status}`, {});
+            }
+        } catch (e: unknown) {
+            fail += batch.length;
+            services.circuitBreaker.recordFailure(circuitKey);
+            if (onRecordError) await onRecordError(step.key, getErrorMessage(e), {}, getErrorStack(e));
+        }
+    }
+
+    return { ok, fail };
+}
+
+async function handleElasticsearchDelete(hCtx: SinkHandlerContext, services: SinkServices, ids: string[]): Promise<ExecutionResult> {
+    const { ctx, step, cfg, indexName, bulkSize, onRecordError } = hCtx;
+    const adapterCode = getAdapterCode(step) || undefined;
+    const nodes = cfg.node ? [cfg.node] : (cfg.hosts ?? (cfg.host ? [cfg.host] : [SERVICE_DEFAULTS.ELASTICSEARCH_URL]));
+    const host = nodes[0];
+    const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
+    const basicAuth = await resolveSecret(services, ctx, cfg.basicSecretCode);
+    const effectiveAdapterCode = adapterCode ?? SINK_ADAPTER_CODES.ELASTICSEARCH;
+    const circuitKey = getCircuitKey(effectiveAdapterCode, host);
+
+    await assertUrlSafe(host);
+
+    const batches = chunk(ids, bulkSize);
+    let ok = 0;
+    let fail = 0;
+
+    for (const batch of batches) {
+        const circuitResult = checkCircuit(services, circuitKey);
+        if (!circuitResult.allowed) {
+            fail += batch.length;
+            const errorMsg = `Circuit breaker open for ${effectiveAdapterCode} (${host}), retry in ${Math.ceil(circuitResult.resetTimeoutMs / TIME.SECOND)}s`;
+            services.logger.warn(errorMsg, { circuitKey, state: circuitResult.state, stepKey: step.key });
+            if (onRecordError) await onRecordError(step.key, errorMsg, {});
+            continue;
+        }
+
+        try {
+            const ndjson = batch.map(docId =>
+                JSON.stringify({ delete: { _index: indexName, _id: docId } }),
+            ).join('\n') + '\n';
+            const headers: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.NDJSON };
+            if (apiKey) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.API_KEY} ${apiKey}`;
+            else if (basicAuth) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${Buffer.from(basicAuth).toString('base64')}`;
+
+            const response = await fetch(`${host}/_bulk`, {
+                method: HttpMethod.POST,
+                headers,
+                body: ndjson,
+            });
+            if (response.ok) {
+                ok += batch.length;
+                services.circuitBreaker.recordSuccess(circuitKey);
+            } else {
+                fail += batch.length;
+                services.circuitBreaker.recordFailure(circuitKey);
+                if (onRecordError) await onRecordError(step.key, `${effectiveAdapterCode} delete error: ${response.status}`, {});
+            }
+        } catch (e: unknown) {
+            fail += batch.length;
+            services.circuitBreaker.recordFailure(circuitKey);
+            if (onRecordError) await onRecordError(step.key, getErrorMessage(e), {}, getErrorStack(e));
+        }
+    }
+
+    return { ok, fail };
+}
+
+async function handleAlgoliaDelete(hCtx: SinkHandlerContext, services: SinkServices, ids: string[]): Promise<ExecutionResult> {
+    const { ctx, step, cfg, indexName, bulkSize, onRecordError } = hCtx;
+    const applicationId = cfg.appId ?? cfg.applicationId;
+    const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
+
+    if (!applicationId || !apiKey) {
+        if (onRecordError) await onRecordError(step.key, 'Algolia applicationId and apiKey are required', {});
+        return { ok: 0, fail: ids.length };
+    }
+
+    const algoliaHost = SERVICE_URL_TEMPLATES.ALGOLIA_API(applicationId);
+    const circuitKey = getCircuitKey(SINK_ADAPTER_CODES.ALGOLIA, algoliaHost);
+
+    await assertUrlSafe(algoliaHost);
+
+    const batches = chunk(ids, bulkSize);
+    let ok = 0;
+    let fail = 0;
+
+    for (const batch of batches) {
+        const circuitResult = checkCircuit(services, circuitKey);
+        if (!circuitResult.allowed) {
+            fail += batch.length;
+            const errorMsg = `Circuit breaker open for Algolia (${applicationId}), retry in ${Math.ceil(circuitResult.resetTimeoutMs / TIME.SECOND)}s`;
+            services.logger.warn(errorMsg, { circuitKey, state: circuitResult.state, stepKey: step.key });
+            if (onRecordError) await onRecordError(step.key, errorMsg, {});
+            continue;
+        }
+
+        try {
+            const response = await fetch(`${algoliaHost}/1/indexes/${indexName}/batch`, {
+                method: HttpMethod.POST,
+                headers: {
+                    'X-Algolia-Application-Id': applicationId,
+                    'X-Algolia-API-Key': apiKey,
+                    [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
+                },
+                body: JSON.stringify({
+                    requests: batch.map(objectID => ({ action: 'deleteObject', body: { objectID } })),
+                }),
+            });
+            if (response.ok) {
+                ok += batch.length;
+                services.circuitBreaker.recordSuccess(circuitKey);
+            } else {
+                fail += batch.length;
+                services.circuitBreaker.recordFailure(circuitKey);
+                if (onRecordError) await onRecordError(step.key, `Algolia delete error: ${response.status}`, {});
+            }
+        } catch (e: unknown) {
+            fail += batch.length;
+            services.circuitBreaker.recordFailure(circuitKey);
+            if (onRecordError) await onRecordError(step.key, getErrorMessage(e), {}, getErrorStack(e));
+        }
+    }
+
+    return { ok, fail };
+}
+
+async function handleTypesenseDelete(hCtx: SinkHandlerContext, services: SinkServices, ids: string[]): Promise<ExecutionResult> {
+    const { ctx, step, cfg, indexName, onRecordError } = hCtx;
+    const host = resolveTypesenseHost(cfg);
+    const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
+    const collectionName = cfg.collectionName ?? indexName;
+    const circuitKey = getCircuitKey(SINK_ADAPTER_CODES.TYPESENSE, host);
+
+    await assertUrlSafe(host);
+
+    let ok = 0;
+    let fail = 0;
+
+    for (const id of ids) {
+        const circuitResult = checkCircuit(services, circuitKey);
+        if (!circuitResult.allowed) {
+            fail++;
+            const errorMsg = `Circuit breaker open for Typesense (${host}), retry in ${Math.ceil(circuitResult.resetTimeoutMs / TIME.SECOND)}s`;
+            services.logger.warn(errorMsg, { circuitKey, state: circuitResult.state, stepKey: step.key });
+            if (onRecordError) await onRecordError(step.key, errorMsg, {});
+            continue;
+        }
+
+        try {
+            const headers: Record<string, string> = {};
+            if (apiKey) headers[HTTP_HEADERS.X_TYPESENSE_API_KEY] = apiKey;
+
+            const response = await fetch(
+                `${host}/collections/${collectionName}/documents/${encodeURIComponent(id)}`,
+                { method: 'DELETE', headers },
+            );
+            if (response.ok) {
+                ok++;
+                services.circuitBreaker.recordSuccess(circuitKey);
+            } else {
+                fail++;
+                services.circuitBreaker.recordFailure(circuitKey);
+                if (onRecordError) await onRecordError(step.key, `Typesense delete error for ${id}: ${response.status}`, {});
+            }
+        } catch (e: unknown) {
+            fail++;
+            services.circuitBreaker.recordFailure(circuitKey);
+            if (onRecordError) await onRecordError(step.key, getErrorMessage(e), {}, getErrorStack(e));
+        }
+    }
+
+    return { ok, fail };
+}
+
+async function handleWebhookDelete(hCtx: SinkHandlerContext, services: SinkServices, ids: string[]): Promise<ExecutionResult> {
+    const modifiedCtx: SinkHandlerContext = {
+        ...hCtx,
+        input: ids.map(id => ({ [hCtx.idField]: id }) as RecordObject),
+        cfg: { ...hCtx.cfg, method: 'DELETE' } as unknown as BaseSinkCfg,
+    };
+    return handleWebhook(modifiedCtx, services);
+}
+
+async function handleQueueProducerDelete(hCtx: SinkHandlerContext, services: SinkServices, ids: string[]): Promise<ExecutionResult> {
+    const modifiedCtx: SinkHandlerContext = {
+        ...hCtx,
+        input: ids.map(id => ({ [hCtx.idField]: id }) as RecordObject),
+        operation: 'DELETE',
+    };
+    return handleQueueProducer(modifiedCtx, services);
+}
+
 // ─── Registry ────────────────────────────────────────────────────────
 
 /**
@@ -516,6 +819,7 @@ async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): 
  */
 interface SinkRegistryEntry {
     handler: SinkHandler;
+    deleteHandler?: SinkDeleteHandler;
     definition: AdapterDefinition;
 }
 
@@ -526,6 +830,7 @@ interface SinkRegistryEntry {
 export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
     [SINK_ADAPTER_CODES.MEILISEARCH, {
         handler: handleMeiliSearch,
+        deleteHandler: handleMeiliSearchDelete,
         definition: {
             type: 'SINK',
             code: SINK_ADAPTER_CODES.MEILISEARCH,
@@ -539,16 +844,19 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'apiKeySecretCode', label: 'API key secret', type: 'string', required: true },
                     { key: 'indexName', label: 'Index name', type: 'string', required: true },
                     { key: 'primaryKey', label: 'Primary key field', type: 'string', required: true },
+                    { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
                     { key: 'batchSize', label: 'Batch size', type: 'number' },
                     { key: 'searchableFields', label: 'Searchable fields', type: 'json', description: 'Array of field names' },
                     { key: 'filterableFields', label: 'Filterable fields', type: 'json', description: 'Array of field names' },
                     { key: 'sortableFields', label: 'Sortable fields', type: 'json', description: 'Array of field names' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
     }],
     [SINK_ADAPTER_CODES.ELASTICSEARCH, {
         handler: handleElasticsearch,
+        deleteHandler: handleElasticsearchDelete,
         definition: {
             type: 'SINK',
             code: SINK_ADAPTER_CODES.ELASTICSEARCH,
@@ -564,14 +872,17 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'passwordSecretCode', label: 'Password secret', type: 'string' },
                     { key: 'indexName', label: 'Index name', type: 'string', required: true },
                     { key: 'idField', label: 'Document ID field', type: 'string', required: true },
+                    { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
                     { key: 'batchSize', label: 'Batch size', type: 'number' },
                     { key: 'refresh', label: 'Refresh after indexing', type: 'boolean' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
     }],
     [SINK_ADAPTER_CODES.OPENSEARCH, {
         handler: handleElasticsearch,
+        deleteHandler: handleElasticsearchDelete,
         definition: {
             type: 'SINK',
             code: SINK_ADAPTER_CODES.OPENSEARCH,
@@ -587,14 +898,17 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'passwordSecretCode', label: 'Password secret', type: 'string' },
                     { key: 'indexName', label: 'Index name', type: 'string', required: true },
                     { key: 'idField', label: 'Document ID field', type: 'string', required: true },
+                    { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
                     { key: 'batchSize', label: 'Batch size', type: 'number' },
                     { key: 'refresh', label: 'Refresh after indexing', type: 'boolean' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
     }],
     [SINK_ADAPTER_CODES.ALGOLIA, {
         handler: handleAlgolia,
+        deleteHandler: handleAlgoliaDelete,
         definition: {
             type: 'SINK',
             code: SINK_ADAPTER_CODES.ALGOLIA,
@@ -608,13 +922,16 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'apiKeySecretCode', label: 'Admin API key secret', type: 'string', required: true },
                     { key: 'indexName', label: 'Index name', type: 'string', required: true },
                     { key: 'idField', label: 'Object ID field', type: 'string', required: true },
+                    { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
                     { key: 'batchSize', label: 'Batch size', type: 'number' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
     }],
     [SINK_ADAPTER_CODES.TYPESENSE, {
         handler: handleTypesense,
+        deleteHandler: handleTypesenseDelete,
         definition: {
             type: 'SINK',
             code: SINK_ADAPTER_CODES.TYPESENSE,
@@ -630,17 +947,20 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'apiKeySecretCode', label: 'API key secret', type: 'string', required: true },
                     { key: 'collectionName', label: 'Collection name', type: 'string', required: true },
                     { key: 'idField', label: 'Document ID field', type: 'string', required: true },
+                    { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
                     { key: 'batchSize', label: 'Batch size', type: 'number' },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
     }],
     [SINK_ADAPTER_CODES.QUEUE_PRODUCER, {
         handler: handleQueueProducer,
+        deleteHandler: handleQueueProducerDelete,
         definition: {
             type: 'SINK',
             code: SINK_ADAPTER_CODES.QUEUE_PRODUCER,
-            description: 'Publish records to RabbitMQ message queue via HTTP Management API (port 15672).',
+            description: 'Publish records to message queue. Propagates operation type as x-datahub-operation message header.',
             category: 'EXTERNAL',
             icon: 'rss',
             color: '#ff6600',
@@ -721,12 +1041,21 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                         type: 'number',
                         description: 'Message time-to-live in milliseconds.',
                     },
+                    {
+                        key: 'defaultOperation',
+                        label: 'Default Operation',
+                        type: 'select',
+                        options: SINK_OPERATION_OPTIONS,
+                        description: 'Fallback when records have no __operation field.',
+                    },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },
     }],
     [SINK_ADAPTER_CODES.WEBHOOK, {
         handler: handleWebhook,
+        deleteHandler: handleWebhookDelete,
         definition: {
             type: 'SINK',
             code: SINK_ADAPTER_CODES.WEBHOOK,
@@ -775,6 +1104,26 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                         description: 'Header name for API key.',
                     },
                     {
+                        key: 'hmacSecretCode',
+                        label: 'HMAC Signing Secret',
+                        type: 'string',
+                        description: 'Secret code for HMAC-SHA256 request signing. Adds X-DataHub-Signature header.',
+                    },
+                    {
+                        key: 'signatureHeaderName',
+                        label: 'Signature Header',
+                        type: 'string',
+                        placeholder: 'X-DataHub-Signature',
+                        description: 'Header name for HMAC signature (default: X-DataHub-Signature).',
+                    },
+                    {
+                        key: 'defaultOperation',
+                        label: 'Default Operation',
+                        type: 'select',
+                        options: SINK_OPERATION_OPTIONS,
+                        description: 'Fallback when records have no __operation field.',
+                    },
+                    {
                         key: 'batchSize',
                         label: 'Batch Size',
                         type: 'number',
@@ -794,6 +1143,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                         placeholder: '3',
                         description: 'Maximum retry attempts on failure.',
                     },
+                    ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
         },

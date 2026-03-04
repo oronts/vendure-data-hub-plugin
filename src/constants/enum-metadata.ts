@@ -219,4 +219,7 @@ export const COMPARISON_OPERATORS: ComparisonOperatorValue[] = [
     { value: 'exists', label: 'exists', description: 'Field exists in record', valueType: 'any', noValue: true },
     { value: 'notExists', label: 'not exists', description: 'Field does not exist in record', valueType: 'any', noValue: true },
     { value: 'regex', label: 'matches regex', description: 'String matches regular expression', valueType: 'regex', example: '^SKU-\\d+$' },
+    { value: 'isNull', label: 'is null', description: 'Field value is null or undefined', valueType: 'any', noValue: true },
+    { value: 'matches', label: 'matches glob', description: 'String matches a glob pattern', valueType: 'string', example: 'SKU-*' },
+    { value: 'notContains', label: 'not contains', description: 'String does not contain substring', valueType: 'string' },
 ];

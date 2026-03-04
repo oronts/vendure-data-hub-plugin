@@ -174,7 +174,7 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
             </div>
             <div className="text-sm">
                 <div className="text-sm font-medium mb-1">Finished</div>
-                <div>{formatDateTime(run?.finishedAt ?? initialData.finishedAt)}</div>
+                <div>{(run?.finishedAt ?? initialData.finishedAt) ? formatDateTime(run?.finishedAt ?? initialData.finishedAt) : '—'}</div>
             </div>
 
             {run?.error && (

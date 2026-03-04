@@ -5,6 +5,7 @@
  */
 
 import { FeedExecutor } from '../../executors';
+import { RecordObject } from '../../executor-types';
 import {
     StepStrategy,
     StepExecutionContext,
@@ -25,19 +26,17 @@ export class FeedStepStrategy implements StepStrategy {
 
         await this.logStepStart(context, recordsIn);
 
-        // Run BEFORE_FEED hook (observation only, FEED is terminal)
-        await this.runBeforeHook(context, records);
+        const interceptedRecords = await this.runBeforeHook(context, records);
 
-        const { ok, fail, outputPath } = await this.executeFeed(context);
+        const { ok, fail, outputPath } = await this.executeFeed(context, interceptedRecords);
         const durationMs = Date.now() - t0;
 
-        // Run AFTER_FEED hook (observation only, FEED is terminal)
-        await this.runAfterHook(context, records);
+        const afterAfterHook = await this.runAfterHook(context, interceptedRecords);
 
         await this.logStepComplete(context, adapterCode, recordsIn, ok, fail, durationMs);
 
         return {
-            records,
+            records: afterAfterHook,
             processed: recordsIn,
             succeeded: ok,
             failed: fail,
@@ -64,19 +63,21 @@ export class FeedStepStrategy implements StepStrategy {
         }
     }
 
-    private async runBeforeHook(context: StepExecutionContext, records: import('../../executor-types').RecordObject[]): Promise<void> {
-        const { ctx, definition, hookService, runId } = context;
-        await hookService.run(ctx, definition, HookStage.BEFORE_FEED, records, undefined, runId);
+    private async runBeforeHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
+        const { ctx, definition, hookService, runId, pipelineId } = context;
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.BEFORE_FEED, records, runId, pipelineId);
+        return result.records;
     }
 
-    private async executeFeed(context: StepExecutionContext): Promise<{ ok: number; fail: number; outputPath?: string }> {
-        const { ctx, step, records, onRecordError } = context;
+    private async executeFeed(context: StepExecutionContext, records: RecordObject[]): Promise<{ ok: number; fail: number; outputPath?: string }> {
+        const { ctx, step, onRecordError } = context;
         return this.feedExecutor.execute(ctx, step, records, onRecordError);
     }
 
-    private async runAfterHook(context: StepExecutionContext, records: import('../../executor-types').RecordObject[]): Promise<void> {
-        const { ctx, definition, hookService, runId } = context;
-        await hookService.run(ctx, definition, HookStage.AFTER_FEED, records, undefined, runId);
+    private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {
+        const { ctx, definition, hookService, runId, pipelineId } = context;
+        const result = await hookService.runInterceptors(ctx, definition, HookStage.AFTER_FEED, records, runId, pipelineId);
+        return result.records;
     }
 
     private async logStepComplete(

@@ -3,6 +3,7 @@ import { RequestContext } from '@vendure/core';
 import { JsonValue, JsonObject, PipelineStepDefinition, PipelineContext } from '../../types/index';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
+import { FileStorageService } from '../../services/storage/file-storage.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult, ExecutorContext } from '../executor-types';
 import { getPath, setPath, deepClone } from '../utils';
@@ -13,6 +14,7 @@ import { ExporterAdapter, ExportContext } from '../../sdk/types';
 import { createBaseAdapterContext, handleCustomAdapterError } from './context-adapters';
 import { getAdapterCode } from '../../types/step-configs';
 import { EXPORT_HANDLER_REGISTRY } from './exporters/export-handler-registry';
+import { applyLocalization } from '../executor-helpers';
 
 /**
  * Common export configuration fields
@@ -24,6 +26,14 @@ interface BaseExportCfg {
     fieldMapping?: Record<string, string>;
     /** Output file path (canonical field name) */
     path?: string;
+    /** Language code for translations */
+    languageCode?: string;
+    /** Record field containing translations object for localization flattening */
+    translationsField?: string;
+    /** Channel code for localization filtering */
+    channelCode?: string;
+    /** Record field containing channel information for localization filtering */
+    channelField?: string;
 }
 
 @Injectable()
@@ -33,6 +43,7 @@ export class ExportExecutor {
     constructor(
         private secretService: SecretService,
         private connectionService: ConnectionService,
+        private fileStorageService: FileStorageService,
         loggerFactory: DataHubLoggerFactory,
         @Optional() private registry?: DataHubRegistryService,
     ) {
@@ -92,6 +103,14 @@ export class ExportExecutor {
 
         const preparedRecords = input.map(prepareRecord);
 
+        // Apply localization (translation flattening + channel filtering)
+        const localizedRecords = applyLocalization(preparedRecords, {
+            languageCode: cfg.languageCode,
+            translationsField: cfg.translationsField,
+            channelCode: cfg.channelCode,
+            channelField: cfg.channelField,
+        });
+
         // Try built-in handlers first
         const entry = adapterCode ? EXPORT_HANDLER_REGISTRY.get(adapterCode) : undefined;
         if (entry) {
@@ -99,10 +118,11 @@ export class ExportExecutor {
                 ctx,
                 stepKey: step.key,
                 config: step.config as Record<string, JsonValue>,
-                records: preparedRecords,
+                records: localizedRecords,
                 onRecordError,
                 secretService: this.secretService,
                 logger: this.logger,
+                fileStorageService: this.fileStorageService,
             });
             ok = result.ok;
             fail = result.fail;

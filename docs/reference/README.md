@@ -13,9 +13,10 @@ Complete reference documentation for all Data Hub adapters.
 1. [Step Types](./step-types.md) - All pipeline step types
 2. [Extractors](./extractors.md) - All data extractors
 3. [Loaders](./loaders.md) - All entity loaders
-4. [Operators](./operators.md) - All transform operators
-5. [Feed Generators](./feeds.md) - Product feed generators
-6. [Search Sinks](./sinks.md) - Search engine integrations
+4. [Operators](./operators.md) - All transform operators (curated guide)
+5. [**Operators Complete**](./operators-complete.md) - **Auto-generated complete operator reference (all 61 operators)**
+6. [Feed Generators](./feeds.md) - Product feed generators
+7. [Search Sinks](./sinks.md) - Search engine integrations
 
 ## Quick Reference
 
@@ -33,7 +34,7 @@ Complete reference documentation for all Data Hub adapters.
 | `cdc` | Change Data Capture - poll database tables for changes |
 | `webhook` | Incoming webhook payloads |
 
-### Loaders (22 - 20 Entity + 2 External API)
+### Loaders (24 - 16 Entity + 4 Order Operations + 1 Deletion + 1 Inventory + 2 External API)
 
 | Code | Description |
 |------|-------------|
@@ -45,6 +46,7 @@ Complete reference documentation for all Data Hub adapters.
 | `facetUpsert` | Create/update facets for categorization |
 | `facetValueUpsert` | Create/update facet values within facets |
 | `promotionUpsert` | Create/update promotions with conditions and actions |
+| `orderUpsert` | Order create/update for migrations with state transitions and line management |
 | `orderNote` | Add notes to existing orders |
 | `orderTransition` | Transition order states |
 | `applyCoupon` | Apply coupon codes to orders |
@@ -57,6 +59,7 @@ Complete reference documentation for all Data Hub adapters.
 | `taxRateUpsert` | Create/update tax rates with category and zone |
 | `paymentMethodUpsert` | Create/update payment methods with handlers |
 | `channelUpsert` | Create/update channels with currencies and languages |
+| `entityDeletion` | Delete any of 13 entity types by slug, SKU, ID, code, email, or name |
 | `restPost` | POST data to custom REST endpoints |
 | `graphqlMutation` | Send records as GraphQL mutations to external APIs |
 
@@ -96,3 +99,7 @@ Complete reference documentation for all Data Hub adapters.
 | `typesense` | Typesense |
 | `queueProducer` | RabbitMQ Queue |
 | `webhook` | HTTP Webhook (POST/PUT/PATCH) |
+
+### API Notes
+
+- **`startDataHubPipelineRun`:** This mutation does not accept seed records. To provide seed data to a pipeline, use the webhook trigger (records passed in the request body) or the `dataHubTestWithSeedData` mutation for dry-run testing.

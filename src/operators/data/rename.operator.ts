@@ -6,7 +6,7 @@ import { createRecordOperator } from '../operator-factory';
 export const RENAME_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
     code: 'rename',
-    description: 'Rename a field from one path to another.',
+    description: 'Rename a field by moving its value to a new path (source field is removed)',
     category: 'DATA',
     categoryLabel: 'Data',
     categoryOrder: 0,

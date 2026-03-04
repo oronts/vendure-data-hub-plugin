@@ -1,0 +1,9 @@
+email,first_name,last_name,phone,group,street,city,postal_code,country_code,province
+hans.mueller@example.de,Hans,Mueller,+49-30-1234567,VIP,Friedrichstrasse 43,Berlin,10117,DE,Berlin
+anna.schmidt@example.de,Anna,Schmidt,+49-89-9876543,wholesale,Marienplatz 1,Munich,80331,DE,Bavaria
+john.doe@example.com,John,Doe,+1-212-555-0100,VIP,350 Fifth Avenue,New York,10118,US,NY
+jane.smith@example.com,Jane,Smith,+1-415-555-0200,retail,1 Market Street,San Francisco,94105,US,CA
+james.wilson@example.co.uk,James,Wilson,+44-20-7946-0958,wholesale,221B Baker Street,London,NW1 6XE,GB,England
+emily.brown@example.co.uk,Emily,Brown,+44-161-496-0000,retail,1 Piccadilly Gardens,Manchester,M1 1RG,GB,England
+max.fischer@example.de,Max,Fischer,+49-40-3456789,retail,Jungfernstieg 10,Hamburg,20354,DE,Hamburg
+sarah.johnson@example.com,Sarah,Johnson,+1-312-555-0300,VIP,233 S Wacker Dr,Chicago,60606,US,IL

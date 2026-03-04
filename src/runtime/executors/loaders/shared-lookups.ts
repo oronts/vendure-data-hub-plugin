@@ -6,9 +6,11 @@ import {
     ProductService,
     TaxCategoryService,
     StockLocationService,
+    ChannelService,
     ProductVariant,
     TaxCategory,
     StockLocation,
+    Channel,
     ListQueryOptions,
     ID,
 } from '@vendure/core';
@@ -265,4 +267,127 @@ export async function resolveStockLevels(
         });
         return undefined;
     }
+}
+
+/**
+ * Parse a translations input from a record field into a generic array.
+ * Supports two formats:
+ * 1. Array: [{ languageCode: 'en', name: '...', ... }, ...]
+ * 2. Object map: { en: { name: '...', ... }, de: { ... } } → converted to array
+ * Returns generic records; each handler picks the fields it needs.
+ */
+export function parseTranslationsInput(
+    raw: unknown,
+): Array<Record<string, unknown> & { languageCode: string }> {
+    if (Array.isArray(raw)) {
+        return raw
+            .filter((t): t is Record<string, unknown> => t != null && typeof t === 'object')
+            .filter(t => typeof t.languageCode === 'string')
+            .map(t => ({ ...t, languageCode: String(t.languageCode) }));
+    }
+
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        return Object.entries(raw as Record<string, unknown>)
+            .filter(([, v]) => v != null && typeof v === 'object')
+            .map(([langCode, v]) => ({
+                ...(v as Record<string, unknown>),
+                languageCode: langCode,
+            }));
+    }
+
+    return [];
+}
+
+/**
+ * Shape of a configurable operation from record data (used by shipping-method, payment-method handlers)
+ */
+export interface ConfigurableOperationRecord {
+    code: string;
+    args?: Record<string, unknown>;
+}
+
+/**
+ * Convert a raw record value to a ConfigurableOperationInput.
+ * Shared by ShippingMethodHandler and PaymentMethodHandler.
+ */
+export function toConfigurableOperation(
+    value: unknown,
+): { code: string; arguments: Array<{ name: string; value: string }> } | null {
+    if (!value || typeof value !== 'object') return null;
+
+    const record = value as ConfigurableOperationRecord;
+    if (!record.code || typeof record.code !== 'string') return null;
+
+    return {
+        code: record.code,
+        arguments: Object.entries(record.args || {}).map(([name, val]) => ({
+            name,
+            value: typeof val === 'string' ? val : JSON.stringify(val),
+        })),
+    };
+}
+
+/**
+ * Resolve channel codes to channel IDs.
+ * Uses a shared cache (Map<string, ID>) for batch efficiency.
+ * Accepts either an array of codes or a comma-separated string.
+ */
+export async function resolveChannelIds(
+    channelService: ChannelService,
+    ctx: RequestContext,
+    rawValue: unknown,
+    cache: Map<string, ID>,
+    logger: LookupLogger = noopLogger,
+): Promise<ID[]> {
+    let codes: string[];
+    if (Array.isArray(rawValue)) {
+        codes = rawValue.map(String).filter(Boolean);
+    } else if (typeof rawValue === 'string') {
+        codes = rawValue.split(',').map(s => s.trim()).filter(Boolean);
+    } else {
+        return [];
+    }
+
+    if (codes.length === 0) return [];
+
+    const result: ID[] = [];
+    const uncached: string[] = [];
+
+    for (const code of codes) {
+        const cached = cache.get(code);
+        if (cached) {
+            result.push(cached);
+        } else {
+            uncached.push(code);
+        }
+    }
+
+    if (uncached.length > 0) {
+        try {
+            const allChannels = await channelService.findAll(ctx, {
+                filter: { code: { in: uncached } },
+            } as ListQueryOptions<Channel>);
+
+            for (const channel of allChannels.items) {
+                cache.set(channel.code, channel.id);
+            }
+
+            // Re-resolve uncached codes now that we've loaded them
+            for (const code of uncached) {
+                const id = cache.get(code);
+                if (id) {
+                    result.push(id);
+                } else {
+                    logger.warn(`Channel code "${code}" not found — skipped`);
+                }
+            }
+        } catch (error) {
+            logger.warn('Failed to resolve channel codes', {
+                codes: uncached,
+                error: getErrorMessage(error),
+            });
+        }
+    }
+
+    return result;
 }

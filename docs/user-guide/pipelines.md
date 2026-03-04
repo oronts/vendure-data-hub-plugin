@@ -217,19 +217,25 @@ Hooks allow you to execute custom code at specific stages of pipeline execution.
 | `AFTER_ENRICH` | After enrichment | Yes |
 | `BEFORE_ROUTE` | Before routing | Yes |
 | `AFTER_ROUTE` | After routing | Yes |
-| `BEFORE_LOAD` | Before loading | Yes |
-| `AFTER_LOAD` | After loading | No |
+| `BEFORE_LOAD` | Before loading to Vendure | Yes |
+| `AFTER_LOAD` | After loading | Yes |
+| `BEFORE_EXPORT` | Before file export | Yes |
+| `AFTER_EXPORT` | After file export | Yes |
+| `BEFORE_FEED` | Before feed generation | Yes |
+| `AFTER_FEED` | After feed generation | Yes |
+| `BEFORE_SINK` | Before search indexing | Yes |
+| `AFTER_SINK` | After search indexing | Yes |
 
-**Lifecycle Stages:**
+**Lifecycle Stages** (observe-only — WEBHOOK, EMIT, LOG, TRIGGER_PIPELINE only, no INTERCEPTOR/SCRIPT):
 
-| Stage | When It Runs |
-|-------|--------------|
-| `PIPELINE_STARTED` | Pipeline execution begins |
-| `PIPELINE_COMPLETED` | Pipeline finishes successfully |
-| `PIPELINE_FAILED` | Pipeline fails |
-| `ON_ERROR` | When an error occurs |
-| `ON_RETRY` | When a record is retried |
-| `ON_DEAD_LETTER` | When a record is sent to dead letter queue |
+| Stage | When It Runs | Supported Hook Types |
+|-------|--------------|---------------------|
+| `PIPELINE_STARTED` | Pipeline execution begins | WEBHOOK, EMIT, LOG, TRIGGER_PIPELINE |
+| `PIPELINE_COMPLETED` | Pipeline finishes successfully | WEBHOOK, EMIT, LOG, TRIGGER_PIPELINE |
+| `PIPELINE_FAILED` | Pipeline fails | WEBHOOK, EMIT, LOG, TRIGGER_PIPELINE |
+| `ON_ERROR` | When an error occurs | WEBHOOK, EMIT, LOG, TRIGGER_PIPELINE |
+| `ON_RETRY` | When a record is retried | WEBHOOK, EMIT, LOG, TRIGGER_PIPELINE |
+| `ON_DEAD_LETTER` | When a record is sent to dead letter queue | WEBHOOK, EMIT, LOG, TRIGGER_PIPELINE |
 
 ### Hook Types
 
@@ -257,6 +263,43 @@ Interceptors run JavaScript code that can modify the records array:
         name: 'Filter invalid',
         code: `
             return records.filter(r => r.sku && r.name);
+        `,
+    }],
+})
+```
+
+**Modify records before search indexing (Meilisearch, Elasticsearch, etc.):**
+
+```typescript
+.hooks({
+    BEFORE_SINK: [{
+        type: 'INTERCEPTOR',
+        name: 'Enrich for search',
+        code: `
+            return records.map(r => ({
+                ...r,
+                searchText: [r.name, r.sku, r.description].filter(Boolean).join(' ').toLowerCase(),
+                facetTags: (r.tags || '').split(',').map(t => t.trim()).filter(Boolean),
+                boostScore: r.featured ? 1.5 : 1.0,
+            }));
+        `,
+    }],
+})
+```
+
+**Transform records before CSV/JSON export:**
+
+```typescript
+.hooks({
+    BEFORE_EXPORT: [{
+        type: 'INTERCEPTOR',
+        name: 'Format for export',
+        code: `
+            return records.map(r => ({
+                ...r,
+                price: (r.price / 100).toFixed(2),
+                createdAt: new Date(r.createdAt).toISOString(),
+            }));
         `,
     }],
 })
@@ -319,6 +362,10 @@ export class MyPlugin implements OnModuleInit {
 }
 ```
 
+> **Tip:** When registering scripts via `HookService.registerScript()` in a NestJS service,
+> your scripts can access any injected service (database, external APIs, Vendure services)
+> through JavaScript closures. See the [Developer Guide](../developer-guide/extending/README.md#hook-capabilities--limitations) for examples.
+
 **Use in pipeline:**
 
 ```typescript
@@ -332,6 +379,28 @@ export class MyPlugin implements OnModuleInit {
         type: 'SCRIPT',
         scriptName: 'validateRequired',
     }],
+})
+```
+
+**Register a script for search index enrichment:**
+
+```typescript
+DataHubPlugin.init({
+    scripts: {
+        'buildSearchAttributes': async (records, context) => {
+            return records.map(r => ({
+                ...r,
+                searchText: [r.name, r.sku, r.description]
+                    .filter(Boolean).join(' ').toLowerCase(),
+                facetCategories: r.categories?.map(c => c.name) || [],
+            }));
+        },
+    },
+})
+
+// Use in pipeline:
+.hooks({
+    BEFORE_SINK: [{ type: 'SCRIPT', scriptName: 'buildSearchAttributes' }],
 })
 ```
 

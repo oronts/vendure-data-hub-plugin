@@ -7,10 +7,11 @@
  */
 import { Injectable } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
-import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject, LoaderContext } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult, SANDBOX_PIPELINE_ID } from '../../executor-types';
+import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
+import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { buildSandboxLoaderContext, SandboxHandlerConfig } from '../../executor-helpers';
 import { LoaderHandler } from './types';
-import { TARGET_OPERATION, LoadStrategy } from '../../../constants/enums';
+import { LoadStrategy } from '../../../constants/enums';
 import { InventoryLoader } from '../../../loaders/inventory';
 import { InventoryInput } from '../../../loaders/inventory/types';
 import { getStringValue, getNumberValue } from '../../../loaders/shared-helpers';
@@ -18,14 +19,12 @@ import { getStringValue, getNumberValue } from '../../../loaders/shared-helpers'
 /**
  * Configuration for the inventory adjust handler step (mirrors loader-handler-registry.ts schema)
  */
-interface InventoryAdjustHandlerConfig {
+interface InventoryAdjustHandlerConfig extends SandboxHandlerConfig {
     skuField?: string;
     stockOnHandField?: string;
     stockLocationNameField?: string;
     stockLocationIdField?: string;
     reasonField?: string;
-    operation?: string;
-    lookupFields?: string[];
     strategy?: LoadStrategy;
 }
 
@@ -34,33 +33,6 @@ interface InventoryAdjustHandlerConfig {
  */
 function getConfig(config: JsonObject): InventoryAdjustHandlerConfig {
     return config as unknown as InventoryAdjustHandlerConfig;
-}
-
-/**
- * Build a LoaderContext from executor parameters
- */
-function mapStrategyToOperation(strategy: LoadStrategy): string {
-    switch (strategy) {
-        case LoadStrategy.CREATE: return TARGET_OPERATION.CREATE;
-        case LoadStrategy.UPDATE: return TARGET_OPERATION.UPDATE;
-        default: return TARGET_OPERATION.UPSERT;
-    }
-}
-
-function buildLoaderContext(ctx: RequestContext, cfg: InventoryAdjustHandlerConfig): LoaderContext {
-    // Inventory only supports UPDATE/UPSERT (can't create variants)
-    const operation = cfg.strategy ? mapStrategyToOperation(cfg.strategy) : (cfg.operation ?? TARGET_OPERATION.UPSERT);
-    return {
-        ctx,
-        pipelineId: SANDBOX_PIPELINE_ID,
-        runId: '0',
-        operation: operation as LoaderContext['operation'],
-        lookupFields: cfg.lookupFields ?? ['sku'],
-        dryRun: false,
-        options: {
-            skipDuplicates: false,
-        },
-    };
 }
 
 @Injectable()
@@ -77,7 +49,7 @@ export class InventoryAdjustHandler implements LoaderHandler {
         _errorHandling?: ErrorHandlingConfig,
     ): Promise<ExecutionResult> {
         const cfg = getConfig(step.config);
-        const loaderContext = buildLoaderContext(ctx, cfg);
+        const loaderContext = buildSandboxLoaderContext(ctx, cfg, ['sku']);
 
         // Remap input records using configurable field names
         const records = input.map(rec => this.remapRecord(rec, cfg)) as InventoryInput[];

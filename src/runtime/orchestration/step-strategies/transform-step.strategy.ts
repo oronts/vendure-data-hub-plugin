@@ -284,12 +284,12 @@ export class RouteStepStrategy implements StepStrategy {
 
         // Run after hook on aggregated records
         const aggregated = ([] as RecordObject[]).concat(...Object.values(out.branches));
-        await this.runAfterHook(context, aggregated);
+        const afterAfterHook = await this.runAfterHook(context, aggregated);
 
         await this.logStepComplete(context, adapterCode, recordsIn, total, durationMs, Object.keys(out.branches));
 
         return {
-            records: aggregated,
+            records: afterAfterHook,
             processed: 0,
             succeeded: 0,
             failed: 0,
@@ -320,13 +320,13 @@ export class RouteStepStrategy implements StepStrategy {
 
         // Run after hook on aggregated records
         const aggregated = ([] as RecordObject[]).concat(...Object.values(out.branches));
-        await this.runAfterHook(context, aggregated);
+        const afterAfterHook = await this.runAfterHook(context, aggregated);
 
         await this.logStepComplete(context, adapterCode, recordsIn, total, durationMs, Object.keys(out.branches));
 
         return {
             result: {
-                records: aggregated,
+                records: afterAfterHook,
                 processed: 0,
                 succeeded: 0,
                 failed: 0,

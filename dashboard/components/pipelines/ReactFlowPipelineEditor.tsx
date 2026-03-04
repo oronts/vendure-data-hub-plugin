@@ -156,7 +156,7 @@ export function ReactFlowPipelineEditor({
                 label,
                 type: category,
                 adapterCode: nodeType,
-                config: { adapterCode: nodeType },
+                config: {},
             },
         };
 
@@ -194,7 +194,7 @@ export function ReactFlowPipelineEditor({
                     label,
                     type: category,
                     adapterCode: nodeType,
-                    config: { adapterCode: nodeType },
+                    config: {},
                 },
             };
 
@@ -487,7 +487,7 @@ function NodePaletteDynamic({ adapters, onDragStart, onAddNode }: { adapters: Ad
                 const items = adapters.filter(a => a.type === adapterType);
                 return {
                     key: category,
-                    label: config.label === 'Source' ? 'Data Sources' : `${config.label}s`,
+                    label: config.label === 'Source' ? 'Data Sources' : config.label === 'Enrich' ? 'Enrichment' : `${config.label}s`,
                     items,
                     category,
                     icon: config.icon,

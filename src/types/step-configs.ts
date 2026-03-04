@@ -142,6 +142,8 @@ export interface SinkStepConfig {
     connectionCode?: string;
     destination?: string;
     format?: string;
+
+    defaultOperation?: 'UPSERT' | 'DELETE';
     [key: string]: unknown;
 }
 
@@ -175,6 +177,9 @@ export function getStepConfig<T>(
 }
 
 export function getAdapterCode(step: PipelineStepDefinition): string {
+    if (step.adapterCode) {
+        return step.adapterCode;
+    }
     if (hasAdapterCode(step.config)) {
         return step.config.adapterCode;
     }

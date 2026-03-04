@@ -168,15 +168,35 @@ export class TransformExecutor {
                 config: { adapterCode: opCode, ...args },
             };
 
-            currentRecords = await this.executeSingleOperator(
-                ctx,
-                syntheticStep,
-                currentRecords,
-                opCode,
-                { adapterCode: opCode, ...args } as JsonObject,
-                _executorCtx,
-                pipelineContext,
-            );
+            try {
+                currentRecords = await this.executeSingleOperator(
+                    ctx,
+                    syntheticStep,
+                    currentRecords,
+                    opCode,
+                    { adapterCode: opCode, ...args } as JsonObject,
+                    _executorCtx,
+                    pipelineContext,
+                );
+            } catch (error) {
+                this.logger.warn(
+                    `Operator "${opCode}" failed for ${currentRecords.length} record(s) in step "${step.key}" ` +
+                    `(operator ${i + 1}/${operators.length}): ${getErrorMessage(error)} — ` +
+                    `skipping remaining operators and returning records in their last good state`,
+                    {
+                        stepKey: step.key,
+                        op: opCode,
+                        operatorIndex: i,
+                        recordCount: currentRecords.length,
+                    },
+                );
+                // The records are tainted by this operator's failure — don't apply
+                // more operators to potentially corrupted data. Break the operator
+                // chain and return the records as they were before this operator ran
+                // (i.e. the last successfully transformed state). This allows the
+                // pipeline to continue with partial data rather than losing everything.
+                break;
+            }
         }
 
         return currentRecords;
@@ -747,7 +767,16 @@ export class TransformExecutor {
         // For linear model, select first matching branch
         for (const b of branches) {
             const out = input.filter(rec => (b.when ?? []).every(cond => evalCondition(rec, cond)));
-            if (out.length > 0) return out;
+            if (out.length > 0) {
+                const unmatchedCount = input.length - out.length;
+                if (unmatchedCount > 0) {
+                    this.logger.warn(`ROUTE step "${step.key}": ${unmatchedCount} record(s) matched no branch and were dropped`);
+                }
+                return out;
+            }
+        }
+        if (input.length > 0) {
+            this.logger.warn(`ROUTE step "${step.key}": ${input.length} record(s) matched no branch and were dropped`);
         }
         return [];
     }
@@ -776,6 +805,10 @@ export class TransformExecutor {
 
         const defaultRecs = input.filter((_rec, idx) => !matchedSet.has(idx));
         result['default'] = defaultRecs;
+
+        if (defaultRecs.length > 0) {
+            this.logger.warn(`ROUTE step "${step.key}": ${defaultRecs.length} record(s) matched no branch and were routed to default`);
+        }
 
         return { __branchOutputs: true, branches: result };
     }

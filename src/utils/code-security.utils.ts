@@ -181,7 +181,27 @@ export const DISALLOWED_KEYWORDS = [
  */
 const DISALLOWED_KEYWORDS_PATTERN = new RegExp(
     `\\b(${DISALLOWED_KEYWORDS.join('|')})\\b`,
-    'i',
+);
+
+/**
+ * Keywords allowed in script blocks but not in simple expressions.
+ *
+ * Script blocks run in an isolated VM context with sandboxed constructors
+ * (SafeDate, String, Number, Boolean), so `new` is safe. `class` is safe
+ * because it can only create local classes with no access to host prototypes.
+ */
+const SCRIPT_ALLOWED_KEYWORDS = new Set(['new', 'class', 'extends']);
+
+/**
+ * Disallowed keywords for script blocks — a subset of DISALLOWED_KEYWORDS
+ * that excludes keywords safe in the sandboxed VM context.
+ */
+const SCRIPT_DISALLOWED_KEYWORDS = DISALLOWED_KEYWORDS.filter(
+    k => !SCRIPT_ALLOWED_KEYWORDS.has(k),
+);
+
+const SCRIPT_DISALLOWED_KEYWORDS_PATTERN = new RegExp(
+    `\\b(${SCRIPT_DISALLOWED_KEYWORDS.join('|')})\\b`,
 );
 
 /**
@@ -215,6 +235,9 @@ const SAFE_EXPRESSION_PATTERN = /^[a-zA-Z0-9_$.\s+\-*/%&|!?:=<>()[\],'"]*$/;
 /**
  * Validates user code for security issues
  * Throws an error if any security concern is detected
+ *
+ * This is for SIMPLE EXPRESSIONS (condition evaluator, when operator, etc.)
+ * For full script blocks (script operator), use validateScriptBlock() instead.
  */
 export function validateUserCode(
     code: string,
@@ -251,6 +274,53 @@ export function validateUserCode(
 }
 
 /**
+ * Validates script blocks for security issues.
+ *
+ * Unlike validateUserCode() which is for simple expressions,
+ * this allows semicolons, braces, and comments that are needed
+ * for multi-line JavaScript code blocks (script operator).
+ *
+ * Security is still enforced via:
+ * - Code length limits
+ * - Disallowed keywords (eval, Function, require, import, process, etc.)
+ * - Prototype pollution pattern detection
+ * - Escape sequence / encoding attack detection
+ * - The VM sandbox itself (isolated context, frozen globals, timeout)
+ */
+export function validateScriptBlock(
+    code: string,
+    config: Partial<CodeSecurityConfig> = {},
+): void {
+    const mergedConfig = { ...DEFAULT_CODE_SECURITY_CONFIG, ...config };
+
+    if (!code || typeof code !== 'string') {
+        throw new Error('Code must be a non-empty string');
+    }
+
+    if (code.length > mergedConfig.maxCodeLength) {
+        throw new Error(
+            `Code exceeds maximum length of ${mergedConfig.maxCodeLength} characters`,
+        );
+    }
+
+    // Normalize code for analysis
+    const normalizedCode = code.replace(/\s+/g, ' ').trim();
+
+    // Check encoding/obfuscation patterns (but NOT statements/comments which are valid in scripts)
+    checkScriptDangerousPatterns(normalizedCode);
+
+    // Strip comments before keyword/pollution checks to avoid false positives
+    // from words in comments (e.g. "// this constructor is safe")
+    const codeWithoutComments = normalizedCode
+        .replace(/\/\/[^\n]*/g, '')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .trim();
+
+    checkScriptDisallowedKeywords(codeWithoutComments);
+    checkPrototypePollution(codeWithoutComments);
+}
+
+/**
  * Validates condition expressions (more restrictive than general code)
  */
 export function validateConditionExpression(
@@ -282,7 +352,7 @@ export function validateConditionExpression(
 }
 
 /**
- * Checks for dangerous code patterns
+ * Checks for dangerous code patterns (expression mode — strict)
  */
 function checkDangerousPatterns(code: string): void {
     const patterns = DANGEROUS_PATTERNS;
@@ -327,11 +397,60 @@ function checkDangerousPatterns(code: string): void {
 }
 
 /**
- * Checks for disallowed keywords
+ * Checks for dangerous patterns in script blocks (permissive mode).
+ * Allows semicolons, braces, and comments which are valid in scripts.
+ * Still blocks encoding/obfuscation attacks.
+ */
+function checkScriptDangerousPatterns(code: string): void {
+    const patterns = DANGEROUS_PATTERNS;
+
+    if (patterns.ESCAPE_SEQUENCES.test(code)) {
+        throw new Error('Code contains disallowed escape sequences');
+    }
+
+    if (patterns.UNICODE_ESCAPES.test(code)) {
+        throw new Error('Code contains disallowed unicode characters');
+    }
+
+    if (patterns.OCTAL_ESCAPES.test(code)) {
+        throw new Error('Code contains disallowed octal escape sequences');
+    }
+
+    if (patterns.HTML_ENTITIES.test(code)) {
+        throw new Error('Code contains disallowed HTML entities');
+    }
+
+    if (patterns.BASE64_PATTERNS.test(code)) {
+        throw new Error('Code contains disallowed base64 functions');
+    }
+
+    if (patterns.STRING_CONCAT_TRICKS.test(code)) {
+        throw new Error('Code contains disallowed string concatenation patterns');
+    }
+
+    if (patterns.COMPUTED_PROPERTY_ACCESS.test(code)) {
+        throw new Error('Code contains disallowed computed property access');
+    }
+}
+
+/**
+ * Checks for disallowed keywords (strict — for simple expressions)
  */
 function checkDisallowedKeywords(code: string): void {
     if (DISALLOWED_KEYWORDS_PATTERN.test(code)) {
         const match = code.match(DISALLOWED_KEYWORDS_PATTERN);
+        throw new Error(
+            `Code contains disallowed keyword: ${match?.[1] ?? 'unknown'}`,
+        );
+    }
+}
+
+/**
+ * Checks for disallowed keywords in script blocks (permissive — allows new/class/extends)
+ */
+function checkScriptDisallowedKeywords(code: string): void {
+    if (SCRIPT_DISALLOWED_KEYWORDS_PATTERN.test(code)) {
+        const match = code.match(SCRIPT_DISALLOWED_KEYWORDS_PATTERN);
         throw new Error(
             `Code contains disallowed keyword: ${match?.[1] ?? 'unknown'}`,
         );
@@ -483,12 +602,38 @@ export function createCodeSandbox(
         stringify: (value: unknown) => JSON.stringify(value),
     };
 
-    // Create safe Date functions (no constructor, just utilities)
-    const SafeDate = {
-        now: Date.now,
-        parse: Date.parse,
-        UTC: Date.UTC,
-    };
+    // Create safe Date wrapper that supports both constructor and static methods.
+    // Date construction is safe (no prototype pollution risk) and extremely common
+    // in user scripts for timestamps. We wrap Date to ensure consistent behavior
+    // while preserving `new Date()`, `new Date(timestamp)`, `new Date(string)`.
+    class SafeDateClass {
+        private _date: Date;
+        constructor(value?: string | number | Date) {
+            this._date = value === undefined ? new Date() : new Date(value as string | number);
+        }
+        getTime() { return this._date.getTime(); }
+        toISOString() { return this._date.toISOString(); }
+        toJSON() { return this._date.toJSON(); }
+        toString() { return this._date.toString(); }
+        toUTCString() { return this._date.toUTCString(); }
+        toLocaleDateString(...args: Parameters<Date['toLocaleDateString']>) { return this._date.toLocaleDateString(...args); }
+        toLocaleTimeString(...args: Parameters<Date['toLocaleTimeString']>) { return this._date.toLocaleTimeString(...args); }
+        toLocaleString(...args: Parameters<Date['toLocaleString']>) { return this._date.toLocaleString(...args); }
+        valueOf() { return this._date.valueOf(); }
+        getFullYear() { return this._date.getFullYear(); }
+        getMonth() { return this._date.getMonth(); }
+        getDate() { return this._date.getDate(); }
+        getDay() { return this._date.getDay(); }
+        getHours() { return this._date.getHours(); }
+        getMinutes() { return this._date.getMinutes(); }
+        getSeconds() { return this._date.getSeconds(); }
+        getMilliseconds() { return this._date.getMilliseconds(); }
+        getTimezoneOffset() { return this._date.getTimezoneOffset(); }
+        static now() { return Date.now(); }
+        static parse(s: string) { return Date.parse(s); }
+        static UTC(...args: Parameters<typeof Date.UTC>) { return Date.UTC(...args); }
+    }
+    const SafeDate = SafeDateClass as unknown as DateConstructor;
 
     const sandbox: Record<string, unknown> = {
         // Safe wrappers

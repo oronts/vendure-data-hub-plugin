@@ -2,7 +2,7 @@ import { Injectable, Optional } from '@nestjs/common';
 import { ID, RequestContext, RequestContextService, TransactionalConnection } from '@vendure/core';
 import { Repository } from 'typeorm';
 import { PipelineRun, Pipeline } from '../../entities/pipeline';
-import { RunStatus } from '../../constants/enums';
+import { RunStatus, HookStage } from '../../constants/enums';
 import { JsonObject, PipelineDefinition, PipelineMetrics } from '../../types/index';
 import { DefinitionValidationService } from '../validation/definition-validation.service';
 import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
@@ -10,6 +10,7 @@ import { RecordErrorService } from '../data/record-error.service';
 import { DataHubLogger, DataHubLoggerFactory, ExecutionLogger, SpanContext } from '../logger';
 import { LOGGER_CONTEXTS, DISTRIBUTED_LOCK, calculateThroughput } from '../../constants/index';
 import { DomainEventsService } from '../events/domain-events.service';
+import { HookService } from '../events/hook.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 import { getErrorMessage, ensureError } from '../../utils/error.utils';
 
@@ -71,6 +72,7 @@ export class PipelineRunnerService {
         private adapterRuntime: AdapterRuntimeService,
         private recordErrorService: RecordErrorService,
         private domainEvents: DomainEventsService,
+        private hookService: HookService,
         private loggerFactory: DataHubLoggerFactory,
         private executionLogger: ExecutionLogger,
         @Optional() private distributedLock?: DistributedLockService,
@@ -384,7 +386,7 @@ export class PipelineRunnerService {
         isGateResume?: boolean,
     ): Promise<PipelineMetrics> {
         const procCtx = await this.loadPipelineDefinition(ctx, runId, pipelineId, runLogger);
-        const callbacks = this.createProcessingCallbacks(procCtx);
+        const callbacks = this.createProcessingCallbacks(procCtx, definition);
         return this.runStepsWithMetrics(definition, procCtx, callbacks, isGateResume);
     }
 
@@ -408,7 +410,7 @@ export class PipelineRunnerService {
     /**
      * Creates callbacks for cancel requests and record errors during processing.
      */
-    private createProcessingCallbacks(procCtx: ProcessingContext): ProcessingCallbacks {
+    private createProcessingCallbacks(procCtx: ProcessingContext, definition: PipelineDefinition): ProcessingCallbacks {
         const { ctx, runId, pipelineId, runLogger, runRepo, start } = procCtx;
 
         const onCancelRequested = async (): Promise<boolean> => {
@@ -431,6 +433,12 @@ export class PipelineRunnerService {
         ): Promise<void> => {
             await this.recordErrorService.record(ctx, runId, stepKey, message, payload as JsonObject, stackTrace);
             await this.executionLogger.logRecordError(ctx, stepKey, message, payload, { pipelineId, runId }, stackTrace);
+            // Fire ON_ERROR hook for observability (WEBHOOK, EMIT, LOG, TRIGGER_PIPELINE)
+            try {
+                await this.hookService.run(ctx, definition, HookStage.ON_ERROR, { error: message, stepKey } as unknown as JsonObject, payload as JsonObject, runId);
+            } catch {
+                // ON_ERROR hooks are best-effort — never block the pipeline
+            }
         };
 
         return { onCancelRequested, onRecordError };

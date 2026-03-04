@@ -453,20 +453,52 @@ describe('DataHub Pipeline Execution', () => {
     });
 
     describe('Run Errors', () => {
-        it('queries run errors', async () => {
-            // First get a run to query errors for
-            const { dataHubPipelineRuns } = await adminClient.query(gql`
-                query {
-                    dataHubPipelineRuns {
-                        items { id }
-                    }
+        let errorTestPipelineId: string;
+        let errorTestRunId: string;
+
+        beforeAll(async () => {
+            const { createDataHubPipeline } = await adminClient.query(gql`
+                mutation CreatePipeline($input: CreateDataHubPipelineInput!) {
+                    createDataHubPipeline(input: $input) { id }
                 }
-            `);
+            `, {
+                input: {
+                    code: 'run-errors-test-pipeline',
+                    name: 'Run Errors Test Pipeline',
+                    definition: {
+                        version: 1,
+                        steps: [{
+                            key: 'extract',
+                            type: StepType.EXTRACT,
+                            config: { adapterCode: 'vendureQuery', entity: 'Product' },
+                        }],
+                        edges: [],
+                    },
+                },
+            });
+            errorTestPipelineId = createDataHubPipeline.id;
 
-            // Ensure we have runs to query errors for
-            expect(dataHubPipelineRuns.items.length).toBeGreaterThan(0);
+            const { startDataHubPipelineRun } = await adminClient.query(gql`
+                mutation RunPipeline($id: ID!) {
+                    startDataHubPipelineRun(pipelineId: $id) { id }
+                }
+            `, { id: errorTestPipelineId });
+            errorTestRunId = startDataHubPipelineRun.id;
+        });
 
-            const runId = dataHubPipelineRuns.items[0].id;
+        afterAll(async () => {
+            if (errorTestPipelineId) {
+                await adminClient.query(gql`
+                    mutation DeletePipeline($id: ID!) {
+                        deleteDataHubPipeline(id: $id) { result }
+                    }
+                `, { id: errorTestPipelineId });
+            }
+        });
+
+        it('queries run errors', async () => {
+            expect(errorTestRunId).toBeDefined();
+
             const { dataHubRunErrors } = await adminClient.query(gql`
                 query RunErrors($runId: ID!) {
                     dataHubRunErrors(runId: $runId) {
@@ -475,7 +507,7 @@ describe('DataHub Pipeline Execution', () => {
                         stepKey
                     }
                 }
-            `, { runId });
+            `, { runId: errorTestRunId });
 
             expect(dataHubRunErrors).toBeDefined();
             expect(Array.isArray(dataHubRunErrors)).toBe(true);

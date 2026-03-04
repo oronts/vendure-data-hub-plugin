@@ -27,8 +27,12 @@ export interface ProductVariantInput extends InputRecord {
     optionCodes?: string[];
     /** URLs of images to attach */
     assetUrls?: string[];
+    /** URL of the featured/main image */
+    featuredAssetUrl?: string;
     /** Custom field values */
     customFields?: Record<string, unknown>;
+    /** Multi-language translations array (each entry: { languageCode, name }) */
+    translations?: Array<{ languageCode: string; name: string }>;
 }
 
 /**

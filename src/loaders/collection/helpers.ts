@@ -1,5 +1,8 @@
 import { ID, RequestContext, CollectionService } from '@vendure/core';
-import { CollectionInput } from './types';
+import { ConfigurableOperationInput } from '@vendure/common/lib/generated-types';
+import { CollectionInput, CollectionFilterInput } from './types';
+import { FiltersMode } from '../../../shared/types';
+import { DataHubLogger } from '../../services/logger';
 
 export { slugify, isRecoverableError, shouldUpdateField, buildConfigurableOperation } from '../shared-helpers';
 
@@ -93,4 +96,53 @@ export async function resolveParentId(
 ): Promise<ID | undefined> {
     const parent = await findParentCollection(ctx, collectionService, record);
     return parent?.id;
+}
+
+/**
+ * Handle collection filters based on the specified mode.
+ *
+ * @param ctx Request context
+ * @param collectionService Collection service instance
+ * @param collectionId ID of the collection to update
+ * @param filters New filters from the import record
+ * @param mode How to handle the filters (REPLACE_ALL, MERGE, SKIP)
+ * @param logger Logger instance
+ * @returns ConfigurableOperationInput array to apply
+ */
+export async function handleCollectionFilters(
+    ctx: RequestContext,
+    collectionService: CollectionService,
+    collectionId: ID,
+    filters: CollectionFilterInput[],
+    mode: FiltersMode = 'REPLACE_ALL',
+    logger: DataHubLogger,
+): Promise<ConfigurableOperationInput[]> {
+    if (mode === 'SKIP') {
+        // Return undefined to signal no update needed
+        return [];
+    }
+
+    const { buildConfigurableOperation } = await import('../shared-helpers.js');
+    const newFilters = filters.map(f => buildConfigurableOperation(f));
+
+    if (mode === 'REPLACE_ALL') {
+        // Replace all filters (current behavior)
+        return newFilters;
+    }
+
+    if (mode === 'MERGE') {
+        // Merge: keep existing filters, add new ones
+        const collection = await collectionService.findOne(ctx, collectionId);
+        if (!collection?.filters) {
+            return newFilters;
+        }
+
+        // Merge existing + new filters (existing filters are already ConfigurableOperationInput compatible)
+        const existingFilters = collection.filters as unknown as ConfigurableOperationInput[];
+        const merged = [...existingFilters, ...newFilters];
+        logger.debug(`Merged ${existingFilters.length} existing + ${newFilters.length} new filters = ${merged.length} total`);
+        return merged;
+    }
+
+    return newFilters;
 }

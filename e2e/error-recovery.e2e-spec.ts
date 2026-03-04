@@ -75,20 +75,52 @@ describe('DataHub Error Recovery', () => {
     });
 
     describe('Error Retry', () => {
-        it('queries run errors', async () => {
-            // First get a run to query errors for
-            const { dataHubPipelineRuns } = await adminClient.query(gql`
-                query {
-                    dataHubPipelineRuns {
-                        items { id }
-                    }
+        let retryTestPipelineId: string;
+        let retryTestRunId: string;
+
+        beforeAll(async () => {
+            const { createDataHubPipeline } = await adminClient.query(gql`
+                mutation CreatePipeline($input: CreateDataHubPipelineInput!) {
+                    createDataHubPipeline(input: $input) { id }
                 }
-            `);
+            `, {
+                input: {
+                    code: 'error-retry-test-pipeline',
+                    name: 'Error Retry Test Pipeline',
+                    definition: {
+                        version: 1,
+                        steps: [{
+                            key: 'extract',
+                            type: StepType.EXTRACT,
+                            config: { adapterCode: 'vendureQuery', entity: 'Product' },
+                        }],
+                        edges: [],
+                    },
+                },
+            });
+            retryTestPipelineId = createDataHubPipeline.id;
 
-            // Ensure we have runs to test with
-            expect(dataHubPipelineRuns.items.length).toBeGreaterThan(0);
+            const { startDataHubPipelineRun } = await adminClient.query(gql`
+                mutation RunPipeline($id: ID!) {
+                    startDataHubPipelineRun(pipelineId: $id) { id }
+                }
+            `, { id: retryTestPipelineId });
+            retryTestRunId = startDataHubPipelineRun.id;
+        });
 
-            const runId = dataHubPipelineRuns.items[0].id;
+        afterAll(async () => {
+            if (retryTestPipelineId) {
+                await adminClient.query(gql`
+                    mutation DeletePipeline($id: ID!) {
+                        deleteDataHubPipeline(id: $id) { result }
+                    }
+                `, { id: retryTestPipelineId });
+            }
+        });
+
+        it('queries run errors', async () => {
+            expect(retryTestRunId).toBeDefined();
+
             const { dataHubRunErrors } = await adminClient.query(gql`
                 query RunErrors($runId: ID!) {
                     dataHubRunErrors(runId: $runId) {
@@ -96,7 +128,7 @@ describe('DataHub Error Recovery', () => {
                         message
                     }
                 }
-            `, { runId });
+            `, { runId: retryTestRunId });
 
             expect(Array.isArray(dataHubRunErrors)).toBe(true);
         });
@@ -315,6 +347,49 @@ describe('DataHub Error Recovery', () => {
     });
 
     describe('Run History and Logs', () => {
+        let logsTestPipelineId: string;
+        let logsTestRunId: string;
+
+        beforeAll(async () => {
+            const { createDataHubPipeline } = await adminClient.query(gql`
+                mutation CreatePipeline($input: CreateDataHubPipelineInput!) {
+                    createDataHubPipeline(input: $input) { id }
+                }
+            `, {
+                input: {
+                    code: 'logs-test-pipeline',
+                    name: 'Logs Test Pipeline',
+                    definition: {
+                        version: 1,
+                        steps: [{
+                            key: 'extract',
+                            type: StepType.EXTRACT,
+                            config: { adapterCode: 'vendureQuery', entity: 'Product' },
+                        }],
+                        edges: [],
+                    },
+                },
+            });
+            logsTestPipelineId = createDataHubPipeline.id;
+
+            const { startDataHubPipelineRun } = await adminClient.query(gql`
+                mutation RunPipeline($id: ID!) {
+                    startDataHubPipelineRun(pipelineId: $id) { id }
+                }
+            `, { id: logsTestPipelineId });
+            logsTestRunId = startDataHubPipelineRun.id;
+        });
+
+        afterAll(async () => {
+            if (logsTestPipelineId) {
+                await adminClient.query(gql`
+                    mutation DeletePipeline($id: ID!) {
+                        deleteDataHubPipeline(id: $id) { result }
+                    }
+                `, { id: logsTestPipelineId });
+            }
+        });
+
         it('queries pipeline run history', async () => {
             const { dataHubPipelineRuns } = await adminClient.query(gql`
                 query {
@@ -336,18 +411,7 @@ describe('DataHub Error Recovery', () => {
         });
 
         it('queries logs for run', async () => {
-            const { dataHubPipelineRuns } = await adminClient.query(gql`
-                query {
-                    dataHubPipelineRuns {
-                        items { id }
-                    }
-                }
-            `);
-
-            // Ensure we have runs to query logs for
-            expect(dataHubPipelineRuns.items.length).toBeGreaterThan(0);
-
-            const runId = dataHubPipelineRuns.items[0].id;
+            expect(logsTestRunId).toBeDefined();
 
             const { dataHubRunLogs } = await adminClient.query(gql`
                 query GetLogs($runId: ID!) {
@@ -355,10 +419,10 @@ describe('DataHub Error Recovery', () => {
                         id
                         level
                         message
-                        timestamp
+                        createdAt
                     }
                 }
-            `, { runId });
+            `, { runId: logsTestRunId });
 
             expect(dataHubRunLogs).toBeDefined();
             expect(Array.isArray(dataHubRunLogs)).toBe(true);

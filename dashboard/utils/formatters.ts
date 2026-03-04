@@ -27,9 +27,10 @@ export function formatKey(key: string): string {
         .trim();
 }
 
-export function formatDateTime(date: Date | string | number, options?: Intl.DateTimeFormatOptions): string {
+export function formatDateTime(date: Date | string | number | null | undefined, options?: Intl.DateTimeFormatOptions): string {
+    if (date == null || date === '') return '\u2014';
     const dateObj = date instanceof Date ? date : new Date(date);
-    if (isNaN(dateObj.getTime())) return '\u2014';
+    if (isNaN(dateObj.getTime()) || dateObj.getFullYear() < 2000) return '\u2014';
 
     const defaultOptions: Intl.DateTimeFormatOptions = {
         year: 'numeric',
@@ -42,9 +43,10 @@ export function formatDateTime(date: Date | string | number, options?: Intl.Date
     return dateObj.toLocaleString('en-US', options || defaultOptions);
 }
 
-export function formatSmartDateTime(date: Date | string | number): string {
+export function formatSmartDateTime(date: Date | string | number | null | undefined): string {
+    if (date == null || date === '') return '\u2014';
     const dateObj = date instanceof Date ? date : new Date(date);
-    if (isNaN(dateObj.getTime())) return '\u2014';
+    if (isNaN(dateObj.getTime()) || dateObj.getFullYear() < 2000) return '\u2014';
 
     const now = new Date();
     const isToday = dateObj.toDateString() === now.toDateString();

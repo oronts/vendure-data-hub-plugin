@@ -521,6 +521,93 @@ async index(context, config, records) {
 }
 ```
 
+## Using Hooks with Sinks
+
+You can modify records programmatically before they reach the sink using `BEFORE_SINK` hooks. This is useful for adding computed search fields, normalizing text, or building facets without adding a separate transform step.
+
+### Interceptor Example
+
+```typescript
+const pipeline = createPipeline()
+    .name('Product Search Sync')
+    .code('product-search-sync')
+    .extract('products', { source: 'VENDURE_QUERY', entity: 'PRODUCT' })
+    .sink('index-meili', {
+        adapterCode: 'meilisearch',
+        indexName: 'products',
+        host: 'http://localhost:7700',
+        apiKeySecretCode: 'meili-key',
+    })
+    .hooks({
+        BEFORE_SINK: [{
+            type: 'INTERCEPTOR',
+            name: 'Build search attributes',
+            code: `
+                return records.map(r => ({
+                    ...r,
+                    searchText: [r.name, r.sku, r.description]
+                        .filter(Boolean).join(' ').toLowerCase(),
+                    facetTags: (r.tags || '').split(',')
+                        .map(t => t.trim()).filter(Boolean),
+                    _rankingScore: r.featured ? 1.5 : 1.0,
+                }));
+            `,
+        }],
+    })
+    .build();
+```
+
+### Script Example
+
+For complex logic, register a script function in NestJS:
+
+```typescript
+// In your plugin:
+DataHubPlugin.init({
+    scripts: {
+        'enrichForSearch': async (records, context, args) => {
+            return records.map(r => ({
+                ...r,
+                popularity: calculatePopularity(r),
+                priceRange: categorizePriceRange(r.price),
+                availability: r.stockLevel > 0 ? 'in_stock' : 'out_of_stock',
+            }));
+        },
+    },
+})
+
+// In pipeline:
+.hooks({
+    BEFORE_SINK: [{
+        type: 'SCRIPT',
+        scriptName: 'enrichForSearch',
+    }],
+})
+```
+
+### Operation-Aware Hooks
+
+When using the `__operation` field for CRUD pipelines, `BEFORE_SINK` hooks receive records with their operation type. You can use this to apply different transformations for upserts vs deletes:
+
+```typescript
+BEFORE_SINK: [{
+    type: 'INTERCEPTOR',
+    name: 'Operation-aware enrichment',
+    code: `
+        return records.map(r => {
+            if (r.__operation === 'DELETE') {
+                return { id: r.id, __operation: r.__operation };
+            }
+            return {
+                ...r,
+                searchText: r.name.toLowerCase(),
+                updatedAt: new Date().toISOString(),
+            };
+        });
+    `,
+}],
+```
+
 ## Testing
 
 ```typescript

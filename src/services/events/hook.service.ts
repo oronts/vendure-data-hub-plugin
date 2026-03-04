@@ -23,7 +23,7 @@ import { WebhookRetryService, WebhookConfig } from '../webhooks/webhook-retry.se
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { DATAHUB_PLUGIN_OPTIONS, LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK, TRUNCATION, CIRCUIT_BREAKER } from '../../constants/index';
 import { HookActionType } from '../../constants/enums';
-import { validateUserCode } from '../../utils/code-security.utils';
+import { validateScriptBlock } from '../../utils/code-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { assertUrlSafe, validateUrlSafety } from '../../utils/url-security.utils';
 
@@ -188,8 +188,12 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
                 if (result && Array.isArray(result)) {
                     currentRecords = result;
                     modified = true;
-                    this.logger.debug(`Interceptor "${actionName}" modified ${result.length} records`, {
+                    this.logger.info(`Hook "${actionName}" executed`, {
                         stage,
+                        type: action.type,
+                        recordsIn: records.length,
+                        recordsOut: result.length,
+                        modified: true,
                         runId,
                     });
                 }
@@ -234,8 +238,8 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
     ): Promise<JsonObject[] | undefined> {
         const timeout = action.timeout ?? HOOK.INTERCEPTOR_TIMEOUT_MS;
 
-        // Validate user code before execution
-        validateUserCode(action.code);
+        // Validate script block before execution (allows braces/semicolons needed for JS code)
+        validateScriptBlock(action.code);
 
         // Create an isolated context with no prototype chain
         const safeContext = createContext(Object.create(null), {

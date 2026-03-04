@@ -1,6 +1,19 @@
 export type { JsonValue, JsonObject, ValidationError } from '../../shared/types';
 
 export type {
+    AddressesMode,
+    FacetValuesMode,
+    LinesMode,
+    AssetsMode,
+    FeaturedAssetMode,
+    OptionsMode,
+    FiltersMode,
+    ConditionsMode,
+    ActionsMode,
+    GroupsMode,
+} from '../../shared/types';
+
+export type {
     PipelineDefinition,
     UnifiedPipelineDefinition,
     PipelineStepDefinition,

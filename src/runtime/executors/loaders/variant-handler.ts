@@ -37,6 +37,8 @@ import {
     resolveStockLevels,
     resolveOptionGroups,
     resolveOptionCodes,
+    resolveChannelIds,
+    parseTranslationsInput,
     OptionGroupCache,
     createOptionGroupCache,
 } from './shared-lookups';
@@ -63,6 +65,12 @@ interface VariantHandlerConfig {
     optionIdsField?: string;
     /** Field containing option codes (array, e.g. ['size-s', 'color-blue']). Resolved to IDs by code lookup. */
     optionCodesField?: string;
+    /** Field name for variant enabled/published flag (defaults to "enabled") */
+    enabledField?: string;
+    /** Record field containing channel codes (array or comma-separated string) for dynamic per-record channel assignment */
+    channelsField?: string;
+    /** Record field containing a translations array or object map for multi-language support */
+    translationsField?: string;
     channel?: string;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
     strategy?: LoadStrategy;
@@ -80,6 +88,30 @@ function getStepConfig(step: PipelineStepDefinition): VariantHandlerConfig {
  */
 function variantHasChannelsLoaded(variant: ProductVariant): variant is ProductVariant & { channels: Channel[] } {
     return 'channels' in variant && Array.isArray(variant.channels);
+}
+
+/**
+ * Build variant translations — multi-language from record field or single-language fallback.
+ */
+function buildVariantTranslations(
+    opCtx: RequestContext,
+    rec: RecordObject,
+    config: VariantHandlerConfig,
+    name: string,
+): Array<{ languageCode: LanguageCode; name: string }> {
+    if (config.translationsField) {
+        const raw = rec[config.translationsField];
+        if (raw) {
+            const parsed = parseTranslationsInput(raw);
+            if (parsed.length > 0) {
+                return parsed.map(t => ({
+                    languageCode: String(t.languageCode) as LanguageCode,
+                    name: String(t.name ?? name),
+                }));
+            }
+        }
+    }
+    return [{ languageCode: opCtx.languageCode as LanguageCode, name }];
 }
 
 @Injectable()
@@ -109,6 +141,7 @@ export class VariantHandler implements LoaderHandler {
     ): Promise<ExecutionResult> {
         let ok = 0, fail = 0;
         const optionCache = createOptionGroupCache();
+        const channelCache = new Map<string, ID>();
 
         for (const rec of input) {
             try {
@@ -126,9 +159,25 @@ export class VariantHandler implements LoaderHandler {
                 const optionCodesKey = config.optionCodesField;
 
                 const sku = getStringValue(rec, skuKey);
-                const name = getStringValue(rec, nameKey);
+                let name = getStringValue(rec, nameKey);
 
-                if (!sku || !name) { fail++; continue; }
+                // When translationsField is set and name is missing, extract from first translation
+                if (!name && config.translationsField) {
+                    const raw = rec[config.translationsField];
+                    if (raw) {
+                        const parsed = parseTranslationsInput(raw);
+                        if (parsed.length > 0 && parsed[0].name) name = String(parsed[0].name);
+                    }
+                }
+
+                if (!sku || !name) {
+                    if (onRecordError) {
+                        const missing = !sku ? 'sku' : 'name';
+                        await onRecordError(step.key, `Missing required field "${missing}" for variantUpsert`, rec);
+                    }
+                    fail++;
+                    continue;
+                }
 
                 let opCtx = ctx;
                 const channelCode = config.channel;
@@ -158,18 +207,45 @@ export class VariantHandler implements LoaderHandler {
                 const priceRaw = rec[priceKey];
 
                 if (priceMap && typeof priceMap === 'object') {
-                    prices = Object.entries(priceMap).map(([cc, v]) => ({
-                        currencyCode: cc as CurrencyCode,
-                        price: Math.round(Number(v) * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER),
-                    }));
-                } else if (priceRaw != null) {
+                    // Validate currency codes against the channel's available currencies.
+                    // Skip unavailable currencies with a WARN rather than failing the record.
+                    const availableCurrencies: CurrencyCode[] = opCtx.channel?.availableCurrencyCodes ?? [];
+                    const allPriceEntries = Object.entries(priceMap);
+                    const validPrices: UpdateProductVariantPriceInput[] = [];
+
+                    for (const [cc, v] of allPriceEntries) {
+                        if (availableCurrencies.length > 0 && !availableCurrencies.includes(cc as CurrencyCode)) {
+                            this.logger.warn(
+                                `Currency "${cc}" is not available in channel "${opCtx.channel?.code ?? 'default'}" — skipping price for variant "${sku}". Available currencies: ${availableCurrencies.join(', ')}`,
+                            );
+                            continue;
+                        }
+                        validPrices.push({
+                            currencyCode: cc as CurrencyCode,
+                            price: Math.round(Number(v) * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER),
+                        });
+                    }
+                    if (validPrices.length > 0) {
+                        prices = validPrices;
+                    }
+                }
+                if (priceRaw != null) {
                     const priceValue = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw);
                     if (!Number.isNaN(priceValue)) priceMinor = Math.round(priceValue * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
                 }
 
                 const stockOnHand = getNumberValue(rec, stockKey);
                 const customFields = getObjectValue(rec, customFieldsKey);
+
+                const enabledKey = config.enabledField ?? 'enabled';
+                const enabledRaw = rec[enabledKey];
+                const enabled = enabledRaw != null
+                    ? (typeof enabledRaw === 'boolean' ? enabledRaw : String(enabledRaw).toLowerCase() === 'true')
+                    : undefined;
+
                 const strategy = config.strategy ?? LoadStrategy.UPSERT;
+
+                let variantId: ID | undefined;
 
                 if (existingVariant) {
                     // Skip update if strategy is CREATE-only
@@ -178,7 +254,9 @@ export class VariantHandler implements LoaderHandler {
                         continue;
                     }
 
-                    await this.updateVariant(opCtx, existingVariant, name, prices, priceMinor, stockOnHand, stockLevels, taxCategoryId, customFields, channelCode);
+                    const translations = buildVariantTranslations(opCtx, rec, config, name);
+                    await this.updateVariant(opCtx, existingVariant, translations, prices, priceMinor, stockOnHand, stockLevels, taxCategoryId, customFields, channelCode, enabled);
+                    variantId = existingVariant.id;
                 } else {
                     // Skip creation if strategy is UPDATE-only
                     if (strategy === LoadStrategy.UPDATE) {
@@ -202,8 +280,30 @@ export class VariantHandler implements LoaderHandler {
                         optionGroupsKey, optionIdsKey, optionCodesKey, optionCache,
                     );
 
-                    await this.createVariant(opCtx, productId, sku, name, prices, priceMinor, stockOnHand, stockLevels, taxCategoryId, customFields, channelCode, optionIds);
+                    const translations = buildVariantTranslations(opCtx, rec, config, name);
+                    variantId = await this.createVariant(opCtx, productId, sku, translations, prices, priceMinor, stockOnHand, stockLevels, taxCategoryId, customFields, channelCode, optionIds, enabled);
                 }
+
+                // Dynamic per-record channel assignment
+                if (config.channelsField && variantId) {
+                    const rawChannels = rec[config.channelsField];
+                    if (rawChannels != null) {
+                        const channelIds = await resolveChannelIds(this.channelService, opCtx, rawChannels, channelCache, this.logger);
+                        if (channelIds.length > 0) {
+                            try {
+                                await this.channelService.assignToChannels<ProductVariant>(
+                                    opCtx,
+                                    ProductVariant as Type<ProductVariant>,
+                                    variantId,
+                                    channelIds,
+                                );
+                            } catch (error) {
+                                this.logger.warn(`Failed to assign variant ${variantId} to record channels: ${getErrorMessage(error)}`);
+                            }
+                        }
+                    }
+                }
+
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
@@ -303,7 +403,7 @@ export class VariantHandler implements LoaderHandler {
     private async updateVariant(
         opCtx: RequestContext,
         existingVariant: ProductVariant,
-        name: string,
+        translations: Array<{ languageCode: LanguageCode; name: string }>,
         prices: UpdateProductVariantPriceInput[] | undefined,
         priceMinor: number | undefined,
         stockOnHand: number | undefined,
@@ -311,11 +411,13 @@ export class VariantHandler implements LoaderHandler {
         taxCategoryId: ID | undefined,
         customFields: Record<string, unknown> | undefined,
         channelCode: string | undefined,
+        enabled?: boolean,
     ): Promise<void> {
         const update: UpdateProductVariantInput = {
             id: existingVariant.id,
             sku: existingVariant.sku,
-            translations: [{ languageCode: opCtx.languageCode as LanguageCode, name }],
+            translations,
+            ...(typeof enabled === 'boolean' ? { enabled } : {}),
         };
 
         if (prices && prices.length > 0) {
@@ -364,7 +466,7 @@ export class VariantHandler implements LoaderHandler {
         opCtx: RequestContext,
         productId: ID,
         sku: string,
-        name: string,
+        translations: Array<{ languageCode: LanguageCode; name: string }>,
         prices: UpdateProductVariantPriceInput[] | undefined,
         priceMinor: number | undefined,
         stockOnHand: number | undefined,
@@ -373,11 +475,13 @@ export class VariantHandler implements LoaderHandler {
         customFields: Record<string, unknown> | undefined,
         channelCode: string | undefined,
         optionIds?: ID[],
-    ): Promise<void> {
+        enabled?: boolean,
+    ): Promise<ID> {
         const createInput: CreateProductVariantInput = {
             productId,
             sku,
-            translations: [{ languageCode: opCtx.languageCode as LanguageCode, name }],
+            translations,
+            ...(typeof enabled === 'boolean' ? { enabled } : {}),
         };
 
         if (prices && prices.length > 0) {
@@ -416,6 +520,8 @@ export class VariantHandler implements LoaderHandler {
                 this.logger.warn(`Failed to assign created variant ${created.id} to channel: ${getErrorMessage(error)}`);
             }
         }
+
+        return created.id;
     }
 
     async simulate(

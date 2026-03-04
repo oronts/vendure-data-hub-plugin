@@ -82,6 +82,13 @@ export interface ExtractStepConfig {
     // Generator extractor (custom)
     count?: number;
     template?: JsonObject;
+    // Vendure Query options
+    entity?: string;
+    relations?: string;
+    flattenTranslations?: boolean;
+    languageCode?: string;
+    includeFields?: string[];
+    excludeFields?: string[];
     // Common options
     connectionCode?: string;
     bearerTokenSecretCode?: string;
@@ -302,6 +309,11 @@ export interface ExportStepConfig {
     // Batching
     batchSize?: number;
     maxRecordsPerFile?: number;
+    // Localization
+    languageCode?: string;
+    translationsField?: string;
+    channelCode?: string;
+    channelField?: string;
     // Secrets
     connectionCode?: string;
     bearerTokenSecretCode?: string;
@@ -362,6 +374,10 @@ export interface FeedStepConfig {
     customFields?: Record<string, string>;
     // Scheduling (for hosted feeds)
     refreshIntervalMinutes?: number;
+    // Localization
+    languageCode?: string;
+    translationsField?: string;
+    channelField?: string;
     // Secrets
     connectionCode?: string;
     apiKeySecretCode?: string;
@@ -394,9 +410,13 @@ export interface GateStepConfig {
 export interface SinkStepConfig {
     adapterCode: string;
     sinkType?: SinkType;
+
+    defaultOperation?: 'UPSERT' | 'DELETE';
     // Connection
     host?: string;
     hosts?: string[];
+    /** Elasticsearch/OpenSearch node URL (e.g., http://localhost:9200) */
+    node?: string;
     port?: number;
     protocol?: 'http' | 'https';
     // Index settings
@@ -407,8 +427,12 @@ export interface SinkStepConfig {
     refresh?: boolean | 'wait_for';
     // Algolia specific
     applicationId?: string;
+    appId?: string;
     // Meilisearch specific
     primaryKey?: string;
+    searchableFields?: string[];
+    filterableFields?: string[];
+    sortableFields?: string[];
     // Typesense specific
     collectionName?: string;
     // Document settings
@@ -424,6 +448,11 @@ export interface SinkStepConfig {
     // Actions
     deleteOnMissing?: boolean;
     upsert?: boolean;
+    // Localization
+    languageCode?: string;
+    translationsField?: string;
+    channelCode?: string;
+    channelField?: string;
     // Secrets
     connectionCode?: string;
     apiKeySecretCode?: string;

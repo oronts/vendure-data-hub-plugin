@@ -36,4 +36,10 @@ export interface BaseFeedConfig extends BaseStepConfig {
     channelId?: string;
     /** Language code for translations */
     languageCode?: string;
+    /** Record field containing translations object for localization flattening */
+    translationsField?: string;
+    /** Channel code for localization filtering */
+    channelCode?: string;
+    /** Record field containing channel information for localization filtering */
+    channelField?: string;
 }

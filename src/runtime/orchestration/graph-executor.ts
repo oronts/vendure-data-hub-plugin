@@ -7,7 +7,6 @@
  * Step execution uses strategies from ./step-strategies/.
  */
 
-import { Logger } from '@nestjs/common';
 import { RequestContext, ID } from '@vendure/core';
 import { PipelineDefinition, PipelineStepDefinition, PipelineEdge, ParallelExecutionConfig } from '../../types/index';
 import {
@@ -37,8 +36,10 @@ import { buildTopology, gatherInput } from './helpers';
 import { createStepDispatcher, StepDispatcher, StepExecutionParams } from './step-strategies';
 import { getErrorMessage } from '../../utils/error.utils';
 import { StepType as StepTypeEnum } from '../../constants/enums';
+import { LOGGER_CONTEXTS } from '../../constants/core';
+import { DataHubLoggerFactory } from '../../services/logger';
 
-const logger = new Logger('DataHub:GraphExecutor');
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.GRAPH_EXECUTOR);
 
 export type { GraphExecutionResult };
 

@@ -33,7 +33,11 @@ import {
     resolveFacetValueIds,
     slugify,
     shouldUpdateField,
+    handleFacetValues,
+    handleAssets,
+    handleFeaturedAsset,
 } from '../shared-helpers';
+import { ProductUpsertLoaderConfig } from '../../types/index';
 
 /**
  * ProductLoader - Refactored to extend BaseEntityLoader
@@ -86,7 +90,12 @@ export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
         record: ProductInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
+        // Build identifier for better error messages
+        const identifier = record.slug || record.name || record.id || 'unknown';
+
         return new ValidationBuilder()
+            .withIdentifier(`slug="${identifier}"`)
+            .withLineNumber(ValidationBuilder.getLineNumber(record as Record<string, unknown>))
             .requireStringForCreate('name', record.name, operation, 'Product name is required')
             .build();
     }
@@ -211,16 +220,49 @@ export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
             updateInput.customFields = record.customFields;
         }
 
+        await this.productService.update(ctx, updateInput as Parameters<typeof this.productService.update>[1]);
+
+        // Handle facet values with configurable mode
         if (record.facetValueCodes && shouldUpdateField('facetValueCodes', options.updateOnlyFields)) {
-            updateInput.facetValueIds = await resolveFacetValueIds(
+            const mode = (options.config as unknown as ProductUpsertLoaderConfig)?.facetValuesMode ?? 'REPLACE_ALL';
+            await handleFacetValues(
                 ctx,
+                this.productService,
                 this.facetValueService,
+                productId,
                 record.facetValueCodes,
+                mode,
                 this.logger,
             );
         }
 
-        await this.productService.update(ctx, updateInput as Parameters<typeof this.productService.update>[1]);
+        // Handle assets with configurable mode
+        if (record.assetUrls && shouldUpdateField('assetUrls', options.updateOnlyFields)) {
+            const mode = (options.config as unknown as ProductUpsertLoaderConfig)?.assetsMode ?? 'UPSERT_BY_URL';
+            await handleAssets(
+                ctx,
+                this.assetService,
+                this.productService,
+                productId,
+                record.assetUrls,
+                mode,
+                this.logger,
+            );
+        }
+
+        // Handle featured asset with configurable mode
+        if (record.featuredAssetUrl && shouldUpdateField('featuredAssetUrl', options.updateOnlyFields)) {
+            const mode = (options.config as unknown as ProductUpsertLoaderConfig)?.featuredAssetMode ?? 'UPSERT_BY_URL';
+            await handleFeaturedAsset(
+                ctx,
+                this.assetService,
+                this.productService,
+                productId,
+                record.featuredAssetUrl,
+                mode,
+                this.logger,
+            );
+        }
 
         this.logger.debug(`Updated product ${record.name} (ID: ${productId})`);
     }

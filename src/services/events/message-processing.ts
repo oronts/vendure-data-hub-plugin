@@ -79,16 +79,22 @@ export class MessageProcessing {
 
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
 
-        const conn = await this.connectionService.getByCode(ctx, config.connectionCode);
-        if (!conn) {
-            this.logger.warn(`Connection not found for consumer`, {
-                connectionCode: config.connectionCode,
-                pipelineCode: config.pipelineCode,
-            });
-            return;
+        // Internal queue adapter uses in-process buffer — no external connection needed
+        const isInternal = config.queueType.toLowerCase() === 'internal';
+        let connectionConfig: QueueConnectionConfig = {} as QueueConnectionConfig;
+
+        if (!isInternal) {
+            const conn = await this.connectionService.getByCode(ctx, config.connectionCode);
+            if (!conn) {
+                this.logger.warn(`Connection not found for consumer`, {
+                    connectionCode: config.connectionCode,
+                    pipelineCode: config.pipelineCode,
+                });
+                return;
+            }
+            connectionConfig = conn.config as QueueConnectionConfig;
         }
 
-        const connectionConfig = conn.config as QueueConnectionConfig;
         const fetchCount = Math.min(config.batchSize, availableSlots);
 
         try {

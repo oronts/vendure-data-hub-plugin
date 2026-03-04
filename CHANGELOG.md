@@ -2,6 +2,26 @@
 
 All notable changes to the Data Hub Plugin are documented here.
 
+## [0.1.4] - 2026-03-03
+
+### Added
+- **ROUTE step** with condition-based branching: per-branch condition editors using 19 comparison operators (eq, ne, gt, gte, lt, lte, in, notIn, contains, notContains, startsWith, endsWith, regex, exists, notExists, isNull, isEmpty, isNotEmpty, matches)
+- **dependencyOnly edge type** for graph execution: edges that enforce ordering without passing data
+- **Internal queue adapter** for testing sink/message pipelines without external infrastructure
+- **Stale run cleanup**: runs exceeding 1 hour automatically transition to TIMEOUT status
+- **Webhook HMAC-SHA256 signing** for sink webhook deliveries
+- **Export file registration** in REST API: exported files accessible via `/data-hub/files/:id`
+- **Per-branch condition editors** in dashboard route step configuration
+- **Resizable Configure Node panel** in workflow graph editor
+- **45 example pipelines** (previously 28) covering all step types, operators, and adapter combinations
+
+### Fixed
+- 9 critical runtime bugs: feed executor batch accumulation, gate timeout scheduling, slugify regex metacharacter injection, dot-notation field access in nested objects, trigger validation for FILE/MESSAGE types, event subscription field name mismatch, schedule activation field propagation, export format selection, and sink error serialization
+- Order import no longer produces NaN on completed orders with calculated totals
+- Trigger validation is now case-insensitive for trigger type matching
+- Webhook authentication errors now return 401 (was 500) for invalid credentials
+- Meilisearch sink correctly indexes both EN and DE translations
+
 ## [0.1.3] - 2026-02-26
 
 ### Added
@@ -167,7 +187,7 @@ Initial production release of the Data Hub Plugin for Vendure.
 - **Typesense** - Open-source search engine
 - **Queue Producer** - RabbitMQ/Redis Streams/SQS message publishing
 - **Webhook** - HTTP POST to external services
-- **PDF Generator** - Generate PDF documents from templates
+- **OpenSearch** - Open-source search and analytics engine
 
 ### Advanced Features
 

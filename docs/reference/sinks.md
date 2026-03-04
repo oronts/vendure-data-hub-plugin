@@ -352,14 +352,13 @@ Adjust batch size based on:
 
 ### Concurrency
 
-For large datasets, use multiple workers:
+For large datasets, configure parallel processing per pipeline step:
 
 ```typescript
-DataHubPlugin.init({
-    jobQueueOptions: {
-        concurrency: 4,
-    },
-})
+{
+    batchSize: 500,
+    rateLimitPerSecond: 100,  // Adjust based on target system capacity
+}
 ```
 
 ### Refresh Strategy
@@ -469,6 +468,8 @@ Send records to an HTTP endpoint via POST requests.
 | `batchSize` | number | No | Records per request |
 | `timeoutMs` | number | No | Request timeout in milliseconds (default: 30000) |
 | `retries` | number | No | Maximum retry attempts on failure (default: 3) |
+| `hmacSecretCode` | string | No | Secret code for HMAC signing. When set, each request includes an HMAC-SHA256 signature computed over the request body |
+| `signatureHeaderName` | string | No | Header name for the HMAC signature (default: `X-DataHub-Signature`) |
 
 ### Example - Single Records with Bearer Auth
 

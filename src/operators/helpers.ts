@@ -72,8 +72,14 @@ export function compare(
             return false;
         case 'exists':
             return left !== undefined && left !== null;
+        case 'notExists':
+            return left === undefined || left === null;
         case 'isNull':
             return left === null || left === undefined;
+        case 'isEmpty':
+            return left === '' || left === null || left === undefined || (Array.isArray(left) && left.length === 0);
+        case 'isNotEmpty':
+            return left !== '' && left !== null && left !== undefined && !(Array.isArray(left) && left.length === 0);
         default:
             return false;
     }
@@ -86,7 +92,11 @@ export function slugify(text: string, separator = '-'): string {
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
-        .replace(/[^a-z0-9]+/g, separator)
+        // Strip special chars (matches Vendure's normalizeString behavior: strip non-alnum non-space
+        // chars entirely rather than replacing with separator, so slugs align with Vendure's own slugs)
+        .replace(/[^a-z0-9\s]/g, '')
+        .trim()
+        .replace(/\s+/g, separator)      // Replace whitespace with separator
         .replace(new RegExp(`^${escaped}+|${escaped}+$`, 'g'), '')
         .substring(0, TRANSFORM_LIMITS.SLUG_MAX_LENGTH);
 }

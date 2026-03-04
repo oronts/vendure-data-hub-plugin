@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } from '@vendure/dashboard';
 import { FIELD_TYPE } from '../../../constants';
+import { CodeEditorWithExpand } from '../CodeEditor';
 
 export interface OperatorSchemaField {
     key: string;
@@ -75,6 +76,24 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
                     </SelectContent>
                 </Select>
                 <FieldDescription text={field.description} />
+            </div>
+        );
+    }
+
+    // Code field type — full code editor with line numbers, Tab support, and expand dialog
+    if (field.type === FIELD_TYPE.CODE || field.type === FIELD_TYPE.EXPRESSION) {
+        return (
+            <div className="space-y-1.5">
+                <FieldLabel field={field} />
+                <CodeEditorWithExpand
+                    id={`operator-${field.key}`}
+                    label={field.label || field.key}
+                    value={String(value ?? '')}
+                    onChange={(v) => handleChange(v)}
+                    placeholder={field.placeholder}
+                    rows={10}
+                    description={field.description}
+                />
             </div>
         );
     }

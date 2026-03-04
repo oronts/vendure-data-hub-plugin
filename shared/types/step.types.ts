@@ -192,6 +192,12 @@ export interface PipelineEdge {
     condition?: string;
     /** Display label for the edge */
     label?: string;
+    /**
+     * When true, this edge enforces execution ordering only — records
+     * from the source step are NOT passed as input to the target step.
+     * Useful for "must run after" semantics without data flow.
+     */
+    dependencyOnly?: boolean;
 }
 
 /**

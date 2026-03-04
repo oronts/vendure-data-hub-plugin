@@ -4,7 +4,7 @@
  * Generates generic CSV product feeds with configurable field mappings
  */
 
-import { RequestContext, Logger } from '@vendure/core';
+import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
 import { SERVICE_DEFAULTS, TRANSFORM_LIMITS } from '../../constants/index';
 import {
@@ -26,8 +26,10 @@ import {
     csvEscape,
 } from './feed-helpers';
 import { FIELD_PREFIX, FEED_DEFAULTS, GENERIC_AVAILABILITY } from './feed-constants';
+import { LOGGER_CONTEXTS } from '../../constants/core';
+import { DataHubLoggerFactory } from '../../services/logger';
 
-const LOG_CONTEXT = 'CSVFeedGenerator';
+const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
 /**
  * Default CSV field configuration
@@ -97,7 +99,7 @@ function getFieldValue(
         case 'price':
             return (variant.priceWithTax / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER).toFixed(TRANSFORM_LIMITS.CURRENCY_DECIMAL_PLACES);
         case 'price_formatted':
-            return formatPrice(variant.priceWithTax, currency);
+            return formatPrice(variant.priceWithTax, currency) ?? '';
         case 'currency':
             return currency;
         case 'availability':
@@ -227,7 +229,7 @@ export async function generateCSVFeed(
 
             rows.push(row);
         } catch (error) {
-            Logger.warn(`Failed to process variant ${variant.id}: ${error}`, LOG_CONTEXT);
+            feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
         }
     }
 

@@ -7,6 +7,7 @@ import {
     QueueTypeValue,
 } from '../../types/index';
 import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
+import { isValidCron } from '../../../shared/utils/validation';
 
 // ============================================================================
 // Type Definitions
@@ -98,11 +99,18 @@ export function validateTrigger(
 
     const cfg = rawConfig as TriggerStepConfig;
     const triggerType = getTriggerType(cfg);
+    const triggerTypeLower = triggerType?.toLowerCase();
 
-    if (triggerType === 'message') {
+    if (triggerTypeLower === 'message') {
         validateMessageTrigger(triggerStep.key, cfg, issues);
-    } else if (triggerType === 'file') {
+    } else if (triggerTypeLower === 'file') {
         validateFileTrigger(triggerStep.key, cfg, issues);
+    } else if (triggerTypeLower === 'schedule') {
+        validateScheduleTrigger(triggerStep.key, cfg, issues);
+    } else if (triggerTypeLower === 'webhook') {
+        validateWebhookTrigger(triggerStep.key, cfg, issues);
+    } else if (triggerTypeLower === 'event') {
+        validateEventTrigger(triggerStep.key, cfg, issues);
     }
 }
 
@@ -205,5 +213,89 @@ function validateFileTrigger(
                 errorCode: 'invalid-poll-interval',
             });
         }
+    }
+}
+
+function validateScheduleTrigger(
+    stepKey: string,
+    cfg: TriggerStepConfig,
+    issues: PipelineDefinitionIssue[],
+): void {
+    const rawCfg = cfg as unknown as Record<string, unknown>;
+    // Support both 'cron' (runtime field) and 'cronExpression' (legacy alias)
+    const cronExpression = (rawCfg.cron ?? rawCfg.cronExpression) as string | undefined;
+
+    if (!cronExpression || typeof cronExpression !== 'string' || cronExpression.trim().length === 0) {
+        issues.push({
+            message: `Step "${stepKey}": schedule trigger requires a cron expression (field: "cron")`,
+            stepKey,
+            errorCode: 'missing-cron-expression',
+        });
+        return;
+    }
+
+    if (!isValidCron(cronExpression)) {
+        issues.push({
+            message: `Step "${stepKey}": invalid cron expression "${cronExpression}". Must be a valid 5-field cron (minute hour day month weekday)`,
+            stepKey,
+            errorCode: 'invalid-cron-expression',
+        });
+    }
+}
+
+function validateWebhookTrigger(
+    stepKey: string,
+    cfg: TriggerStepConfig,
+    issues: PipelineDefinitionIssue[],
+): void {
+    const rawCfg = cfg as unknown as Record<string, unknown>;
+    const authType = rawCfg.authType as string | undefined;
+
+    if (!authType || typeof authType !== 'string') {
+        issues.push({
+            message: `Step "${stepKey}": webhook trigger requires authType`,
+            stepKey,
+            errorCode: 'missing-auth-type',
+        });
+        return;
+    }
+
+    if (authType === 'hmac') {
+        const signatureHeader = rawCfg.signatureHeader as string | undefined;
+        if (!signatureHeader || typeof signatureHeader !== 'string' || signatureHeader.trim().length === 0) {
+            issues.push({
+                message: `Step "${stepKey}": HMAC webhook trigger requires signatureHeader`,
+                stepKey,
+                errorCode: 'missing-signature-header',
+            });
+        }
+    }
+
+    if (authType === 'apiKey') {
+        const apiKeySecretCode = rawCfg.apiKeySecretCode as string | undefined;
+        if (!apiKeySecretCode || typeof apiKeySecretCode !== 'string' || apiKeySecretCode.trim().length === 0) {
+            issues.push({
+                message: `Step "${stepKey}": API key webhook trigger requires apiKeySecretCode`,
+                stepKey,
+                errorCode: 'missing-api-key-secret-code',
+            });
+        }
+    }
+}
+
+function validateEventTrigger(
+    stepKey: string,
+    cfg: TriggerStepConfig,
+    issues: PipelineDefinitionIssue[],
+): void {
+    const rawCfg = cfg as unknown as Record<string, unknown>;
+    const eventType = rawCfg.eventType as string | undefined;
+
+    if (!eventType || typeof eventType !== 'string' || eventType.trim().length === 0) {
+        issues.push({
+            message: `Step "${stepKey}": event trigger requires eventType`,
+            stepKey,
+            errorCode: 'missing-event-type',
+        });
     }
 }

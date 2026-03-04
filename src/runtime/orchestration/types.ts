@@ -79,7 +79,7 @@ export interface StepExecutionResult {
  * Topology data structure for graph traversal
  */
 export interface TopologyData {
-    preds: Map<string, Array<{ from: string; branch?: string }>>;
+    preds: Map<string, Array<{ from: string; branch?: string; dependencyOnly?: boolean }>>;
     indeg: Map<string, number>;
     queue: string[];
 }

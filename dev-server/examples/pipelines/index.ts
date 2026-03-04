@@ -1,233 +1,262 @@
 /**
  * Example Pipelines Index
  *
- * Production-quality example pipelines demonstrating DataHub capabilities.
- * These examples cover common use cases and best practices.
- *
- * Categories:
- * - EXPORTS: Extract data from Vendure for reporting, feeds, or integration
- * - IMPORTS: Load data into Vendure from CSV, API, or other sources
- * - SYNC: Bi-directional sync with external systems (Google, Facebook, ERPs)
- * - PROCESSING: Data enrichment, analytics, and segmentation
- * - SCHEDULED: Automated, recurring data operations
+ * 37 production-quality pipelines covering ALL DataHub capabilities:
+ * - Catalog (3): PIM sync, Magento migration, Shopify inventory
+ * - Operations (7): CSV customer import, feed generation, webhook orders (3 auth modes), file watch, message queue
+ * - Integration (8): CDC sync, event alerts, analytics, entity lifecycle, PIM customer sync, PIM order import, Magento customer migration, resilience test
+ * - Sink & Feed (3): Search index sync (5 engines), multi-feed export (4 marketplaces), CRUD sync (operation-aware delete)
+ * - ERP Complex (5): Full product import, customer sync, order import, delta sync, channel catalog
+ * - Enterprise Complex (1): Full enterprise pipeline
+ * - Enterprise Test (5): Operator stress, customer lifecycle, order state, transform chain, reconciliation
+ * - Multi-Source (6): Multi-source aggregation, webhook enrichment, cross-system order sync, bi-directional sync (2), multi-sink fan-out
  */
 
 export {
-    productExportFull,
-    customerExportFull,
-    orderExportFull,
-    inventoryExport,
-} from './export-pipelines';
+    pimCatalogSync,
+    magentoProductMigration,
+    shopifyInventorySync,
+} from './catalog-pipelines';
 
 export {
-    productImportCsv,
-    customerImportCsv,
-    stockUpdateCsv,
-    priceUpdateCsv,
-} from './import-pipelines';
+    csvCustomerImport,
+    productFeedGenerator,
+    webhookOrderImport,
+    webhookBasicAuthImport,
+    webhookJwtAuthImport,
+    fileWatchImport,
+    messageQueueImport,
+} from './operations-pipelines';
 
 export {
-    googleShoppingFeed,
-    facebookCatalogFeed,
-    restApiImport,
-} from './sync-pipelines';
+    cdcProductSync,
+    eventStockAlert,
+    customerAnalyticsExport,
+    entityLifecycleOps,
+    pimCustomerSync,
+    pimOrderImport,
+    magentoCustomerMigration,
+    resilienceTest,
+} from './integration-pipelines';
 
 export {
-    productEnrichment,
-    orderAnalytics,
-    customerSegmentation,
-} from './processing-pipelines';
+    searchIndexSync,
+    multiFeedExport,
+    searchIndexCrudSync,
+} from './sink-feed-pipelines';
 
 export {
-    dailyStockSync,
-    hourlyPriceSync,
-    weeklyCustomerCleanup,
-    webhookOrderSync,
-    lowStockAlert,
-    webhookApiKeyAuth,
-    webhookJwtAuth,
-    webhookBasicAuth,
-    multiTriggerPipeline,
-    customerImportWithValidationAndEnrichment,
-    productCatalogEnrichment,
-} from './scheduled-pipelines';
+    erpFullProductImport,
+    erpCustomerSync,
+    erpOrderImport,
+    erpDeltaSyncPipeline,
+    erpChannelSpecificCatalog,
+} from './erp-complex-pipelines';
+
+export { enterpriseComplexPipeline } from './enterprise-complex-pipeline';
 
 export {
-    interceptorHooksPipeline,
-    scriptHooksPipeline,
-    scriptOperatorPipeline,
-    advancedValidationPipeline,
-    allHookStagesPipeline,
-    customAdapterPipeline,
-} from './advanced-pipelines';
+    operatorStressTest,
+    customerLifecycleTest,
+    orderImportStateTest,
+    multiStepTransformChain,
+    reconciliationAudit,
+} from './enterprise-test-pipelines';
 
 export {
-    joinDemoPipeline,
-    parallelDemoPipeline,
-    retryDemoPipeline,
-    gateDemoPipeline,
-    cdcDemoPipeline,
-    graphqlMutationDemoPipeline,
-    fileTransformDemoPipeline,
-} from './architectural-gaps';
+    multiSourceProductAggregation,
+    webhookMultiApiEnrichment,
+    crossSystemOrderSync,
+    biDirectionalSyncA,
+    biDirectionalSyncB,
+    multiSinkFanOut,
+} from './multi-source-pipelines';
+
+export {
+    hookScripts,
+    interceptorHookDemo,
+    scriptHookDemo,
+    searchEnrichmentHookDemo,
+    multiHookChainDemo,
+    allStagesHookDemo,
+} from './hook-examples-pipelines';
 
 import {
-    productExportFull,
-    customerExportFull,
-    orderExportFull,
-    inventoryExport,
-} from './export-pipelines';
+    pimCatalogSync,
+    magentoProductMigration,
+    shopifyInventorySync,
+} from './catalog-pipelines';
 
 import {
-    productImportCsv,
-    customerImportCsv,
-    stockUpdateCsv,
-    priceUpdateCsv,
-} from './import-pipelines';
+    csvCustomerImport,
+    productFeedGenerator,
+    webhookOrderImport,
+    webhookBasicAuthImport,
+    webhookJwtAuthImport,
+    fileWatchImport,
+    messageQueueImport,
+} from './operations-pipelines';
 
 import {
-    googleShoppingFeed,
-    facebookCatalogFeed,
-    restApiImport,
-} from './sync-pipelines';
+    cdcProductSync,
+    eventStockAlert,
+    customerAnalyticsExport,
+    entityLifecycleOps,
+    pimCustomerSync,
+    pimOrderImport,
+    magentoCustomerMigration,
+    resilienceTest,
+} from './integration-pipelines';
 
 import {
-    productEnrichment,
-    orderAnalytics,
-    customerSegmentation,
-} from './processing-pipelines';
+    searchIndexSync,
+    multiFeedExport,
+    searchIndexCrudSync,
+} from './sink-feed-pipelines';
 
 import {
-    dailyStockSync,
-    hourlyPriceSync,
-    weeklyCustomerCleanup,
-    webhookOrderSync,
-    lowStockAlert,
-    webhookApiKeyAuth,
-    webhookJwtAuth,
-    webhookBasicAuth,
-    multiTriggerPipeline,
-    customerImportWithValidationAndEnrichment,
-    productCatalogEnrichment,
-} from './scheduled-pipelines';
+    erpFullProductImport,
+    erpCustomerSync,
+    erpOrderImport,
+    erpDeltaSyncPipeline,
+    erpChannelSpecificCatalog,
+} from './erp-complex-pipelines';
+
+import { enterpriseComplexPipeline } from './enterprise-complex-pipeline';
 
 import {
-    interceptorHooksPipeline,
-    scriptHooksPipeline,
-    scriptOperatorPipeline,
-    advancedValidationPipeline,
-    allHookStagesPipeline,
-    customAdapterPipeline,
-} from './advanced-pipelines';
+    operatorStressTest,
+    customerLifecycleTest,
+    orderImportStateTest,
+    multiStepTransformChain,
+    reconciliationAudit,
+} from './enterprise-test-pipelines';
 
 import {
-    joinDemoPipeline,
-    parallelDemoPipeline,
-    retryDemoPipeline,
-    gateDemoPipeline,
-    cdcDemoPipeline,
-    graphqlMutationDemoPipeline,
-    fileTransformDemoPipeline,
-} from './architectural-gaps';
+    multiSourceProductAggregation,
+    webhookMultiApiEnrichment,
+    crossSystemOrderSync,
+    biDirectionalSyncA,
+    biDirectionalSyncB,
+    multiSinkFanOut,
+} from './multi-source-pipelines';
 
-/**
- * All example pipelines grouped by category
- */
+import {
+    interceptorHookDemo,
+    scriptHookDemo,
+    searchEnrichmentHookDemo,
+    multiHookChainDemo,
+    allStagesHookDemo,
+} from './hook-examples-pipelines';
+
 export const examplePipelines = {
-    exports: {
-        productExportFull,
-        customerExportFull,
-        orderExportFull,
-        inventoryExport,
+    catalog: {
+        pimCatalogSync,
+        magentoProductMigration,
+        shopifyInventorySync,
     },
-    imports: {
-        productImportCsv,
-        customerImportCsv,
-        stockUpdateCsv,
-        priceUpdateCsv,
+    operations: {
+        csvCustomerImport,
+        productFeedGenerator,
+        webhookOrderImport,
+        webhookBasicAuthImport,
+        webhookJwtAuthImport,
+        fileWatchImport,
+        messageQueueImport,
     },
-    sync: {
-        googleShoppingFeed,
-        facebookCatalogFeed,
-        restApiImport,
+    integration: {
+        cdcProductSync,
+        eventStockAlert,
+        customerAnalyticsExport,
+        entityLifecycleOps,
     },
-    processing: {
-        productEnrichment,
-        orderAnalytics,
-        customerSegmentation,
+    erp: {
+        pimCustomerSync,
+        pimOrderImport,
+        magentoCustomerMigration,
+        resilienceTest,
     },
-    scheduled: {
-        dailyStockSync,
-        hourlyPriceSync,
-        weeklyCustomerCleanup,
-        webhookOrderSync,
-        lowStockAlert,
-        webhookApiKeyAuth,
-        webhookJwtAuth,
-        webhookBasicAuth,
-        multiTriggerPipeline,
-        customerImportWithValidationAndEnrichment,
-        productCatalogEnrichment,
+    erpComplex: {
+        erpFullProductImport,
+        erpCustomerSync,
+        erpOrderImport,
+        erpDeltaSyncPipeline,
+        erpChannelSpecificCatalog,
     },
-    advanced: {
-        interceptorHooksPipeline,
-        scriptHooksPipeline,
-        scriptOperatorPipeline,
-        advancedValidationPipeline,
-        allHookStagesPipeline,
-        customAdapterPipeline,
+    sinkAndFeed: {
+        searchIndexSync,
+        multiFeedExport,
+        searchIndexCrudSync,
     },
-    architecturalGaps: {
-        joinDemoPipeline,
-        parallelDemoPipeline,
-        retryDemoPipeline,
-        gateDemoPipeline,
-        cdcDemoPipeline,
-        graphqlMutationDemoPipeline,
-        fileTransformDemoPipeline,
+    enterprise: {
+        enterpriseComplexPipeline,
+    },
+    enterpriseTest: {
+        operatorStressTest,
+        customerLifecycleTest,
+        orderImportStateTest,
+        multiStepTransformChain,
+        reconciliationAudit,
+    },
+    multiSource: {
+        multiSourceProductAggregation,
+        webhookMultiApiEnrichment,
+        crossSystemOrderSync,
+        biDirectionalSyncA,
+        biDirectionalSyncB,
+        multiSinkFanOut,
+    },
+    hooks: {
+        interceptorHookDemo,
+        scriptHookDemo,
+        searchEnrichmentHookDemo,
+        multiHookChainDemo,
+        allStagesHookDemo,
     },
 };
 
-/**
- * Flat array of all example pipelines for registration
- */
 export const allExamplePipelines = [
-    productExportFull,
-    customerExportFull,
-    orderExportFull,
-    inventoryExport,
-    productImportCsv,
-    customerImportCsv,
-    stockUpdateCsv,
-    priceUpdateCsv,
-    googleShoppingFeed,
-    facebookCatalogFeed,
-    restApiImport,
-    productEnrichment,
-    orderAnalytics,
-    customerSegmentation,
-    dailyStockSync,
-    hourlyPriceSync,
-    weeklyCustomerCleanup,
-    webhookOrderSync,
-    lowStockAlert,
-    webhookApiKeyAuth,
-    webhookJwtAuth,
-    webhookBasicAuth,
-    multiTriggerPipeline,
-    customerImportWithValidationAndEnrichment,
-    productCatalogEnrichment,
-    interceptorHooksPipeline,
-    scriptHooksPipeline,
-    scriptOperatorPipeline,
-    advancedValidationPipeline,
-    allHookStagesPipeline,
-    customAdapterPipeline,
-    joinDemoPipeline,
-    parallelDemoPipeline,
-    retryDemoPipeline,
-    gateDemoPipeline,
-    cdcDemoPipeline,
-    graphqlMutationDemoPipeline,
-    fileTransformDemoPipeline,
+    pimCatalogSync,
+    magentoProductMigration,
+    shopifyInventorySync,
+    csvCustomerImport,
+    productFeedGenerator,
+    webhookOrderImport,
+    webhookBasicAuthImport,
+    webhookJwtAuthImport,
+    fileWatchImport,
+    messageQueueImport,
+    cdcProductSync,
+    eventStockAlert,
+    customerAnalyticsExport,
+    entityLifecycleOps,
+    pimCustomerSync,
+    pimOrderImport,
+    magentoCustomerMigration,
+    resilienceTest,
+    searchIndexSync,
+    multiFeedExport,
+    searchIndexCrudSync,
+    erpFullProductImport,
+    erpCustomerSync,
+    erpOrderImport,
+    erpDeltaSyncPipeline,
+    erpChannelSpecificCatalog,
+    enterpriseComplexPipeline,
+    operatorStressTest,
+    customerLifecycleTest,
+    orderImportStateTest,
+    multiStepTransformChain,
+    reconciliationAudit,
+    multiSourceProductAggregation,
+    webhookMultiApiEnrichment,
+    crossSystemOrderSync,
+    biDirectionalSyncA,
+    biDirectionalSyncB,
+    multiSinkFanOut,
+    interceptorHookDemo,
+    scriptHookDemo,
+    searchEnrichmentHookDemo,
+    multiHookChainDemo,
+    allStagesHookDemo,
 ];

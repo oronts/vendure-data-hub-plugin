@@ -197,8 +197,13 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                     }
                 }
 
-                // Determine operation: first run = INSERT, subsequent = UPDATE
-                const operation: CdcOperation = lastTrackingValue === undefined ? 'INSERT' : 'UPDATE';
+                // Determine operation type for downstream loaders.
+                // On first run (no checkpoint / no tracking value), we use UPSERT because
+                // the records may already exist in Vendure — we cannot assume they are all new
+                // INSERTs. UPSERT lets the loader decide whether to create or update each record.
+                // On subsequent runs (tracking value present), all rows returned by the
+                // incremental query are known modifications, so UPDATE is appropriate.
+                const operation: CdcOperation = lastTrackingValue === undefined ? 'UPSERT' : 'UPDATE';
 
                 yield {
                     data: row as JsonObject,

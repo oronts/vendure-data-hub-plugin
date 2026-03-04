@@ -100,6 +100,8 @@ const pipeline = createPipeline()
 
 24 hook stages are available (18 for step types and 6 global): BEFORE/AFTER for each step type (EXTRACT, TRANSFORM, VALIDATE, ENRICH, ROUTE, LOAD, EXPORT, FEED, SINK), plus PIPELINE_STARTED/COMPLETED/FAILED, ON_ERROR/ON_RETRY/ON_DEAD_LETTER.
 
+All 24 hook stages support record modification via interceptor and script hooks. This includes terminal steps like SINK (search indexing), EXPORT (file export), and FEED (feed generation) — allowing you to programmatically modify records right before they reach Meilisearch, Elasticsearch, CSV export, XML feeds, etc.
+
 ## Type Safety
 
 The DSL is fully typed. TypeScript will catch errors like:

@@ -15,7 +15,7 @@ import { AdapterOperatorHelpers, AdapterDefinition } from '../../sdk/types';
 import { OperatorResult } from '../types';
 import { ScriptOperatorConfig, ScriptContext } from './types';
 import {
-    validateUserCode,
+    validateScriptBlock,
     createCodeSandbox,
     CodeSecurityConfig,
 } from '../../utils/code-security.utils';
@@ -24,8 +24,11 @@ import { SafeEvaluatorConfig } from '../../runtime/sandbox';
 // Import directly from defaults to avoid circular dependency with constants/index.ts
 // which imports ../operators -> this file
 import { SAFE_EVALUATOR } from '../../constants/defaults';
+import { LOGGER_CONTEXTS } from '../../constants/core';
+import { DataHubLoggerFactory } from '../../services/logger';
 
 const DEFAULT_TIMEOUT = SAFE_EVALUATOR.DEFAULT_TIMEOUT_MS;
+const scriptLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.SCRIPT_OPERATOR);
 
 /**
  * Global configuration for script operators
@@ -178,11 +181,12 @@ export function scriptOperator(
         return { records: [...records], errors: [{ message: 'Script code is required' }] };
     }
 
-    // Validate user code before execution using security rules
+    // Validate script block before execution using security rules
     try {
-        validateUserCode(code);
+        validateScriptBlock(code);
     } catch (error) {
         const errorMsg = getErrorMessage(error);
+        scriptLogger.warn(`Script validation failed, passing ${records.length} records through untransformed: ${errorMsg}`);
         return {
             records: [...records],
             errors: [{ message: `Code validation failed: ${errorMsg}` }],
@@ -250,6 +254,7 @@ async function executeBatchScript(
         if (failOnError) {
             throw new Error(`Script execution failed: ${errorMsg}`);
         }
+        scriptLogger.warn(`Batch script failed, passing ${records.length} records through untransformed: ${errorMsg}`);
         return {
             records: [...records],
             errors: [{ message: `Script execution failed: ${errorMsg}` }],
@@ -328,6 +333,7 @@ async function executeSingleRecordScript(
             if (failOnError) {
                 throw new Error(`Script execution failed at record ${i}: ${errorMsg}`);
             }
+            scriptLogger.warn(`Script failed for record ${i}, passing original record through: ${errorMsg}`);
             errors.push({ message: `Record ${i}: ${errorMsg}` });
             // Include original record on error
             results.push(record);
@@ -356,7 +362,7 @@ function sanitizeResult(result: unknown[]): JsonObject[] {
  * Sanitize an object to prevent prototype pollution
  */
 function sanitizeObject(obj: JsonObject): JsonObject {
-    const sanitized: JsonObject = Object.create(null);
+    const sanitized: JsonObject = {};
 
     for (const [key, value] of Object.entries(obj)) {
         // Skip dangerous keys

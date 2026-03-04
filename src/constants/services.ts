@@ -78,6 +78,13 @@ export const EXTENSION_MIME_MAP: Record<string, string> = {
     '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     '.pdf': 'application/pdf',
     '.zip': 'application/zip',
+    // Image types (used by asset helpers)
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
 } as const;
 
 export const HTTP_HEADERS = {

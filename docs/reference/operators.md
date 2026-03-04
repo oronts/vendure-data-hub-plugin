@@ -289,7 +289,7 @@ Enrich records by fetching data from external HTTP endpoints with caching, authe
 | `basicAuthSecretCode` | string | No | Secret code for Basic auth (username:password) |
 | `bodyField` | string | No | Field path for POST body (uses record value at this path) |
 | `body` | json | No | Static POST body (JSON object) |
-| `skipOn404` | boolean | No | Skip record if endpoint returns 404 |
+| `skipOn404` | boolean | No | Remove record from pipeline if endpoint returns 404 (see note below) |
 | `failOnError` | boolean | No | Fail pipeline if HTTP request fails |
 | `maxRetries` | number | No | Maximum retry attempts on transient errors |
 | `batchSize` | number | No | Process this many records in parallel (default: 50) |
@@ -321,6 +321,8 @@ Enrich records by fetching data from external HTTP endpoints with caching, authe
     headers: { 'Content-Type': 'application/json' },
 } }
 ```
+
+> **`skipOn404` behavior:** When `skipOn404: true` and the enrichment HTTP lookup returns a 404, the record is **removed from the pipeline** (not passed through with original values). To preserve records when enrichment fails, use `default` to provide a fallback value instead.
 
 ---
 
@@ -697,6 +699,8 @@ Add or subtract time from a date.
 | `amount` | number | Yes | Amount (negative to subtract) |
 | `unit` | string | Yes | `seconds`, `minutes`, `hours`, `days`, `weeks`, `months`, `years` |
 
+> **Important:** Unit strings must be plural: `"days"`, `"hours"`, `"minutes"`, `"seconds"`, `"weeks"`, `"months"`, `"years"`. Singular forms like `"day"` are not supported.
+
 ```typescript
 { op: 'dateAdd', args: { source: 'orderDate', target: 'expiresAt', amount: 30, unit: 'days' } }
 { op: 'dateAdd', args: { source: 'createdAt', target: 'previousDay', amount: -1, unit: 'days' } }
@@ -713,6 +717,8 @@ Calculate the difference between two dates.
 | `target` | string | Yes | Target field path |
 | `unit` | select | Yes | `seconds`, `minutes`, `hours`, `days`, `weeks`, `months`, `years` |
 | `absolute` | boolean | No | Return absolute value (no negative numbers) |
+
+> **Important:** Unit strings must be plural: `"days"`, `"hours"`, `"minutes"`, `"seconds"`, `"weeks"`, `"months"`, `"years"`. Singular forms like `"day"` are not supported.
 
 ```typescript
 { op: 'dateDiff', args: { startDate: 'createdAt', endDate: 'completedAt', target: 'durationDays', unit: 'days' } }
@@ -748,7 +754,7 @@ Filter records by conditions.
 | `conditions` | array | Yes | Array of condition objects |
 | `action` | string | Yes | `keep` or `drop` |
 
-Condition operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `contains`, `notContains`, `startsWith`, `endsWith`, `regex`, `exists`, `isNull`
+Condition operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `contains`, `notContains`, `startsWith`, `endsWith`, `regex`, `exists`, `notExists`, `isNull`, `isEmpty`, `isNotEmpty`, `matches` (glob)
 
 ```typescript
 { op: 'when', args: {
@@ -804,6 +810,34 @@ Set a value based on multiple conditions.
     target: 'statusText',
 }}
 ```
+
+### Comparison Operators
+
+All 19 comparison operators used by `when`, `ifThenElse`, `switch`, and ROUTE step conditions:
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `eq` | Equal (strict `===`) | `{ field: 'status', cmp: 'eq', value: 'active' }` |
+| `ne` | Not equal (strict `!==`) | `{ field: 'status', cmp: 'ne', value: 'deleted' }` |
+| `gt` | Greater than (numeric) | `{ field: 'price', cmp: 'gt', value: 0 }` |
+| `gte` | Greater than or equal (numeric) | `{ field: 'stock', cmp: 'gte', value: 10 }` |
+| `lt` | Less than (numeric) | `{ field: 'price', cmp: 'lt', value: 1000 }` |
+| `lte` | Less than or equal (numeric) | `{ field: 'weight', cmp: 'lte', value: 50 }` |
+| `in` | Value in array | `{ field: 'status', cmp: 'in', value: ['active', 'pending'] }` |
+| `notIn` | Value not in array | `{ field: 'status', cmp: 'notIn', value: ['deleted', 'archived'] }` |
+| `contains` | String contains substring | `{ field: 'name', cmp: 'contains', value: 'widget' }` |
+| `notContains` | String does not contain | `{ field: 'name', cmp: 'notContains', value: 'test' }` |
+| `startsWith` | String starts with | `{ field: 'sku', cmp: 'startsWith', value: 'PRD-' }` |
+| `endsWith` | String ends with | `{ field: 'email', cmp: 'endsWith', value: '@example.com' }` |
+| `regex` | Regular expression match | `{ field: 'sku', cmp: 'regex', value: '^[A-Z]{3}-\\d+$' }` |
+| `matches` | Glob pattern match | `{ field: 'path', cmp: 'matches', value: '/products/**/*.json' }` |
+| `exists` | Value is not null/undefined | `{ field: 'email', cmp: 'exists', value: true }` |
+| `notExists` | Value is null or undefined | `{ field: 'deletedAt', cmp: 'notExists', value: true }` |
+| `isNull` | Value is null or undefined | `{ field: 'description', cmp: 'isNull', value: true }` |
+| `isEmpty` | Empty string, null, undefined, or empty array | `{ field: 'tags', cmp: 'isEmpty', value: true }` |
+| `isNotEmpty` | Non-empty value (string, array, etc.) | `{ field: 'name', cmp: 'isNotEmpty', value: true }` |
+
+---
 
 ### deltaFilter
 

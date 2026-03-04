@@ -1,0 +1,13 @@
+sku,location,stock_on_hand,reorder_level,last_counted
+LAPTOP-001,Hauptlager,150,20,2026-02-28
+LAPTOP-001,Aussenlager,45,10,2026-02-28
+PHONE-001,Hauptlager,320,50,2026-02-27
+PHONE-001,Aussenlager,80,15,2026-02-27
+TABLET-001,Hauptlager,0,25,2026-02-28
+TABLET-001,Aussenlager,12,5,2026-02-28
+HEADPHONE-001,Hauptlager,200,30,2026-02-26
+HEADPHONE-001,Aussenlager,55,10,2026-02-26
+CHARGER-001,Hauptlager,500,100,2026-02-28
+CHARGER-001,Aussenlager,150,25,2026-02-28
+CASE-001,Hauptlager,75,20,2026-02-27
+CASE-001,Aussenlager,0,5,2026-02-27

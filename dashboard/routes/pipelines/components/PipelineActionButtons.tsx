@@ -134,11 +134,11 @@ export function PipelineActionButtons({
     const canPublish = status === PIPELINE_STATUS.DRAFT || status === PIPELINE_STATUS.REVIEW;
 
     return (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
             <PipelineImportDialog onImport={onImport} />
             <PipelineExportDialog definition={definition} />
 
-            <div className="mx-1 h-6 w-px bg-border" />
+            <div className="mx-1 hidden sm:block h-6 w-px bg-border" />
 
             <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
                 <Button
@@ -168,7 +168,7 @@ export function PipelineActionButtons({
                 </Button>
             </PermissionGuard>
 
-            <div className="mx-1 h-6 w-px bg-border" />
+            <div className="mx-1 hidden sm:block h-6 w-px bg-border" />
 
             <Button
                 variant="ghost"

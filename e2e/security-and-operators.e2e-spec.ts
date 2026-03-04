@@ -221,7 +221,7 @@ describe('DataHub Plugin E2E', () => {
     describe('Pipeline Definition Validation', () => {
         it('validates pipeline with missing extractor', async () => {
             const { validateDataHubPipelineDefinition } = await adminClient.query(gql`
-                mutation ValidateDefinition($input: JSON!) {
+                query ValidateDefinition($input: JSON!) {
                     validateDataHubPipelineDefinition(definition: $input) {
                         isValid
                         issues {
@@ -251,7 +251,7 @@ describe('DataHub Plugin E2E', () => {
 
         it('validates pipeline with circular dependency', async () => {
             const { validateDataHubPipelineDefinition } = await adminClient.query(gql`
-                mutation ValidateDefinition($input: JSON!) {
+                query ValidateDefinition($input: JSON!) {
                     validateDataHubPipelineDefinition(definition: $input) {
                         isValid
                         issues {
@@ -285,7 +285,7 @@ describe('DataHub Plugin E2E', () => {
 
         it('accepts valid pipeline definition', async () => {
             const { validateDataHubPipelineDefinition } = await adminClient.query(gql`
-                mutation ValidateDefinition($input: JSON!) {
+                query ValidateDefinition($input: JSON!) {
                     validateDataHubPipelineDefinition(definition: $input) {
                         isValid
                         issues {
@@ -331,14 +331,14 @@ describe('DataHub Plugin E2E', () => {
             expect(dataHubAdapters.length).toBeGreaterThan(0);
 
             // Check extractors exist
-            expect(dataHubAdapters.some((a: AdapterListItem) => a.type === 'extractor')).toBe(true);
+            expect(dataHubAdapters.some((a: AdapterListItem) => a.type === 'EXTRACTOR')).toBe(true);
 
             // Check operators exist
-            expect(dataHubAdapters.some((a: AdapterListItem) => a.type === 'operator')).toBe(true);
+            expect(dataHubAdapters.some((a: AdapterListItem) => a.type === 'OPERATOR')).toBe(true);
             expect(dataHubAdapters.some((a: AdapterListItem) => a.code === 'trim')).toBe(true);
 
             // Check loaders exist
-            expect(dataHubAdapters.some((a: AdapterListItem) => a.type === 'loader')).toBe(true);
+            expect(dataHubAdapters.some((a: AdapterListItem) => a.type === 'LOADER')).toBe(true);
         });
 
         it('includes expected extractors', async () => {
@@ -352,7 +352,7 @@ describe('DataHub Plugin E2E', () => {
                 }
             `);
 
-            const extractors = dataHubAdapters.filter((a: AdapterListItem) => a.type === 'extractor');
+            const extractors = dataHubAdapters.filter((a: AdapterListItem) => a.type === 'EXTRACTOR');
             expect(extractors.length).toBeGreaterThan(0);
 
             // Check vendureQuery extractor exists (standard extractor)

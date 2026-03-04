@@ -4,7 +4,7 @@
  * Shared utility functions for feed generators
  */
 
-import { Collection, Product, ProductVariant, RequestContext } from '@vendure/core';
+import { Collection, Product, RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
 import { VariantWithCustomFields } from './feed-types';
 import {
@@ -37,9 +37,13 @@ export function getStockOnHand(variant: VariantWithCustomFields): number {
 }
 
 /**
- * Format price with currency
+ * Format price with currency.
+ * Returns null if priceInCents is NaN/undefined/null or currency is empty/undefined.
  */
-export function formatPrice(priceInCents: number, currency: string): string {
+export function formatPrice(priceInCents: number, currency: string): string | null {
+    if (!currency || typeof priceInCents !== 'number' || isNaN(priceInCents)) {
+        return null;
+    }
     return `${(priceInCents / 100).toFixed(2)} ${currency}`;
 }
 
@@ -52,10 +56,24 @@ export function getGoogleAvailability(variant: VariantWithCustomFields): GoogleA
     return GOOGLE_AVAILABILITY.OUT_OF_STOCK;
 }
 
+/** Valid Facebook availability values, derived from the FACEBOOK_AVAILABILITY constant */
+const VALID_FACEBOOK_AVAILABILITY_VALUES: readonly string[] = Object.values(FACEBOOK_AVAILABILITY);
+
 /**
- * Get Facebook Catalog availability status
+ * Get Facebook Catalog availability status.
+ * Checks for explicit availability override in customFields before falling back to stock-based derivation.
  */
 export function getFacebookAvailability(variant: VariantWithCustomFields): FacebookAvailabilityStatus {
+    // Check for explicit availability override in customFields or direct field
+    const customFields = variant.customFields as Record<string, unknown> | undefined;
+    const customAvailability = customFields?.availability ?? (variant as unknown as Record<string, unknown>).availability;
+    if (typeof customAvailability === 'string') {
+        const normalized = customAvailability.toLowerCase().replace(/[_-]/g, ' ');
+        if (VALID_FACEBOOK_AVAILABILITY_VALUES.includes(normalized)) {
+            return normalized as FacebookAvailabilityStatus;
+        }
+    }
+    // Default: derive from stock
     const stockOnHand = getStockOnHand(variant);
     if (stockOnHand > 0) return FACEBOOK_AVAILABILITY.IN_STOCK;
     return FACEBOOK_AVAILABILITY.OUT_OF_STOCK;
@@ -66,7 +84,7 @@ export function getFacebookAvailability(variant: VariantWithCustomFields): Faceb
  */
 export function buildProductUrl(
     baseUrl: string,
-    variant: ProductVariant,
+    variant: VariantWithCustomFields,
     utmParams?: Record<string, string>,
 ): string {
     const product = variant.product;
@@ -89,7 +107,7 @@ export function buildProductUrl(
  * Get image URL for variant/product
  */
 export function getImageUrl(
-    variant: ProductVariant,
+    variant: VariantWithCustomFields,
     product: Product | undefined,
     baseUrl: string,
 ): string {
@@ -117,7 +135,7 @@ export function getGenericAvailability(variant: VariantWithCustomFields): Generi
  * Get additional image URLs for variant/product
  */
 export function getAdditionalImages(
-    _variant: ProductVariant,
+    _variant: VariantWithCustomFields,
     product: Product | undefined,
     baseUrl: string,
 ): string[] {
@@ -160,7 +178,10 @@ export async function getProductType(
 ): Promise<string | undefined> {
     if (!product) return undefined;
 
-    // Get product type from collections using channel-scoped repository
+    // Get product type from collections using channel-scoped repository.
+    // NOTE: 'collection_product_variants_product_variant' is the TypeORM-generated join table
+    // for the Collection.productVariants ManyToMany relation. If Vendure changes its entity
+    // relationships or table naming strategy, this join table name may need updating.
     try {
         const collections = await connection.getRepository(ctx, Collection)
             .createQueryBuilder('c')
@@ -192,7 +213,7 @@ export async function getProductType(
 /**
  * Get option value from variant
  */
-export function getOptionValue(variant: ProductVariant, groupName: string): string | undefined {
+export function getOptionValue(variant: VariantWithCustomFields, groupName: string): string | undefined {
     const option = variant.options?.find(
         o =>
             o.group?.name?.toLowerCase() === groupName.toLowerCase() ||

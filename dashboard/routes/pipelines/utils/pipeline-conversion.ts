@@ -148,7 +148,7 @@ export function toVisualDefinition(
     const nodes: PipelineNode[] = steps.map((step, i) => {
         const id = String(step.key ?? `step-${i}`);
         const category = mapStepTypeToCategory(step.type);
-        const adapterCode = step.config?.adapterCode;
+        const adapterCode = step.adapterCode ?? step.config?.adapterCode;
         const label = step.name || step.key || `Step ${i + 1}`;
 
         return {
@@ -220,10 +220,8 @@ export function toCanonicalDefinition(
                 key: node.id ?? `step-${idx}`,
                 type: stepType,
                 name: node.data?.label,
-                config: {
-                    ...restConfig,
-                    adapterCode,
-                },
+                adapterCode: adapterCode || undefined,
+                config: restConfig,
             };
         });
 

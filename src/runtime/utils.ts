@@ -296,7 +296,12 @@ export function recordsToCsv(records: RecordObject[], delimiter: string, include
         lines.push(keys.map(k => csvEscape(k, delimiter)).join(delimiter));
     }
     for (const rec of records) {
-        const vals = keys.map(k => csvEscape(String(rec[k] ?? ''), delimiter));
+        const vals = keys.map(k => {
+            const v = rec[k];
+            if (v === null || v === undefined) return csvEscape('', delimiter);
+            if (typeof v === 'object') return csvEscape(JSON.stringify(v), delimiter);
+            return csvEscape(String(v), delimiter);
+        });
         lines.push(vals.join(delimiter));
     }
     return lines.join('\n');

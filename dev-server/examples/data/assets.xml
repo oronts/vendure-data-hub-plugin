@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<assets>
+  <asset>
+    <url>https://picsum.photos/id/1/800/600</url>
+    <filename>product-laptop-hero.jpg</filename>
+    <name>Laptop Hero Image</name>
+    <type>IMAGE</type>
+    <tags>laptop,hero,product</tags>
+  </asset>
+  <asset>
+    <url>https://picsum.photos/id/2/800/600</url>
+    <filename>product-phone-front.jpg</filename>
+    <name>Phone Front View</name>
+    <type>IMAGE</type>
+    <tags>phone,front,product</tags>
+  </asset>
+  <asset>
+    <url>https://picsum.photos/id/3/800/600</url>
+    <filename>category-electronics-banner.jpg</filename>
+    <name>Electronics Category Banner</name>
+    <type>IMAGE</type>
+    <tags>category,banner,electronics</tags>
+  </asset>
+  <asset>
+    <url>https://picsum.photos/id/4/800/600</url>
+    <filename>product-tablet-lifestyle.jpg</filename>
+    <name>Tablet Lifestyle Shot</name>
+    <type>IMAGE</type>
+    <tags>tablet,lifestyle,product</tags>
+  </asset>
+  <asset>
+    <url>https://picsum.photos/id/5/800/600</url>
+    <filename>brand-logo-techcorp.png</filename>
+    <name>TechCorp Brand Logo</name>
+    <type>IMAGE</type>
+    <tags>brand,logo,techcorp</tags>
+  </asset>
+</assets>
