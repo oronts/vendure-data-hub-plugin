@@ -106,13 +106,21 @@ export type ValidateStepConfig = SchemaValidatorConfig & {
 export interface EnrichStepConfig {
     adapterCode?: string;
     defaults?: Record<string, unknown>;
+    set?: Record<string, unknown>;
     computed?: Record<string, string>;
     sourceType?: 'VENDURE' | 'HTTP' | 'STATIC';
-    matchField?: string;
-    selectFields?: string[];
-    entity?: string;
-    endpoint?: string;
-    data?: Record<string, unknown>[];
+    url?: string;
+    keyField?: string;
+    target?: string;
+    responsePath?: string;
+    cacheTtlSec?: number;
+    skipOn404?: boolean;
+    bearerTokenSecretCode?: string;
+    entityType?: string;
+    sourceField?: string;
+    lookupField?: string;
+    targetFields?: Record<string, string>;
+    [key: string]: unknown;
 }
 
 // ============================================================================

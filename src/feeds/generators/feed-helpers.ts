@@ -18,9 +18,9 @@ import {
 } from './feed-constants';
 
 /**
- * Extended variant type that may include legacy stockOnHand property
+ * Extended variant type for Vendure versions where stockOnHand is a direct property
  */
-interface VariantWithLegacyStock extends VariantWithCustomFields {
+interface VariantWithDirectStock extends VariantWithCustomFields {
     stockOnHand?: number;
 }
 
@@ -32,8 +32,8 @@ export function getStockOnHand(variant: VariantWithCustomFields): number {
     if (variant.stockLevels && variant.stockLevels.length > 0) {
         return variant.stockLevels.reduce((sum, sl) => sum + sl.stockOnHand, 0);
     }
-    // Fallback to stockOnHand if it exists as a direct property (legacy support)
-    return (variant as VariantWithLegacyStock).stockOnHand ?? 0;
+    // Fallback to stockOnHand direct property (Vendure <2.1 compatibility)
+    return (variant as VariantWithDirectStock).stockOnHand ?? 0;
 }
 
 /**

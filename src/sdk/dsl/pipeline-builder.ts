@@ -299,7 +299,7 @@ export function createPipeline(): PipelineBuilder {
         edge(from: string, to: string, options?: string | { branch?: string; dependencyOnly?: boolean }) {
             validateNonEmptyString(from, 'Edge "from" step');
             validateNonEmptyString(to, 'Edge "to" step');
-            // Support legacy string shorthand for branch name
+            // String shorthand: .edge('a', 'b', 'branch-name') → { branch: 'branch-name' }
             const opts = typeof options === 'string' ? { branch: options } : options;
             state.edges.push(createEdge(from, to, opts));
             return this;

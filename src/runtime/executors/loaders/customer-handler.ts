@@ -308,7 +308,7 @@ export class CustomerHandler implements LoaderHandler {
 
     /**
      * Process addresses for a customer.
-     * Supports addressesMode: APPEND_ONLY (default legacy), UPSERT_BY_MATCH, REPLACE_ALL, SKIP.
+     * Supports addressesMode: APPEND_ONLY (default), UPSERT_BY_MATCH, REPLACE_ALL, SKIP.
      */
     private async processAddresses(
         ctx: RequestContext,
@@ -402,7 +402,7 @@ export class CustomerHandler implements LoaderHandler {
             return;
         }
 
-        // APPEND_ONLY: always create (legacy behavior)
+        // APPEND_ONLY: always create new addresses
         for (const addr of addresses) {
             if (!isAddressRecord(addr)) continue;
             try {

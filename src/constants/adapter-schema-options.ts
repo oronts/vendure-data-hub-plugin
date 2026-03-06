@@ -645,8 +645,14 @@ export const ENRICHMENT_SOURCE_TYPES: TypedOptionValue[] = [
         label: 'HTTP',
         description: 'Fetch enrichment data from an HTTP endpoint',
         fields: [
-            { key: 'endpoint', label: 'API Endpoint', type: 'string', required: true, placeholder: 'https://api.example.com/lookup', description: 'URL to fetch enrichment data. Use {{field}} for dynamic values.' },
-            { key: 'matchField', label: 'Match Field', type: 'string', required: true, placeholder: 'sku', description: 'Record field to use for lookup matching' },
+            { key: 'url', label: 'URL', type: 'string', required: true, placeholder: 'https://api.example.com/lookup/${record.id}', description: 'URL to fetch enrichment data. Use ${record.field} for dynamic values.' },
+            { key: 'keyField', label: 'Key Field', type: 'string', placeholder: 'sku', description: 'Record field to use as the lookup cache key' },
+            { key: 'target', label: 'Target Field', type: 'string', placeholder: 'enrichment', description: 'Field name to store the enrichment result on each record' },
+            { key: 'responsePath', label: 'Response Path', type: 'string', placeholder: 'data', description: 'JSON path to extract from the HTTP response (e.g. data.items)' },
+            { key: 'method', label: 'HTTP Method', type: 'string', placeholder: 'GET', description: 'HTTP method (GET or POST)' },
+            { key: 'bearerTokenSecretCode', label: 'Bearer Token Secret', type: 'string', placeholder: 'my-api-token', description: 'Secret code for Bearer token authentication' },
+            { key: 'cacheTtlSec', label: 'Cache TTL (sec)', type: 'number', placeholder: '3600', description: 'Cache duration in seconds for HTTP responses' },
+            { key: 'skipOn404', label: 'Skip on 404', type: 'boolean', description: 'Skip enrichment instead of failing when endpoint returns 404' },
         ],
     },
     {
@@ -654,8 +660,10 @@ export const ENRICHMENT_SOURCE_TYPES: TypedOptionValue[] = [
         label: 'Vendure',
         description: 'Query Vendure entities for enrichment data',
         fields: [
-            { key: 'entity', label: 'Entity Type', type: 'entitySelect', required: true },
-            { key: 'matchField', label: 'Match Field', type: 'string', required: true, placeholder: 'sku', description: 'Record field to match against Vendure entity' },
+            { key: 'entityType', label: 'Entity Type', type: 'entitySelect', required: true },
+            { key: 'sourceField', label: 'Source Field', type: 'string', required: true, placeholder: 'sku', description: 'Record field to use for entity lookup' },
+            { key: 'lookupField', label: 'Lookup Field', type: 'string', required: true, placeholder: 'sku', description: 'Vendure entity field to match against' },
+            { key: 'target', label: 'Target Field', type: 'string', placeholder: 'vendureData', description: 'Field name to store the matched entity data' },
         ],
     },
 ];

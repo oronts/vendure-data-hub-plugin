@@ -2,6 +2,30 @@
 
 All notable changes to the Data Hub Plugin are documented here.
 
+## [0.1.5] - 2026-03-05
+
+### Added
+- **Operation-aware sink CRUD**: Sink executor partitions records by `__operation` field (UPSERT/DELETE) and dispatches to appropriate handlers. Delete handlers for all 7 sink engines: MeiliSearch, Elasticsearch, OpenSearch, Algolia, Typesense, Webhook, Queue Producer
+- **Event trigger operation injection**: Vendure entity events (ProductEvent, OrderEvent, etc.) now inject `__operation` (CREATE/UPDATE/DELETE) into seed records, enabling operation-aware pipelines
+- **BEFORE_SINK / AFTER_SINK hooks**: Sink step strategy now supports record-modifying interceptor hooks before and after search index operations
+- **5 hook demo pipelines**: Interceptor demo, Script demo (DI closure), Search enrichment (BEFORE_SINK), Multi-hook chain (proves modifications flow through all stages), All-stages demo (hooks at every step boundary)
+- **Hook stage metadata**: Extended hook stage constants with sink-specific stages and error handling stages
+- **117 e2e test implementations** across 14 loader test files: customer addresses (5 modes), product facet values (4 modes), product assets (4 modes + featured), variant modes (facets/assets/options), order lines (4 modes), collection modes (assets + filters), promotion modes (conditions + actions) — all using shared test helpers
+- **All 257 e2e tests passing** (was 204/259 in v0.1.4)
+
+### Fixed
+- Shared-helpers `updateViaService()` for ProductVariantService array signature
+- Product variant loader `updateEntity()` uses translations array correctly
+- Security and operator tests: query vs mutation, uppercase adapter types
+- Pipeline execution + error recovery tests: isolated `beforeAll`/`afterAll` per block
+- Variant/collection/promotion mode tests: use correct loader classes (not raw handlers)
+- Customer address handler: UPDATE_BY_ID falls back to APPEND_ONLY correctly
+- Order lines: customer setup + linesMode propagation
+- 14 unused imports removed, `let` → `const` fixes, lint-clean codebase
+
+### Changed
+- **DRY feed generators**: Extracted `buildBaseFeedItem()` shared across Google/Facebook generators, `flattenTranslationFields()` + `isJsonPrimitive()` in vendure-query helpers, `MAX_SERIALIZATION_DEPTH` constant
+
 ## [0.1.4] - 2026-03-03
 
 ### Added
@@ -471,4 +495,5 @@ Pre-built integration for Pimcore PIM/DAM → Vendure sync:
 
 ## Version History
 
+- **0.1.5** (2026-03-05) - Operation-aware sink CRUD, hook demos, 257 e2e tests passing
 - **0.1.0** (2026-02-24) - Initial production release

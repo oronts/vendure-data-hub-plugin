@@ -44,7 +44,7 @@ export async function writeExportFile(
     const { ctx, config, records, onRecordError, stepKey, logger, fileStorageService } = params;
     try {
         const basePath = (config.path as string) ?? FILE_STORAGE.TEMP_DIR;
-        const filenamePattern = (config.filenamePattern ?? config.filename) as string | undefined;
+        const filenamePattern = config.filenamePattern as string | undefined;
         const outputPath = resolveOutputPath(basePath, filenamePattern, defaultFilename);
 
         let content = formatContent(records, config);
