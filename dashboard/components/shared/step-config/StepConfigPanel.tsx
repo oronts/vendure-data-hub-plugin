@@ -240,7 +240,7 @@ export function StepConfigPanel({
     }, [dynamicFields, updateConfigBatch]);
 
     const handleTriggerChange = useCallback((trigger: PipelineTrigger) => {
-        updateConfigBatch({
+        const batch: Record<string, unknown> = {
             type: trigger.type,
             enabled: trigger.enabled,
             cron: trigger.cron,
@@ -248,8 +248,12 @@ export function StepConfigPanel({
             webhookCode: trigger.webhookCode,
             authentication: trigger.authentication,
             secretCode: trigger.secretCode,
-            event: trigger.eventType,
-        });
+            event: trigger.event,
+        };
+        // Preserve nested config objects (message, fileWatch) for complex triggers
+        if (trigger.message) batch.message = trigger.message;
+        if (trigger.fileWatch) batch.fileWatch = trigger.fileWatch;
+        updateConfigBatch(batch);
     }, [updateConfigBatch]);
 
     const triggerValue = useMemo(() => ({
@@ -260,8 +264,10 @@ export function StepConfigPanel({
         webhookCode: data.config?.webhookCode as string,
         authentication: data.config?.authentication as PipelineTrigger['authentication'],
         secretCode: data.config?.secretCode as string,
-        eventType: (data.config?.event as string) || (data.config?.eventType as string),
-    }), [data.config?.type, data.config?.enabled, data.config?.cron, data.config?.timezone, data.config?.webhookCode, data.config?.authentication, data.config?.secretCode, data.config?.event, data.config?.eventType]);
+        event: data.config?.event as string,
+        message: data.config?.message as Record<string, unknown> | undefined,
+        fileWatch: data.config?.fileWatch as Record<string, unknown> | undefined,
+    }), [data.config?.type, data.config?.enabled, data.config?.cron, data.config?.timezone, data.config?.webhookCode, data.config?.authentication, data.config?.secretCode, data.config?.event, data.config?.message, data.config?.fileWatch]);
 
     const renderHeader = () => {
         if (!showHeader) return null;
@@ -377,9 +383,9 @@ export function StepConfigPanel({
             );
         }
 
-        // Steps with built-in config editors don't need the adapter selector empty state
+        // Steps with built-in config editors handle their own source/type selection
         const hasBuiltInConfig = stepType in SPECIAL_CONFIG_EDITORS;
-        if (hasBuiltInConfig && availableAdapters.length === 0) return null;
+        if (hasBuiltInConfig) return null;
 
         return (
             <div className={compact ? 'space-y-2' : 'space-y-3'}>

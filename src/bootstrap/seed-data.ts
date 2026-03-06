@@ -43,7 +43,7 @@ export class ConfigSyncService implements OnApplicationBootstrap {
     ) {}
 
     async onApplicationBootstrap() {
-        if (!this.options.enabled) {
+        if (this.options.enabled === false) {
             return;
         }
 

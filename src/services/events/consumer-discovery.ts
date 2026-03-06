@@ -103,22 +103,23 @@ export class ConsumerDiscovery {
             if (!cfg) continue;
 
             const config = cfg as Record<string, unknown>;
+            const msg = (config.message as Record<string, unknown> | undefined) ?? {};
             configs.push({
                 pipelineId: pipeline.id,
                 pipelineCode: pipeline.code,
                 triggerKey: trigger.key,
-                queueType: String(config.queueType ?? QueueType.RABBITMQ).toLowerCase(),
-                connectionCode: String(config.connectionCode ?? ''),
-                queueName: String(config.queueName ?? ''),
-                consumerGroup: config.consumerGroup as string | undefined,
-                batchSize: Number(config.batchSize) || 10,
-                concurrency: Number(config.concurrency) || 1,
-                ackMode: (config.ackMode as AckMode) || AckMode.MANUAL,
-                maxRetries: Number(config.maxRetries) || 3,
-                deadLetterQueue: config.deadLetterQueue as string | undefined,
-                pollIntervalMs: Number(config.pollIntervalMs) || SCHEDULER.MIN_INTERVAL_MS,
-                autoStart: config.autoStart !== false,
-                prefetch: config.prefetch ? Number(config.prefetch) : undefined,
+                queueType: String(msg.queueType ?? QueueType.RABBITMQ).toLowerCase(),
+                connectionCode: String(msg.connectionCode ?? ''),
+                queueName: String(msg.queueName ?? ''),
+                consumerGroup: msg.consumerGroup as string | undefined,
+                batchSize: Number(msg.batchSize) || 10,
+                concurrency: Number(msg.concurrency) || 1,
+                ackMode: (msg.ackMode as AckMode) || AckMode.MANUAL,
+                maxRetries: Number(msg.maxRetries) || 3,
+                deadLetterQueue: msg.deadLetterQueue as string | undefined,
+                pollIntervalMs: Number(msg.pollIntervalMs) || SCHEDULER.MIN_INTERVAL_MS,
+                autoStart: msg.autoStart !== false,
+                prefetch: msg.prefetch ? Number(msg.prefetch) : undefined,
             });
         }
 

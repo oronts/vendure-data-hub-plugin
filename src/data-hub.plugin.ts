@@ -291,8 +291,8 @@ export class DataHubPlugin {
      * @param options - Plugin configuration options
      * @returns Configured DataHubPlugin class
      */
-    static init(options: DataHubPluginOptions = { enabled: true }): Type<DataHubPlugin> {
-        this.options = options;
+    static init(options: DataHubPluginOptions = {}): Type<DataHubPlugin> {
+        this.options = { enabled: true, importTemplates: DEFAULT_IMPORT_TEMPLATES, ...options };
         return DataHubPlugin;
     }
 }

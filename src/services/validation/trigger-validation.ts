@@ -14,9 +14,7 @@ import { isValidCron } from '../../../shared/utils/validation';
 // ============================================================================
 
 interface TriggerStepConfig extends TriggerConfig {
-    message?: MessageTriggerConfig & {
-        queue?: string;
-    };
+    message?: MessageTriggerConfig;
     fileWatch?: FileWatchTriggerConfig;
 }
 
@@ -42,7 +40,7 @@ function isTriggerStepConfig(config: unknown): config is TriggerStepConfig {
 
 function isMessageTriggerConfig(
     value: unknown,
-): value is MessageTriggerConfig & { queue?: string } {
+): value is MessageTriggerConfig {
     if (typeof value !== 'object' || value === null) {
         return false;
     }
@@ -57,10 +55,6 @@ function isMessageTriggerConfig(
     }
     // queueName, if present, must be a string
     if (cfg.queueName !== undefined && typeof cfg.queueName !== 'string') {
-        return false;
-    }
-    // queue, if present, must be a string
-    if (cfg.queue !== undefined && typeof cfg.queue !== 'string') {
         return false;
     }
     return true;
@@ -121,7 +115,7 @@ function validateMessageTrigger(
 ): void {
     const messageConfig = isMessageTriggerConfig(cfg.message) ? cfg.message : undefined;
     const queueType = getQueueType(messageConfig);
-    const queueTypeLower = queueType?.toLowerCase();
+    const queueTypeUpper = queueType?.toUpperCase();
 
     // All supported queue types
     const supportedQueueTypes = new Set([
@@ -141,7 +135,7 @@ function validateMessageTrigger(
         return;
     }
 
-    if (!supportedQueueTypes.has(queueTypeLower as QueueType)) {
+    if (!supportedQueueTypes.has(queueTypeUpper as QueueType)) {
         issues.push({
             message: `Step "${stepKey}": unsupported queueType "${queueType}". Supported types: ${Array.from(supportedQueueTypes).join(', ')}`,
             stepKey,
@@ -151,7 +145,7 @@ function validateMessageTrigger(
     }
 
     // Validate required fields based on queue type
-    if (!messageConfig?.connectionCode && queueTypeLower !== QueueType.INTERNAL) {
+    if (!messageConfig?.connectionCode && queueTypeUpper !== QueueType.INTERNAL) {
         issues.push({
             message: `Step "${stepKey}": ${queueType} message trigger requires connectionCode`,
             stepKey,
@@ -159,9 +153,7 @@ function validateMessageTrigger(
         });
     }
 
-    // Check for queueName or queue
-    const queueName = messageConfig?.queueName ?? messageConfig?.queue;
-    if (!queueName) {
+    if (!messageConfig?.queueName) {
         issues.push({
             message: `Step "${stepKey}": ${queueType} message trigger requires queue name`,
             stepKey,
@@ -222,10 +214,9 @@ function validateScheduleTrigger(
     issues: PipelineDefinitionIssue[],
 ): void {
     const rawCfg = cfg as unknown as Record<string, unknown>;
-    // Support both 'cron' (runtime field) and 'cronExpression' (legacy alias)
-    const cronExpression = (rawCfg.cron ?? rawCfg.cronExpression) as string | undefined;
+    const cron = rawCfg.cron as string | undefined;
 
-    if (!cronExpression || typeof cronExpression !== 'string' || cronExpression.trim().length === 0) {
+    if (!cron || typeof cron !== 'string' || cron.trim().length === 0) {
         issues.push({
             message: `Step "${stepKey}": schedule trigger requires a cron expression (field: "cron")`,
             stepKey,
@@ -234,9 +225,9 @@ function validateScheduleTrigger(
         return;
     }
 
-    if (!isValidCron(cronExpression)) {
+    if (!isValidCron(cron)) {
         issues.push({
-            message: `Step "${stepKey}": invalid cron expression "${cronExpression}". Must be a valid 5-field cron (minute hour day month weekday)`,
+            message: `Step "${stepKey}": invalid cron expression "${cron}". Must be a valid 5-field cron (minute hour day month weekday)`,
             stepKey,
             errorCode: 'invalid-cron-expression',
         });
@@ -289,11 +280,11 @@ function validateEventTrigger(
     issues: PipelineDefinitionIssue[],
 ): void {
     const rawCfg = cfg as unknown as Record<string, unknown>;
-    const eventType = rawCfg.eventType as string | undefined;
+    const event = rawCfg.event as string | undefined;
 
-    if (!eventType || typeof eventType !== 'string' || eventType.trim().length === 0) {
+    if (!event || typeof event !== 'string' || event.trim().length === 0) {
         issues.push({
-            message: `Step "${stepKey}": event trigger requires eventType`,
+            message: `Step "${stepKey}": event trigger requires event field`,
             stepKey,
             errorCode: 'missing-event-type',
         });

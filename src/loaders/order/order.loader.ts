@@ -324,7 +324,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
     protected async updateEntity(context: LoaderContext, orderId: ID, record: OrderInput): Promise<void> {
         const { ctx, options } = context;
 
-        // Handle order lines with mode (default: REPLACE_ALL for backwards compatibility)
+        // Handle order lines with mode (default: REPLACE_ALL)
         if (record.lines && record.lines.length > 0 && shouldUpdateField('lines', options.updateOnlyFields)) {
             const linesMode = (options.config as unknown as OrderUpsertLoaderConfig)?.linesMode ?? 'REPLACE_ALL';
             await handleOrderLines(

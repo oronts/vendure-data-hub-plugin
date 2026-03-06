@@ -506,10 +506,13 @@ export const messageQueueImport = createPipeline()
 
     .trigger('consume-queue', {
         type: 'MESSAGE',
-        queueType: 'internal',
-        queueName: 'product-updates',
-        batchSize: 10,
-        ackMode: 'AUTO',
+        message: {
+            queueType: 'INTERNAL',
+            queueName: 'product-updates',
+            connectionCode: '',
+            batchSize: 10,
+            ackMode: 'AUTO',
+        },
     })
 
     .extract('parse-message', {

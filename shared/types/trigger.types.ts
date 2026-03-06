@@ -253,8 +253,6 @@ export interface TriggerConfig {
     retryDelayMs?: number;
     /** Timeout for trigger execution in milliseconds */
     timeoutMs?: number;
-    /** Event type for event triggers (shorthand) */
-    eventType?: string;
 }
 
 /**
@@ -300,6 +298,4 @@ export interface PipelineTrigger extends TriggerConfig {
     rateLimit?: number;
     /** Require idempotency key (webhook triggers) */
     requireIdempotencyKey?: boolean;
-    /** Event type (event triggers) */
-    eventType?: string;
 }

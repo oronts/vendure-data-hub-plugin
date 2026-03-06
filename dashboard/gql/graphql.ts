@@ -2673,9 +2673,13 @@ export type DataHubPipelineRun = Node & {
   __typename?: 'DataHubPipelineRun';
   /** Checkpoint data for resumable pipelines: { lastProcessedId, cursor, state } */
   checkpoint?: Maybe<Scalars['JSON']['output']>;
+  /** Alias for finishedAt — when the run reached a terminal state */
+  completedAt?: Maybe<Scalars['DateTime']['output']>;
   createdAt: Scalars['DateTime']['output'];
   /** Error message if run failed */
   error?: Maybe<Scalars['String']['output']>;
+  /** Alias for error — error message if the run failed */
+  errorMessage?: Maybe<Scalars['String']['output']>;
   finishedAt?: Maybe<Scalars['DateTime']['output']>;
   id: Scalars['ID']['output'];
   /** Execution metrics: { recordsProcessed, recordsFailed, stepMetrics, duration, etc. } */
@@ -2693,8 +2697,10 @@ export type DataHubPipelineRun = Node & {
 export type DataHubPipelineRunFilterParameter = {
   _and?: InputMaybe<Array<DataHubPipelineRunFilterParameter>>;
   _or?: InputMaybe<Array<DataHubPipelineRunFilterParameter>>;
+  completedAt?: InputMaybe<DateOperators>;
   createdAt?: InputMaybe<DateOperators>;
   error?: InputMaybe<StringOperators>;
+  errorMessage?: InputMaybe<StringOperators>;
   finishedAt?: InputMaybe<DateOperators>;
   id?: InputMaybe<IdOperators>;
   startedAt?: InputMaybe<DateOperators>;
@@ -2724,8 +2730,10 @@ export type DataHubPipelineRunListOptions = {
 };
 
 export type DataHubPipelineRunSortParameter = {
+  completedAt?: InputMaybe<SortOrder>;
   createdAt?: InputMaybe<SortOrder>;
   error?: InputMaybe<SortOrder>;
+  errorMessage?: InputMaybe<SortOrder>;
   finishedAt?: InputMaybe<SortOrder>;
   id?: InputMaybe<SortOrder>;
   startedAt?: InputMaybe<SortOrder>;
@@ -5280,7 +5288,11 @@ export type Mutation = {
   settleRefund: SettleRefundResult;
   /** Simulate load step - checks what would be created/updated without writing */
   simulateDataHubLoad: Scalars['JSON']['output'];
-  /** Simulate transform step - applies transforms to input records */
+  /**
+   * Simulate transform step - applies transforms to input records.
+   * The step argument expects a JSON object with shape:
+   * { config: { operators: [{ op: string, args: Record<string, any> }] } }
+   */
   simulateDataHubTransform: Array<Scalars['JSON']['output']>;
   /** Simulate validate step - runs validation rules on input records */
   simulateDataHubValidate: DataHubValidateResult;

@@ -76,8 +76,8 @@ export function ValidateConfigComponent({
     const ruleTypes = ruleTypeSchemas;
     const { options: validationModes } = useOptionValues('validationModes');
     const errorHandlingOptions = validationModes;
-    const errorHandlingMode = (config.errorHandlingMode as string) || 'FAIL_FAST';
-    const validationMode = (config.validationMode as string) || 'STRICT';
+    const errorHandlingMode = (config.errorHandlingMode as string) || '';
+    const validationMode = (config.validationMode as string) || '';
     const rawRules = (config.rules as ValidationRule[]) || [];
     const stableIds = useStableIndexIds(rawRules, 'validation-rule');
     const rules = useMemo<ValidationRuleWithId[]>(() =>

@@ -176,14 +176,62 @@ export interface EnrichStepConfig {
     computed?: Record<string, string>;
     /** Enrichment source type */
     sourceType?: 'STATIC' | 'HTTP' | 'VENDURE';
-    /** HTTP endpoint URL for HTTP source type */
-    endpoint?: string;
-    /** Field to match for lookups */
-    matchField?: string;
-    /** Vendure entity type for VENDURE source type */
-    entity?: string;
+
+    // ── HTTP enrichment ─────────────────────────────────────────────────
+    /** HTTP endpoint URL. Use ${record.field} for dynamic values. */
+    url?: string;
+    /** HTTP method (default: GET) */
+    method?: 'GET' | 'POST';
+    /** Record field to use as the lookup cache key */
+    keyField?: string;
+    /** Field name to store enrichment result on each record (default: 'enrichment') */
+    target?: string;
+    /** JSON path to extract from HTTP response (e.g. 'data.items') */
+    responsePath?: string;
+    /** Cache TTL in seconds */
+    cacheTtlSec?: number;
+    /** Skip enrichment on 404 instead of failing */
+    skipOn404?: boolean;
+    /** Fail the entire step on HTTP error */
+    failOnError?: boolean;
+    /** Secret code for Bearer token authentication */
+    bearerTokenSecretCode?: string;
+    /** Secret code for API key authentication */
+    apiKeySecretCode?: string;
+    /** Header name for API key (default: X-Api-Key) */
+    apiKeyHeader?: string;
+    /** Secret code for Basic auth */
+    basicAuthSecretCode?: string;
+    /** Custom request headers */
+    headers?: Record<string, string>;
+    /** Request body for POST method */
+    body?: JsonValue;
+    /** Field to use as request body */
+    bodyField?: string;
+    /** Max retry attempts */
+    maxRetries?: number;
+    /** Batch size for parallel lookups */
+    batchSize?: number;
+    /** Rate limit (requests per second) */
+    rateLimitPerSecond?: number;
+    /** Timeout in milliseconds */
+    timeoutMs?: number;
+    /** Default value if enrichment returns nothing */
+    default?: JsonValue;
+
+    // ── VENDURE enrichment ──────────────────────────────────────────────
+    /** Vendure entity type (e.g. 'PRODUCT_VARIANT') */
+    entityType?: string;
+    /** Record field to look up */
+    sourceField?: string;
+    /** Vendure entity field to match against */
+    lookupField?: string;
+    /** Specific entity fields to copy into the record */
+    targetFields?: Record<string, string>;
+
     /** Additional adapter config */
     config?: JsonObject;
+    [key: string]: unknown;
 }
 
 // ROUTE STEP CONFIG
@@ -271,7 +319,6 @@ export interface ExportStepConfig {
     format?: ExportFormatType;
     // File output
     path?: string;
-    filename?: string;
     filenamePattern?: string;
     compress?: boolean | 'gzip' | 'zip';
     // API/Webhook output
