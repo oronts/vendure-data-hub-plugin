@@ -9,10 +9,7 @@ import { JsonObject, JsonValue } from './json.types';
 import { StepMetrics, StepError } from './step.types';
 
 /**
- * Metrics for a complete pipeline run
- */
-/**
- * Pipeline metrics that can be updated during runtime.
+ * Pipeline metrics collected during runtime.
  * Supports additional custom metric keys beyond the standard ones.
  */
 export interface PipelineMetrics {
@@ -169,7 +166,7 @@ export interface InvalidRecord {
 /**
  * Validation error for a specific field in a record
  */
-interface ValidationErrorRecord {
+export interface ValidationErrorRecord {
     /** Field that failed validation */
     readonly field?: string;
     /** Validation rule that failed */

@@ -12,7 +12,7 @@ Index your data to search engines with automatic circuit breaker protection.
 |--------|--------------|----------|
 | MeiliSearch | `meilisearch` | Full-text search, faceting |
 | Elasticsearch | `elasticsearch` | Advanced querying, analytics |
-| OpenSearch | `elasticsearch` | AWS-compatible (uses Elasticsearch adapter) |
+| OpenSearch | `opensearch` | AWS-compatible, Elasticsearch-compatible API |
 | Algolia | `algolia` | Instant search, relevance tuning |
 | Typesense | `typesense` | Typo-tolerant, fast |
 

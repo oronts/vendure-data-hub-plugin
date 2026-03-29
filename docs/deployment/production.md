@@ -86,7 +86,7 @@ For smaller deployments, the default configuration works:
 
 ```typescript
 jobQueueOptions: {
-    activeQueues: ['default', 'data-hub-run', 'data-hub-schedule'],
+    activeQueues: ['default', 'data-hub.run', 'data-hub.schedule'],
 }
 ```
 
@@ -102,7 +102,7 @@ jobQueueOptions: {
 
 // Worker process - handles data hub jobs
 jobQueueOptions: {
-    activeQueues: ['data-hub-run', 'data-hub-schedule'],
+    activeQueues: ['data-hub.run', 'data-hub.schedule'],
 }
 ```
 
@@ -116,7 +116,7 @@ import config from './vendure-config';
 bootstrapWorker({
     ...config,
     jobQueueOptions: {
-        activeQueues: ['data-hub-run', 'data-hub-schedule'],
+        activeQueues: ['data-hub.run', 'data-hub.schedule'],
         pollInterval: 1000,
     },
 })
@@ -169,7 +169,7 @@ Set the minimum level to persist:
 
 ```graphql
 mutation {
-    setDataHubSettings(input: {
+    updateDataHubSettings(input: {
         logPersistenceLevel: "info"  # debug, info, warn, error
     }) {
         logPersistenceLevel

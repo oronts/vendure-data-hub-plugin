@@ -29,9 +29,6 @@ interface StockAdjustConfig {
     absolute?: boolean;
 }
 
-/**
- * Type guard to check if a value is a StockAdjustConfig
- */
 function isStockAdjustConfig(value: unknown): value is StockAdjustConfig {
     if (value === null || typeof value !== 'object') return false;
     const config = value as Record<string, unknown>;
@@ -42,21 +39,11 @@ function isStockAdjustConfig(value: unknown): value is StockAdjustConfig {
     );
 }
 
-/**
- * Type guard to check if a value is a Record<string, number> for stock levels
- */
 function isStockByLocationMap(value: unknown): value is Record<string, number> {
     if (value === null || typeof value !== 'object') return false;
     return Object.entries(value as Record<string, unknown>).every(
         ([, v]) => typeof v === 'number'
     );
-}
-
-/**
- * Safely get a string or number property from a record
- */
-function getRecordField(record: RecordObject, key: string): unknown {
-    return record[key];
 }
 
 @Injectable()
@@ -84,27 +71,45 @@ export class StockAdjustHandler implements LoaderHandler {
         const config: StockAdjustConfig = isStockAdjustConfig(step.config) ? step.config : {};
         const skuKey = config.skuField ?? 'sku';
         const stockMapKey = config.stockByLocationField ?? 'stockByLocation';
-        const absolute = Boolean(config.absolute ?? false);
 
         for (const rec of input) {
             try {
-                const skuValue = getRecordField(rec, skuKey);
+                const skuValue = rec[skuKey];
 
-                if (skuValue === undefined || skuValue === null) { fail++; continue; }
+                if (skuValue === undefined || skuValue === null) {
+                    if (onRecordError) {
+                        await onRecordError(step.key, `Missing required SKU field "${skuKey}"`, rec);
+                    }
+                    fail++;
+                    continue;
+                }
                 const variant = await this.findVariantBySku(ctx, String(skuValue));
-                if (!variant) { fail++; continue; }
+                if (!variant) {
+                    if (onRecordError) {
+                        await onRecordError(step.key, `Variant not found for SKU "${String(skuValue)}"`, rec);
+                    }
+                    fail++;
+                    continue;
+                }
 
-                const mapValue = getRecordField(rec, stockMapKey);
-                if (!isStockByLocationMap(mapValue)) { fail++; continue; }
+                const mapValue = rec[stockMapKey];
+                if (!isStockByLocationMap(mapValue)) {
+                    if (onRecordError) {
+                        await onRecordError(step.key, `Invalid or missing stock-by-location map in field "${stockMapKey}" for SKU "${String(skuValue)}"`, rec);
+                    }
+                    fail++;
+                    continue;
+                }
 
                 const levels = await this.resolveStockLevelsByCode(ctx, mapValue);
-                if (!levels || !levels.length) { fail++; continue; }
+                if (!levels || !levels.length) {
+                    if (onRecordError) {
+                        await onRecordError(step.key, `No valid stock locations resolved for SKU "${String(skuValue)}"`, rec);
+                    }
+                    fail++; continue;
+                }
 
-                // Build update input with stock levels
-                const stockLevels = levels.map(l => ({
-                    ...l,
-                    adjustmentStrategy: absolute ? 'SET' as const : 'ADJUST' as const,
-                }));
+                const stockLevels = levels;
 
                 const update: UpdateProductVariantInput = {
                     id: variant.id,

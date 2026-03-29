@@ -80,7 +80,7 @@ export type DependsOnOperator = 'eq' | 'ne' | 'in' | 'exists';
 /**
  * Option for select/multiselect fields
  *
- * @see AdapterSchemaField — uses SelectOption[] in its `options` property
+ * @see AdapterSchemaField - uses SelectOption[] in its `options` property
  */
 export interface SelectOption {
     /** Value stored in configuration */

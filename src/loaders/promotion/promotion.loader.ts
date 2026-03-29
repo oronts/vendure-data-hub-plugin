@@ -3,7 +3,6 @@ import {
     ID,
     Promotion,
     RequestContext,
-    TransactionalConnection,
     PromotionService,
 } from '@vendure/core';
 import {
@@ -36,18 +35,7 @@ import {
 } from './helpers';
 import type { PromotionUpsertLoaderConfig } from '../../../shared/types';
 
-/**
- * PromotionLoader - Refactored to extend BaseEntityLoader
- *
- * This eliminates ~60 lines of duplicate load() method code that was
- * copy-pasted across all loaders. The base class handles:
- * - Result initialization
- * - Validation loop
- * - Duplicate detection
- * - CREATE/UPDATE/UPSERT operation logic
- * - Dry run mode
- * - Error handling
- */
+/** Loads Promotion entities via PromotionService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class PromotionLoader extends BaseEntityLoader<PromotionInput, Promotion> {
     protected readonly logger: DataHubLogger;
@@ -56,7 +44,6 @@ export class PromotionLoader extends BaseEntityLoader<PromotionInput, Promotion>
     private readonly lookupHelper: EntityLookupHelper<PromotionService, Promotion, PromotionInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private promotionService: PromotionService,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -283,13 +270,14 @@ export class PromotionLoader extends BaseEntityLoader<PromotionInput, Promotion>
 
         if ((record.name !== undefined && shouldUpdateField('name', options.updateOnlyFields)) ||
             (record.description !== undefined && shouldUpdateField('description', options.updateOnlyFields))) {
-            updateInput.translations = [
-                {
-                    languageCode: ctx.languageCode,
-                    name: record.name,
-                    description: record.description,
-                },
-            ];
+            const translation: Record<string, unknown> = { languageCode: ctx.languageCode };
+            if (record.name !== undefined && shouldUpdateField('name', options.updateOnlyFields)) {
+                translation.name = record.name;
+            }
+            if (record.description !== undefined && shouldUpdateField('description', options.updateOnlyFields)) {
+                translation.description = record.description;
+            }
+            updateInput.translations = [translation];
         }
 
         // Handle conditions with mode

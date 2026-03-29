@@ -66,15 +66,13 @@ function parseXmlValue(value: string): string | number | boolean | null {
     // Empty value
     if (trimmed === '') return '';
 
-    // Boolean
-    if (trimmed.toLowerCase() === 'true') return true;
-    if (trimmed.toLowerCase() === 'false') return false;
+    const lower = trimmed.toLowerCase();
 
-    // Null
-    if (trimmed.toLowerCase() === 'null' || trimmed === 'nil') return null;
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+    if (lower === 'null' || lower === 'nil') return null;
 
-    // Number
-    if (trimmed !== '' && !isNaN(Number(trimmed))) {
+    if (!isNaN(Number(trimmed))) {
         return Number(trimmed);
     }
 

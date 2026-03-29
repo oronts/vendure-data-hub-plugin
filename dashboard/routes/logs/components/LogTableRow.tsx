@@ -19,7 +19,8 @@ export const LogTableRow = React.memo(function LogTableRow({
 }: LogTableRowProps) {
     const handleClick = React.useCallback(() => onSelect(log), [onSelect, log]);
     const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
             onSelect(log);
         }
     }, [onSelect, log]);
@@ -55,8 +56,8 @@ export const LogTableRow = React.memo(function LogTableRow({
                 {log.recordsProcessed != null ? (
                     <span>
                         {log.recordsProcessed}
-                        {log.recordsFailed > 0 && (
-                            <span className="text-red-600 ml-1">
+                        {(log.recordsFailed ?? 0) > 0 && (
+                            <span className="text-red-600 dark:text-red-400 ml-1">
                                 ({log.recordsFailed} failed)
                             </span>
                         )}

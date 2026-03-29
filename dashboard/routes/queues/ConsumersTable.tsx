@@ -72,7 +72,7 @@ const ConsumerRow = React.memo(function ConsumerRow({
     );
 });
 
-// Consumers Table with virtualization
+// Consumers Table with load-more pagination
 export function ConsumersTable({
     consumers,
     onStop,

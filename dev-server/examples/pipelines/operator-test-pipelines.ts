@@ -102,7 +102,7 @@ export const testStringOperators = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-string-operators.json',
+        filenamePattern: 'test-string-operators.json',
     })
     .build();
 
@@ -204,7 +204,7 @@ export const testNumericOperators = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-numeric-operators.json',
+        filenamePattern: 'test-numeric-operators.json',
     })
     .build();
 
@@ -250,26 +250,26 @@ export const testDateOperators = createPipeline()
             { op: 'dateParse', args: { source: 'orderDate', target: 'orderDateISO', format: 'DD/MM/YYYY' } },
 
             // dateAdd: add 30 days to createdAt
-            { op: 'dateAdd', args: { source: 'createdAt', target: 'thirtyDaysLater', amount: 30, unit: 'day' } },
+            { op: 'dateAdd', args: { source: 'createdAt', target: 'thirtyDaysLater', amount: 30, unit: 'days' } },
 
             // dateAdd: add 1 year
-            { op: 'dateAdd', args: { source: 'createdAt', target: 'oneYearLater', amount: 1, unit: 'year' } },
+            { op: 'dateAdd', args: { source: 'createdAt', target: 'oneYearLater', amount: 1, unit: 'years' } },
 
             // dateAdd: subtract 7 days (negative amount)
-            { op: 'dateAdd', args: { source: 'expiresAt', target: 'sevenDaysBefore', amount: -7, unit: 'day' } },
+            { op: 'dateAdd', args: { source: 'expiresAt', target: 'sevenDaysBefore', amount: -7, unit: 'days' } },
 
             // dateDiff: days between createdAt and expiresAt
-            { op: 'dateDiff', args: { startDate: 'createdAt', endDate: 'expiresAt', target: 'daysUntilExpiry', unit: 'day', absolute: true } },
+            { op: 'dateDiff', args: { startDate: 'createdAt', endDate: 'expiresAt', target: 'daysUntilExpiry', unit: 'days', absolute: true } },
 
             // dateDiff: months
-            { op: 'dateDiff', args: { startDate: 'createdAt', endDate: 'expiresAt', target: 'monthsUntilExpiry', unit: 'month', absolute: true } },
+            { op: 'dateDiff', args: { startDate: 'createdAt', endDate: 'expiresAt', target: 'monthsUntilExpiry', unit: 'months', absolute: true } },
         ],
     })
 
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-date-operators.json',
+        filenamePattern: 'test-date-operators.json',
     })
     .build();
 
@@ -354,7 +354,7 @@ export const testLogicOperators = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-logic-operators.json',
+        filenamePattern: 'test-logic-operators.json',
     })
     .build();
 
@@ -404,9 +404,7 @@ export const testJsonOperators = createPipeline()
             {
                 op: 'pick',
                 args: {
-                    paths: ['id', 'name', 'price', 'metaParsed'],
-                    target: 'publicRecord',
-                    passthrough: false,
+                    fields: ['id', 'name', 'price', 'metaParsed'],
                 },
             },
 
@@ -414,7 +412,7 @@ export const testJsonOperators = createPipeline()
             {
                 op: 'omit',
                 args: {
-                    paths: ['secret', 'debugInfo', 'internalCode'],
+                    fields: ['secret', 'debugInfo', 'internalCode'],
                 },
             },
         ],
@@ -423,7 +421,7 @@ export const testJsonOperators = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-json-operators.json',
+        filenamePattern: 'test-json-operators.json',
     })
     .build();
 
@@ -506,7 +504,7 @@ export const testDataOperators = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-data-operators.json',
+        filenamePattern: 'test-data-operators.json',
     })
     .build();
 
@@ -576,7 +574,7 @@ export const testEnrichmentOperators = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-enrichment-operators.json',
+        filenamePattern: 'test-enrichment-operators.json',
     })
     .build();
 
@@ -643,7 +641,7 @@ export const testAggregationOperators = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-aggregation-operators.json',
+        filenamePattern: 'test-aggregation-operators.json',
     })
     .build();
 
@@ -680,7 +678,7 @@ export const testAggregationBatch = createPipeline()
     .export('before-expand', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-aggregation-batch.json',
+        filenamePattern: 'test-aggregation-batch.json',
     })
     .build();
 
@@ -714,7 +712,7 @@ export const testExpandOperator = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-expand-operator.json',
+        filenamePattern: 'test-expand-operator.json',
     })
     .build();
 
@@ -765,7 +763,7 @@ export const testValidationOperators = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-validation-operators.json',
+        filenamePattern: 'test-validation-operators.json',
     })
     .build();
 
@@ -835,7 +833,7 @@ export const testScriptOperator = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-script-operator.json',
+        filenamePattern: 'test-script-operator.json',
     })
     .build();
 
@@ -884,7 +882,7 @@ export const testScriptBatchMode = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-script-batch.json',
+        filenamePattern: 'test-script-batch.json',
     })
     .build();
 
@@ -929,7 +927,7 @@ export const testScriptSecurity = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-script-security.json',
+        filenamePattern: 'test-script-security.json',
     })
     .build();
 
@@ -983,7 +981,7 @@ export const testNullEdgeCases = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-null-edge-cases.json',
+        filenamePattern: 'test-null-edge-cases.json',
     })
     .build();
 
@@ -1025,7 +1023,7 @@ export const testCustomOperators = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-custom-operators.json',
+        filenamePattern: 'test-custom-operators.json',
     })
     .build();
 
@@ -1063,7 +1061,7 @@ export const testDeltaFilter = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-delta-filter.json',
+        filenamePattern: 'test-delta-filter.json',
     })
     .build();
 
@@ -1101,7 +1099,7 @@ export const testMultiJoin = createPipeline()
     .export('output', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'test-multi-join.json',
+        filenamePattern: 'test-multi-join.json',
     })
     .build();
 

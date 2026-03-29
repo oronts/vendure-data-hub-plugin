@@ -1248,4 +1248,4 @@ Execute inline JavaScript code to transform records. Use for complex logic that 
 
 ## Custom Operators
 
-You can register custom operators using the SDK. See [Custom Operators Guide](../guides/custom-operators.md) for details.
+You can register custom operators using the SDK. See [Custom Operators Guide](../developer-guide/extending/custom-operators.md) for details.

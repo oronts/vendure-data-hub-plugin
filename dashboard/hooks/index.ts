@@ -5,7 +5,7 @@ export type {
 
 export * from './api';
 
-export { useStableKeys } from './use-stable-keys';
+export { useStableKeys, useStableIndexIds } from './use-stable-keys';
 
 export { useLoadMore } from './use-load-more';
 

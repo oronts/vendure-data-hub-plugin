@@ -30,6 +30,7 @@ import { deliverToLocal, testLocalDestination } from './local.handler';
 import { deliverToSFTP, deliverToFTP } from './ftp.handler';
 import { deliverToEmail } from './email.handler';
 import { assertUrlSafe } from '../../utils/url-security.utils';
+import { HTTP } from '../../constants/index';
 
 export type DeliverFn = (config: DestinationConfig, buffer: Buffer, filename: string, options?: DeliveryOptions) => Promise<DeliveryResult>;
 export type TestFn = (config: DestinationConfig, start: number) => Promise<ConnectionTestResult>;
@@ -59,14 +60,17 @@ export const DESTINATION_TEST_REGISTRY: ReadonlyMap<string, TestFn> = new Map<st
     [DESTINATION_TYPE.HTTP, async (cfg, start) => {
         const httpConfig = cfg as HTTPDestinationConfig;
         await assertUrlSafe(httpConfig.url);
-        const response = await fetch(httpConfig.url, { method: 'HEAD' }).catch(() => null);
-        if (response) {
+        const response = await fetch(httpConfig.url, { method: 'HEAD', signal: AbortSignal.timeout(HTTP.TIMEOUT_MS) }).catch(() => null);
+        if (response && response.ok) {
             return { success: true, message: `HTTP endpoint reachable (${response.status})`, latencyMs: Date.now() - start };
+        }
+        if (response) {
+            return { success: false, message: `HTTP endpoint returned ${response.status}`, latencyMs: Date.now() - start };
         }
         return { success: false, message: 'HTTP endpoint unreachable' };
     }],
-    [DESTINATION_TYPE.LOCAL, (cfg, start) => {
-        const result = testLocalDestination(cfg as LocalDestinationConfig);
-        return Promise.resolve({ ...result, latencyMs: Date.now() - start });
+    [DESTINATION_TYPE.LOCAL, async (cfg, start) => {
+        const result = await testLocalDestination(cfg as LocalDestinationConfig);
+        return { ...result, latencyMs: Date.now() - start };
     }],
 ]);

@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import {
     ID,
     RequestContext,
-    TransactionalConnection,
     StockLocationService,
     StockLocation,
 } from '@vendure/core';
@@ -26,18 +25,7 @@ import {
 import { StockLocationInput, STOCK_LOCATION_LOADER_METADATA } from './types';
 import { shouldUpdateField } from '../shared-helpers';
 
-/**
- * StockLocationLoader - Refactored to extend BaseEntityLoader
- *
- * This eliminates ~60 lines of duplicate load() method code that was
- * copy-pasted across all loaders. The base class handles:
- * - Result initialization
- * - Validation loop
- * - Duplicate detection
- * - CREATE/UPDATE/UPSERT operation logic
- * - Dry run mode
- * - Error handling
- */
+/** Loads StockLocation entities via StockLocationService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class StockLocationLoader extends BaseEntityLoader<StockLocationInput, StockLocation> {
     protected readonly logger: DataHubLogger;
@@ -46,7 +34,6 @@ export class StockLocationLoader extends BaseEntityLoader<StockLocationInput, St
     private readonly lookupHelper: EntityLookupHelper<StockLocationService, StockLocation, StockLocationInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private stockLocationService: StockLocationService,
         loggerFactory: DataHubLoggerFactory,
     ) {

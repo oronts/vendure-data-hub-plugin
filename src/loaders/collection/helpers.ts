@@ -5,6 +5,7 @@ import { FiltersMode } from '../../../shared/types';
 import { DataHubLogger } from '../../services/logger';
 
 export { slugify, isRecoverableError, shouldUpdateField, buildConfigurableOperation } from '../shared-helpers';
+import { buildConfigurableOperation } from '../shared-helpers';
 
 export function sortByHierarchy(records: CollectionInput[]): CollectionInput[] {
     // Build a lookup of slug -> record for parent resolution
@@ -118,11 +119,10 @@ export async function handleCollectionFilters(
     logger: DataHubLogger,
 ): Promise<ConfigurableOperationInput[]> {
     if (mode === 'SKIP') {
-        // Return undefined to signal no update needed
+        // Empty array, caller treats as no-op for filters
         return [];
     }
 
-    const { buildConfigurableOperation } = await import('../shared-helpers.js');
     const newFilters = filters.map(f => buildConfigurableOperation(f));
 
     if (mode === 'REPLACE_ALL') {
@@ -137,8 +137,7 @@ export async function handleCollectionFilters(
             return newFilters;
         }
 
-        // Merge existing + new filters (existing filters are already ConfigurableOperationInput compatible)
-        const existingFilters = collection.filters as unknown as ConfigurableOperationInput[];
+        const existingFilters = collection.filters.map(f => ({ code: f.code, arguments: f.args }));
         const merged = [...existingFilters, ...newFilters];
         logger.debug(`Merged ${existingFilters.length} existing + ${newFilters.length} new filters = ${merged.length} total`);
         return merged;

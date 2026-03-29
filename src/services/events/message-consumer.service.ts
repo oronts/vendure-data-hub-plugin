@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/com
 import { RequestContextService, TransactionalConnection } from '@vendure/core';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { ConnectionService } from '../config/connection.service';
+import { SecretService } from '../config/secret.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 import { LOGGER_CONTEXTS, SCHEDULER } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
@@ -48,13 +49,13 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
         requestContextService: RequestContextService,
         private pipelineService: PipelineService,
         private connectionService: ConnectionService,
+        private secretService: SecretService,
         loggerFactory: DataHubLoggerFactory,
         private domainEvents: DomainEventsService,
         @Optional() distributedLock?: DistributedLockService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.MESSAGE_CONSUMER ?? 'DataHub:MessageConsumer');
 
-        // Initialize modules
         this.discovery = new ConsumerDiscovery(
             connection,
             requestContextService,
@@ -72,6 +73,7 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
             requestContextService,
             pipelineService,
             connectionService,
+            secretService,
             this.logger,
             domainEvents,
         );

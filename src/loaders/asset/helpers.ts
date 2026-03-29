@@ -10,6 +10,8 @@ import { assertUrlSafe } from '../../utils/url-security.utils';
 export { shouldUpdateField, isRecoverableError } from '../shared-helpers';
 
 const MAX_REDIRECTS = 5;
+/** Maximum allowed download size (50 MB) to prevent OOM on large files */
+const MAX_DOWNLOAD_SIZE = 50 * 1024 * 1024;
 
 /**
  * Downloads a file from a URL.
@@ -47,14 +49,13 @@ export async function downloadFile(url: string, redirectCount = 0): Promise<Buff
     return new Promise((resolve) => {
         const protocol = url.startsWith('https') ? https : http;
         const request = protocol.get(url, { timeout: HTTP.TIMEOUT_MS }, (response) => {
-            if (response.statusCode === HTTP_STATUS.MOVED_PERMANENTLY || response.statusCode === HTTP_STATUS.FOUND) {
-                const redirectUrl = response.headers.location;
-                if (redirectUrl) {
-                    response.resume();
-                    request.destroy();
-                    downloadFile(redirectUrl, redirectCount + 1).then(resolve).catch(() => resolve(null));
-                    return;
-                }
+            const sc = response.statusCode ?? 0;
+            if (sc >= 300 && sc < 400 && response.headers.location) {
+                const resolvedRedirect = new URL(response.headers.location, url).href;
+                response.resume();
+                request.destroy();
+                downloadFile(resolvedRedirect, redirectCount + 1).then(resolve).catch(() => resolve(null));
+                return;
             }
 
             if (response.statusCode !== HTTP_STATUS.OK) {
@@ -64,7 +65,16 @@ export async function downloadFile(url: string, redirectCount = 0): Promise<Buff
             }
 
             const chunks: Buffer[] = [];
-            response.on('data', (chunk: Buffer) => chunks.push(chunk));
+            let totalBytes = 0;
+            response.on('data', (chunk: Buffer) => {
+                totalBytes += chunk.length;
+                if (totalBytes > MAX_DOWNLOAD_SIZE) {
+                    request.destroy();
+                    resolve(null);
+                    return;
+                }
+                chunks.push(chunk);
+            });
             response.on('end', () => resolve(Buffer.concat(chunks)));
             response.on('error', () => resolve(null));
         });

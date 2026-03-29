@@ -62,8 +62,8 @@ export class DomainEventsService implements OnModuleDestroy {
         }
     }
 
-    list(limit = 50): BufferedEvent[] {
-        const limitClamped = Math.max(1, Math.min(limit || 50, this.max));
+    list(limit: number = DOMAIN_EVENTS.DEFAULT_LIMIT): BufferedEvent[] {
+        const limitClamped = Math.max(1, Math.min(limit || DOMAIN_EVENTS.DEFAULT_LIMIT, this.max));
         return this.buffer.slice(-limitClamped).reverse();
     }
 

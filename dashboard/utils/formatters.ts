@@ -5,7 +5,8 @@ export function formatValue(value: JsonValue, maxLength = 50): string {
         return '\u2014';
     }
     if (typeof value === 'object') {
-        return JSON.stringify(value);
+        const str = JSON.stringify(value);
+        return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
     }
     if (typeof value === 'boolean') {
         return value ? 'true' : 'false';
@@ -20,11 +21,12 @@ export function formatCellValue(value: JsonValue): string {
 
 export function formatKey(key: string): string {
     return key
-        .replace(/([A-Z])/g, ' $1')
-        .replace(/^./, s => s.toUpperCase())
+        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+        .replace(/([a-z\d])([A-Z])/g, '$1 $2')
         .replace(/[_-]/g, ' ')
         .replace(/\s+/g, ' ')
-        .trim();
+        .trim()
+        .replace(/^./, s => s.toUpperCase());
 }
 
 export function formatDateTime(date: Date | string | number | null | undefined, options?: Intl.DateTimeFormatOptions): string {
@@ -40,7 +42,7 @@ export function formatDateTime(date: Date | string | number | null | undefined, 
         minute: '2-digit',
     };
 
-    return dateObj.toLocaleString('en-US', options || defaultOptions);
+    return dateObj.toLocaleString(undefined, options || defaultOptions);
 }
 
 export function formatSmartDateTime(date: Date | string | number | null | undefined): string {
@@ -52,7 +54,7 @@ export function formatSmartDateTime(date: Date | string | number | null | undefi
     const isToday = dateObj.toDateString() === now.toDateString();
 
     if (isToday) {
-        return dateObj.toLocaleTimeString();
+        return dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     }
     return dateObj.toLocaleString(undefined, {
         month: 'short',
@@ -82,13 +84,3 @@ export function formatFileSize(bytes: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/**
- * Converts a camelCase field name to a human-readable label.
- * Example: 'databaseType' -> 'Database Type', 'remotePath' -> 'Remote Path'
- *
- * Delegates to {@link formatKey} which handles the same conversion plus
- * underscores, hyphens, and extra whitespace normalization.
- */
-export function formatFieldLabel(field: string): string {
-    return formatKey(field);
-}

@@ -25,8 +25,11 @@
   <a href="#operators">Operators</a> •
   <a href="#loaders">Loaders</a> •
   <a href="#hooks">Hooks</a> •
-  <a href="#documentation">Docs</a>
+  <a href="#documentation">Docs</a> •
+  <a href="#license">License</a>
 </p>
+
+> **License**: Commercial plugin — free for personal, learning, and non-commercial use. Commercial use requires a license. Contact **office@oronts.com** for details. See [License](#license).
 
 ---
 
@@ -886,7 +889,7 @@ The plugin includes a full-featured admin dashboard:
 - `completedAt` and `errorMessage` fields on pipeline runs for precise tracking
 
 ### Queue Management
-- View pending, running, and failed jobs
+- View pending, running, and failed pipeline runs
 - Dead letter queue for quarantined records
 - Retry failed records with payload patching
 

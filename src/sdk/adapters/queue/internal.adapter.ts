@@ -1,16 +1,4 @@
-/**
- * Internal (In-Process) Queue Adapter
- *
- * Lightweight in-process message queue for testing and development.
- * Messages are stored in a module-level Map buffer — no external dependencies required.
- *
- * Suitable for:
- * - Unit and integration testing pipelines with MESSAGE triggers
- * - Local development without external queue infrastructure
- * - Simple fan-out within a single server instance
- *
- * NOT suitable for production multi-instance deployments (no shared state across processes).
- */
+/** In-process queue adapter for testing and development. Not suitable for multi-instance deployments. */
 
 import { AckMode } from '../../../constants/enums';
 import {
@@ -23,6 +11,12 @@ import {
 
 /** Module-level buffer: queueName → ordered message list */
 const internalBuffer = new Map<string, QueueMessage[]>();
+
+/** Pending messages awaiting ack/nack: deliveryTag → { queueName, message } */
+const pendingMessages = new Map<string, { queueName: string; message: QueueMessage }>();
+
+/** Track message IDs that have been requeued (nack with requeue=true) */
+const redeliveredIds = new Set<string>();
 
 /** Return (creating if necessary) the buffer for a given queue */
 function getBuffer(queueName: string): QueueMessage[] {
@@ -39,7 +33,7 @@ class InternalQueueAdapter implements QueueAdapter {
     readonly name = 'Internal (In-Process)';
     readonly description =
         'In-process message queue for testing and development. ' +
-        'No external dependencies required — messages are stored in memory.';
+        'No external dependencies required - messages are stored in memory.';
 
     async publish(
         _connectionConfig: QueueConnectionConfig,
@@ -60,16 +54,27 @@ class InternalQueueAdapter implements QueueAdapter {
     ): Promise<ConsumeResult[]> {
         const buf = getBuffer(queueName);
         const batch = buf.splice(0, options.count);
-        return batch.map(msg => ({
-            messageId: msg.id,
-            payload: msg.payload,
-            headers: msg.headers,
-            deliveryTag: msg.id,
-        }));
+        let tagCounter = 0;
+        return batch.map(msg => {
+            const deliveryTag = `${queueName}:${msg.id}:${Date.now()}:${tagCounter++}`;
+            if (options.ackMode === AckMode.MANUAL) {
+                pendingMessages.set(deliveryTag, { queueName, message: msg });
+            }
+            const redeliveryKey = `${queueName}:${msg.id}`;
+            return {
+                messageId: msg.id,
+                payload: msg.payload,
+                headers: msg.headers,
+                deliveryTag: options.ackMode === AckMode.MANUAL ? deliveryTag : undefined,
+                redelivered: redeliveredIds.has(redeliveryKey),
+            };
+        });
     }
 
-    async ack(_connectionConfig: QueueConnectionConfig, _deliveryTag: string): Promise<void> {
-        // No-op: in-process queue has no external ack mechanism
+    async ack(_connectionConfig: QueueConnectionConfig, deliveryTag: string): Promise<void> {
+        const pending = pendingMessages.get(deliveryTag);
+        pendingMessages.delete(deliveryTag);
+        if (pending) redeliveredIds.delete(`${pending.queueName}:${pending.message.id}`);
     }
 
     async nack(
@@ -77,16 +82,26 @@ class InternalQueueAdapter implements QueueAdapter {
         deliveryTag: string,
         requeue: boolean,
     ): Promise<void> {
-        if (requeue) {
-            // Re-queue to the default internal queue (best effort)
-            const buf = getBuffer('__internal_requeue__');
-            buf.push({ id: deliveryTag, payload: {} });
+        const pending = pendingMessages.get(deliveryTag);
+        pendingMessages.delete(deliveryTag);
+
+        if (requeue && pending) {
+            redeliveredIds.add(`${pending.queueName}:${pending.message.id}`);
+            const buf = getBuffer(pending.queueName);
+            buf.push(pending.message);
+        } else if (pending) {
+            redeliveredIds.delete(`${pending.queueName}:${pending.message.id}`);
         }
-        // Otherwise discard
     }
 
     async testConnection(_connectionConfig: QueueConnectionConfig): Promise<boolean> {
         return true;
+    }
+
+    async destroy(): Promise<void> {
+        internalBuffer.clear();
+        pendingMessages.clear();
+        redeliveredIds.clear();
     }
 }
 

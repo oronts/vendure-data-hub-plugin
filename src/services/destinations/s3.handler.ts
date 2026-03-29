@@ -10,6 +10,7 @@ import { assertUrlSafe } from '../../utils/url-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { createSuccessResult, createFailureResult } from './delivery-utils';
 import { HTTP_HEADERS, CONTENT_TYPES } from '../../constants/services';
+import { HTTP } from '../../constants/defaults';
 
 /**
  * Deliver content to S3 or S3-compatible storage
@@ -22,27 +23,40 @@ export async function deliverToS3(
 ): Promise<DeliveryResult> {
     // Build S3 key
     const key = config.prefix ? `${config.prefix}/${filename}` : filename;
+    const encodedKey = key.split('/').map(s => encodeURIComponent(s)).join('/');
 
-    // Build authorization headers using AWS Signature Version 4
     const timestamp = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
     const date = timestamp.slice(0, 8);
     const contentHash = crypto.createHash('sha256').update(content).digest('hex');
     const mimeType = options?.mimeType || CONTENT_TYPES.OCTET_STREAM;
 
-    const host = config.endpoint
-        ? new URL(config.endpoint).host
+    const isCustomEndpoint = !!config.endpoint;
+    const host = isCustomEndpoint
+        ? new URL(config.endpoint!).host
         : `${config.bucket}.s3.${config.region}.amazonaws.com`;
+    const canonicalUri = isCustomEndpoint ? `/${config.bucket}/${encodedKey}` : `/${encodedKey}`;
 
-    const canonicalRequest = [
-        'PUT',
-        `/${key}`,
-        '',
+    const canonicalHeaders = [
         `content-type:${mimeType}`,
         `host:${host}`,
         `x-amz-content-sha256:${contentHash}`,
         `x-amz-date:${timestamp}`,
+    ];
+    const signedHeaderNames = ['content-type', 'host', 'x-amz-content-sha256', 'x-amz-date'];
+    if (config.acl) {
+        canonicalHeaders.push(`x-amz-acl:${config.acl}`);
+        signedHeaderNames.push('x-amz-acl');
+    }
+    canonicalHeaders.sort();
+    signedHeaderNames.sort();
+
+    const canonicalRequest = [
+        'PUT',
+        canonicalUri,
         '',
-        'content-type;host;x-amz-content-sha256;x-amz-date',
+        ...canonicalHeaders,
+        '',
+        signedHeaderNames.join(';'),
         contentHash,
     ].join('\n');
 
@@ -61,11 +75,11 @@ export async function deliverToS3(
     const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();
     const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
 
-    const authorization = `AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/${credentialScope}, SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date, Signature=${signature}`;
+    const authorization = `AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaderNames.join(';')}, Signature=${signature}`;
 
-    const url = config.endpoint
-        ? `${config.endpoint}/${config.bucket}/${key}`
-        : `https://${host}/${key}`;
+    const url = isCustomEndpoint
+        ? `${config.endpoint}/${config.bucket}/${encodedKey}`
+        : `https://${host}/${encodedKey}`;
 
     try {
         await assertUrlSafe(url);
@@ -80,6 +94,7 @@ export async function deliverToS3(
                 ...(config.acl ? { 'x-amz-acl': config.acl } : {}),
             },
             body: content,
+            signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
         });
 
         if (!response.ok) {

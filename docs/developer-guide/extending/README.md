@@ -1161,9 +1161,9 @@ const s3ExportSchema: StepConfigSchema = {
           placeholder: 'exports/${date}/${pipeline}.json' },
         { key: 'format', type: 'select', label: 'Format', required: true,
           options: [
-            { value: 'json', label: 'JSON' },
-            { value: 'ndjson', label: 'NDJSON (Line-delimited)' },
-            { value: 'csv', label: 'CSV' },
+            { value: 'JSON', label: 'JSON' },
+            { value: 'NDJSON', label: 'NDJSON (Line-delimited)' },
+            { value: 'CSV', label: 'CSV' },
           ] },
         { key: 'compress', type: 'boolean', label: 'Compress (gzip)' },
     ],
@@ -1209,15 +1209,15 @@ export const s3Exporter: ExporterAdapter<S3ExportConfig> = {
         let contentType: string;
 
         switch (config.format) {
-            case 'json':
+            case 'JSON':
                 content = JSON.stringify(records, null, 2);
                 contentType = 'application/json';
                 break;
-            case 'ndjson':
+            case 'NDJSON':
                 content = records.map(r => JSON.stringify(r)).join('\n');
                 contentType = 'application/x-ndjson';
                 break;
-            case 'csv':
+            case 'CSV':
                 content = convertToCSV(records);
                 contentType = 'text/csv';
                 break;

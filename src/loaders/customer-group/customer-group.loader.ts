@@ -3,7 +3,6 @@ import {
     ID,
     CustomerGroup,
     RequestContext,
-    TransactionalConnection,
     CustomerGroupService,
     CustomerService,
 } from '@vendure/core';
@@ -34,18 +33,7 @@ import {
 } from './helpers';
 import { isValidEmail } from '../../utils/input-validation.utils';
 
-/**
- * CustomerGroupLoader - Refactored to extend BaseEntityLoader
- *
- * This eliminates ~60 lines of duplicate load() method code that was
- * copy-pasted across all loaders. The base class handles:
- * - Result initialization
- * - Validation loop
- * - Duplicate detection
- * - CREATE/UPDATE/UPSERT operation logic
- * - Dry run mode
- * - Error handling
- */
+/** Loads CustomerGroup entities via CustomerGroupService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class CustomerGroupLoader extends BaseEntityLoader<CustomerGroupInput, CustomerGroup> {
     protected readonly logger: DataHubLogger;
@@ -54,7 +42,6 @@ export class CustomerGroupLoader extends BaseEntityLoader<CustomerGroupInput, Cu
     private readonly lookupHelper: EntityLookupHelper<CustomerGroupService, CustomerGroup, CustomerGroupInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private customerGroupService: CustomerGroupService,
         private customerService: CustomerService,
         loggerFactory: DataHubLoggerFactory,

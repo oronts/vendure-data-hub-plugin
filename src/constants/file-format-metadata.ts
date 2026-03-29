@@ -11,11 +11,11 @@ export const FILE_FORMAT_METADATA: Record<string, FileFormatMetadata> = {
     CSV: {
         value: 'CSV',
         label: 'CSV',
-        extensions: ['.csv', '.tsv'],
-        mimeTypes: ['text/csv', 'text/tab-separated-values', 'text/comma-separated-values'],
+        extensions: ['.csv'],
+        mimeTypes: ['text/csv', 'text/comma-separated-values'],
         supportsPreview: true,
         requiresClientParser: true,
-        description: 'Comma-separated values (CSV) and tab-separated values (TSV)',
+        description: 'Comma-separated values',
     },
     JSON: {
         value: 'JSON',

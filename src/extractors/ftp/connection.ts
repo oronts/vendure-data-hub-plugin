@@ -101,13 +101,18 @@ export async function createFtpClient(
 
     const options = await buildFtpConnectionOptions(context, config);
 
-    await client.access({
-        host: options.host,
-        port: options.port,
-        user: options.user,
-        password: options.password,
-        secure: options.secure,
-    });
+    try {
+        await client.access({
+            host: options.host,
+            port: options.port,
+            user: options.user,
+            password: options.password,
+            secure: options.secure,
+        });
+    } catch (error) {
+        client.close();
+        throw error;
+    }
 
     return {
         async list(remotePath: string): Promise<FtpFileInfo[]> {
@@ -169,15 +174,20 @@ export async function createSftpClient(
     const client = new SftpClient();
     const options = await buildSftpConnectionOptions(context, config);
 
-    await client.connect({
-        host: options.host,
-        port: options.port,
-        username: options.username,
-        password: options.password,
-        privateKey: options.privateKey,
-        passphrase: options.passphrase,
-        readyTimeout: options.timeout,
-    });
+    try {
+        await client.connect({
+            host: options.host,
+            port: options.port,
+            username: options.username,
+            password: options.password,
+            privateKey: options.privateKey,
+            passphrase: options.passphrase,
+            readyTimeout: options.timeout,
+        });
+    } catch (error) {
+        await client.end();
+        throw error;
+    }
 
     return {
         async list(remotePath: string): Promise<FtpFileInfo[]> {
@@ -239,11 +249,11 @@ export async function testConnection(
     config: FtpExtractorConfig,
 ): Promise<{ success: boolean; error?: string; latencyMs?: number; filesFound?: number }> {
     const startTime = Date.now();
+    let client: FtpClient | undefined;
 
     try {
-        const client = await createClient(context, config);
+        client = await createClient(context, config);
         const files = await client.list(config.remotePath);
-        await client.close();
 
         return {
             success: true,
@@ -255,6 +265,8 @@ export async function testConnection(
             success: false,
             error: getErrorMessage(error),
         };
+    } finally {
+        try { await client?.close(); } catch { /* already closed or failed */ }
     }
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@oronts/vendure-data-hub-plugin",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "ETL data integration plugin for Vendure e-commerce",
   "author": {
     "name": "Oronts Website",
@@ -19,6 +19,7 @@
   "files": [
     "dist",
     "shared",
+    "sdk",
     "dashboard",
     "docs",
     "README.md",
@@ -85,6 +86,7 @@
     "glob": "^10.0.0",
     "ioredis": "^5.9.1",
     "js-yaml": "^4.1.0",
+    "minimatch": "^9.0.0",
     "multer": "^2.0.0",
     "mysql2": "^3.11.0",
     "nodemailer": "^7.0.12",

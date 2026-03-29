@@ -46,15 +46,15 @@ export class ExecutionLifecycleManager {
     async finalizeExecution(
         ctx: RequestContext,
         definition: PipelineDefinition,
-        result: { processed: number; succeeded: number; failed: number; details: JsonObject[]; counters: JsonObject; paused?: boolean; pausedAtStep?: string },
+        result: { processed: number; succeeded: number; failed: number; details: JsonObject[]; counters: JsonObject; paused?: boolean; pausedAtStep?: string; cancelled?: boolean },
         pipelineId?: ID,
     ): Promise<{ processed: number; succeeded: number; failed: number; details?: JsonObject[]; paused?: boolean; pausedAtStep?: string }> {
         await this.checkpointManager.saveCheckpoint(ctx, pipelineId);
 
         result.details.push({ counters: result.counters });
 
-        // If paused at a GATE step, skip completion hooks - the pipeline is not done yet
-        if (!result.paused) {
+        // Skip hooks if paused (gate) or cancelled (user abort)
+        if (!result.paused && !result.cancelled) {
             await this.hookService.run(ctx, definition, result.failed > 0 ? 'PIPELINE_FAILED' : 'PIPELINE_COMPLETED');
             this.publishPipelineDomainEvent(pipelineId, result);
         }

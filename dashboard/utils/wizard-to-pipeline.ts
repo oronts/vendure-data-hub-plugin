@@ -100,24 +100,38 @@ const defaultResolver: AdapterResolver = {
     getFeedAdapterCode: () => undefined,
 };
 
+const DIRECT_LOAD_STRATEGIES: Record<string, string> = {
+    CREATE: 'SOURCE_WINS',
+    UPDATE: 'MERGE',
+    UPSERT: 'SOURCE_WINS',
+    MERGE: 'MERGE',
+    SOFT_DELETE: 'SOURCE_WINS',
+    HARD_DELETE: 'SOURCE_WINS',
+};
+
 function resolveStrategyMapping(
     wizardValue: string,
     mappings: WizardStrategyMapping[],
 ): { loadStrategy: string; conflictStrategy: string } {
-    if (!mappings?.length) {
-        throw new Error('Strategy mappings not loaded from backend');
+    if (mappings?.length) {
+        const mapping = mappings.find(m => m.wizardValue === wizardValue);
+        if (mapping) {
+            return {
+                loadStrategy: mapping.loadStrategy,
+                conflictStrategy: mapping.conflictStrategy,
+            };
+        }
     }
 
-    const mapping = mappings.find(m => m.wizardValue === wizardValue);
-
-    if (!mapping) {
-        throw new Error(`Unknown strategy: ${wizardValue}`);
+    const defaultConflict = DIRECT_LOAD_STRATEGIES[wizardValue];
+    if (defaultConflict) {
+        return {
+            loadStrategy: wizardValue,
+            conflictStrategy: defaultConflict,
+        };
     }
 
-    return {
-        loadStrategy: mapping.loadStrategy,
-        conflictStrategy: mapping.conflictStrategy,
-    };
+    throw new Error(`Unknown strategy: ${wizardValue}`);
 }
 
 // --- Helper: build linear edges ---
@@ -258,7 +272,7 @@ function buildImportExtractStep(config: ImportConfiguration): PipelineStepDefini
         adapterCode = result.adapterCode;
         extractConfig = result.config;
     } else {
-        // Dynamic source type -- adapter code is lowercase of source type
+        // Dynamic source type, adapter code is lowercase of source type
         adapterCode = source.type.toLowerCase();
         const dynamicConfigKey = `${source.type.toLowerCase()}Config`;
         const dynamicConfig = (source as Record<string, unknown>)[dynamicConfigKey];
@@ -329,8 +343,15 @@ function buildImportLoadStep(
     const fieldConfig: Record<string, string> = {};
     if (Object.keys(schemaFieldMap).length > 0) {
         for (const mapping of config.mappings) {
-            if (mapping.targetField && schemaFieldMap[mapping.targetField]) {
-                fieldConfig[schemaFieldMap[mapping.targetField]] = mapping.targetField;
+            if (!mapping.targetField) continue;
+            const target = mapping.targetField;
+            if (schemaFieldMap[target]) {
+                fieldConfig[schemaFieldMap[target]] = target;
+            } else {
+                const suffixed = `${target}Field`;
+                if (schemaFieldMap[suffixed]) {
+                    fieldConfig[suffixed] = target;
+                }
             }
         }
     }
@@ -354,10 +375,10 @@ function buildImportLoadStep(
 
 export function importConfigToPipelineDefinition(
     config: ImportConfiguration,
+    strategyMappings: WizardStrategyMapping[],
     resolver: AdapterResolver = defaultResolver,
     loaderAdapters?: LoaderAdapterInfo[],
     triggerSchemas?: TypedOptionValue[],
-    strategyMappings: WizardStrategyMapping[],
 ): PipelineDefinition {
     const trigger = buildImportTriggerStep(config, triggerSchemas);
     const extract = buildImportExtractStep(config);

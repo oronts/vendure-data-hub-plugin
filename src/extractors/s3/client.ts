@@ -14,6 +14,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { ExtractorContext } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
+import { validateUrlSafetySync } from '../../utils/url-security.utils';
 import { S3ExtractorConfig, S3ObjectInfo, S3_DEFAULTS } from './types';
 
 /**
@@ -57,6 +58,14 @@ export async function buildS3ClientConfig(
     context: ExtractorContext,
     config: S3ExtractorConfig,
 ): Promise<S3ClientConfig> {
+    // Validate custom endpoint against SSRF
+    if (config.endpoint) {
+        const result = validateUrlSafetySync(config.endpoint);
+        if (!result.safe) {
+            throw new Error(`SSRF: S3 endpoint blocked: ${result.reason}`);
+        }
+    }
+
     const clientConfig: S3ClientConfig = {
         region: config.region || S3_DEFAULTS.region,
         endpoint: config.endpoint,
@@ -159,7 +168,7 @@ export async function createS3Client(
         async copyObject(sourceKey: string, destKey: string): Promise<void> {
             const command = new CopyObjectCommand({
                 Bucket: bucket,
-                CopySource: `${bucket}/${sourceKey}`,
+                CopySource: `${bucket}/${sourceKey.split('/').map(s => encodeURIComponent(s)).join('/')}`,
                 Key: destKey,
             });
             await s3.send(command);
@@ -187,11 +196,11 @@ export async function testS3Connection(
     config: S3ExtractorConfig,
 ): Promise<{ success: boolean; error?: string; latencyMs?: number }> {
     const startTime = Date.now();
+    let client: S3Client | undefined;
 
     try {
-        const client = await createS3Client(context, config);
+        client = await createS3Client(context, config);
         await client.headBucket();
-        await client.close();
 
         return {
             success: true,
@@ -202,6 +211,8 @@ export async function testS3Connection(
             success: false,
             error: getErrorMessage(error),
         };
+    } finally {
+        try { await client?.close(); } catch { /* already closed or failed */ }
     }
 }
 

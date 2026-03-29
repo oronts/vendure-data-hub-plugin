@@ -30,7 +30,7 @@ export function applyStringifyJson(
     const result = deepClone(record);
     const value = getNestedValue(record, source);
 
-    if (value !== undefined && value !== null) {
+    if (value != null) {
         try {
             const stringified = pretty
                 ? JSON.stringify(value, null, 2)

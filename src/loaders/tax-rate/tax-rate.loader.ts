@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import {
     ID,
     RequestContext,
-    TransactionalConnection,
     TaxRateService,
     TaxCategoryService,
     ZoneService,
@@ -16,6 +15,7 @@ import {
 } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
+import { PAGINATION } from '../../constants/defaults';
 import { VendureEntityType, TARGET_OPERATION } from '../../constants/enums';
 import {
     BaseEntityLoader,
@@ -34,26 +34,7 @@ import {
     shouldUpdateField,
 } from './helpers';
 
-/**
- * Tax Rate Loader - Refactored to extend BaseEntityLoader
- *
- * Imports tax rates into Vendure with automatic resolution of:
- * - Tax categories by code/name
- * - Zones by code/name
- *
- * Supports CREATE, UPDATE, UPSERT, and DELETE operations.
- *
- * @example
- * ```typescript
- * const taxRateInput: TaxRateInput = {
- *   name: 'Standard Rate',
- *   value: 20, // 20%
- *   taxCategoryCode: 'standard',
- *   zoneCode: 'UK',
- *   enabled: true,
- * };
- * ```
- */
+/** Loads TaxRate entities via TaxRateService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
     protected readonly logger: DataHubLogger;
@@ -65,7 +46,6 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
     private readonly lookupHelper: EntityLookupHelper<TaxRateService, TaxRate, TaxRateInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private taxRateService: TaxRateService,
         private taxCategoryService: TaxCategoryService,
         private zoneService: ZoneService,
@@ -78,7 +58,7 @@ export class TaxRateLoader extends BaseEntityLoader<TaxRateInput, TaxRate> {
                 fieldName: 'name',
                 lookup: async (ctx, svc, value) => {
                     if (!value || typeof value !== 'string') return null;
-                    const taxRates = await svc.findAll(ctx);
+                    const taxRates = await svc.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT });
                     const match = taxRates.items.find(tr => tr.name === value);
                     if (match) {
                         return { id: match.id, entity: match as TaxRate };

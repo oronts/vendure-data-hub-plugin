@@ -187,9 +187,7 @@ export function useAdapterCatalog(): UseAdapterCatalogResult {
         };
     }, [adapters]);
 
-    const connectionCodes = React.useMemo(() => {
-        return connectionCodesData ?? [];
-    }, [connectionCodesData]);
+    const connectionCodes = connectionCodesData ?? [];
 
     const secretOptions = React.useMemo(() => {
         return (secretsData?.items ?? []).map(s => ({

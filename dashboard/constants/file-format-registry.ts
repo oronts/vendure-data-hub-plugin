@@ -1,4 +1,3 @@
-import { useConfigOptions } from '../hooks/api';
 import { parseCSVLine } from '../../shared/utils/csv-parse';
 import type { FileType } from '../utils/column-analysis';
 
@@ -32,6 +31,9 @@ const DEFAULT_MAX_ROWS = 100;
 async function parseCsvFile(file: File, options?: FileParseOptions): Promise<FileParseResult> {
     const text = await file.text();
     const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length === 0) {
+        return { headers: [], rows: [] };
+    }
     const delimiter = options?.delimiter ?? ',';
     const hasHeaders = options?.hasHeaders ?? true;
     const maxRows = options?.maxRows ?? DEFAULT_MAX_ROWS;
@@ -56,7 +58,9 @@ async function parseCsvFile(file: File, options?: FileParseOptions): Promise<Fil
 async function parseJsonFile(file: File, options?: FileParseOptions): Promise<FileParseResult> {
     const text = await file.text();
     const json = JSON.parse(text);
-    const items: Record<string, unknown>[] = Array.isArray(json) ? json : json.data ?? [json];
+    const data = json?.data;
+    const raw = Array.isArray(json) ? json : Array.isArray(data) ? data : data && typeof data === 'object' && !Array.isArray(data) ? [data] : [json];
+    const items: Record<string, unknown>[] = raw.filter((item: unknown) => item != null && typeof item === 'object' && !Array.isArray(item));
     const maxRows = options?.maxRows ?? DEFAULT_MAX_ROWS;
     const sampleItems = items.slice(0, maxRows);
     const headers = [...new Set(sampleItems.flatMap(item => Object.keys(item)))];
@@ -77,8 +81,7 @@ async function parseXlsxFile(file: File, options?: FileParseOptions): Promise<Fi
     return { headers, rows: sampleItems };
 }
 
-async function parseXmlFile(file: File, _options?: FileParseOptions): Promise<FileParseResult> {
-    void file;
+async function parseXmlFile(_file: File, _options?: FileParseOptions): Promise<FileParseResult> {
     return { headers: [], rows: [] };
 }
 
@@ -89,59 +92,32 @@ async function parseNdjsonFile(file: File, options?: FileParseOptions): Promise<
     const items: Record<string, unknown>[] = [];
     for (const line of lines) {
         if (items.length >= maxRows) break;
-        items.push(JSON.parse(line) as Record<string, unknown>);
+        try {
+            items.push(JSON.parse(line) as Record<string, unknown>);
+        } catch {
+            // Skip malformed lines in preview
+        }
     }
     const headers = [...new Set(items.flatMap(item => Object.keys(item)))];
     return { headers, rows: items };
-}
-
-const PARSERS: Record<string, (file: File, options?: FileParseOptions) => Promise<FileParseResult>> = {
-    CSV: parseCsvFile,
-    TSV: parseCsvFile,
-    JSON: parseJsonFile,
-    XLSX: parseXlsxFile,
-    XML: parseXmlFile,
-    NDJSON: parseNdjsonFile,
-};
-
-function buildFileFormatRegistry(
-    backendFormats: Array<{
-        value: string;
-        label: string;
-        extensions: string[];
-        mimeTypes: string[];
-        supportsPreview: boolean;
-        requiresClientParser: boolean;
-        description?: string;
-    }>
-): Map<string, FileFormatEntry> {
-    const registry = new Map<string, FileFormatEntry>();
-
-    for (const format of backendFormats) {
-        if (format.requiresClientParser && PARSERS[format.value]) {
-            registry.set(format.value, {
-                ...format,
-                parse: PARSERS[format.value],
-            });
-        }
-    }
-
-    return registry;
-}
-
-export function useFileFormatRegistry(): Map<string, FileFormatEntry> {
-    const { fileFormats } = useConfigOptions();
-    return buildFileFormatRegistry(fileFormats);
 }
 
 export const FILE_FORMAT_REGISTRY = new Map<string, FileFormatEntry>([
     ['CSV', {
         value: 'CSV',
         label: 'CSV',
-        extensions: ['.csv', '.tsv'],
-        mimeTypes: ['text/csv', 'text/tab-separated-values'],
+        extensions: ['.csv'],
+        mimeTypes: ['text/csv'],
         supportsPreview: true,
         parse: parseCsvFile,
+    }],
+    ['TSV', {
+        value: 'TSV',
+        label: 'TSV',
+        extensions: ['.tsv'],
+        mimeTypes: ['text/tab-separated-values'],
+        supportsPreview: true,
+        parse: (file, options) => parseCsvFile(file, { ...options, delimiter: '\t' }),
     }],
     ['JSON', {
         value: 'JSON',

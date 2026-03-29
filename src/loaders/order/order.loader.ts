@@ -41,12 +41,7 @@ import {
 } from './helpers';
 import type { OrderUpsertLoaderConfig } from '../../../shared/types';
 
-/**
- * OrderLoader - Refactored to extend BaseEntityLoader
- *
- * Imports orders for system migrations (not for normal order processing).
- * Orders should normally go through the standard checkout flow.
- */
+/** Loads Order entities via OrderService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
     protected readonly logger: DataHubLogger;
@@ -169,7 +164,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
                     children: [
                         { key: 'sku', label: 'Product SKU', type: 'string', required: true },
                         { key: 'quantity', label: 'Quantity', type: 'number', required: true },
-                        { key: 'unitPrice', label: 'Unit Price', type: 'number', description: 'Unit price in minor units (informational — Vendure uses variant price at time of import)' },
+                        { key: 'unitPrice', label: 'Unit Price', type: 'number', description: 'Unit price in minor units (informational - Vendure uses variant price at time of import)' },
                         { key: 'customFields', label: 'Custom Fields', type: 'object' },
                     ],
                 },
@@ -227,7 +222,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
                     key: 'metadata',
                     label: 'Metadata',
                     type: 'object',
-                    description: 'Additional metadata from source system (stored via customFields — Vendure has no native metadata field)',
+                    description: 'Additional metadata from source system (stored via customFields - Vendure has no native metadata field)',
                 },
                 {
                     key: 'customFields',
@@ -249,7 +244,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
                 return null;
             }
 
-            // Create order without userId — migration-imported customers may not have a User account.
+            // Create order without userId. Migration-imported customers may not have a User account.
             // OrderService.create(ctx, userId) calls findOneByUserId which only works for
             // customers with a linked User entity. Instead, create the order and directly
             // associate the customer via repository update.
@@ -288,7 +283,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
                 await this.orderService.setBillingAddress(ctx, order.id, billingAddr);
             }
 
-            // Set shipping method (explicit or auto-resolve first eligible — required for state transitions)
+            // Set shipping method (explicit or auto-resolve first eligible, required for state transitions)
             await this.ensureShippingMethod(ctx, order.id, record.shippingMethodCode);
 
             if (record.customFields) {
@@ -300,7 +295,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
                 await this.walkOrderStateMachine(ctx, order.id, record.state, record);
             }
 
-            // Backdate order placement date (direct repository update — OrderService has no setter)
+            // Backdate order placement date (direct repository update, OrderService has no setter)
             if (record.orderPlacedAt) {
                 const placedAt = record.orderPlacedAt instanceof Date
                     ? record.orderPlacedAt
@@ -422,29 +417,28 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
         orderId: ID,
         targetState: string,
         record: OrderInput,
-    ): Promise<void> {
+    ): Promise<boolean> {
         const targetRank = STATE_RANK[targetState];
         if (targetRank === undefined) {
-            // Unknown/custom state — try direct transition
-            await this.tryTransition(ctx, orderId, targetState);
-            return;
+            // Unknown/custom state, try direct transition
+            return this.tryTransition(ctx, orderId, targetState);
         }
 
         let order = await this.orderService.findOne(ctx, orderId);
-        if (!order) return;
+        if (!order) return false;
 
         const rank = () => STATE_RANK[order!.state] ?? -1;
         const refresh = async () => { order = await this.orderService.findOne(ctx, orderId); };
 
         // Step 1: → ArrangingPayment (shipping method must be set before this transition)
         if (targetRank >= 2 && rank() < 2) {
-            if (!await this.tryTransition(ctx, orderId, 'ArrangingPayment')) return;
+            if (!await this.tryTransition(ctx, orderId, 'ArrangingPayment')) return false;
             await refresh();
         }
 
         // Step 2: → PaymentAuthorized/PaymentSettled (via addPaymentToOrder, not transitionToState)
         if (targetRank >= 3 && rank() < 3) {
-            await this.addPaymentForMigration(ctx, orderId, record.paymentMethodCode);
+            if (!await this.addPaymentForMigration(ctx, orderId, record.paymentMethodCode)) return false;
             await refresh();
         }
 
@@ -452,7 +446,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
         // With dummyPaymentHandler (automaticSettle: true) rank may already be 4 (PaymentSettled).
         // With non-auto-settling handlers rank will be 3 (PaymentAuthorized) and needs explicit transition.
         if (targetRank >= 4 && rank() < 4) {
-            if (!await this.tryTransition(ctx, orderId, 'PaymentSettled')) return;
+            if (!await this.tryTransition(ctx, orderId, 'PaymentSettled')) return false;
             await refresh();
         }
 
@@ -461,9 +455,11 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
         // The fulfillment auto-transitions the order to Shipped (or Delivered).
         if (targetRank >= 5 && rank() < 5) {
             const fulfillTarget = targetRank >= 8 ? 'Delivered' as const : 'Shipped' as const;
-            await this.addFulfillmentForMigration(ctx, orderId, fulfillTarget);
+            if (!await this.addFulfillmentForMigration(ctx, orderId, fulfillTarget)) return false;
             await refresh();
         }
+
+        return true;
     }
 
     /**
@@ -492,7 +488,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
      * method code, or auto-resolves the first eligible payment method.
      * With dummyPaymentHandler (automaticSettle: true), this auto-transitions to PaymentSettled.
      */
-    private async addPaymentForMigration(ctx: RequestContext, orderId: ID, paymentMethodCode?: string): Promise<void> {
+    private async addPaymentForMigration(ctx: RequestContext, orderId: ID, paymentMethodCode?: string): Promise<boolean> {
         let methodCode = paymentMethodCode;
 
         if (!methodCode) {
@@ -504,7 +500,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
 
         if (!methodCode) {
             this.logger.warn(`No payment method available for order ${orderId} migration`);
-            return;
+            return false;
         }
 
         const result = await this.orderService.addPaymentToOrder(ctx, orderId, {
@@ -516,7 +512,10 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
             this.logger.warn(
                 `Failed to add payment to order ${orderId}: ${(result as { message?: string; errorCode?: string }).message ?? (result as { errorCode?: string }).errorCode}`,
             );
+            return false;
         }
+
+        return true;
     }
 
     /**
@@ -527,14 +526,14 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
         ctx: RequestContext,
         orderId: ID,
         targetFulfillmentState: 'Shipped' | 'Delivered' = 'Shipped',
-    ): Promise<void> {
+    ): Promise<boolean> {
         const orderLines = await this.connection.getRepository(ctx, OrderLine).find({
             where: { order: { id: orderId } },
         });
 
         if (orderLines.length === 0) {
-            this.logger.warn(`No order lines found for order ${orderId} — cannot create fulfillment`);
-            return;
+            this.logger.warn(`No order lines found for order ${orderId} - cannot create fulfillment`);
+            return false;
         }
 
         const input: FulfillOrderInput = {
@@ -556,7 +555,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
             this.logger.warn(
                 `Failed to create fulfillment for order ${orderId}: ${(fulfillment as { message?: string; errorCode?: string }).message ?? (fulfillment as { errorCode?: string }).errorCode}`,
             );
-            return;
+            return false;
         }
 
         const fulfillmentId = (fulfillment as { id: ID }).id;
@@ -569,7 +568,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
             this.logger.warn(
                 `Failed to ship fulfillment for order ${orderId}: ${(shipped as { message?: string; errorCode?: string }).message ?? (shipped as { errorCode?: string }).errorCode}`,
             );
-            return;
+            return false;
         }
 
         // If target is Delivered, also transition fulfillment to Delivered
@@ -581,7 +580,10 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
                 this.logger.warn(
                     `Failed to deliver fulfillment for order ${orderId}: ${(delivered as { message?: string; errorCode?: string }).message ?? (delivered as { errorCode?: string }).errorCode}`,
                 );
+                return false;
             }
         }
+
+        return true;
     }
 }

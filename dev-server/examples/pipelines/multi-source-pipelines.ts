@@ -210,11 +210,14 @@ export const multiSourceProductAggregation = createPipeline()
     })
 
     // ── Fan-in: Deduplicate by SKU ──────────────────────────────────────────
-    // Records from both normalize steps arrive here.
-    // Use script to dedup: Pimcore wins if duplicate SKU (lower _sourcePriority = wins)
     .transform('dedup-by-sku', {
         operators: [
-            { op: 'unique', args: { field: 'sku', strategy: 'first' } },
+            { op: 'unique', args: { byKey: 'sku' } },
+        ],
+    })
+
+    .transform('validate-merged', {
+        operators: [
             { op: 'validateRequired', args: { fields: ['sku', 'name'] } },
         ],
     })
@@ -273,7 +276,7 @@ export const multiSourceProductAggregation = createPipeline()
     .export('export-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'multi-source-reconciliation.csv',
+        filenamePattern: 'multi-source-reconciliation.csv',
     })
 
     // ── Graph edges ─────────────────────────────────────────────────────────
@@ -291,7 +294,8 @@ export const multiSourceProductAggregation = createPipeline()
     .edge('normalize-magento', 'dedup-by-sku')
 
     // Fan-in to pipeline tail
-    .edge('dedup-by-sku', 'enrich-categories')
+    .edge('dedup-by-sku', 'validate-merged')
+    .edge('validate-merged', 'enrich-categories')
     .edge('enrich-categories', 'load-products')
     .edge('load-products', 'sink-meili-unified')
     .edge('sink-meili-unified', 'export-report')
@@ -633,7 +637,7 @@ export const crossSystemOrderSync = createPipeline()
     .export('export-sync-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'order-sync-report.csv',
+        filenamePattern: 'order-sync-report.csv',
     })
 
     // Graph edges
@@ -739,7 +743,7 @@ export const biDirectionalSyncA = createPipeline()
     .export('export-change-log', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'bidi-sync-import-log.csv',
+        filenamePattern: 'bidi-sync-import-log.csv',
     })
 
     // Graph edges
@@ -783,7 +787,7 @@ export const biDirectionalSyncB = createPipeline()
             { op: 'copy', args: { source: 'description', target: 'description' } },
             { op: 'copy', args: { source: 'slug', target: 'slug' } },
             { op: 'stripHtml', args: { source: 'description', target: 'description' } },
-            { op: 'truncate', args: { path: 'description', maxLength: 500 } },
+            { op: 'truncate', args: { source: 'description', length: 500 } },
             { op: 'script', args: { code: 'record.updatedAt = new Date().toISOString(); return record;' } },
             { op: 'set', args: { path: 'syncSource', value: 'bidi-event-chain' } },
         ],
@@ -927,7 +931,7 @@ export const multiSinkFanOut = createPipeline()
     .export('export-backup', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'pimcore-fanout-backup.csv',
+        filenamePattern: 'pimcore-fanout-backup.csv',
     })
 
     // Graph edges

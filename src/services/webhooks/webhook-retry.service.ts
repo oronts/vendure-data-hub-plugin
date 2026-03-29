@@ -23,7 +23,6 @@ import { DEFAULT_RETRY_CONFIG } from '../../utils/retry.utils';
 import {
     signPayload,
     buildHeaders,
-    calculateBackoff,
     createDeliveryRecord,
     calculateWebhookStats,
     filterDeliveries,
@@ -133,7 +132,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             headers?: Record<string, string>;
             idempotencyKey?: string;
         },
-    ): Promise<WebhookDelivery> {
+    ): Promise<WebhookDelivery | undefined> {
         const config = this.webhookConfigs.get(webhookId);
         if (!config) {
             throw new Error(`Webhook not found: ${webhookId}`);
@@ -147,6 +146,10 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
 
         if (this.deliveryQueue.size >= WEBHOOK_QUEUE.MAX_DELIVERY_QUEUE_SIZE) {
             this.evictOldDeliveries();
+        }
+        if (this.deliveryQueue.size >= WEBHOOK_QUEUE.MAX_DELIVERY_QUEUE_SIZE) {
+            this.logger.warn('Webhook delivery rejected: queue at capacity', { webhookId, queueSize: this.deliveryQueue.size });
+            return;
         }
 
         const headers = buildHeaders(config, options?.headers);
@@ -197,32 +200,33 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
             }
         }
 
-        // If still over limit after removing DELIVERED and DEAD_LETTER,
-        // evict oldest PENDING entries (sorted by createdAt) to prevent unbounded growth
-        let pendingRemoved = 0;
+        // If still over limit, drop oldest PENDING/RETRYING deliveries to free space
+        let pendingDropped = 0;
         if (this.deliveryQueue.size >= WEBHOOK_QUEUE.MAX_DELIVERY_QUEUE_SIZE) {
             const pendingEntries: Array<[string, WebhookDelivery]> = [];
             for (const [id, delivery] of this.deliveryQueue.entries()) {
                 if (
-                    delivery.status === WebhookDeliveryStatus.PENDING ||
-                    delivery.status === WebhookDeliveryStatus.RETRYING
+                    (delivery.status === WebhookDeliveryStatus.PENDING ||
+                    delivery.status === WebhookDeliveryStatus.RETRYING) &&
+                    !this.inFlightDeliveries.has(id)
                 ) {
                     pendingEntries.push([id, delivery]);
                 }
             }
-            // Sort by createdAt ascending (oldest first)
             pendingEntries.sort((a, b) => a[1].createdAt.getTime() - b[1].createdAt.getTime());
 
-            const excess = this.deliveryQueue.size - WEBHOOK_QUEUE.MAX_DELIVERY_QUEUE_SIZE;
-            const toEvict = pendingEntries.slice(0, Math.max(excess, Math.ceil(pendingEntries.length * 0.1)));
-            pendingRemoved = toEvict.length;
-            for (const [id] of toEvict) {
-                this.deliveryQueue.delete(id);
+            const excess = this.deliveryQueue.size - WEBHOOK_QUEUE.MAX_DELIVERY_QUEUE_SIZE + 1;
+            if (excess > 0 && pendingEntries.length > 0) {
+                const toEvict = pendingEntries.slice(0, excess);
+                pendingDropped = toEvict.length;
+                for (const [id] of toEvict) {
+                    this.deliveryQueue.delete(id);
+                }
             }
 
-            if (pendingRemoved > 0) {
-                this.logger.warn('Evicted PENDING/RETRYING deliveries due to queue overflow', {
-                    pendingRemoved,
+            if (pendingDropped > 0) {
+                this.logger.warn('Dropped oldest pending/retrying deliveries due to queue overflow', {
+                    pendingDropped,
                     remainingSize: this.deliveryQueue.size,
                 });
             }
@@ -231,7 +235,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
         this.logger.debug('Evicted old deliveries', {
             deliveredRemoved: delivered.length,
             deadLetterRemoved,
-            pendingRemoved,
+            pendingDropped,
         });
     }
 
@@ -253,6 +257,7 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                     ...delivery.headers,
                 },
                 body: JSON.stringify(delivery.payload),
+                signal: AbortSignal.timeout(WEBHOOK.TIMEOUT_MS),
             });
 
             delivery.responseStatus = response.status;
@@ -319,13 +324,17 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                 { attempts: delivery.attempts, error: reason },
             );
         } else {
+            // prepareForRetry sets status to RETRYING and computes nextRetryAt.
+            // The periodic scanner (startRetryProcessor) will pick it up once
+            // nextRetryAt has passed. We intentionally do NOT use a setTimeout
+            // here to avoid double-firing the same delivery from both the timer
+            // and the periodic scanner.
             prepareForRetry(delivery, config);
-            const delay = calculateBackoff(delivery.attempts, config.retryConfig ?? DEFAULT_RETRY_CONFIG);
 
             this.logger.debug('Webhook retry scheduled', {
                 deliveryId: delivery.id,
                 webhookId: delivery.webhookId,
-                delayMs: delay,
+                nextRetryAt: delivery.nextRetryAt?.toISOString(),
                 attempt: delivery.attempts,
                 maxAttempts: delivery.maxAttempts,
                 reason,
@@ -336,12 +345,6 @@ export class WebhookRetryService implements OnModuleInit, OnModuleDestroy {
                 delivery.webhookId,
                 { attempts: delivery.attempts, error: reason },
             );
-
-            setTimeout(() => {
-                this.jobQueue?.add({ deliveryId: delivery.id }).catch(() => {
-                    // Job queue may be unavailable during shutdown
-                });
-            }, delay);
         }
     }
 

@@ -18,8 +18,8 @@ const SENSITIVE_FIELDS = [
     'secret_key',
     'privatekey',
     'private_key',
-    'auth',
-    'key',
+    'authtoken',
+    'auth_token',
     'apitoken',
     'api_token',
     'refresh_token',
@@ -37,7 +37,8 @@ const SENSITIVE_FIELDS = [
     'credit_card',
     'creditcard',
     'cvv',
-    'pin',
+    'pin_code',
+    'pincode',
 ];
 
 const REDACTED = '[REDACTED]';
@@ -100,7 +101,6 @@ function isEmail(value: string): boolean {
 }
 
 function isPhone(value: string): boolean {
-    if (typeof value !== 'string') return false;
     const trimmed = value.trim();
     // Must have at least 7 digits to be a phone number
     const digits = trimmed.replace(/\D/g, '');

@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 import { Injectable, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
 import { EventBus, RequestContextService, TransactionalConnection, ID, VendureEvent } from '@vendure/core';
 import { In } from 'typeorm';
@@ -32,6 +33,9 @@ import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { DomainEventsService } from './domain-events.service';
 import { findEnabledTriggersByType, parseTriggerConfig } from '../../utils';
 import { getErrorMessage, ensureError } from '../../utils/error.utils';
+import { SCHEDULER } from '../../constants/defaults';
+
+const MAX_PIPELINE_DISCOVERY = SCHEDULER.MAX_PIPELINE_DISCOVERY;
 
 /** Maps event type pattern prefixes to their corresponding EventKind */
 const EVENT_KIND_PREFIX_MAP: ReadonlyMap<string, EventKind> = new Map<string, EventKind>([
@@ -232,8 +236,15 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                     status: PipelineStatus.PUBLISHED,
                     enabled: true,
                 },
-                take: 1000,
+                take: MAX_PIPELINE_DISCOVERY,
             });
+
+            if (allPipelines.length >= MAX_PIPELINE_DISCOVERY) {
+                this.logger.warn('Pipeline discovery may be truncated', {
+                    count: allPipelines.length,
+                    limit: MAX_PIPELINE_DISCOVERY,
+                });
+            }
 
             this.shadowCache.clear();
 
@@ -367,7 +378,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
         const activeRun = await runRepo.findOne({
             where: {
                 pipelineId: Number(pipelineId),
-                status: In([RunStatus.RUNNING, RunStatus.PENDING]),
+                status: In([RunStatus.RUNNING, RunStatus.PENDING, RunStatus.PAUSED]),
             },
         });
 
@@ -407,7 +418,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
 
                 if (kind === EventKind.PRODUCT || kind === EventKind.VARIANT || kind === EventKind.ASSET || kind === EventKind.COLLECTION || kind === EventKind.CUSTOMER) {
                     // VendureEntityEvent subclasses carry .type ('created'/'updated'/'deleted').
-                    // CollectionModificationEvent does not carry .type — action defaults to '', yielding __operation='UPDATE'.
+                    // CollectionModificationEvent does not carry .type, action defaults to '', yielding __operation='UPDATE'.
                     const action = String(eventPayload?.type ?? '').toLowerCase();
                     const ns = kind;
                     const matchesAction = !evType || evType === `${ns}.*` || evType === `${ns}.${action}`;
@@ -441,11 +452,16 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                 }
 
                 if (shouldTrigger) {
-                    const triggerKey = `${trigger.pipelineCode}:${kind}`;
+                    // Include entity ID in dedup key so different entities can trigger
+                    // the same pipeline concurrently (prevents over-deduplication)
+                    const rawId = seed.length > 0 ? String((seed[0] as Record<string, unknown>).id ?? '') : '';
+                    const entityId = rawId || crypto.randomUUID();
+                    const dedupKey = `${trigger.pipelineCode}:${trigger.triggerKey}:${kind}:${entityId}`;
 
-                    if (this.inFlightTriggers.has(triggerKey)) {
+                    if (this.inFlightTriggers.has(dedupKey)) {
                         this.logger.debug('Skipping duplicate event trigger - already in flight', {
                             pipelineCode: trigger.pipelineCode,
+                            triggerKey: trigger.triggerKey,
                             eventKind: kind,
                         });
                         continue;
@@ -461,11 +477,12 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                     }
 
                     // Mark as in-flight
-                    this.inFlightTriggers.add(triggerKey);
+                    this.inFlightTriggers.add(dedupKey);
 
                     try {
                         this.logger.info('Triggering pipeline from event', {
                             pipelineCode: trigger.pipelineCode,
+                            triggerKey: trigger.triggerKey,
                             eventKind: kind,
                             seedRecordCount: seed.length,
                         });
@@ -480,7 +497,7 @@ export class DataHubEventTriggerService implements OnModuleInit, OnModuleDestroy
                             { pipelineCode: trigger.pipelineCode, eventKind: kind, triggerKey: trigger.triggerKey },
                         );
                     } finally {
-                        this.inFlightTriggers.delete(triggerKey);
+                        this.inFlightTriggers.delete(dedupKey);
                     }
                 }
             } catch (error) {

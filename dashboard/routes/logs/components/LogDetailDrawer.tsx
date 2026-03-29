@@ -78,7 +78,7 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
                             </div>
                             <div>
                                 <div className="text-xs text-muted-foreground">Records Failed</div>
-                                <div className={`text-sm ${log.recordsFailed > 0 ? 'text-red-600' : ''}`}>
+                                <div className={`text-sm ${(log.recordsFailed ?? 0) > 0 ? 'text-red-600 dark:text-red-400' : ''}`}>
                                     {log.recordsFailed ?? '—'}
                                 </div>
                             </div>
@@ -98,12 +98,12 @@ export const LogDetailDrawer = memo(function LogDetailDrawer({ log, onClose }: L
                             </div>
                         )}
 
-                        {log.runId && (
+                        {log.runId && log.pipeline?.id && (
                             <div className="pt-3 border-t">
                                 <Button asChild variant="outline" size="sm">
                                     <Link
                                         to={`${ROUTES.PIPELINES}/$id`}
-                                        params={{ id: log.pipeline?.id ?? '' }}
+                                        params={{ id: log.pipeline.id }}
                                     >
                                         View Pipeline
                                     </Link>

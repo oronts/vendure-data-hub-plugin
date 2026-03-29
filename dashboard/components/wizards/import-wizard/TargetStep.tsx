@@ -16,10 +16,9 @@ import type { ImportConfiguration } from './types';
 interface TargetStepProps {
     config: Partial<ImportConfiguration>;
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
-    errors?: Record<string, string>;
 }
 
-export function TargetStep({ config, updateConfig, errors = {} }: TargetStepProps) {
+export function TargetStep({ config, updateConfig }: TargetStepProps) {
     return (
         <WizardStepContainer
             title={STEP_CONTENT.target.title}

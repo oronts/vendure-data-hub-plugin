@@ -49,7 +49,7 @@ export function applyTemplateTransform(
         (template: string, rec: JsonObject, _currentValue: JsonValue) => {
             return template.replace(/\$\{([^}]+)\}/g, (_, path) => {
                 const val = getNestedValue(rec, path.trim());
-                return val !== null && val !== undefined ? String(val) : '';
+                return val != null ? String(val) : '';
             });
         },
     ) as string;
@@ -82,7 +82,7 @@ export function applyJoinTransform(
     if (config.fields?.length) {
         for (const field of config.fields) {
             const fieldValue = getNestedValue(record, field);
-            if (fieldValue !== null && fieldValue !== undefined) {
+            if (fieldValue != null) {
                 values.push(fieldValue);
             }
         }

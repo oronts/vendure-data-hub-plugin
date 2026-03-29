@@ -4,12 +4,14 @@
  * Extracts records from file sources:
  * - CSV files (uploaded, inline text, or local path)
  * - JSON files (uploaded, inline text, or local path)
- * - XML files (future support)
+ * - XML files
  *
  * @module runtime/executors/extractors
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { Injectable } from '@nestjs/common';
 import { RecordObject, ExecutorContext } from '../../executor-types';
 import { FileStorageService } from '../../../services/storage/file-storage.service';
@@ -64,6 +66,18 @@ export class FileExtractHandler implements ExtractHandler {
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.EXTRACT_EXECUTOR);
+    }
+
+    private validateLocalPath(filePath: string): void {
+        let resolved = path.resolve(filePath);
+        try { resolved = fs.realpathSync(resolved); } catch { /* file may not exist yet */ }
+        const cwdPrefix = process.cwd() + path.sep;
+        const tmpDir = os.tmpdir();
+        const tmpPrefix = tmpDir + path.sep;
+        if (!resolved.startsWith(cwdPrefix) && resolved !== process.cwd() &&
+            !resolved.startsWith(tmpPrefix) && resolved !== tmpDir) {
+            throw new Error(`Path traversal blocked: "${filePath}" resolves outside the working directory`);
+        }
     }
 
     async extract(context: ExtractHandlerContext): Promise<RecordObject[]> {
@@ -172,12 +186,13 @@ export class FileExtractHandler implements ExtractHandler {
         hasHeader: boolean,
     ): Promise<RecordObject[]> {
         try {
+            this.validateLocalPath(csvPath);
             await fs.promises.access(csvPath);
             const content = await fs.promises.readFile(csvPath, 'utf8');
             return parseCsv(content, delimiter, hasHeader) as RecordObject[];
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-                this.logger.warn(`File not found: "${csvPath}" — returning 0 records`, {
+                this.logger.warn(`File not found: "${csvPath}" - returning 0 records`, {
                     stepKey,
                     path: csvPath,
                 });
@@ -251,6 +266,7 @@ export class FileExtractHandler implements ExtractHandler {
 
     private async loadJsonFromPath(jsonPath: string, stepKey: string): Promise<unknown | null> {
         try {
+            this.validateLocalPath(jsonPath);
             await fs.promises.access(jsonPath);
             const content = await fs.promises.readFile(jsonPath, 'utf8');
             const data = JSON.parse(content);
@@ -258,7 +274,7 @@ export class FileExtractHandler implements ExtractHandler {
             return data;
         } catch (err) {
             if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-                this.logger.warn(`File not found: "${jsonPath}" — returning 0 records`, {
+                this.logger.warn(`File not found: "${jsonPath}" - returning 0 records`, {
                     stepKey,
                     path: jsonPath,
                 });
@@ -290,7 +306,7 @@ export class FileExtractHandler implements ExtractHandler {
         if (itemsPath && dataObj) {
             const extracted = getPath(dataObj, itemsPath);
             if (Array.isArray(extracted)) return extracted as RecordObject[];
-            if (extracted !== null && extracted !== undefined) return [extracted] as RecordObject[];
+            if (extracted != null) return [extracted] as RecordObject[];
             return [];
         }
 
@@ -347,11 +363,12 @@ export class FileExtractHandler implements ExtractHandler {
 
         if (cfg.xmlPath) {
             try {
+                this.validateLocalPath(cfg.xmlPath);
                 await fs.promises.access(cfg.xmlPath);
                 return await fs.promises.readFile(cfg.xmlPath, 'utf8');
             } catch (err) {
                 if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-                    this.logger.warn(`File not found: "${cfg.xmlPath}" — returning 0 records`, { stepKey, path: cfg.xmlPath });
+                    this.logger.warn(`File not found: "${cfg.xmlPath}" - returning 0 records`, { stepKey, path: cfg.xmlPath });
                 } else {
                     this.logger.warn(`Failed to read XML file: "${cfg.xmlPath}"`, { stepKey, path: cfg.xmlPath, error: getErrorMessage(err) });
                 }

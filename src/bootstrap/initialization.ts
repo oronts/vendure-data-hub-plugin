@@ -448,18 +448,14 @@ export class AdapterBootstrapService implements OnModuleInit {
 
         this.logger.info('Configuring script operator security', {
             enabled: isEnabled,
-            maxCacheSize: scriptConfig.maxCacheSize,
             defaultTimeoutMs: scriptConfig.defaultTimeoutMs,
-            enableCache: scriptConfig.enableCache,
         });
 
         configureScriptOperators({
             enabled: isEnabled,
             security: scriptConfig.validation,
             evaluator: {
-                maxCacheSize: scriptConfig.maxCacheSize,
                 defaultTimeoutMs: scriptConfig.defaultTimeoutMs,
-                enableCache: scriptConfig.enableCache,
             },
         });
 

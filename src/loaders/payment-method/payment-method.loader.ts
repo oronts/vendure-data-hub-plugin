@@ -3,7 +3,6 @@ import {
     ID,
     PaymentMethod,
     RequestContext,
-    TransactionalConnection,
     PaymentMethodService,
 } from '@vendure/core';
 import {
@@ -32,36 +31,7 @@ import {
     shouldUpdateField,
 } from './helpers';
 
-/**
- * PaymentMethodLoader - Refactored to extend BaseEntityLoader
- *
- * Imports payment methods into Vendure with support for:
- * - Payment handlers (e.g., stripe, paypal, manual)
- * - Eligibility checkers (optional conditions)
- * - Translations for name and description
- *
- * The base class handles:
- * - Result initialization
- * - Validation loop
- * - Duplicate detection
- * - CREATE/UPDATE/UPSERT operation logic
- * - Dry run mode
- * - Error handling
- *
- * @example
- * ```typescript
- * const paymentMethodInput: PaymentMethodInput = {
- *   name: 'Credit Card',
- *   code: 'credit-card',
- *   description: 'Pay with Visa, Mastercard, or American Express',
- *   enabled: true,
- *   handler: {
- *     code: 'stripe-payment-handler',
- *     args: { apiKey: 'sk_test_...' },
- *   },
- * };
- * ```
- */
+/** Loads PaymentMethod entities via PaymentMethodService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class PaymentMethodLoader extends BaseEntityLoader<PaymentMethodInput, PaymentMethod> {
     protected readonly logger: DataHubLogger;
@@ -70,7 +40,6 @@ export class PaymentMethodLoader extends BaseEntityLoader<PaymentMethodInput, Pa
     private readonly lookupHelper: EntityLookupHelper<PaymentMethodService, PaymentMethod, PaymentMethodInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private paymentMethodService: PaymentMethodService,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -149,7 +118,7 @@ export class PaymentMethodLoader extends BaseEntityLoader<PaymentMethodInput, Pa
                     description: 'Unique code for the payment method',
                     example: 'credit-card',
                     validation: {
-                        pattern: '^[a-z0-9_-]+$',
+                        pattern: '^[a-zA-Z0-9_-]+$',
                     },
                 },
                 {
@@ -251,13 +220,10 @@ export class PaymentMethodLoader extends BaseEntityLoader<PaymentMethodInput, Pa
 
         if ((record.name !== undefined && shouldUpdateField('name', options.updateOnlyFields)) ||
             (record.description !== undefined && shouldUpdateField('description', options.updateOnlyFields))) {
-            updateInput.translations = [
-                {
-                    languageCode: ctx.languageCode,
-                    name: record.name,
-                    description: record.description,
-                },
-            ];
+            const translation: Record<string, unknown> = { languageCode: ctx.languageCode };
+            if (record.name !== undefined && shouldUpdateField('name', options.updateOnlyFields)) translation.name = record.name;
+            if (record.description !== undefined && shouldUpdateField('description', options.updateOnlyFields)) translation.description = record.description;
+            updateInput.translations = [translation];
         }
 
         await this.paymentMethodService.update(ctx, updateInput as Parameters<typeof this.paymentMethodService.update>[1]);

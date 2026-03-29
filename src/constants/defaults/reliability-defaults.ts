@@ -12,6 +12,8 @@ export const RATE_LIMIT = {
     ADAPTIVE_DELAY_MIN_MS: 100,
     /** Check interval when paused */
     PAUSE_CHECK_INTERVAL_MS: 100,
+    /** Maximum number of rate limit entries to prevent unbounded memory growth */
+    MAX_ENTRIES: 1000,
 } as const;
 
 /**
@@ -74,12 +76,16 @@ export const DISTRIBUTED_LOCK = {
     DEFAULT_RETRY_INTERVAL_MS: 100,
     /** Pipeline execution lock TTL in milliseconds (5 minutes - long enough for most pipelines) */
     PIPELINE_LOCK_TTL_MS: 300_000,
+    /** Pipeline execution lock refresh interval (~TTL/3 per Redlock best practice) */
+    PIPELINE_LOCK_REFRESH_MS: 100_000,
     /** Scheduler trigger lock TTL in milliseconds (30 seconds - just for preventing duplicate triggers) */
     SCHEDULER_LOCK_TTL_MS: 30_000,
     /** Message consumer lock TTL in milliseconds (5 minutes - long enough for consumer heartbeat) */
     MESSAGE_CONSUMER_LOCK_TTL_MS: 300_000,
-    /** Message consumer lock refresh interval (4 minutes - before TTL expires) */
-    MESSAGE_CONSUMER_LOCK_REFRESH_MS: 240_000,
+    /** Message consumer lock refresh interval (~TTL/3 per Redlock best practice) */
+    MESSAGE_CONSUMER_LOCK_REFRESH_MS: 100_000,
+    /** File watch lock TTL in milliseconds (60 seconds - covers single poll cycle) */
+    FILE_WATCH_LOCK_TTL_MS: 60_000,
 } as const;
 
 /**

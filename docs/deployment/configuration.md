@@ -606,7 +606,7 @@ These settings can be changed via Admin UI or GraphQL:
 
 ```graphql
 mutation {
-    setDataHubSettings(input: {
+    updateDataHubSettings(input: {
         retentionDaysRuns: 60
         retentionDaysErrors: 90
         logPersistenceLevel: "info"
@@ -625,7 +625,7 @@ Configure Vendure's job queue for pipeline execution:
 // vendure-config.ts
 export const config: VendureConfig = {
     jobQueueOptions: {
-        activeQueues: ['default', 'data-hub-run', 'data-hub-schedule'],
+        activeQueues: ['default', 'data-hub.run', 'data-hub.schedule'],
         pollInterval: 1000,
     },
 };
@@ -635,8 +635,8 @@ export const config: VendureConfig = {
 
 | Queue | Purpose |
 |-------|---------|
-| `data-hub-run` | Pipeline execution jobs |
-| `data-hub-schedule` | Schedule checking jobs |
+| `data-hub.run` | Pipeline execution jobs |
+| `data-hub.schedule` | Schedule checking jobs |
 
 ### Worker Scaling
 

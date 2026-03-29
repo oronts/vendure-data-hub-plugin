@@ -11,8 +11,6 @@
  */
 import { AdapterDefinition } from '../../../sdk/types';
 import {
-    GOOGLE_MERCHANT_FORMAT_OPTIONS,
-    META_CATALOG_FORMAT_OPTIONS,
     CUSTOM_FEED_FORMAT_OPTIONS,
     LOCALIZATION_SCHEMA_FIELDS,
 } from '../../../constants/adapter-schema-options';
@@ -49,15 +47,9 @@ export const FEED_HANDLER_REGISTRY = new Map<string, FeedRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'outputPath', label: 'Output path', type: 'string', required: true, description: 'File path or URL' },
-                    { key: 'format', label: 'Format', type: 'select', required: true, options: GOOGLE_MERCHANT_FORMAT_OPTIONS },
-                    { key: 'targetCountry', label: 'Target country', type: 'string', required: true, description: 'ISO country code (e.g., US)' },
-                    { key: 'contentLanguage', label: 'Content language', type: 'string', required: true, description: 'ISO language code (e.g., en)' },
                     { key: 'currency', label: 'Currency', type: 'string', required: true, description: 'ISO currency code (e.g., USD)' },
                     { key: 'channelId', label: 'Channel', type: 'string', description: 'Vendure channel to use' },
-                    { key: 'includeOutOfStock', label: 'Include out of stock', type: 'boolean' },
-                    { key: 'storeName', label: 'Store name', type: 'string' },
                     { key: 'storeUrl', label: 'Store URL', type: 'string', required: true },
-                    { key: 'shippingInfo', label: 'Shipping info', type: 'json', description: 'Default shipping configuration' },
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -77,12 +69,9 @@ export const FEED_HANDLER_REGISTRY = new Map<string, FeedRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'outputPath', label: 'Output path', type: 'string', required: true },
-                    { key: 'format', label: 'Format', type: 'select', required: true, options: META_CATALOG_FORMAT_OPTIONS },
                     { key: 'currency', label: 'Currency', type: 'string', required: true },
                     { key: 'channelId', label: 'Channel', type: 'string' },
                     { key: 'brandField', label: 'Brand field', type: 'string', description: 'Field path for brand' },
-                    { key: 'categoryField', label: 'Category field', type: 'string', description: 'Field path for Google category' },
-                    { key: 'includeVariants', label: 'Include variants', type: 'boolean' },
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -129,11 +118,7 @@ export const FEED_HANDLER_REGISTRY = new Map<string, FeedRegistryEntry>([
                 fields: [
                     { key: 'outputPath', label: 'Output path', type: 'string', required: true },
                     { key: 'format', label: 'Format', type: 'select', required: true, options: CUSTOM_FEED_FORMAT_OPTIONS },
-                    { key: 'template', label: 'Template', type: 'textarea', description: 'Template for item rendering (uses Handlebars)' },
                     { key: 'fieldMapping', label: 'Field mapping', type: 'json', required: true, description: 'Map source fields to feed fields' },
-                    { key: 'rootElement', label: 'Root element (XML)', type: 'string' },
-                    { key: 'itemElement', label: 'Item element (XML)', type: 'string' },
-                    { key: 'connectionCode', label: 'Upload connection', type: 'string' },
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },

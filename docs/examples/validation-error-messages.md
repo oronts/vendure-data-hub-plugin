@@ -5,7 +5,7 @@ The `ValidationBuilder` now provides rich, contextual error messages that help d
 ## Basic Usage with Context
 
 ```typescript
-import { ValidationBuilder } from '@vendure-plugins/data-hub';
+import { ValidationBuilder } from '@oronts/vendure-data-hub-plugin';
 
 // Simple validation with record identifier
 const result = new ValidationBuilder()

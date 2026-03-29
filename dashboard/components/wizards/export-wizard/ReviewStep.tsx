@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { VENDURE_ENTITY_LIST } from '../../../../shared';
 import { useDestinationSchemas } from '../../../hooks/api/use-config-options';
-import { formatFieldLabel } from '../../../utils/formatters';
+import { formatKey } from '../../../utils/formatters';
 import { WizardStepContainer } from '../shared';
 import { ConfigurationNameCard, SummaryCard, SummaryCardGrid, SummaryField } from '../../shared/wizard';
 import { STEP_CONTENT, EXPORT_PLACEHOLDERS } from './constants';
@@ -224,7 +224,7 @@ function renderGenericConfigFields(destination: DestinationConfig): React.ReactN
     return Object.entries(config)
         .filter(([, v]) => v != null && v !== '' && v !== false)
         .map(([key, value]) => (
-            <SummaryField key={key} label={formatFieldLabel(key)}>
+            <SummaryField key={key} label={formatKey(key)}>
                 {typeof value === 'object' ? JSON.stringify(value) : String(value)}
             </SummaryField>
         ));

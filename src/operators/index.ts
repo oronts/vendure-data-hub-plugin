@@ -17,7 +17,7 @@ import { AdapterDefinition } from './types';
 import { OPERATOR_REGISTRY } from './operator-runtime-registry';
 import type { OptionValue } from '../constants/enum-metadata';
 
-/** Auto-derived from OPERATOR_REGISTRY -- no manual maintenance needed. */
+/** Auto-derived from OPERATOR_REGISTRY, no manual maintenance needed. */
 export const ALL_OPERATOR_DEFINITIONS: AdapterDefinition[] = Object.values(OPERATOR_REGISTRY).map(
     entry => entry.definition,
 );

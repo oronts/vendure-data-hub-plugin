@@ -68,7 +68,7 @@ export function createDeliveryRecord(
         payload,
         status: WebhookDeliveryStatus.PENDING,
         attempts: 0,
-        maxAttempts: maxAttempts ?? config.retryConfig?.maxAttempts ?? 3,
+        maxAttempts: maxAttempts ?? config.retryConfig?.maxAttempts ?? WEBHOOK.MAX_ATTEMPTS,
         createdAt: new Date(),
     };
 }

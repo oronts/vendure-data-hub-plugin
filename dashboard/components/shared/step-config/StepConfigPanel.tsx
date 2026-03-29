@@ -10,17 +10,15 @@ import {
     Label,
     Separator,
 } from '@vendure/dashboard';
-import { Trash2, Settings2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
 
 import { SchemaFormRenderer } from '../schema-form';
-import {
-    AdapterSelector,
-    AdapterRequiredWarning,
-    ValidateConfigComponent,
-    RouteConfigComponent,
-    EnrichConfigComponent,
-    GateConfigComponent,
-} from './index';
+import { AdapterSelector } from './AdapterSelector';
+import { AdapterRequiredWarning } from './AdapterRequiredWarning';
+import { ValidateConfigComponent } from './ValidateConfigComponent';
+import { RouteConfigComponent } from './RouteConfigComponent';
+import { EnrichConfigComponent } from './EnrichConfigComponent';
+import { GateConfigComponent } from './GateConfigComponent';
 import { TriggerForm } from '../trigger-config';
 import { OperatorCheatSheetButton } from './OperatorCheatSheetButton';
 import {
@@ -37,7 +35,6 @@ import { getAdapterTypeLabel, prepareDynamicFields, normalizeStepType, getAdapte
 import {
     STEP_TYPE,
     ADAPTER_TYPES,
-    NODE_CATEGORIES,
     PANEL_VARIANT,
     FALLBACK_COLORS,
 } from '../../../constants';

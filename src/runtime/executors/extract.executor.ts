@@ -41,7 +41,6 @@ export class ExtractExecutor {
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.EXTRACT_EXECUTOR);
 
-        // Initialize handlers
         this.handlers = this.initializeHandlers(loggerFactory);
     }
 

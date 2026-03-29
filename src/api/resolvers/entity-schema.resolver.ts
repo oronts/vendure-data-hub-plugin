@@ -9,9 +9,9 @@ import { screamingSnakeToKebab } from '../../../shared/utils/string-case';
 function mapFieldTypeToGraphQL(type: EntityField['type']): string {
     switch (type) {
         case 'localized-string':
-            return 'localized_string';
+            return 'LOCALIZED_STRING';
         default:
-            return type;
+            return type.toUpperCase();
     }
 }
 

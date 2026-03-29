@@ -119,7 +119,7 @@ export const operatorStressTest = createPipeline()
             { op: 'stripHtml', args: { source: 'htmlDesc', target: 'plainDesc' } },
             { op: 'lowercase', args: { path: 'email' } },
             { op: 'slugify', args: { source: 'cleanName', target: 'slug' } },
-            { op: 'truncate', args: { path: 'cleanName', maxLength: 30 } },
+            { op: 'truncate', args: { source: 'cleanName', length: 30 } },
             { op: 'template', args: { template: '${cleanName} (${category})', target: 'displayTitle' } },
         ],
     })
@@ -193,7 +193,7 @@ export const operatorStressTest = createPipeline()
     .export('stress-test-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'operator-stress-test-results.csv',
+        filenamePattern: 'operator-stress-test-results.csv',
     })
 
     // Linear graph
@@ -323,7 +323,7 @@ export const customerLifecycleTest = createPipeline()
     .export('active-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'customer-lifecycle-active.csv',
+        filenamePattern: 'customer-lifecycle-active.csv',
     })
 
     // Inactive branch: tag and export for deactivation tracking
@@ -337,7 +337,7 @@ export const customerLifecycleTest = createPipeline()
     .export('inactive-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'customer-lifecycle-inactive.csv',
+        filenamePattern: 'customer-lifecycle-inactive.csv',
     })
 
     // Graph edges
@@ -481,7 +481,7 @@ export const orderImportStateTest = createPipeline()
     .export('settled-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'order-import-settled.csv',
+        filenamePattern: 'order-import-settled.csv',
     })
 
     // Pending branch: just tag and export (don't create these in Vendure)
@@ -495,7 +495,7 @@ export const orderImportStateTest = createPipeline()
     .export('pending-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'order-import-pending.csv',
+        filenamePattern: 'order-import-pending.csv',
     })
 
     // Graph edges
@@ -685,7 +685,7 @@ export const multiStepTransformChain = createPipeline()
     .export('transform-chain-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'multi-step-transform-chain.csv',
+        filenamePattern: 'multi-step-transform-chain.csv',
     })
 
     // Linear graph: 6 transform steps in sequence
@@ -767,7 +767,7 @@ export const reconciliationAudit = createPipeline()
     .export('vendure-audit-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'reconciliation-vendure-snapshot.csv',
+        filenamePattern: 'reconciliation-vendure-snapshot.csv',
     })
 
     // ── Branch B: PIM catalog snapshot ──────────────────────────────────────
@@ -815,7 +815,7 @@ export const reconciliationAudit = createPipeline()
     .export('pim-audit-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'reconciliation-pim-snapshot.csv',
+        filenamePattern: 'reconciliation-pim-snapshot.csv',
     })
 
     // Graph: two independent parallel branches from trigger

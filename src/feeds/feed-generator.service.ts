@@ -183,7 +183,7 @@ export class FeedGeneratorService implements OnModuleInit {
                     config.customGeneratorCode,
                 );
             }
-        } else if (!VALID_BUILT_IN_FORMATS.includes(config.format as BuiltInFeedFormat)) {
+        } else if (!VALID_BUILT_IN_FORMATS.includes((config.format || '').toLowerCase() as BuiltInFeedFormat)) {
             // Unknown format that's not 'custom' - warn but allow (for future extensibility)
             this.logger.warn('Unknown feed format registered', {
                 feedCode: config.code,
@@ -317,7 +317,8 @@ export class FeedGeneratorService implements OnModuleInit {
             let contentType: string;
             let filename: string;
 
-            switch (config.format) {
+            const formatLower = (config.format || '').toLowerCase();
+            switch (formatLower) {
                 case 'google_shopping':
                     content = await generateGoogleShoppingFeed(ctx, products, config, this.connection);
                     contentType = CONTENT_TYPES.XML;
@@ -325,6 +326,7 @@ export class FeedGeneratorService implements OnModuleInit {
                     break;
 
                 case 'facebook_catalog':
+                case 'meta_catalog':
                     content = await generateFacebookCatalogFeed(ctx, products, config, this.connection);
                     contentType = CONTENT_TYPES.CSV;
                     filename = `${feedCode}.csv`;

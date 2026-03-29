@@ -23,7 +23,6 @@ import {
     getOptionValue,
     getStockOnHand,
     stripHtml,
-    csvEscape,
 } from './feed-helpers';
 import { FIELD_PREFIX, FEED_DEFAULTS, GENERIC_AVAILABILITY } from './feed-constants';
 import { LOGGER_CONTEXTS } from '../../constants/core';
@@ -93,9 +92,9 @@ function getFieldValue(
         case 'sku':
             return variant.sku || '';
         case 'name':
-            return csvEscape(variant.name || product?.name || '');
+            return variant.name || product?.name || '';
         case 'description':
-            return csvEscape(stripHtml(product?.description || ''));
+            return stripHtml(product?.description || '');
         case 'price':
             return (variant.priceWithTax / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER).toFixed(TRANSFORM_LIMITS.CURRENCY_DECIMAL_PLACES);
         case 'price_formatted':
@@ -120,7 +119,7 @@ function getFieldValue(
             return getOptionValue(variant, 'size') || '';
         case 'weight': {
             const weightValue = product?.customFields?.weight;
-            return weightValue !== null && weightValue !== undefined ? String(weightValue) : '';
+            return weightValue != null ? String(weightValue) : '';
         }
         case 'product_id':
             return product?.id.toString() || '';
@@ -133,7 +132,7 @@ function getFieldValue(
                 const customFields = variant.customFields || {};
                 const productCustomFields = product?.customFields || {};
                 const fieldValue = customFields[fieldName] ?? productCustomFields[fieldName];
-                return fieldValue !== null && fieldValue !== undefined ? String(fieldValue) : '';
+                return fieldValue != null ? String(fieldValue) : '';
             }
             // Check for options path
             if (source.startsWith(FIELD_PREFIX.OPTION)) {

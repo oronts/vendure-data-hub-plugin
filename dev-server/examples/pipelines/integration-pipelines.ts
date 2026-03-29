@@ -1,5 +1,5 @@
 /**
- * Integration Pipelines (P7-P10)
+ * Integration Pipelines
  *
  * Advanced integration scenarios demonstrating:
  * - P7: CDC product sync with route-based upsert/delete branching
@@ -190,7 +190,7 @@ export const eventStockAlert = createPipeline()
     .export('alert-log', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'stock-alerts.json',
+        filenamePattern: 'stock-alerts.json',
     })
 
     // Linear graph
@@ -302,7 +302,7 @@ export const customerAnalyticsExport = createPipeline()
     .export('analytics-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'customer-analytics.csv',
+        filenamePattern: 'customer-analytics.csv',
     })
 
     .load('sync-tax-rates', {
@@ -673,10 +673,9 @@ export const entityLifecycleOps = createPipeline()
         ],
         ON_ERROR: [
             {
-                type: 'INTERCEPTOR',
-                name: 'Handle entity lifecycle error',
-                code: 'console.log("Entity lifecycle error:", context.error?.message); return records;',
-                failOnError: false,
+                type: 'LOG',
+                level: 'ERROR',
+                message: 'Entity lifecycle error occurred',
             },
         ],
     })
@@ -775,7 +774,7 @@ export const pimCustomerSync = createPipeline()
     .export('customer-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'pim-customer-sync.csv',
+        filenamePattern: 'pim-customer-sync.csv',
     })
 
     // Graph: groups first, then customers
@@ -863,7 +862,7 @@ export const pimOrderImport = createPipeline()
     .export('order-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'pim-order-import.csv',
+        filenamePattern: 'pim-order-import.csv',
     })
 
     .edge('manual', 'fetch-orders')
@@ -958,7 +957,7 @@ export const magentoCustomerMigration = createPipeline()
     .export('migration-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'magento-customer-migration.csv',
+        filenamePattern: 'magento-customer-migration.csv',
     })
 
     .edge('manual', 'fetch-magento-customers')
@@ -1030,7 +1029,7 @@ export const resilienceTest = createPipeline()
     .export('error-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'resilience-errors.csv',
+        filenamePattern: 'resilience-errors.csv',
     })
 
     // Branch 2: Bulk data stress test
@@ -1051,7 +1050,7 @@ export const resilienceTest = createPipeline()
     .export('bulk-report', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'bulk-test-results.json',
+        filenamePattern: 'bulk-test-results.json',
     })
 
     // Branch 3: Paginated extraction (cursor + offset)
@@ -1072,7 +1071,7 @@ export const resilienceTest = createPipeline()
     .export('paginated-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'paginated-extract.csv',
+        filenamePattern: 'paginated-extract.csv',
     })
 
     // Graph edges

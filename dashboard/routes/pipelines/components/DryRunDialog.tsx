@@ -56,14 +56,12 @@ export function DryRunDialog({
         });
     }, [pipelineId, dryRun.mutate]);
 
-    // Run dry run when dialog opens (only once)
     React.useEffect(() => {
         if (open && pipelineId && !hasAttempted && !dryRun.isPending) {
             handleDryRun();
         }
     }, [open, pipelineId, hasAttempted, dryRun.isPending, handleDryRun]);
 
-    // Reset state when dialog closes
     React.useEffect(() => {
         if (!open) {
             dryRun.reset();
@@ -128,9 +126,8 @@ export function DryRunDialog({
                                                 <div className="border rounded-md p-3 bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800">
                                                     <div className="text-sm font-medium text-red-800 dark:text-red-400 mb-1">Errors</div>
                                                     <ul className="list-disc pl-5 text-sm text-red-700 dark:text-red-400">
-                                                        {/* Static display list, using content-based key */}
-                                                        {dryRunResult.notes.filter(n => n.startsWith('Error:')).map((n) => (
-                                                            <li key={`error-${n.slice(0, UI_LIMITS.TRUNCATE_LENGTH)}`}>{n.replace('Error: ', '')}</li>
+                                                        {dryRunResult.notes.filter(n => n.startsWith('Error:')).map((n, i) => (
+                                                            <li key={`error-${i}`}>{n.replace('Error: ', '')}</li>
                                                         ))}
                                                     </ul>
                                                 </div>
@@ -139,9 +136,8 @@ export function DryRunDialog({
                                                 <div className="border rounded-md p-3 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
                                                     <div className="text-sm font-medium text-amber-800 dark:text-amber-400 mb-1">Notes</div>
                                                     <ul className="list-disc pl-5 text-sm text-amber-700 dark:text-amber-400">
-                                                        {/* Static display list, using content-based key */}
-                                                        {dryRunResult.notes.filter(n => !n.startsWith('Error:')).map((n) => (
-                                                            <li key={`note-${n.slice(0, UI_LIMITS.TRUNCATE_LENGTH)}`}>{n}</li>
+                                                        {dryRunResult.notes.filter(n => !n.startsWith('Error:')).map((n, i) => (
+                                                            <li key={`note-${i}`}>{n}</li>
                                                         ))}
                                                     </ul>
                                                 </div>
@@ -218,10 +214,10 @@ export function DryRunDialog({
 function DryRunMetricsSummary({ metrics }: Readonly<{ metrics: unknown }>) {
     const dryRunMetrics = (metrics ?? {}) as DryRunMetrics;
     const cards = [
-        { label: 'Processed', value: dryRunMetrics.recordsProcessed ?? 0, color: 'text-blue-600' },
-        { label: 'Succeeded', value: dryRunMetrics.recordsSucceeded ?? 0, color: 'text-green-600' },
-        { label: 'Failed', value: dryRunMetrics.recordsFailed ?? 0, color: 'text-red-600' },
-        { label: 'Skipped', value: dryRunMetrics.recordsSkipped ?? 0, color: 'text-amber-600' },
+        { label: 'Processed', value: dryRunMetrics.recordsProcessed ?? 0, color: 'text-blue-600 dark:text-blue-400' },
+        { label: 'Succeeded', value: dryRunMetrics.recordsSucceeded ?? 0, color: 'text-green-600 dark:text-green-400' },
+        { label: 'Failed', value: dryRunMetrics.recordsFailed ?? 0, color: 'text-red-600 dark:text-red-400' },
+        { label: 'Skipped', value: dryRunMetrics.recordsSkipped ?? 0, color: 'text-amber-600 dark:text-amber-400' },
     ];
 
     return (

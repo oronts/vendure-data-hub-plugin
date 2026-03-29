@@ -98,7 +98,6 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
         isSubmitting,
     });
 
-    // Handle template selection
     const handleSelectTemplate = React.useCallback((template: ImportTemplate | null) => {
         setSelectedTemplate(template);
     }, []);
@@ -127,7 +126,6 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
         toast.success(TOAST_WIZARD.TEMPLATE_SELECTED);
     }, [setConfig, setCurrentStep]);
 
-    // Handle starting from scratch
     const handleStartFromScratch = React.useCallback(() => {
         setStartedFromScratch(true);
         setSelectedTemplate(null);
@@ -303,7 +301,7 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
                 )}
 
                 {currentStepId === IMPORT_STEP_ID.TARGET && (
-                    <TargetStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
+                    <TargetStep config={config} updateConfig={updateConfig} />
                 )}
 
                 {currentStepId === IMPORT_STEP_ID.MAPPING && (
@@ -312,7 +310,6 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
                         updateConfig={updateConfig}
                         sourceFields={parsedData?.headers ?? []}
                         sampleData={parsedData?.rows ?? []}
-                        errors={attemptedNext ? stepErrors : {}}
                     />
                 )}
 
@@ -321,11 +318,11 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
                 )}
 
                 {currentStepId === IMPORT_STEP_ID.STRATEGY && (
-                    <StrategyStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
+                    <StrategyStep config={config} updateConfig={updateConfig} />
                 )}
 
                 {currentStepId === IMPORT_STEP_ID.TRIGGER && (
-                    <TriggerStep config={config} updateConfig={updateConfig} errors={attemptedNext ? stepErrors : {}} />
+                    <TriggerStep config={config} updateConfig={updateConfig} />
                 )}
 
                 {currentStepId === IMPORT_STEP_ID.REVIEW && (

@@ -1,5 +1,5 @@
 /**
- * Step type configuration data -- single source of truth.
+ * Step type configuration data. Single source of truth.
  *
  * Both the backend (`src/constants/enum-metadata.ts`) and the dashboard
  * (`dashboard/constants/steps.ts`) derive their step configs from this
@@ -43,7 +43,7 @@ export const SHARED_STEP_TYPE_CONFIGS: readonly SharedStepTypeConfig[] = [
     { type: 'TRIGGER', label: 'Trigger', description: 'Start point for the pipeline', icon: 'Play', color: '#6366f1', bgColor: '#eef2ff', borderColor: '#a5b4fc', inputs: 0, outputs: 1, adapterType: 'TRIGGER', nodeType: 'trigger', defaultConfig: { type: 'MANUAL', enabled: true } },
     { type: 'EXTRACT', label: 'Extract', description: 'Pull data from external sources', icon: 'Download', color: '#3b82f6', bgColor: '#eff6ff', borderColor: '#93c5fd', inputs: 1, outputs: 1, adapterType: 'EXTRACTOR', nodeType: 'source' },
     { type: 'TRANSFORM', label: 'Transform', description: 'Map and modify data fields', icon: 'RefreshCw', color: '#8b5cf6', bgColor: '#f5f3ff', borderColor: '#c4b5fd', inputs: 1, outputs: 1, adapterType: 'OPERATOR', nodeType: 'transform' },
-    { type: 'VALIDATE', label: 'Validate', description: 'Check data against rules', icon: 'CheckCircle', color: '#f59e0b', bgColor: '#fffbeb', borderColor: '#fcd34d', inputs: 1, outputs: 1, adapterType: 'VALIDATOR', nodeType: 'validate', defaultConfig: { mode: 'FAIL_FAST' } },
+    { type: 'VALIDATE', label: 'Validate', description: 'Check data against rules', icon: 'CheckCircle', color: '#f59e0b', bgColor: '#fffbeb', borderColor: '#fcd34d', inputs: 1, outputs: 1, adapterType: 'VALIDATOR', nodeType: 'validate', defaultConfig: { mode: 'STRICT' } },
     { type: 'ENRICH', label: 'Enrich', description: 'Add or enrich data fields', icon: 'Sparkles', color: '#10b981', bgColor: '#ecfdf5', borderColor: '#6ee7b7', inputs: 1, outputs: 1, adapterType: 'ENRICHER', nodeType: 'enrich' },
     { type: 'ROUTE', label: 'Route', description: 'Branch data based on conditions', icon: 'GitBranch', color: '#f97316', bgColor: '#fff7ed', borderColor: '#fdba74', inputs: 1, outputs: 2, adapterType: 'ROUTER', nodeType: 'condition', defaultConfig: { branches: [] } },
     { type: 'LOAD', label: 'Load', description: 'Write data to Vendure', icon: 'Upload', color: '#ef4444', bgColor: '#fef2f2', borderColor: '#fca5a5', inputs: 1, outputs: 0, adapterType: 'LOADER', nodeType: 'load' },

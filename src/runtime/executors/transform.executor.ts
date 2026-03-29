@@ -69,7 +69,7 @@ export class TransformExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        __executorCtx: ExecutorContext,
+        executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;
@@ -87,7 +87,7 @@ export class TransformExecutor {
 
         // Handle multi-operator array format
         if (operatorsArray && operatorsArray.length > 0) {
-            return await this.executeOperatorsArray(ctx, step, input, operatorsArray, __executorCtx, pipelineContext);
+            return await this.executeOperatorsArray(ctx, step, input, operatorsArray, executorCtx, pipelineContext);
         }
 
         // Handle single operator format
@@ -96,7 +96,7 @@ export class TransformExecutor {
             return input;
         }
 
-        return await this.executeSingleOperator(ctx, step, input, adapterCode, cfg, __executorCtx, pipelineContext);
+        return await this.executeSingleOperator(ctx, step, input, adapterCode, cfg, executorCtx, pipelineContext);
     }
 
     /**
@@ -109,7 +109,7 @@ export class TransformExecutor {
         input: RecordObject[],
         adapterCode: string,
         cfg: JsonObject,
-        _executorCtx: ExecutorContext,
+        executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
     ): Promise<RecordObject[]> {
         // Try built-in first
@@ -147,7 +147,7 @@ export class TransformExecutor {
         step: PipelineStepDefinition,
         input: RecordObject[],
         operators: OperatorConfig[],
-        _executorCtx: ExecutorContext,
+        executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
     ): Promise<RecordObject[]> {
         let currentRecords = input;
@@ -175,13 +175,13 @@ export class TransformExecutor {
                     currentRecords,
                     opCode,
                     { adapterCode: opCode, ...args } as JsonObject,
-                    _executorCtx,
+                    executorCtx,
                     pipelineContext,
                 );
             } catch (error) {
                 this.logger.warn(
                     `Operator "${opCode}" failed for ${currentRecords.length} record(s) in step "${step.key}" ` +
-                    `(operator ${i + 1}/${operators.length}): ${getErrorMessage(error)} — ` +
+                    `(operator ${i + 1}/${operators.length}): ${getErrorMessage(error)} - ` +
                     `skipping remaining operators and returning records in their last good state`,
                     {
                         stepKey: step.key,
@@ -190,7 +190,7 @@ export class TransformExecutor {
                         recordCount: currentRecords.length,
                     },
                 );
-                // The records are tainted by this operator's failure — don't apply
+                // The records are tainted by this operator's failure. Don't apply
                 // more operators to potentially corrupted data. Break the operator
                 // chain and return the records as they were before this operator ran
                 // (i.e. the last successfully transformed state). This allows the
@@ -268,9 +268,17 @@ export class TransformExecutor {
             currency: (amount: number, currencyCode: string, locale?: string) => {
                 return new Intl.NumberFormat(locale ?? 'en-US', { style: 'currency', currency: currencyCode }).format(amount);
             },
-            date: (date: Date | string | number, _format: string) => {
+            date: (date: Date | string | number, format?: string) => {
                 const dateObj = new Date(date);
-                return dateObj.toISOString();
+                if (!format || format === 'iso') return dateObj.toISOString();
+                // Basic pattern substitution for common date formats
+                return format
+                    .replace('YYYY', String(dateObj.getUTCFullYear()))
+                    .replace('MM', String(dateObj.getUTCMonth() + 1).padStart(2, '0'))
+                    .replace('DD', String(dateObj.getUTCDate()).padStart(2, '0'))
+                    .replace('HH', String(dateObj.getUTCHours()).padStart(2, '0'))
+                    .replace('mm', String(dateObj.getUTCMinutes()).padStart(2, '0'))
+                    .replace('ss', String(dateObj.getUTCSeconds()).padStart(2, '0'));
             },
             number: (value: number, decimals?: number, locale?: string) => {
                 return new Intl.NumberFormat(locale ?? 'en-US', { maximumFractionDigits: decimals ?? 2 }).format(value);
@@ -292,7 +300,20 @@ export class TransformExecutor {
             toMinorUnits: (amount: number, decimals = 2) => Math.round(amount * Math.pow(10, decimals)),
             fromMinorUnits: (amount: number, decimals = 2) => amount / Math.pow(10, decimals),
             unit: (value: number, from: string, to: string) => unitFactor(from, to) * value,
-            parseDate: (value: string, _format?: string) => {
+            parseDate: (value: string, format?: string) => {
+                // If format is provided, try to parse structured date strings
+                if (format && /^[YMDHms\-/.\s:]+$/.test(format)) {
+                    const y = format.indexOf('YYYY'), m = format.indexOf('MM'), d = format.indexOf('DD');
+                    if (y >= 0 && m >= 0 && d >= 0) {
+                        const year = parseInt(value.substring(y, y + 4), 10);
+                        const month = parseInt(value.substring(m, m + 2), 10) - 1;
+                        const day = parseInt(value.substring(d, d + 2), 10);
+                        if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+                            const parsed = new Date(Date.UTC(year, month, day));
+                            return isNaN(parsed.getTime()) ? null : parsed;
+                        }
+                    }
+                }
                 const dateObj = new Date(value);
                 return isNaN(dateObj.getTime()) ? null : dateObj;
             },
@@ -365,7 +386,7 @@ export class TransformExecutor {
                 const delay = retryConfig.retryDelayMs ?? 100;
                 const waitMs = retryConfig.backoff === 'EXPONENTIAL'
                     ? calculateSimpleBackoff(attempt, delay)
-                    : delay * (attempt + 1);
+                    : delay;
                 await sleep(waitMs);
             }
         }
@@ -444,21 +465,16 @@ export class TransformExecutor {
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;
 
-        // Phase 1: Prepare context
         const operatorCtx = this.prepareCustomContext(ctx, step, pipelineContext);
 
-        // Phase 2: Load operator helpers
         const helpers = this.loadCustomOperator(ctx, operatorCtx);
 
-        // Phase 3: Resolve per-record retry config from step config
         const stepCfg = step.config as TransformStepConfig | undefined;
         const retryConfig = stepCfg?.retryPerRecord;
 
-        // Phase 4: Execute in sandbox with error handling
         try {
             return await this.executeInSandbox(operator, input, cfg, helpers, retryConfig);
         } catch (error) {
-            // Phase 5: Validate output / handle errors
             this.validateCustomOutput(error, operator, step.key);
         }
     }
@@ -526,11 +542,8 @@ export class TransformExecutor {
                 out.push(rec);
             } else {
                 if (onRecordError) await onRecordError(step.key, errs.join('; '), rec);
-                if (mode === ValidationMode.FAIL_FAST) {
-                    // drop this record
-                } else {
-                    // accumulate errors, still drop this record from the pipeline
-                }
+                // In FAIL_FAST mode, stop after the first validation error
+                if (mode === ValidationMode.FAIL_FAST) break;
             }
         }
         return out;
@@ -566,7 +579,7 @@ export class TransformExecutor {
         // Handle built-in enrichment based on sourceType or defaults
         const sourceType = cfg.sourceType || 'STATIC';
 
-        if (sourceType === 'STATIC' || cfg.defaults || cfg.set) {
+        if (sourceType === 'STATIC') {
             // Apply static defaults/set values to each record
             const defaults = cfg.defaults || {};
             const setValues = cfg.set || {};
@@ -592,7 +605,7 @@ export class TransformExecutor {
                     if (typeof template === 'string') {
                         enriched[key] = template.replace(/\$\{([^}]+)\}/g, (_, p) => {
                             const value = getPath(enriched, p.trim());
-                            return value !== null && value !== undefined ? String(value) : '';
+                            return value != null ? String(value) : '';
                         });
                     }
                 }
@@ -609,7 +622,7 @@ export class TransformExecutor {
             return this.executeEnrichVendure(ctx, step, input);
         }
 
-        this.logger.warn(`ENRICH source type "${sourceType}" is not supported for step "${step.key}" — records passed through unchanged`);
+        this.logger.warn(`ENRICH source type "${sourceType}" is not supported for step "${step.key}" - records passed through unchanged`);
         return input;
     }
 
@@ -628,7 +641,7 @@ export class TransformExecutor {
 
         const url = cfg.url as string | undefined;
         if (!url) {
-            this.logger.warn(`ENRICH HTTP step "${step.key}" has no URL configured — records passed through unchanged`);
+            this.logger.warn(`ENRICH HTTP step "${step.key}" has no URL configured - records passed through unchanged`);
             return input;
         }
 
@@ -691,14 +704,14 @@ export class TransformExecutor {
 
         if (!entityType || !sourceField || !lookupField) {
             this.logger.warn(
-                `ENRICH VENDURE step "${step.key}" missing required config (entityType, sourceField, lookupField) — records passed through unchanged`,
+                `ENRICH VENDURE step "${step.key}" missing required config (entityType, sourceField, lookupField) - records passed through unchanged`,
             );
             return input;
         }
 
         if (!this.loaderRegistry) {
             this.logger.warn(
-                `ENRICH VENDURE step "${step.key}" — LoaderRegistryService not available`,
+                `ENRICH VENDURE step "${step.key}" - LoaderRegistryService not available`,
             );
             return input;
         }
@@ -706,7 +719,7 @@ export class TransformExecutor {
         const loader = this.loaderRegistry.get(entityType as VendureEntityType);
         if (!loader) {
             this.logger.warn(
-                `ENRICH VENDURE step "${step.key}" — no loader found for entity type "${entityType}"`,
+                `ENRICH VENDURE step "${step.key}" - no loader found for entity type "${entityType}"`,
             );
             return input;
         }

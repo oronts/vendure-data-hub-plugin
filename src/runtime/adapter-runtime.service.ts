@@ -104,7 +104,7 @@ export class AdapterRuntimeService {
         onRecordError?: OnRecordErrorCallback,
         pipelineId?: ID,
         runId?: ID,
-        options?: { resume?: boolean },
+        options?: { resume?: boolean; pipelineCode?: string },
     ): Promise<{ processed: number; succeeded: number; failed: number; details?: JsonObject[]; paused?: boolean; pausedAtStep?: string }> {
         // If graph edges are defined, use graph-aware execution
         if (Array.isArray(definition.edges) && definition.edges.length > 0) {
@@ -117,7 +117,9 @@ export class AdapterRuntimeService {
         const executorCtx = this.createExecutorContext(definition, onCancelRequested);
         const stepLog = createStepLogCallback(this.executionLogger, pipelineId, runId);
 
-        const result = await executeLinear({
+        let result: Awaited<ReturnType<typeof executeLinear>>;
+        try {
+            result = await executeLinear({
             ctx: pipelineCtx,
             definition,
             executorCtx,
@@ -135,9 +137,15 @@ export class AdapterRuntimeService {
             onCancelRequested,
             onRecordError,
             pipelineId,
+            pipelineCode: options?.pipelineCode,
             runId,
             stepLog,
         });
+        } catch (err) {
+            // Save checkpoint state but don't run hooks/events - PipelineRunnerService handles failure
+            await this.checkpointManager.saveCheckpoint(ctx, pipelineId).catch(() => {});
+            throw err;
+        }
 
         return this.executionLifecycle.finalizeExecution(ctx, definition, result, pipelineId);
     }
@@ -152,7 +160,7 @@ export class AdapterRuntimeService {
         onRecordError?: OnRecordErrorCallback,
         pipelineId?: ID,
         runId?: ID,
-        options?: { resume?: boolean },
+        options?: { resume?: boolean; pipelineCode?: string },
     ): Promise<{ processed: number; succeeded: number; failed: number; details?: JsonObject[]; paused?: boolean; pausedAtStep?: string }> {
         const pipelineCtx = await this.executionLifecycle.prepareExecution(
             ctx, definition, pipelineId, runId, options,
@@ -160,27 +168,34 @@ export class AdapterRuntimeService {
         const executorCtx = this.createExecutorContext(definition, onCancelRequested);
         const stepLog = createStepLogCallback(this.executionLogger, pipelineId, runId);
 
-        const result = await executeGraph({
-            ctx: pipelineCtx,
-            definition,
-            executorCtx,
-            hookService: this.hookService,
-            domainEvents: this.domainEvents,
-            extractExecutor: this.extractExecutor,
-            transformExecutor: this.transformExecutor,
-            loadExecutor: this.loadExecutor,
-            exportExecutor: this.exportExecutor,
-            feedExecutor: this.feedExecutor,
-            sinkExecutor: this.sinkExecutor,
-            gateExecutor: this.gateExecutor,
-            loadWithThroughput: this.createLoadWithThroughput(),
-            applyIdempotency: this.applyIdempotency.bind(this),
-            onCancelRequested,
-            onRecordError,
-            pipelineId,
-            runId,
-            stepLog,
-        });
+        let result: Awaited<ReturnType<typeof executeGraph>>;
+        try {
+            result = await executeGraph({
+                ctx: pipelineCtx,
+                definition,
+                executorCtx,
+                hookService: this.hookService,
+                domainEvents: this.domainEvents,
+                extractExecutor: this.extractExecutor,
+                transformExecutor: this.transformExecutor,
+                loadExecutor: this.loadExecutor,
+                exportExecutor: this.exportExecutor,
+                feedExecutor: this.feedExecutor,
+                sinkExecutor: this.sinkExecutor,
+                gateExecutor: this.gateExecutor,
+                loadWithThroughput: this.createLoadWithThroughput(),
+                applyIdempotency: this.applyIdempotency.bind(this),
+                onCancelRequested,
+                onRecordError,
+                pipelineId,
+                pipelineCode: options?.pipelineCode,
+                runId,
+                stepLog,
+            });
+        } catch (err) {
+            await this.checkpointManager.saveCheckpoint(ctx, pipelineId).catch(() => {});
+            throw err;
+        }
 
         return this.executionLifecycle.finalizeExecution(ctx, definition, result, pipelineId);
     }
@@ -284,7 +299,8 @@ export class AdapterRuntimeService {
         const seen = new Set<string>();
         return records.filter(r => {
             const fieldValue = getPath(r, keyPath);
-            const key = fieldValue == null ? '' : String(fieldValue);
+            if (fieldValue == null) return true;
+            const key = String(fieldValue);
             if (seen.has(key)) return false;
             seen.add(key);
             return true;

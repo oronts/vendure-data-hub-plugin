@@ -143,7 +143,6 @@ export class DataHubSettingsService {
 
         await repo.save(row);
 
-        // Return the merged config
         return this.getAutoMapperConfig(input.pipelineId);
     }
 
@@ -164,7 +163,6 @@ export class DataHubSettingsService {
 
         await repo.save(row);
 
-        // Return the config after reset (may still have some inherited values)
         return this.getAutoMapperConfig(pipelineId);
     }
 

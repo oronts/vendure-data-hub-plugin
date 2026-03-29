@@ -7,8 +7,6 @@ import { TABLE_NAMES } from '../../constants/table-names';
 @Entity(TABLE_NAMES.PIPELINE)
 @Index(['code'])
 @Index(['status', 'enabled'])
-// Note: The reverse order index @Index(['enabled', 'status']) was removed
-// as SQLite/sql.js doesn't benefit from it and it caused duplicate index errors during schema sync
 export class Pipeline extends VendureEntity {
     constructor(input?: DeepPartial<Pipeline>) {
         super(input);

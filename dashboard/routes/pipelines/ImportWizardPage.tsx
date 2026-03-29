@@ -63,7 +63,7 @@ function ImportWizardPageContent() {
 
     const createMutation = useMutation({
         mutationFn: (config: ImportConfiguration) => {
-            const definition = importConfigToPipelineDefinition(config, resolver, loaderAdapterInfos, triggerSchemas, strategyMappings);
+            const definition = importConfigToPipelineDefinition(config, strategyMappings, resolver, loaderAdapterInfos, triggerSchemas);
             return api.mutate(createPipelineDocument, {
                 input: {
                     code: generatePipelineCode(config.name),

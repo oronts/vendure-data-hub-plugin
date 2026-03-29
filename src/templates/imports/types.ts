@@ -72,7 +72,7 @@ export interface TemplateCategoryInfo {
     icon: string;
 }
 
-/** Single-source metadata for template categories — label, description, and icon in one place */
+/** Single-source metadata for template categories - label, description, and icon in one place */
 export const TEMPLATE_CATEGORY_METADATA: Record<TemplateCategory, { label: string; description: string; icon: string }> = {
     products: { label: 'Products', description: 'Import and update product data including variants, pricing, and attributes', icon: 'shopping-bag' },
     customers: { label: 'Customers', description: 'Import customer records with addresses and group assignments', icon: 'users' },

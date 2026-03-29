@@ -47,12 +47,11 @@ export type DrainStrategy = 'BACKOFF' | 'SHED' | 'QUEUE';
 export type ChannelStrategy = 'EXPLICIT' | 'INHERIT' | 'MULTI';
 
 /**
- * Validation modes - matches src/constants/enums.ts ValidationMode values
+ * Validation strictness levels
  */
 export type ValidationModeType = 'STRICT' | 'LENIENT';
 
-// Note: RunModeValue in pipeline.types.ts is the canonical exported type with
-// identical values. This file uses it inline to avoid circular imports.
+
 
 /**
  * Route condition operators - matches src/constants/enums.ts RouteConditionOperator values
@@ -193,7 +192,7 @@ export interface PipelineEdge {
     /** Display label for the edge */
     label?: string;
     /**
-     * When true, this edge enforces execution ordering only — records
+     * When true, this edge enforces execution ordering only - records
      * from the source step are NOT passed as input to the target step.
      * Useful for "must run after" semantics without data flow.
      */

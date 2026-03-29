@@ -22,7 +22,6 @@ import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { PipelineQueueRequestEvent } from '../events/pipeline-events';
 import { getErrorMessage, isDuplicateEntryError } from '../../utils/error.utils';
-import { escapeLikePattern } from '../../utils/sql-security.utils';
 import { CheckpointService } from '../data/checkpoint.service';
 import { DomainEventsService } from '../events/domain-events.service';
 
@@ -82,13 +81,9 @@ export class PipelineService {
 
     async findDependents(ctx: RequestContext, code: string): Promise<Pipeline[]> {
         const repo = this.connection.getRepository(ctx, Pipeline);
-        // Pre-filter at SQL level: the definition JSON column must contain the code string
-        const escapedCode = escapeLikePattern(code);
-        const candidates = await repo
-            .createQueryBuilder('pipeline')
-            .where('pipeline.definition::text LIKE :pattern', { pattern: `%${escapedCode}%` })
-            .getMany();
-        // Post-filter for exact match in dependsOn array
+        const qb = repo.createQueryBuilder('pipeline')
+            .where(`pipeline.definition LIKE :pattern`, { pattern: `%${code}%` });
+        const candidates = await qb.getMany();
         return candidates.filter(p => {
             const def = p.definition as PipelineDefinition & { dependsOn?: string[] };
             return Array.isArray(def?.dependsOn) && def.dependsOn.includes(code);
@@ -104,7 +99,6 @@ export class PipelineService {
         // Quick-fail optimization: check code availability before save.
         // The DB unique constraint on Pipeline.code is the true guard against race conditions.
         await this.assertCodeAvailable(ctx, input.code);
-        // Ensure definition has a valid version
         const definition = { ...input.definition };
         if (!definition.version || definition.version < 1) {
             definition.version = 1;
@@ -152,7 +146,6 @@ export class PipelineService {
             if (typeof ver === 'number' && !isNaN(ver)) entity.version = ver;
         }
         if (input.definition) {
-            // Ensure definition has a valid version
             const definition = { ...input.definition };
             if (!definition.version || definition.version < 1) {
                 definition.version = entity.version || 1;
@@ -171,7 +164,7 @@ export class PipelineService {
     async delete(ctx: RequestContext, id: ID): Promise<DeletionResponse> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         const entity = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
-        // Capture id and code before remove() — TypeORM clears entity.id after deletion
+        // Capture id and code before remove(). TypeORM clears entity.id after deletion
         const deletedId = entity.id.toString();
         const deletedCode = entity.code;
         try {
@@ -206,10 +199,11 @@ export class PipelineService {
             const savedRevision = await revRepo.save(revision);
             savedRevisionId = Number(savedRevision.id);
         } catch (e) {
-            this.logger.warn('Failed to save pipeline revision', {
+            this.logger.warn('Failed to save pipeline revision — aborting publish', {
                 pipelineCode: pipeline.code,
                 error: getErrorMessage(e),
             });
+            throw e;
         }
 
         // Commit all pipeline changes in a single save
@@ -303,7 +297,7 @@ export class PipelineService {
         pipelineId?: ID,
     ): Promise<PaginatedList<PipelineRun>> {
         const qb = this.listQueryBuilder.build(PipelineRun, options, { ctx });
-        // Always join the pipeline relation — required because the GraphQL schema
+        // Always join the pipeline relation. Required because the GraphQL schema
         // exposes pipeline as a non-nullable field on PipelineRun.
         qb.leftJoinAndSelect(`${qb.alias}.pipeline`, 'pipeline');
         if (pipelineId) {
@@ -365,8 +359,14 @@ export class PipelineService {
     async cancelRun(ctx: RequestContext, id: ID): Promise<PipelineRun> {
         const repo = this.connection.getRepository(ctx, PipelineRun);
         const run = await this.connection.getEntityOrThrow(ctx, PipelineRun, id);
-        if (run.status === RunStatus.RUNNING || run.status === RunStatus.PAUSED) {
+        if (run.status === RunStatus.RUNNING) {
             run.status = RunStatus.CANCEL_REQUESTED;
+            await repo.save(run, { reload: false });
+        } else if (run.status === RunStatus.PAUSED) {
+            // PAUSED runs have no active runner to detect CANCEL_REQUESTED, so cancel immediately
+            run.status = RunStatus.CANCELLED;
+            run.finishedAt = new Date();
+            run.error = 'Cancelled by user while paused at gate';
             await repo.save(run, { reload: false });
 
             // Emit cancellation event for subscribers (webhooks, audit logs, monitoring)
@@ -449,23 +449,28 @@ export class PipelineService {
     /**
      * Approve a paused GATE step and resume the pipeline run.
      *
-     * Race condition safety: concurrent calls to approveGate for the same runId
-     * are serialized by the database transaction. The status check (PAUSED) acts
-     * as a guard — only the first caller succeeds; subsequent callers see RUNNING
-     * and receive an error, preventing duplicate resumptions.
+     * Uses atomic UPDATE WHERE to prevent TOCTOU race: only one concurrent caller
+     * can flip PAUSED -> RUNNING. Subsequent callers see 0 affected rows and fail.
      */
     async approveGate(ctx: RequestContext, runId: ID, stepKey: string): Promise<PipelineRun> {
         const repo = this.connection.getRepository(ctx, PipelineRun);
+
+        // Atomic status transition: only succeeds if run is currently PAUSED
+        const updateResult = await repo.update(
+            { id: runId as any, status: RunStatus.PAUSED },
+            { status: RunStatus.RUNNING },
+        );
+        if (updateResult.affected === 0) {
+            const existing = await repo.findOne({ where: { id: runId } });
+            if (!existing) throw new Error(`Pipeline run not found: ${runId}`);
+            throw new Error(`Cannot approve gate: run is not paused (current status: ${existing.status})`);
+        }
+
         const run = await repo.findOne({
             where: { id: runId },
             relations: { pipeline: true },
         });
-        if (!run) {
-            throw new Error(`Pipeline run not found: ${runId}`);
-        }
-        if (run.status !== RunStatus.PAUSED) {
-            throw new Error(`Cannot approve gate: run is not paused (current status: ${run.status})`);
-        }
+        if (!run) throw new Error(`Pipeline run not found after approval: ${runId}`);
 
         const pipelineId = run.pipeline?.id ?? run.pipelineId;
 
@@ -476,10 +481,6 @@ export class PipelineService {
             cpData[`__gateApproved:${stepKey}`] = true;
             await this.checkpointService.setForPipeline(ctx, pipelineId, cpData);
         }
-
-        // Set status to RUNNING so the runner picks it up
-        run.status = RunStatus.RUNNING;
-        await repo.save(run, { reload: false });
 
         this.domainEvents.publishGateApproved(
             pipelineId?.toString(),
@@ -507,16 +508,36 @@ export class PipelineService {
         return assertFound(this.runById(ctx, run.id));
     }
 
+    /**
+     * Reject a paused GATE step and cancel the pipeline run.
+     *
+     * Uses atomic UPDATE WHERE to prevent TOCTOU race: only one concurrent caller
+     * can flip PAUSED -> CANCELLED. Subsequent callers see 0 affected rows and fail.
+     */
     async rejectGate(ctx: RequestContext, runId: ID, stepKey: string): Promise<PipelineRun> {
         const repo = this.connection.getRepository(ctx, PipelineRun);
-        const run = await this.connection.getEntityOrThrow(ctx, PipelineRun, runId);
-        if (run.status !== RunStatus.PAUSED) {
-            throw new Error(`Cannot reject gate: run is not paused (current status: ${run.status})`);
+
+        // Atomic status transition: only succeeds if run is currently PAUSED
+        const updateResult = await repo.update(
+            { id: runId as any, status: RunStatus.PAUSED },
+            {
+                status: RunStatus.CANCELLED,
+                finishedAt: new Date(),
+                error: `Gate step "${stepKey}" rejected by user`,
+            },
+        );
+        if (updateResult.affected === 0) {
+            const existing = await repo.findOne({ where: { id: runId } });
+            if (!existing) throw new Error(`Pipeline run not found: ${runId}`);
+            throw new Error(`Cannot reject gate: run is not paused (current status: ${existing.status})`);
         }
-        run.status = RunStatus.CANCELLED;
-        run.finishedAt = new Date();
-        run.error = `Gate step "${stepKey}" rejected by user`;
-        await repo.save(run, { reload: false });
+
+        const run = await repo.findOne({
+            where: { id: runId },
+            relations: { pipeline: true },
+        });
+        if (!run) throw new Error(`Pipeline run not found after rejection: ${runId}`);
+
         this.domainEvents.publishGateRejected(
             run.pipelineId?.toString(),
             String(runId),

@@ -14,14 +14,13 @@ export function StepSummaryTable({ metrics }: { metrics: IndividualRunMetrics })
                         <th className="text-left px-2 py-1">Step</th>
                         <th className="text-left px-2 py-1">Type</th>
                         <th className="text-left px-2 py-1">Adapter</th>
-                        <th className="text-left px-2 py-1">Out/OK/Fail</th>
+                        <th className="text-left px-2 py-1">OK / Fail</th>
                         <th className="text-left px-2 py-1">Duration</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {/* stepKey is unique within a run, safe to use as key */}
-                    {details.map((s) => (
-                        <tr key={s.stepKey} className="border-t">
+                    {details.map((s, i) => (
+                        <tr key={s.stepKey ?? `step-${i}`} className="border-t">
                             <td className="px-2 py-1 font-mono text-muted-foreground">{s.stepKey}</td>
                             <td className="px-2 py-1">{s.type}</td>
                             <td className="px-2 py-1">{s.adapterCode ?? '—'}</td>

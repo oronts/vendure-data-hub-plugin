@@ -267,6 +267,15 @@ export enum ConnectionType {
     SFTP = 'SFTP',
     DATABASE = 'DATABASE',
     CUSTOM = 'CUSTOM',
+    POSTGRES = 'POSTGRES',
+    MYSQL = 'MYSQL',
+    MSSQL = 'MSSQL',
+    MONGODB = 'MONGODB',
+    RABBITMQ = 'RABBITMQ',
+    SQS = 'SQS',
+    REDIS = 'REDIS',
+    REST = 'REST',
+    GRAPHQL = 'GRAPHQL',
 }
 
 import { ConnectionAuthType } from '../../shared/types/adapter-config.types';
@@ -876,6 +885,6 @@ export const PIPELINE_VALIDATION_ERROR = {
 export { DESTINATION_TYPE } from '../../shared/constants';
 
 /**
- * Runtime delivery destination type -- excludes 'DOWNLOAD' which is UI-only.
+ * Runtime delivery destination type, excludes 'DOWNLOAD' which is UI-only.
  */
 export type DestinationType = Exclude<import('../../shared/types').DestinationType, 'DOWNLOAD'>;

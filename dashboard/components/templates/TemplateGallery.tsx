@@ -18,7 +18,6 @@ export interface TemplateGalleryProps {
     categories: CategoryInfo[];
     selectedTemplate?: ImportTemplate | null;
     onSelectTemplate: (template: ImportTemplate) => void;
-    onUseTemplate?: (template: ImportTemplate) => void;
 }
 
 function TemplateCardComponent({
@@ -127,12 +126,10 @@ function TemplateGalleryComponent({
     const filteredTemplates = React.useMemo(() => {
         let filtered = templates;
 
-        // Filter by category
         if (selectedCategory !== 'all') {
             filtered = filtered.filter(t => t.category === selectedCategory);
         }
 
-        // Filter by search query
         return filterTemplates(filtered, searchQuery);
     }, [templates, selectedCategory, searchQuery]);
 

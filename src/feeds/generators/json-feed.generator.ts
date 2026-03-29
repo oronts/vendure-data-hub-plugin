@@ -154,7 +154,7 @@ async function transformVariantToItem(
 
         // Merge variant and product custom fields
         Object.entries({ ...productCustomFields, ...variantCustomFields }).forEach(([key, value]) => {
-            if (value !== null && value !== undefined) {
+            if (value != null) {
                 customFields[key] = value;
             }
         });

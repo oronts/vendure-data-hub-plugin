@@ -150,7 +150,7 @@ export function validateCronExpression(expr: string): {
     }
 
     const fields = expr.trim().split(/\s+/);
-    if (fields.length < 5) {
+    if (fields.length !== 5) {
         return {
             valid: false,
             error: `Expected 5 fields (minute hour day month weekday), got ${fields.length}`,

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
@@ -28,7 +28,7 @@ const configOptionsDocument = graphql(`
             httpMethods { value label description icon }
             authTypes { value label description icon }
             destinationTypes { value label description icon }
-            fileFormats { value label extensions mimeTypes supportsPreview requiresClientParser description }
+            fileFormats { value label description }
             cleanupStrategies { value label description icon }
             newRecordStrategies { value label description icon }
             validationModes { value label description icon }
@@ -264,8 +264,6 @@ type ConfigOptionValueField = Exclude<keyof ConfigOptionsData, 'stepTypes' | 'co
 /** Fields that return AdapterCodeMapping[] (value, label, adapterCode). */
 type AdapterCodeMappingField = 'exportAdapterCodes' | 'feedAdapterCodes';
 
-export type ConfigOptionsField = keyof ConfigOptionsData;
-
 export function useConfigOptions() {
     return useQuery({
         queryKey: configOptionKeys.options(),
@@ -351,8 +349,8 @@ export function useStepConfigs(): UseStepConfigsResult {
         return record;
     }, [data]);
 
-    const getStepConfig = useMemo(
-        () => (type: StepType | string): StepConfig | undefined => {
+    const getStepConfig = useCallback(
+        (type: StepType | string): StepConfig | undefined => {
             const normalized = String(type).toUpperCase() as StepType;
             return stepConfigs[normalized];
         },

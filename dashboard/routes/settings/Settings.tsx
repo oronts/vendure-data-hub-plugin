@@ -76,9 +76,7 @@ function SettingsPage() {
         return undefined;
     };
 
-    const isFormValid = React.useMemo(() => {
-        return !errors.runsDays && !errors.errorsDays && !errors.logsDays;
-    }, [errors]);
+    const isFormValid = !errors.runsDays && !errors.errorsDays && !errors.logsDays;
 
     React.useEffect(() => {
         if (settings?.retentionDaysRuns != null) {
@@ -207,7 +205,7 @@ function SettingsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-6">
-                            <div className="grid grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <Label htmlFor="runs-days">Pipeline Run History</Label>
                                     <Input
@@ -281,7 +279,7 @@ function SettingsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-6">
-                            <div className="grid grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
                                     <Label htmlFor="log-level">Log Persistence Level</Label>
                                     <Select value={logLevel} onValueChange={handleLogLevelChange} disabled={isLoadingOptions}>

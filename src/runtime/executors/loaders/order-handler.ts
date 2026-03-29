@@ -94,10 +94,15 @@ function getOrderTransitionConfig(config: JsonObject): OrderTransitionHandlerCon
 
 @Injectable()
 export class OrderNoteHandler implements LoaderHandler {
+    private readonly logger: DataHubLogger;
+
     constructor(
         private orderService: OrderService,
         private connection: TransactionalConnection,
-    ) {}
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.ORDER_LOADER);
+    }
 
     async execute(
         ctx: RequestContext,
@@ -120,7 +125,7 @@ export class OrderNoteHandler implements LoaderHandler {
                 const noteValue = getStringValue(rec, noteField);
                 const note = noteValue || undefined;
 
-                if (!note) { fail++; continue; }
+                if (!note) { this.logger.debug('Skipping order note: empty note value'); fail++; continue; }
 
                 let targetOrderId: ID | undefined = orderId;
                 if (!targetOrderId && orderCode) {
@@ -128,7 +133,7 @@ export class OrderNoteHandler implements LoaderHandler {
                     targetOrderId = found?.id;
                 }
 
-                if (!targetOrderId) { fail++; continue; }
+                if (!targetOrderId) { this.logger.debug('Skipping order note: order not found', { orderCode }); fail++; continue; }
 
                 const addNoteInput: AddNoteToOrderInput = {
                     id: targetOrderId,
@@ -328,12 +333,12 @@ export class OrderTransitionHandler implements LoaderHandler {
 
         // Step 2: PaymentAuthorized/PaymentSettled requires addPaymentToOrder
         if (targetRank >= 3 && rank() < 3) {
-            await this.addPaymentForMigration(ctx, orderId, paymentMethodCode);
+            if (!await this.addPaymentForMigration(ctx, orderId, paymentMethodCode)) return false;
             await refresh();
         }
 
         // Step 2b: → PaymentSettled (if payment was authorized but not settled)
-        if (targetRank >= 4 && rank() === 3) {
+        if (targetRank >= 4 && rank() < 4) {
             if (!await this.tryTransition(ctx, orderId, 'PaymentSettled')) return false;
             await refresh();
         }
@@ -343,7 +348,7 @@ export class OrderTransitionHandler implements LoaderHandler {
         // The fulfillment auto-transitions the order to Shipped (or Delivered).
         if (targetRank >= 5 && rank() < 5) {
             const fulfillTarget = targetRank >= 8 ? 'Delivered' as const : 'Shipped' as const;
-            await this.addFulfillmentForMigration(ctx, orderId, fulfillTarget);
+            if (!await this.addFulfillmentForMigration(ctx, orderId, fulfillTarget)) return false;
             await refresh();
         }
 
@@ -399,7 +404,7 @@ export class OrderTransitionHandler implements LoaderHandler {
     /**
      * Add a payment to the order for migration purposes.
      */
-    private async addPaymentForMigration(ctx: RequestContext, orderId: ID, paymentMethodCode?: string): Promise<void> {
+    private async addPaymentForMigration(ctx: RequestContext, orderId: ID, paymentMethodCode?: string): Promise<boolean> {
         let methodCode = paymentMethodCode;
 
         if (!methodCode) {
@@ -411,7 +416,7 @@ export class OrderTransitionHandler implements LoaderHandler {
 
         if (!methodCode) {
             this.logger.warn(`No payment method available for order ${String(orderId)} transition`);
-            return;
+            return false;
         }
 
         const result = await this.orderService.addPaymentToOrder(ctx, orderId, {
@@ -423,7 +428,10 @@ export class OrderTransitionHandler implements LoaderHandler {
             this.logger.warn(
                 `Failed to add payment to order ${String(orderId)}: ${(result as { message?: string; errorCode?: string }).message ?? (result as { errorCode?: string }).errorCode}`,
             );
+            return false;
         }
+
+        return true;
     }
 
     /**
@@ -435,14 +443,14 @@ export class OrderTransitionHandler implements LoaderHandler {
         ctx: RequestContext,
         orderId: ID,
         targetFulfillmentState: 'Shipped' | 'Delivered' = 'Shipped',
-    ): Promise<void> {
+    ): Promise<boolean> {
         const orderLines = await this.connection.getRepository(ctx, OrderLine).find({
             where: { order: { id: orderId } },
         });
 
         if (orderLines.length === 0) {
-            this.logger.warn(`No order lines found for order ${String(orderId)} — cannot create fulfillment`);
-            return;
+            this.logger.warn(`No order lines found for order ${String(orderId)} - cannot create fulfillment`);
+            return false;
         }
 
         const input: FulfillOrderInput = {
@@ -464,7 +472,7 @@ export class OrderTransitionHandler implements LoaderHandler {
             this.logger.warn(
                 `Failed to create fulfillment for order ${String(orderId)}: ${(fulfillment as { message?: string; errorCode?: string }).message ?? (fulfillment as { errorCode?: string }).errorCode}`,
             );
-            return;
+            return false;
         }
 
         const fulfillmentId = (fulfillment as { id: ID }).id;
@@ -477,7 +485,7 @@ export class OrderTransitionHandler implements LoaderHandler {
             this.logger.warn(
                 `Failed to ship fulfillment for order ${String(orderId)}: ${(shipped as { message?: string; errorCode?: string }).message ?? (shipped as { errorCode?: string }).errorCode}`,
             );
-            return;
+            return false;
         }
 
         // If target is Delivered, also transition fulfillment to Delivered
@@ -489,7 +497,10 @@ export class OrderTransitionHandler implements LoaderHandler {
                 this.logger.warn(
                     `Failed to deliver fulfillment for order ${String(orderId)}: ${(delivered as { message?: string; errorCode?: string }).message ?? (delivered as { errorCode?: string }).errorCode}`,
                 );
+                return false;
             }
         }
+
+        return true;
     }
 }

@@ -270,7 +270,9 @@ export class HttpApiExtractor implements DataExtractor<HttpApiExtractorConfig> {
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    const httpError = new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    (httpError as Error & { statusCode: number }).statusCode = response.status;
+                    throw httpError;
                 }
 
                 return await buildHttpResponse(response);

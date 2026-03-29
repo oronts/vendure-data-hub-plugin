@@ -10,7 +10,6 @@
  */
 import { StepConfigSchema } from '../../../shared/types/extractor.types';
 import { GraphQLPaginationType } from '../../constants/enums';
-import { HTTP } from '../../../shared/constants';
 import { PAGINATION } from '../../constants/defaults/ui-defaults';
 import { GRAPHQL_PAGINATION_TYPE_OPTIONS } from '../../constants/adapter-schema-options';
 
@@ -19,17 +18,8 @@ export const GRAPHQL_EXTRACTOR_SCHEMA: StepConfigSchema = {
         { id: 'connection', label: 'Connection', description: 'GraphQL endpoint configuration' },
         { id: 'query', label: 'Query', description: 'GraphQL query settings' },
         { id: 'pagination', label: 'Pagination', description: 'Pagination configuration' },
-        { id: 'advanced', label: 'Advanced', description: 'Advanced options' },
     ],
     fields: [
-        // Connection
-        {
-            key: 'connectionCode',
-            label: 'Connection',
-            description: 'HTTP connection to use (optional)',
-            type: 'connection',
-            group: 'connection',
-        },
         {
             key: 'url',
             label: 'GraphQL URL',
@@ -108,9 +98,9 @@ export const GRAPHQL_EXTRACTOR_SCHEMA: StepConfigSchema = {
         {
             key: 'pagination.limitVariable',
             label: 'Limit Variable',
-            description: 'Variable name for limit (e.g., "take", "first")',
+            description: 'Variable name for page size. Defaults to "first" for Relay, "take" for Offset.',
             type: 'string',
-            defaultValue: 'take',
+            placeholder: 'first (Relay) / take (Offset)',
             group: 'pagination',
         },
         {
@@ -120,7 +110,7 @@ export const GRAPHQL_EXTRACTOR_SCHEMA: StepConfigSchema = {
             type: 'string',
             defaultValue: 'after',
             group: 'pagination',
-            dependsOn: { field: 'pagination.type', value: GraphQLPaginationType.CURSOR },
+            dependsOn: { field: 'pagination.type', value: GraphQLPaginationType.NONE, operator: 'ne' },
         },
         {
             key: 'pagination.totalCountPath',
@@ -147,29 +137,6 @@ export const GRAPHQL_EXTRACTOR_SCHEMA: StepConfigSchema = {
             type: 'number',
             defaultValue: PAGINATION.MAX_GRAPHQL_PAGES,
             group: 'pagination',
-        },
-        // Advanced
-        {
-            key: 'timeoutMs',
-            label: 'Timeout (ms)',
-            type: 'number',
-            defaultValue: HTTP.TIMEOUT_MS,
-            group: 'advanced',
-        },
-        {
-            key: 'includeExtensions',
-            label: 'Include Extensions',
-            description: 'Include GraphQL extensions in record metadata',
-            type: 'boolean',
-            defaultValue: false,
-            group: 'advanced',
-        },
-        {
-            key: 'retry.maxAttempts',
-            label: 'Max Retry Attempts',
-            type: 'number',
-            defaultValue: HTTP.MAX_RETRIES,
-            group: 'advanced',
         },
     ],
 };

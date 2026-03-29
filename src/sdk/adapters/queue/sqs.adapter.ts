@@ -283,7 +283,7 @@ export class SqsAdapter implements QueueAdapter {
      * Stop the periodic cleanup interval and destroy all cached clients.
      * Call during graceful shutdown to prevent the interval from keeping the process alive.
      */
-    destroy(): void {
+    async destroy(): Promise<void> {
         if (this.cleanupHandle) {
             clearInterval(this.cleanupHandle);
             this.cleanupHandle = undefined;
@@ -446,6 +446,7 @@ export class SqsAdapter implements QueueAdapter {
 
             const messageId = msg.MessageId ?? crypto.randomUUID();
             const receiptHandle = msg.ReceiptHandle ?? '';
+            const now = Date.now();
 
             // Auto-ack: delete immediately
             if (options.ackMode === AckMode.AUTO) {
@@ -475,11 +476,11 @@ export class SqsAdapter implements QueueAdapter {
                 }
 
                 // Manual ack: store receipt handle
-                const deliveryTag = `sqs:${messageId}:${Date.now()}`;
+                const deliveryTag = `sqs:${messageId}:${now}`;
                 pendingReceipts.set(deliveryTag, {
                     queueUrl,
                     receiptHandle,
-                    createdAt: Date.now(),
+                    createdAt: now,
                 });
             }
 
@@ -498,7 +499,7 @@ export class SqsAdapter implements QueueAdapter {
                 payload,
                 headers: Object.keys(headers).length > 0 ? headers : undefined,
                 deliveryTag: options.ackMode === AckMode.MANUAL
-                    ? `sqs:${messageId}:${Date.now()}`
+                    ? `sqs:${messageId}:${now}`
                     : undefined,
                 redelivered: parseInt(msg.Attributes?.ApproximateReceiveCount ?? '1', 10) > 1,
             });

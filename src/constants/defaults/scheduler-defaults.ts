@@ -18,4 +18,6 @@ export const SCHEDULER = {
     ANALYTICS_REFRESH_INTERVAL_MS: 10_000,
     /** Minimum scheduler interval (safety limit) */
     MIN_INTERVAL_MS: 1000,
+    /** Maximum number of pipelines to discover per cache refresh */
+    MAX_PIPELINE_DISCOVERY: 1000,
 } as const;

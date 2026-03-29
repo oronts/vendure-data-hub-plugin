@@ -16,8 +16,8 @@ function kebabToPascal(name: string): string {
  * to a LucideIcon component. Accepts both kebab-case and PascalCase input.
  * Returns undefined if the name is not recognized, allowing callers to provide a fallback.
  *
- * Uses lucide-react's `icons` export for fully dynamic resolution —
- * no manual map needed when new icons are used.
+ * Uses lucide-react's `icons` export for fully dynamic resolution.
+ * No manual map needed when new icons are used.
  */
 export function resolveIconName(name: string | undefined | null): LucideIcon | undefined {
     if (!name) return undefined;

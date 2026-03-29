@@ -376,12 +376,12 @@ describe('DataHub Plugin E2E', () => {
                 input: {
                     code: 'test-api-key',
                     value: 'secret-value-12345',
-                    provider: 'VENDURE',
+                    provider: 'INLINE',
                 },
             });
 
             expect(createDataHubSecret.code).toBe('test-api-key');
-            expect(createDataHubSecret.provider).toBe('VENDURE');
+            expect(createDataHubSecret.provider).toBe('INLINE');
             secretId = createDataHubSecret.id;
         });
 

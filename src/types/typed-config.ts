@@ -311,7 +311,7 @@ const CUSTOMER_LOADERS: ReadonlySet<string> = new Set<UpdateCustomerLoaders>([
 
 /** Adapter codes that require UpdateOrder permission */
 const ORDER_LOADERS: ReadonlySet<string> = new Set<UpdateOrderLoaders>([
-    'orderNote', 'orderTransition', 'applyCoupon',
+    'orderUpsert', 'orderNote', 'orderTransition', 'applyCoupon',
 ]);
 
 /** Adapter codes that require UpdatePromotion permission */

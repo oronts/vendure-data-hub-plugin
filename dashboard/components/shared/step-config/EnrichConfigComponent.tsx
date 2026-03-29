@@ -163,7 +163,7 @@ interface EnrichSchemaFieldProps {
     removeDefault: (index: number) => void;
 }
 
-/** Field type renderer registry -- maps field.type to a render function. */
+/** Field type renderer registry: maps field.type to a render function. */
 type EnrichFieldRenderer = (props: EnrichSchemaFieldProps) => React.JSX.Element;
 
 const ENRICH_FIELD_RENDERERS: Record<string, EnrichFieldRenderer> = {

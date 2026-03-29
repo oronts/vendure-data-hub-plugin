@@ -18,14 +18,6 @@ function getTriggerSteps(definition: PipelineDefinition): PipelineStepDefinition
 }
 
 /**
- * Get the first trigger step from pipeline definition
- */
-function getTriggerStep(definition: PipelineDefinition): PipelineStepDefinition | null {
-    const triggers = getTriggerSteps(definition);
-    return triggers[0] ?? null;
-}
-
-/**
  * Convert trigger step to PipelineTrigger (for TriggersPanel)
  */
 function stepToTrigger(step: PipelineStepDefinition): PipelineTrigger {

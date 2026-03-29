@@ -73,9 +73,7 @@ export function ValidateConfigComponent({
     showRulesEditor = true,
 }: ValidateConfigComponentProps) {
     const { schemas: ruleTypeSchemas } = useValidationRuleSchemas();
-    const ruleTypes = ruleTypeSchemas;
     const { options: validationModes } = useOptionValues('validationModes');
-    const errorHandlingOptions = validationModes;
     const errorHandlingMode = (config.errorHandlingMode as string) || '';
     const validationMode = (config.validationMode as string) || '';
     const rawRules = (config.rules as ValidationRule[]) || [];
@@ -152,7 +150,7 @@ export function ValidateConfigComponent({
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            {errorHandlingOptions.map((mode) => (
+                            {validationModes.map((mode) => (
                                 <SelectItem key={mode.value} value={mode.value}>
                                     {mode.label}
                                 </SelectItem>
@@ -192,7 +190,6 @@ export function ValidateConfigComponent({
                             key={rule.id}
                             rule={rule}
                             index={index}
-                            ruleTypes={ruleTypes}
                             ruleTypeSchemas={ruleTypeSchemas}
                             updateRule={updateRule}
                             removeRule={removeRule}
@@ -207,7 +204,6 @@ export function ValidateConfigComponent({
 interface ValidationRuleRowProps {
     rule: ValidationRuleWithId;
     index: number;
-    ruleTypes: TypedOptionValue[];
     ruleTypeSchemas: TypedOptionValue[];
     updateRule: (index: number, spec: ValidationRule['spec']) => void;
     removeRule: (index: number) => void;
@@ -216,7 +212,6 @@ interface ValidationRuleRowProps {
 const ValidationRuleRow = memo(function ValidationRuleRow({
     rule,
     index,
-    ruleTypes,
     ruleTypeSchemas,
     updateRule,
     removeRule,
@@ -262,7 +257,7 @@ const ValidationRuleRow = memo(function ValidationRuleRow({
                             <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                            {ruleTypes.map((rt) => (
+                            {ruleTypeSchemas.map((rt) => (
                                 <SelectItem key={rt.value} value={rt.value}>
                                     {rt.label}
                                 </SelectItem>

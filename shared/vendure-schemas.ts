@@ -1,7 +1,7 @@
 /**
  * Re-export vendure entity schemas for dashboard access.
  *
- * NOTE: This is an intentional layer violation — shared/ imports from src/.
+ * This is an intentional layer violation - shared/ imports from src/.
  * The schema definitions are large runtime objects with helper functions that
  * belong in src/, but the dashboard needs access to them. This bridge module
  * is the approved way for dashboard code to reach them without deep-importing

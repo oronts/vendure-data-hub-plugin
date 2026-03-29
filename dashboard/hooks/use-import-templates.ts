@@ -108,10 +108,7 @@ export function useImportTemplates(): UseImportTemplatesResult {
         staleTime: CACHE_TIMES.ADAPTER_CATALOG,
     });
 
-    const categories = React.useMemo(
-        () => backendCategories ?? [],
-        [backendCategories],
-    );
+    const categories = backendCategories ?? [];
 
     const getTemplateById = React.useCallback(
         (id: string) => templates.find(t => t.id === id),

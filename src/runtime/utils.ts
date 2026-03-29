@@ -166,11 +166,11 @@ export function removePath(obj: JsonObject, pathStr: string): void {
 }
 
 /**
- * Creates a stable SHA1 hash of an object
+ * Creates a stable hash of an object for change detection
  */
 export function hashStable(value: JsonValue): string {
     const json = stableStringify(value);
-    return crypto.createHash('sha1').update(json).digest('hex');
+    return crypto.createHash('sha256').update(json).digest('hex');
 }
 
 /**
@@ -181,7 +181,7 @@ export function stableStringify(value: JsonValue): string {
     if (typeof value !== 'object') return JSON.stringify(value);
     if (Array.isArray(value)) return `[${value.map(v => stableStringify(v)).join(',')}]`;
     const keys = Object.keys(value).sort();
-    const entries = keys.map(k => `"${k}":${stableStringify((value as JsonObject)[k])}`);
+    const entries = keys.map(k => `${JSON.stringify(k)}:${stableStringify((value as JsonObject)[k])}`);
     return `{${entries.join(',')}}`;
 }
 
@@ -257,6 +257,7 @@ export function validateAgainstSimpleSpec(
  * Splits an array into chunks of a given size
  */
 export function chunk<T>(arr: T[], size: number): T[][] {
+    if (size <= 0) return arr.length ? [arr] : [];
     const out: T[][] = [];
     for (let i = 0; i < arr.length; i += size) {
         out.push(arr.slice(i, i + size));
@@ -328,7 +329,8 @@ export function recordsToXml(records: JsonObject[], rootElement: string, itemEle
         xml += `  <${toXmlElementName(itemElement)}>\n`;
         for (const [k, v] of Object.entries(rec)) {
             const tag = toXmlElementName(k);
-            xml += `    <${tag}>${xmlEscape(String(v ?? ''))}</${tag}>\n`;
+            const textValue = (v != null && typeof v === 'object') ? JSON.stringify(v) : String(v ?? '');
+            xml += `    <${tag}>${xmlEscape(textValue)}</${tag}>\n`;
         }
         xml += `  </${toXmlElementName(itemElement)}>\n`;
     }

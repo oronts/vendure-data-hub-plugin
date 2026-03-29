@@ -42,7 +42,13 @@ interface RestExtractConfig {
     headers?: Record<string, unknown>;
     query?: Record<string, unknown>;
     body?: unknown;
+    paginationType?: string;
     pageParam?: string;
+    pageSize?: number;
+    offsetParam?: string;
+    limitParam?: string;
+    cursorParam?: string;
+    cursorField?: string;
     itemsField?: string;
     nextPageField?: string;
     maxPages?: number;
@@ -111,7 +117,23 @@ export class RestExtractHandler implements ExtractHandler {
 
     async extract(context: ExtractHandlerContext): Promise<RecordObject[]> {
         const { ctx, step, executorCtx, onRecordError } = context;
-        const cfg = getExtractConfig<RestExtractConfig>(step);
+        const raw = getExtractConfig<RestExtractConfig & Record<string, unknown>>(step);
+        // Read pagination from nested object OR flat dot-keys (UI schema form saves flat keys)
+        const nested = (raw as any).pagination as Record<string, unknown> | undefined;
+        const flat = (key: string) => (raw as any)[`pagination.${key}`] ?? nested?.[key];
+        const paginationType = String(raw.paginationType ?? flat('type') ?? 'NONE');
+        const cfg: RestExtractConfig = {
+            ...raw,
+            paginationType,
+            itemsField: raw.itemsField ?? (raw as any).dataPath,
+            pageParam: raw.pageParam ?? (paginationType === 'PAGE' ? 'page' : undefined),
+            offsetParam: raw.offsetParam ?? (paginationType === 'OFFSET' ? 'offset' : undefined),
+            limitParam: raw.limitParam ?? (paginationType === 'OFFSET' ? 'limit' : undefined),
+            cursorParam: raw.cursorParam ?? (paginationType === 'CURSOR' ? 'cursor' : undefined),
+            cursorField: raw.cursorField ?? (raw as any).nextPageField ?? (raw as any).cursorPath ?? flat('cursorPath'),
+            pageSize: raw.pageSize ?? (flat('limit') ? Number(flat('limit')) : undefined),
+            maxPages: raw.maxPages ?? (flat('maxPages') ? Number(flat('maxPages')) : undefined),
+        };
 
         const connectionConfig = await this.resolveConnectionConfig(ctx, cfg.connectionCode);
         const endpoint = this.buildEndpoint(connectionConfig?.baseUrl, cfg.url);
@@ -140,7 +162,8 @@ export class RestExtractHandler implements ExtractHandler {
         if (!connectionCode) return null;
 
         const connectionEntity = await this.connectionService.getByCode(ctx, connectionCode);
-        if (!connectionEntity || connectionEntity.type !== ConnectionType.HTTP) return null;
+        const httpLikeTypes = [ConnectionType.HTTP, ConnectionType.REST, ConnectionType.GRAPHQL];
+        if (!connectionEntity || !httpLikeTypes.includes(connectionEntity.type as ConnectionType)) return null;
 
         return this.normalizeHttpConnectionConfig(connectionEntity.config as JsonObject);
     }
@@ -195,12 +218,19 @@ export class RestExtractHandler implements ExtractHandler {
     }
 
     private buildRetryConfig(cfg: RestExtractConfig, errorHandling?: ErrorHandlingConfig): ExtractRetryConfig {
+        // Read from handler fields, flat dot-keys (from UI schema form), or error handling defaults
+        const c = cfg as unknown as Record<string, unknown>;
+        const retryAttempts = cfg.retries ?? c['retry.maxAttempts'] ?? errorHandling?.maxRetries ?? 0;
+        const retryDelay = cfg.retryDelayMs ?? c['retry.delayMs'] ?? errorHandling?.retryDelayMs ?? 0;
+        const maxDelay = cfg.maxRetryDelayMs ?? c['retry.maxDelayMs'] ?? errorHandling?.maxRetryDelayMs ?? HTTP.RETRY_MAX_DELAY_MS;
+        const backoff = cfg.backoffMultiplier ?? c['retry.backoffMultiplier'] ?? errorHandling?.backoffMultiplier ?? HTTP.BACKOFF_MULTIPLIER;
+        const timeout = cfg.timeoutMs ?? c['rateLimit.timeoutMs'] ?? HTTP.TIMEOUT_MS;
         return {
-            retries: Math.max(0, Number(cfg.retries ?? errorHandling?.maxRetries ?? 0)),
-            retryDelay: Math.max(0, Number(cfg.retryDelayMs ?? errorHandling?.retryDelayMs ?? 0)),
-            maxRetryDelay: Number(cfg.maxRetryDelayMs ?? errorHandling?.maxRetryDelayMs ?? HTTP.RETRY_MAX_DELAY_MS),
-            backoffMultiplier: Number(cfg.backoffMultiplier ?? errorHandling?.backoffMultiplier ?? HTTP.BACKOFF_MULTIPLIER),
-            timeoutMs: Number(cfg.timeoutMs ?? 0),
+            retries: Math.max(0, Number(retryAttempts)),
+            retryDelay: Math.max(0, Number(retryDelay)),
+            maxRetryDelay: Number(maxDelay),
+            backoffMultiplier: Number(backoff),
+            timeoutMs: Number(timeout) || HTTP.TIMEOUT_MS,
         };
     }
 
@@ -218,19 +248,44 @@ export class RestExtractHandler implements ExtractHandler {
     }): Promise<RecordObject[]> {
         const { ctx, step, executorCtx, onRecordError, cfg, connectionConfig, endpoint, method, baseHeaders, retryConfig } = params;
 
-        const pageParam = cfg.pageParam;
+        const paginationType = cfg.paginationType ?? 'NONE';
+        const isPaginated = paginationType !== 'NONE';
         const maxPages = Number(cfg.maxPages ?? PAGINATION.MAX_PAGES);
+        const pageSize = cfg.pageSize;
         const results: RecordObject[] = [];
 
         let page = getCheckpointValue(executorCtx, step.key, 'page', 0) + 1;
-        let lastPageFetched = page - 1;
+        let lastFetchedPage = page - 1;
+        let offset = getCheckpointValue(executorCtx, step.key, 'offset', 0);
+        let cursor: string | undefined = getCheckpointValue(executorCtx, step.key, 'cursor', undefined);
+        let nextUrl: string | undefined;
         let adaptiveDelay = 0;
 
         const fetchImpl = globalThis.fetch;
         if (!fetchImpl) return [];
 
-        for (let i = 0; i < (pageParam ? maxPages : 1); i++) {
-            const url = this.buildUrl(endpoint, cfg.query, pageParam, page);
+        // Skip if cursor pagination already completed in a previous run
+        const cursorDone = getCheckpointValue(executorCtx, step.key, 'cursorDone', false);
+        if (paginationType === 'CURSOR' && cursorDone) return [];
+
+        // Resume iteration count from checkpoint so maxPages limit is honoured across restarts
+        const startIteration = getCheckpointValue(executorCtx, step.key, 'iteration', 0);
+
+        for (let i = startIteration; i < (isPaginated ? maxPages : 1); i++) {
+            let url: string;
+            if (paginationType === 'LINK_HEADER' && nextUrl) {
+                try {
+                    url = new URL(nextUrl, endpoint).href;
+                } catch {
+                    url = nextUrl; // already absolute
+                }
+            } else {
+                url = this.buildPaginatedUrl(endpoint, cfg.query, paginationType, {
+                    page, offset, cursor, pageSize,
+                    pageParam: cfg.pageParam, offsetParam: cfg.offsetParam,
+                    limitParam: cfg.limitParam, cursorParam: cfg.cursorParam,
+                });
+            }
 
             try {
                 const fetchResult = await this.executeFetchWithRetry({
@@ -256,42 +311,86 @@ export class RestExtractHandler implements ExtractHandler {
                 const items = this.extractItems(fetchResult.data, cfg);
                 results.push(...items);
 
-                const shouldContinue = this.checkPagination(fetchResult.data, cfg, items.length, pageParam);
-                if (!shouldContinue) break;
+                if (!isPaginated || items.length === 0) break;
 
-                lastPageFetched = page++;
+                // Record this page as successfully fetched before advancing
+                lastFetchedPage = page;
+
+                // Advance pagination state based on mode
+                if (paginationType === 'PAGE') {
+                    page++;
+                } else if (paginationType === 'OFFSET') {
+                    offset += items.length;
+                } else if (paginationType === 'CURSOR') {
+                    const nextCursor = cfg.cursorField ? this.getNestedField(fetchResult.data, cfg.cursorField) : undefined;
+                    if (!nextCursor) {
+                        updateCheckpoint(executorCtx, step.key, { cursorDone: true });
+                        break;
+                    }
+                    cursor = String(nextCursor);
+                } else if (paginationType === 'LINK_HEADER') {
+                    nextUrl = fetchResult.linkNext;
+                    if (!nextUrl) break;
+                }
+
+                const shouldContinue = this.checkPagination(fetchResult.data, cfg, items.length, isPaginated ? 'active' : undefined);
+
+                // Persist iteration count so maxPages is honoured across checkpoint restarts
+                if (isPaginated) {
+                    updateCheckpoint(executorCtx, step.key, { iteration: i + 1 });
+                }
+
+                if (!shouldContinue) break;
             } catch (err) {
                 this.logger.warn('REST extraction failed', {
-                    stepKey: step.key,
-                    url,
-                    page,
-                    error: getErrorMessage(err),
+                    stepKey: step.key, url, page, error: getErrorMessage(err),
                 });
                 break;
             }
         }
 
-        if (pageParam) {
-            updateCheckpoint(executorCtx, step.key, { page: lastPageFetched });
+        if (isPaginated) {
+            updateCheckpoint(executorCtx, step.key, { page: lastFetchedPage, offset, cursor: cursor ?? null });
         }
 
         return results;
     }
 
-    private buildUrl(endpoint: string, query?: Record<string, unknown>, pageParam?: string, page?: number): string {
+    private buildPaginatedUrl(
+        endpoint: string,
+        query?: Record<string, unknown>,
+        paginationType?: string,
+        state?: { page?: number; offset?: number; cursor?: string; pageSize?: number; pageParam?: string; offsetParam?: string; limitParam?: string; cursorParam?: string },
+    ): string {
         const qp = new URLSearchParams();
         if (query) {
             for (const [k, v] of Object.entries(query)) {
                 qp.set(k, String(v));
             }
         }
-        if (pageParam && page) qp.set(pageParam, String(page));
+
+        if (state) {
+            if (paginationType === 'PAGE' && state.page) {
+                qp.set(state.pageParam ?? 'page', String(state.page));
+                if (state.pageSize) qp.set(state.limitParam ?? 'limit', String(state.pageSize));
+            } else if (paginationType === 'OFFSET') {
+                qp.set(state.offsetParam ?? 'offset', String(state.offset ?? 0));
+                if (state.pageSize) qp.set(state.limitParam ?? 'limit', String(state.pageSize));
+            } else if (paginationType === 'CURSOR') {
+                if (state.cursor) qp.set(state.cursorParam ?? 'cursor', state.cursor);
+                if (state.pageSize) qp.set(state.limitParam ?? 'limit', String(state.pageSize));
+            }
+        }
 
         const qs = qp.toString();
         if (!qs) return endpoint;
-
         const sep = endpoint.includes('?') ? '&' : '?';
         return `${endpoint}${sep}${qs}`;
+    }
+
+    private getNestedField(data: unknown, path: string): unknown {
+        if (!data || typeof data !== 'object') return undefined;
+        return path.split('.').reduce((obj: any, key) => obj?.[key], data);
     }
 
     private async executeFetchWithRetry(params: {
@@ -304,7 +403,7 @@ export class RestExtractHandler implements ExtractHandler {
         retryConfig: ExtractRetryConfig;
         adaptiveDelay: number;
         fetchImpl: typeof fetch;
-    }): Promise<{ success: boolean; data?: JsonValue; status?: number; adaptiveDelay: number }> {
+    }): Promise<{ success: boolean; data?: JsonValue; status?: number; adaptiveDelay: number; linkNext?: string }> {
         const { ctx, cfg, connectionConfig, url, method, baseHeaders, retryConfig, fetchImpl } = params;
         let adaptiveDelay = params.adaptiveDelay;
 
@@ -331,8 +430,14 @@ export class RestExtractHandler implements ExtractHandler {
 
                 if (res?.ok) {
                     adaptiveDelay = Math.max(0, Math.floor(adaptiveDelay * 0.5));
-                    const data = await res.json() as JsonValue;
-                    return { success: true, data, adaptiveDelay };
+                    const text = await res.text();
+                    let data: JsonValue = null;
+                    if (text.trim()) {
+                        try { data = JSON.parse(text) as JsonValue; } catch { data = null; }
+                    }
+                    const linkHeader = res.headers.get('link') ?? res.headers.get('Link');
+                    const linkNext = linkHeader?.match(/<([^>]+)>;\s*rel="next"/)?.[1];
+                    return { success: true, data, adaptiveDelay, linkNext };
                 }
 
                 if (res?.status === HTTP_STATUS.TOO_MANY_REQUESTS || res?.status === HTTP_STATUS.SERVICE_UNAVAILABLE) {
@@ -466,9 +571,9 @@ export class RestExtractHandler implements ExtractHandler {
         if (cfg.basicSecretCode) {
             const secret = await this.resolveSecret(ctx, cfg.basicSecretCode);
             if (secret && secret.includes(':')) {
-                const [u, p] = secret.split(':');
-                user = u;
-                pass = p;
+                const colonIdx = secret.indexOf(':');
+                user = secret.slice(0, colonIdx);
+                pass = secret.slice(colonIdx + 1);
             }
         }
 

@@ -60,7 +60,10 @@ export async function replayFromStepLinear(params: {
 
     // Find start step and get remaining steps
     const idx = definition.steps.findIndex(s => s.key === startStepKey);
-    const steps = idx >= 0 ? definition.steps.slice(idx + 1) : definition.steps;
+    if (idx === -1) {
+        throw new Error(`Replay start step "${startStepKey}" not found in pipeline definition`);
+    }
+    const steps = definition.steps.slice(idx + 1);
 
     let records: RecordObject[] = seed;
     let processed = 0;
@@ -122,6 +125,11 @@ export async function replayFromStepLinear(params: {
                 processed += records.length;
                 break;
             }
+
+            case StepType.GATE:
+                // During replay, gates are intentionally bypassed - records pass through.
+                // The user explicitly requested replay, so gating conditions should not block.
+                break;
 
             default:
                 // Pass through records for unknown step types (TRIGGER, EXTRACT handled by replay skip)
@@ -191,7 +199,7 @@ export async function replayFromStepGraph(params: {
     }
 
     // Build topology for reachable subgraph
-    const preds = new Map<string, Array<{ from: string; branch?: string }>>();
+    const preds = new Map<string, Array<{ from: string; branch?: string; dependencyOnly?: boolean }>>();
     const indeg = new Map<string, number>();
 
     for (const s of steps) {
@@ -204,11 +212,10 @@ export async function replayFromStepGraph(params: {
         if (!reachable.has(e.from) || !reachable.has(e.to)) continue;
         indeg.set(e.to, (indeg.get(e.to) ?? 0) + 1);
         const list = preds.get(e.to) ?? [];
-        list.push({ from: e.from, branch: e.branch });
+        list.push({ from: e.from, branch: e.branch, dependencyOnly: e.dependencyOnly });
         preds.set(e.to, list);
     }
 
-    // Initialize outputs with seed at start step
     const outputs = new Map<string, RecordObject[] | BranchOutput>();
     outputs.set(startStepKey, seed);
 
@@ -242,6 +249,9 @@ export async function replayFromStepGraph(params: {
         );
 
         for (const p of parents) {
+            // Dependency-only edges enforce ordering without data flow
+            if (p.dependencyOnly) continue;
+
             const out = outputs.get(p.from);
             if (!out) continue;
 
@@ -315,6 +325,12 @@ export async function replayFromStepGraph(params: {
                 outputs.set(key, []);
                 break;
             }
+
+            case StepType.GATE:
+                // During replay, gates are intentionally bypassed - records pass through.
+                // The user explicitly requested replay, so gating conditions should not block.
+                outputs.set(key, input);
+                break;
 
             default:
                 logger.warn(`replayFromStepGraph: Unhandled step type "${step.type}" for step "${key}" - passing through ${input.length} records`);

@@ -22,11 +22,11 @@ export type MoveDirection = typeof MOVE_DIRECTION[keyof typeof MOVE_DIRECTION];
 
 /** Loading state types */
 export const LOADING_STATE_TYPE = {
-    SPINNER: 'SPINNER',
-    TABLE: 'TABLE',
-    FORM: 'FORM',
-    CARD: 'CARD',
-    LIST: 'LIST',
+    SPINNER: 'spinner',
+    TABLE: 'table',
+    FORM: 'form',
+    CARD: 'card',
+    LIST: 'list',
 } as const;
 
 /** Secret provider types */

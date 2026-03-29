@@ -4,6 +4,7 @@
  */
 
 import * as crypto from 'crypto';
+import { promisify } from 'util';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -15,43 +16,38 @@ const ITERATIONS = 100000;
 // Encrypted value format: base64(salt + iv + authTag + ciphertext)
 const ENCRYPTED_PREFIX = 'enc:v1:';
 
+const pbkdf2Async = promisify(crypto.pbkdf2);
+
 export function isEncrypted(value: string): boolean {
     return value.startsWith(ENCRYPTED_PREFIX);
 }
 
-function deriveKey(masterKey: string, salt: Buffer): Buffer {
-    return crypto.pbkdf2Sync(masterKey, salt, ITERATIONS, KEY_LENGTH, 'sha256');
+async function deriveKey(masterKey: string, salt: Buffer): Promise<Buffer> {
+    return pbkdf2Async(masterKey, salt, ITERATIONS, KEY_LENGTH, 'sha256');
 }
 
-export function encryptSecret(plaintext: string, masterKey: string): string {
+export async function encryptSecret(plaintext: string, masterKey: string): Promise<string> {
     if (!masterKey) {
         throw new Error('Master encryption key is required for secret encryption');
     }
 
-    // Generate random salt and IV
     const salt = crypto.randomBytes(SALT_LENGTH);
     const iv = crypto.randomBytes(IV_LENGTH);
+    const key = await deriveKey(masterKey, salt);
 
-    // Derive key from master key
-    const key = deriveKey(masterKey, salt);
-
-    // Create cipher and encrypt
     const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
     const encrypted = Buffer.concat([
         cipher.update(plaintext, 'utf8'),
         cipher.final(),
     ]);
-
-    // Get auth tag for integrity verification
     const authTag = cipher.getAuthTag();
 
-    // Combine: salt + iv + authTag + ciphertext
     const combined = Buffer.concat([salt, iv, authTag, encrypted]);
 
     return ENCRYPTED_PREFIX + combined.toString('base64');
 }
 
-export function decryptSecret(encryptedValue: string, masterKey: string): string {
+export async function decryptSecret(encryptedValue: string, masterKey: string): Promise<string> {
     if (!masterKey) {
         throw new Error('Master encryption key is required for secret decryption');
     }
@@ -60,23 +56,21 @@ export function decryptSecret(encryptedValue: string, masterKey: string): string
         throw new Error('Cannot decrypt value: not in encrypted format. All secrets must be encrypted with enc:v1: prefix.');
     }
 
-    // Remove prefix and decode
     const data = Buffer.from(encryptedValue.slice(ENCRYPTED_PREFIX.length), 'base64');
+    const minLength = SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH + 1;
+    if (data.length < minLength) {
+        throw new Error('Encrypted data is malformed');
+    }
 
-    // Extract components
     const salt = data.subarray(0, SALT_LENGTH);
     const iv = data.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
     const authTag = data.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
     const ciphertext = data.subarray(SALT_LENGTH + IV_LENGTH + AUTH_TAG_LENGTH);
 
-    // Derive key from master key
-    const key = deriveKey(masterKey, salt);
-
-    // Create decipher
+    const key = await deriveKey(masterKey, salt);
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
     decipher.setAuthTag(authTag);
 
-    // Decrypt
     try {
         const decrypted = Buffer.concat([
             decipher.update(ciphertext),
@@ -94,5 +88,5 @@ export function getMasterKey(envVarName = 'DATAHUB_MASTER_KEY'): string | undefi
 
 export function isEncryptionConfigured(envVarName = 'DATAHUB_MASTER_KEY'): boolean {
     const key = process.env[envVarName];
-    return typeof key === 'string' && key.length >= 32;
+    return typeof key === 'string' && key.length >= KEY_LENGTH;
 }

@@ -65,7 +65,7 @@ export const csvCustomerImport = createPipeline()
     .export('error-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'customer-import-errors.csv',
+        filenamePattern: 'customer-import-errors.csv',
     })
 
     // Valid branch: transform, build addresses, assign groups, load
@@ -230,7 +230,7 @@ export const productFeedGenerator = createPipeline()
     .export('product-csv', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'feed-products.csv',
+        filenamePattern: 'feed-products.csv',
     })
 
     // Linear graph

@@ -13,9 +13,7 @@ import { AdapterDefinition } from '../../../sdk/types';
 import {
     HTTP_METHOD_EXPORT_OPTIONS,
     CSV_DELIMITER_OPTIONS,
-    FILE_ENCODING_OPTIONS,
     JSON_EXPORT_FORMAT_OPTIONS,
-    BATCH_MODE_EXPORT_OPTIONS,
     LOCALIZATION_SCHEMA_FIELDS,
 } from '../../../constants/adapter-schema-options';
 import { ExportHandlerFn } from './export-handler.types';
@@ -54,9 +52,6 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
                     { key: 'filenamePattern', label: 'Filename pattern', type: 'string', description: 'Filename with placeholders: ${date:YYYY-MM-DD}, ${timestamp}, ${uuid}' },
                     { key: 'delimiter', label: 'Delimiter', type: 'select', options: CSV_DELIMITER_OPTIONS, group: 'format-options' },
                     { key: 'includeHeader', label: 'Include header row', type: 'boolean', group: 'format-options' },
-                    { key: 'columns', label: 'Columns', type: 'json', description: 'Array of column definitions: [{ field: "name", header: "Name" }]' },
-                    { key: 'encoding', label: 'Encoding', type: 'select', options: FILE_ENCODING_OPTIONS, group: 'format-options' },
-                    { key: 'connectionCode', label: 'Connection', type: 'string', description: 'SFTP/S3 connection for remote upload' },
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -79,7 +74,6 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
                     { key: 'filenamePattern', label: 'Filename pattern', type: 'string', description: 'Filename with placeholders: ${date:YYYY-MM-DD}, ${timestamp}, ${uuid}' },
                     { key: 'format', label: 'Format', type: 'select', options: JSON_EXPORT_FORMAT_OPTIONS, group: 'format-options' },
                     { key: 'pretty', label: 'Pretty print', type: 'boolean', group: 'format-options' },
-                    { key: 'connectionCode', label: 'Connection', type: 'string' },
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -103,7 +97,6 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
                     { key: 'rootElement', label: 'Root element', type: 'string', defaultValue: 'feed', description: 'e.g., products', group: 'format-options' },
                     { key: 'itemElement', label: 'Item element', type: 'string', defaultValue: 'item', description: 'e.g., product', group: 'format-options' },
                     { key: 'declaration', label: 'Include XML declaration', type: 'boolean', group: 'format-options' },
-                    { key: 'connectionCode', label: 'Connection', type: 'string' },
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -123,9 +116,7 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
                 fields: [
                     { key: 'url', label: 'Endpoint URL', type: 'string', required: true },
                     { key: 'method', label: 'HTTP Method', type: 'select', options: HTTP_METHOD_EXPORT_OPTIONS },
-                    { key: 'batchMode', label: 'Batch mode', type: 'select', options: BATCH_MODE_EXPORT_OPTIONS },
                     { key: 'batchSize', label: 'Batch size', type: 'number', description: 'Records per batch request' },
-                    { key: 'connectionCode', label: 'Connection', type: 'string' },
                     { key: 'bearerTokenSecretCode', label: 'Bearer token secret', type: 'string' },
                     { key: 'retryCount', label: 'Retry count', type: 'number' },
                     ...LOCALIZATION_SCHEMA_FIELDS,
@@ -146,7 +137,6 @@ export const EXPORT_HANDLER_REGISTRY = new Map<string, ExportRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'url', label: 'Webhook URL', type: 'string', required: true },
-                    { key: 'signatureSecretCode', label: 'Signature secret', type: 'string', description: 'Secret for HMAC signature' },
                     { key: 'headers', label: 'Custom headers', type: 'json' },
                     { key: 'retryCount', label: 'Retry count', type: 'number' },
                     { key: 'timeoutMs', label: 'Timeout (ms)', type: 'number' },

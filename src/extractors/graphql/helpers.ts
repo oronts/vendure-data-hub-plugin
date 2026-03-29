@@ -65,7 +65,6 @@ export function extractRecords(
             if (Array.isArray(obj.edges)) {
                 return (obj.edges as Array<{ node: JsonObject }>).map(e => e.node);
             }
-            // Return as single-item array
             return [data as JsonObject];
         }
         return [];

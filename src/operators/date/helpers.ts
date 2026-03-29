@@ -109,14 +109,14 @@ function parseDateWithFormat(value: string, format: string): Date | null {
             }
         }
 
-        return new Date(
+        return new Date(Date.UTC(
             parts.year,
             parts.month,
             parts.day,
             parts.hour,
             parts.minute,
             parts.second,
-        );
+        ));
     } catch {
         // Date parsing failed - return null as fallback
         return null;

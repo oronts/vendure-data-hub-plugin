@@ -91,7 +91,7 @@ function variantHasChannelsLoaded(variant: ProductVariant): variant is ProductVa
 }
 
 /**
- * Build variant translations — multi-language from record field or single-language fallback.
+ * Build variant translations - multi-language from record field or single-language fallback.
  */
 function buildVariantTranslations(
     opCtx: RequestContext,
@@ -143,21 +143,23 @@ export class VariantHandler implements LoaderHandler {
         const optionCache = createOptionGroupCache();
         const channelCache = new Map<string, ID>();
 
+        const config = getStepConfig(step);
+        const skuKey = config.skuField ?? 'sku';
+        const nameKey = config.nameField ?? 'name';
+        const priceKey = config.priceField ?? 'price';
+        const priceMapKey = config.priceByCurrencyField;
+        const taxCategoryName = config.taxCategoryName;
+        const stockKey = config.stockField ?? 'stockOnHand';
+        const stockLocKey = config.stockByLocationField;
+        const customFieldsKey = config.customFieldsField ?? 'customFields';
+        const optionGroupsKey = config.optionGroupsField;
+        const optionIdsKey = config.optionIdsField;
+        const optionCodesKey = config.optionCodesField;
+        const enabledKey = config.enabledField ?? 'enabled';
+        const strategy = config.strategy ?? LoadStrategy.UPSERT;
+
         for (const rec of input) {
             try {
-                const config = getStepConfig(step);
-                const skuKey = config.skuField ?? 'sku';
-                const nameKey = config.nameField ?? 'name';
-                const priceKey = config.priceField ?? 'price';
-                const priceMapKey = config.priceByCurrencyField;
-                const taxCategoryName = config.taxCategoryName;
-                const stockKey = config.stockField ?? 'stockOnHand';
-                const stockLocKey = config.stockByLocationField;
-                const customFieldsKey = config.customFieldsField ?? 'customFields';
-                const optionGroupsKey = config.optionGroupsField;
-                const optionIdsKey = config.optionIdsField;
-                const optionCodesKey = config.optionCodesField;
-
                 const sku = getStringValue(rec, skuKey);
                 let name = getStringValue(rec, nameKey);
 
@@ -216,7 +218,7 @@ export class VariantHandler implements LoaderHandler {
                     for (const [cc, v] of allPriceEntries) {
                         if (availableCurrencies.length > 0 && !availableCurrencies.includes(cc as CurrencyCode)) {
                             this.logger.warn(
-                                `Currency "${cc}" is not available in channel "${opCtx.channel?.code ?? 'default'}" — skipping price for variant "${sku}". Available currencies: ${availableCurrencies.join(', ')}`,
+                                `Currency "${cc}" is not available in channel "${opCtx.channel?.code ?? 'default'}" - skipping price for variant "${sku}". Available currencies: ${availableCurrencies.join(', ')}`,
                             );
                             continue;
                         }
@@ -237,13 +239,10 @@ export class VariantHandler implements LoaderHandler {
                 const stockOnHand = getNumberValue(rec, stockKey);
                 const customFields = getObjectValue(rec, customFieldsKey);
 
-                const enabledKey = config.enabledField ?? 'enabled';
                 const enabledRaw = rec[enabledKey];
                 const enabled = enabledRaw != null
                     ? (typeof enabledRaw === 'boolean' ? enabledRaw : String(enabledRaw).toLowerCase() === 'true')
                     : undefined;
-
-                const strategy = config.strategy ?? LoadStrategy.UPSERT;
 
                 let variantId: ID | undefined;
 
@@ -270,7 +269,7 @@ export class VariantHandler implements LoaderHandler {
                     // Resolve parent product from record fields: productSlug, productId, productName
                     const productId = await this.resolveProductId(opCtx, rec);
                     if (!productId) {
-                        this.logger.warn(`Cannot create variant "${sku}" — no parent product found. Record should contain productSlug, productId, or productName`);
+                        this.logger.warn(`Cannot create variant "${sku}" - no parent product found. Record should contain productSlug, productId, or productName`);
                         fail++;
                         continue;
                     }
@@ -426,6 +425,10 @@ export class VariantHandler implements LoaderHandler {
         if (typeof priceMinor === 'number') {
             update.price = priceMinor;
         }
+        // When multi-currency prices array is set, remove the scalar price to avoid ambiguity
+        if (update.prices && update.prices.length > 0) {
+            delete (update as any).price;
+        }
         if (typeof stockOnHand === 'number') {
             update.stockOnHand = Math.max(0, Math.floor(stockOnHand));
         }
@@ -490,6 +493,10 @@ export class VariantHandler implements LoaderHandler {
         if (typeof priceMinor === 'number') {
             createInput.price = priceMinor;
         }
+        // When multi-currency prices array is set, remove the scalar price to avoid ambiguity
+        if (createInput.prices && createInput.prices.length > 0) {
+            delete (createInput as any).price;
+        }
         if (typeof stockOnHand === 'number') {
             createInput.stockOnHand = Math.max(0, Math.floor(stockOnHand));
         }
@@ -530,9 +537,9 @@ export class VariantHandler implements LoaderHandler {
         input: RecordObject[],
     ): Promise<Record<string, number>> {
         let exists = 0, missing = 0;
+        const config = getStepConfig(step);
+        const skuKey = config.skuField ?? 'sku';
         for (const rec of input) {
-            const config = getStepConfig(step);
-            const skuKey = config.skuField ?? 'sku';
             const sku = getStringValue(rec, skuKey);
             if (!sku) continue;
             const variant = await findVariantBySku(this.productVariantService, ctx, sku);

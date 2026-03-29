@@ -9,7 +9,7 @@ import {
 } from '../../constants';
 import { useOptionValues, useConnectionSchemas } from '../../hooks/api/use-config-options';
 import type { ConnectionSchemaField } from '../../hooks/api/use-config-options';
-import { validateUrl, validatePort, validateHostname } from '../../utils';
+import { validateUrl, validatePort } from '../../utils';
 import { FieldError } from './ValidationFeedback';
 import type { UIConnectionType, HttpConnectionConfig, DataHubSecret } from '../../types';
 
@@ -150,9 +150,11 @@ function HttpConnectionFields({
         return rows;
     }, [normalized.headers]);
 
+    const [pendingEmptyRow, setPendingEmptyRow] = React.useState<HeaderRow | null>(null);
+
     const commitHeaders = (rows: HeaderRow[]) => {
-        const cleaned = rows.filter(row => row.name.trim() && row.value.trim());
-        const next = cleaned.length ? Object.fromEntries(cleaned.map(row => [row.name.trim(), row.value])) : undefined;
+        const withContent = rows.filter(row => row.name.trim());
+        const next = withContent.length ? Object.fromEntries(withContent.map(row => [row.name.trim(), row.value])) : undefined;
         updateConfig({ headers: next });
     };
 
@@ -215,7 +217,7 @@ function HttpConnectionFields({
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={() => commitHeaders([...headerRows, createHeaderRow()])}
+                        onClick={() => setPendingEmptyRow(createHeaderRow())}
                         disabled={disabled}
                         aria-label="Add new HTTP header"
                     >
@@ -223,7 +225,7 @@ function HttpConnectionFields({
                         Add header
                     </Button>
                 </div>
-                {headerRows.length === 0 && <p className="text-sm text-muted-foreground">No headers configured.</p>}
+                {headerRows.length === 0 && !pendingEmptyRow && <p className="text-sm text-muted-foreground">No headers configured.</p>}
                 {headerRows.map(row => (
                     <div key={row.id} className="grid grid-cols-[1fr,1fr,auto] gap-3">
                         <Input
@@ -256,6 +258,41 @@ function HttpConnectionFields({
                         </Button>
                     </div>
                 ))}
+                {pendingEmptyRow && (
+                    <div key={pendingEmptyRow.id} className="grid grid-cols-[1fr,1fr,auto] gap-3">
+                        <Input
+                            placeholder={PLACEHOLDERS.HEADER_NAME}
+                            value={pendingEmptyRow.name}
+                            autoFocus
+                            onChange={e => {
+                                const name = e.target.value;
+                                if (name.trim()) {
+                                    commitHeaders([...headerRows, { ...pendingEmptyRow, name }]);
+                                    setPendingEmptyRow(null);
+                                } else {
+                                    setPendingEmptyRow({ ...pendingEmptyRow, name });
+                                }
+                            }}
+                            disabled={disabled}
+                        />
+                        <Input
+                            placeholder={PLACEHOLDERS.HEADER_VALUE}
+                            value={pendingEmptyRow.value}
+                            onChange={e => setPendingEmptyRow({ ...pendingEmptyRow, value: e.target.value })}
+                            disabled={disabled}
+                        />
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setPendingEmptyRow(null)}
+                            disabled={disabled}
+                            aria-label="Remove header"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </Button>
+                    </div>
+                )}
             </div>
 
             <div className="space-y-3" role="group" aria-labelledby="authentication-label">

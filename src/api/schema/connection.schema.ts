@@ -26,18 +26,11 @@ export const connectionSchema = `
         config: JSON
     }
 
-    input DataHubConnectionListOptions {
-        skip: Int
-        take: Int
-        sort: JSON
-        filter: JSON
-        filterOperator: LogicalOperator
-    }
 `;
 
 export const connectionQueries = `
     extend type Query {
-        dataHubConnections(options: DataHubConnectionListOptions): DataHubConnectionList!
+        dataHubConnections: DataHubConnectionList!
         dataHubConnection(id: ID!): DataHubConnection
     }
 `;

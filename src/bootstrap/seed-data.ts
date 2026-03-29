@@ -13,7 +13,8 @@ import { Pipeline } from '../entities/pipeline/pipeline.entity';
 import { DataHubSecret } from '../entities/config/secret.entity';
 import { DataHubConnection } from '../entities/config/connection.entity';
 import { SecretProvider, ConnectionType } from '../constants/enums';
-import { DataHubLogger } from '../services/logger';
+import { DataHubLoggerFactory } from '../services/logger';
+import { SecretService } from '../services/config/secret.service';
 import { getErrorMessage, toErrorOrUndefined } from '../utils/error.utils';
 import { sleep } from '../utils/retry.utils';
 import type { JsonObject, JsonValue } from '../../shared/types';
@@ -21,7 +22,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 
-const logger = new DataHubLogger(LOGGER_CONTEXTS.CONFIG_SYNC);
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.CONFIG_SYNC);
 
 /** Maximum retry attempts for database operations during bootstrap */
 const MAX_BOOTSTRAP_RETRIES = HTTP.MAX_RETRIES;
@@ -39,6 +40,7 @@ export class ConfigSyncService implements OnApplicationBootstrap {
     constructor(
         private connection: TransactionalConnection,
         private requestContextService: RequestContextService,
+        private secretService: SecretService,
         @Inject(DATAHUB_PLUGIN_OPTIONS) private options: DataHubPluginOptions,
     ) {}
 
@@ -115,7 +117,7 @@ export class ConfigSyncService implements OnApplicationBootstrap {
             });
         }
 
-        // Throw if any critical failures occurred
+        // Log warning if any configs failed to sync
         const totalFailed = results.secrets.failed + results.connections.failed + results.pipelines.failed;
         if (totalFailed > 0) {
             logger.warn('Some configurations failed to sync', { totalFailed, results });
@@ -172,29 +174,30 @@ export class ConfigSyncService implements OnApplicationBootstrap {
                 const existing = await repo.findOne({ where: { code: secret.code } });
 
                 // Map string provider to enum
-                const providerEnum = secret.provider === 'ENV' ? SecretProvider.ENV : SecretProvider.INLINE;
-
-                // Resolve value from environment if provider is 'ENV'
-                // Supports fallback syntax: 'ENV_VAR|fallback_value'
-                let resolvedValue = secret.value;
-                if (secret.provider === 'ENV' && secret.value) {
-                    const [envName, fallback] = secret.value.split('|').map(s => s.trim());
-                    const envValue = process.env[envName];
-                    if (envValue !== undefined) {
-                        resolvedValue = envValue;
-                    } else if (fallback !== undefined) {
-                        logger.debug(`Using fallback for env var ${envName} in secret ${secret.code}`);
-                        resolvedValue = fallback;
-                    } else {
-                        logger.warn(`Environment variable ${envName} not found for secret ${secret.code}`);
-                        resolvedValue = '';
-                    }
+                const upperProvider = (secret.provider ?? 'INLINE').toUpperCase();
+                if (upperProvider !== 'ENV' && upperProvider !== 'INLINE') {
+                    logger.warn(`Skipping secret "${secret.code}": unknown provider "${secret.provider}". Use ENV or INLINE.`);
+                    failed++;
+                    continue;
                 }
+                const providerEnum = upperProvider === 'ENV' ? SecretProvider.ENV : SecretProvider.INLINE;
+
+                let storedValue = secret.value;
+                if (providerEnum === SecretProvider.ENV) {
+                    if (!secret.value) {
+                        logger.warn(`ENV secret ${secret.code} has no env var name configured`);
+                    }
+                } else {
+                    storedValue = secret.value
+                        ? await this.secretService.encryptValue(secret.value)
+                        : secret.value;
+                }
+                const encryptedValue = storedValue;
 
                 if (existing) {
                     // Update existing
                     existing.provider = providerEnum;
-                    existing.value = resolvedValue;
+                    existing.value = encryptedValue;
                     existing.metadata = secret.metadata ?? null;
                     await repo.save(existing);
                 } else {
@@ -202,7 +205,7 @@ export class ConfigSyncService implements OnApplicationBootstrap {
                     const entity = new DataHubSecret();
                     entity.code = secret.code;
                     entity.provider = providerEnum;
-                    entity.value = resolvedValue;
+                    entity.value = encryptedValue;
                     entity.metadata = secret.metadata ?? null;
                     await repo.save(entity);
                 }
@@ -325,14 +328,30 @@ export class ConfigSyncService implements OnApplicationBootstrap {
         const result: Record<string, JsonValue> = {};
         for (const [key, value] of Object.entries(obj)) {
             if (typeof value === 'string') {
-                // Replace ${VAR_NAME} with environment variable value
                 result[key] = value.replace(/\$\{([^}]+)\}/g, (_, varName) => {
-                    return process.env[varName] ?? '';
+                    const envVal = process.env[varName];
+                    if (envVal === undefined) {
+                        logger.warn(`Missing environment variable: ${varName} (in connection config key "${key}")`);
+                    }
+                    return envVal ?? '';
                 });
-            } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            } else if (Array.isArray(value)) {
+                result[key] = value.map(item => {
+                    if (typeof item === 'string') {
+                        return item.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+                            const v = process.env[varName];
+                            if (v === undefined) logger.warn(`Missing environment variable: ${varName} (in array element of key "${key}")`);
+                            return v ?? '';
+                        });
+                    }
+                    if (typeof item === 'object' && item !== null) {
+                        return this.resolveEnvVars(item as Record<string, unknown>) as JsonValue;
+                    }
+                    return item as JsonValue;
+                }) as JsonValue;
+            } else if (typeof value === 'object' && value !== null) {
                 result[key] = this.resolveEnvVars(value as Record<string, unknown>);
             } else {
-                // Cast to JsonValue - assumes input is already JSON-compatible
                 result[key] = value as JsonValue;
             }
         }

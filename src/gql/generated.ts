@@ -1791,10 +1791,15 @@ export type DataHubConnectionList = PaginatedList & {
 };
 
 export type DataHubConnectionListOptions = {
-  filter?: InputMaybe<Scalars['JSON']['input']>;
+  /** Allows the results to be filtered */
+  filter?: InputMaybe<DataHubConnectionFilterParameter>;
+  /** Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND. */
   filterOperator?: InputMaybe<LogicalOperator>;
+  /** Skips the first n results, for use in pagination */
   skip?: InputMaybe<Scalars['Int']['input']>;
-  sort?: InputMaybe<Scalars['JSON']['input']>;
+  /** Specifies which properties to sort the results by */
+  sort?: InputMaybe<DataHubConnectionSortParameter>;
+  /** Takes n results, for use in pagination */
   take?: InputMaybe<Scalars['Int']['input']>;
 };
 
@@ -2491,10 +2496,15 @@ export type DataHubLogList = PaginatedList & {
 };
 
 export type DataHubLogListOptions = {
-  filter?: InputMaybe<Scalars['JSON']['input']>;
+  /** Allows the results to be filtered */
+  filter?: InputMaybe<DataHubLogFilterParameter>;
+  /** Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND. */
   filterOperator?: InputMaybe<LogicalOperator>;
+  /** Skips the first n results, for use in pagination */
   skip?: InputMaybe<Scalars['Int']['input']>;
-  sort?: InputMaybe<Scalars['JSON']['input']>;
+  /** Specifies which properties to sort the results by */
+  sort?: InputMaybe<DataHubLogSortParameter>;
+  /** Takes n results, for use in pagination */
   take?: InputMaybe<Scalars['Int']['input']>;
 };
 
@@ -2592,15 +2602,15 @@ export type DataHubPipelineList = PaginatedList & {
 };
 
 export type DataHubPipelineListOptions = {
-  /** Filter configuration for field-based filtering */
-  filter?: InputMaybe<Scalars['JSON']['input']>;
-  /** Logical operator for combining filters */
+  /** Allows the results to be filtered */
+  filter?: InputMaybe<DataHubPipelineFilterParameter>;
+  /** Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND. */
   filterOperator?: InputMaybe<LogicalOperator>;
-  /** Number of items to skip */
+  /** Skips the first n results, for use in pagination */
   skip?: InputMaybe<Scalars['Int']['input']>;
-  /** Sort configuration: { field: 'asc' | 'desc' } */
-  sort?: InputMaybe<Scalars['JSON']['input']>;
-  /** Number of items to return */
+  /** Specifies which properties to sort the results by */
+  sort?: InputMaybe<DataHubPipelineSortParameter>;
+  /** Takes n results, for use in pagination */
   take?: InputMaybe<Scalars['Int']['input']>;
 };
 
@@ -3398,10 +3408,15 @@ export type DataHubSecretList = PaginatedList & {
 };
 
 export type DataHubSecretListOptions = {
-  filter?: InputMaybe<Scalars['JSON']['input']>;
+  /** Allows the results to be filtered */
+  filter?: InputMaybe<DataHubSecretFilterParameter>;
+  /** Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND. */
   filterOperator?: InputMaybe<LogicalOperator>;
+  /** Skips the first n results, for use in pagination */
   skip?: InputMaybe<Scalars['Int']['input']>;
-  sort?: InputMaybe<Scalars['JSON']['input']>;
+  /** Specifies which properties to sort the results by */
+  sort?: InputMaybe<DataHubSecretSortParameter>;
+  /** Takes n results, for use in pagination */
   take?: InputMaybe<Scalars['Int']['input']>;
 };
 

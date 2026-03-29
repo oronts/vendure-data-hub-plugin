@@ -1,4 +1,5 @@
 import { StepType as StepTypeEnum, QueueType } from '../../constants/enums';
+import { FILE_WATCH } from '../../constants/defaults';
 import {
     PipelineDefinition,
     TriggerConfig,
@@ -115,7 +116,7 @@ function validateMessageTrigger(
 ): void {
     const messageConfig = isMessageTriggerConfig(cfg.message) ? cfg.message : undefined;
     const queueType = getQueueType(messageConfig);
-    const queueTypeUpper = queueType?.toUpperCase();
+    const queueTypeUpper = queueType?.toUpperCase().replace(/-/g, '_');
 
     // All supported queue types
     const supportedQueueTypes = new Set([
@@ -198,9 +199,9 @@ function validateFileTrigger(
 
     // Validate pollIntervalMs if provided
     if (fileWatchConfig.pollIntervalMs !== undefined) {
-        if (typeof fileWatchConfig.pollIntervalMs !== 'number' || fileWatchConfig.pollIntervalMs < 30000) {
+        if (typeof fileWatchConfig.pollIntervalMs !== 'number' || fileWatchConfig.pollIntervalMs < FILE_WATCH.MIN_POLL_INTERVAL_MS) {
             issues.push({
-                message: `Step "${stepKey}": pollIntervalMs must be at least 30000 (30 seconds)`,
+                message: `Step "${stepKey}": pollIntervalMs must be at least ${FILE_WATCH.MIN_POLL_INTERVAL_MS} (${FILE_WATCH.MIN_POLL_INTERVAL_MS / 1000} seconds)`,
                 stepKey,
                 errorCode: 'invalid-poll-interval',
             });
@@ -216,7 +217,7 @@ function validateScheduleTrigger(
     const rawCfg = cfg as unknown as Record<string, unknown>;
     const cron = rawCfg.cron as string | undefined;
 
-    if (!cron || typeof cron !== 'string' || cron.trim().length === 0) {
+    if (!cron?.trim()) {
         issues.push({
             message: `Step "${stepKey}": schedule trigger requires a cron expression (field: "cron")`,
             stepKey,
@@ -240,31 +241,31 @@ function validateWebhookTrigger(
     issues: PipelineDefinitionIssue[],
 ): void {
     const rawCfg = cfg as unknown as Record<string, unknown>;
-    const authType = rawCfg.authType as string | undefined;
+    const authType = ((rawCfg.authentication ?? rawCfg.authType) as string | undefined)?.toUpperCase();
 
-    if (!authType || typeof authType !== 'string') {
+    if (!authType?.trim()) {
         issues.push({
-            message: `Step "${stepKey}": webhook trigger requires authType`,
+            message: `Step "${stepKey}": webhook trigger requires authentication type`,
             stepKey,
             errorCode: 'missing-auth-type',
         });
         return;
     }
 
-    if (authType === 'hmac') {
-        const signatureHeader = rawCfg.signatureHeader as string | undefined;
-        if (!signatureHeader || typeof signatureHeader !== 'string' || signatureHeader.trim().length === 0) {
+    if (authType === 'HMAC') {
+        const hmacHeader = (rawCfg.hmacHeaderName ?? rawCfg.signatureHeader) as string | undefined;
+        if (!hmacHeader?.trim()) {
             issues.push({
-                message: `Step "${stepKey}": HMAC webhook trigger requires signatureHeader`,
+                message: `Step "${stepKey}": HMAC webhook trigger requires hmacHeaderName`,
                 stepKey,
                 errorCode: 'missing-signature-header',
             });
         }
     }
 
-    if (authType === 'apiKey') {
+    if (authType === 'API_KEY') {
         const apiKeySecretCode = rawCfg.apiKeySecretCode as string | undefined;
-        if (!apiKeySecretCode || typeof apiKeySecretCode !== 'string' || apiKeySecretCode.trim().length === 0) {
+        if (!apiKeySecretCode?.trim()) {
             issues.push({
                 message: `Step "${stepKey}": API key webhook trigger requires apiKeySecretCode`,
                 stepKey,
@@ -282,7 +283,7 @@ function validateEventTrigger(
     const rawCfg = cfg as unknown as Record<string, unknown>;
     const event = rawCfg.event as string | undefined;
 
-    if (!event || typeof event !== 'string' || event.trim().length === 0) {
+    if (!event?.trim()) {
         issues.push({
             message: `Step "${stepKey}": event trigger requires event field`,
             stepKey,

@@ -44,18 +44,6 @@ export class RecordErrorService {
         }
         const entity = await repo.save(errorEntity);
         try {
-            const runWithPipeline = await this.connection.getRepository(ctx, PipelineRun).findOne({
-                where: { id: runId },
-                relations: { pipeline: true },
-            });
-            const def = runWithPipeline?.pipeline?.definition;
-            if (def) {
-                await this.hooks.run(ctx, def, HookStage.ON_ERROR, undefined, payload, runId);
-            }
-        } catch (error) {
-            this.logger.warn('Failed to run onError hook', { runId, stepKey, error: getErrorMessage(error) });
-        }
-        try {
             this.events.publish('RECORD_REJECTED', { runId, stepKey, message });
         } catch (error) {
             this.logger.warn('Failed to publish RECORD_REJECTED event', { runId, stepKey, error: getErrorMessage(error) });

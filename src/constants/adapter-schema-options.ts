@@ -18,7 +18,7 @@ export const CONFLICT_RESOLUTION_OPTIONS = [ConflictStrategy.SOURCE_WINS, Confli
     .map(value => ({ value, label: CONFLICT_STRATEGY_METADATA[value].label }));
 
 // ---------------------------------------------------------------------------
-// FILE_FORMAT_METADATA — single source of truth for every file format.
+// FILE_FORMAT_METADATA: single source of truth for every file format.
 // To add a new format: add ONE entry here (and optionally a parser).
 // All option arrays, icon maps, color maps, extension maps, and MIME maps
 // are auto-derived below.
@@ -117,7 +117,7 @@ export const FILE_FORMAT_OPTIONS = [
 ];
 
 
-/** Single-source metadata for auth types — each type declares which scopes it belongs to */
+/** Single-source metadata for auth types, each type declares which scopes it belongs to */
 const AUTH_TYPE_METADATA: Record<string, { label: string; scopes: string[] }> = {
     [ConnectionAuthType.NONE]:    { label: 'None',    scopes: ['rest', 'graphql', 'destination'] },
     [ConnectionAuthType.BEARER]:  { label: 'Bearer',  scopes: ['rest', 'graphql', 'destination'] },
@@ -137,7 +137,7 @@ export const AUTH_TYPE_REST_OPTIONS = authTypesByScope('rest');
 /** Auth type select options: NONE, BEARER, BASIC (for GraphQL loader) */
 export const AUTH_TYPE_GRAPHQL_OPTIONS = authTypesByScope('graphql');
 
-/** Single-source metadata for HTTP methods — each method declares which scopes it belongs to */
+/** Single-source metadata for HTTP methods, each method declares which scopes it belongs to */
 const HTTP_METHOD_METADATA: Record<string, { label: string; scopes: string[] }> = {
     [HttpMethod.GET]:    { label: 'GET',    scopes: ['all', 'extract', 'enrich'] },
     [HttpMethod.POST]:   { label: 'POST',   scopes: ['all', 'extract', 'write', 'export', 'enrich'] },
@@ -154,7 +154,7 @@ const httpMethodsByScope = (scope: string) =>
 /** HTTP method select options for extractors (all methods) */
 export const HTTP_METHOD_ALL_OPTIONS = httpMethodsByScope('all');
 
-/** HTTP method select options for extractors (GET, POST, PUT, PATCH — no DELETE) */
+/** HTTP method select options for extractors (GET, POST, PUT, PATCH, no DELETE) */
 export const HTTP_METHOD_EXTRACT_OPTIONS = httpMethodsByScope('extract');
 
 /** HTTP method select options for loaders (write operations: POST, PUT) */
@@ -245,8 +245,8 @@ export const BATCH_MODE_EXPORT_OPTIONS = [
 
 /** Groups mode options for customer loader (add to groups vs replace groups) */
 export const GROUPS_MODE_OPTIONS = [
-    { value: 'add', label: 'Add' },
-    { value: 'set', label: 'Set (replace)' },
+    { value: 'ADD', label: 'Add' },
+    { value: 'SET', label: 'Set (replace)' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -258,7 +258,6 @@ export const ADDRESSES_MODE_OPTIONS = [
     { value: 'UPSERT_BY_MATCH', label: 'Upsert by match', description: 'Smart match by street+city+postal (prevents duplicates - recommended)' },
     { value: 'REPLACE_ALL', label: 'Replace all', description: 'Delete all existing addresses, create from record' },
     { value: 'APPEND_ONLY', label: 'Append only', description: 'Always create new addresses (may cause duplicates)' },
-    { value: 'UPDATE_BY_ID', label: 'Update by ID', description: 'Update addresses by Vendure ID (requires id field in record)' },
     { value: 'SKIP', label: 'Skip', description: 'Don\'t modify addresses' },
 ];
 
@@ -363,7 +362,7 @@ export const CUSTOM_FEED_FORMAT_OPTIONS = [
 // Database & extractor options
 // ---------------------------------------------------------------------------
 
-/** Single-source metadata for database types — each type declares whether it supports CDC */
+/** Single-source metadata for database types, each type declares whether it supports CDC */
 const DATABASE_TYPE_METADATA: Record<string, { label: string; supportsCDC: boolean }> = {
     [DatabaseType.POSTGRESQL]: { label: 'PostgreSQL', supportsCDC: true },
     [DatabaseType.MYSQL]:      { label: 'MySQL / MariaDB', supportsCDC: true },
@@ -376,7 +375,7 @@ const DATABASE_TYPE_METADATA: Record<string, { label: string; supportsCDC: boole
 export const DATABASE_TYPE_OPTIONS = Object.entries(DATABASE_TYPE_METADATA)
     .map(([value, m]) => ({ value, label: m.label }));
 
-/** Database type options for CDC (only supports PostgreSQL + MySQL — auto-derived from DATABASE_TYPE_METADATA) */
+/** Database type options for CDC (only supports PostgreSQL + MySQL, auto-derived from DATABASE_TYPE_METADATA) */
 export const CDC_DATABASE_TYPE_OPTIONS = Object.entries(DATABASE_TYPE_METADATA)
     .filter(([, m]) => m.supportsCDC)
     .map(([value, m]) => ({ value, label: m.label }));
@@ -722,7 +721,7 @@ export const VALIDATION_RULE_TYPES: TypedOptionValue[] = [
 // File format visual metadata (served via GraphQL for file type icons)
 // ---------------------------------------------------------------------------
 
-/** Icon names (kebab-case Lucide) for each FileFormat — auto-derived from FILE_FORMAT_METADATA */
+/** Icon names (kebab-case Lucide) for each FileFormat, auto-derived from FILE_FORMAT_METADATA */
 export const FILE_FORMAT_ICONS: Record<string, string> = Object.fromEntries(
     Object.entries(FILE_FORMAT_METADATA).map(([k, v]) => [k, v.icon]),
 );
@@ -749,7 +748,7 @@ export const ACK_MODE_OPTIONS: OptionValue[] = [
     { value: AckMode.MANUAL, label: 'Manual', description: 'Messages must be explicitly acknowledged by the pipeline' },
 ];
 
-/** Hex color codes for each FileFormat — auto-derived from FILE_FORMAT_METADATA */
+/** Hex color codes for each FileFormat, auto-derived from FILE_FORMAT_METADATA */
 export const FILE_FORMAT_COLORS: Record<string, string> = Object.fromEntries(
     Object.entries(FILE_FORMAT_METADATA).map(([k, v]) => [k, v.color]),
 );

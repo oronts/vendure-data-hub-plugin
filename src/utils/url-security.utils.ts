@@ -2,7 +2,10 @@
 
 import { URL } from 'url';
 import * as dns from 'dns/promises';
+import { lookup as dnsLookup } from 'dns';
 import * as net from 'net';
+import * as http from 'http';
+import * as https from 'https';
 import { getErrorMessage } from './error.utils';
 
 export interface UrlSecurityConfig {
@@ -178,7 +181,7 @@ export function isPrivateIP(ip: string): boolean {
 }
 
 export function isBlockedHostname(hostname: string, additionalBlocked?: string[]): boolean {
-    const normalizedHostname = hostname.toLowerCase().trim();
+    const normalizedHostname = hostname.toLowerCase().trim().replace(/\.$/, '');
 
     // Check against default blocked hostnames
     for (const blocked of BLOCKED_HOSTNAMES) {
@@ -369,8 +372,7 @@ export function validateUrlSafetySync(
         }
     }
 
-    // Note: Cannot check DNS resolution synchronously
-    // This is a limitation - async validation is preferred
+    // Sync path cannot resolve DNS, use async validateUrlSafety() for full SSRF protection
     return { safe: true };
 }
 
@@ -379,5 +381,75 @@ export async function assertUrlSafe(url: string, explicitConfig?: UrlSecurityCon
     if (!result.safe) {
         throw new Error(`SSRF protection: ${result.reason}`);
     }
+}
+
+/**
+ * Check whether a resolved IP address is blocked (private/reserved or in additional blocked ranges).
+ * Uses the global SSRF config if no explicit config is provided.
+ * This is intended for post-connection validation to prevent DNS rebinding attacks.
+ */
+export function validateResolvedIp(ip: string, explicitConfig?: UrlSecurityConfig): boolean {
+    const config = getEffectiveConfig(explicitConfig);
+    if (config?.disableSsrfProtection) {
+        return true;
+    }
+    if (config?.allowPrivateIPs) {
+        return true;
+    }
+    if (isPrivateIP(ip)) {
+        return false;
+    }
+    if (config?.additionalBlockedRanges) {
+        for (const range of config.additionalBlockedRanges) {
+            if (isIPInCIDR(ip, range)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * Create an HTTP/HTTPS agent that validates resolved IPs at connection time,
+ * preventing DNS rebinding TOCTOU attacks.
+ *
+ * The agent intercepts DNS resolution via the `lookup` option and rejects
+ * connections to private/reserved IP addresses before the socket is established.
+ *
+ * Usage:
+ *   const agent = createSafeAgent('https');
+ *   await fetch(url, { agent });
+ *   // or with axios: axios.get(url, { httpsAgent: agent })
+ */
+export function createSafeAgent(protocol: 'http' | 'https' = 'https', explicitConfig?: UrlSecurityConfig): http.Agent | https.Agent {
+    const config = getEffectiveConfig(explicitConfig);
+
+    const lookup: net.LookupFunction = (hostname, options, callback) => {
+        dnsLookup(hostname, options, (err, address, family) => {
+            if (err) {
+                callback(err, address as string, family as number);
+                return;
+            }
+            // Skip validation if SSRF protection is disabled
+            if (config?.disableSsrfProtection || config?.allowPrivateIPs) {
+                callback(null, address as string, family as number);
+                return;
+            }
+            // Validate the resolved IP (single-address case)
+            const ip = typeof address === 'string' ? address : '';
+            if (ip && !validateResolvedIp(ip, config)) {
+                const ssrfError = new Error(
+                    `SSRF blocked: ${hostname} resolved to private/reserved IP ${ip}`,
+                ) as NodeJS.ErrnoException;
+                ssrfError.code = 'ECONNREFUSED';
+                callback(ssrfError, '', 0);
+                return;
+            }
+            callback(null, address as string, family as number);
+        });
+    };
+
+    const AgentClass = protocol === 'https' ? https.Agent : http.Agent;
+    return new AgentClass({ lookup, keepAlive: true });
 }
 

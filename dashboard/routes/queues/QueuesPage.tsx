@@ -120,6 +120,8 @@ function QueuesPage() {
         }
     }, []);
 
+    const activeConsumerCount = consumers.filter(c => c.isActive).length;
+
     return (
         <Page pageId="data-hub-queues">
             <PageActionBar>
@@ -164,8 +166,8 @@ function QueuesPage() {
                         <TabsTrigger value="consumers">
                             <Radio className="w-4 h-4 mr-1" />
                             Consumers
-                            {consumers.filter(c => c.isActive).length > 0 && (
-                                <Badge variant="secondary" className="ml-2">{consumers.filter(c => c.isActive).length}</Badge>
+                            {activeConsumerCount > 0 && (
+                                <Badge variant="secondary" className="ml-2">{activeConsumerCount}</Badge>
                             )}
                         </TabsTrigger>
                     </TabsList>
@@ -173,7 +175,7 @@ function QueuesPage() {
                     <TabsContent value="overview" className="mt-4">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                             <StatCard title="Pending" value={stats?.pending ?? 0} icon={<Clock className="w-4 h-4" />} />
-                            <StatCard title="Running" value={stats?.running ?? 0} icon={<RefreshCw className="w-4 h-4 animate-spin" />} />
+                            <StatCard title="Running" value={stats?.running ?? 0} icon={<RefreshCw className={`w-4 h-4 ${(stats?.running ?? 0) > 0 ? 'animate-spin' : ''}`} />} />
                             <StatCard title="Failed" value={stats?.failed ?? 0} icon={<XCircle className="w-4 h-4" />} variant="error" />
                             <StatCard title="Completed today" value={stats?.completedToday ?? 0} icon={<CheckCircle className="w-4 h-4" />} variant="success" />
                         </div>

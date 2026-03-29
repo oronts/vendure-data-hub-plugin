@@ -183,22 +183,6 @@ export const pipelineSchema = `
     }
 
     """
-    Pagination and filtering options for pipeline lists
-    """
-    input DataHubPipelineListOptions {
-        "Number of items to skip"
-        skip: Int
-        "Number of items to return"
-        take: Int
-        "Sort configuration: { field: 'asc' | 'desc' }"
-        sort: JSON
-        "Filter configuration for field-based filtering"
-        filter: JSON
-        "Logical operator for combining filters"
-        filterOperator: LogicalOperator
-    }
-
-    """
     Pipeline run execution status
     """
     enum DataHubRunStatus {
@@ -289,9 +273,9 @@ export const pipelineSchema = `
 
 export const pipelineQueries = `
     extend type Query {
-        dataHubPipelines(options: DataHubPipelineListOptions): DataHubPipelineList!
+        dataHubPipelines: DataHubPipelineList!
         dataHubPipeline(id: ID!): DataHubPipeline
-        dataHubPipelineRuns(pipelineId: ID, options: DataHubPipelineListOptions): DataHubPipelineRunList!
+        dataHubPipelineRuns(pipelineId: ID): DataHubPipelineRunList!
         dataHubPipelineRun(id: ID!): DataHubPipelineRun
         dataHubRunErrors(runId: ID!): [DataHubRecordError!]!
         dataHubRecordRetryAudits(errorId: ID!): [DataHubRecordRetryAudit!]!

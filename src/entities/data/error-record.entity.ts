@@ -17,8 +17,8 @@ export class DataHubRecordError extends VendureEntity {
     run!: PipelineRun;
 
     @Index()
-    @Column({ type: 'int', nullable: true })
-    runId!: number | null;
+    @Column({ type: 'int' })
+    runId!: number;
 
     @Column({ type: 'varchar', length: 255 })
     stepKey!: string;
@@ -33,5 +33,5 @@ export class DataHubRecordError extends VendureEntity {
     deadLetter!: boolean;
 
     @Column({ type: 'text', nullable: true })
-    stackTrace?: string;
+    stackTrace!: string | null;
 }

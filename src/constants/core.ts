@@ -116,4 +116,6 @@ export const LOGGER_CONTEXTS = {
     FEED_GENERATOR: 'FeedGenerator',
     RABBITMQ_HTTP_ADAPTER: 'DataHub:RabbitMQHttpAdapter',
     ADAPTER_REGISTRY: 'DataHub:AdapterRegistry',
+    SECRET_RESOLVER: 'SecretResolver',
+    CONNECTION_RESOLVER: 'ConnectionResolver',
 } as const;

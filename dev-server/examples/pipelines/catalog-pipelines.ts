@@ -497,7 +497,7 @@ export const magentoProductMigration = createPipeline()
     .export('migration-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'magento-migration-report.csv',
+        filenamePattern: 'magento-migration-report.csv',
     })
 
     // Linear graph: manual → fetch → validate → transform → enrich → gate → map → load → export
@@ -617,7 +617,7 @@ export const shopifyInventorySync = createPipeline()
     .export('oos-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'out-of-stock-report.csv',
+        filenamePattern: 'out-of-stock-report.csv',
     })
 
     // Graph edges

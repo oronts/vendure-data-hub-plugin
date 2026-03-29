@@ -85,12 +85,10 @@ export function detectValueType(value: unknown): string {
     if (typeof value === 'object') return 'object';
 
     if (typeof value === 'string') {
-        // Check if string is a date - use centralized pattern
         if (ISO_DATE_PATTERN.test(value)) {
             const date = new Date(value);
             if (!isNaN(date.getTime())) return 'date';
         }
-        // Check if string is a number
         if (value !== '' && !isNaN(Number(value))) {
             return 'number';
         }

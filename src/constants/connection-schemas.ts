@@ -146,7 +146,8 @@ export const CONNECTION_SCHEMAS: ConnectionSchema[] = [
         label: 'Amazon SQS',
         fields: [
             { key: 'region', label: 'Region', type: 'text', placeholder: 'us-east-1', required: true },
-            { key: 'queueUrl', label: 'Queue URL', type: 'text', placeholder: 'https://sqs.us-east-1.amazonaws.com/123456789/my-queue', required: true },
+            { key: 'accountId', label: 'AWS Account ID', type: 'text', placeholder: '123456789012', required: true },
+            { key: 'queueUrl', label: 'Queue URL (optional override)', type: 'text', placeholder: 'https://sqs.us-east-1.amazonaws.com/123456789/my-queue' },
             { key: 'accessKeyIdSecretCode', label: 'Access Key ID Secret', type: 'secret', description: 'Reference a secret by code' },
             { key: 'secretAccessKeySecretCode', label: 'Secret Access Key Secret', type: 'secret', description: 'Reference a secret by code' },
         ],

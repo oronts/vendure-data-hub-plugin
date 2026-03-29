@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { Badge } from '@vendure/dashboard';
 import type { PipelineNodeData, VisualNodeCategory } from '../../../types';
-import { getVisualNodeConfig, VisualNodeConfig } from './visual-node-config';
+import { getVisualNodeConfig } from './visual-node-config';
 import { FALLBACK_COLORS, BRANCH_COLORS, NODE_DIMENSIONS, ICON_SIZES, TEST_STATUS } from '../../../constants';
 
 export function createPipelineNode(category: VisualNodeCategory) {
@@ -117,7 +117,7 @@ function StatusBadge({ status }: { status: PipelineNodeData['status'] }) {
         case TEST_STATUS.WARNING:
             return (
                 <div className="px-3 pb-2" role="status" aria-live="polite">
-                    <Badge variant="outline" className="border-amber-500 text-amber-500">Warning</Badge>
+                    <Badge variant="outline" className="border-amber-500 dark:border-amber-400 text-amber-500 dark:text-amber-400">Warning</Badge>
                 </div>
             );
         default:

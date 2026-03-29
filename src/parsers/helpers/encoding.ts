@@ -15,6 +15,7 @@ export const DEFAULT_ENCODING: Encoding = 'utf-8';
 export const BOM_SIGNATURES: Record<string, number[]> = {
     'utf-8': [0xef, 0xbb, 0xbf],
     'utf-16le': [0xff, 0xfe],
+    'utf16le': [0xff, 0xfe],
     'utf-16be': [0xfe, 0xff],
     'utf-32le': [0xff, 0xfe, 0x00, 0x00],
     'utf-32be': [0x00, 0x00, 0xfe, 0xff],
@@ -28,10 +29,10 @@ export function detectEncodingFromBom(buffer: Buffer): Encoding | undefined {
     // Check for UTF-32 first (longer signatures)
     if (buffer.length >= 4) {
         if (buffer[0] === 0xff && buffer[1] === 0xfe && buffer[2] === 0x00 && buffer[3] === 0x00) {
-            return 'utf16le'; // Node.js doesn't support utf-32, fallback
+            return undefined; // UTF-32 LE: not supported by Node.js
         }
         if (buffer[0] === 0x00 && buffer[1] === 0x00 && buffer[2] === 0xfe && buffer[3] === 0xff) {
-            return 'utf16le'; // Node.js doesn't support utf-32/utf-16be natively, fallback to utf16le
+            return undefined; // UTF-32 BE: not supported by Node.js
         }
     }
 
@@ -47,7 +48,7 @@ export function detectEncodingFromBom(buffer: Buffer): Encoding | undefined {
         return 'utf16le';
     }
     if (buffer[0] === 0xfe && buffer[1] === 0xff) {
-        return 'utf-16le'; // Node.js uses utf16le for big-endian as well
+        return undefined; // UTF-16 BE is not natively supported by Node.js; fall back to UTF-8
     }
 
     return undefined;

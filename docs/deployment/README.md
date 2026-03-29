@@ -21,5 +21,5 @@ Before deploying to production:
 - [ ] Assign permissions to admin roles
 - [ ] Test pipelines with production-like data
 - [ ] Set up monitoring and alerts
-- [ ] Review job queue configuration
+- [ ] Review pipeline execution configuration
 - [ ] Configure log persistence level

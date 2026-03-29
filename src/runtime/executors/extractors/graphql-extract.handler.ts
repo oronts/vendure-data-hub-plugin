@@ -16,7 +16,7 @@ import { JsonObject, JsonValue } from '../../../types/index';
 import { SecretService } from '../../../services/config/secret.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getPath } from '../../utils';
-import { PAGINATION, LOGGER_CONTEXTS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES } from '../../../constants/index';
+import { PAGINATION, LOGGER_CONTEXTS, HttpMethod, HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, HTTP } from '../../../constants/index';
 import { ConnectionAuthType } from '../../../sdk/types/connection-types';
 import {
     ExtractHandler,
@@ -44,6 +44,10 @@ interface GraphqlExtractConfig {
     pageInfoField?: string;
     hasNextPageField?: string;
     endCursorField?: string;
+    paginationType?: string;
+    offsetVariable?: string;
+    limitVariable?: string;
+    pageSize?: number;
 }
 
 interface GraphqlError {
@@ -63,7 +67,26 @@ export class GraphqlExtractHandler implements ExtractHandler {
 
     async extract(context: ExtractHandlerContext): Promise<RecordObject[]> {
         const { ctx, step, executorCtx, onRecordError } = context;
-        const cfg = getExtractConfig<GraphqlExtractConfig>(step);
+        const raw = getExtractConfig<GraphqlExtractConfig & Record<string, unknown>>(step);
+        // Read pagination from nested object OR flat dot-keys (UI schema form saves flat keys)
+        const nested = (raw as any).pagination as Record<string, unknown> | undefined;
+        const flat = (key: string) => (raw as any)[`pagination.${key}`] ?? nested?.[key];
+        const paginationType = String(flat('type') ?? 'NONE');
+        const pageInfoPath = String(flat('pageInfoPath') ?? raw.pageInfoField ?? '');
+        const cfg: GraphqlExtractConfig = {
+            ...raw,
+            endpoint: raw.endpoint ?? (raw as any).url,
+            itemsField: raw.itemsField ?? (raw as any).dataPath,
+            cursorVar: raw.cursorVar ?? (flat('cursorVariable') as string) ?? (paginationType === 'RELAY' ? 'after' : undefined),
+            pageInfoField: raw.pageInfoField ?? (pageInfoPath || undefined),
+            endCursorField: raw.endCursorField ?? (pageInfoPath ? `${pageInfoPath}.endCursor` : undefined),
+            hasNextPageField: raw.hasNextPageField ?? (pageInfoPath ? `${pageInfoPath}.hasNextPage` : undefined),
+            paginationType,
+            offsetVariable: (flat('offsetVariable') as string) ?? 'skip',
+            limitVariable: (flat('limitVariable') as string) ?? (paginationType === 'RELAY' ? 'first' : 'take'),
+            pageSize: flat('limit') ? Number(flat('limit')) : undefined,
+        };
+        const maxPages = Number(flat('maxPages') ?? PAGINATION.MAX_GRAPHQL_PAGES);
 
         const fetchImpl = globalThis.fetch;
         if (!fetchImpl) return [];
@@ -73,14 +96,38 @@ export class GraphqlExtractHandler implements ExtractHandler {
         const results: RecordObject[] = [];
 
         let cursor: unknown = getCheckpointValue(executorCtx, step.key, 'cursor', null);
+        const cursorDone = getCheckpointValue(executorCtx, step.key, 'cursorDone', false);
+        if (cursorDone) return [];
+        let offset: number = getCheckpointValue(executorCtx, step.key, 'offset', 0);
+        const isOffset = cfg.paginationType === 'OFFSET';
 
-        for (let i = 0; i < PAGINATION.MAX_GRAPHQL_PAGES; i++) {
+        // Resume iteration count from checkpoint so maxPages limit is honoured across restarts
+        const startIteration = getCheckpointValue(executorCtx, step.key, 'iteration', 0);
+
+        for (let i = startIteration; i < maxPages; i++) {
+            // Build pagination variables based on mode
+            let paginationVars: Record<string, unknown> = {};
+            if (isOffset) {
+                paginationVars = {
+                    [cfg.offsetVariable ?? 'skip']: offset,
+                    ...(cfg.pageSize ? { [cfg.limitVariable ?? 'take']: cfg.pageSize } : {}),
+                };
+            } else {
+                if (cursor) {
+                    paginationVars[cfg.cursorVar ?? 'cursor'] = cursor;
+                }
+                if (cfg.pageSize) {
+                    paginationVars[cfg.limitVariable ?? 'first'] = cfg.pageSize;
+                }
+            }
+
             const fetchResult = await this.executeGraphqlQuery({
                 fetchImpl,
                 endpoint,
                 headers,
                 query: String(cfg.query ?? ''),
-                variables: { ...(cfg.variables ?? {}), ...(cursor ? { [cfg.cursorVar ?? 'cursor']: cursor } : {}) },
+                operationName: (cfg as any).operationName,
+                variables: { ...(cfg.variables ?? {}), ...paginationVars },
             });
 
             if (!fetchResult.success) {
@@ -102,11 +149,20 @@ export class GraphqlExtractHandler implements ExtractHandler {
             const items = this.extractItems(fetchResult.data, cfg);
             results.push(...items);
 
-            const nextCursor = this.determineNextCursor(fetchResult.data as RecordObject, cfg, cursor as JsonValue);
-            if (!nextCursor || nextCursor === cursor) break;
+            if (isOffset) {
+                if (items.length === 0) break;
+                offset += items.length;
+                updateCheckpoint(executorCtx, step.key, { offset, iteration: i + 1 });
+            } else {
+                const nextCursor = this.determineNextCursor(fetchResult.data as RecordObject, cfg, cursor as JsonValue);
+                if (!nextCursor || nextCursor === cursor) {
+                    updateCheckpoint(executorCtx, step.key, { cursorDone: true, iteration: i + 1 });
+                    break;
+                }
 
-            cursor = nextCursor;
-            updateCheckpoint(executorCtx, step.key, { cursor: cursor as import('../../../types/index').JsonValue });
+                cursor = nextCursor;
+                updateCheckpoint(executorCtx, step.key, { cursor: cursor as import('../../../types/index').JsonValue, iteration: i + 1 });
+            }
         }
 
         return results;
@@ -145,15 +201,19 @@ export class GraphqlExtractHandler implements ExtractHandler {
         headers: Record<string, string>;
         query: string;
         variables: Record<string, unknown>;
+        operationName?: string;
     }): Promise<{ success: boolean; data?: unknown; error?: string }> {
-        const { fetchImpl, endpoint, headers, query, variables } = params;
+        const { fetchImpl, endpoint, headers, query, variables, operationName } = params;
 
         try {
             await assertUrlSafe(endpoint);
+            const body: Record<string, unknown> = { query, variables };
+            if (operationName) body.operationName = operationName;
             const res = await fetchImpl(endpoint, {
                 method: HttpMethod.POST,
                 headers: { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...headers },
-                body: JSON.stringify({ query, variables }),
+                body: JSON.stringify(body),
+                signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
             });
 
             if (!res.ok) {

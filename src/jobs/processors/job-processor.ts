@@ -1,6 +1,6 @@
 import { LOGGER_CONTEXTS, HTTP } from '../../constants/index';
 import { JobResult, JobContext } from '../types';
-import { DataHubLogger } from '../../services/logger';
+import { DataHubLoggerFactory } from '../../services/logger';
 import {
     executeWithRetry as executeWithRetryShared,
     calculateBackoff,
@@ -11,7 +11,7 @@ import {
 } from '../../utils/retry.utils';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 
-const logger = new DataHubLogger(LOGGER_CONTEXTS.JOB_PROCESSOR);
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.JOB_PROCESSOR);
 
 export function createJobContext(
     jobId: string,

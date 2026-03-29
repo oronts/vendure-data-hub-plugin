@@ -1,20 +1,26 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, ListQueryBuilder, ListQueryOptions, Logger, PaginatedList, RequestContext, Transaction, TransactionalConnection } from '@vendure/core';
+import { Allow, Ctx, ID, ListQueryBuilder, ListQueryOptions, PaginatedList, RequestContext, Transaction, TransactionalConnection } from '@vendure/core';
 import { DeletionResponse, DeletionResult } from '@vendure/common/lib/generated-types';
 import type { FindOptionsWhere } from 'typeorm';
 import type { JsonObject } from '../../types/index';
 import { DataHubConnection } from '../../entities/config';
 import { ManageDataHubConnectionsPermission } from '../../permissions';
 import { ConnectionType } from '../../constants/enums';
-import { RESOLVER_ERROR_MESSAGES } from '../../constants/index';
+import { RESOLVER_ERROR_MESSAGES, LOGGER_CONTEXTS } from '../../constants/index';
 import { getErrorMessage } from '../../utils/error.utils';
+import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 
 @Resolver()
 export class DataHubConnectionAdminResolver {
+    private readonly logger: DataHubLogger;
+
     constructor(
         private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
-    ) {}
+        loggerFactory: DataHubLoggerFactory,
+    ) {
+        this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.CONNECTION_RESOLVER);
+    }
 
     @Query()
     @Allow(ManageDataHubConnectionsPermission.Permission)
@@ -22,7 +28,7 @@ export class DataHubConnectionAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args() args: { options?: ListQueryOptions<DataHubConnection> },
     ): Promise<PaginatedList<DataHubConnection>> {
-        const qb = this.listQueryBuilder.build(DataHubConnection, args.options, { ctx });
+        const qb = this.listQueryBuilder.build(DataHubConnection, args.options ?? undefined, { ctx });
         const [items, totalItems] = await qb.getManyAndCount();
         return { items, totalItems };
     }
@@ -43,7 +49,11 @@ export class DataHubConnectionAdminResolver {
         const repo = this.connection.getRepository(ctx, DataHubConnection);
         const entity = new DataHubConnection();
         entity.code = args.input.code;
-        entity.type = (args.input.type as ConnectionType) ?? ConnectionType.HTTP;
+        const typeValue = args.input.type?.toUpperCase() ?? 'HTTP';
+        if (!Object.values(ConnectionType).includes(typeValue as ConnectionType)) {
+            throw new Error(`Invalid connection type: "${args.input.type}". Valid types: ${Object.values(ConnectionType).join(', ')}`);
+        }
+        entity.type = typeValue as ConnectionType;
         entity.config = args.input.config ?? {};
         const saved = await repo.save(entity);
         const result = await repo.findOne({ where: { id: saved.id } });
@@ -63,7 +73,13 @@ export class DataHubConnectionAdminResolver {
         const repo = this.connection.getRepository(ctx, DataHubConnection);
         const entity = await this.connection.getEntityOrThrow(ctx, DataHubConnection, args.input.id);
         if (typeof args.input.code === 'string') entity.code = args.input.code;
-        if (typeof args.input.type === 'string') entity.type = args.input.type as ConnectionType;
+        if (typeof args.input.type === 'string') {
+            const typeValue = args.input.type.toUpperCase();
+            if (!Object.values(ConnectionType).includes(typeValue as ConnectionType)) {
+                throw new Error(`Invalid connection type: "${args.input.type}". Valid types: ${Object.values(ConnectionType).join(', ')}`);
+            }
+            entity.type = typeValue as ConnectionType;
+        }
         if (args.input.config !== undefined) entity.config = args.input.config ?? {};
         await repo.save(entity);
         const result = await repo.findOne({ where: { id: entity.id } });
@@ -83,9 +99,8 @@ export class DataHubConnectionAdminResolver {
             await repo.remove(entity);
             return { result: DeletionResult.DELETED };
         } catch (e) {
-            Logger.error(
+            this.logger.error(
                 `Failed to delete connection: ${getErrorMessage(e)}`,
-                'DataHub',
             );
             return { result: DeletionResult.NOT_DELETED, message: 'Failed to delete connection due to an internal error' };
         }

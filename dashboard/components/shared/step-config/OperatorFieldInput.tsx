@@ -80,7 +80,7 @@ export function OperatorFieldInput({ field, value, onChange }: OperatorFieldInpu
         );
     }
 
-    // Code field type — full code editor with line numbers, Tab support, and expand dialog
+    // Code field type: full code editor with line numbers, Tab support, and expand dialog
     if (field.type === FIELD_TYPE.CODE || field.type === FIELD_TYPE.EXPRESSION) {
         return (
             <div className="space-y-1.5">

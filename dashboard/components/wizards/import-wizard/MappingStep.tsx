@@ -1,4 +1,4 @@
-import { useMemo, useCallback, memo, type MouseEvent } from 'react';
+import { useMemo, useCallback, memo } from 'react';
 import {
     Button,
     Card,
@@ -29,7 +29,6 @@ interface MappingStepProps {
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
     sourceFields: string[];
     sampleData: Record<string, unknown>[];
-    errors?: Record<string, string>;
 }
 
 export function MappingStep({
@@ -37,7 +36,6 @@ export function MappingStep({
     updateConfig,
     sourceFields,
     sampleData,
-    errors = {},
 }: MappingStepProps) {
     const updateMapping = useCallback((index: number, updates: Partial<FieldMapping>) => {
         const newMappings = [...(config.mappings ?? [])];
@@ -274,8 +272,8 @@ function UnmappedFieldsWarning({ config }: UnmappedFieldsWarningProps) {
                 <div className="flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                     <div>
-                        <div className="font-medium text-amber-800">Unmapped Required Fields</div>
-                        <div className="text-sm text-amber-700 mt-1">
+                        <div className="font-medium text-amber-800 dark:text-amber-200">Unmapped Required Fields</div>
+                        <div className="text-sm text-amber-700 dark:text-amber-300 mt-1">
                             {unmappedRequiredFields.join(', ')}
                         </div>
                     </div>

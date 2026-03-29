@@ -39,7 +39,7 @@ function ErrorRow({ item, onStartEditing }: ErrorRowProps) {
     );
 }
 
-export function RunErrorsList({ runId: _runId, items, onRetry }: RunErrorsListProps) {
+export function RunErrorsList({ items, onRetry }: RunErrorsListProps) {
     const [editing, setEditing] = React.useState<{ id: string; patch: string } | null>(null);
 
     const handleStartEditing = React.useCallback((itemId: string) => {
@@ -56,13 +56,15 @@ export function RunErrorsList({ runId: _runId, items, onRetry }: RunErrorsListPr
 
     const handleRetryClick = React.useCallback(async () => {
         if (!editing) return;
+        let patch: Record<string, unknown>;
         try {
-            const patch = JSON.parse(editing.patch);
-            await onRetry(editing.id, patch);
-            setEditing(null);
+            patch = JSON.parse(editing.patch);
         } catch {
             toast.error(TOAST_PIPELINE.INVALID_JSON_PATCH);
+            return;
         }
+        await onRetry(editing.id, patch);
+        setEditing(null);
     }, [editing, onRetry]);
 
     const handleCancelEditing = React.useCallback(() => {
@@ -96,9 +98,11 @@ export function RunErrorsList({ runId: _runId, items, onRetry }: RunErrorsListPr
             </table>
             {editing && (
                 <div className="border rounded p-2 space-y-2">
-                    <div className="text-sm font-medium">Patch JSON</div>
+                    <label htmlFor="retry-patch-json" className="text-sm font-medium">Patch JSON</label>
                     <textarea
-                        className="w-full h-32 font-mono p-2 border rounded"
+                        id="retry-patch-json"
+                        className="w-full h-32 font-mono p-2 border rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-700"
+                        aria-label="JSON patch for retry"
                         value={editing.patch}
                         onChange={handlePatchChange}
                     />

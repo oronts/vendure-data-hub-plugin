@@ -14,6 +14,34 @@ import { PipelineDefinition } from '../src/types';
 import { ExtractorAdapter, LoaderAdapter } from '../src/sdk/types';
 import { getErrorMessage } from '../src/utils/error.utils';
 
+/**
+ * Deep merge two config objects. Arrays and non-plain-object values in overrides
+ * replace defaults entirely; plain objects are merged recursively.
+ */
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function deepMergeConfig(
+    defaults: Record<string, unknown>,
+    overrides: Record<string, unknown>,
+): Record<string, unknown> {
+    const result = { ...defaults };
+    for (const [key, value] of Object.entries(overrides)) {
+        if (DANGEROUS_KEYS.has(key)) continue;
+        if (
+            value && typeof value === 'object' && !Array.isArray(value) &&
+            defaults[key] && typeof defaults[key] === 'object' && !Array.isArray(defaults[key])
+        ) {
+            result[key] = deepMergeConfig(
+                defaults[key] as Record<string, unknown>,
+                value as Record<string, unknown>,
+            );
+        } else {
+            result[key] = value;
+        }
+    }
+    return result;
+}
+
 /** Maximum number of registered connectors to prevent unbounded memory growth */
 const MAX_CONNECTORS = 1000;
 
@@ -52,11 +80,11 @@ export class ConnectorRegistry {
 
         const errors: string[] = [];
 
-        // Merge with default config
-        const mergedConfig = {
-            ...connector.defaultConfig,
-            ...config,
-        } as TConfig;
+        // Merge with default config (deep merge to preserve nested objects)
+        const mergedConfig = deepMergeConfig(
+            (connector.defaultConfig ?? {}) as Record<string, unknown>,
+            config as Record<string, unknown>,
+        ) as TConfig;
 
         // Validate config if validator provided
         if (connector.validateConfig) {

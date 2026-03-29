@@ -284,7 +284,7 @@ export class ProductHandler implements LoaderHandler {
 
         for (const rec of input) {
             try {
-                const fields = this.prepareProductData(rec, cfg);
+                const fields = this.coerceProductFields(rec, cfg);
 
                 // When translationsField is configured, extract name/slug from the first translation
                 // if they're missing from the top-level record (multi-language input pattern)
@@ -342,13 +342,6 @@ export class ProductHandler implements LoaderHandler {
     }
 
     /**
-     * Prepare and validate product data from a record
-     */
-    private prepareProductData(rec: RecordObject, cfg: ProductHandlerConfig): CoercedProductFields {
-        return this.coerceProductFields(rec, cfg);
-    }
-
-    /**
      * Resolve the appropriate request context (handles channel switching)
      */
     private async resolveRequestContext(
@@ -387,7 +380,7 @@ export class ProductHandler implements LoaderHandler {
 
         const existing = await this.productService.findOneBySlug(opCtx, slug!);
 
-        // Build translations — multi-language from record field, or single-language default
+        // Build translations: multi-language from record field, or single-language default
         const translations = this.buildProductTranslations(ctx, rec, cfg, fields);
 
         if (existing) {

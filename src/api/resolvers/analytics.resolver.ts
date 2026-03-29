@@ -25,6 +25,7 @@ import type {
     ErrorAnalytics,
     ThroughputMetrics,
     RealTimeStats,
+    TimeRange,
 } from '../../services/analytics/analytics.types';
 import type {
     WebhookDelivery,
@@ -37,10 +38,16 @@ import type { ConnectionTestResult } from '../../../shared/types';
 import { PAGINATION } from '../../constants/index';
 
 /** Redacted destination config for API responses */
-interface RedactedDestinationConfig extends Omit<DestinationConfig, 'secretAccessKey' | 'password' | 'privateKey'> {
+interface RedactedDestinationConfig extends Omit<DestinationConfig,
+    'secretAccessKey' | 'password' | 'privateKey' | 'accessKeyId' | 'passphrase' | 'authConfig' | 'smtp'
+> {
     secretAccessKey?: string;
     password?: string;
     privateKey?: string;
+    accessKeyId?: string;
+    passphrase?: string;
+    authConfig?: { username?: string; password?: string; token?: string; apiKey?: string; apiKeyHeader?: string };
+    smtp?: { host: string; port: number; secure?: boolean; auth?: { user: string; pass: string } };
 }
 
 /** Result of retry dead letter operation */
@@ -83,7 +90,7 @@ export class DataHubAnalyticsAdminResolver {
     ): Promise<PipelinePerformance[]> {
         return this.analyticsService.getPipelinePerformance(ctx, {
             pipelineId: args.pipelineId,
-            timeRange: args.timeRange as import('../../services/analytics/analytics.types').TimeRange | undefined,
+            timeRange: args.timeRange as TimeRange | undefined,
             limit: Math.min(args.limit ?? 100, PAGINATION.MAX_QUERY_LIMIT),
         });
     }
@@ -96,7 +103,7 @@ export class DataHubAnalyticsAdminResolver {
     ): Promise<ErrorAnalytics> {
         return this.analyticsService.getErrorAnalytics(ctx, {
             pipelineId: args.pipelineId,
-            timeRange: args.timeRange as import('../../services/analytics/analytics.types').TimeRange | undefined,
+            timeRange: args.timeRange as TimeRange | undefined,
         });
     }
 
@@ -108,7 +115,7 @@ export class DataHubAnalyticsAdminResolver {
     ): Promise<ThroughputMetrics> {
         return this.analyticsService.getThroughputMetrics(ctx, {
             pipelineId: args.pipelineId,
-            timeRange: args.timeRange as import('../../services/analytics/analytics.types').TimeRange | undefined,
+            timeRange: args.timeRange as TimeRange | undefined,
         });
     }
 
@@ -210,12 +217,32 @@ export class DataHubAnalyticsAdminResolver {
     }
 
     private redactDestinationSecrets(dest: DestinationConfig): RedactedDestinationConfig {
-        return {
+        const redacted: RedactedDestinationConfig = {
             ...dest,
             secretAccessKey: dest.type === 'S3' ? '***' : undefined,
+            accessKeyId: dest.type === 'S3' ? '***' : undefined,
             password: (['SFTP', 'FTP'] as const).includes(dest.type as 'SFTP' | 'FTP') ? '***' : undefined,
             privateKey: dest.type === 'SFTP' ? '***' : undefined,
+            passphrase: dest.type === 'SFTP' && 'passphrase' in dest && dest.passphrase ? '***' : undefined,
         };
+
+        if (dest.type === 'HTTP' && 'authConfig' in dest && dest.authConfig) {
+            redacted.authConfig = {
+                ...dest.authConfig,
+                password: dest.authConfig.password ? '***' : undefined,
+                token: dest.authConfig.token ? '***' : undefined,
+                apiKey: dest.authConfig.apiKey ? '***' : undefined,
+            };
+        }
+
+        if (dest.type === 'EMAIL' && 'smtp' in dest && dest.smtp) {
+            redacted.smtp = {
+                ...dest.smtp,
+                auth: dest.smtp.auth ? { user: dest.smtp.auth.user, pass: '***' } : undefined,
+            };
+        }
+
+        return redacted;
     }
 
     @Mutation()

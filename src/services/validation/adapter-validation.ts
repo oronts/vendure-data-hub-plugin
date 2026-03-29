@@ -156,7 +156,7 @@ export function validateAdapterFields(
     for (const field of adapter.schema.fields) {
         const fieldValue = cfg[field.key] as JsonValue | undefined;
         validateRequiredFields(stepKey, field, fieldValue, issues);
-        if (fieldValue !== undefined && fieldValue !== null) {
+        if (fieldValue != null) {
             validateFieldTypes(stepKey, field, fieldValue, issues);
             validateFieldMappings(stepKey, field, fieldValue, issues);
         }
@@ -196,7 +196,7 @@ export function validateFieldTypes(
         string: () => typeof value === 'string',
         number: () => typeof value === 'number',
         boolean: () => typeof value === 'boolean',
-        json: () => typeof value === 'object',
+        json: () => typeof value === 'object' && value !== null,
     };
 
     const validator = typeValidators[fieldType];

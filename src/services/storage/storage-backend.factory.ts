@@ -10,6 +10,7 @@ import {
 import { LocalStorageBackend } from './local-storage.backend';
 import { S3StorageBackend } from './s3-storage.backend';
 import { ConnectionType } from '../../constants/enums';
+import { S3_STORAGE } from '../../constants/defaults';
 
 export function createStorageBackend(options: StorageBackendOptions): StorageBackend {
     switch (options.type) {
@@ -46,7 +47,7 @@ export function createStorageBackendFromEnv(): StorageBackend {
             secretAccessKey: process.env.DATA_HUB_S3_SECRET_ACCESS_KEY,
             endpoint: process.env.DATA_HUB_S3_ENDPOINT,
             prefix: process.env.DATA_HUB_S3_PREFIX,
-            signedUrlExpiry: Number(process.env.DATA_HUB_S3_URL_EXPIRY) || 3600,
+            signedUrlExpiry: Number(process.env.DATA_HUB_S3_URL_EXPIRY) || S3_STORAGE.SIGNED_URL_EXPIRY_SEC,
         });
     }
 

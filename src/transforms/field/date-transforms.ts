@@ -24,13 +24,13 @@ export function parseDateWithFormat(value: string, format: string): Date {
         const match = value.match(regex);
         if (match) {
             if (format === DATE_FORMAT.ISO_DATE) {
-                return new Date(parseInt(match[1], 10), parseInt(match[2], 10) - 1, parseInt(match[3], 10));
+                return new Date(Date.UTC(parseInt(match[1], 10), parseInt(match[2], 10) - 1, parseInt(match[3], 10)));
             }
             if (format === DATE_FORMAT.EU_SLASH || format === DATE_FORMAT.EU_DOT) {
-                return new Date(parseInt(match[3], 10), parseInt(match[2], 10) - 1, parseInt(match[1], 10));
+                return new Date(Date.UTC(parseInt(match[3], 10), parseInt(match[2], 10) - 1, parseInt(match[1], 10)));
             }
             if (format === DATE_FORMAT.US_DATE) {
-                return new Date(parseInt(match[3], 10), parseInt(match[1], 10) - 1, parseInt(match[2], 10));
+                return new Date(Date.UTC(parseInt(match[3], 10), parseInt(match[1], 10) - 1, parseInt(match[2], 10)));
             }
         }
     }
@@ -42,20 +42,20 @@ export function parseDateWithFormat(value: string, format: string): Date {
  * Format date to string
  */
 export function formatDate(date: Date, format: string): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
 
     return format
-        .replace('YYYY', String(year))
-        .replace('MM', month)
-        .replace('DD', day)
-        .replace('HH', hours)
-        .replace('mm', minutes)
-        .replace('ss', seconds);
+        .replace(/YYYY/g, String(year))
+        .replace(/MM/g, month)
+        .replace(/DD/g, day)
+        .replace(/HH/g, hours)
+        .replace(/mm/g, minutes)
+        .replace(/ss/g, seconds);
 }
 
 /**

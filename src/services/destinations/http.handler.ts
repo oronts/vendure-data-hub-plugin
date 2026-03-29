@@ -4,7 +4,7 @@
  * Delivery to HTTP/HTTPS endpoints.
  */
 
-import { ConnectionAuthType, HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES, TRUNCATION } from '../../constants/index';
+import { ConnectionAuthType, HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES, TRUNCATION, HTTP } from '../../constants/index';
 import { HTTPDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
@@ -57,6 +57,7 @@ export async function deliverToHTTP(
             method: config.method || 'POST',
             headers,
             body: content,
+            signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
         });
 
         if (!response.ok) {

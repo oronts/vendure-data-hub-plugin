@@ -16,7 +16,7 @@ import { PipelineStepDefinition, JsonObject } from '../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../executor-types';
 import { getPath, chunk } from '../utils';
 import { HTTP, SINK, TRUNCATION, CIRCUIT_BREAKER } from '../../constants/defaults';
-import { TIME, SERVICE_DEFAULTS, SERVICE_URL_TEMPLATES, CONTENT_TYPES, HTTP_HEADERS, AUTH_SCHEMES, WEBHOOK } from '../../constants';
+import { TIME, SERVICE_URL_TEMPLATES, CONTENT_TYPES, HTTP_HEADERS, AUTH_SCHEMES, WEBHOOK } from '../../constants';
 import { HttpMethod, QueueType, CircuitState } from '../../constants/enums';
 import { HTTP_METHOD_EXPORT_OPTIONS, PROTOCOL_OPTIONS, QUEUE_TYPE_OPTIONS, LOCALIZATION_SCHEMA_FIELDS, SINK_OPERATION_OPTIONS } from '../../constants/adapter-schema-options';
 
@@ -62,6 +62,8 @@ interface BaseSinkCfg {
     protocol?: string;
     apiKeySecretCode?: string;
     basicSecretCode?: string;
+    usernameSecretCode?: string;
+    passwordSecretCode?: string;
     applicationId?: string;
     appId?: string;
     collectionName?: string;
@@ -150,6 +152,30 @@ async function resolveSecret(services: SinkServices, ctx: RequestContext, secret
     }
 }
 
+async function resolveQueueConnectionSecrets(
+    services: SinkServices,
+    ctx: RequestContext,
+    raw: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+    const resolved = { ...raw };
+    const secretFields = [
+        ['passwordSecretCode', 'password'],
+        ['accessKeyIdSecretCode', 'accessKeyId'],
+        ['secretAccessKeySecretCode', 'secretAccessKey'],
+    ];
+    for (const [secretField, targetField] of secretFields) {
+        const code = raw[secretField];
+        if (typeof code === 'string' && code) {
+            const value = await services.secretService.resolve(ctx, code);
+            if (value) resolved[targetField] = value;
+        }
+    }
+    if (raw.ssl !== undefined && resolved.useTls === undefined) {
+        resolved.useTls = !!raw.ssl;
+    }
+    return resolved;
+}
+
 function getCircuitKey(adapterCode: string, host: string): string {
     try {
         const url = new URL(host);
@@ -160,12 +186,10 @@ function getCircuitKey(adapterCode: string, host: string): string {
 }
 
 function resolveTypesenseHost(cfg: BaseSinkCfg): string {
-    if (cfg.host) {
-        const protocol = cfg.protocol ?? 'https';
-        const port = cfg.port ?? 8108;
-        return cfg.host.includes('://') ? cfg.host : `${protocol}://${cfg.host}:${port}`;
-    }
-    return SERVICE_DEFAULTS.TYPESENSE_URL;
+    if (!cfg.host) throw new Error('Typesense sink requires a host');
+    const protocol = cfg.protocol ?? 'https';
+    const port = cfg.port ?? SINK.TYPESENSE_DEFAULT_PORT;
+    return cfg.host.includes('://') ? cfg.host : `${protocol}://${cfg.host}:${port}`;
 }
 
 function checkCircuit(services: SinkServices, circuitKey: string): { allowed: boolean; state: CircuitState; resetTimeoutMs: number } {
@@ -190,7 +214,7 @@ async function executeBatchedSearchSink(
     hostLabel: string,
     stepKey: string,
     onRecordError: OnRecordErrorCallback | undefined,
-    sendBatch: (batch: RecordObject[]) => Promise<Response>,
+    sendBatch: (batch: RecordObject[], signal?: AbortSignal) => Promise<Response>,
 ): Promise<ExecutionResult> {
     let ok = 0;
     let fail = 0;
@@ -207,13 +231,15 @@ async function executeBatchedSearchSink(
         }
 
         try {
-            const response = await sendBatch(batch);
+            const signal = AbortSignal.timeout(HTTP.TIMEOUT_MS);
+            const response = await sendBatch(batch, signal);
+            const bodyText = await response.text().catch(() => '');
             if (response.ok) {
                 ok += batch.length;
                 services.circuitBreaker.recordSuccess(circuitKey);
             } else {
                 fail += batch.length;
-                const errorMsg = `${serviceName} error: ${response.status}`;
+                const errorMsg = `${serviceName} error: ${response.status}${bodyText ? ` ${bodyText.slice(0, TRUNCATION.ERROR_MESSAGE_MAX_LENGTH)}` : ''}`;
                 services.circuitBreaker.recordFailure(circuitKey);
                 if (onRecordError) await onRecordError(stepKey, errorMsg, {});
             }
@@ -232,7 +258,8 @@ async function executeBatchedSearchSink(
 
 async function handleMeiliSearch(hCtx: SinkHandlerContext, services: SinkServices): Promise<ExecutionResult> {
     const { ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError } = hCtx;
-    const host = cfg.host ?? SERVICE_DEFAULTS.MEILISEARCH_URL;
+    const host = cfg.host;
+    if (!host) throw new Error('MeiliSearch sink requires a host URL');
     const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
     const primaryKey = cfg.primaryKey ?? idField;
     const circuitKey = getCircuitKey(SINK_ADAPTER_CODES.MEILISEARCH, host);
@@ -254,7 +281,7 @@ async function handleMeiliSearch(hCtx: SinkHandlerContext, services: SinkService
         const settingsHeaders: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON };
         if (apiKey) settingsHeaders[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${apiKey}`;
         try {
-            const settingsResponse = await fetch(`${host}/indexes/${indexName}/settings`, {
+            const settingsResponse = await fetch(`${host}/indexes/${encodeURIComponent(indexName)}/settings`, {
                 method: HttpMethod.PATCH,
                 headers: settingsHeaders,
                 body: JSON.stringify({
@@ -262,6 +289,7 @@ async function handleMeiliSearch(hCtx: SinkHandlerContext, services: SinkService
                     ...(filterableFields ? { filterableAttributes: filterableFields } : {}),
                     ...(sortableFields ? { sortableAttributes: sortableFields } : {}),
                 }),
+                signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
             });
             if (!settingsResponse.ok) {
                 services.logger.warn(`MeiliSearch settings update failed: ${settingsResponse.status}`, { stepKey: hCtx.step.key, indexName });
@@ -273,15 +301,16 @@ async function handleMeiliSearch(hCtx: SinkHandlerContext, services: SinkService
 
     return executeBatchedSearchSink(
         services, input, bulkSize, circuitKey, 'MeiliSearch', host, step.key, onRecordError,
-        async (batch) => {
+        async (batch, signal) => {
             const docs = batch.map(prepareDoc);
             const headers: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON };
             if (apiKey) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${apiKey}`;
-            const url = `${host}/indexes/${indexName}/documents?primaryKey=${primaryKey}`;
+            const url = `${host}/indexes/${encodeURIComponent(indexName)}/documents?primaryKey=${encodeURIComponent(primaryKey)}`;
             return fetch(url, {
                 method: HttpMethod.POST,
                 headers,
                 body: JSON.stringify(docs),
+                signal,
             });
         },
     );
@@ -290,10 +319,13 @@ async function handleMeiliSearch(hCtx: SinkHandlerContext, services: SinkService
 async function handleElasticsearch(hCtx: SinkHandlerContext, services: SinkServices): Promise<ExecutionResult> {
     const { ctx, step, input, cfg, indexName, idField, bulkSize, prepareDoc, onRecordError } = hCtx;
     const adapterCode = getAdapterCode(step) || undefined;
-    const nodes = cfg.node ? [cfg.node] : (cfg.hosts ?? (cfg.host ? [cfg.host] : [SERVICE_DEFAULTS.ELASTICSEARCH_URL]));
+    const nodes = cfg.node ? [cfg.node] : (cfg.hosts ?? (cfg.host ? [cfg.host] : []));
+    if (nodes.length === 0) throw new Error('Elasticsearch/OpenSearch sink requires at least one node URL');
     const host = nodes[0];
     const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
-    const basicAuth = await resolveSecret(services, ctx, cfg.basicSecretCode);
+    const username = await resolveSecret(services, ctx, cfg.usernameSecretCode);
+    const password = await resolveSecret(services, ctx, cfg.passwordSecretCode);
+    const basicAuth = username && password ? `${username}:${password}` : undefined;
     const effectiveAdapterCode = adapterCode ?? SINK_ADAPTER_CODES.ELASTICSEARCH;
     const circuitKey = getCircuitKey(effectiveAdapterCode, host);
 
@@ -301,7 +333,7 @@ async function handleElasticsearch(hCtx: SinkHandlerContext, services: SinkServi
 
     return executeBatchedSearchSink(
         services, input, bulkSize, circuitKey, effectiveAdapterCode, host, step.key, onRecordError,
-        async (batch) => {
+        async (batch, signal) => {
             const bulkBody: string[] = [];
             for (const rec of batch) {
                 const doc = prepareDoc(rec);
@@ -317,6 +349,7 @@ async function handleElasticsearch(hCtx: SinkHandlerContext, services: SinkServi
                 method: HttpMethod.POST,
                 headers,
                 body: bulkBody.join('\n') + '\n',
+                signal,
             });
         },
     );
@@ -339,12 +372,12 @@ async function handleAlgolia(hCtx: SinkHandlerContext, services: SinkServices): 
 
     return executeBatchedSearchSink(
         services, input, bulkSize, circuitKey, 'Algolia', applicationId, step.key, onRecordError,
-        async (batch) => {
+        async (batch, signal) => {
             const docs = batch.map(rec => {
                 const doc = prepareDoc(rec);
                 return { ...doc, objectID: String(getPath(rec, idField) ?? '') };
             });
-            const url = `${algoliaHost}/1/indexes/${indexName}/batch`;
+            const url = `${algoliaHost}/1/indexes/${encodeURIComponent(indexName)}/batch`;
             return fetch(url, {
                 method: HttpMethod.POST,
                 headers: {
@@ -353,6 +386,7 @@ async function handleAlgolia(hCtx: SinkHandlerContext, services: SinkServices): 
                     [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
                 },
                 body: JSON.stringify({ requests: docs.map(d => ({ action: 'updateObject', body: d })) }),
+                signal,
             });
         },
     );
@@ -369,7 +403,7 @@ async function handleTypesense(hCtx: SinkHandlerContext, services: SinkServices)
 
     return executeBatchedSearchSink(
         services, input, bulkSize, circuitKey, 'Typesense', host, step.key, onRecordError,
-        async (batch) => {
+        async (batch, signal) => {
             const docs = batch.map(rec => {
                 const doc = prepareDoc(rec);
                 return { ...doc, id: String(getPath(rec, idField) ?? '') };
@@ -378,11 +412,12 @@ async function handleTypesense(hCtx: SinkHandlerContext, services: SinkServices)
             const headers: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.PLAIN };
             if (apiKey) headers[HTTP_HEADERS.X_TYPESENSE_API_KEY] = apiKey;
 
-            const url = `${host}/collections/${collectionName}/documents/import?action=upsert`;
+            const url = `${host}/collections/${encodeURIComponent(collectionName)}/documents/import?action=upsert`;
             return fetch(url, {
                 method: HttpMethod.POST,
                 headers,
                 body: ndjson,
+                signal,
             });
         },
     );
@@ -393,7 +428,7 @@ async function handleTypesense(hCtx: SinkHandlerContext, services: SinkServices)
 async function handleQueueProducer(hCtx: SinkHandlerContext, services: SinkServices): Promise<ExecutionResult> {
     const { ctx, step, input, onRecordError } = hCtx;
     const cfg = step.config as QueueProducerSinkCfg;
-    const queueType = cfg.queueType ?? QueueType.RABBITMQ;
+    const queueType = String(cfg.queueType ?? QueueType.RABBITMQ).toLowerCase().replace(/_/g, '-');
     const connectionCode = cfg.connectionCode;
     const queueName = cfg.queueName;
     const routingKey = cfg.routingKey;
@@ -426,7 +461,9 @@ async function handleQueueProducer(hCtx: SinkHandlerContext, services: SinkServi
         return { ok: 0, fail: input.length };
     }
 
-    const connectionConfig = connection.config as QueueConnectionConfig;
+    const rawConfig = connection.config as Record<string, unknown>;
+    const resolvedConfig = await resolveQueueConnectionSecrets(services, ctx, rawConfig);
+    const connectionConfig = resolvedConfig as QueueConnectionConfig;
 
     let ok = 0;
     let fail = 0;
@@ -472,7 +509,7 @@ async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): 
     const apiKeyHeader = cfg.apiKeyHeader ?? HTTP_HEADERS.X_API_KEY;
     const batchSize = Number(cfg.batchSize ?? SINK.WEBHOOK_BATCH_SIZE) || SINK.WEBHOOK_BATCH_SIZE;
     const timeoutMs = Number(cfg.timeoutMs ?? HTTP.TIMEOUT_MS) || HTTP.TIMEOUT_MS;
-    const maxRetries = Number(cfg.retries ?? HTTP.MAX_RETRIES) || HTTP.MAX_RETRIES;
+    const maxRetries = Math.max(0, Number(cfg.retries ?? HTTP.MAX_RETRIES));
 
     let ok = 0;
     let fail = 0;
@@ -584,7 +621,8 @@ async function handleWebhook(hCtx: SinkHandlerContext, services: SinkServices): 
 
 async function handleMeiliSearchDelete(hCtx: SinkHandlerContext, services: SinkServices, ids: string[]): Promise<ExecutionResult> {
     const { ctx, step, cfg, indexName, bulkSize, onRecordError } = hCtx;
-    const host = cfg.host ?? SERVICE_DEFAULTS.MEILISEARCH_URL;
+    const host = cfg.host;
+    if (!host) throw new Error('MeiliSearch sink requires a host URL');
     const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
     const circuitKey = getCircuitKey(SINK_ADAPTER_CODES.MEILISEARCH, host);
 
@@ -607,18 +645,20 @@ async function handleMeiliSearchDelete(hCtx: SinkHandlerContext, services: SinkS
         try {
             const headers: Record<string, string> = { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON };
             if (apiKey) headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${apiKey}`;
-            const response = await fetch(`${host}/indexes/${indexName}/documents/delete-batch`, {
+            const response = await fetch(`${host}/indexes/${encodeURIComponent(indexName)}/documents/delete-batch`, {
                 method: HttpMethod.POST,
                 headers,
                 body: JSON.stringify(batch),
+                signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
             });
+            const bodyText = await response.text().catch(() => '');
             if (response.ok) {
                 ok += batch.length;
                 services.circuitBreaker.recordSuccess(circuitKey);
             } else {
                 fail += batch.length;
                 services.circuitBreaker.recordFailure(circuitKey);
-                if (onRecordError) await onRecordError(step.key, `MeiliSearch delete error: ${response.status}`, {});
+                if (onRecordError) await onRecordError(step.key, `MeiliSearch delete error: ${response.status}${bodyText ? ` ${bodyText.slice(0, TRUNCATION.ERROR_MESSAGE_MAX_LENGTH)}` : ''}`, {});
             }
         } catch (e: unknown) {
             fail += batch.length;
@@ -633,10 +673,13 @@ async function handleMeiliSearchDelete(hCtx: SinkHandlerContext, services: SinkS
 async function handleElasticsearchDelete(hCtx: SinkHandlerContext, services: SinkServices, ids: string[]): Promise<ExecutionResult> {
     const { ctx, step, cfg, indexName, bulkSize, onRecordError } = hCtx;
     const adapterCode = getAdapterCode(step) || undefined;
-    const nodes = cfg.node ? [cfg.node] : (cfg.hosts ?? (cfg.host ? [cfg.host] : [SERVICE_DEFAULTS.ELASTICSEARCH_URL]));
+    const nodes = cfg.node ? [cfg.node] : (cfg.hosts ?? (cfg.host ? [cfg.host] : []));
+    if (nodes.length === 0) throw new Error('Elasticsearch/OpenSearch sink requires at least one node URL');
     const host = nodes[0];
     const apiKey = await resolveSecret(services, ctx, cfg.apiKeySecretCode);
-    const basicAuth = await resolveSecret(services, ctx, cfg.basicSecretCode);
+    const username = await resolveSecret(services, ctx, cfg.usernameSecretCode);
+    const password = await resolveSecret(services, ctx, cfg.passwordSecretCode);
+    const basicAuth = username && password ? `${username}:${password}` : undefined;
     const effectiveAdapterCode = adapterCode ?? SINK_ADAPTER_CODES.ELASTICSEARCH;
     const circuitKey = getCircuitKey(effectiveAdapterCode, host);
 
@@ -668,14 +711,16 @@ async function handleElasticsearchDelete(hCtx: SinkHandlerContext, services: Sin
                 method: HttpMethod.POST,
                 headers,
                 body: ndjson,
+                signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
             });
+            const bodyText = await response.text().catch(() => '');
             if (response.ok) {
                 ok += batch.length;
                 services.circuitBreaker.recordSuccess(circuitKey);
             } else {
                 fail += batch.length;
                 services.circuitBreaker.recordFailure(circuitKey);
-                if (onRecordError) await onRecordError(step.key, `${effectiveAdapterCode} delete error: ${response.status}`, {});
+                if (onRecordError) await onRecordError(step.key, `${effectiveAdapterCode} delete error: ${response.status}${bodyText ? ` ${bodyText.slice(0, TRUNCATION.ERROR_MESSAGE_MAX_LENGTH)}` : ''}`, {});
             }
         } catch (e: unknown) {
             fail += batch.length;
@@ -717,7 +762,7 @@ async function handleAlgoliaDelete(hCtx: SinkHandlerContext, services: SinkServi
         }
 
         try {
-            const response = await fetch(`${algoliaHost}/1/indexes/${indexName}/batch`, {
+            const response = await fetch(`${algoliaHost}/1/indexes/${encodeURIComponent(indexName)}/batch`, {
                 method: HttpMethod.POST,
                 headers: {
                     'X-Algolia-Application-Id': applicationId,
@@ -727,14 +772,16 @@ async function handleAlgoliaDelete(hCtx: SinkHandlerContext, services: SinkServi
                 body: JSON.stringify({
                     requests: batch.map(objectID => ({ action: 'deleteObject', body: { objectID } })),
                 }),
+                signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
             });
+            const bodyText = await response.text().catch(() => '');
             if (response.ok) {
                 ok += batch.length;
                 services.circuitBreaker.recordSuccess(circuitKey);
             } else {
                 fail += batch.length;
                 services.circuitBreaker.recordFailure(circuitKey);
-                if (onRecordError) await onRecordError(step.key, `Algolia delete error: ${response.status}`, {});
+                if (onRecordError) await onRecordError(step.key, `Algolia delete error: ${response.status}${bodyText ? ` ${bodyText.slice(0, TRUNCATION.ERROR_MESSAGE_MAX_LENGTH)}` : ''}`, {});
             }
         } catch (e: unknown) {
             fail += batch.length;
@@ -773,16 +820,17 @@ async function handleTypesenseDelete(hCtx: SinkHandlerContext, services: SinkSer
             if (apiKey) headers[HTTP_HEADERS.X_TYPESENSE_API_KEY] = apiKey;
 
             const response = await fetch(
-                `${host}/collections/${collectionName}/documents/${encodeURIComponent(id)}`,
-                { method: 'DELETE', headers },
+                `${host}/collections/${encodeURIComponent(collectionName)}/documents/${encodeURIComponent(id)}`,
+                { method: 'DELETE', headers, signal: AbortSignal.timeout(HTTP.TIMEOUT_MS) },
             );
+            const bodyText = await response.text().catch(() => '');
             if (response.ok) {
                 ok++;
                 services.circuitBreaker.recordSuccess(circuitKey);
             } else {
                 fail++;
                 services.circuitBreaker.recordFailure(circuitKey);
-                if (onRecordError) await onRecordError(step.key, `Typesense delete error for ${id}: ${response.status}`, {});
+                if (onRecordError) await onRecordError(step.key, `Typesense delete error for ${id}: ${response.status}${bodyText ? ` ${bodyText.slice(0, TRUNCATION.ERROR_MESSAGE_MAX_LENGTH)}` : ''}`, {});
             }
         } catch (e: unknown) {
             fail++;
@@ -840,7 +888,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
             color: '#f5468e',
             schema: {
                 fields: [
-                    { key: 'host', label: 'Host URL', type: 'string', required: true, description: 'e.g., http://localhost:7700' },
+                    { key: 'host', label: 'Host URL', type: 'string', required: true, description: 'MeiliSearch host URL (e.g., https://meilisearch.example.com)' },
                     { key: 'apiKeySecretCode', label: 'API key secret', type: 'string', required: true },
                     { key: 'indexName', label: 'Index name', type: 'string', required: true },
                     { key: 'primaryKey', label: 'Primary key field', type: 'string', required: true },
@@ -866,7 +914,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
             color: '#fed10a',
             schema: {
                 fields: [
-                    { key: 'node', label: 'Node URL', type: 'string', required: true, description: 'e.g., http://localhost:9200' },
+                    { key: 'node', label: 'Node URL', type: 'string', required: true, description: 'Node URL (e.g., https://search.example.com:9200)' },
                     { key: 'apiKeySecretCode', label: 'API key secret', type: 'string' },
                     { key: 'usernameSecretCode', label: 'Username secret', type: 'string' },
                     { key: 'passwordSecretCode', label: 'Password secret', type: 'string' },
@@ -874,7 +922,6 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'idField', label: 'Document ID field', type: 'string', required: true },
                     { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
                     { key: 'batchSize', label: 'Batch size', type: 'number' },
-                    { key: 'refresh', label: 'Refresh after indexing', type: 'boolean' },
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -892,7 +939,7 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
             color: '#005eb8',
             schema: {
                 fields: [
-                    { key: 'node', label: 'Node URL', type: 'string', required: true, description: 'e.g., http://localhost:9200' },
+                    { key: 'node', label: 'Node URL', type: 'string', required: true, description: 'Node URL (e.g., https://search.example.com:9200)' },
                     { key: 'apiKeySecretCode', label: 'API key secret', type: 'string' },
                     { key: 'usernameSecretCode', label: 'Username secret', type: 'string' },
                     { key: 'passwordSecretCode', label: 'Password secret', type: 'string' },
@@ -900,7 +947,6 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                     { key: 'idField', label: 'Document ID field', type: 'string', required: true },
                     { key: 'defaultOperation', label: 'Default operation', type: 'select', options: SINK_OPERATION_OPTIONS, description: 'Fallback when records have no __operation field.' },
                     { key: 'batchSize', label: 'Batch size', type: 'number' },
-                    { key: 'refresh', label: 'Refresh after indexing', type: 'boolean' },
                     ...LOCALIZATION_SCHEMA_FIELDS,
                 ],
             },
@@ -994,12 +1040,6 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                         description: 'Routing key for RabbitMQ exchanges.',
                     },
                     {
-                        key: 'messageType',
-                        label: 'Message Type',
-                        type: 'string',
-                        description: 'Message type header for consumers.',
-                    },
-                    {
                         key: 'headers',
                         label: 'Message Headers',
                         type: 'json',
@@ -1028,12 +1068,6 @@ export const SINK_HANDLER_REGISTRY = new Map<string, SinkRegistryEntry>([
                         label: 'Priority',
                         type: 'number',
                         description: 'Message priority (1-10, higher = more urgent).',
-                    },
-                    {
-                        key: 'delayMs',
-                        label: 'Delay (ms)',
-                        type: 'number',
-                        description: 'Delay before message is available for consumption.',
                     },
                     {
                         key: 'ttlMs',

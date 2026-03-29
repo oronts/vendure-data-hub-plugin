@@ -9,10 +9,9 @@ import { STEP_CONTENT } from './constants';
 interface TriggerStepProps {
     config: Partial<ImportConfiguration>;
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
-    errors?: Record<string, string>;
 }
 
-export function TriggerStep({ config, updateConfig, errors = {} }: TriggerStepProps) {
+export function TriggerStep({ config, updateConfig }: TriggerStepProps) {
     const trigger = config.trigger ?? { type: TRIGGER_TYPE.MANUAL };
     const { importWizardTriggers, triggerSchemas, isLoading } = useTriggerTypes();
 

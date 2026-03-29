@@ -98,8 +98,8 @@ export function RealtimeLogTab() {
                                         {log.recordsProcessed != null && (
                                             <span>
                                                 {log.recordsProcessed} records
-                                                {log.recordsFailed > 0 && (
-                                                    <span className="text-red-600 ml-1">
+                                                {(log.recordsFailed ?? 0) > 0 && (
+                                                    <span className="text-red-600 dark:text-red-400 ml-1">
                                                         ({log.recordsFailed} failed)
                                                     </span>
                                                 )}

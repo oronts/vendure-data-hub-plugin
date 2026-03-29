@@ -304,12 +304,11 @@ function HooksPage() {
                             </tr>
                         </thead>
                         <tbody>
-                            {/* Events have unique createdAt timestamps, used as stable keys */}
                             {(eventsQuery.data ?? [])
                                 .filter(e => !eventFilter || (e.name ?? '').toLowerCase().includes(eventFilter.toLowerCase()))
                                 .slice(0, UI_LIMITS.TABLE_PREVIEW_ROWS)
-                                .map((e) => (
-                                    <tr key={`${e.createdAt}-${e.name}`} className="border-t align-top hover:bg-muted/50">
+                                .map((e, i) => (
+                                    <tr key={`${e.createdAt}-${e.name}-${i}`} className="border-t align-top hover:bg-muted/50">
                                         <td className="px-3 py-2 text-muted-foreground">
                                             <Clock className="w-3 h-3 inline mr-1" />
                                             {formatDateTime(e.createdAt as string)}
@@ -324,11 +323,13 @@ function HooksPage() {
                                         </td>
                                     </tr>
                                 ))}
-                            {(eventsQuery.data ?? []).length === 0 && (
+                            {(eventsQuery.data ?? [])
+                                .filter(e => !eventFilter || (e.name ?? '').toLowerCase().includes(eventFilter.toLowerCase()))
+                                .length === 0 && (
                                 <tr>
                                     <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
                                         <Info className="w-5 h-5 mx-auto mb-2 opacity-50" />
-                                        No events yet. Test a hook to see events appear here.
+                                        {eventFilter ? 'No matching events.' : 'No events yet. Test a hook to see events appear here.'}
                                     </td>
                                 </tr>
                             )}
@@ -403,10 +404,10 @@ const HookStageCard = React.memo(function HookStageCard({
                 </div>
                 {isLoading && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
                 {!isLoading && testResult === 'success' && (
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
                 )}
                 {!isLoading && testResult === 'error' && (
-                    <XCircle className="w-4 h-4 text-red-600" />
+                    <XCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
                 )}
             </div>
             <p className="text-xs text-muted-foreground line-clamp-2">

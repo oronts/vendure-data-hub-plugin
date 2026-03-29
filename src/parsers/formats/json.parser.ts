@@ -69,7 +69,10 @@ export function flattenObject(
 ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
+    const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
     for (const [key, value] of Object.entries(obj)) {
+        if (DANGEROUS_KEYS.has(key)) continue;
         const newKey = prefix ? `${prefix}${delimiter}${key}` : key;
 
         if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
@@ -116,7 +119,6 @@ export function parseJson(
             data = navigated;
         }
 
-        // Ensure data is an array
         if (!Array.isArray(data)) {
             if (typeof data === 'object' && data !== null) {
                 data = [data];
@@ -169,13 +171,10 @@ export function parseJson(
             warnings,
         };
     } catch (err) {
-        // Try to provide helpful error context
-        const error = err as SyntaxError;
-        let message = error.message || 'Failed to parse JSON';
+        let message = getErrorMessage(err) || 'Failed to parse JSON';
 
-        // Add position info if available
-        if (error.message.includes('position')) {
-            const posMatch = error.message.match(/position (\d+)/);
+        if (message.includes('position')) {
+            const posMatch = message.match(/position (\d+)/);
             if (posMatch) {
                 const pos = parseInt(posMatch[1], 10);
                 const context = content.slice(Math.max(0, pos - 20), pos + 20);

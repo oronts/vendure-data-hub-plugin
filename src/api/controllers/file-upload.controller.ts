@@ -337,8 +337,7 @@ export class DataHubFileUploadController {
         return new Promise((resolve) => {
             const singleUpload = upload.single('file');
 
-            // Note: multer callback has different signature than Express NextFunction
-            // but TypeScript types it as RequestHandler which expects NextFunction
+            // multer callback signature differs from Express NextFunction
             const multerCallback = async (err: MulterErrorLike | null): Promise<void> => {
                 try {
                     if (err) {
@@ -416,89 +415,88 @@ export class DataHubFileUploadController {
         req: Request,
         res: Response,
     ): Promise<void> {
-        return new Promise<void>((resolve) => {
+        try {
+            const body: Record<string, unknown> = (req as any).body && typeof (req as any).body === 'object'
+                ? (req as any).body
+                : await this.readJsonBody(req);
+
+            if (!body.content || !body.filename || typeof body.filename !== 'string') {
+                res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: 'Missing content or filename in request body',
+                });
+                return;
+            }
+
+            if (typeof body.content !== 'string') {
+                res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: 'Content must be a base64-encoded string',
+                });
+                return;
+            }
+
+            const estimatedSize = Math.ceil(body.content.length * 0.75);
+            if (estimatedSize > FILE_STORAGE.MAX_FILE_SIZE_BYTES) {
+                res.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
+                    success: false,
+                    error: `File too large. Maximum size is ${FILE_STORAGE.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB`,
+                });
+                return;
+            }
+
+            const result = await this.fileStorage.storeBase64(
+                ctx,
+                body.content,
+                body.filename as string,
+                (body.mimeType as string) || detectMimeType(body.filename as string),
+                { expiresInMinutes: Math.max(1, Math.min(Number(body.expiresInMinutes) || FILE_STORAGE.EXPIRY_MINUTES, FILE_STORAGE.EXPIRY_MINUTES * 10)) },
+            );
+
+            if (result.success && result.file) {
+                res.status(HttpStatus.CREATED).json({
+                    success: true,
+                    file: formatFileResponse(result.file),
+                });
+            } else {
+                res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: result.error ?? 'Upload failed',
+                });
+            }
+        } catch (error) {
+            this.logger.error('Base64 upload error', toErrorOrUndefined(error));
+            if (!res.headersSent) {
+                res.status(HttpStatus.BAD_REQUEST).json({
+                    success: false,
+                    error: 'Failed to parse request body',
+                });
+            }
+        }
+    }
+
+    private readJsonBody(req: Request): Promise<Record<string, unknown>> {
+        return new Promise((resolve, reject) => {
             const chunks: Buffer[] = [];
             let totalSize = 0;
-            const maxBodySize = FILE_STORAGE.MAX_FILE_SIZE_BYTES * 2; // Account for base64 overhead
+            const maxBodySize = FILE_STORAGE.MAX_FILE_SIZE_BYTES * 2;
 
             req.on('data', (chunk: Buffer) => {
                 totalSize += chunk.length;
                 if (totalSize > maxBodySize) {
-                    if (!res.headersSent) {
-                        res.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
-                            success: false,
-                            error: 'Request body too large',
-                        });
-                    }
                     req.destroy();
-                    return resolve();
+                    reject(new Error('Request body too large'));
+                    return;
                 }
                 chunks.push(chunk);
             });
-            req.on('error', (err) => {
-                this.logger.error('Base64 upload stream error', err);
-                if (!res.headersSent) {
-                    res.status(HttpStatus.BAD_REQUEST).json({ success: false, error: 'Upload stream error' });
-                }
-                resolve();
-            });
-            req.on('end', async () => {
+            req.on('error', (err) => reject(err));
+            req.on('end', () => {
                 try {
-                    const bodyStr = Buffer.concat(chunks).toString('utf-8');
-                    const body = JSON.parse(bodyStr);
-
-                    if (!body.content || !body.filename) {
-                        res.status(HttpStatus.BAD_REQUEST).json({
-                            success: false,
-                            error: 'Missing content or filename in request body',
-                        });
-                        return resolve();
-                    }
-
-                    if (typeof body.content !== 'string') {
-                        res.status(HttpStatus.BAD_REQUEST).json({
-                            success: false,
-                            error: 'Content must be a base64-encoded string',
-                        });
-                        return resolve();
-                    }
-
-                    const estimatedSize = Math.ceil(body.content.length * 0.75);
-                    if (estimatedSize > FILE_STORAGE.MAX_FILE_SIZE_BYTES) {
-                        res.status(HttpStatus.PAYLOAD_TOO_LARGE).json({
-                            success: false,
-                            error: `File too large. Maximum size is ${FILE_STORAGE.MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB`,
-                        });
-                        return resolve();
-                    }
-
-                    const result = await this.fileStorage.storeBase64(
-                        ctx,
-                        body.content,
-                        body.filename,
-                        body.mimeType || detectMimeType(body.filename),
-                        { expiresInMinutes: body.expiresInMinutes || FILE_STORAGE.EXPIRY_MINUTES },
-                    );
-
-                    if (result.success && result.file) {
-                        res.status(HttpStatus.CREATED).json({
-                            success: true,
-                            file: formatFileResponse(result.file),
-                        });
-                    } else {
-                        res.status(HttpStatus.BAD_REQUEST).json({
-                            success: false,
-                            error: result.error ?? 'Upload failed',
-                        });
-                    }
-                    resolve();
-                } catch (error) {
-                    this.logger.error('Base64 parse error', toErrorOrUndefined(error));
-                    res.status(HttpStatus.BAD_REQUEST).json({
-                        success: false,
-                        error: 'Failed to parse request body',
-                    });
-                    resolve();
+                    const body = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
+                    resolve(body);
+                } catch (e) {
+                    reject(e);
                 }
             });
         });

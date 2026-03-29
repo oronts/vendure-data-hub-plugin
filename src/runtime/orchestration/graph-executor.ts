@@ -74,6 +74,7 @@ export interface ExecuteGraphParams {
     onCancelRequested?: () => Promise<boolean>;
     onRecordError?: OnRecordErrorCallback;
     pipelineId?: ID;
+    pipelineCode?: string;
     runId?: ID;
     /** Optional step logging callback for database persistence */
     stepLog?: StepLogCallback;
@@ -99,6 +100,7 @@ interface ExecutionMetrics {
     counters: Record<string, number>;
     paused?: boolean;
     pausedAtStep?: string;
+    cancelled?: boolean;
 }
 
 /**
@@ -249,7 +251,7 @@ function publishRunProgress(
     try {
         params.domainEvents.publishRunProgress(
             String(params.runId),
-            params.definition.name ?? '',
+            params.pipelineCode ?? params.definition.name ?? '',
             progressPercent,
             `Completed step ${completedCount}/${totalSteps}: ${currentStepKey}`,
             metrics.processed,
@@ -259,6 +261,37 @@ function publishRunProgress(
     } catch (error) {
         handleNodeError(error as Error, 'PipelineRunProgress', { stepKey: currentStepKey, pipelineId: params.pipelineId });
     }
+}
+
+/**
+ * Checks if a GATE step requested a pause and, if so, updates metrics and publishes
+ * the PipelinePaused event. Returns true if the pipeline should pause (break the loop).
+ */
+function handleGatePause(
+    key: string,
+    step: PipelineStepDefinition | undefined,
+    stepResult: StepExecutionResult,
+    metrics: ExecutionMetrics,
+    params: { pipelineId?: ID; runId?: ID },
+    domainEvents: DomainEventsService,
+): boolean {
+    if (step?.type !== StepTypeEnum.GATE || stepResult.detail?.['shouldPause'] !== true) {
+        return false;
+    }
+    metrics.paused = true;
+    metrics.pausedAtStep = key;
+    logger.log(`Pipeline paused at GATE step "${key}" - awaiting approval`);
+    try {
+        domainEvents.publish('PipelinePaused', {
+            pipelineId: params.pipelineId,
+            runId: params.runId,
+            stepKey: key,
+            pausedAt: new Date().toISOString(),
+        });
+    } catch (error) {
+        handleNodeError(error as Error, 'PipelinePaused', { stepKey: key });
+    }
+    return true;
 }
 
 /**
@@ -373,7 +406,10 @@ async function executeSequential(
         if (key === undefined) break;
         const step = stepByKey.get(key);
         if (!step) continue;
-        if (onCancelRequested && (await onCancelRequested())) break;
+        if (onCancelRequested && (await onCancelRequested())) {
+            metrics.cancelled = true;
+            break;
+        }
 
         // Publish StepStarted event (typed helper already wraps in try/catch)
         domainEvents.publishStepStarted(pipelineIdStr, runIdStr, key, step.type);
@@ -412,20 +448,7 @@ async function executeSequential(
         }
 
         // Check if a GATE step requested a pause
-        if (step?.type === StepTypeEnum.GATE && stepResult.detail?.['shouldPause'] === true) {
-            metrics.paused = true;
-            metrics.pausedAtStep = key;
-            logger.log(`Pipeline paused at GATE step "${key}" - awaiting approval`);
-            try {
-                domainEvents.publish('PipelinePaused', {
-                    pipelineId,
-                    runId,
-                    stepKey: key,
-                    pausedAt: new Date().toISOString(),
-                });
-            } catch (error) {
-                handleNodeError(error as Error, 'PipelinePaused', { stepKey: key });
-            }
+        if (handleGatePause(key, step, stepResult, metrics, { pipelineId, runId }, domainEvents)) {
             break;
         }
 
@@ -464,6 +487,7 @@ async function executeParallel(
         // Check for cancellation
         if (onCancelRequested && (await onCancelRequested())) {
             cancelled = true;
+            metrics.cancelled = true;
             break;
         }
 
@@ -499,7 +523,6 @@ async function executeParallel(
                     errors.push({ key, error });
                     // Publish StepFailed event (typed helper already wraps in try/catch)
                     domainEvents.publishStepFailed(pipelineIdStr, runIdStr, key, stepType, getErrorMessage(error));
-                    // Return empty result on error
                     return {
                         key,
                         stepResult: {
@@ -522,7 +545,6 @@ async function executeParallel(
             const completedResult = await Promise.race(inFlight.values());
             const { key, stepResult, durationMs } = completedResult;
 
-            // Remove from in-flight
             inFlight.delete(key);
 
             logger.debug(`[Parallel] Completed step: ${key}`, {
@@ -539,11 +561,9 @@ async function executeParallel(
                 domainEvents.publishStepCompleted(pipelineIdStr, runIdStr, key, completedStepDef?.type ?? '', stepResult.processed);
             }
 
-            // Store output and update metrics
             outputs.set(key, stepResult.output);
             updateMetrics(metrics, stepResult, durationMs);
 
-            // Publish run progress
             completedCount++;
             publishRunProgress(params, metrics, completedCount, totalSteps, key);
 
@@ -558,20 +578,7 @@ async function executeParallel(
 
             // Check if a GATE step requested a pause
             const completedStep = stepByKey.get(key);
-            if (completedStep?.type === StepTypeEnum.GATE && stepResult.detail?.['shouldPause'] === true) {
-                metrics.paused = true;
-                metrics.pausedAtStep = key;
-                logger.log(`[Parallel] Pipeline paused at GATE step "${key}" - awaiting approval`);
-                try {
-                    domainEvents.publish('PipelinePaused', {
-                        pipelineId,
-                        runId,
-                        stepKey: key,
-                        pausedAt: new Date().toISOString(),
-                    });
-                } catch (error) {
-                    handleNodeError(error as Error, 'PipelinePaused', { stepKey: key });
-                }
+            if (handleGatePause(key, completedStep, stepResult, metrics, { pipelineId, runId }, domainEvents)) {
                 break;
             }
 

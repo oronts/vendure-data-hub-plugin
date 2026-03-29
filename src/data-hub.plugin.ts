@@ -74,7 +74,6 @@ import { DataHubExtractorAdminResolver } from './api/resolvers/extractor.resolve
 import { EntitySchemaAdminResolver } from './api/resolvers/entity-schema.resolver';
 import { DataHubVersioningResolver } from './api/resolvers/versioning.resolver';
 import { DataHubSandboxResolver } from './api/resolvers/sandbox.resolver';
-import { DataHubSubscriptionResolver } from './api/resolvers/subscription.resolver';
 import { DataHubGateAdminResolver } from './api/resolvers/gate.resolver';
 import { DataHubTemplateAdminResolver } from './api/resolvers/template.resolver';
 import { DataHubConfigOptionsAdminResolver } from './api/resolvers/config-options.resolver';
@@ -198,7 +197,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         EntitySchemaAdminResolver,
         DataHubVersioningResolver,
         DataHubSandboxResolver,
-        DataHubSubscriptionResolver,
+        // DataHubSubscriptionResolver -- not registered until subscription schema is uncommented
         DataHubTestAdminResolver,
         DataHubGateAdminResolver,
         // Versioning Services
@@ -243,7 +242,6 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
             EntitySchemaAdminResolver,
             DataHubVersioningResolver,
             DataHubSandboxResolver,
-            DataHubSubscriptionResolver,
             DataHubGateAdminResolver,
             DataHubTemplateAdminResolver,
             DataHubConfigOptionsAdminResolver,

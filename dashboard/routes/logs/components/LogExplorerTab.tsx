@@ -88,50 +88,46 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
     const totalPages = Math.ceil(totalItems / pageSize);
     const pipelines = pipelinesQuery.data?.items ?? [];
 
-    const handleRefetch = React.useCallback(() => logsQuery.refetch(), [logsQuery.refetch]);
+    const handleRefetch = () => logsQuery.refetch();
 
-    const handleRunIdChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleRunIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setRunId(e.target.value);
         setPage(1);
-    }, []);
+    };
 
-    const handleClearRunId = React.useCallback(() => {
+    const handleClearRunId = () => {
         setRunId('');
         setPage(1);
-    }, []);
+    };
 
-    const handlePipelineChange = React.useCallback((v: string) => {
+    const handlePipelineChange = (v: string) => {
         setPipelineId(v === FILTER_VALUES.ALL ? '' : v);
         setPage(1);
-    }, []);
+    };
 
-    const handleLevelChange = React.useCallback((v: string) => {
+    const handleLevelChange = (v: string) => {
         setLevel(v === FILTER_VALUES.ALL ? '' : v);
         setPage(1);
-    }, []);
+    };
 
-    const handleStartDateChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setStartDate(e.target.value);
         setPage(1);
-    }, []);
+    };
 
-    const handleEndDateChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setEndDate(e.target.value);
         setPage(1);
-    }, []);
+    };
 
-    const handleSearchChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearch(e.target.value);
         setPage(1);
-    }, []);
+    };
 
-    const handlePrevPage = React.useCallback(() => {
-        setPage(p => Math.max(1, p - 1));
-    }, []);
+    const handlePrevPage = () => setPage(p => Math.max(1, p - 1));
 
-    const handleNextPage = React.useCallback(() => {
-        setPage(p => Math.min(totalPages, p + 1));
-    }, [totalPages]);
+    const handleNextPage = () => setPage(p => Math.min(totalPages, p + 1));
 
     const handleSelectLog = React.useCallback((log: DataHubLog) => {
         setSelectedLog(log);
@@ -320,7 +316,7 @@ export function LogExplorerTab({ initialRunId }: { initialRunId?: string }) {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="border rounded-lg overflow-hidden">
+                    <div className="border rounded-lg overflow-x-auto">
                         <table className="w-full text-sm" data-testid="datahub-logs-table">
                             <thead>
                                 <tr className="bg-muted">

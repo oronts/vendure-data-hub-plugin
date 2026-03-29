@@ -2,6 +2,7 @@ import { ID, RequestContext, CustomerGroupService, CustomerService, CountryServi
 import { DataHubLogger } from '../../services/logger';
 import { CustomerAddressInput } from './types';
 import type { AddressesMode } from '../../../shared/types/adapter-config.types';
+import { PAGINATION } from '../../constants/defaults';
 
 export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
 
@@ -20,7 +21,7 @@ export async function assignCustomerGroups(
         return;
     }
 
-    const allGroups = await customerGroupService.findAll(ctx, {});
+    const allGroups = await customerGroupService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT });
     const groupMap = new Map(allGroups.items.map(g => [g.name.toLowerCase(), g]));
 
     // Collect valid groups and batch the assignment
@@ -40,7 +41,6 @@ export async function assignCustomerGroups(
 
 /**
  * Handles customer addresses with configurable modes to prevent duplicates.
- * Replaces the old createAddresses() function which caused duplication bugs.
  *
  * @param ctx - Request context
  * @param customerService - Vendure CustomerService
@@ -97,7 +97,7 @@ async function replaceAllAddresses(
     newAddresses: CustomerAddressInput[],
     logger: DataHubLogger,
 ): Promise<void> {
-    // Get existing addresses — load country relation for consistency
+    // Get existing addresses, load country relation for consistency
     const customer = await customerService.findOne(ctx, customerId, ['addresses', 'addresses.country']);
     if (!customer) return;
 
@@ -107,7 +107,6 @@ async function replaceAllAddresses(
     }
     logger.debug(`Deleted ${customer.addresses?.length || 0} existing addresses for customer ${customerId}`);
 
-    // Create new addresses
     await createAddressesInternal(ctx, customerService, countryService, customerId, newAddresses, logger);
 }
 
@@ -124,14 +123,14 @@ async function upsertAddressesByMatch(
     matchFields: string[],
     logger: DataHubLogger,
 ): Promise<void> {
-    // Get existing addresses — load country relation for countryCode matching
+    // Get existing addresses, load country relation for countryCode matching
     const customer = await customerService.findOne(ctx, customerId, ['addresses', 'addresses.country']);
     if (!customer) return;
 
     const existingAddresses = customer.addresses || [];
 
     // Fetch countries once
-    const allCountries = await countryService.findAll(ctx, {});
+    const allCountries = await countryService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT });
     const countryMap = new Map(allCountries.items.map(c => [c.code.toUpperCase(), c]));
 
     for (const newAddr of newAddresses) {
@@ -157,7 +156,6 @@ async function upsertAddressesByMatch(
             });
             logger.debug(`Updated existing address ${matchingAddr.id} for customer ${customerId}`);
         } else {
-            // Create new address
             const country = countryMap.get(newAddr.countryCode.toUpperCase());
             if (!country) {
                 logger.warn(`Country "${newAddr.countryCode}" not found, skipping address`);
@@ -206,11 +204,11 @@ async function updateAddressesByID(
     newAddresses: CustomerAddressInput[],
     logger: DataHubLogger,
 ): Promise<void> {
-    const allCountries = await countryService.findAll(ctx, {});
+    const allCountries = await countryService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT });
     const countryMap = new Map(allCountries.items.map(c => [c.code.toUpperCase(), c]));
 
     for (const newAddr of newAddresses) {
-        // Vendure API accepts dynamic input — id may be present on records for direct update
+        // Vendure API accepts dynamic input; id may be present on records for direct update
         if ((newAddr as any).id) {
             await customerService.updateAddress(ctx, {
                 id: (newAddr as any).id,
@@ -227,7 +225,6 @@ async function updateAddressesByID(
             });
             logger.debug(`Updated address ${(newAddr as any).id} for customer ${customerId}`); // Vendure API accepts dynamic input
         } else {
-            // Create new address (no ID provided)
             const country = countryMap.get(newAddr.countryCode.toUpperCase());
             if (!country) {
                 logger.warn(`Country "${newAddr.countryCode}" not found, skipping address`);
@@ -262,7 +259,7 @@ function matchesByFields(existing: Address, newAddr: CustomerAddressInput, match
         // Normalize for comparison (trim, lowercase, handle country)
         const normalizeValue = (val: any) => {
             if (typeof val === 'string') return val.trim().toLowerCase();
-            if (val && typeof val === 'object' && 'code' in val) return val.code.toUpperCase(); // Handle country object
+            if (val && typeof val === 'object' && 'code' in val) return val.code.toLowerCase();
             return val;
         };
 
@@ -292,7 +289,7 @@ async function createAddressesInternal(
     addresses: CustomerAddressInput[],
     logger: DataHubLogger,
 ): Promise<void> {
-    const allCountries = await countryService.findAll(ctx, {});
+    const allCountries = await countryService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT });
     const countryMap = new Map(
         allCountries.items.map(c => [c.code.toUpperCase(), c])
     );

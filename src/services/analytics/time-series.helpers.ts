@@ -54,12 +54,11 @@ export function calculateTimeSeries(timestamps: Date[], timeRange: TimeRange): T
 
     const buckets: Map<number, number> = new Map();
 
-    // Initialize buckets
-    for (let t = startDate.getTime(); t <= now.getTime(); t += bucketMs) {
+    const alignedStart = Math.floor(startDate.getTime() / bucketMs) * bucketMs;
+    for (let t = alignedStart; t <= now.getTime(); t += bucketMs) {
         buckets.set(t, 0);
     }
 
-    // Count into buckets
     for (const ts of timestamps) {
         const bucketTime = Math.floor(ts.getTime() / bucketMs) * bucketMs;
         if (buckets.has(bucketTime)) {
@@ -96,12 +95,11 @@ export function calculateThroughputTimeSeries(
 
     const buckets: Map<number, { records: number; durationMs: number }> = new Map();
 
-    // Initialize buckets
-    for (let t = startDate.getTime(); t <= now.getTime(); t += bucketMs) {
+    const alignedStart = Math.floor(startDate.getTime() / bucketMs) * bucketMs;
+    for (let t = alignedStart; t <= now.getTime(); t += bucketMs) {
         buckets.set(t, { records: 0, durationMs: 0 });
     }
 
-    // Aggregate into buckets
     for (const point of points) {
         const bucketTime = Math.floor(point.timestamp.getTime() / bucketMs) * bucketMs;
         const bucket = buckets.get(bucketTime);

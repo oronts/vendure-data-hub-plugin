@@ -166,7 +166,6 @@ export type {
     WebhookTriggerConfig,
     EventTriggerConfig,
     QueueTypeValue,
-    QueueTriggerConfig,
     FileWatchEvent,
     FileWatchTriggerConfig,
     AckMode,
@@ -186,6 +185,7 @@ export type {
     SinkResult,
     ValidationResult,
     InvalidRecord,
+    ValidationErrorRecord,
 } from './execution.types';
 
 export type {

@@ -1,4 +1,6 @@
+import * as crypto from 'crypto';
 import { Inject, Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { sanitizeUrlForLogging } from '../../utils/url-sanitize.utils';
 import { ID, RequestContext } from '@vendure/core';
 import { createContext, Script } from 'vm';
 import {
@@ -185,8 +187,9 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
                     result = await this.executeScript(action, currentRecords, hookContext);
                 }
 
-                if (result && Array.isArray(result)) {
+                if (Array.isArray(result)) {
                     currentRecords = result;
+                    hookContext.records = currentRecords;
                     modified = true;
                     this.logger.info(`Hook "${actionName}" executed`, {
                         stage,
@@ -308,17 +311,27 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         }
 
         // runInContext with timeout truly terminates CPU-bound code
-        const result = await script.runInContext(safeContext, {
+        const vmResult = script.runInContext(safeContext, {
             timeout,
             breakOnSigint: true,
         });
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            const result = await Promise.race([
+                vmResult,
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(new Error(`Interceptor timeout after ${timeout}ms`)), timeout);
+                }),
+            ]);
 
-        // Validate result
-        if (result !== undefined && !Array.isArray(result)) {
-            throw new Error('Interceptor must return an array of records or undefined');
+            if (result !== undefined && !Array.isArray(result)) {
+                throw new Error('Interceptor must return an array of records or undefined');
+            }
+
+            return result as JsonObject[] | undefined;
+        } finally {
+            if (timer) clearTimeout(timer);
         }
-
-        return result as JsonObject[] | undefined;
     }
 
     /**
@@ -434,7 +447,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         const urlSafety = await validateUrlSafety(url);
         if (!urlSafety.safe) {
             this.logger.warn('Webhook URL blocked by SSRF protection', {
-                url,
+                url: sanitizeUrlForLogging(url),
                 reason: urlSafety.reason,
             });
             return;
@@ -484,8 +497,9 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
     /**
      * Generate a consistent webhook ID for registration
      */
-    private getWebhookId(url: string, _action: WebhookHookAction): string {
-        const hash = Buffer.from(url).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, TRUNCATION.WEBHOOK_ID_HASH_LENGTH);
+    private getWebhookId(url: string, action: WebhookHookAction): string {
+        const seed = `${url}:${action.secret ?? ''}:${action.signatureHeader ?? ''}:${JSON.stringify(action.retryConfig ?? {})}`;
+        const hash = crypto.createHash('sha256').update(seed).digest('hex').slice(0, TRUNCATION.WEBHOOK_ID_HASH_LENGTH);
         return `hook_${hash}`;
     }
 
@@ -494,19 +508,22 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
      */
     private async simpleFetch(url: string, headers: Record<string, string> | undefined, body: JsonObject): Promise<void> {
         try {
-            // SSRF protection: validate URL before making the request (defense-in-depth)
             await assertUrlSafe(url);
 
             const fetchImpl = (globalThis as { fetch?: typeof fetch }).fetch;
             if (!fetchImpl) return;
-            await fetchImpl(url, {
+            const response = await fetchImpl(url, {
                 method: 'POST',
                 headers: { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...(headers ?? {}) },
                 body: JSON.stringify(body ?? {}),
+                signal: AbortSignal.timeout(WEBHOOK.TIMEOUT_MS),
             });
+            if (!response.ok) {
+                this.logger.warn('Webhook returned non-OK status', { url: sanitizeUrlForLogging(url), status: response.status });
+            }
         } catch (error) {
             this.logger.warn('Simple webhook fetch failed', {
-                url,
+                url: sanitizeUrlForLogging(url),
                 error: getErrorMessage(error),
             });
         }

@@ -3,7 +3,6 @@ import {
     ID,
     Customer,
     RequestContext,
-    TransactionalConnection,
     CustomerService,
     CustomerGroupService,
     CountryService,
@@ -35,18 +34,7 @@ import {
     shouldUpdateField,
 } from './helpers';
 
-/**
- * CustomerLoader - Refactored to extend BaseEntityLoader
- *
- * This eliminates ~60 lines of duplicate load() method code that was
- * copy-pasted across all loaders. The base class handles:
- * - Result initialization
- * - Validation loop
- * - Duplicate detection
- * - CREATE/UPDATE/UPSERT operation logic
- * - Dry run mode
- * - Error handling
- */
+/** Loads Customer entities via CustomerService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
     protected readonly logger: DataHubLogger;
@@ -55,7 +43,6 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
     private readonly lookupHelper: EntityLookupHelper<CustomerService, Customer, CustomerInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private customerService: CustomerService,
         private customerGroupService: CustomerGroupService,
         private countryService: CountryService,
@@ -107,6 +94,9 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
                 }
                 if (!addr.countryCode) {
                     errors.push({ field: 'countryCode', message: 'Country code is required', code: 'REQUIRED' });
+                }
+                if (!addr.postalCode) {
+                    errors.push({ field: 'postalCode', message: 'Postal code is required', code: 'REQUIRED' });
                 }
                 return errors;
             });
@@ -255,7 +245,6 @@ export class CustomerLoader extends BaseEntityLoader<CustomerInput, Customer> {
             await assignCustomerGroups(ctx, this.customerGroupService, customerId, record.groupCodes, this.logger);
         }
 
-        // FIX: Add address handling to updateEntity() - this was missing and caused duplicates
         if (record.addresses && shouldUpdateField('addresses', options.updateOnlyFields)) {
             const addressesMode = (options.config?.addressesMode as string) || 'UPSERT_BY_MATCH';
             const matchFieldsStr = (options.config?.addressMatchFields as string) || 'streetLine1,city,countryCode';

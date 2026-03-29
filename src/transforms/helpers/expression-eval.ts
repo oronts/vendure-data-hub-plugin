@@ -32,17 +32,13 @@ const EXPRESSION_PATTERNS = {
 } as const;
 
 export function parseConditionValue(str: string): JsonValue {
-    // Handle null/undefined keywords
     if (str === 'null' || str === 'undefined') return null;
 
-    // Handle boolean keywords
     if (str === 'true') return true;
     if (str === 'false') return false;
 
-    // Handle numeric values
     if (EXPRESSION_PATTERNS.NUMERIC.test(str)) return parseFloat(str);
 
-    // Handle quoted strings (single or double quotes)
     if ((str.startsWith("'") && str.endsWith("'")) || (str.startsWith('"') && str.endsWith('"'))) {
         return str.slice(1, -1);
     }
@@ -55,9 +51,13 @@ export function parseConditionValue(str: string): JsonValue {
 function evaluateComparison(leftValue: JsonValue, operator: string, rightValue: JsonValue): boolean {
     switch (operator) {
         case '==':
+            // eslint-disable-next-line eqeqeq
+            return leftValue == rightValue;
         case '===':
             return leftValue === rightValue;
         case '!=':
+            // eslint-disable-next-line eqeqeq
+            return leftValue != rightValue;
         case '!==':
             return leftValue !== rightValue;
         case '>':
@@ -88,19 +88,23 @@ function evaluateLengthComparison(len: number, operator: string, num: number): b
 }
 
 /** Pattern matching for safe evaluation */
+const MAX_EXPRESSION_LENGTH = 1000;
+
 export function evaluateCondition(condition: string, value: JsonValue, record?: JsonObject): boolean {
+    if (condition.length > MAX_EXPRESSION_LENGTH) return false;
     try {
         const trimmedCondition = condition.trim();
 
-        // Handle null/undefined checks
         if (trimmedCondition === 'value != null' || trimmedCondition === 'value !== null') {
-            return value !== null && value !== undefined;
+            return value != null;
         }
-        if (trimmedCondition === 'value == null' || trimmedCondition === 'value === null') {
-            return value === null || value === undefined;
+        if (trimmedCondition === 'value == null') {
+            return value == null; // eslint-disable-line eqeqeq
+        }
+        if (trimmedCondition === 'value === null') {
+            return value === null;
         }
 
-        // Handle comparison operators
         const comparisonMatch = trimmedCondition.match(EXPRESSION_PATTERNS.COMPARISON);
         if (comparisonMatch) {
             const [, operator, compareValue] = comparisonMatch;
@@ -108,7 +112,6 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
             return evaluateComparison(value, operator, parsedCompare);
         }
 
-        // Handle includes check
         if (trimmedCondition.startsWith('value.includes(')) {
             const searchMatch = trimmedCondition.match(EXPRESSION_PATTERNS.INCLUDES);
             if (searchMatch && typeof value === 'string') {
@@ -117,7 +120,6 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
             return false;
         }
 
-        // Handle startsWith
         if (trimmedCondition.startsWith('value.startsWith(')) {
             const searchMatch = trimmedCondition.match(EXPRESSION_PATTERNS.STARTS_WITH);
             if (searchMatch && typeof value === 'string') {
@@ -126,7 +128,6 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
             return false;
         }
 
-        // Handle endsWith
         if (trimmedCondition.startsWith('value.endsWith(')) {
             const searchMatch = trimmedCondition.match(EXPRESSION_PATTERNS.ENDS_WITH);
             if (searchMatch && typeof value === 'string') {
@@ -135,7 +136,6 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
             return false;
         }
 
-        // Handle length check
         const lengthMatch = trimmedCondition.match(EXPRESSION_PATTERNS.LENGTH);
         if (lengthMatch && (typeof value === 'string' || Array.isArray(value))) {
             const [, op, numberString] = lengthMatch;
@@ -143,7 +143,6 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
             return evaluateLengthComparison(value.length, op, num);
         }
 
-        // Handle record field access
         if (trimmedCondition.startsWith('record.') && record != null) {
             const fieldMatch = trimmedCondition.match(EXPRESSION_PATTERNS.RECORD_FIELD);
             if (fieldMatch) {
@@ -154,7 +153,6 @@ export function evaluateCondition(condition: string, value: JsonValue, record?: 
             }
         }
 
-        // Default: treat as truthy check
         return Boolean(value);
     } catch {
         // Condition evaluation failed - return false as fallback
@@ -170,7 +168,6 @@ function evaluateStringMethod(expression: string, value: string): JsonValue | un
     if (expression === 'value.trim()') return value.trim();
     if (expression === 'value.length') return value.length;
 
-    // Handle substring
     const substrMatch = expression.match(EXPRESSION_PATTERNS.SUBSTRING);
     if (substrMatch) {
         const start = parseInt(substrMatch[1], 10);
@@ -178,7 +175,6 @@ function evaluateStringMethod(expression: string, value: string): JsonValue | un
         return value.substring(start, end);
     }
 
-    // Handle split
     const splitMatch = expression.match(EXPRESSION_PATTERNS.SPLIT);
     if (splitMatch) {
         return value.split(splitMatch[1]);
@@ -217,31 +213,27 @@ function evaluateMathOperation(expression: string, value: number): JsonValue | u
 }
 
 export function evaluateExpression(expression: string, value: JsonValue, record?: JsonObject): JsonValue {
+    if (expression.length > MAX_EXPRESSION_LENGTH) return value;
     try {
         const trimmedExpr = expression.trim();
 
-        // Handle value reference
         if (trimmedExpr === 'value') return value;
 
-        // Handle record field access
         if (trimmedExpr.startsWith('record.') && record != null) {
             const fieldPath = trimmedExpr.substring(7);
             return getNestedValueUtil(record, fieldPath) ?? null;
         }
 
-        // Handle string methods
         if (trimmedExpr.startsWith('value.') && typeof value === 'string') {
             const result = evaluateStringMethod(trimmedExpr, value);
             if (result !== undefined) return result;
         }
 
-        // Handle array methods
         if (trimmedExpr.startsWith('value.') && Array.isArray(value)) {
             const result = evaluateArrayMethod(trimmedExpr, value);
             if (result !== undefined) return result;
         }
 
-        // Handle array index access (value[n])
         if (Array.isArray(value)) {
             const indexMatch = trimmedExpr.match(EXPRESSION_PATTERNS.ARRAY_INDEX);
             if (indexMatch) {
@@ -250,13 +242,11 @@ export function evaluateExpression(expression: string, value: JsonValue, record?
             }
         }
 
-        // Handle math operations
         if (typeof value === 'number') {
             const result = evaluateMathOperation(trimmedExpr, value);
             if (result !== undefined) return result;
         }
 
-        // Handle ternary expressions: condition ? thenValue : elseValue
         const ternaryMatch = trimmedExpr.match(EXPRESSION_PATTERNS.TERNARY);
         if (ternaryMatch) {
             const [, condition, thenExpr, elseExpr] = ternaryMatch;
@@ -266,12 +256,10 @@ export function evaluateExpression(expression: string, value: JsonValue, record?
                 : parseConditionValue(elseExpr.trim());
         }
 
-        // Handle template strings with ${} placeholders
         if (trimmedExpr.includes('${') && record != null) {
             return interpolateTemplateExpression(trimmedExpr, record, value);
         }
 
-        // Return value unchanged if expression not recognized
         return value;
     } catch {
         // Expression evaluation failed - return original value

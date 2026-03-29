@@ -207,7 +207,7 @@ export function AdvancedMapEditor({ config, onChange }: { config: JsonRecord; on
                     <div>
                         <Label className="text-xs font-medium">Sample Input (JSON array)</Label>
                         <Textarea className="font-mono text-xs min-h-[140px]" value={sample} onChange={e => setSample(e.target.value)} />
-                        {!sampleValid && (<p className="text-[11px] text-amber-600 mt-1">Enter a valid JSON array of records</p>)}
+                        {!sampleValid && (<p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">Enter a valid JSON array of records</p>)}
                         {pathList.length > 0 && (
                             <div className="mt-2">
                                 <Label className="text-xs font-medium">Field Picker</Label>
@@ -442,7 +442,7 @@ const RuleValueCell = React.memo(function RuleValueCell({ condition: c, ruleInde
             <Input value={valStr} onChange={onValChange} placeholder={placeholder} />
             {(inError || regexError) && (
                 <div className="col-span-3 -mt-1">
-                    <p className="text-[11px] text-amber-600">{inError || regexError}</p>
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400">{inError || regexError}</p>
                 </div>
             )}
         </>

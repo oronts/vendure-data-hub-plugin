@@ -87,7 +87,6 @@ export async function executeLoadWithThroughput(params: {
 }): Promise<{ ok: number; fail: number }> {
     const { ctx, step, batch, definition, loadExecutor, onRecordError } = params;
 
-    // Get throughput configuration
     const stepThroughput = step.throughput ?? {};
     const contextThroughput = definition.context?.throughput ?? {};
 
@@ -103,7 +102,6 @@ export async function executeLoadWithThroughput(params: {
     const pauseConfig = stepThroughput.pauseOnErrorRate;
     const drainStrategy = (stepThroughput.drainStrategy as DrainStrategy) ?? 'BACKOFF';
 
-    // Split into batches
     const groups = chunk(batch, batchSize);
     const batchQueue = [...groups];
     const deferredQueue = new DrainQueue();
@@ -115,9 +113,6 @@ export async function executeLoadWithThroughput(params: {
     // Get error handling config from pipeline context
     const errorHandling = definition.context?.errorHandling;
 
-    /**
-     * Process a single batch
-     */
     const runNext = async (group: RecordObject[]) => {
         const { ok, fail } = await loadExecutor.execute(ctx, step, group, onRecordError, errorHandling);
         succeeded += ok;

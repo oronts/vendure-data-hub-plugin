@@ -1,9 +1,3 @@
-/**
- * Centralized defaults barrel export
- *
- * This file re-exports all default constants from domain-specific modules.
- */
-
 // Batch processing
 export * from './batch-defaults';
 

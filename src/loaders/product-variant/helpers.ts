@@ -1,6 +1,7 @@
 import { ID, RequestContext, ProductOptionService, ProductVariantService, ProductOption } from '@vendure/core';
 import { DataHubLogger } from '../../services/logger';
 import { OptionsMode } from '../../types/index';
+import { getErrorMessage } from '../../utils/error.utils';
 
 export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
 
@@ -52,7 +53,7 @@ async function resolveOptionIds(
             }
         } catch (error) {
             notFoundCodes.push(code);
-            logger.warn(`Failed to resolve option code "${code}": ${error instanceof Error ? error.message : String(error)}`);
+            logger.warn(`Failed to resolve option code "${code}": ${getErrorMessage(error)}`);
         }
     }
 

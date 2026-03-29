@@ -69,7 +69,6 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                 baseQuery = appendIncrementalFilter(baseQuery, config, lastIncrementalValue);
             }
 
-            // Initialize pagination state
             const paginationState: PaginationState = { offset: 0, cursor: undefined };
             const maxPages = config.pagination?.maxPages ?? PAGINATION.MAX_PAGES;
             const pageSize = config.pagination?.pageSize ?? PAGINATION.DATABASE_PAGE_SIZE;
@@ -77,7 +76,6 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
             let totalRecords = 0;
             let latestIncrementalValue: JsonValue | undefined = lastIncrementalValue;
 
-            // Iterate through pages
             while (pageCount < maxPages) {
                 // Check for cancellation
                 if (await context.isCancelled()) {
@@ -109,7 +107,7 @@ export class DatabaseExtractor implements DataExtractor<DatabaseExtractorConfig>
                     // Track incremental value
                     if (config.incremental?.enabled && config.incremental.column) {
                         const incrementalValue = row[config.incremental.column];
-                        if (incrementalValue !== undefined && incrementalValue !== null) {
+                        if (incrementalValue != null) {
                             // Validate types match before comparing to avoid mixed-type > comparison
                             const canCompare = latestIncrementalValue === undefined ||
                                 typeof incrementalValue === typeof latestIncrementalValue;

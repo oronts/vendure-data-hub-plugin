@@ -42,7 +42,13 @@ export function parseResponseHeaders(
  * Build HTTP response wrapper from fetch response
  */
 export async function buildHttpResponse(response: Response): Promise<HttpResponse> {
-    const data = await response.json();
+    const text = await response.text();
+    let data: unknown;
+    try {
+        data = JSON.parse(text);
+    } catch {
+        throw new Error(`Expected JSON response but got: ${text.slice(0, 200)}`);
+    }
 
     return {
         status: response.status,
@@ -160,7 +166,10 @@ export function flattenRecord(
 ): JsonObject {
     const result: JsonObject = {};
 
+    const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
     for (const [key, value] of Object.entries(record)) {
+        if (DANGEROUS_KEYS.has(key)) continue;
         const fullKey = prefix ? `${prefix}${separator}${key}` : key;
 
         if (value !== null && typeof value === 'object' && !Array.isArray(value)) {

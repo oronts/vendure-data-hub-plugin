@@ -26,6 +26,8 @@ export const PAGINATION_PARAMS = {
 export const PAGINATION = {
     /** Maximum limit for resolver query results (security cap) */
     MAX_QUERY_LIMIT: 500,
+    /** Limit for Vendure service findAll lookups (tax categories, zones, etc.) */
+    MAX_LOOKUP_LIMIT: 9999,
     /** Maximum log entries to return for a single pipeline run */
     MAX_RUN_LOG_ENTRIES: 10000,
     /** Maximum pages to fetch from paginated APIs */
@@ -42,6 +44,8 @@ export const PAGINATION = {
     LIST_PAGE_SIZE: 20,
     /** Limit for recent logs queries */
     RECENT_LOGS_LIMIT: 100,
+    /** Maximum limit for recent logs query results */
+    MAX_RECENT_LOGS: 1000,
     /** Limit for events display */
     EVENTS_LIMIT: 50,
     /** Limit for feed preview records */

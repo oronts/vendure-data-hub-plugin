@@ -63,7 +63,7 @@ function NodePropertiesPanelComponent({
         const startW = width;
         const onMove = (ev: MouseEvent) => {
             if (!dragging.current) return;
-            // Panel opens from right — dragging left increases width
+            // Panel opens from right, dragging left increases width
             const delta = startX - ev.clientX;
             setWidth(Math.max(MIN_PANEL_WIDTH, Math.min(window.innerWidth * 0.9, startW + delta)));
         };

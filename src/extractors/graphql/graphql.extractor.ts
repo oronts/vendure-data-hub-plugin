@@ -358,7 +358,13 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
 
-                const result = await response.json() as GraphQLResponse;
+                let result: GraphQLResponse;
+                const responseText = await response.text();
+                try {
+                    result = JSON.parse(responseText) as GraphQLResponse;
+                } catch {
+                    throw new Error(`Expected JSON response but got: ${responseText.slice(0, 200)}`);
+                }
 
                 if (result.errors?.length) {
                     context.logger.debug('GraphQL response contains errors', {
