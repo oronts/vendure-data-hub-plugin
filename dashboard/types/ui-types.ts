@@ -71,7 +71,7 @@ export interface SchemaFormRendererProps {
 }
 
 export interface LoadingStateProps {
-    type?: 'TABLE' | 'FORM' | 'CARD' | 'LIST' | 'SPINNER';
+    type?: 'table' | 'form' | 'card' | 'list' | 'spinner';
     rows?: number;
     message?: string;
     className?: string;
@@ -226,7 +226,6 @@ export interface RunDetailsPanelProps {
 }
 
 export interface RunErrorsListProps {
-    runId: string;
     items: Array<{ id: string; stepKey: string; message: string; payload: unknown }>;
     onRetry: (errorId: string, patch: Record<string, unknown>) => Promise<void>;
 }

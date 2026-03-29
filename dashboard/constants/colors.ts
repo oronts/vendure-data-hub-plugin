@@ -7,7 +7,7 @@ const LOG_LEVEL_COLORS = {
 
 export const FALLBACK_COLORS = {
     MUTED: '#6b7280',
-    BORDER: '#e5e7eb',
+    BORDER: 'hsl(var(--border))',
     UNKNOWN_STEP_COLOR: '#666666',
     UNKNOWN_STEP_BG: '#f5f5f5',
     UNKNOWN_STEP_BORDER: '#cccccc',
