@@ -53,9 +53,12 @@ export class DataHubWebhookController {
             throw new HttpException('Invalid pipeline code format', HttpStatus.BAD_REQUEST);
         }
 
-        // Reject oversized payloads early (413 instead of downstream 500)
-        const contentLength = parseInt(req.headers['content-length'] as string, 10);
-        if (!isNaN(contentLength) && contentLength > WEBHOOK.MAX_PAYLOAD_SIZE) {
+        // Reject oversized payloads based on actual body size (not Content-Length header,
+        // which can be omitted or forged, and is already consumed by the time NestJS parses the body).
+        // Prefer rawBody length (exact wire bytes) over JSON.stringify (re-serialized approximation).
+        const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+        const bodySize = rawBody ? rawBody.length : Buffer.byteLength(JSON.stringify(body ?? {}));
+        if (bodySize > WEBHOOK.MAX_PAYLOAD_SIZE) {
             throw new HttpException('Payload too large', HttpStatus.PAYLOAD_TOO_LARGE);
         }
 
@@ -80,12 +83,25 @@ export class DataHubWebhookController {
             throw new HttpException('Pipeline is not configured for webhook trigger', HttpStatus.BAD_REQUEST);
         }
 
-        // Try to authenticate against each webhook trigger
-        // First successful auth wins and that trigger's config is used
+        // Separate authenticated and unauthenticated triggers
+        const authenticatedTriggers: typeof webhookTriggers = [];
+        const noneTriggers: typeof webhookTriggers = [];
+        for (const trigger of webhookTriggers) {
+            const cfg = (trigger.config ?? {}) as unknown as Partial<PipelineTrigger>;
+            if (this.resolveWebhookAuthType(cfg) === ConnectionAuthType.NONE) {
+                noneTriggers.push(trigger);
+            } else {
+                authenticatedTriggers.push(trigger);
+            }
+        }
+
+        // If any trigger requires auth, NONE triggers are not tried (prevents bypass)
+        const triggersToTry = authenticatedTriggers.length > 0 ? authenticatedTriggers : noneTriggers;
+
         let authenticatedTrigger: typeof webhookTriggers[0] | null = null;
         let lastAuthError: HttpException | null = null;
 
-        for (const trigger of webhookTriggers) {
+        for (const trigger of triggersToTry) {
             const cfg = (trigger.config ?? {}) as unknown as Partial<PipelineTrigger>;
             const authType = this.resolveWebhookAuthType(cfg);
 
@@ -96,7 +112,6 @@ export class DataHubWebhookController {
                 } else if (authType !== ConnectionAuthType.NONE) {
                     throw new HttpException('Invalid authentication type', HttpStatus.BAD_REQUEST);
                 }
-                // Auth passed - use this trigger
                 authenticatedTrigger = trigger;
                 if (authType === ConnectionAuthType.NONE) {
                     this.logger.error(
@@ -115,7 +130,6 @@ export class DataHubWebhookController {
             } catch (error) {
                 if (error instanceof HttpException) {
                     lastAuthError = error;
-                    // Continue to try next webhook trigger
                     continue;
                 }
                 throw error;
@@ -244,11 +258,30 @@ export class DataHubWebhookController {
         if (!WEBHOOK.ALLOWED_HMAC_ALGORITHMS.includes(algorithm)) {
             throw new HttpException('Unsupported HMAC algorithm', HttpStatus.BAD_REQUEST);
         }
+
+        // Use raw request bytes for HMAC verification when available.
+        // JSON.stringify(body) differs from the sender's original bytes (key ordering,
+        // whitespace, Unicode escaping) which causes signature mismatches.
+        // Enable rawBody in NestJS via app.useBodyParser('json', { rawBody: true }).
+        const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+        if (!rawBody) {
+            this.logger.warn(
+                'HMAC verification using re-serialized body (req.rawBody unavailable). ' +
+                'Enable rawBody in NestJS for reliable signature verification: ' +
+                'app.useBodyParser(\'json\', { rawBody: true })',
+                { authType: 'hmac' },
+            );
+        }
+        const payload = rawBody ?? Buffer.from(JSON.stringify(body ?? {}));
         const expectedHash = crypto.createHmac(algorithm, secretValue)
-            .update(JSON.stringify(body ?? {}))
+            .update(payload)
             .digest('hex');
 
-        if (!this.timingSafeCompare(expectedHash, sig)) {
+        // Senders may prefix the signature with the algorithm (e.g., "sha256=<hex>").
+        // Strip the prefix before comparing to allow both raw hex and prefixed formats.
+        const cleanSig = sig.startsWith(`${algorithm}=`) ? sig.slice(algorithm.length + 1) : sig;
+
+        if (!this.timingSafeCompare(expectedHash, cleanSig)) {
             throw new HttpException('Invalid signature', HttpStatus.UNAUTHORIZED);
         }
     }
@@ -405,7 +438,7 @@ export class DataHubWebhookController {
             return body as JsonValue[];
         }
 
-        // Check if any extract step defines an itemsField — use it to unwrap the body
+        // Check if any extract step defines an itemsField; use it to unwrap the body
         const extractStep = definition?.steps?.find(
             s => s.type === 'EXTRACT' && (s.config as Record<string, unknown>)?.itemsField,
         );
