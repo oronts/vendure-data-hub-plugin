@@ -45,10 +45,10 @@ export const logsPage: DashboardRouteDefinition = {
  * Logs page with tabbed layout: Overview, Log Explorer, Real-time Feed.
  */
 function LogsPage() {
-    const initialRunId = React.useMemo(() => {
-        const params = new URLSearchParams(window.location.search);
-        return params.get('runId') ?? undefined;
-    }, []);
+    const params = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams();
+    const initialRunId = params.get('runId') ?? undefined;
 
     const [activeTab, setActiveTab] = React.useState(initialRunId ? 'logs' : 'overview');
 

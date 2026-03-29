@@ -33,7 +33,7 @@ const FailedRunRow = React.memo(function FailedRunRow({
     );
 });
 
-// Failed Runs Table with virtualization
+// Failed Runs Table with load-more pagination
 export function FailedRunsTable({
     recentFailed,
     onSelectRun,

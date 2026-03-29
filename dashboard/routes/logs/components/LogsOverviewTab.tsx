@@ -22,7 +22,7 @@ import {
 } from '../../../hooks';
 import { useOptionValues } from '../../../hooks/api/use-config-options';
 import { ErrorState, LoadingState, StatCard, LoadMoreButton } from '../../../components/shared';
-import { QUERY_LIMITS, UI_DEFAULTS } from '../../../constants';
+import { QUERY_LIMITS } from '../../../constants';
 import { LevelBadge } from './LogLevelBadge';
 import type { DataHubPipeline } from '../../../types';
 
@@ -43,7 +43,7 @@ const PipelineStatCard = React.memo(function PipelineStatCard({ pipeline }: { pi
                     <span className="font-medium text-foreground">{isLoading ? '\u2014' : (stats?.total ?? 0)}</span> logs
                 </span>
                 {!isLoading && (stats?.errorsToday ?? 0) > 0 && (
-                    <span className="text-red-600">
+                    <span className="text-red-600 dark:text-red-400">
                         {stats?.errorsToday} errors today
                     </span>
                 )}
@@ -160,7 +160,7 @@ export function LogsOverviewTab() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {displayedPipelines.map((p) => (
                             <PipelineStatCard key={p.id} pipeline={p} />
                         ))}
