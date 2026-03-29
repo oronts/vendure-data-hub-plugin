@@ -17,7 +17,7 @@ import { VENDURE_ENTITY_LIST } from '../../../../shared';
 import { WizardStepContainer } from '../shared';
 import { ConfigurationNameCard, SummaryCard, SummaryCardGrid, SummaryField } from '../../shared/wizard';
 import { useAdaptersByType } from '../../../hooks/api/use-adapters';
-import { formatFieldLabel } from '../../../utils/formatters';
+import { formatKey } from '../../../utils/formatters';
 import { STEP_CONTENT, IMPORT_PLACEHOLDERS } from './constants';
 import type { ImportConfiguration } from './types';
 import type { ImportSourceConfig } from '../../../types/wizard';
@@ -256,7 +256,7 @@ function renderDynamicSourceFields(
         .filter(([, v]) => v != null && v !== '' && v !== false)
         .map(([key, value]) => {
             const schemaField = schemaFields?.find(f => f.key === key);
-            const label = schemaField?.label ?? formatFieldLabel(key);
+            const label = schemaField?.label ?? formatKey(key);
             return (
                 <SummaryField key={key} label={label}>
                     {typeof value === 'object' ? JSON.stringify(value) : String(value)}

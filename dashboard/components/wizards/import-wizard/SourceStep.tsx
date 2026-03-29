@@ -28,7 +28,7 @@ import { SelectableCard, SelectableCardGrid } from '../../shared/selectable-card
 import { FileDropzone } from '../../shared/file-dropzone';
 import { STEP_CONTENT, IMPORT_PLACEHOLDERS } from './constants';
 import { getErrorMessage } from '../../../../shared';
-import { TOAST_WIZARD, TOAST_CONNECTION, TEST_STATUS, SENTINEL_VALUES } from '../../../constants';
+import { TOAST_WIZARD, TOAST_CONNECTION, TEST_STATUS } from '../../../constants';
 import { useOptionValues } from '../../../hooks/api/use-config-options';
 import { validateUrl } from '../../../utils/form-validation';
 import { useConnections } from '../../../hooks/api/use-connections';
@@ -381,7 +381,7 @@ function ApiConfig({ config, updateConfig }: ApiConfigProps) {
         } catch (err) {
             setTestStatus(TEST_STATUS.ERROR);
             const message = err instanceof DOMException && err.name === 'AbortError'
-                ? 'Request timed out after 10 seconds'
+                ? `Request timed out after ${API_TEST_TIMEOUT_MS / 1000} seconds`
                 : err instanceof TypeError
                     ? 'Network error - this may be caused by CORS restrictions on the target server'
                     : getErrorMessage(err);
@@ -534,4 +534,4 @@ function AdapterConfigForm({ adapterCode, config, updateConfig, configKey, error
     );
 }
 
-/** All non-FILE/API source types use AdapterConfigForm above — schema-driven from backend registry */
+/** All non-FILE/API source types use AdapterConfigForm above, schema-driven from backend registry */

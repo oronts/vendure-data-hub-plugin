@@ -27,10 +27,9 @@ type CleanupStrategy = ImportStrategies['cleanupStrategy'];
 interface StrategyStepProps {
     config: Partial<ImportConfiguration>;
     updateConfig: (updates: Partial<ImportConfiguration>) => void;
-    errors?: Record<string, string>;
 }
 
-export function StrategyStep({ config, updateConfig, errors = {} }: StrategyStepProps) {
+export function StrategyStep({ config, updateConfig }: StrategyStepProps) {
     const strategies = config.strategies ?? { ...DEFAULT_IMPORT_STRATEGIES };
     const primaryKeyFields = config.targetSchema?.primaryKey
         ? (Array.isArray(config.targetSchema.primaryKey)
