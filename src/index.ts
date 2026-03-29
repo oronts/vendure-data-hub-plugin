@@ -126,7 +126,7 @@ export {
 export type { VariantWithCustomFields, ProductWithCustomFields } from './feeds/feed-generator.service';
 export { DataHubScheduleHandler, DataHubRunQueueHandler } from './jobs';
 
-export { createPipeline, definePipeline, step, steps, edge, operators } from './sdk/dsl';
+export { createPipeline, definePipeline, step, steps, edge, operators, conditions, hooks, context, throughput, capabilities } from './sdk/dsl';
 export type { PipelineBuilder } from './sdk/dsl';
 export type { ScriptFunction } from '../shared/types';
 
@@ -356,6 +356,19 @@ export { PipelineDefinitionError, PipelineDefinitionIssue } from './validation/p
 
 export { sleep } from './utils/retry.utils';
 
+// SSRF protection utilities (including DNS rebinding prevention)
+export {
+    validateUrlSafety,
+    validateUrlSafetySync,
+    assertUrlSafe,
+    isPrivateIP,
+    isBlockedHostname,
+    validateResolvedIp,
+    createSafeAgent,
+    configureGlobalSsrfProtection,
+} from './utils/url-security.utils';
+export type { UrlSecurityConfig, UrlSafetyResult } from './utils/url-security.utils';
+
 export type {
     PipelineRunJobData,
     ScheduledPipelineJobData,
@@ -420,7 +433,6 @@ export { DEFAULT_IMPORT_TEMPLATES } from './templates';
 export { TemplateRegistryService } from './services/templates/template-registry.service';
 export type { TemplateCategoryResult } from './services/templates/template-registry.service';
 
-// Import templates exports
 export {
     getImportTemplates,
     getTemplateById,

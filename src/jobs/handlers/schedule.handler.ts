@@ -304,7 +304,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         const activeRun = await runRepo.findOne({
             where: {
                 pipelineId: Number(pipelineId),
-                status: In([RunStatus.RUNNING, RunStatus.PENDING]),
+                status: In([RunStatus.RUNNING, RunStatus.PENDING, RunStatus.PAUSED]),
             },
         });
 
@@ -549,10 +549,12 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
     }
 
     clearCronKeyForPipeline(code: string): void {
-        if (this.lastCronKeyByPipeline.has(code)) {
-            this.lastCronKeyByPipeline.delete(code);
-            this.logger.debug('Cleared cron key for pipeline', { pipelineCode: code });
+        for (const key of this.lastCronKeyByPipeline.keys()) {
+            if (key === code || key.startsWith(`${code}:`)) {
+                this.lastCronKeyByPipeline.delete(key);
+            }
         }
+        this.logger.debug('Cleared cron keys for pipeline', { pipelineCode: code });
     }
 
     getCronKeyCount(): number {

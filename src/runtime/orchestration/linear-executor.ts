@@ -64,6 +64,8 @@ export interface LinearExecutionResult {
     paused?: boolean;
     /** The step key where the pipeline paused */
     pausedAtStep?: string;
+    /** True when pipeline was cancelled by user */
+    cancelled?: boolean;
 }
 
 /**
@@ -87,6 +89,7 @@ export interface LinearExecutorParams {
     onCancelRequested?: () => Promise<boolean>;
     onRecordError?: OnRecordErrorCallback;
     pipelineId?: ID;
+    pipelineCode?: string;
     runId?: ID;
     stepLog?: StepLogCallback;
 }
@@ -113,7 +116,7 @@ class StepStrategyRegistry {
 /**
  * Build strategy registry from executors.
  *
- * Note: This maps step types to concrete strategy objects for execution, which is
+ * This routes step types to concrete strategy objects for execution, which is
  * fundamentally different from the adapter-type mapping in STEP_TYPE_TO_ADAPTER_TYPE
  * (src/constants/adapters.ts). That mapping resolves step types to adapter registry
  * categories for validation. This registry routes to execution strategies, including
@@ -404,7 +407,7 @@ function publishRunProgress(
     try {
         params.domainEvents.publishRunProgress(
             String(params.runId),
-            params.definition.name ?? '',
+            params.pipelineCode ?? params.definition.name ?? '',
             progressPercent,
             `Completed step ${completedStepIndex + 1}/${totalSteps}: ${currentStepKey}`,
             state.processed,
@@ -428,15 +431,12 @@ async function executeSteps(
 
     for (let i = 0; i < params.definition.steps.length; i++) {
         const step = params.definition.steps[i];
-        // Check for cancellation
         if (await checkCancellation(params, state, step)) {
             break;
         }
 
-        // Execute the step
         await executeStep(params, registry, step, state);
 
-        // Publish run progress after each step
         publishRunProgress(params, state, i, totalSteps, step.key);
 
         // Check if a GATE step requested a pause
@@ -468,19 +468,12 @@ function publishPipelineCancelled(params: LinearExecutorParams): void {
  * Executes a linear pipeline (sequential steps)
  */
 export async function executeLinear(params: LinearExecutorParams): Promise<LinearExecutionResult> {
-    // Initialize state
     const state = createInitialState();
-
-    // Build strategy registry
     const registry = buildStrategyRegistry(params);
 
-    // Publish pipeline started
     await publishPipelineStarted(params);
-
-    // Execute all steps
     await executeSteps(params, registry, state);
 
-    // Handle cancellation
     if (state.cancelled) {
         publishPipelineCancelled(params);
     }
@@ -493,6 +486,7 @@ export async function executeLinear(params: LinearExecutorParams): Promise<Linea
         counters: state.counters,
         paused: state.paused ? true : undefined,
         pausedAtStep: state.pausedAtStep,
+        cancelled: state.cancelled ? true : undefined,
     };
 }
 
@@ -650,12 +644,9 @@ export async function executeWithSeed(
 ): Promise<{ processed: number; succeeded: number; failed: number }> {
     const { definition, onCancelRequested } = params;
 
-    // Prepare initial execution state with seed data
     const state = prepareSeededExecution(params.seed);
 
-    // Execute each step sequentially
     for (const step of definition.steps) {
-        // Check for cancellation before each step
         if (onCancelRequested && (await onCancelRequested())) {
             break;
         }
