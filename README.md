@@ -886,7 +886,7 @@ The plugin includes a full-featured admin dashboard:
 - `completedAt` and `errorMessage` fields on pipeline runs for precise tracking
 
 ### Queue Management
-- View pending, running, and failed jobs
+- View pending, running, and failed pipeline runs
 - Dead letter queue for quarantined records
 - Retry failed records with payload patching
 

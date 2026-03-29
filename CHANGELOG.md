@@ -2,6 +2,38 @@
 
 All notable changes to the Data Hub Plugin are documented here.
 
+## [0.1.6] - 2026-03-29
+
+### Added
+- **Auto-generated list query types**: Vendure now auto-generates `SortParameter`, `FilterParameter`, and `ListOptions` input types for Pipeline, Log, Connection, and Secret list queries — enabling typed sort/filter on all list endpoints
+- **Direct load strategy support in import wizard**: Strategy step now accepts all backend `LoadStrategy` values (CREATE, UPDATE, UPSERT, MERGE, SOFT_DELETE, HARD_DELETE) in addition to wizard-internal mappings
+- **Wizard field mapping for loader configs**: Import wizard now correctly maps user-facing field names (e.g. `sku`, `name`) to loader config keys (e.g. `skuField`, `nameField`) using suffix-based resolution
+- **SSRF protection for database connection strings**: DSN/key-value connection strings are now parsed and validated against the hostname blocklist (PostgreSQL `host=`, MSSQL `Server=`, Oracle `Data Source=`)
+- **Database extractor SSL support**: Full SSL/TLS configuration for PostgreSQL and MySQL connections with CA/cert/key secret references
+- **Improved secret management**: Secret resolver now masks values in API responses, edit form shows "Existing value retained" guidance
+- **Connection config editor improvements**: Dynamic form fields per connection type, header editor with add/remove, auth type switching with field caching
+- **Pipeline run metrics**: Step summary table with per-step record counts, duration, and adapter info in run detail panel
+- **Dry run enhancements**: Summary tab with record counts, Record Diff tab showing field-level changes, Simulate tab with execution preview
+
+### Fixed
+- **List query sort/filter**: Replaced manual `sort: JSON` / `filter: JSON` schema definitions with Vendure auto-generated typed parameters — sort queries no longer crash with "Cannot read properties of undefined"
+- **Import wizard strategy mapping**: Selecting UPSERT, CREATE, MERGE, SOFT_DELETE, or HARD_DELETE in the strategy step no longer throws "Unknown strategy" error
+- **Connection create default type**: Creating a new connection without changing the type dropdown now correctly submits `type: "HTTP"` instead of an empty string
+- **Secret create default provider**: Creating a new secret without changing the provider dropdown now correctly submits `provider: "INLINE"` instead of an empty string
+- **Null options crash on list queries**: Passing no options to `dataHubPipelines`, `dataHubLogs`, `dataHubConnections`, or `dataHubSecrets` no longer crashes with null reference error
+- **Entity schema field type enum**: `dataHubLoaderEntitySchemas` now returns uppercase enum values (`STRING`, `NUMBER`, `LOCALIZED_STRING`) matching the GraphQL schema
+- **Record retry crash**: `retryDataHubRecord` mutation no longer crashes when accessing run relation — uses direct `runId` column instead
+- **Checkpoint query relation**: `dataHubCheckpoint` query now loads the pipeline relation to satisfy non-nullable GraphQL field
+- **Queue producer secret resolution**: Sink queue producer now resolves connection secrets before publishing messages
+- **Webhook delivery queue cap**: Queue eviction now protects in-flight deliveries and rejects new deliveries when at capacity
+- **REST extractor connection types**: REST extractor now accepts REST and GRAPHQL connection types alongside HTTP
+
+### Changed
+- **277 files updated** across backend, dashboard, and shared modules
+- **Dashboard codegen regenerated** with typed sort/filter parameters for all list queries
+- **Loader handlers**: Improved error diagnostics with SKU and variant ID context in error messages
+- **Security hardening**: URL security utils, SQL security, code security, and encryption utilities updated
+
 ## [0.1.5] - 2026-03-05
 
 ### Added
@@ -76,7 +108,7 @@ Initial production release of the Data Hub Plugin for Vendure.
 
 #### ETL Pipeline Engine
 - **Full pipeline orchestration**: Extract → Transform → Validate → Enrich → Route → Load → Export/Feed/Sink
-- **10 step types**: TRIGGER, EXTRACT, TRANSFORM, VALIDATE, ENRICH, ROUTE, LOAD, EXPORT, FEED, SINK, GATE
+- **11 step types**: TRIGGER, EXTRACT, TRANSFORM, VALIDATE, ENRICH, ROUTE, LOAD, EXPORT, FEED, SINK, GATE
 - **2 execution modes**: Linear (sequential) and Graph (parallel DAG)
 - **Checkpoint system**: Resumable pipeline runs with state persistence
 - **Error handling**: Quarantine, retry, replay, dead letter queue
@@ -267,7 +299,7 @@ import { createPipeline, DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
 const productSync = createPipeline()
   .name('Product Import')
   .description('Daily product sync from ERP')
-  .trigger('SCHEDULE', { cronExpression: '0 2 * * *' })
+  .trigger('start', { type: 'SCHEDULE', cron: '0 2 * * *' })
   .extract('fetch-products', {
     adapterCode: 'httpApi',
     'connection.endpoint': 'https://erp.example.com/api/products',
@@ -337,7 +369,7 @@ DataHubPlugin.init({
 
 ### API
 
-**GraphQL API** (18 resolvers):
+**GraphQL API** (22 resolvers):
 - Pipeline CRUD operations
 - Run execution and monitoring
 - Connection management

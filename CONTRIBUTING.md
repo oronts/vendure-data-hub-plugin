@@ -49,7 +49,7 @@ data-hub/
 │   ├── entities/          # TypeORM entities (Pipeline, PipelineRun, etc.)
 │   ├── extractors/        # Data source extractors (REST, GraphQL, CSV, etc.)
 │   ├── feeds/             # Product feed generators (Google, Meta, Amazon, Custom)
-│   ├── jobs/              # Background job handlers
+│   ├── jobs/              # Pipeline execution handlers
 │   ├── loaders/           # Entity loaders (Product, Customer, Order, etc.)
 │   ├── mappers/           # Field mapping utilities
 │   ├── operators/         # Transform operators (string, numeric, date, etc.)
@@ -149,7 +149,7 @@ Types:
 
 1. Create a new file in `src/loaders/`
 2. Implement the `LoaderAdapter` interface
-3. Register it in `src/loaders/registry.ts`
+3. Register it in `src/runtime/executors/loaders/loader-handler-registry.ts`
 4. Add tests
 
 ### Adding a Transform Operator
