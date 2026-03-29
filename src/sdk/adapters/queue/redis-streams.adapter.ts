@@ -344,7 +344,6 @@ export class RedisStreamsAdapter implements QueueAdapter {
         const groupName = config.consumerGroup ?? 'datahub-consumers';
         const consumerName = config.consumerName ?? `consumer-${process.pid}`;
 
-        // Ensure consumer group exists
         await ensureConsumerGroup(client, streamKey, groupName);
 
         // Read new messages (>)
@@ -358,7 +357,8 @@ export class RedisStreamsAdapter implements QueueAdapter {
         const results: ConsumeResult[] = [];
 
         if (!response || response.length === 0) {
-            return results;
+            const claimed = await this.claimStaleMessages(connectionConfig, queueName, INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS, options.count);
+            return claimed;
         }
 
         // response format: [[streamKey, [[id, fields], ...]]]
@@ -539,11 +539,21 @@ export class RedisStreamsAdapter implements QueueAdapter {
                 payload = { rawPayload: parsed.payload };
             }
 
+            const deliveryTag = `redis:${streamKey}:${groupName}:${streamId}`;
+
             results.push({
                 messageId: parsed.messageId ?? streamId,
                 payload,
-                deliveryTag: `redis:${streamKey}:${groupName}:${streamId}`,
+                deliveryTag,
                 redelivered: true,
+            });
+
+            // Register in pendingEntries so ack/nack can find these claimed messages
+            pendingEntries.set(deliveryTag, {
+                streamKey,
+                consumerGroup: groupName,
+                messageId: streamId,
+                createdAt: Date.now(),
             });
         }
 

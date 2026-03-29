@@ -15,7 +15,7 @@ import { JsonObject, JsonValue, Throughput } from '../../types/index';
 import type { OperatorConfig } from '../../types/step-configs';
 import { LoadStrategy, ChannelStrategy, LanguageStrategyValue, ValidationModeType, ConflictStrategyValue, TriggerType, FeedFormat, FeedType, SinkType } from '../types/index';
 import { RouteOperator } from '../constants';
-import { ConnectionAuthType } from '../../constants/enums';
+import { ConnectionAuthType, ExportFormatType } from '../../constants/enums';
 
 // TRIGGER CONFIG
 
@@ -309,7 +309,6 @@ export interface LoadStepConfig {
 
 // EXPORT STEP CONFIG
 
-import { ExportFormatType } from '../../constants/enums';
 type ExportTarget = 'file' | 'api' | 'webhook' | 's3' | 'sftp' | 'email';
 
 export interface ExportStepConfig {
@@ -467,7 +466,7 @@ export interface SinkStepConfig {
     port?: number;
     protocol?: 'http' | 'https';
     // Index settings
-    indexName: string;
+    indexName?: string;
     indexPrefix?: string;
     // Elasticsearch/OpenSearch specific
     pipeline?: string;

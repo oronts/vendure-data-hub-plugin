@@ -663,12 +663,12 @@ export interface GraphqlMutationConfig {
     adapterCode: 'graphqlMutation';
     /** Endpoint URL */
     endpoint: string;
-    /** GraphQL mutation */
-    mutation: Record<string, unknown>;
-    /** Variable mapping (JSON) */
-    variableMapping: Record<string, unknown>;
-    /** Headers (JSON) */
-    headers?: Record<string, unknown>;
+    /** GraphQL mutation string */
+    mutation: string;
+    /** Variable mapping */
+    variableMapping: Record<string, string>;
+    /** HTTP headers */
+    headers?: Record<string, string>;
     /** Auth preset */
     auth?: string;
     /** Bearer token secret code */

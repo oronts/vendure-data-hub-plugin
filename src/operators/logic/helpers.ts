@@ -46,10 +46,11 @@ export function evaluateSwitch(
 function looseEquals(a: JsonValue, b: JsonValue): boolean {
     if (a === b) return true;
     if (a === null || b === null) return a === b;
+    if (typeof a === 'object' || typeof b === 'object') {
+        return JSON.stringify(a) === JSON.stringify(b);
+    }
     if (typeof a === typeof b) return a === b;
-    const leftString = String(a);
-    const rightString = String(b);
-    return leftString === rightString;
+    return String(a) === String(b);
 }
 
 export function filterRecords(

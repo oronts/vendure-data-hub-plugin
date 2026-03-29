@@ -73,12 +73,6 @@ export const HTTP_API_EXTRACTOR_SCHEMA: StepConfigSchema = {
             defaultValue: PAGINATION.PAGE_SIZE,
         },
         {
-            key: 'rateLimit.requestsPerSecond',
-            label: 'Rate Limit (req/sec)',
-            description: 'Maximum requests per second',
-            type: 'number',
-        },
-        {
             key: 'retry.maxAttempts',
             label: 'Max Retry Attempts',
             type: 'number',

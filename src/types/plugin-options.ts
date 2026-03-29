@@ -112,22 +112,10 @@ export interface ScriptSecurityConfig {
     validation?: Partial<CodeSecurityConfig>;
 
     /**
-     * Maximum number of cached compiled expressions
-     * @default 1000
-     */
-    maxCacheSize?: number;
-
-    /**
      * Default timeout for script execution in milliseconds
      * @default 5000
      */
     defaultTimeoutMs?: number;
-
-    /**
-     * Whether to enable expression caching
-     * @default true
-     */
-    enableCache?: boolean;
 }
 
 /**

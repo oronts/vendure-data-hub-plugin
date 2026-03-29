@@ -1,4 +1,5 @@
 import { HookActionType, RouteConditionOperator } from '../constants/enums';
+import { TRIGGER_TYPE } from '../../shared/constants/enums';
 
 /**
  * Hook action types for pipeline lifecycle events.
@@ -33,7 +34,7 @@ export type HookAction = typeof HOOK_ACTION[keyof typeof HOOK_ACTION];
  * Default trigger type used when no trigger config is provided.
  * @default 'manual'
  */
-export const DEFAULT_TRIGGER_TYPE = 'MANUAL';
+export const DEFAULT_TRIGGER_TYPE = TRIGGER_TYPE.MANUAL;
 
 /**
  * Route condition comparison operators.

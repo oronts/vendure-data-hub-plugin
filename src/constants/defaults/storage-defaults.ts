@@ -34,6 +34,28 @@ export const FILE_STORAGE = {
 } as const;
 
 /**
+ * S3 storage defaults
+ */
+export const S3_STORAGE = {
+    /** Default signed URL expiry in seconds (1 hour) */
+    SIGNED_URL_EXPIRY_SEC: 3600,
+} as const;
+
+/**
+ * File watch trigger defaults
+ */
+export const FILE_WATCH = {
+    /** Minimum allowed polling interval in milliseconds (30 seconds) */
+    MIN_POLL_INTERVAL_MS: 30_000,
+    /** Default polling interval in milliseconds (5 minutes) */
+    DEFAULT_POLL_INTERVAL_MS: 5 * 60 * 1000,
+    /** Default minimum file age in milliseconds (30 seconds) */
+    DEFAULT_MIN_FILE_AGE_MS: 30_000,
+    /** Maximum number of active file watchers */
+    MAX_WATCHERS: 500,
+} as const;
+
+/**
  * Generate output file path based on pipeline config
  */
 export function getOutputPath(pipelineCode: string, format: string, extension?: string): string {

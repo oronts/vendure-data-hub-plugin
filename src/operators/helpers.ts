@@ -71,7 +71,7 @@ export function compare(
             }
             return false;
         case 'exists':
-            return left !== undefined && left !== null;
+            return left != null;
         case 'notExists':
             return left === undefined || left === null;
         case 'isNull':
@@ -102,7 +102,7 @@ export function slugify(text: string, separator = '-'): string {
 }
 
 export function simpleHash(value: JsonValue): string {
-    const str = JSON.stringify(value);
+    const str = JSON.stringify(value) ?? '';
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
         const char = str.charCodeAt(i);
@@ -136,14 +136,15 @@ export function uniqueArray(arr: JsonValue[], byKey?: string): JsonValue[] {
         });
     }
 
-    const seen = new Set<JsonValue>();
+    const seen = new Set<string>();
     return arr.filter(item => {
         if (typeof item !== 'object' || item === null || Array.isArray(item)) {
             return true;
         }
         const keyValue = getNestedValue(item as JsonObject, byKey);
-        if (seen.has(keyValue ?? null)) return false;
-        seen.add(keyValue ?? null);
+        const keyStr = JSON.stringify(keyValue) ?? 'null';
+        if (seen.has(keyStr)) return false;
+        seen.add(keyStr);
         return true;
     });
 }

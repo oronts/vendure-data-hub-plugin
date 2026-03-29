@@ -159,7 +159,6 @@ export function applyExpand(
     const arrayValue = getNestedValue(record, path);
 
     if (!Array.isArray(arrayValue) || arrayValue.length === 0) {
-        // Return empty array or single record based on mergeParent
         return mergeParent ? [deepClone(record)] : [];
     }
 
@@ -185,7 +184,7 @@ export function applyExpand(
             }
 
             if (element && typeof element === 'object' && !Array.isArray(element)) {
-                Object.assign(newRecord, element);
+                Object.assign(newRecord, deepClone(element));
             } else {
                 setNestedValue(newRecord, '_item', element);
             }
@@ -204,7 +203,7 @@ export function applyExpand(
                 }
             }
         } else {
-            // Just the element itself
+            // No parent fields, use element directly as output record
             if (element && typeof element === 'object' && !Array.isArray(element)) {
                 newRecord = deepClone(element) as JsonObject;
             } else {

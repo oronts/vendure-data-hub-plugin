@@ -2,38 +2,38 @@ import { JsonObject } from '../../../types/index';
 import { AckMode } from '../../../constants/enums';
 
 export interface QueueMessage {
-    id: string;
-    payload: JsonObject;
-    routingKey?: string;
-    headers?: Record<string, string>;
-    priority?: number;
-    ttlMs?: number;
-    persistent?: boolean;
-    delayMs?: number;
+    readonly id: string;
+    readonly payload: JsonObject;
+    readonly routingKey?: string;
+    readonly headers?: Record<string, string>;
+    readonly priority?: number;
+    readonly ttlMs?: number;
+    readonly persistent?: boolean;
+    readonly delayMs?: number;
 }
 
 export interface PublishResult {
-    success: boolean;
-    messageId: string;
-    error?: string;
+    readonly success: boolean;
+    readonly messageId: string;
+    readonly error?: string;
 }
 
 export interface ConsumeResult {
-    messageId: string;
-    payload: JsonObject;
-    headers?: Record<string, string>;
-    deliveryTag?: string;
-    redelivered?: boolean;
+    readonly messageId: string;
+    readonly payload: JsonObject;
+    readonly headers?: Record<string, string>;
+    readonly deliveryTag?: string;
+    readonly redelivered?: boolean;
 }
 
 export interface QueueConnectionConfig {
-    host: string;
-    port: number;
-    username?: string;
-    password?: string;
-    vhost?: string;
-    useTls?: boolean;
-    [key: string]: unknown;
+    readonly host: string;
+    readonly port: number;
+    readonly username?: string;
+    readonly password?: string;
+    readonly vhost?: string;
+    readonly useTls?: boolean;
+    readonly [key: string]: unknown;
 }
 
 export interface QueueAdapter {
@@ -62,4 +62,6 @@ export interface QueueAdapter {
     nack(connectionConfig: QueueConnectionConfig, deliveryTag: string, requeue: boolean): Promise<void>;
 
     testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean>;
+
+    destroy(): Promise<void>;
 }

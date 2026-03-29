@@ -207,7 +207,7 @@ function validateEdges(
             } else {
                 const branches = ((fromStep.config as JsonObject)?.branches ?? []) as Array<{ name: string }>;
                 const names = new Set<string>(branches.map(b => String(b?.name ?? '')));
-                // 'default' is a built-in branch for unmatched records — always valid
+                // 'default' is a built-in branch for unmatched records, always valid
                 if (edge.branch !== 'default' && !names.has(edge.branch)) {
                     errors.push(createIssue(
                         `Edge from "${edge.from}" references unknown branch "${edge.branch}"`,
@@ -319,13 +319,6 @@ function validateTopology(
             undefined,
             'topology',
         ));
-    } else if (executionRoots.length === 1 && triggerRoots.length > 0) {
-        // Has both triggers and an unconnected execution root - triggers should connect to execution
-        const executionRoot = stepByKey.get(executionRoots[0]);
-        if (executionRoot?.type === StepType.EXTRACT) {
-            // This is valid - triggers connect to the extract step which is also a root
-            // Actually check if all triggers connect to the same step
-        }
     } else if (executionRoots.length === 1 && triggerRoots.length === 0) {
         // Single execution root with no triggers - must be EXTRACT
         const root = stepByKey.get(executionRoots[0]);
@@ -369,9 +362,9 @@ function validateTopology(
 
     // Reachability: at least one LOAD reachable from root
     const hasLoad = steps.some(s => s.type === StepType.LOAD);
-    if (roots.length === 1 && hasLoad) {
+    if (roots.length > 0 && hasLoad) {
         const reachable = new Set<string>();
-        const stack = [roots[0]];
+        const stack = [...roots];
 
         while (stack.length > 0) {
             const node = stack.pop();

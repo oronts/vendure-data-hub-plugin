@@ -19,8 +19,8 @@ export class PipelineRun extends VendureEntity {
     pipeline!: Pipeline;
 
     @Index()
-    @Column({ type: 'int', nullable: true })
-    pipelineId!: number | null;
+    @Column({ type: 'int' })
+    pipelineId!: number;
 
     @Column({ type: 'varchar', length: 20 })
     status!: RunStatus;
@@ -47,12 +47,12 @@ export class PipelineRun extends VendureEntity {
     @Column({ type: 'varchar', length: 255, nullable: true })
     triggeredBy!: string | null;
 
-    /** Virtual alias for `finishedAt` — exposed on the GraphQL type as `completedAt` */
+    /** Virtual alias for `finishedAt` - exposed on the GraphQL type as `completedAt` */
     get completedAt(): Date | null {
         return this.finishedAt;
     }
 
-    /** Virtual alias for `error` — exposed on the GraphQL type as `errorMessage` */
+    /** Virtual alias for `error` - exposed on the GraphQL type as `errorMessage` */
     get errorMessage(): string | null {
         return this.error;
     }

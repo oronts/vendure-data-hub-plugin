@@ -87,10 +87,10 @@ function validateIdentifiers(config: CdcExtractorConfig): void {
  */
 function buildColumnList(config: CdcExtractorConfig): string {
     if (config.columns && config.columns.length > 0) {
-        // Always include the primary key and tracking column
         const columnSet = new Set(config.columns);
         columnSet.add(config.primaryKey);
         columnSet.add(config.trackingColumn);
+        if (config.deleteColumn) columnSet.add(config.deleteColumn);
         return Array.from(columnSet).map(escapeSqlIdentifier).join(', ');
     }
     return '*';
@@ -141,7 +141,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
             const escapedTable = escapeSqlIdentifier(config.table);
             const escapedTrackingCol = escapeSqlIdentifier(config.trackingColumn);
 
-            // -- Query for INSERT/UPDATE changes --
+            // Query for INSERT/UPDATE changes
             let changeQuery: string;
             let changeParams: unknown[];
 
@@ -188,7 +188,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
 
                 // Track the latest value for checkpointing
                 const trackingValue = row[config.trackingColumn];
-                if (trackingValue !== undefined && trackingValue !== null) {
+                if (trackingValue != null) {
                     if (
                         latestTrackingValue === undefined ||
                         compareTrackingValues(trackingValue, latestTrackingValue) > 0
@@ -199,7 +199,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
 
                 // Determine operation type for downstream loaders.
                 // On first run (no checkpoint / no tracking value), we use UPSERT because
-                // the records may already exist in Vendure — we cannot assume they are all new
+                // the records may already exist in Vendure. We cannot assume they are all new
                 // INSERTs. UPSERT lets the loader decide whether to create or update each record.
                 // On subsequent runs (tracking value present), all rows returned by the
                 // incremental query are known modifications, so UPDATE is appropriate.
@@ -216,7 +216,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                 };
             }
 
-            // -- Query for DELETE changes (soft-deletes) --
+            // Query for DELETE changes (soft-deletes)
             if (config.includeDeletes && config.deleteColumn) {
                 const escapedDeleteCol = escapeSqlIdentifier(config.deleteColumn);
 
@@ -265,7 +265,7 @@ export class CdcExtractor implements DataExtractor<CdcExtractorConfig> {
                     totalRecords++;
 
                     const deleteValue = row[config.deleteColumn];
-                    if (deleteValue !== undefined && deleteValue !== null) {
+                    if (deleteValue != null) {
                         if (
                             latestDeleteValue === undefined ||
                             compareTrackingValues(deleteValue, latestDeleteValue) > 0

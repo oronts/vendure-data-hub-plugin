@@ -17,8 +17,8 @@ export class DataHubRecordRetryAudit extends VendureEntity {
     error!: DataHubRecordError;
 
     @Index()
-    @Column({ type: 'int', nullable: true })
-    errorId!: number | null;
+    @Column({ type: 'int' })
+    errorId!: number;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
     userId!: string | null;

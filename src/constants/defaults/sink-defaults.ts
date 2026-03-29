@@ -16,6 +16,8 @@ export const SINK = {
     WEBHOOK_BATCH_SIZE: 100,
     /** Base delay in ms for exponential backoff */
     BACKOFF_BASE_DELAY_MS: 100,
+    /** Default Typesense port */
+    TYPESENSE_DEFAULT_PORT: 8108,
 } as const;
 
 /**

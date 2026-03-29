@@ -402,12 +402,12 @@ export const operators = {
         return { op: TRANSFORM_OPERATOR.ENRICH, args: config };
     },
 
-    /** `operators.defaults({ 'status': 'active', 'quantity': 0 })` -- alias for enrich with defaults */
+    /** `operators.defaults({ 'status': 'active', 'quantity': 0 })`. Alias for enrich with defaults. */
     defaults(fields: Record<string, JsonValue>): OperatorConfig {
         return { op: TRANSFORM_OPERATOR.ENRICH, args: { defaults: fields } };
     },
 
-    /** `operators.default('status', 'active')` -- set a single default value */
+    /** `operators.default('status', 'active')`. Sets a single default value. */
     default(path: string, value: JsonValue): OperatorConfig {
         validateNonEmptyString(path, 'Path');
         return { op: TRANSFORM_OPERATOR.DEFAULT, args: { path, value } };

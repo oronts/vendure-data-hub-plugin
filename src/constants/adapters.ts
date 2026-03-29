@@ -3,7 +3,7 @@
  *
  * Centralized constants for adapter codes and mappings used throughout the DataHub plugin.
  *
- * CODE constants are auto-derived from handler registries -- adding a new adapter
+ * CODE constants are auto-derived from handler registries. Adding a new adapter
  * to a registry automatically generates its SCREAMING_SNAKE_CASE constant here.
  */
 

@@ -167,18 +167,18 @@ export function applyExtractRegex(
 
     if (typeof value === 'string') {
         try {
-            const regex = createSafeRegex(pattern, flags);
+            const safeFlags = flags?.replace(/g/g, '') ?? '';
+            const regex = createSafeRegex(pattern, safeFlags);
             const match = value.match(regex);
 
             if (match) {
-                // Group 0 is the full match, 1+ are capture groups
                 const extractedValue = group < match.length ? match[group] : match[0];
                 setNestedValue(result, target, extractedValue ?? null);
             } else {
                 setNestedValue(result, target, null);
             }
         } catch {
-            // Invalid regex pattern - leave target unchanged
+            // leave target unchanged on invalid pattern
         }
     }
 

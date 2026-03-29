@@ -1,20 +1,4 @@
-/**
- * RabbitMQ HTTP Management API Adapter
- *
- * Fallback RabbitMQ adapter using HTTP Management API (port 15672).
- * Use this adapter when:
- * - amqplib is not available
- * - You only need basic publish/consume without fine-grained ack control
- * - Testing or development environments
- *
- * For production deployments requiring proper message acknowledgment,
- * use the 'rabbitmq-amqp' adapter instead.
- *
- * Limitations:
- * - Individual ack/nack not supported (messages are auto-acked on consume)
- * - Higher latency than AMQP protocol
- * - Requires RabbitMQ Management Plugin enabled
- */
+/** RabbitMQ HTTP Management API adapter. For production use the AMQP adapter instead. */
 
 import {
     QueueAdapter,
@@ -25,13 +9,13 @@ import {
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
 import { AckMode } from '../../../constants/enums';
-import { HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, HTTP_STATUS } from '../../../constants/index';
+import { HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, HTTP_STATUS, HTTP } from '../../../constants/index';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
-import { DataHubLogger } from '../../../services/logger/datahub-logger';
+import { DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 
-const logger = new DataHubLogger(LOGGER_CONTEXTS.RABBITMQ_HTTP_ADAPTER);
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.RABBITMQ_HTTP_ADAPTER);
 
 export class RabbitMQAdapter implements QueueAdapter {
     readonly code = 'rabbitmq';
@@ -92,6 +76,7 @@ export class RabbitMQAdapter implements QueueAdapter {
                         [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
                     },
                     body: JSON.stringify(rabbitMessage),
+                    signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
                 });
 
                 if (response.ok) {
@@ -145,9 +130,10 @@ export class RabbitMQAdapter implements QueueAdapter {
                 },
                 body: JSON.stringify({
                     count: options.count,
-                    ackmode: options.ackMode === AckMode.AUTO ? 'ack_requeue_false' : 'ack_requeue_true',
+                    ackmode: 'ack_requeue_false',
                     encoding: 'auto',
                 }),
+                signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
             });
 
             if (!response.ok) {
@@ -214,6 +200,10 @@ export class RabbitMQAdapter implements QueueAdapter {
         logger.warn('RabbitMQ HTTP adapter does not support individual message rejection. Messages are auto-acked on consume. Use rabbitmq-amqp adapter for manual nack support.');
     }
 
+    async destroy(): Promise<void> {
+        // No persistent resources to clean up for HTTP-based adapter
+    }
+
     async testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean> {
         const baseUrl = this.buildBaseUrl(connectionConfig);
         const auth = this.buildAuthHeader(connectionConfig);
@@ -222,6 +212,7 @@ export class RabbitMQAdapter implements QueueAdapter {
             const response = await fetch(`${baseUrl}/overview`, {
                 method: 'GET',
                 headers: { [HTTP_HEADERS.AUTHORIZATION]: auth },
+                signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
             });
             return response.ok;
         } catch {

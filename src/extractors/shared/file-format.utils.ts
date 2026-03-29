@@ -5,7 +5,7 @@ import { FileParserService } from '../../parsers/file-parser.service';
 import { JsonObject } from '../../types/index';
 
 /**
- * Extension-to-format mapping — auto-derived from FILE_FORMAT_METADATA.
+ * Extension-to-format mapping - auto-derived from FILE_FORMAT_METADATA.
  * Only includes parseable formats (CSV, JSON, XML, XLSX).
  */
 export const FILE_FORMAT_MAP: Record<string, FileFormat> = (() => {
@@ -32,7 +32,7 @@ export function extractFileExtension(filenameOrUrl: string): string {
             pathname = new URL(filenameOrUrl).pathname;
         }
     } catch {
-        // Not a valid URL -- fall through to path-based extraction
+        // Not a valid URL, fall through to path-based extraction
     }
     const ext = path.extname(pathname);
     // path.extname returns '' for no extension, '.ext' otherwise

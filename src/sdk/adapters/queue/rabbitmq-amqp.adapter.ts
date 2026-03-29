@@ -19,11 +19,11 @@ import {
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
 import { AckMode, INTERNAL_TIMINGS, LOGGER_CONTEXTS, CONTENT_TYPES } from '../../../constants';
-import { DataHubLogger } from '../../../services/logger';
+import { DataHubLoggerFactory } from '../../../services/logger';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
 
-const logger = new DataHubLogger(LOGGER_CONTEXTS.RABBITMQ_ADAPTER);
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.RABBITMQ_ADAPTER);
 
 // Types for amqplib - using any for flexibility since types may vary by version
 type AmqpConnection = {
@@ -296,7 +296,6 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         const { channel } = await getConnection(connectionConfig);
         const results: PublishResult[] = [];
 
-        // Ensure queue exists
         await channel.assertQueue(queueName, {
             durable: true,
             arguments: {
@@ -368,7 +367,6 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             await channel.prefetch(options.prefetch);
         }
 
-        // Ensure queue exists
         await channel.assertQueue(queueName, { durable: true });
 
         // Get messages one by one up to count

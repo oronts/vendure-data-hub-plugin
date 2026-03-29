@@ -9,7 +9,7 @@ const MAX_REGISTRY_SIZE = 1000;
 const VALID_ADAPTER_TYPES = new Set(Object.values(AdapterType));
 
 function validateAdapterCode(code: string): void {
-    if (!code || typeof code !== 'string') {
+    if (!code) {
         throw new Error('Adapter code must be a non-empty string');
     }
     if (code.trim() !== code) {
@@ -21,7 +21,7 @@ function validateAdapterCode(code: string): void {
 }
 
 function validateAdapterType(type: string): void {
-    if (!type || typeof type !== 'string') {
+    if (!type) {
         throw new Error('Adapter type must be a non-empty string');
     }
     if (!VALID_ADAPTER_TYPES.has(type as AdapterType)) {

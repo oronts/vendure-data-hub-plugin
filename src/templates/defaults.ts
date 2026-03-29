@@ -20,7 +20,7 @@ export const DEFAULT_IMPORT_TEMPLATES: CustomImportTemplate[] = [
         formats: ['API'],
         definition: {
             sourceType: 'API',
-            targetEntity: 'Product',
+            targetEntity: 'product',
             existingRecords: 'UPDATE',
             lookupFields: ['sku'],
             fieldMappings: [
@@ -44,7 +44,7 @@ export const DEFAULT_IMPORT_TEMPLATES: CustomImportTemplate[] = [
         definition: {
             sourceType: 'FILE',
             fileFormat: 'JSON',
-            targetEntity: 'Product',
+            targetEntity: 'product',
             existingRecords: 'UPDATE',
             lookupFields: ['sku'],
             fieldMappings: [
@@ -70,7 +70,7 @@ export const DEFAULT_IMPORT_TEMPLATES: CustomImportTemplate[] = [
         definition: {
             sourceType: 'FILE',
             fileFormat: 'CSV',
-            targetEntity: 'Product',
+            targetEntity: 'product',
             existingRecords: 'UPDATE',
             lookupFields: ['sku'],
             fieldMappings: [
@@ -95,7 +95,7 @@ export const DEFAULT_IMPORT_TEMPLATES: CustomImportTemplate[] = [
         definition: {
             sourceType: 'FILE',
             fileFormat: 'XML',
-            targetEntity: 'Product',
+            targetEntity: 'product',
             existingRecords: 'UPDATE',
             lookupFields: ['SKU'],
             fieldMappings: [
@@ -119,7 +119,7 @@ export const DEFAULT_IMPORT_TEMPLATES: CustomImportTemplate[] = [
         formats: ['API'],
         definition: {
             sourceType: 'API',
-            targetEntity: 'StockLevel',
+            targetEntity: 'inventory',
             existingRecords: 'UPDATE',
             lookupFields: ['sku'],
             fieldMappings: [
@@ -140,7 +140,7 @@ export const DEFAULT_IMPORT_TEMPLATES: CustomImportTemplate[] = [
         formats: ['API'],
         definition: {
             sourceType: 'API',
-            targetEntity: 'Customer',
+            targetEntity: 'customer',
             existingRecords: 'UPDATE',
             lookupFields: ['email'],
             fieldMappings: [

@@ -78,8 +78,8 @@ const CIRCUIT_BREAKER_CONFIG = {
  * Rate limiter configuration (using constants from defaults)
  */
 const RATE_LIMIT_CONFIG = {
-    defaultRequestsPerSecond: INTERNAL_TIMINGS.DEFAULT_WEBHOOK_RATE_LIMIT,  // Default rate limit
-    windowMs: TIME_UNITS.SECOND,  // 1 second sliding window
+    defaultRequestsPerSecond: Math.ceil(INTERNAL_TIMINGS.DEFAULT_WEBHOOK_RATE_LIMIT / 60),
+    windowMs: TIME_UNITS.SECOND,
 };
 
 /**
@@ -550,13 +550,11 @@ export async function applyHttpLookupBatch(
         const promises = batch.map(record => applyHttpLookup(record, config, secretResolver));
         const batchResults = await Promise.all(promises);
 
-        for (const { record, error, skipped } of batchResults) {
+        for (const { record, error } of batchResults) {
             if (error) {
                 errors.push({ record, message: error });
             }
-            if (!skipped) {
-                results.push(record);
-            }
+            results.push(record);
         }
     }
 
@@ -591,7 +589,7 @@ export function applyLookup(
     const sourceValue = getNestedValue(record, source);
 
     let lookupResult: JsonValue;
-    if (sourceValue !== undefined && sourceValue !== null) {
+    if (sourceValue != null) {
         const key = String(sourceValue);
         lookupResult = map[key] ?? defaultValue ?? null;
     } else {
@@ -644,7 +642,7 @@ export function applyCoalesce(
     let foundValue: JsonValue = null;
     for (const path of paths) {
         const value = getNestedValue(record, path);
-        if (value !== null && value !== undefined && value !== '') {
+        if (value != null && value !== '') {
             foundValue = value;
             break;
         }

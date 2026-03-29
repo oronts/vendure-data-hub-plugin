@@ -5,7 +5,7 @@ import { Pipeline } from '../pipeline/pipeline.entity';
 import { TABLE_NAMES } from '../../constants/table-names';
 
 @Entity(TABLE_NAMES.CHECKPOINT)
-@Index(['pipelineId', 'createdAt']) // Composite index for pipeline checkpoint history lookups
+@Index(['pipelineId', 'createdAt'])
 export class DataHubCheckpoint extends VendureEntity {
     constructor(input?: DeepPartial<DataHubCheckpoint>) {
         super(input);
@@ -15,8 +15,8 @@ export class DataHubCheckpoint extends VendureEntity {
     pipeline!: Pipeline;
 
     @Index()
-    @Column({ type: 'int', nullable: true })
-    pipelineId!: number | null;
+    @Column({ type: 'int' })
+    pipelineId!: number;
 
     @Column({ type: 'simple-json' })
     data!: JsonObject;

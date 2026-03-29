@@ -12,10 +12,12 @@ import {
     FACEBOOK_AVAILABILITY,
     GENERIC_AVAILABILITY,
     FEED_DEFAULTS,
+    FEED_LIMITS,
     GoogleAvailabilityStatus,
     FacebookAvailabilityStatus,
     GenericAvailabilityStatus,
 } from './feed-constants';
+import { TRANSFORM_LIMITS } from '../../constants';
 
 /**
  * Extended variant type for Vendure versions where stockOnHand is a direct property
@@ -44,7 +46,7 @@ export function formatPrice(priceInCents: number, currency: string): string | nu
     if (!currency || typeof priceInCents !== 'number' || isNaN(priceInCents)) {
         return null;
     }
-    return `${(priceInCents / 100).toFixed(2)} ${currency}`;
+    return `${(priceInCents / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER).toFixed(TRANSFORM_LIMITS.CURRENCY_DECIMAL_PLACES)} ${currency}`;
 }
 
 /**
@@ -179,7 +181,7 @@ export async function getProductType(
     if (!product) return undefined;
 
     // Get product type from collections using channel-scoped repository.
-    // NOTE: 'collection_product_variants_product_variant' is the TypeORM-generated join table
+    // 'collection_product_variants_product_variant' is the TypeORM-generated join table
     // for the Collection.productVariants ManyToMany relation. If Vendure changes its entity
     // relationships or table naming strategy, this join table name may need updating.
     try {
@@ -282,7 +284,7 @@ export function extractCustomLabels(
     if (!customFields) return {};
 
     const labels: Record<string, string> = {};
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < FEED_LIMITS.MAX_CUSTOM_LABELS; i++) {
         const key = `customLabel${i}`;
         const value = toStringOrUndefined(customFields[key]);
         if (value) {

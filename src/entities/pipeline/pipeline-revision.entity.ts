@@ -30,8 +30,8 @@ export class PipelineRevision extends VendureEntity {
     pipeline!: Pipeline;
 
     @Index()
-    @Column({ type: 'int', nullable: true })
-    pipelineId!: number | null;
+    @Column({ type: 'int' })
+    pipelineId!: number;
 
     @Column({ type: 'int', default: 0 })
     version!: number;

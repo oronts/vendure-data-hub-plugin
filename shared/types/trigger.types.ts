@@ -121,7 +121,7 @@ export interface WebhookTriggerConfig {
  */
 export interface EventTriggerConfig {
     /** Event type to listen for (e.g., "ProductEvent", "OrderStateTransitionEvent") */
-    eventType: string;
+    event: string;
     /** Entity type filter (optional) */
     entityType?: string;
     /** Conditions to filter events */
@@ -138,26 +138,6 @@ export interface EventTriggerConfig {
  * Queue type values for message triggers
  */
 export type QueueTypeValue = 'RABBITMQ_AMQP' | 'RABBITMQ' | 'SQS' | 'REDIS_STREAMS' | 'INTERNAL';
-
-/**
- * Configuration for queue-based triggers
- */
-export interface QueueTriggerConfig {
-    /** Name of the queue to consume from */
-    queueName: string;
-    /** Type of message queue */
-    queueType?: QueueTypeValue;
-    /** Connection code for queue credentials */
-    connectionCode?: string;
-    /** Number of messages to prefetch */
-    prefetchCount?: number;
-    /** Visibility timeout for SQS-style queues */
-    visibilityTimeoutSec?: number;
-    /** Maximum retries before dead-lettering */
-    maxRetries?: number;
-    /** Dead-letter queue name */
-    deadLetterQueue?: string;
-}
 
 /**
  * File watch events that can trigger a pipeline
@@ -239,8 +219,6 @@ export interface TriggerConfig {
     webhook?: WebhookTriggerConfig;
     /** Event trigger configuration */
     event?: EventTriggerConfig;
-    /** Queue trigger configuration */
-    queue?: QueueTriggerConfig;
     /** Message trigger configuration */
     message?: MessageTriggerConfig;
     /** File watch trigger configuration */
@@ -273,9 +251,11 @@ export interface PipelineTrigger extends TriggerConfig {
     /** Webhook code (webhook triggers) */
     webhookCode?: string;
     /** HTTP method (webhook triggers) */
-    method?: 'GET' | 'POST' | 'PUT';
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     /** Authentication type (webhook triggers) */
     authentication?: WebhookAuthType;
+    /** Bearer token secret code (webhook triggers) */
+    bearerSecretCode?: string;
     /** Secret code for auth (webhook triggers) */
     secretCode?: string;
     /** API key secret code (webhook triggers) */

@@ -448,7 +448,7 @@ export type ConditionsMode = 'REPLACE_ALL' | 'MERGE' | 'SKIP';
 export type ActionsMode = 'REPLACE_ALL' | 'MERGE' | 'SKIP';
 
 /** How to handle customer groups */
-export type GroupsMode = 'add' | 'set';
+export type GroupsMode = 'ADD' | 'SET';
 
 /** Customer Upsert Loader */
 export interface CustomerUpsertLoaderConfig {
@@ -1121,7 +1121,7 @@ export interface RouteConfig {
         name: string;
         when: Array<{
             field: string;
-            cmp: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'startsWith' | 'endsWith' | 'matches' | 'isNull' | 'exists' | 'in';
+            cmp: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' | 'notContains' | 'startsWith' | 'endsWith' | 'matches' | 'regex' | 'isNull' | 'exists' | 'in' | 'notIn';
             value: unknown;
         }>;
     }>;
@@ -1138,7 +1138,7 @@ export type UpdateCatalogLoaders = 'productUpsert' | 'variantUpsert' | 'stockAdj
 export type UpdateCustomerLoaders = 'customerUpsert' | 'customerGroupUpsert';
 
 /** Loader adapter codes that require UpdateOrder permission */
-export type UpdateOrderLoaders = 'orderNote' | 'orderTransition' | 'applyCoupon';
+export type UpdateOrderLoaders = 'orderUpsert' | 'orderNote' | 'orderTransition' | 'applyCoupon';
 
 /** Loader adapter codes that require UpdatePromotion permission */
 export type UpdatePromotionLoaders = 'promotionUpsert';

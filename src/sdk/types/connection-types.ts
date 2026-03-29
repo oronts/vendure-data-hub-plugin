@@ -7,7 +7,7 @@ import {
 
 export { ConnectionAuthType };
 
-export type ConnectionType = 'HTTP' | 'S3' | 'FTP' | 'SFTP' | 'DATABASE' | 'CUSTOM';
+export type ConnectionType = 'HTTP' | 'S3' | 'FTP' | 'SFTP' | 'DATABASE' | 'CUSTOM' | 'POSTGRES' | 'MYSQL' | 'MSSQL' | 'MONGODB' | 'RABBITMQ' | 'SQS' | 'REDIS' | 'REST' | 'GRAPHQL';
 
 export interface ConnectionAuth {
     readonly type: ConnectionAuthType;

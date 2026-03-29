@@ -214,7 +214,7 @@ export function applyToString(
     const value = getNestedValue(record, source);
     const targetPath = target || source;
 
-    const stringValue = value !== null && value !== undefined ? String(value) : '';
+    const stringValue = value != null ? String(value) : '';
     setNestedValue(result, targetPath, stringValue);
     return result;
 }

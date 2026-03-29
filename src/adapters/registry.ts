@@ -1,5 +1,5 @@
 /**
- * Module-level adapter registry — Public SDK surface
+ * Module-level adapter registry - Public SDK surface
  *
  * These functions provide a simple, DI-free API for registering and querying
  * adapters from external plugins, standalone scripts, and test setups.
@@ -8,7 +8,7 @@
  * (src/sdk/registry.service.ts) which is managed by NestJS DI.
  */
 import { AdapterDefinition, AdapterType } from '../sdk/types';
-import { DataHubLogger } from '../services/logger/datahub-logger';
+import { DataHubLoggerFactory } from '../services/logger/datahub-logger';
 import { LOGGER_CONTEXTS } from '../constants/core';
 import { CustomTransformInfo } from '../transforms/types';
 import { ScriptFunction } from '../../shared/types';
@@ -16,7 +16,7 @@ import { ScriptFunction } from '../../shared/types';
 const MAX_ADAPTERS = 200;
 const adapterRegistry = new Map<string, AdapterDefinition>();
 const adaptersByType = new Map<AdapterType, Set<string>>();
-const logger = new DataHubLogger(LOGGER_CONTEXTS.ADAPTER_REGISTRY);
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.ADAPTER_REGISTRY);
 
 /** Register extractor adapter (pulls data from REST, GraphQL, CSV, etc.) */
 export function registerExtractor(adapter: AdapterDefinition): void {

@@ -199,7 +199,7 @@ export interface FormatParser<T = Record<string, unknown>> {
 }
 
 /**
- * Content type mappings for parseable file formats — auto-derived from FILE_FORMAT_METADATA
+ * Content type mappings for parseable file formats - auto-derived from FILE_FORMAT_METADATA
  */
 export const FORMAT_CONTENT_TYPES: Record<FileFormat, string[]> = Object.fromEntries(
     Object.entries(FILE_FORMAT_METADATA)
@@ -208,7 +208,7 @@ export const FORMAT_CONTENT_TYPES: Record<FileFormat, string[]> = Object.fromEnt
 ) as Record<FileFormat, string[]>;
 
 /**
- * File extension mappings for parseable file formats — auto-derived from FILE_FORMAT_METADATA
+ * File extension mappings for parseable file formats - auto-derived from FILE_FORMAT_METADATA
  */
 export const FORMAT_EXTENSIONS: Record<FileFormat, string[]> = Object.fromEntries(
     Object.entries(FILE_FORMAT_METADATA)

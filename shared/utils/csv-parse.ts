@@ -20,12 +20,12 @@ export function parseCSVLine(line: string, delimiter = ','): string[] {
                 inQuotes = !inQuotes;
             }
         } else if (char === delimiter && !inQuotes) {
-            result.push(current.trim());
+            result.push(current);
             current = '';
         } else {
             current += char;
         }
     }
-    result.push(current.trim());
+    result.push(current);
     return result;
 }

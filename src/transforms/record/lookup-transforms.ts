@@ -14,10 +14,10 @@ import { TransformConfig, VendureEntityType } from '../../types/index';
 import { JsonValue } from '../../types/index';
 import { LookupType } from '../../constants/enums';
 import { LOGGER_CONTEXTS } from '../../constants/index';
-import { DataHubLogger } from '../../services/logger';
+import { DataHubLoggerFactory } from '../../services/logger';
 import { getErrorMessage } from '../../utils/error.utils';
 
-const logger = new DataHubLogger(LOGGER_CONTEXTS.LOOKUP_TRANSFORMS);
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.LOOKUP_TRANSFORMS);
 
 // VENDURE ENTITY MAPPING
 

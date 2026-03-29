@@ -35,6 +35,8 @@ const scriptLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.SCRIPT_OPERATOR
  * Can be modified at runtime to disable script execution
  */
 let scriptOperatorsEnabled = true;
+let scriptSecurityConfig: Partial<CodeSecurityConfig> | undefined;
+let scriptDefaultTimeoutMs: number | undefined;
 
 /**
  * Configure script operators
@@ -46,6 +48,12 @@ export function configureScriptOperators(config: {
 }): void {
     if (config.enabled !== undefined) {
         scriptOperatorsEnabled = config.enabled;
+    }
+    if (config.security) {
+        scriptSecurityConfig = config.security;
+    }
+    if (config.evaluator?.defaultTimeoutMs !== undefined) {
+        scriptDefaultTimeoutMs = config.evaluator.defaultTimeoutMs;
     }
 }
 
@@ -167,9 +175,8 @@ export function scriptOperator(
     config: ScriptOperatorConfig,
     _helpers: AdapterOperatorHelpers,
 ): OperatorResult | Promise<OperatorResult> {
-    const { code, batch, timeout = DEFAULT_TIMEOUT, failOnError, context: contextData } = config;
+    const { code, batch, timeout = scriptDefaultTimeoutMs ?? DEFAULT_TIMEOUT, failOnError, context: contextData } = config;
 
-    // Check if script operators are enabled
     if (!scriptOperatorsEnabled) {
         return {
             records: [...records],
@@ -183,7 +190,7 @@ export function scriptOperator(
 
     // Validate script block before execution using security rules
     try {
-        validateScriptBlock(code);
+        validateScriptBlock(code, scriptSecurityConfig);
     } catch (error) {
         const errorMsg = getErrorMessage(error);
         scriptLogger.warn(`Script validation failed, passing ${records.length} records through untransformed: ${errorMsg}`);
@@ -350,12 +357,14 @@ async function executeSingleRecordScript(
  * Sanitize a result array to prevent prototype pollution
  */
 function sanitizeResult(result: unknown[]): JsonObject[] {
-    return result.map((item) => {
-        if (item === null || typeof item !== 'object') {
-            return item as JsonObject;
+    const sanitized: JsonObject[] = [];
+    for (const item of result) {
+        if (item === null || item === undefined || typeof item !== 'object' || Array.isArray(item)) {
+            continue;
         }
-        return sanitizeObject(item as JsonObject);
-    });
+        sanitized.push(sanitizeObject(item as JsonObject));
+    }
+    return sanitized;
 }
 
 /**

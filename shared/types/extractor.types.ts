@@ -28,7 +28,7 @@ export interface ExtractorConfig {
     /** Authentication settings (can override connection auth) */
     auth?: AuthConfig;
 
-    /** Allow additional properties */
+    /** Extractor-specific properties */
     [key: string]: unknown;
 }
 

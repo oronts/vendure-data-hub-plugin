@@ -7,7 +7,7 @@ import { Throughput, PipelineStepDefinition, PipelineEdge, PipelineCapabilities,
 import { FieldMapping } from './mapping.types';
 import { FilterCondition } from './filter.types';
 import { PipelineHooksConfig, PipelineHooks } from './hook.types';
-import { TriggerConfig } from './trigger.types';
+import { TriggerConfig, WebhookAuthType } from './trigger.types';
 
 // PIPELINE TYPE ENUMS
 
@@ -339,7 +339,6 @@ interface FileFormatConfig {
     xlsx?: XlsxFormatOptions;
 }
 
-type WebhookAuthMode = 'NONE' | 'API_KEY' | 'HMAC' | 'JWT' | 'BASIC';
 type WebhookResponseMode = 'SYNC' | 'ASYNC';
 type PaginationTypeValue = 'NONE' | 'OFFSET' | 'CURSOR' | 'PAGE' | 'LINK_HEADER';
 
@@ -351,7 +350,7 @@ interface FileUploadSourceConfig {
 
 interface WebhookSourceConfig {
     type: 'WEBHOOK';
-    authentication?: WebhookAuthMode;
+    authentication?: WebhookAuthType;
     secretCode?: string;
     idempotencyKeyField?: string;
     responseMode?: WebhookResponseMode;

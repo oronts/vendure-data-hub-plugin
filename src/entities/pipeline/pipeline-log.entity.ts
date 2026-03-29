@@ -46,7 +46,7 @@ export class PipelineLog extends VendureEntity {
     @Column({ type: 'int', nullable: true })
     runId!: number | null;
 
-    @Column({ type: 'bigint', nullable: true })
+    @Column({ type: 'int', nullable: true })
     durationMs!: number | null;
 
     @Column({ type: 'int', nullable: true })

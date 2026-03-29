@@ -1,9 +1,3 @@
-/**
- * Number Field Transforms
- *
- * Numeric manipulation transform operations.
- */
-
 import { TransformConfig } from '../../types/index';
 import { JsonValue } from '../../types/index';
 import { TRANSFORM_LIMITS } from '../../constants/defaults';
@@ -13,9 +7,6 @@ import { MathOperation } from '../../constants/enums';
 const NUMERIC_CHARS_PATTERN = /[^\d.-]/g;
 const INTEGER_CHARS_PATTERN = /[^\d-]/g;
 
-/**
- * Apply parse number/parse float transform
- */
 export function applyParseNumber(value: JsonValue): JsonValue {
     if (typeof value === 'string') {
         const cleaned = value.replace(NUMERIC_CHARS_PATTERN, '');
@@ -25,9 +16,6 @@ export function applyParseNumber(value: JsonValue): JsonValue {
     return typeof value === 'number' ? value : null;
 }
 
-/**
- * Apply parse int transform
- */
 export function applyParseInt(value: JsonValue): JsonValue {
     if (typeof value === 'string') {
         const cleaned = value.replace(INTEGER_CHARS_PATTERN, '');
@@ -37,9 +25,6 @@ export function applyParseInt(value: JsonValue): JsonValue {
     return typeof value === 'number' ? Math.floor(value) : null;
 }
 
-/**
- * Apply round transform
- */
 export function applyRound(value: JsonValue, config: TransformConfig): JsonValue {
     if (typeof value === 'number') {
         const precision = Math.min(Math.max(0, Math.floor(config.precision ?? 0)), TRANSFORM_LIMITS.MAX_DECIMAL_PLACES);
@@ -49,23 +34,14 @@ export function applyRound(value: JsonValue, config: TransformConfig): JsonValue
     return value;
 }
 
-/**
- * Apply floor transform
- */
 export function applyFloor(value: JsonValue): JsonValue {
     return typeof value === 'number' ? Math.floor(value) : value;
 }
 
-/**
- * Apply ceil transform
- */
 export function applyCeil(value: JsonValue): JsonValue {
     return typeof value === 'number' ? Math.ceil(value) : value;
 }
 
-/**
- * Apply abs transform
- */
 export function applyAbs(value: JsonValue): JsonValue {
     return typeof value === 'number' ? Math.abs(value) : value;
 }
@@ -94,9 +70,6 @@ export function applyFromCents(value: JsonValue): JsonValue {
     return value;
 }
 
-/**
- * Apply math operation transform
- */
 export function applyMath(value: JsonValue, config: TransformConfig): JsonValue {
     if (typeof value === 'number' && config.operation && config.operand !== undefined) {
         switch (config.operation) {
