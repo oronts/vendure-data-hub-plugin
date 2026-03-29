@@ -9,6 +9,7 @@ import { HTTP } from '../../shared/constants/index';
 import { EXTENSION_MIME_MAP, CONTENT_TYPES } from '../constants/services';
 import { sleep } from '../runtime/utils';
 import { getNestedValue } from '../utils/object-path.utils';
+import { getErrorMessage } from '../utils/error.utils';
 
 export { slugify };
 
@@ -41,7 +42,7 @@ export function getStringValue(record: RecordObject, key: string): string | unde
     if (typeof value === 'string') {
         return value || undefined;
     }
-    if (value !== null && value !== undefined) {
+    if (value != null) {
         return String(value) || undefined;
     }
     return undefined;
@@ -185,6 +186,9 @@ export async function resolveFacetValueIds(
 // Asset Helper Functions
 // =============================================================================
 
+/** Maximum allowed download size (50 MB) to prevent OOM on large files */
+const MAX_DOWNLOAD_SIZE = 50 * 1024 * 1024;
+
 /**
  * Download file from URL with retry logic and SSRF protection
  */
@@ -209,7 +213,16 @@ async function downloadFile(url: string): Promise<Buffer | null> {
                 continue;
             }
 
+            // Check Content-Length header first to reject obviously oversized files
+            const contentLength = response.headers.get('content-length');
+            if (contentLength && parseInt(contentLength, 10) > MAX_DOWNLOAD_SIZE) {
+                return null;
+            }
+
             const arrayBuffer = await response.arrayBuffer();
+            if (arrayBuffer.byteLength > MAX_DOWNLOAD_SIZE) {
+                return null;
+            }
             return Buffer.from(arrayBuffer);
         } catch {
             if (attempt === HTTP.MAX_RETRIES) return null;
@@ -297,11 +310,12 @@ async function createAssetFromUrl(
         if ('id' in result) {
             return result.id;
         } else {
-            logger.warn(`Asset creation failed for ${url}: ${(result as any).message || 'Unknown error'}`);
+            const err = result as { message?: string; errorCode?: string };
+            logger.warn(`Asset creation failed for ${url}: [${err.errorCode ?? 'UNKNOWN'}] ${err.message ?? 'Unknown error'}`);
             return undefined;
         }
     } catch (error) {
-        logger.warn(`Error creating asset from ${url}: ${error instanceof Error ? error.message : String(error)}`);
+        logger.warn(`Error creating asset from ${url}: ${getErrorMessage(error)}`);
         return undefined;
     }
 }
@@ -349,7 +363,6 @@ async function upsertAssetsByUrl(
     }
 
     for (const url of urls) {
-        // Check if we already have an asset with this source URL
         const existingId = existingAssetMap.get(url);
         if (existingId) {
             assetIds.push(existingId);
@@ -361,7 +374,6 @@ async function upsertAssetsByUrl(
                 assetIds.push(existing.id);
                 logger.debug(`Found existing asset ${existing.id} for URL: ${url}`);
             } else {
-                // Create new asset
                 const assetId = await createAssetFromUrl(ctx, assetService, url, logger);
                 if (assetId) {
                     assetIds.push(assetId);
@@ -543,7 +555,7 @@ export async function handleAssets(
         }
     } catch (error) {
         // Log error but don't fail the pipeline
-        logger.error(`Failed to handle assets for entity ${entityId}: ${error instanceof Error ? error.message : String(error)}`);
+        logger.error(`Failed to handle assets for entity ${entityId}: ${getErrorMessage(error)}`);
     }
 }
 
@@ -584,7 +596,6 @@ export async function handleFeaturedAsset(
 
         switch (mode) {
             case 'UPSERT_BY_URL': {
-                // Check if asset with this source URL exists, reuse if so
                 const existing = await findAssetBySource(ctx, assetService, featuredAssetUrl);
                 if (existing) {
                     assetId = existing.id;
@@ -622,7 +633,7 @@ export async function handleFeaturedAsset(
     } catch (error) {
         // Log error but don't fail the pipeline
         logger.error(
-            `Failed to handle featured asset for entity ${entityId}: ${error instanceof Error ? error.message : String(error)}`,
+            `Failed to handle featured asset for entity ${entityId}: ${getErrorMessage(error)}`,
         );
     }
 }

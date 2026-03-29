@@ -71,6 +71,17 @@ export class ChannelHandler implements LoaderHandler {
         let ok = 0;
         let fail = 0;
         const cfg = getConfig(step.config);
+        this.zoneCache = new Map<string, ID>();
+
+        // Pre-fetch all channels and zones to avoid N+1 queries
+        const allChannelsResult = await this.channelService.findAll(ctx);
+        const allChannels = ((allChannelsResult as { items?: Array<{ id: ID; code: string }> }).items ?? allChannelsResult) as Array<{ id: ID; code: string }>;
+        const channelByCode = new Map(allChannels.map(c => [c.code, c]));
+
+        const allZones = await this.zoneService.findAll(ctx);
+        for (const z of allZones.items) {
+            this.zoneCache.set(z.name.toLowerCase(), z.id);
+        }
 
         for (const rec of input) {
             try {
@@ -142,7 +153,6 @@ export class ChannelHandler implements LoaderHandler {
                     .map(parseCurrencyCode)
                     .filter((c): c is CurrencyCode => c !== null);
 
-                // Ensure defaults are included
                 if (!availableLanguageCodes.includes(defaultLanguageCode)) {
                     availableLanguageCodes.unshift(defaultLanguageCode);
                 }
@@ -160,11 +170,10 @@ export class ChannelHandler implements LoaderHandler {
                 const customFieldsKey = cfg.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
 
-                const defaultTaxZoneId = taxZoneCode ? await this.resolveZoneId(ctx, taxZoneCode) : undefined;
-                const defaultShippingZoneId = shippingZoneCode ? await this.resolveZoneId(ctx, shippingZoneCode) : undefined;
+                const defaultTaxZoneId = taxZoneCode ? this.resolveZoneId(taxZoneCode) : undefined;
+                const defaultShippingZoneId = shippingZoneCode ? this.resolveZoneId(shippingZoneCode) : undefined;
 
-                // Find existing channel by code
-                const existing = await this.findExistingByCode(ctx, code);
+                const existing = this.findExistingByCode(ctx, code, channelByCode);
                 const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
 
                 if (existing) {
@@ -231,24 +240,12 @@ export class ChannelHandler implements LoaderHandler {
         return { ok, fail };
     }
 
-    private async findExistingByCode(ctx: RequestContext, code: string): Promise<{ id: ID } | null> {
-        const result = await this.channelService.findAll(ctx);
-        const channelsList = (result as { items?: Array<{ id: ID; code: string }> }).items ?? result as unknown as Array<{ id: ID; code: string }>;
-        const match = channelsList.find(c => c.code === code);
+    private findExistingByCode(_ctx: RequestContext, code: string, channelByCode: Map<string, { id: ID; code: string }>): { id: ID } | null {
+        const match = channelByCode.get(code);
         return match ? { id: match.id } : null;
     }
 
-    private async resolveZoneId(ctx: RequestContext, code: string): Promise<ID | undefined> {
-        if (this.zoneCache.has(code)) {
-            return this.zoneCache.get(code);
-        }
-
-        const zones = await this.zoneService.findAll(ctx);
-        const match = zones.items.find(z => z.name.toLowerCase() === code.toLowerCase());
-        if (match) {
-            this.zoneCache.set(code, match.id);
-            return match.id;
-        }
-        return undefined;
+    private resolveZoneId(code: string): ID | undefined {
+        return this.zoneCache.get(code.toLowerCase());
     }
 }

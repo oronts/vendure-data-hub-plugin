@@ -1,5 +1,6 @@
 import { ID, RequestContext, ZoneService, CurrencyCode, LanguageCode } from '@vendure/core';
 import { randomHexSlice } from '../../utils/id-generation.utils';
+import { PAGINATION } from '../../constants/defaults';
 
 export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
 
@@ -28,7 +29,7 @@ export async function resolveZoneId(
     }
 
     // Look up by code/name
-    const zones = await zoneService.findAll(ctx);
+    const zones = await zoneService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT } as any);
     const match = zones.items.find(
         z => z.name.toLowerCase() === zoneCode.toLowerCase()
     );
@@ -60,14 +61,10 @@ export function parseCurrencyCode(code: string): CurrencyCode | null {
  * Parse and validate language code
  */
 export function parseLanguageCode(code: string): LanguageCode | null {
-    // Vendure uses lowercase 2-letter language codes
-    const normalized = code.toLowerCase().trim();
-
-    // Basic validation - should be 2 lowercase letters
-    if (!/^[a-z]{2}$/.test(normalized)) {
+    const normalized = code.trim();
+    if (!/^[a-z]{2}(_[A-Za-z]+)?$/i.test(normalized)) {
         return null;
     }
-
     return normalized as LanguageCode;
 }
 

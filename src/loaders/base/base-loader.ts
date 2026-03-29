@@ -211,7 +211,7 @@ export abstract class BaseEntityLoader<
                 result.failed++;
                 result.errors.push({
                     record,
-                    message: 'Failed to create entity',
+                    message: `Failed to create ${this.metadata.entityType} entity`,
                     recoverable: false,
                 });
                 return OUTCOME_TYPE.ERROR;

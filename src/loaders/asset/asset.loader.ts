@@ -3,7 +3,6 @@ import {
     ID,
     Asset,
     RequestContext,
-    TransactionalConnection,
     AssetService,
 } from '@vendure/core';
 import {
@@ -35,21 +34,7 @@ import {
     shouldUpdateField,
 } from './helpers';
 
-/**
- * AssetLoader - Refactored to extend BaseEntityLoader
- *
- * This eliminates ~60 lines of duplicate load() method code that was
- * copy-pasted across all loaders. The base class handles:
- * - Result initialization
- * - Validation loop
- * - Duplicate detection
- * - CREATE/UPDATE/UPSERT operation logic
- * - Dry run mode
- * - Error handling
- *
- * Note: createEntity returns null when asset download fails,
- * which the base class handles by recording the failure.
- */
+/** Loads Asset entities via AssetService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
     protected readonly logger: DataHubLogger;
@@ -58,7 +43,6 @@ export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
     private readonly lookupHelper: EntityLookupHelper<AssetService, Asset, AssetInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private assetService: AssetService,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -86,7 +70,7 @@ export class AssetLoader extends BaseEntityLoader<AssetInput, Asset> {
         // Fallback: by source URL (field name mismatch: lookupField 'source' vs record 'sourceUrl')
         if (record.sourceUrl && lookupFields.includes('source')) {
             const assets = await this.assetService.findAll(ctx, {
-                filter: { source: { contains: extractFilenameFromUrl(record.sourceUrl) } },
+                filter: { source: { eq: record.sourceUrl } },
             });
             if (assets.totalItems > 0) {
                 return { id: assets.items[0].id, entity: assets.items[0] };

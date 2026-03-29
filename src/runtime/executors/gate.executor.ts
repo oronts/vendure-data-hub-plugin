@@ -117,8 +117,8 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         // Check if gate was already approved (resuming after gate approval)
         const approvalKey = `__gateApproved:${step.key}`;
         if (executorCtx.cpData?.[approvalKey]) {
-            this.logger.log(`GATE step "${step.key}": already approved, continuing pipeline`);
-            // Recover saved records from gate checkpoint — avoids returning empty input
+            this.logger.info(`GATE step "${step.key}": already approved, continuing pipeline`);
+            // Recover saved records from gate checkpoint. Avoids returning empty input
             // when an exhausted file extractor produces 0 records on resume.
             const gateKey = `__gate:${step.key}`;
             const gateData = executorCtx.cpData[gateKey] as { pendingRecords?: JsonValue } | undefined;
@@ -127,6 +127,9 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
                 : input;
             delete executorCtx.cpData[approvalKey];
             delete executorCtx.cpData[gateKey];
+            // Clean up stale timeout key to prevent the background checker
+            // from re-scanning an already-approved gate
+            delete executorCtx.cpData[`${GATE_TIMEOUT_PREFIX}${step.key}`];
             executorCtx.markCheckpointDirty();
             return {
                 paused: false,
@@ -141,7 +144,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         if (config.approvalType === 'THRESHOLD') {
             const shouldAutoApprove = this.evaluateThreshold(config, executorCtx);
             if (shouldAutoApprove) {
-                this.logger.log(`GATE step "${step.key}": THRESHOLD auto-approved (error rate below threshold or no errors)`);
+                this.logger.info(`GATE step "${step.key}": THRESHOLD auto-approved (error rate below threshold or no errors)`);
                 return {
                     paused: false,
                     pendingRecords: input,
@@ -157,7 +160,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         if (config.approvalType === 'TIMEOUT' && config.timeoutSeconds) {
             const expiresAt = new Date(Date.now() + config.timeoutSeconds * TIME.SECOND).toISOString();
             this.saveTimeoutToCheckpoint(step.key, expiresAt, executorCtx);
-            this.logger.log(`GATE "${step.key}": TIMEOUT mode, will auto-approve at ${expiresAt}`);
+            this.logger.info(`GATE "${step.key}": TIMEOUT mode, will auto-approve at ${expiresAt}`);
         }
 
         // Save checkpoint for paused gate
@@ -232,7 +235,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
             body: JSON.stringify(payload),
         });
 
-        this.logger.log(`GATE "${stepKey}": webhook notification sent (status=${response.status})`);
+        this.logger.info(`GATE "${stepKey}": webhook notification sent (status=${response.status})`);
     }
 
     /**
@@ -248,7 +251,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         const smtpConfig = this.options.notifications?.smtp;
         if (!smtpConfig) {
             this.logger.warn(
-                `GATE "${stepKey}": email notification skipped — ` +
+                `GATE "${stepKey}": email notification skipped - ` +
                 'configure notifications.smtp in DataHubPlugin.init() options',
             );
             return;
@@ -286,7 +289,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
                 ].filter(Boolean).join('\n'),
             });
 
-            this.logger.log(`GATE "${stepKey}": email notification sent to ${email}`);
+            this.logger.info(`GATE "${stepKey}": email notification sent to ${email}`);
         } finally {
             transporter.close();
         }
@@ -347,6 +350,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
             // Timeout data is persisted to DataHubCheckpoint (keyed by pipelineId)
             const checkpoint = await cpRepo.findOne({
                 where: { pipeline: { id: run.pipelineId } },
+                order: { createdAt: 'DESC' },
             });
             if (!checkpoint?.data) continue;
 
@@ -361,7 +365,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
                 if (expiresAtMs <= now) {
                     const stepKey = data.stepKey as string;
                     const delayMs = now - expiresAtMs;
-                    this.logger.log(
+                    this.logger.info(
                         `GATE "${stepKey}": TIMEOUT expired, auto-approving run ${run.id} ` +
                         `(expected=${expiresAt}, actual delay=${delayMs}ms)`,
                     );
@@ -376,6 +380,9 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
                     }
                     try {
                         await this.pipelineService.approveGate(ctx, run.id, stepKey);
+                        // Remove timeout key from checkpoint to prevent re-scanning
+                        delete (checkpoint.data as Record<string, unknown>)[key];
+                        await cpRepo.save(checkpoint);
                     } catch (err) {
                         this.logger.warn(`GATE "${stepKey}": auto-approval failed for run ${run.id}: ${getErrorMessage(err)}`);
                     }
@@ -428,7 +435,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         }
 
         const errorRate = (errorCount / totalCount) * 100;
-        this.logger.log(
+        this.logger.info(
             `GATE THRESHOLD evaluation: errorRate=${errorRate.toFixed(2)}%, ` +
             `threshold=${config.errorThresholdPercent}%, ` +
             `errors=${errorCount}, successes=${successCount}`,

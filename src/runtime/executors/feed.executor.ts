@@ -3,7 +3,7 @@ import { RequestContext } from '@vendure/core';
 import { JsonObject, PipelineStepDefinition, PipelineContext } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, FeedExecutionResult } from '../executor-types';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { LOGGER_CONTEXTS, SERVICE_DEFAULTS } from '../../constants/index';
 import { AdapterType } from '../../constants/enums';
 import { BaseFeedConfig } from '../config-types';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -59,7 +59,7 @@ export class FeedExecutor {
             brandField: cfg.brandField ?? 'brand',
             gtinField: cfg.gtinField ?? 'gtin',
             availabilityField: cfg.availabilityField ?? 'availability',
-            currency: cfg.currency ?? 'USD',
+            currency: cfg.currency ?? SERVICE_DEFAULTS.DEFAULT_CURRENCY,
         };
 
         // Apply localization (translation flattening + channel filtering)
@@ -88,17 +88,17 @@ export class FeedExecutor {
             // Try custom feed generators from registry
             const customFeed = this.registry.getRuntime(AdapterType.FEED, adapterCode) as FeedAdapter<unknown> | undefined;
             if (customFeed && typeof customFeed.generateFeed === 'function') {
-                const result = await this.executeCustomFeed(ctx, step, input, customFeed, pipelineContext);
+                const result = await this.executeCustomFeed(ctx, step, localizedInput, customFeed, pipelineContext);
                 ok = result.ok;
                 fail = result.fail;
                 outputPath = result.outputPath;
             } else {
                 this.logger.warn(`Unknown feed adapter`, { stepKey: step.key, adapterCode });
-                ok = input.length;
+                fail = input.length;
             }
         } else {
             this.logger.warn(`Unknown feed adapter`, { stepKey: step.key, adapterCode });
-            ok = input.length;
+            fail = input.length;
         }
 
         const durationMs = Date.now() - startTime;
@@ -117,7 +117,7 @@ export class FeedExecutor {
     /**
      * Execute a custom feed adapter from the registry.
      *
-     * SECURITY NOTE: Custom feed adapters that make outbound HTTP requests
+     * Custom feed adapters that make outbound HTTP requests
      * are responsible for calling assertUrlSafe() (from url-security.utils)
      * before fetching any user-supplied URLs. The FeedContext does not proxy
      * HTTP calls, so SSRF protection must be applied within each adapter.

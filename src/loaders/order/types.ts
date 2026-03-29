@@ -7,7 +7,7 @@ export interface OrderLineInput {
     sku: string;
     /** Quantity ordered */
     quantity: number;
-    /** Unit price in minor units (informational — Vendure uses variant configured price at time of import) */
+    /** Unit price in minor units (informational - Vendure uses variant configured price at time of import) */
     unitPrice?: number;
     /** Custom field values for the line */
     customFields?: Record<string, unknown>;
@@ -46,13 +46,13 @@ export interface OrderInput extends InputRecord {
     orderPlacedAt?: string | Date;
     /** Custom field values */
     customFields?: Record<string, unknown>;
-    /** Additional metadata from source system (informational — use customFields to persist on the Vendure order) */
+    /** Additional metadata from source system (informational - use customFields to persist on the Vendure order) */
     metadata?: Record<string, unknown>;
 }
 
 /**
  * State precedence for ordering comparisons when walking the order state machine.
- * Vendure 3.x removed ArrangingShipping — orders go directly from AddingItems to ArrangingPayment.
+ * Vendure 3.x removed ArrangingShipping - orders go directly from AddingItems to ArrangingPayment.
  */
 export const STATE_RANK: Record<string, number> = {
     'Created': 0, 'Draft': 0, 'AddingItems': 1,

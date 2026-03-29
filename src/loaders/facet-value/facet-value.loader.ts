@@ -33,13 +33,7 @@ import {
     shouldUpdateField,
 } from './helpers';
 
-/**
- * FacetValueLoader - Refactored to extend BaseEntityLoader
- *
- * Imports facet values (attribute options) with parent facet resolution.
- * Note: This loader resolves facetId inside createEntity/updateEntity
- * to maintain the base class pattern while supporting parent resolution.
- */
+/** Loads FacetValue entities via FacetValueService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetValue> {
     protected readonly logger: DataHubLogger;
@@ -88,7 +82,7 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
             }
         }
 
-        // Lookup by name — query via translations join for accurate matching
+        // Lookup by name; query via translations join for accurate matching
         if (record.name && lookupFields.includes('name')) {
             const qb = this.connection
                 .getRepository(ctx, FacetValue)
@@ -148,7 +142,7 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
                 if (!facetId) {
                     builder.addError(
                         'facetCode',
-                        `Parent facet "${record.facetCode}" not found`,
+                        `Parent facet not found (code="${record.facetCode}", id="${record.facetId}")`,
                         'PARENT_NOT_FOUND',
                     );
                 }
@@ -180,7 +174,7 @@ export class FacetValueLoader extends BaseEntityLoader<FacetValueInput, FacetVal
                     description: 'Unique identifier code within the facet (lowercase, no spaces)',
                     example: 'red',
                     validation: {
-                        pattern: '^[a-z0-9_-]+$',
+                        pattern: '^[a-zA-Z0-9_-]+$',
                     },
                 },
                 {

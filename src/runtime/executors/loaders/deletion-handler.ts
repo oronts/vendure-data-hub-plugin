@@ -139,6 +139,9 @@ export class DeletionHandler implements LoaderHandler {
                 }
 
                 switch (entityType) {
+                    case 'product':
+                        await this.deleteProduct(opCtx, identifier, matchBy, cascadeVariants);
+                        break;
                     case 'variant':
                         await this.deleteVariant(opCtx, identifier, matchBy);
                         break;
@@ -176,8 +179,7 @@ export class DeletionHandler implements LoaderHandler {
                         await this.deleteStockLocation(opCtx, identifier, matchBy);
                         break;
                     default:
-                        await this.deleteProduct(opCtx, identifier, matchBy, cascadeVariants);
-                        break;
+                        throw new Error(`Unsupported entity type for deletion: ${entityType}`);
                 }
                 ok++;
             } catch (e: unknown) {
@@ -196,7 +198,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             variantId = identifier as unknown as ID;
         } else {
-            // matchBy === 'sku' or 'slug' — find by SKU (variants are identified by SKU)
+            // matchBy === 'sku' or 'slug', find by SKU (variants are identified by SKU)
             const variant = await findVariantBySku(this.productVariantService, ctx, identifier);
             variantId = variant?.id;
         }
@@ -254,7 +256,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             promotionId = identifier as unknown as ID;
         } else {
-            // matchBy === 'code' — find by couponCode
+            // matchBy === 'code', find by couponCode
             const list = await this.promotionService.findAll(ctx, {
                 filter: { couponCode: { eq: identifier } },
                 take: 1,
@@ -276,7 +278,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             shippingMethodId = identifier as unknown as ID;
         } else {
-            // matchBy === 'code' — find by code
+            // matchBy === 'code', find by code
             const list = await this.shippingMethodService.findAll(ctx, {
                 filter: { code: { eq: identifier } },
             } as never);
@@ -297,7 +299,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             customerId = identifier as unknown as ID;
         } else {
-            // matchBy === 'email' — find by emailAddress
+            // matchBy === 'email', find by emailAddress
             const list = await this.customerService.findAll(ctx, {
                 filter: { emailAddress: { eq: identifier } },
             } as never);
@@ -318,7 +320,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             paymentMethodId = identifier as unknown as ID;
         } else {
-            // matchBy === 'code' — find by code
+            // matchBy === 'code', find by code
             const list = await this.paymentMethodService.findAll(ctx, {
                 filter: { code: { eq: identifier } },
             });
@@ -339,7 +341,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             facetId = identifier as unknown as ID;
         } else {
-            // matchBy === 'code' — find by code
+            // matchBy === 'code', find by code
             const facet = await this.facetService.findByCode(ctx, identifier, ctx.languageCode as LanguageCode);
             facetId = facet?.id;
         }
@@ -358,7 +360,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             facetValueId = identifier as unknown as ID;
         } else {
-            // matchBy === 'code' — use findAllList for paginated/filtered query
+            // matchBy === 'code', use findAllList for paginated/filtered query
             const list = await this.facetValueService.findAllList(ctx, {
                 filter: { code: { eq: identifier } },
                 take: 1,
@@ -380,7 +382,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             groupId = identifier as unknown as ID;
         } else {
-            // matchBy === 'name' — find by name
+            // matchBy === 'name', find by name
             const list = await this.customerGroupService.findAll(ctx, {
                 filter: { name: { eq: identifier } },
                 take: 1,
@@ -402,7 +404,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             taxRateId = identifier as unknown as ID;
         } else {
-            // matchBy === 'name' — find by name
+            // matchBy === 'name', find by name
             const list = await this.taxRateService.findAll(ctx, {
                 filter: { name: { eq: identifier } },
                 take: 1,
@@ -424,7 +426,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             assetId = identifier as unknown as ID;
         } else {
-            // matchBy === 'name' — find by name
+            // matchBy === 'name', find by name
             const list = await this.assetService.findAll(ctx, {
                 filter: { name: { eq: identifier } },
                 take: 1,
@@ -446,7 +448,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             stockLocationId = identifier as unknown as ID;
         } else {
-            // matchBy === 'name' — find by name
+            // matchBy === 'name', find by name
             const list = await this.stockLocationService.findAll(ctx, {
                 filter: { name: { eq: identifier } },
                 take: 1,
@@ -468,7 +470,7 @@ export class DeletionHandler implements LoaderHandler {
         if (matchBy === 'id') {
             collectionId = identifier as unknown as ID;
         } else {
-            // matchBy === 'slug' — find by slug
+            // matchBy === 'slug', find by slug
             const collection = await this.collectionService.findOneBySlug(ctx, identifier);
             collectionId = collection?.id;
         }

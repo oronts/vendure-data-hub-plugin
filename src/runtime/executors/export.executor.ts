@@ -6,7 +6,7 @@ import { ConnectionService } from '../../services/config/connection.service';
 import { FileStorageService } from '../../services/storage/file-storage.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult, ExecutorContext } from '../executor-types';
-import { getPath, setPath, deepClone } from '../utils';
+import { getPath, setPath, deepClone, removePath } from '../utils';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { AdapterType } from '../../constants/enums';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -76,7 +76,7 @@ export class ExportExecutor {
         const fieldMapping = cfg.fieldMapping;
 
         const prepareRecord = (rec: RecordObject): RecordObject => {
-            let result: RecordObject = rec;
+            let result: RecordObject = fieldMapping ? { ...rec } : rec;
             if (fields && fields.length > 0) {
                 const picked: RecordObject = {};
                 for (const f of fields) {
@@ -87,7 +87,7 @@ export class ExportExecutor {
             } else if (excludeFields && excludeFields.length > 0) {
                 result = deepClone(rec);
                 for (const f of excludeFields) {
-                    delete result[f];
+                    removePath(result as JsonObject, f);
                 }
             }
             if (fieldMapping) {
@@ -95,6 +95,9 @@ export class ExportExecutor {
                 for (const [from, to] of Object.entries(fieldMapping)) {
                     const val = getPath(result, from);
                     if (val !== undefined) setPath(mapped, to, val);
+                }
+                for (const sourceField of Object.keys(fieldMapping)) {
+                    removePath(result as JsonObject, sourceField);
                 }
                 result = { ...result, ...mapped };
             }
@@ -130,18 +133,18 @@ export class ExportExecutor {
             // Try custom exporters from registry
             const customExporter = this.registry.getRuntime(AdapterType.EXPORTER, adapterCode) as ExporterAdapter<unknown> | undefined;
             if (customExporter && typeof customExporter.export === 'function') {
-                const result = await this.executeCustomExporter(ctx, step, preparedRecords, customExporter, pipelineContext, executorCtx);
+                const result = await this.executeCustomExporter(ctx, step, localizedRecords, customExporter, pipelineContext, executorCtx);
                 ok = result.ok;
                 fail = result.fail;
             } else {
-                // Unknown adapter - treat as no-op success
+                // Unknown adapter - count as failure (data would be silently lost)
                 this.logger.warn(`Unknown export adapter`, { stepKey: step.key, adapterCode });
-                ok = input.length;
+                fail = input.length;
             }
         } else {
-            // Unknown adapter - treat as no-op success
+            // Unknown adapter - count as failure (data would be silently lost)
             this.logger.warn(`Unknown export adapter`, { stepKey: step.key, adapterCode });
-            ok = input.length;
+            fail = input.length;
         }
 
         this.logOperationResult(adapterCode ?? 'unknown', 'export', ok, fail, startTime, step.key);

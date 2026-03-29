@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import {
     ID,
     RequestContext,
-    TransactionalConnection,
     ChannelService,
     ZoneService,
     CurrencyCode,
@@ -39,30 +38,7 @@ import {
     shouldUpdateField,
 } from './helpers';
 
-/**
- * Channel Loader - Refactored to extend BaseEntityLoader
- *
- * Imports channels into Vendure with support for:
- * - Multiple currencies and languages
- * - Tax and shipping zone configuration
- * - Automatic token generation
- *
- * Channels represent different storefronts, markets, or sales channels.
- *
- * @example
- * ```typescript
- * const channelInput: ChannelInput = {
- *   code: 'uk-store',
- *   defaultLanguageCode: 'en',
- *   availableLanguageCodes: ['en', 'fr'],
- *   defaultCurrencyCode: 'GBP',
- *   availableCurrencyCodes: ['GBP', 'EUR'],
- *   pricesIncludeTax: true,
- *   defaultTaxZoneCode: 'UK',
- *   defaultShippingZoneCode: 'UK',
- * };
- * ```
- */
+/** Loads Channel entities via ChannelService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
     protected readonly logger: DataHubLogger;
@@ -74,7 +50,6 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
     private readonly lookupHelper: EntityLookupHelper<ChannelService, Channel, ChannelInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private channelService: ChannelService,
         private zoneService: ZoneService,
         loggerFactory: DataHubLoggerFactory,
@@ -248,7 +223,7 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
                     description: 'Unique code for the channel',
                     example: 'uk-store',
                     validation: {
-                        pattern: '^[a-z0-9_-]+$',
+                        pattern: '^[a-zA-Z0-9_-]+$',
                     },
                 },
                 {
@@ -373,7 +348,6 @@ export class ChannelLoader extends BaseEntityLoader<ChannelInput, Channel> {
             ? parseCurrencyCodes(record.availableCurrencyCodes)
             : [defaultCurrencyCode];
 
-        // Ensure default codes are in available lists
         if (!availableLanguageCodes.includes(defaultLanguageCode)) {
             availableLanguageCodes.unshift(defaultLanguageCode);
         }

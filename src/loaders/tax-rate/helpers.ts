@@ -1,5 +1,6 @@
 import { ID, RequestContext, TaxCategoryService, ZoneService, TaxCategory } from '@vendure/core';
 import { TaxRateInput } from './types';
+import { PAGINATION } from '../../constants/defaults';
 
 export { isRecoverableError, shouldUpdateField } from '../shared-helpers';
 
@@ -24,7 +25,7 @@ export async function resolveTaxCategoryId(
 
     // Look up by code (name is used as code in Vendure for tax categories)
     if (record.taxCategoryCode) {
-        const taxCategories = await taxCategoryService.findAll(ctx);
+        const taxCategories = await taxCategoryService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT } as any);
         // TaxCategoryService.findAll may return TaxCategory[] or PaginatedList
         const categoriesList = Array.isArray(taxCategories)
             ? taxCategories
@@ -62,7 +63,7 @@ export async function resolveZoneId(
 
     // Look up by code (name is used as identifier for zones)
     if (record.zoneCode) {
-        const zones = await zoneService.findAll(ctx);
+        const zones = await zoneService.findAll(ctx, { take: PAGINATION.MAX_LOOKUP_LIMIT } as any);
         const match = zones.items.find(
             z => z.name.toLowerCase() === record.zoneCode?.toLowerCase()
         );

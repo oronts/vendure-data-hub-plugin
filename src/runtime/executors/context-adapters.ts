@@ -5,7 +5,7 @@ import { SecretResolver, ConnectionResolver, AdapterLogger, ConnectionConfig, Co
 import { DataHubLogger } from '../../services/logger';
 import { JsonObject, PipelineContext as PipelineCtx } from '../../types/index';
 import { ExecutionResult, SANDBOX_PIPELINE_ID } from '../executor-types';
-import { toErrorOrUndefined } from '../../utils/error.utils';
+import { toErrorOrUndefined, getErrorMessage } from '../../utils/error.utils';
 
 export function createSecretsAdapter(secretService: SecretService, ctx: RequestContext): SecretResolver {
     return {
@@ -71,7 +71,7 @@ export function handleCustomAdapterError(
     stepKey: string,
     inputLength: number,
 ): ExecutionResult {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
     logger.error(`${label} failed`, toErrorOrUndefined(error), {
         adapterCode,
         stepKey,
@@ -85,21 +85,13 @@ export function handleCustomAdapterError(
  * Consolidates common fields to reduce duplication across executor context builders.
  */
 export interface BaseAdapterContext {
-    /** Vendure request context */
     readonly ctx: RequestContext;
-    /** Pipeline ID */
     readonly pipelineId: ID;
-    /** Step key in the pipeline */
     readonly stepKey: string;
-    /** Pipeline context with settings */
     readonly pipelineContext: PipelineCtx;
-    /** Secret resolver */
     readonly secrets: SecretResolver;
-    /** Connection resolver */
     readonly connections: ConnectionResolver;
-    /** Logger for the adapter */
     readonly logger: AdapterLogger;
-    /** Whether this is a dry run */
     readonly dryRun: boolean;
 }
 
@@ -114,15 +106,16 @@ export function createBaseAdapterContext(
     connectionService: ConnectionService,
     logger: DataHubLogger,
     pipelineContext?: PipelineCtx,
+    options?: { pipelineId?: ID; dryRun?: boolean },
 ): BaseAdapterContext {
     return {
         ctx,
-        pipelineId: SANDBOX_PIPELINE_ID,
+        pipelineId: options?.pipelineId ?? SANDBOX_PIPELINE_ID,
         stepKey,
         pipelineContext: pipelineContext ?? {} as PipelineCtx,
         secrets: createSecretsAdapter(secretService, ctx),
         connections: createConnectionsAdapter(connectionService, ctx),
         logger: createLoggerAdapter(logger),
-        dryRun: false,
+        dryRun: options?.dryRun ?? false,
     };
 }

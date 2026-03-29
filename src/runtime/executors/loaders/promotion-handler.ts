@@ -181,9 +181,18 @@ export class PromotionHandler implements LoaderHandler {
 
         const channelCache = new Map<string, ID>();
 
+        const codeFieldName = config.codeField ?? 'code';
+        const enabledFieldName = config.enabledField ?? 'enabled';
+        const nameFieldName = config.nameField ?? 'name';
+        const descFieldName = config.descriptionField ?? 'description';
+        const startsAtFieldName = config.startsAtField ?? 'startsAt';
+        const endsAtFieldName = config.endsAtField ?? 'endsAt';
+        const conditionsJsonField = config.conditionsField;
+        const actionsJsonField = config.actionsField;
+        const customFieldsKey = config.customFieldsField ?? 'customFields';
+
         for (const rec of input) {
             try {
-                const codeFieldName = config.codeField ?? 'code';
                 const codeValue = getRecordField(rec, codeFieldName);
                 const code = codeValue ? String(codeValue) : '';
 
@@ -195,11 +204,9 @@ export class PromotionHandler implements LoaderHandler {
                     continue;
                 }
 
-                const enabledFieldName = config.enabledField ?? 'enabled';
                 const enabledVal = getRecordField(rec, enabledFieldName);
                 const enabled = enabledVal != null ? toBoolean(enabledVal) : true;
 
-                const nameFieldName = config.nameField ?? 'name';
                 const nameValue = getRecordField(rec, nameFieldName);
                 let name = nameValue ? String(nameValue) : code;
 
@@ -214,20 +221,14 @@ export class PromotionHandler implements LoaderHandler {
                     }
                 }
 
-                const descFieldName = config.descriptionField ?? 'description';
                 const descriptionRaw = getRecordField(rec, descFieldName);
                 const description = descriptionRaw != null ? String(descriptionRaw) : '';
 
-                const startsAtFieldName = config.startsAtField ?? 'startsAt';
                 const startsAtRaw = getRecordField(rec, startsAtFieldName);
                 const startsAt = toDateOrUndefined(startsAtRaw);
 
-                const endsAtFieldName = config.endsAtField ?? 'endsAt';
                 const endsAtRaw = getRecordField(rec, endsAtFieldName);
                 const endsAt = toDateOrUndefined(endsAtRaw);
-
-                const conditionsJsonField = config.conditionsField;
-                const actionsJsonField = config.actionsField;
 
                 const conditionsRaw = conditionsJsonField
                     ? safeJson(getRecordField(rec, conditionsJsonField))
@@ -239,7 +240,6 @@ export class PromotionHandler implements LoaderHandler {
                 const conditions = parseConfigurableOperations(conditionsRaw ?? []);
                 const actions = parseConfigurableOperations(actionsRaw ?? []);
 
-                const customFieldsKey = config.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
 
                 // Per-customer usage limit
@@ -434,8 +434,8 @@ export class PromotionHandler implements LoaderHandler {
             missing = 0;
         const config = getConfig(step.config);
 
+        const codeFieldName = config.codeField ?? 'code';
         for (const rec of input) {
-            const codeFieldName = config.codeField ?? 'code';
             const codeValue = getRecordField(rec, codeFieldName);
             const code = codeValue ? String(codeValue) : '';
 

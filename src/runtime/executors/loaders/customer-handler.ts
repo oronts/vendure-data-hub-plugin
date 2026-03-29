@@ -47,7 +47,7 @@ interface CustomerStepConfig {
     addressesMode?: string;
     addressMatchFields?: string;
     groupsField?: string;
-    groupsMode?: 'add' | 'set';
+    groupsMode?: string;
     customFieldsField?: string;
     strategy?: LoadStrategy;
 }
@@ -108,7 +108,7 @@ function hasCustomerLoaderConfigShape(config: unknown): config is Partial<Custom
  * Type guard to check if a value is an AddressRecord
  */
 function isAddressRecord(value: unknown): value is AddressRecord {
-    return value !== null && typeof value === 'object';
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**
@@ -117,16 +117,16 @@ function isAddressRecord(value: unknown): value is AddressRecord {
 function toCreateAddressInput(addr: AddressRecord): CreateAddressInput {
     return {
         streetLine1: addr.streetLine1 ?? addr.address1 ?? '',
-        streetLine2: addr.streetLine2 ?? addr.address2 ?? undefined,
-        city: addr.city ?? undefined,
-        postalCode: addr.postalCode ?? addr.zip ?? undefined,
-        countryCode: addr.countryCode || 'US',
-        phoneNumber: addr.phoneNumber ?? undefined,
-        province: addr.province ?? undefined,
-        company: addr.company ?? undefined,
-        fullName: addr.fullName ?? undefined,
-        defaultShippingAddress: addr.defaultShippingAddress ?? undefined,
-        defaultBillingAddress: addr.defaultBillingAddress ?? undefined,
+        streetLine2: addr.streetLine2 ?? addr.address2,
+        city: addr.city,
+        postalCode: addr.postalCode ?? addr.zip,
+        countryCode: addr.countryCode || '',
+        phoneNumber: addr.phoneNumber,
+        province: addr.province,
+        company: addr.company,
+        fullName: addr.fullName,
+        defaultShippingAddress: addr.defaultShippingAddress,
+        defaultBillingAddress: addr.defaultBillingAddress,
     };
 }
 
@@ -160,6 +160,9 @@ export class CustomerHandler implements LoaderHandler {
             try {
                 const email = getStringValue(rec, config.emailField ?? 'email');
                 if (!email) {
+                    if (onRecordError) {
+                        await onRecordError(step.key, `Missing required email field "${config.emailField ?? 'email'}"`, rec);
+                    }
                     fail++;
                     continue;
                 }
@@ -195,9 +198,9 @@ export class CustomerHandler implements LoaderHandler {
 
                 const customerInput: CustomerCreateOrUpdateInput = {
                     emailAddress: email,
-                    firstName: firstName ?? undefined,
-                    lastName: lastName ?? undefined,
-                    phoneNumber: phoneNumber ?? undefined,
+                    firstName,
+                    lastName,
+                    phoneNumber,
                 };
                 if (customFields) {
                     customerInput.customFields = customFields;
@@ -283,7 +286,6 @@ export class CustomerHandler implements LoaderHandler {
                 strategy: cfg.strategy as LoadStrategy | undefined,
             };
         }
-        // Return defaults if config is invalid
         return {
             emailField: 'email',
             firstNameField: 'firstName',
@@ -300,10 +302,7 @@ export class CustomerHandler implements LoaderHandler {
             return false;
         }
         const obj = result as Record<string, unknown>;
-        return (
-            obj.errorCode === 'EMAIL_ADDRESS_CONFLICT_ERROR' ||
-            (typeof obj.message === 'string' && typeof obj.errorCode === 'string')
-        );
+        return obj.errorCode === 'EMAIL_ADDRESS_CONFLICT_ERROR';
     }
 
     /**
@@ -389,7 +388,6 @@ export class CustomerHandler implements LoaderHandler {
                         });
                         this.logger.debug(`Updated existing address ${match.id} for customer ${customer.id}`);
                     } else {
-                        // Create new address (no match found)
                         await this.customerService.createAddress(ctx, customer.id, newInput);
                         this.logger.debug(`Created new address for customer ${customer.id}`);
                     }

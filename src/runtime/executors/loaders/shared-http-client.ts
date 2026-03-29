@@ -77,7 +77,7 @@ export function resolveHttpRetryConfig(
         retryDelayMs: Math.max(0, Number(cfg.retryDelayMs ?? errorHandling?.retryDelayMs ?? 0) || 0),
         maxRetryDelayMs: Math.max(0, Number(cfg.maxRetryDelayMs ?? errorHandling?.maxRetryDelayMs ?? HTTP.RETRY_MAX_DELAY_MS) || HTTP.RETRY_MAX_DELAY_MS),
         backoffMultiplier: Number(cfg.backoffMultiplier ?? errorHandling?.backoffMultiplier ?? HTTP.BACKOFF_MULTIPLIER) || HTTP.BACKOFF_MULTIPLIER,
-        timeoutMs: Math.max(0, Number(cfg.timeoutMs ?? 0) || 0),
+        timeoutMs: Math.max(0, Number(cfg.timeoutMs ?? HTTP.TIMEOUT_MS) || HTTP.TIMEOUT_MS),
         maxBatchSize: Math.max(0, Number(cfg.maxBatchSize ?? 0) || 0),
     };
 }

@@ -1,32 +1,10 @@
 import { ID, RequestContext, CustomerService, ShippingMethodService, OrderService, ProductVariantService } from '@vendure/core';
-import { OrderAddressInput, OrderLineInput } from './types';
+import { OrderLineInput } from './types';
 import { LinesMode } from '../../../shared/types';
 import { DataHubLogger } from '../../services/logger';
 
 export { isRecoverableError, shouldUpdateField, findVariantBySku } from '../shared-helpers';
 import { findVariantBySku } from '../shared-helpers';
-
-export function validateAddress(
-    address: OrderAddressInput,
-    prefix: string,
-): { field: string; message: string; code?: string }[] {
-    const errors: { field: string; message: string; code?: string }[] = [];
-
-    if (!address.streetLine1) {
-        errors.push({ field: `${prefix}.streetLine1`, message: 'Street line 1 is required', code: 'REQUIRED' });
-    }
-    if (!address.city) {
-        errors.push({ field: `${prefix}.city`, message: 'City is required', code: 'REQUIRED' });
-    }
-    if (!address.postalCode) {
-        errors.push({ field: `${prefix}.postalCode`, message: 'Postal code is required', code: 'REQUIRED' });
-    }
-    if (!address.countryCode) {
-        errors.push({ field: `${prefix}.countryCode`, message: 'Country code is required', code: 'REQUIRED' });
-    }
-
-    return errors;
-}
 
 export async function findCustomerByEmail(
     ctx: RequestContext,
@@ -77,7 +55,7 @@ export async function handleOrderLines(
     // Helper to find variant by SKU and add line
     const addLine = async (line: OrderLineInput): Promise<boolean> => {
         const quantity = Number(line.quantity);
-        if (isNaN(quantity) || quantity < 0) {
+        if (isNaN(quantity) || quantity < 1) {
             logger.warn(`Invalid quantity for line: ${JSON.stringify(line)}`);
             return false;
         }
@@ -89,6 +67,17 @@ export async function handleOrderLines(
         await orderService.addItemToOrder(ctx, orderId, variant.id, quantity);
         return true;
     };
+
+    // Guard: cannot modify lines on orders in non-modifiable states (produces SQL NaN errors)
+    const nonModifiableStates = new Set([
+        'Shipped', 'PartiallyShipped', 'Delivered', 'PartiallyDelivered',
+        'Fulfilled', 'PartiallyFulfilled', 'Cancelled',
+    ]);
+    const checkOrder = await orderService.findOne(ctx, orderId, ['lines']);
+    if (checkOrder && nonModifiableStates.has(checkOrder.state)) {
+        logger.warn(`Cannot modify lines on order ${orderId} in state ${checkOrder.state}`);
+        return;
+    }
 
     switch (mode) {
         case 'APPEND_ONLY':
@@ -119,7 +108,7 @@ export async function handleOrderLines(
                 if (existing) {
                     // SKU exists: add quantities
                     const parsedQty = Number(newLine.quantity);
-                    if (isNaN(parsedQty) || parsedQty < 0) {
+                    if (isNaN(parsedQty) || parsedQty < 1) {
                         logger.warn(`Invalid quantity for merge line SKU "${newLine.sku}": ${JSON.stringify(newLine.quantity)}`);
                         continue;
                     }
@@ -139,22 +128,7 @@ export async function handleOrderLines(
         }
 
         case 'REPLACE_ALL': {
-            // Remove all existing lines, add new ones (destructive)
             const existingOrder = await orderService.findOne(ctx, orderId, ['lines']);
-
-            // Guard: cannot adjust lines on orders in non-modifiable states.
-            // Attempting adjustOrderLine on Shipped/Delivered orders produces SQL NaN errors.
-            const nonModifiableStates = new Set([
-                'Shipped', 'PartiallyShipped', 'Delivered', 'PartiallyDelivered',
-                'Fulfilled', 'PartiallyFulfilled', 'Cancelled',
-            ]);
-            if (existingOrder && nonModifiableStates.has(existingOrder.state)) {
-                logger.warn(
-                    `Order ${orderId} is in state "${existingOrder.state}" — ` +
-                    'REPLACE_ALL line adjustment skipped (order is not modifiable)',
-                );
-                break;
-            }
 
             if (existingOrder?.lines && existingOrder.lines.length > 0) {
                 // Remove all existing lines

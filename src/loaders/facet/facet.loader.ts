@@ -3,7 +3,6 @@ import {
     ID,
     Facet,
     RequestContext,
-    TransactionalConnection,
     FacetService,
 } from '@vendure/core';
 import {
@@ -29,18 +28,7 @@ import {
 } from './types';
 import { shouldUpdateField } from '../shared-helpers';
 
-/**
- * FacetLoader - Refactored to extend BaseEntityLoader
- *
- * This eliminates ~60 lines of duplicate load() method code that was
- * copy-pasted across all loaders. The base class handles:
- * - Result initialization
- * - Validation loop
- * - Duplicate detection
- * - CREATE/UPDATE/UPSERT operation logic
- * - Dry run mode
- * - Error handling
- */
+/** Loads Facet entities via FacetService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class FacetLoader extends BaseEntityLoader<FacetInput, Facet> {
     protected readonly logger: DataHubLogger;
@@ -49,7 +37,6 @@ export class FacetLoader extends BaseEntityLoader<FacetInput, Facet> {
     private readonly lookupHelper: EntityLookupHelper<FacetService, Facet, FacetInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private facetService: FacetService,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -119,7 +106,7 @@ export class FacetLoader extends BaseEntityLoader<FacetInput, Facet> {
                     description: 'Unique identifier code (lowercase, no spaces)',
                     example: 'color',
                     validation: {
-                        pattern: '^[a-z0-9_-]+$',
+                        pattern: '^[a-zA-Z0-9_-]+$',
                     },
                 },
                 {

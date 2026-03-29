@@ -3,7 +3,6 @@ import {
     ID,
     Product,
     RequestContext,
-    TransactionalConnection,
     ProductService,
     FacetValueService,
     AssetService,
@@ -39,18 +38,7 @@ import {
 } from '../shared-helpers';
 import { ProductUpsertLoaderConfig } from '../../types/index';
 
-/**
- * ProductLoader - Refactored to extend BaseEntityLoader
- *
- * This eliminates ~60 lines of duplicate load() method code that was
- * copy-pasted across all loaders. The base class handles:
- * - Result initialization
- * - Validation loop
- * - Duplicate detection
- * - CREATE/UPDATE/UPSERT operation logic
- * - Dry run mode
- * - Error handling
- */
+/** Loads Product entities via ProductService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
     protected readonly logger: DataHubLogger;
@@ -59,7 +47,6 @@ export class ProductLoader extends BaseEntityLoader<ProductInput, Product> {
     private readonly lookupHelper: EntityLookupHelper<ProductService, Product, ProductInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private productService: ProductService,
         private facetValueService: FacetValueService,
         private assetService: AssetService,

@@ -80,7 +80,7 @@ export class SinkExecutor {
         // Common config - use constants for default values
         const indexName = cfg.indexName ?? SINK.DEFAULT_INDEX_NAME;
         const idField = cfg.idField ?? SINK.DEFAULT_ID_FIELD;
-        const bulkSize = Number(cfg.bulkSize ?? BATCH.BULK_SIZE) || BATCH.BULK_SIZE;
+        const bulkSize = Number((cfg as Record<string, unknown>).batchSize ?? cfg.bulkSize ?? BATCH.BULK_SIZE) || BATCH.BULK_SIZE;
 
         // Apply field selection
         const fields = cfg.fields;
@@ -117,7 +117,7 @@ export class SinkExecutor {
         const deleteRecords: RecordObject[] = [];
         for (const rec of localizedInput) {
             const op = String(rec.__operation ?? defaultOp).toUpperCase();
-            const { __operation: _, ...cleanRec } = rec;
+            const { __operation: _op, ...cleanRec } = rec; // eslint-disable-line @typescript-eslint/no-unused-vars
             if (op === 'DELETE') {
                 deleteRecords.push(cleanRec);
             } else {
@@ -173,11 +173,11 @@ export class SinkExecutor {
                     }
                 } else {
                     this.logger.warn(`Unknown sink adapter`, { stepKey: step.key, adapterCode });
-                    ok = localizedInput.length;
+                    fail += localizedInput.length;
                 }
             } else {
                 this.logger.warn(`Unknown sink adapter`, { stepKey: step.key, adapterCode });
-                ok = localizedInput.length;
+                fail += localizedInput.length;
             }
         }
 

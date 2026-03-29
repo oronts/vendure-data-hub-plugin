@@ -137,7 +137,6 @@ export async function resolveOptionGroups(
         cache.loadedProducts.add(productKey);
     }
 
-    // Ensure product has a map entry
     if (!cache.productGroups.has(productKey)) {
         cache.productGroups.set(productKey, new Map());
     }
@@ -224,7 +223,7 @@ export async function resolveOptionCodes(
                 optionIds.push(option.id);
                 cache.optionsByCode.set(code, option.id);
             } else {
-                logger.warn(`Option code "${code}" not found — skipped`);
+                logger.warn(`Option code "${code}" not found - skipped`);
             }
         } catch (error) {
             logger.warn(`Failed to resolve option code "${code}": ${getErrorMessage(error)}`);
@@ -256,7 +255,7 @@ export async function resolveStockLevels(
         for (const [name, qty] of Object.entries(stockByLocation)) {
             const locationId = locationMap.get(name);
             if (locationId) {
-                result.push({ stockLocationId: locationId, stockOnHand: qty });
+                result.push({ stockLocationId: locationId, stockOnHand: Math.max(0, Math.floor(qty)) });
             }
         }
         return result.length > 0 ? result : undefined;
@@ -378,7 +377,7 @@ export async function resolveChannelIds(
                 if (id) {
                     result.push(id);
                 } else {
-                    logger.warn(`Channel code "${code}" not found — skipped`);
+                    logger.warn(`Channel code "${code}" not found - skipped`);
                 }
             }
         } catch (error) {

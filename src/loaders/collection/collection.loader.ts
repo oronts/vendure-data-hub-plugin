@@ -3,7 +3,6 @@ import {
     ID,
     Collection,
     RequestContext,
-    TransactionalConnection,
     CollectionService,
     AssetService,
 } from '@vendure/core';
@@ -41,20 +40,7 @@ import {
 import { handleAssets } from '../shared-helpers';
 import type { CollectionUpsertLoaderConfig } from '../../../shared/types';
 
-/**
- * CollectionLoader - Refactored to extend BaseEntityLoader
- *
- * This eliminates ~60 lines of duplicate load() method code that was
- * copy-pasted across all loaders. The base class handles:
- * - Result initialization
- * - Validation loop
- * - Duplicate detection
- * - CREATE/UPDATE/UPSERT operation logic
- * - Dry run mode
- * - Error handling
- *
- * Note: Uses preprocessRecords() to sort by hierarchy before processing.
- */
+/** Loads Collection entities via CollectionService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collection> {
     protected readonly logger: DataHubLogger;
@@ -63,7 +49,6 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
     private readonly lookupHelper: EntityLookupHelper<CollectionService, Collection, CollectionInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private collectionService: CollectionService,
         private assetService: AssetService,
         loggerFactory: DataHubLoggerFactory,
@@ -100,7 +85,11 @@ export class CollectionLoader extends BaseEntityLoader<CollectionInput, Collecti
         record: CollectionInput,
         operation: TargetOperation,
     ): Promise<EntityValidationResult> {
+        const identifier = record.slug || record.name || record.id || 'unknown';
+
         const builder = new ValidationBuilder()
+            .withIdentifier(`slug="${identifier}"`)
+            .withLineNumber(ValidationBuilder.getLineNumber(record as Record<string, unknown>))
             .requireStringForCreate('name', record.name, operation, 'Collection name is required');
 
         if (record.parentSlug || record.parentId) {

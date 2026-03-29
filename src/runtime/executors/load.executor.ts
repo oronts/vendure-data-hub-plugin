@@ -20,7 +20,7 @@ import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { getAdapterCode } from '../../types/step-configs';
 import { createBaseAdapterContext } from './context-adapters';
-import { toErrorOrUndefined } from '../../utils/error.utils';
+import { toErrorOrUndefined, getErrorMessage } from '../../utils/error.utils';
 
 /**
  * Common load step configuration
@@ -59,7 +59,7 @@ export class LoadExecutor implements OnModuleInit {
                 this.logger.warn(`Failed to resolve loader handler`, {
                     code,
                     handler: entry.handler.name,
-                    error: error instanceof Error ? error.message : String(error),
+                    error: getErrorMessage(error),
                 });
             }
         }
@@ -137,7 +137,7 @@ export class LoadExecutor implements OnModuleInit {
                 fail: result.failed,
             };
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorMessage = getErrorMessage(error);
             this.logger.error(`Custom loader failed`, toErrorOrUndefined(error), {
                 adapterCode: loader.code,
                 stepKey: step.key,

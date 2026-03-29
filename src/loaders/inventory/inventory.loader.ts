@@ -2,10 +2,8 @@ import { Injectable } from '@nestjs/common';
 import {
     ID,
     RequestContext,
-    TransactionalConnection,
     ProductVariantService,
     StockLocationService,
-    StockLevelService,
     StockMovementService,
     ProductVariant,
 } from '@vendure/core';
@@ -27,15 +25,7 @@ import {
 import { InventoryInput, INVENTORY_LOADER_METADATA } from './types';
 import { findVariantBySku, resolveStockLocationId } from './helpers';
 
-/**
- * Inventory Loader - Refactored to extend BaseEntityLoader
- *
- * Updates stock levels for product variants by SKU.
- *
- * Note: This loader only supports UPDATE and UPSERT operations.
- * It cannot CREATE variants - if a variant doesn't exist by SKU,
- * the record will fail (UPSERT) or be skipped (UPDATE).
- */
+/** Loads Inventory (stock level) records via StockMovementService. Supports UPDATE, UPSERT. */
 @Injectable()
 export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVariant> {
     protected readonly logger: DataHubLogger;
@@ -45,15 +35,18 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
     private locationCache = new Map<string, ID>();
 
     constructor(
-        private connection: TransactionalConnection,
         private productVariantService: ProductVariantService,
         private stockLocationService: StockLocationService,
-        private stockLevelService: StockLevelService,
         private stockMovementService: StockMovementService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         super();
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.INVENTORY_LOADER);
+    }
+
+    protected preprocessRecords(records: InventoryInput[]): InventoryInput[] {
+        this.locationCache.clear();
+        return records;
     }
 
     protected getDuplicateErrorMessage(record: InventoryInput): string {
@@ -68,7 +61,7 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
     ): Promise<ExistingEntityLookupResult<ProductVariant> | null> {
         const variant = await findVariantBySku(this.productVariantService, ctx, record.sku);
         if (variant) {
-            // We need to get the full variant to satisfy the type
+            // findVariantBySku returns a partial, fetch full variant with relations
             const fullVariant = await this.productVariantService.findOne(ctx, variant.id);
             if (fullVariant) {
                 return { id: variant.id, entity: fullVariant };
@@ -151,8 +144,11 @@ export class InventoryLoader extends BaseEntityLoader<InventoryInput, ProductVar
             this.locationCache,
         );
 
-        const locations = await this.stockLocationService.findAll(ctx, {});
-        const targetLocationId = stockLocationId || (locations.totalItems > 0 ? locations.items[0].id : undefined);
+        let targetLocationId = stockLocationId;
+        if (!targetLocationId) {
+            const locations = await this.stockLocationService.findAll(ctx, {});
+            targetLocationId = locations.totalItems > 0 ? locations.items[0].id : undefined;
+        }
 
         if (!targetLocationId) {
             throw new Error(`No stock location available for SKU "${record.sku}" (variant ${variantId}). Create a stock location first.`);

@@ -14,7 +14,7 @@ import { getErrorMessage } from '../../../utils/error.utils';
 import { ExportHandlerParams, ExportHandlerResult } from './export-handler.types';
 
 function resolveRetryConfig(cfg: Record<string, JsonValue>): ResolvedRetryConfig {
-    const retries = Math.max(0, Number(cfg.retries ?? 0) || 0);
+    const retries = Math.max(0, Number(cfg.retryCount ?? 0) || 0);
     const retryDelayMs = Math.max(0, Number(cfg.retryDelayMs ?? 0) || 0);
     const maxRetryDelayMs = Math.max(0, Number(cfg.maxRetryDelayMs ?? HTTP.RETRY_MAX_DELAY_MS) || HTTP.RETRY_MAX_DELAY_MS);
     const backoffMultiplier = Math.max(1, Number(cfg.backoffMultiplier ?? HTTP.BACKOFF_MULTIPLIER) || HTTP.BACKOFF_MULTIPLIER);
@@ -36,7 +36,7 @@ export async function httpExportHandler(params: ExportHandlerParams): Promise<Ex
     const headers = (config.headers as Record<string, string>) ?? {};
     const batchSize = Number(config.batchSize ?? BATCH.BULK_SIZE) || BATCH.BULK_SIZE;
     const retryConfig = resolveRetryConfig(config);
-    const timeoutMs = Math.max(0, Number(config.timeoutMs ?? 0) || 0);
+    const timeoutMs = Math.max(0, Number(config.timeoutMs ?? HTTP.TIMEOUT_MS) || HTTP.TIMEOUT_MS);
 
     if (!endpoint) {
         if (onRecordError) {

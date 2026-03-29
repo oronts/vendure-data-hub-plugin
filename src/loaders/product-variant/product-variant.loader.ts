@@ -49,18 +49,7 @@ import {
 import { handleOptions } from './helpers';
 import { VariantUpsertLoaderConfig } from '../../types/index';
 
-/**
- * ProductVariantLoader - Refactored to extend BaseEntityLoader
- *
- * This eliminates ~60 lines of duplicate load() method code that was
- * copy-pasted across all loaders. The base class handles:
- * - Result initialization
- * - Validation loop
- * - Duplicate detection
- * - CREATE/UPDATE/UPSERT operation logic
- * - Dry run mode
- * - Error handling
- */
+/** Loads ProductVariant entities via ProductVariantService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, ProductVariant> {
     protected readonly logger: DataHubLogger;
@@ -296,7 +285,7 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
             this.logger,
         );
 
-        // Build translations — multi-language from record field, or single-language default
+        // Build translations: multi-language from record field, or single-language default
         const translations: Array<{ languageCode: LanguageCode; name: string }> = [];
         if (record.translations && record.translations.length > 0) {
             for (const t of record.translations) {
@@ -306,7 +295,6 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
                 });
             }
         }
-        // Ensure at least the context language is present
         const hasCtxLang = translations.some(t => t.languageCode === ctx.languageCode);
         if (!hasCtxLang) {
             translations.unshift({
@@ -353,7 +341,7 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
 
         const updateInput: Record<string, unknown> = { id: variantId };
 
-        // Build translations for the update — Vendure requires translations array
+        // Build translations for the update. Vendure requires translations array
         if (shouldUpdateField('name', options.updateOnlyFields)) {
             const variantName = record.name || record.sku;
             const translations: Array<{ languageCode: LanguageCode; name: string }> = [];
@@ -381,7 +369,7 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
             updateInput.price = record.price;
         }
         if (record.trackInventory !== undefined && shouldUpdateField('trackInventory', options.updateOnlyFields)) {
-            updateInput.trackInventory = record.trackInventory;
+            updateInput.trackInventory = record.trackInventory === false ? GlobalFlag.FALSE : GlobalFlag.TRUE;
         }
         if (record.customFields !== undefined && shouldUpdateField('customFields', options.updateOnlyFields)) {
             updateInput.customFields = record.customFields;

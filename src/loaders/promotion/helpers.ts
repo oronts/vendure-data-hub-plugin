@@ -10,18 +10,9 @@ export {
     buildConfigurableOperation,
     buildConfigurableOperations,
 } from '../shared-helpers';
+import { buildConfigurableOperations } from '../shared-helpers';
 
-/**
- * Handle promotion conditions based on the specified mode.
- *
- * @param ctx Request context
- * @param promotionService Promotion service instance
- * @param promotionId ID of the promotion to update
- * @param conditions New conditions from the import record
- * @param mode How to handle the conditions (REPLACE_ALL, MERGE, SKIP)
- * @param logger Logger instance
- * @returns ConfigurableOperationInput array to apply
- */
+/** Handle promotion conditions based on the specified mode. */
 export async function handlePromotionConditions(
     ctx: RequestContext,
     promotionService: PromotionService,
@@ -34,7 +25,6 @@ export async function handlePromotionConditions(
         return null; // Signal no update
     }
 
-    const { buildConfigurableOperations } = await import('../shared-helpers.js');
     const newConditions = buildConfigurableOperations(conditions);
 
     if (mode === 'REPLACE_ALL') {
@@ -48,7 +38,7 @@ export async function handlePromotionConditions(
             return newConditions;
         }
 
-        const existingConditions = promotion.conditions as unknown as ConfigurableOperationInput[];
+        const existingConditions = promotion.conditions.map(c => ({ code: c.code, arguments: c.args }));
         const merged = [...existingConditions, ...newConditions];
         logger.debug(`Merged ${existingConditions.length} existing + ${newConditions.length} new conditions = ${merged.length} total`);
         return merged;
@@ -57,17 +47,7 @@ export async function handlePromotionConditions(
     return newConditions;
 }
 
-/**
- * Handle promotion actions based on the specified mode.
- *
- * @param ctx Request context
- * @param promotionService Promotion service instance
- * @param promotionId ID of the promotion to update
- * @param actions New actions from the import record
- * @param mode How to handle the actions (REPLACE_ALL, MERGE, SKIP)
- * @param logger Logger instance
- * @returns ConfigurableOperationInput array to apply
- */
+/** Handle promotion actions based on the specified mode. */
 export async function handlePromotionActions(
     ctx: RequestContext,
     promotionService: PromotionService,
@@ -80,7 +60,6 @@ export async function handlePromotionActions(
         return null; // Signal no update
     }
 
-    const { buildConfigurableOperations } = await import('../shared-helpers.js');
     const newActions = buildConfigurableOperations(actions);
 
     if (mode === 'REPLACE_ALL') {
@@ -94,7 +73,7 @@ export async function handlePromotionActions(
             return newActions;
         }
 
-        const existingActions = promotion.actions as unknown as ConfigurableOperationInput[];
+        const existingActions = promotion.actions.map(a => ({ code: a.code, arguments: a.args }));
         const merged = [...existingActions, ...newActions];
         logger.debug(`Merged ${existingActions.length} existing + ${newActions.length} new actions = ${merged.length} total`);
         return merged;

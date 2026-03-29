@@ -3,7 +3,6 @@ import {
     ID,
     ShippingMethod,
     RequestContext,
-    TransactionalConnection,
     ShippingMethodService,
 } from '@vendure/core';
 import {
@@ -32,18 +31,7 @@ import {
     shouldUpdateField,
 } from './helpers';
 
-/**
- * ShippingMethodLoader - Refactored to extend BaseEntityLoader
- *
- * This eliminates ~60 lines of duplicate load() method code that was
- * copy-pasted across all loaders. The base class handles:
- * - Result initialization
- * - Validation loop
- * - Duplicate detection
- * - CREATE/UPDATE/UPSERT operation logic
- * - Dry run mode
- * - Error handling
- */
+/** Loads ShippingMethod entities via ShippingMethodService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
 export class ShippingMethodLoader extends BaseEntityLoader<ShippingMethodInput, ShippingMethod> {
     protected readonly logger: DataHubLogger;
@@ -52,7 +40,6 @@ export class ShippingMethodLoader extends BaseEntityLoader<ShippingMethodInput, 
     private readonly lookupHelper: EntityLookupHelper<ShippingMethodService, ShippingMethod, ShippingMethodInput>;
 
     constructor(
-        private connection: TransactionalConnection,
         private shippingMethodService: ShippingMethodService,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -138,7 +125,7 @@ export class ShippingMethodLoader extends BaseEntityLoader<ShippingMethodInput, 
                     description: 'Unique code for the shipping method',
                     example: 'standard-shipping',
                     validation: {
-                        pattern: '^[a-z0-9_-]+$',
+                        pattern: '^[a-zA-Z0-9_-]+$',
                     },
                 },
                 {
@@ -241,13 +228,10 @@ export class ShippingMethodLoader extends BaseEntityLoader<ShippingMethodInput, 
 
         if ((record.name !== undefined && shouldUpdateField('name', options.updateOnlyFields)) ||
             (record.description !== undefined && shouldUpdateField('description', options.updateOnlyFields))) {
-            updateInput.translations = [
-                {
-                    languageCode: ctx.languageCode,
-                    name: record.name,
-                    description: record.description,
-                },
-            ];
+            const translation: Record<string, unknown> = { languageCode: ctx.languageCode };
+            if (record.name !== undefined && shouldUpdateField('name', options.updateOnlyFields)) translation.name = record.name;
+            if (record.description !== undefined && shouldUpdateField('description', options.updateOnlyFields)) translation.description = record.description;
+            updateInput.translations = [translation];
         }
 
         await this.shippingMethodService.update(ctx, updateInput as Parameters<typeof this.shippingMethodService.update>[1]);

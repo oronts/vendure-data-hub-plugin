@@ -428,7 +428,6 @@ export class ValidationBuilder {
             contextParts.push(`line: ${this.recordLineNumber}`);
         }
 
-        // Format the comprehensive error message
         const parts: string[] = ['Validation failed'];
 
         // Add context if available
