@@ -75,7 +75,16 @@ export class ConnectionService {
         if (input.code !== undefined) entity.code = input.code;
         if (input.type !== undefined) entity.type = input.type as ConnectionType;
         if (input.config !== undefined) entity.config = input.config;
-        const saved = await repo.save(entity);
+        let saved: DataHubConnection;
+        try {
+            saved = await repo.save(entity);
+        } catch (error: unknown) {
+            const msg = getErrorMessage(error);
+            if (isDuplicateEntryError(msg)) {
+                throw new Error(`Connection code "${entity.code}" already exists`);
+            }
+            throw error;
+        }
         this.logger.info('Connection updated', { adapterCode: entity.code, connectionId: id });
         return saved;
     }

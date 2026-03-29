@@ -179,17 +179,33 @@ export class LoadOperationSimulator {
      * Infer entity type from adapter code
      */
     private inferEntityType(adapterCode: string): string {
-        const mapping: Record<string, string> = {
-            'vendure-products': VendureEntityType.PRODUCT,
-            'vendure-variants': VendureEntityType.PRODUCT_VARIANT,
-            'vendure-customers': VendureEntityType.CUSTOMER,
-            'vendure-orders': VendureEntityType.ORDER,
-            'vendure-collections': VendureEntityType.COLLECTION,
-            'vendure-facets': VendureEntityType.FACET,
-            'vendure-assets': VendureEntityType.ASSET,
-            'vendure-product-sync': VendureEntityType.PRODUCT,
+        const ADAPTER_ENTITY_MAP: Record<string, string> = {
+            productUpsert: 'Product',
+            variantUpsert: 'ProductVariant',
+            customerUpsert: 'Customer',
+            customerGroupUpsert: 'CustomerGroup',
+            orderUpsert: 'Order',
+            orderNote: 'Order',
+            orderTransition: 'Order',
+            applyCoupon: 'Order',
+            collectionUpsert: 'Collection',
+            facetUpsert: 'Facet',
+            facetValueUpsert: 'FacetValue',
+            assetAttach: 'Asset',
+            assetImport: 'Asset',
+            stockAdjust: 'StockLevel',
+            stockLocationUpsert: 'StockLocation',
+            inventoryAdjust: 'StockLevel',
+            promotionUpsert: 'Promotion',
+            taxRateUpsert: 'TaxRate',
+            paymentMethodUpsert: 'PaymentMethod',
+            channelUpsert: 'Channel',
+            shippingMethodUpsert: 'ShippingMethod',
+            entityDeletion: 'Entity',
+            restPost: 'Entity',
+            graphqlMutation: 'Entity',
         };
-        return mapping[adapterCode] || 'Entity';
+        return ADAPTER_ENTITY_MAP[adapterCode] || 'Entity';
     }
 
     /**

@@ -9,11 +9,11 @@ import * as path from 'path';
 import * as nodemailer from 'nodemailer';
 import { LOGGER_CONTEXTS, CONTENT_TYPES, EXTENSION_MIME_MAP } from '../../constants/index';
 import { EmailDestinationConfig, DeliveryResult, DeliveryOptions, DESTINATION_TYPE } from './destination.types';
-import { DataHubLogger } from '../logger';
+import { DataHubLoggerFactory } from '../logger';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { securePath } from '../../utils/input-validation.utils';
 
-const logger = new DataHubLogger(LOGGER_CONTEXTS.EMAIL_HANDLER);
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.EMAIL_HANDLER);
 
 /**
  * Escape HTML special characters to prevent XSS attacks

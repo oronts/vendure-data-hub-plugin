@@ -99,26 +99,24 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
         const startTime = Date.now();
         let shouldContinue = true;
 
-        // Evict expired or oldest entries if the map exceeds the bound
+        // Evict expired entries if the map exceeds the bound
         if (this.memoryLocks.size >= DISTRIBUTED_LOCK.MAX_MEMORY_LOCKS) {
             const now = Date.now();
-            // First pass: remove expired entries
+            // First pass: remove all expired entries
             for (const [k, entry] of this.memoryLocks) {
                 if (entry.expiresAt < now) {
                     this.memoryLocks.delete(k);
                 }
             }
-            // If still at capacity after clearing expired, evict the oldest entry
+            // If still at capacity after clearing expired, reject acquisition
+            // instead of evicting active (non-expired) locks
             if (this.memoryLocks.size >= DISTRIBUTED_LOCK.MAX_MEMORY_LOCKS) {
-                const oldestKey = this.memoryLocks.keys().next().value;
-                if (oldestKey) {
-                    this.logger.warn('Evicting non-expired lock at capacity limit', {
-                        evictedKey: oldestKey,
-                        mapSize: this.memoryLocks.size,
-                        maxSize: DISTRIBUTED_LOCK.MAX_MEMORY_LOCKS,
-                    });
-                    this.memoryLocks.delete(oldestKey);
-                }
+                this.logger.warn('Memory lock map at capacity with no expired entries to evict, rejecting lock acquisition', {
+                    key,
+                    mapSize: this.memoryLocks.size,
+                    maxSize: DISTRIBUTED_LOCK.MAX_MEMORY_LOCKS,
+                });
+                return { acquired: false };
             }
         }
 

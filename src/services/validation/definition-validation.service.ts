@@ -16,7 +16,6 @@ import { PipelineDefinitionError, PipelineDefinitionIssue } from '../../validati
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { getErrorMessage } from '../../utils/error.utils';
 
-// Import specialized validators
 import { validateTrigger } from './trigger-validation';
 import {
     AdapterStepConfig,
@@ -211,6 +210,7 @@ export class DefinitionValidationService {
         // (rules, branches, approval settings) and have no registered adapters.
         const ADAPTER_BASED_STEP_TYPES = new Set([
             StepTypeEnum.EXTRACT,
+            StepTypeEnum.ENRICH,
             StepTypeEnum.LOAD,
             StepTypeEnum.EXPORT,
             StepTypeEnum.FEED,

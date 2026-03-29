@@ -1,6 +1,7 @@
 import { RequestContextService } from '@vendure/core';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { ConnectionService } from '../config/connection.service';
+import { SecretService } from '../config/secret.service';
 import { AckMode } from '../../constants/index';
 import { DataHubLogger } from '../logger';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
@@ -19,6 +20,7 @@ export class MessageProcessing {
         private requestContextService: RequestContextService,
         private pipelineService: PipelineService,
         private connectionService: ConnectionService,
+        private secretService: SecretService,
         private logger: DataHubLogger,
         private domainEvents: DomainEventsService,
     ) {}
@@ -31,14 +33,18 @@ export class MessageProcessing {
         consumer: ActiveConsumer,
         isDestroying: () => boolean,
     ): void {
+        let polling = false;
         const poll = async () => {
-            if (!consumer.running || isDestroying()) return;
+            if (!consumer.running || isDestroying() || polling) return;
+            polling = true;
 
             try {
                 await this.pollMessages(consumer);
             } catch (error) {
                 this.logger.error(`Poll error for ${key}`,
                     toErrorOrUndefined(error), { pipelineCode: key });
+            } finally {
+                polling = false;
             }
         };
 
@@ -79,7 +85,7 @@ export class MessageProcessing {
 
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
 
-        // Internal queue adapter uses in-process buffer — no external connection needed
+        // Internal queue adapter uses in-process buffer, no external connection needed
         const isInternal = config.queueType.toLowerCase() === 'internal';
         let connectionConfig: QueueConnectionConfig = {} as QueueConnectionConfig;
 
@@ -92,7 +98,8 @@ export class MessageProcessing {
                 });
                 return;
             }
-            connectionConfig = conn.config as QueueConnectionConfig;
+            const rawConfig = conn.config as Record<string, unknown>;
+            connectionConfig = await this.resolveConnectionSecrets(ctx, rawConfig) as QueueConnectionConfig;
         }
 
         const fetchCount = Math.min(config.batchSize, availableSlots);
@@ -134,9 +141,20 @@ export class MessageProcessing {
                         messageId: msg.messageId,
                     });
 
-                    // Route to DLQ if configured
+                    let dlqSuccess = false;
                     if (config.deadLetterQueue && msg.deliveryTag) {
-                        await this.routeMessageToDLQ(consumer, adapter, connectionConfig, msg, error);
+                        try {
+                            await this.routeMessageToDLQ(consumer, adapter, connectionConfig, msg, error);
+                            dlqSuccess = true;
+                        } catch {
+                            dlqSuccess = false;
+                        }
+                    }
+
+                    if (config.ackMode === AckMode.MANUAL && msg.deliveryTag) {
+                        const noDlq = !config.deadLetterQueue;
+                        const requeue = (noDlq || !dlqSuccess) && !(msg.redelivered ?? false);
+                        await adapter.nack(connectionConfig, msg.deliveryTag, requeue).catch(() => {});
                     }
                 } finally {
                     consumer.inFlightCount--;
@@ -234,6 +252,32 @@ export class MessageProcessing {
                 pipelineCode: config.pipelineCode,
                 dlq: config.deadLetterQueue,
             });
+            throw dlqError;
         }
+    }
+
+    private async resolveConnectionSecrets(
+        ctx: import('@vendure/core').RequestContext,
+        raw: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> {
+        const resolved = { ...raw };
+        const secretFields = [
+            ['passwordSecretCode', 'password'],
+            ['accessKeyIdSecretCode', 'accessKeyId'],
+            ['secretAccessKeySecretCode', 'secretAccessKey'],
+            ['privateKeySecretCode', 'privateKey'],
+            ['apiKeySecretCode', 'apiKey'],
+        ];
+        for (const [secretField, targetField] of secretFields) {
+            const code = raw[secretField];
+            if (typeof code === 'string' && code) {
+                const value = await this.secretService.resolve(ctx, code);
+                if (value) resolved[targetField] = value;
+            }
+        }
+        if (raw.ssl !== undefined && resolved.useTls === undefined) {
+            resolved.useTls = !!raw.ssl;
+        }
+        return resolved;
     }
 }

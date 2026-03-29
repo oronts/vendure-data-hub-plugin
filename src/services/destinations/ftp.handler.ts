@@ -16,12 +16,12 @@ import {
     DeliveryOptions,
     DESTINATION_TYPE,
 } from './destination.types';
-import { DataHubLogger } from '../logger';
+import { DataHubLoggerFactory } from '../logger';
 import { isBlockedHostname } from '../../utils/url-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { normalizeRemotePath, createSuccessResult, createFailureResult } from './delivery-utils';
 
-const logger = new DataHubLogger(LOGGER_CONTEXTS.FTP_HANDLER);
+const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FTP_HANDLER);
 
 /**
  * Deliver content to SFTP server

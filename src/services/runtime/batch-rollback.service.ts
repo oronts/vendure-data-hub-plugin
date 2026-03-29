@@ -195,18 +195,13 @@ export class BatchRollbackService implements OnModuleDestroy {
                 break;
 
             case RollbackOperationType.UPDATE:
-                // For update operations, restore previous state
-                // Note: Cast required because TypeORM expects specific entity types,
-                // but we're working with dynamic entity types resolved at runtime
+                // Dynamic entity type requires cast; rollback service is generic across all entities
                 if (op.previousState) {
                     await repo.update(op.entityId, op.previousState as DeepPartial<ObjectLiteral>);
                 }
                 break;
 
             case RollbackOperationType.DELETE:
-                // For delete operations, recreate the entity
-                // Note: Cast required because TypeORM expects specific entity types,
-                // but we're working with dynamic entity types resolved at runtime
                 if (op.previousState) {
                     await repo.save({ ...op.previousState, id: op.entityId } as DeepPartial<ObjectLiteral>);
                 }

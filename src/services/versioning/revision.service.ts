@@ -16,7 +16,7 @@ import {
     TimelineEntry,
 } from '../../types/index';
 import { PipelineStatus, RevisionType, RunOutcome, SortOrder } from '../../constants/enums';
-import { LOGGER_CONTEXTS } from '../../constants/index';
+import { LOGGER_CONTEXTS, PAGINATION } from '../../constants/index';
 import { Pipeline, PipelineRevision, PipelineRun } from '../../entities/pipeline';
 import { DiffService } from './diff.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
@@ -89,6 +89,9 @@ export class RevisionService {
         pipeline.definition = definition;
         await pipelineRepo.save(pipeline);
 
+        if (this.lastSaveTimestamps.size > 1000) {
+            this.lastSaveTimestamps.clear();
+        }
         this.lastSaveTimestamps.set(pipelineId, now);
         await this.pruneDrafts(ctx, pipelineId);
 
@@ -195,7 +198,7 @@ export class RevisionService {
         });
     }
 
-    async getTimeline(ctx: RequestContext, pipelineId: ID, limit = 50): Promise<TimelineEntry[]> {
+    async getTimeline(ctx: RequestContext, pipelineId: ID, limit: number = PAGINATION.EVENTS_LIMIT): Promise<TimelineEntry[]> {
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
         const runRepo = this.connection.getRepository(ctx, PipelineRun);
 

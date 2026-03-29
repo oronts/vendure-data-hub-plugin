@@ -164,7 +164,7 @@ export class PipelineLogService {
             this.calculateAverageDuration(repo, pipelineId),
         ]);
 
-        return this.buildStatsResult(total, byLevel, errorsToday, warningsToday, avgDurationMs);
+        return { total, byLevel, errorsToday, warningsToday, avgDurationMs };
     }
 
     /**
@@ -245,25 +245,6 @@ export class PipelineLogService {
     }
 
     /**
-     * Build the final stats result object
-     */
-    private buildStatsResult(
-        total: number,
-        byLevel: Record<LogLevel, number>,
-        errorsToday: number,
-        warningsToday: number,
-        avgDurationMs: number,
-    ): LogStats {
-        return {
-            total,
-            byLevel,
-            errorsToday,
-            warningsToday,
-            avgDurationMs,
-        };
-    }
-
-    /**
      * Delete old logs (for retention)
      */
     async deleteOlderThan(ctx: RequestContext, date: Date): Promise<number> {
@@ -282,7 +263,7 @@ export class PipelineLogService {
         const repo = this.connection.getRepository(ctx, PipelineLog);
         return repo.find({
             order: { createdAt: SortOrder.DESC },
-            take: Math.min(limit, 1000),
+            take: Math.min(limit, PAGINATION.MAX_RECENT_LOGS),
             relations: ['pipeline'],
         });
     }

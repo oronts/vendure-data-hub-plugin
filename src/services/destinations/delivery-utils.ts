@@ -56,8 +56,10 @@ export function createFailureResult(
 }
 
 /**
- * Normalize a remote path by removing duplicate slashes
+ * Normalize a remote path, stripping traversal segments from the filename
  */
 export function normalizeRemotePath(basePath: string, filename: string): string {
-    return `${basePath}/${filename}`.replace(/\/+/g, '/');
+    // Extract basename only - strip any directory components for safety
+    const basename = filename.split('/').pop()?.split('\\').pop() ?? filename;
+    return `${basePath}/${basename}`.replace(/\/+/g, '/');
 }

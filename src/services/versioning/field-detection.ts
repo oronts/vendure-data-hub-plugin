@@ -105,7 +105,6 @@ export function trackFieldChanges(
  * Determine if a value change represents a transformation (type or significant modification)
  */
 export function isTransform(before: unknown, after: unknown): boolean {
-    // Check if value was transformed (type changed or significant modification)
     return typeof before !== typeof after ||
         (typeof before === 'string' && typeof after === 'string' &&
             (after as string).length !== (before as string).length);

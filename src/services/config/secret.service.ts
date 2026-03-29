@@ -9,6 +9,7 @@ import {
     encryptSecret,
     decryptSecret,
     isEncryptionConfigured,
+    isEncrypted,
     getMasterKey,
 } from '../../utils/encryption.utils';
 import { ensureError } from '../../utils/error.utils';
@@ -191,7 +192,7 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    private resolveDbSecret(secret: DataHubSecret): string | null {
+    private async resolveDbSecret(secret: DataHubSecret): Promise<string | null> {
         switch (secret.provider) {
             case SecretProvider.INLINE:
                 return this.decryptValue(secret.value);
@@ -206,18 +207,18 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
     }
 
     /** Only encrypts if DATAHUB_MASTER_KEY is configured */
-    encryptValue(plaintext: string): string {
+    async encryptValue(plaintext: string): Promise<string> {
         if (!this.encryptionEnabled) {
             return plaintext;
         }
 
         const masterKey = getMasterKey();
         if (!masterKey) {
-            return plaintext;
+            throw new Error('Encryption key is required but not available');
         }
 
         try {
-            return encryptSecret(plaintext, masterKey);
+            return await encryptSecret(plaintext, masterKey);
         } catch (err) {
             const error = ensureError(err);
             this.logger.error('Failed to encrypt secret value', error);
@@ -225,13 +226,19 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    private decryptValue(value: string | null): string | null {
+    private async decryptValue(value: string | null): Promise<string | null> {
         if (value === null) {
             return null;
         }
 
-        if (!this.encryptionEnabled) {
+        // Plaintext value (not yet encrypted), return as-is for migration compatibility
+        if (!isEncrypted(value)) {
             return value;
+        }
+
+        if (!this.encryptionEnabled) {
+            this.logger.error('Cannot decrypt secret: DATAHUB_MASTER_KEY not configured');
+            throw new Error('Cannot decrypt secret: encryption key not configured');
         }
 
         const masterKey = getMasterKey();
@@ -241,7 +248,7 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
         }
 
         try {
-            return decryptSecret(value, masterKey);
+            return await decryptSecret(value, masterKey);
         } catch (err) {
             const error = ensureError(err);
             this.logger.error('Failed to decrypt secret value', error);
@@ -256,7 +263,9 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
         }
 
         // Support fallback syntax: ENV_VAR|default_value
-        const [envName, fallback] = envNameOrFallback.split('|').map(s => s.trim());
+        const pipeIndex = envNameOrFallback.indexOf('|');
+        const envName = pipeIndex === -1 ? envNameOrFallback.trim() : envNameOrFallback.substring(0, pipeIndex).trim();
+        const fallback = pipeIndex === -1 ? undefined : envNameOrFallback.substring(pipeIndex + 1).trim();
 
         const value = process.env[envName];
 

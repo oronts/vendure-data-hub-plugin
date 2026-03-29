@@ -20,7 +20,7 @@ export interface BackendFactoryDependencies {
  * Selection priority:
  * 1. Forced backend via DATAHUB_LOCK_BACKEND env var
  * 2. Redis if DATAHUB_REDIS_URL is provided
- * 3. Auto-detect Redis at default location (redis://localhost:6379)
+ * 3. Redis if REDIS_URL env var is set
  * 4. Fall back to PostgreSQL backend
  */
 export class LockBackendFactory {
@@ -48,9 +48,10 @@ export class LockBackendFactory {
             if (redis) return redis;
         }
 
-        // Try auto-detect Redis at default location
-        if (!forcedBackend) {
-            const redis = await this.tryCreateRedisBackend(DISTRIBUTED_LOCK.DEFAULT_REDIS_URL);
+        // Only try Redis auto-detection if a Redis URL env var is set
+        // (avoids connection errors when Redis is not installed)
+        if (!forcedBackend && process.env.REDIS_URL) {
+            const redis = await this.tryCreateRedisBackend(process.env.REDIS_URL);
             if (redis) return redis;
         }
 

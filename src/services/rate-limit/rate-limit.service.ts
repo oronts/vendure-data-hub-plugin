@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS, INTERNAL_TIMINGS } from '../../constants/index';
+import { RATE_LIMIT } from '../../constants/defaults';
 
 interface RateLimitKey {
     ip?: string;
@@ -13,8 +14,7 @@ interface RateLimitEntry {
     resetAt: number;
 }
 
-/** Maximum number of rate limit entries to prevent unbounded memory growth */
-const MAX_RATE_LIMIT_ENTRIES = 1000;
+const MAX_RATE_LIMIT_ENTRIES = RATE_LIMIT.MAX_ENTRIES;
 
 /**
  * In-memory rate limiter for throttling requests by IP, pipeline code, or arbitrary identifier.
@@ -58,7 +58,6 @@ export class RateLimitService implements OnModuleDestroy {
 
         let entry = this.store.get(keyStr);
 
-        // Initialize or reset if expired
         if (!entry || entry.resetAt <= now) {
             // Evict oldest entries if at capacity
             if (!this.store.has(keyStr) && this.store.size >= MAX_RATE_LIMIT_ENTRIES) {
@@ -68,7 +67,6 @@ export class RateLimitService implements OnModuleDestroy {
             this.store.set(keyStr, entry);
         }
 
-        // Increment counter
         entry.count++;
 
         this.store.set(keyStr, entry);
@@ -136,7 +134,7 @@ export class RateLimitService implements OnModuleDestroy {
     getCount(key: RateLimitKey): number {
         const keyStr = this.generateKey(key);
         const entry = this.store.get(keyStr);
-        return entry?.count || 0;
+        return entry?.count ?? 0;
     }
 
     getStats(): Record<string, { count: number; resetAt: string }> {
