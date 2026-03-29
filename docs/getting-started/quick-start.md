@@ -130,7 +130,7 @@ export const config: VendureConfig = {
 
 ```graphql
 mutation {
-    runDataHubPipeline(id: "1") {
+    startDataHubPipelineRun(pipelineId: "1") {
         id
         status
     }

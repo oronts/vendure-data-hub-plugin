@@ -68,8 +68,8 @@ There are two ways to subscribe:
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `TriggerFired` | `{ pipelineCode, triggerType, triggerId }` | Trigger activated a pipeline run |
-| `ScheduleActivated` | `{ pipelineCode, cronExpression, triggerId }` | Cron schedule activated |
-| `ScheduleDeactivated` | `{ pipelineCode, triggerId }` | Cron schedule deactivated |
+| `ScheduleActivated` | `{ pipelineId, pipelineCode, scheduleCount, timestamp }` | Cron schedule activated |
+| `ScheduleDeactivated` | `{ pipelineId, pipelineCode, timestamp }` | Cron schedule deactivated |
 
 ### Webhook Delivery
 

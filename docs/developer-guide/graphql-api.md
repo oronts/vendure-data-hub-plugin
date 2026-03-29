@@ -1,5 +1,7 @@
 # GraphQL API
 
+> **Important:** Use GraphQL introspection (`{ __schema { ... } }`) or the Vendure Admin UI's API playground for the definitive, up-to-date API reference. The examples below show common usage patterns but field names and signatures may differ from the current implementation.
+
 The Data Hub plugin extends the Vendure Admin API with queries and mutations for pipeline management.
 
 ## Queries
@@ -15,7 +17,6 @@ query {
             id
             code
             name
-            description
             enabled
             createdAt
             updatedAt
@@ -35,7 +36,6 @@ query GetPipeline($id: ID!) {
         id
         code
         name
-        description
         enabled
         definition
         createdAt
@@ -54,7 +54,6 @@ query {
         items {
             id
             code
-            name
             type
             createdAt
         }
@@ -99,7 +98,7 @@ query {
                 type
                 required
                 label
-                default
+                defaultValue
                 options { value label }
             }
         }
@@ -118,9 +117,7 @@ query GetRuns($pipelineId: ID!) {
             id
             status
             startedAt
-            completedAt
-            recordsProcessed
-            recordsFailed
+            finishedAt
             triggeredBy
         }
         totalItems
@@ -139,16 +136,8 @@ query GetRun($id: ID!) {
         status
         startedAt
         completedAt
-        recordsProcessed
-        recordsFailed
+        metrics
         triggeredBy
-        stepMetrics {
-            stepKey
-            recordsIn
-            recordsOut
-            recordsFailed
-            durationMs
-        }
     }
 }
 ```
@@ -158,14 +147,14 @@ query GetRun($id: ID!) {
 Query execution logs:
 
 ```graphql
-query GetLogs($runId: ID!) {
-    dataHubLogs(runId: $runId, options: { take: 100 }) {
+query GetLogs {
+    dataHubLogs(options: { take: 100 }) {
         items {
             id
             level
             message
             stepKey
-            timestamp
+            createdAt
             metadata
         }
         totalItems
@@ -173,24 +162,19 @@ query GetLogs($runId: ID!) {
 }
 ```
 
-### dataHubRecordErrors
+### dataHubRunErrors
 
-Query failed records:
+Query failed records for a specific run:
 
 ```graphql
-query {
-    dataHubRecordErrors(options: { take: 50 }) {
-        items {
-            id
-            pipelineId
-            runId
-            stepKey
-            recordData
-            errorMessage
-            createdAt
-            retryCount
-        }
-        totalItems
+query RunErrors($runId: ID!) {
+    dataHubRunErrors(runId: $runId) {
+        id
+        stepKey
+        message
+        payload
+        stackTrace
+        createdAt
     }
 }
 ```
@@ -232,7 +216,6 @@ Variables:
     "input": {
         "code": "my-pipeline",
         "name": "My Pipeline",
-        "description": "Pipeline description",
         "definition": {
             "version": 1,
             "steps": [],
@@ -280,13 +263,13 @@ mutation DeletePipeline($id: ID!) {
 }
 ```
 
-### runDataHubPipeline
+### startDataHubPipelineRun
 
 Execute a pipeline:
 
 ```graphql
-mutation RunPipeline($id: ID!, $parameters: JSON) {
-    runDataHubPipeline(id: $id, parameters: $parameters) {
+mutation RunPipeline($pipelineId: ID!) {
+    startDataHubPipelineRun(pipelineId: $pipelineId) {
         id
         status
     }
@@ -298,10 +281,10 @@ mutation RunPipeline($id: ID!, $parameters: JSON) {
 Cancel a running pipeline:
 
 ```graphql
-mutation CancelRun($runId: ID!) {
-    cancelDataHubPipelineRun(runId: $runId) {
-        success
-        message
+mutation CancelRun($id: ID!) {
+    cancelDataHubPipelineRun(id: $id) {
+        id
+        status
     }
 }
 ```
@@ -311,14 +294,13 @@ mutation CancelRun($runId: ID!) {
 Validate a pipeline definition:
 
 ```graphql
-mutation Validate($definition: JSON!) {
+query Validate($definition: JSON!) {
     validateDataHubPipelineDefinition(definition: $definition) {
         isValid
-        errors
         issues {
             stepKey
             message
-            severity
+            reason
         }
     }
 }
@@ -359,20 +341,6 @@ Delete a connection:
 mutation DeleteConnection($id: ID!) {
     deleteDataHubConnection(id: $id) {
         result
-    }
-}
-```
-
-### testDataHubConnection
-
-Test a connection:
-
-```graphql
-mutation TestConnection($id: ID!) {
-    testDataHubConnection(id: $id) {
-        success
-        message
-        latencyMs
     }
 }
 ```
@@ -427,74 +395,25 @@ mutation DeleteSecret($id: ID!) {
 }
 ```
 
-### retryDataHubRecordErrors
+### retryDataHubRecord
 
-Retry failed records:
+Retry a single failed record with optional JSON patch:
 
 ```graphql
-mutation RetryErrors($ids: [ID!]!) {
-    retryDataHubRecordErrors(ids: $ids) {
-        success
-        retriedCount
-        failedCount
-    }
+mutation RetryRecord($errorId: ID!, $patch: JSON) {
+    retryDataHubRecord(errorId: $errorId, patch: $patch)
 }
 ```
 
-### deleteDataHubRecordErrors
-
-Delete error records:
-
-```graphql
-mutation DeleteErrors($ids: [ID!]!) {
-    deleteDataHubRecordErrors(ids: $ids) {
-        success
-        deletedCount
-    }
-}
-```
-
-### setDataHubSettings
+### updateDataHubSettings
 
 Update plugin settings:
 
 ```graphql
 mutation UpdateSettings($input: DataHubSettingsInput!) {
-    setDataHubSettings(input: $input) {
+    updateDataHubSettings(input: $input) {
         retentionDaysRuns
         retentionDaysErrors
-    }
-}
-```
-
-## Subscriptions
-
-### dataHubPipelineRunUpdated
-
-Subscribe to run updates:
-
-```graphql
-subscription OnRunUpdate($pipelineId: ID) {
-    dataHubPipelineRunUpdated(pipelineId: $pipelineId) {
-        id
-        status
-        recordsProcessed
-        recordsFailed
-    }
-}
-```
-
-### dataHubLogAdded
-
-Subscribe to new logs:
-
-```graphql
-subscription OnLog($runId: ID!) {
-    dataHubLogAdded(runId: $runId) {
-        id
-        level
-        message
-        timestamp
     }
 }
 ```
@@ -507,8 +426,8 @@ Using with `@vendure/admin-ui-plugin` or custom clients:
 import { gql } from 'graphql-tag';
 
 const RUN_PIPELINE = gql`
-    mutation RunPipeline($id: ID!) {
-        runDataHubPipeline(id: $id) {
+    mutation RunPipeline($pipelineId: ID!) {
+        startDataHubPipelineRun(pipelineId: $pipelineId) {
             id
             status
         }
@@ -518,7 +437,7 @@ const RUN_PIPELINE = gql`
 // Execute
 const result = await adminClient.mutate({
     mutation: RUN_PIPELINE,
-    variables: { id: '1' },
+    variables: { pipelineId: '1' },
 });
 ```
 

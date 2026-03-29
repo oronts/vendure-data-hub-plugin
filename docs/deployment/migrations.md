@@ -183,7 +183,7 @@ pm2 restart vendure
 
    ```graphql
    mutation {
-     runDataHubPipeline(id: "pipeline-1", dryRun: true) {
+     startDataHubPipelineRun(pipelineId: "pipeline-1") {
        id
        status
      }
@@ -543,10 +543,9 @@ Run each pipeline in dry-run mode:
 
 ```graphql
 mutation {
-  runDataHubPipeline(id: "test-pipeline", dryRun: true) {
+  startDataHubPipelineRun(pipelineId: "test-pipeline") {
     id
     status
-    recordsProcessed
   }
 }
 ```

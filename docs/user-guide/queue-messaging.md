@@ -356,7 +356,7 @@ const productChangeFanout = createPipeline()
     .name('product-change-fanout')
     .trigger('product-event', {
         type: 'EVENT',
-        eventType: 'ProductEvent',
+        event: 'ProductEvent',
     })
     .extract('from-event', { adapterCode: 'inMemory' })
     .sink('to-search-queue', {
@@ -463,16 +463,19 @@ Check queue consumer status:
 
 ```graphql
 query {
-    dataHubQueueStatus(connectionCode: "rabbitmq-main") {
-        connected
-        consumers {
-            pipelineCode
-            queue
-            messagesProcessed
-            messagesPerMinute
-            lastMessageAt
-            errors
-        }
+    dataHubQueueStats {
+        pending
+        running
+        failed
+        completedToday
+    }
+    dataHubConsumers {
+        pipelineCode
+        queueName
+        isActive
+        messagesProcessed
+        messagesFailed
+        lastMessageAt
     }
 }
 ```

@@ -1689,5 +1689,4 @@ const eventDrivenSync = createPipeline()
 
 - [Pipeline Builder Guide](../developer-guide/dsl/pipeline-builder.md) - DSL API reference
 - [Operators Reference](../developer-guide/dsl/operators.md) - All operators
-- [Templates Guide](./templates.md) - Pre-built pipeline templates
 - [Performance Tuning](../deployment/performance.md) - Optimization techniques

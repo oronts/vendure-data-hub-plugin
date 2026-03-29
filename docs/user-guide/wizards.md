@@ -761,7 +761,6 @@ Before importing, preview what will happen:
 
 ## See Also
 
-- [Templates Guide](./templates.md) - Pre-built templates
 - [Operators Guide](../developer-guide/dsl/operators.md) - Field transformations
 - [Performance Guide](../deployment/performance.md) - Optimization
 - [Troubleshooting Guide](../deployment/troubleshooting.md) - Common issues

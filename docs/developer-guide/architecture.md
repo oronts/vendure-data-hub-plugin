@@ -147,7 +147,7 @@ Runs are processed via Vendure's job queue:
 
 ```typescript
 await jobQueue.add({
-    type: 'data-hub-run',
+    type: 'data-hub.run',
     pipelineId: pipeline.id,
     triggeredBy: 'manual',
 });
@@ -301,7 +301,7 @@ dataHubPipelines() { ... }
 
 @Allow(RunDataHubPipelinePermission)
 @Mutation()
-runDataHubPipeline() { ... }
+startDataHubPipelineRun() { ... }
 ```
 
 ### Secret Encryption

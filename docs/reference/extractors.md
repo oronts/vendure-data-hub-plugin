@@ -170,18 +170,19 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `url` | string | Yes | GraphQL endpoint URL |
+| `endpoint` | string | Yes | GraphQL endpoint URL |
 | `query` | string | Yes | GraphQL query |
 | `connectionCode` | string | No | HTTP connection to use (optional) |
 | `headers` | json | No | Request headers (JSON object) |
 | `variables` | json | No | Query variables (JSON object) |
-| `dataPath` | string | No | JSON path to items in response |
-| `pagination.type` | select | No | Pagination type: NONE, OFFSET, CURSOR, RELAY |
-| `pagination.limit` | number | No | Page size |
-| `pagination.maxPages` | number | No | Maximum pages to fetch |
-| `pagination.cursorPath` | string | No | JSON path to cursor in response |
-| `pagination.cursorVariable` | string | No | Variable name for cursor |
-| `pagination.hasNextPagePath` | string | No | JSON path to hasNextPage boolean |
+| `itemsField` | string | No | Field name containing items in response |
+| `edgesField` | string | No | Field name for Relay-style edges |
+| `nodeField` | string | No | Field name for node within each edge |
+| `cursorVar` | string | No | Variable name for cursor pagination |
+| `nextCursorField` | string | No | Field name for next cursor in response |
+| `pageInfoField` | string | No | Field name for pageInfo object |
+| `hasNextPageField` | string | No | Field name for hasNextPage boolean |
+| `endCursorField` | string | No | Field name for endCursor in pageInfo |
 | `timeoutMs` | number | No | Request timeout in milliseconds |
 
 ### Example - Basic Query
@@ -189,7 +190,7 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
 ```typescript
 .extract('query-graphql', {
     adapterCode: 'graphql',
-    url: 'https://api.example.com/graphql',
+    endpoint: 'https://api.example.com/graphql',
     query: `
         query GetProducts($limit: Int) {
             products(limit: $limit) {
@@ -200,7 +201,7 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
         }
     `,
     variables: { limit: 100 },
-    dataPath: 'data.products',
+    itemsField: 'products',
 })
 ```
 
@@ -209,7 +210,7 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
 ```typescript
 .extract('query-with-offset', {
     adapterCode: 'graphql',
-    url: 'https://api.example.com/graphql',
+    endpoint: 'https://api.example.com/graphql',
     query: `
         query GetProducts($skip: Int, $take: Int) {
             products(skip: $skip, take: $take) {
@@ -218,11 +219,7 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
             }
         }
     `,
-    dataPath: 'data.products.items',
-    pagination: {
-        type: 'OFFSET',
-        limit: 100,
-    },
+    itemsField: 'products.items',
 })
 ```
 
@@ -231,7 +228,7 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
 ```typescript
 .extract('query-with-cursor', {
     adapterCode: 'graphql',
-    url: 'https://api.example.com/graphql',
+    endpoint: 'https://api.example.com/graphql',
     query: `
         query GetProducts($cursor: String) {
             products(first: 100, after: $cursor) {
@@ -248,13 +245,11 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
             }
         }
     `,
-    dataPath: 'data.products.edges',
-    pagination: {
-        type: 'RELAY',
-        cursorPath: 'data.products.pageInfo.endCursor',
-        hasNextPagePath: 'data.products.pageInfo.hasNextPage',
-        cursorVariable: 'cursor',
-    },
+    edgesField: 'products.edges',
+    pageInfoField: 'products.pageInfo',
+    hasNextPageField: 'hasNextPage',
+    endCursorField: 'endCursor',
+    cursorVar: 'cursor',
 })
 ```
 

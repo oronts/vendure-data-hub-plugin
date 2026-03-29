@@ -592,6 +592,5 @@ The default modes are chosen to be safe and match most use cases:
 ## Related Documentation
 
 - [Loaders Reference](../reference/loaders.md) - Complete API reference
-- [Production Standards](../../PIPELINE-PRODUCTION-STANDARDS.md) - Best practices
 - [Multi-Language Guide](./multi-language.md) - Translation handling
 - [Multi-Channel Guide](./multi-channel.md) - Channel assignment

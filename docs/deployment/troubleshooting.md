@@ -392,15 +392,18 @@ DataHubPlugin.init({
    - Valid JSON body
    - Required headers present
 
-4. **Check webhook logs:**
+4. **Check pipeline run logs for webhook errors:**
    ```graphql
    query {
-     dataHubWebhookLogs(options: { take: 10 }) {
+     dataHubLogs(options: { take: 10 }) {
        items {
-         path
-         statusCode
-         errorMessage
+         id
+         level
+         message
+         stepKey
+         createdAt
        }
+       totalItems
      }
    }
    ```
@@ -530,15 +533,18 @@ DataHubPlugin.init({
    - Check plugin is loaded
    - Verify event handlers registered
 
-4. **Check event logs:**
+4. **Check pipeline run logs for event trigger errors:**
    ```graphql
    query {
-     dataHubEventLogs(options: { take: 10 }) {
+     dataHubLogs(options: { take: 10 }) {
        items {
-         eventType
-         handled
-         errorMessage
+         id
+         level
+         message
+         stepKey
+         createdAt
        }
+       totalItems
      }
    }
    ```
@@ -774,15 +780,18 @@ DataHubPlugin.init({
    - Verify edge connects to gate
    - Check gate isn't skipped by route
 
-3. **Check gate logs:**
+3. **Check pipeline run logs for gate activity:**
    ```graphql
    query {
-     dataHubGateApprovals(options: { take: 10 }) {
+     dataHubLogs(options: { take: 10 }) {
        items {
-         pipelineId
-         status
-         approvedAt
+         id
+         level
+         message
+         stepKey
+         createdAt
        }
+       totalItems
      }
    }
    ```
@@ -962,7 +971,7 @@ DataHubPlugin.init({
 
 ```graphql
 mutation {
-  runDataHubPipeline(id: "pipeline-id", dryRun: true) {
+  startDataHubPipelineRun(pipelineId: "pipeline-id") {
     id
     status
   }
@@ -1059,12 +1068,12 @@ WHERE pipeline_id = 'pipeline-id';
 ```sql
 -- View queue
 SELECT * FROM job_queue
-WHERE queue_name = 'data-hub-run'
+WHERE queue_name = 'data-hub.run'
 AND state = 'PENDING';
 
 -- Clear stuck jobs (use with caution)
 DELETE FROM job_queue
-WHERE queue_name = 'data-hub-run'
+WHERE queue_name = 'data-hub.run'
 AND state = 'PENDING'
 AND created_at < NOW() - INTERVAL '1 hour';
 ```

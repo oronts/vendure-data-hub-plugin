@@ -161,7 +161,7 @@ dataHubPipelines() { ... }
 
 @Allow(Permission.RunDataHubPipeline)
 @Mutation()
-runDataHubPipeline() { ... }
+startDataHubPipelineRun() { ... }
 ```
 
 ### Programmatic Checks
