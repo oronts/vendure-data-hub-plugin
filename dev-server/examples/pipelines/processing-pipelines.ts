@@ -71,7 +71,7 @@ export const productEnrichment = createPipeline()
         operators: [
             { op: 'slugify', args: { source: 'product.name', target: 'productSlug' } },
             { op: 'template', args: { template: '${productSlug}-${sku}', target: 'variantSlug' } },
-            { op: 'slugify', args: { source: 'variantSlug' } },
+            { op: 'slugify', args: { source: 'variantSlug', target: 'variantSlug' } },
         ],
     })
 

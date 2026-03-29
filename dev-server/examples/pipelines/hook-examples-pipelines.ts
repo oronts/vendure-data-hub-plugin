@@ -183,7 +183,7 @@ export const interceptorHookDemo = createPipeline()
 
     .transform('uppercase-name', {
         operators: [
-            { op: 'uppercase', args: { source: 'name', target: 'name' } },
+            { op: 'uppercase', args: { path: 'name' } },
         ],
     })
 
@@ -398,7 +398,7 @@ export const multiHookChainDemo = createPipeline()
     .export('export-results', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'hook-chain-results.csv',
+        filenamePattern: 'hook-chain-results.csv',
         languageCode: 'en',
     })
 
@@ -521,7 +521,7 @@ export const allStagesHookDemo = createPipeline()
     .export('csv-out', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'all-stages-hook-test.csv',
+        filenamePattern: 'all-stages-hook-test.csv',
         languageCode: 'en',
     })
 

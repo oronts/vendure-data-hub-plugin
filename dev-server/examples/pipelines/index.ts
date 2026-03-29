@@ -1,16 +1,4 @@
-/**
- * Example Pipelines Index
- *
- * 37 production-quality pipelines covering ALL DataHub capabilities:
- * - Catalog (3): PIM sync, Magento migration, Shopify inventory
- * - Operations (7): CSV customer import, feed generation, webhook orders (3 auth modes), file watch, message queue
- * - Integration (8): CDC sync, event alerts, analytics, entity lifecycle, PIM customer sync, PIM order import, Magento customer migration, resilience test
- * - Sink & Feed (3): Search index sync (5 engines), multi-feed export (4 marketplaces), CRUD sync (operation-aware delete)
- * - ERP Complex (5): Full product import, customer sync, order import, delta sync, channel catalog
- * - Enterprise Complex (1): Full enterprise pipeline
- * - Enterprise Test (5): Operator stress, customer lifecycle, order state, transform chain, reconciliation
- * - Multi-Source (6): Multi-source aggregation, webhook enrichment, cross-system order sync, bi-directional sync (2), multi-sink fan-out
- */
+/** Example pipeline definitions for dev-server and integration testing. */
 
 export {
     pimCatalogSync,

@@ -93,8 +93,8 @@ export const dailyStockSync = createPipeline()
     .transform('transform-stock', {
         operators: [
             // Normalize SKU
-            { op: 'trim', args: { source: 'sku' } },
-            { op: 'uppercase', args: { source: 'sku' } },
+            { op: 'trim', args: { path: 'sku' } },
+            { op: 'uppercase', args: { path: 'sku' } },
 
             // Convert quantities to numbers
             { op: 'toNumber', args: { source: 'quantity' } },

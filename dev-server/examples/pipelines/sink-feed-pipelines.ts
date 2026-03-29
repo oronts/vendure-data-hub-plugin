@@ -305,8 +305,8 @@ export const multiFeedExport = createPipeline()
                     `,
                 },
             },
-            { op: 'truncate', args: { path: 'title', maxLength: 150 } },
-            { op: 'truncate', args: { path: 'description', maxLength: 5000 } },
+            { op: 'truncate', args: { source: 'title', length: 150 } },
+            { op: 'truncate', args: { source: 'description', length: 5000 } },
         ],
     })
 
@@ -379,7 +379,7 @@ export const multiFeedExport = createPipeline()
     .export('export-backup', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'feed-export-backup.csv',
+        filenamePattern: 'feed-export-backup.csv',
         languageCode: 'en',
     })
 
@@ -416,7 +416,7 @@ export const searchIndexCrudSync = createPipeline()
 
     .transform('prepare-doc', {
         operators: [
-            { op: 'set', args: { field: 'objectID', expression: '`product-${record.id}`' } },
+            { op: 'template', args: { template: 'product-${id}', target: 'objectID' } },
             { op: 'pick', args: { fields: ['objectID', 'name', 'slug', 'description', '__operation'] } },
         ],
     })

@@ -285,7 +285,7 @@ export const erpCustomerSync = createPipeline()
     .export('inactive-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'erp-inactive-customers.csv',
+        filenamePattern: 'erp-inactive-customers.csv',
     })
 
     // ── Transform: build addresses + assign groups (branch: active) ──────────
@@ -351,7 +351,7 @@ export const erpCustomerSync = createPipeline()
     .export('sync-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'erp-customer-sync.csv',
+        filenamePattern: 'erp-customer-sync.csv',
     })
 
     // ── Graph ─────────────────────────────────────────────────────────────────
@@ -517,7 +517,7 @@ export const erpOrderImport = createPipeline()
     .export('order-report', {
         adapterCode: 'csvExport',
         path: './exports',
-        filename: 'erp-order-import.csv',
+        filenamePattern: 'erp-order-import.csv',
     })
 
     // ── Graph ─────────────────────────────────────────────────────────────────
@@ -760,7 +760,7 @@ export const erpDeltaSyncPipeline = createPipeline()
     .export('delta-report', {
         adapterCode: 'jsonExport',
         path: './exports',
-        filename: 'erp-delta-sync.json',
+        filenamePattern: 'erp-delta-sync.json',
     })
 
     // ── Graph ─────────────────────────────────────────────────────────────────
