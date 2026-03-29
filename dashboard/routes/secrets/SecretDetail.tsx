@@ -105,6 +105,12 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
     });
 
     React.useEffect(() => {
+        if (creating && !form.getValues('provider')) {
+            form.setValue('provider', SECRET_PROVIDER.INLINE, { shouldDirty: false, shouldValidate: true });
+        }
+    }, [creating, form]);
+
+    React.useEffect(() => {
         if (!entity) return;
         form.reset(
             {
@@ -170,10 +176,18 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                             name="provider"
                             label="Provider"
                             rules={{ required: ERROR_MESSAGES.PROVIDER_REQUIRED }}
-                            render={({ field, fieldState }) => (
+                            render={({ field, fieldState }) => {
+                                // Ensure the form state has a valid provider value, not just a visual fallback.
+                                // Without this, the Select displays the correct default but the form
+                                // submits an empty string because field.value was never updated.
+                                const effectiveProvider = (field.value as string) || (entity?.provider ?? SECRET_PROVIDER.INLINE);
+                                if (field.value !== effectiveProvider) {
+                                    queueMicrotask(() => field.onChange(effectiveProvider));
+                                }
+                                return (
                                 <div>
                                     <Select
-                                        value={(field.value as string) || (entity?.provider ?? SECRET_PROVIDER.INLINE)}
+                                        value={effectiveProvider}
                                         onValueChange={field.onChange}
                                     >
                                         <SelectTrigger className={SELECT_WIDTHS.PROVIDER}>
@@ -201,7 +215,8 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                                         </p>
                                     )}
                                 </div>
-                            )}
+                                );
+                            }}
                         />
                     </DetailFormGrid>
 

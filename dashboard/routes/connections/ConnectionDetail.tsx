@@ -93,6 +93,12 @@ function ConnectionDetailPage({ route }: { route: AnyRoute }) {
     const configCacheRef = React.useRef<Record<string, Record<string, unknown>>>({});
 
     React.useEffect(() => {
+        if (creating && !form.getValues('type')) {
+            form.setValue('type', CONNECTION_DEFAULT_TYPE, { shouldDirty: false, shouldValidate: true });
+        }
+    }, [creating, form]);
+
+    React.useEffect(() => {
         if (!entity) {
             return;
         }
@@ -158,14 +164,22 @@ function ConnectionDetailPage({ route }: { route: AnyRoute }) {
                             label="Connection Type"
                             control={form.control}
                             rules={{ required: ERROR_MESSAGES.CONNECTION_TYPE_REQUIRED }}
-                            render={({ field, fieldState }) => (
+                            render={({ field, fieldState }) => {
+                                // Ensure the form state has a valid type value, not just a visual fallback.
+                                // Without this, the Select displays the correct default but the form
+                                // submits an empty string because field.value was never updated.
+                                const effectiveType =
+                                    (typeof field.value === 'string' && field.value.length > 0)
+                                        ? field.value
+                                        : String(entity?.type ?? CONNECTION_DEFAULT_TYPE);
+                                if (field.value !== effectiveType) {
+                                    // Schedule the form state sync outside the render cycle
+                                    queueMicrotask(() => field.onChange(effectiveType));
+                                }
+                                return (
                                 <div>
                                 <Select
-                                    value={
-                                        (typeof field.value === 'string' && field.value.length > 0)
-                                            ? field.value
-                                            : String(entity?.type ?? CONNECTION_DEFAULT_TYPE)
-                                    }
+                                    value={effectiveType}
                                     onValueChange={val => {
                                         const prevType = (field.value as UIConnectionType | undefined) ?? (entity?.type as UIConnectionType | undefined);
                                         const nextType = val as UIConnectionType;
@@ -191,7 +205,8 @@ function ConnectionDetailPage({ route }: { route: AnyRoute }) {
                                 </Select>
                                 <FieldError error={fieldState.error?.message} touched={fieldState.isTouched} />
                                 </div>
-                            )}
+                                );
+                            }}
                         />
                     </DetailFormGrid>
 
