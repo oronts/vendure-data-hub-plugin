@@ -11,7 +11,7 @@ import {
     SelectValue,
 } from '@vendure/dashboard';
 import { ROUTE_BRANCH_DEFAULTS, ERROR_MESSAGES } from '../../../constants';
-import { useStableKeys } from '../../../hooks';
+import { useStableKeys, useStableIndexIds } from '../../../hooks';
 import { useComparisonOperators } from '../../../hooks/api/use-config-options';
 import type { ComparisonOperatorOption } from '../../../hooks/api/use-config-options';
 
@@ -147,6 +147,7 @@ function BranchEditor({
     index,
 }: BranchEditorProps) {
     const conditions = branch.when ?? [];
+    const conditionKeys = useStableIndexIds(conditions, `branch-${index}-cond`);
     const [expanded, setExpanded] = React.useState(conditions.length > 0);
 
     const addCondition = useCallback(() => {
@@ -167,7 +168,6 @@ function BranchEditor({
 
     return (
         <div className="border rounded-md overflow-hidden">
-            {/* Branch header: name + delete */}
             <div className="flex items-center gap-2 p-2 bg-muted/30">
                 <button
                     type="button"
@@ -202,7 +202,6 @@ function BranchEditor({
                 </Button>
             </div>
 
-            {/* Conditions section */}
             {expanded && (
                 <div className="p-2 space-y-2 border-t">
                     {conditions.length === 0 ? (
@@ -216,7 +215,7 @@ function BranchEditor({
                             </p>
                             {conditions.map((cond, ci) => (
                                 <ConditionRow
-                                    key={ci}
+                                    key={conditionKeys[ci]}
                                     condition={cond}
                                     comparisonOperators={comparisonOperators}
                                     onUpdate={(patch) => updateCondition(ci, patch)}

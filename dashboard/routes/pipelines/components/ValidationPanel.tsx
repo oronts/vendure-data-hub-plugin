@@ -46,7 +46,7 @@ export function ValidationPanel({
                     )}
                     {validation.warnings.length > 0 && (
                         <div className="mt-4">
-                            <div className="text-sm font-medium text-amber-800 mb-2">Warnings</div>
+                            <div className="text-sm font-medium text-amber-800 dark:text-amber-400 mb-2">Warnings</div>
                             {validation.warnings.map((warning) => (
                                 <ValidationIssueItem key={`warning-${warning.stepKey ?? 'global'}-${warning.field ?? 'none'}-${warning.message}`} issue={warning} variant="warning" />
                             ))}
@@ -69,7 +69,9 @@ interface ValidationIssueItemProps {
 }
 
 function ValidationIssueItem({ issue, variant = 'error' }: ValidationIssueItemProps) {
-    const bgClass = variant === 'warning' ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800' : '';
+    const bgClass = variant === 'warning'
+        ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
+        : 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800';
 
     return (
         <div className={`border rounded p-2 ${bgClass}`}>
@@ -102,14 +104,14 @@ export function ValidationStatusBadge({
     }
 
     if (validation.isValid === true) {
-        return <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">Valid</span>;
+        return <span className="text-xs px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-400">Valid</span>;
     }
 
     if (validation.isValid === false) {
         return (
             <button
                 type="button"
-                className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-800 hover:underline"
+                className="text-xs px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-400 hover:underline"
                 onClick={onShowIssues}
             >
                 Issues: {validation.count}

@@ -47,21 +47,22 @@ export function PipelineWebhookInfo({
     }
 
     const pipelineCode = def.code ?? 'PIPELINE_CODE';
-    const url = `${window.location.origin}${DATAHUB_API_WEBHOOK(pipelineCode)}`;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const url = `${origin}${DATAHUB_API_WEBHOOK(pipelineCode)}`;
 
     // Generate cURL for first webhook (as example)
     const firstWebhook = webhookTriggers[0];
     const curlParts = [
-        `curl -X POST '${url}' \\`,
+        `curl -X POST '${url}'`,
         `  -H 'Content-Type: application/json'`,
     ];
 
     if (firstWebhook.requiresIdk) {
-        curlParts.push(`  -H 'X-Idempotency-Key: <unique-id>' \\`);
+        curlParts.push(`  -H 'X-Idempotency-Key: <unique-id>'`);
     }
 
     if (firstWebhook.sig) {
-        curlParts.push(`  -H '${firstWebhook.headerName}: <hmac-of-body>' \\`);
+        curlParts.push(`  -H '${firstWebhook.headerName}: <hmac-of-body>'`);
     }
 
     curlParts.push(`  -d '{"records":[{"id":"123","name":"Example"}]}'`);

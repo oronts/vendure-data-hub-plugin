@@ -201,7 +201,6 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
                 <div className="text-sm text-muted-foreground mb-2">Failed records captured during this run</div>
                 <PermissionGuard requires={[DATAHUB_PERMISSIONS.VIEW_QUARANTINE]}>
                     <RunErrorsList
-                        runId={runId}
                         items={errors ?? []}
                         onRetry={handleRetry}
                     />

@@ -54,7 +54,7 @@ import { getErrorMessage } from '../../../shared';
 import type { RunRow } from '../../types';
 
 /**
- * Terminal run statuses — intentionally hardcoded rather than derived from backend.
+ * Terminal run statuses, intentionally hardcoded rather than derived from backend.
  * These are a fundamental system invariant: a run is either still in progress or it has
  * reached one of these four terminal states. Adding `isFinished` metadata to the GraphQL
  * `DataHubOptionValue` type would require schema + codegen changes for no practical benefit,
@@ -128,7 +128,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
         if (!open) setSelectedRun(null);
     }, []);
 
-    const handleOnRerun = React.useCallback((id: string) => {
+    const handleRerun = React.useCallback((id: string) => {
         runPipeline.mutate(id, {
             onSuccess: () => toast.success(TOAST_PIPELINE.RUN_STARTED),
             onError: (err) => handleMutationError('start pipeline run', err),
@@ -222,7 +222,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                         {isPaused && (
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600" onClick={() => handleSelectRun(row.original)} aria-label="Approve gate">
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-amber-600 dark:text-amber-400" onClick={() => handleSelectRun(row.original)} aria-label="Approve gate">
                                         <ShieldCheck className="h-3.5 w-3.5" />
                                     </Button>
                                 </TooltipTrigger>
@@ -234,7 +234,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                             <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleOnRerun(pipelineId)} aria-label="Re-run pipeline">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRerun(pipelineId)} aria-label="Re-run pipeline">
                                             <Play className="h-3.5 w-3.5" />
                                         </Button>
                                     </TooltipTrigger>
@@ -260,7 +260,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             },
             enableSorting: false,
         },
-    ], [handleSelectRun, handleCancelRun, handleOnRerun, cancellingRunId, pipelineId]);
+    ], [handleSelectRun, handleCancelRun, handleRerun, cancellingRunId, pipelineId]);
 
     let content: React.ReactNode;
 
@@ -333,7 +333,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
                                 runId={selectedRun.id}
                                 initialData={selectedRun}
                                 onCancel={handleCancelRun}
-                                onRerun={handleOnRerun}
+                                onRerun={handleRerun}
                                 isCancelling={cancellingRunId === selectedRun.id}
                             />
                         )}

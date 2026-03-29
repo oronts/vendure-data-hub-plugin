@@ -21,11 +21,12 @@ export function PipelineImportDialog({ onImport }: Readonly<Props>) {
         setParsed(null);
         try {
             const def = JSON.parse(text);
-            const result = await validateMutation.mutateAsync(def);
+            const result = await validateMutation.mutateAsync({ definition: def });
             if (result?.isValid) {
                 setParsed(def);
             } else {
-                setErrors(result?.errors ?? ['Invalid definition']);
+                const issueMessages = (result?.issues as Array<{ message: string }> | undefined)?.map(i => i.message) ?? ['Invalid definition'];
+                setErrors(issueMessages);
             }
         } catch (e) {
             setErrors([getErrorMessage(e)]);

@@ -63,6 +63,8 @@ export function ReactFlowPipelineEditor({
     const reactFlowRef = React.useRef<HTMLDivElement>(null);
 
     const isUpdatingRef = React.useRef(false);
+    const nodesRef = React.useRef(nodes);
+    nodesRef.current = nodes;
 
     const getDefinitionKey = React.useCallback((def: VisualPipelineDefinition | null) => {
         if (!def) return '';
@@ -90,7 +92,7 @@ export function ReactFlowPipelineEditor({
         if (newKey !== currentKey) {
             lastSyncedKeyRef.current = newKey;
 
-            const positionMap = new Map(nodes.map(n => [n.id, n.position]));
+            const positionMap = new Map(nodesRef.current.map(n => [n.id, n.position]));
 
             const updatedNodes = definition.nodes.map(n => ({
                 ...n,
@@ -100,7 +102,7 @@ export function ReactFlowPipelineEditor({
             setNodes(updatedNodes);
             setEdges(definition.edges);
         }
-    }, [definition, nodes, setNodes, setEdges, getDefinitionKey]);
+    }, [definition, getDefinitionKey]);
 
     const notifyChange = React.useCallback((newNodes: Node<PipelineNodeData>[], newEdges: Edge[]) => {
         isUpdatingRef.current = true;
@@ -139,7 +141,7 @@ export function ReactFlowPipelineEditor({
         event.dataTransfer.effectAllowed = 'move';
     }, []);
 
-    /** Add a node directly to the canvas center -- used by keyboard accessibility path
+    /** Add a node directly to the canvas center. Used by keyboard accessibility path
      *  where a real drag-drop gesture is not possible. */
     const addNodeToCanvas = React.useCallback((nodeType: string, category: string, label: string) => {
         const bounds = reactFlowRef.current?.getBoundingClientRect();
@@ -149,7 +151,7 @@ export function ReactFlowPipelineEditor({
         };
 
         const newNode: Node<PipelineNodeData> = {
-            id: `node-${Date.now()}`,
+            id: `node-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             type: category,
             position,
             data: {
@@ -187,7 +189,7 @@ export function ReactFlowPipelineEditor({
             };
 
             const newNode: Node<PipelineNodeData> = {
-                id: `node-${Date.now()}`,
+                id: `node-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
                 type: category,
                 position,
                 data: {
@@ -249,10 +251,6 @@ export function ReactFlowPipelineEditor({
         setSelectedNode(null);
     }, []);
 
-    const handleAutoLayout = React.useCallback(() => {
-        autoLayout();
-    }, [autoLayout]);
-
     const issueMap = React.useMemo(() => {
         const issueCountMap = new Map<string, number>();
         for (const issue of issues) {
@@ -279,7 +277,7 @@ export function ReactFlowPipelineEditor({
                         <Badge variant="outline">{nodes.length} nodes</Badge>
                         <Badge variant="outline">{edges.length} connections</Badge>
                         {!readOnly && (
-                            <Button variant="ghost" size="sm" onClick={handleAutoLayout} className="gap-1 text-xs" data-testid="datahub-pipeline-editor-auto-layout-button" aria-label="Auto-layout pipeline nodes">
+                            <Button variant="ghost" size="sm" onClick={autoLayout} className="gap-1 text-xs" data-testid="datahub-pipeline-editor-auto-layout-button" aria-label="Auto-layout pipeline nodes">
                                 <LayoutGrid className="w-3 h-3" />
                                 Auto-layout
                             </Button>

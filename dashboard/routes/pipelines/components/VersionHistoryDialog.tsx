@@ -98,7 +98,7 @@ export function VersionHistoryDialog({
                                         {entry.revision.authorName && <span>by {entry.revision.authorName}</span>}
                                         {entry.runCount > 0 && <span>{entry.runCount} run{entry.runCount !== 1 ? 's' : ''}</span>}
                                         {entry.lastRunStatus && (
-                                            <span className={entry.lastRunStatus === RUN_STATUS.COMPLETED ? 'text-green-600' : entry.lastRunStatus === RUN_STATUS.FAILED ? 'text-red-600' : ''}>
+                                            <span className={entry.lastRunStatus === RUN_STATUS.COMPLETED ? 'text-green-600 dark:text-green-400' : entry.lastRunStatus === RUN_STATUS.FAILED ? 'text-red-600 dark:text-red-400' : ''}>
                                                 Last: {entry.lastRunStatus}
                                             </span>
                                         )}
