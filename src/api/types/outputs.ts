@@ -1,5 +1,5 @@
 /**
- * DataHub GraphQL Output Types — Extractor Resolver
+ * DataHub GraphQL Output Types - Extractor Resolver
  *
  * These types define the GraphQL response shapes for extractor queries.
  * Used by extractor.resolver.ts to type resolver return values.

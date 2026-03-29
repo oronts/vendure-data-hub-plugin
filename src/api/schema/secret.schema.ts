@@ -17,14 +17,6 @@ export const secretSchema = `
         totalItems: Int!
     }
 
-    input DataHubSecretListOptions {
-        skip: Int
-        take: Int
-        sort: JSON
-        filter: JSON
-        filterOperator: LogicalOperator
-    }
-
     input CreateDataHubSecretInput {
         code: String!
         provider: String = "INLINE"
@@ -43,7 +35,7 @@ export const secretSchema = `
 
 export const secretQueries = `
     extend type Query {
-        dataHubSecrets(options: DataHubSecretListOptions): DataHubSecretList!
+        dataHubSecrets: DataHubSecretList!
         dataHubSecret(id: ID!): DataHubSecret
     }
 `;

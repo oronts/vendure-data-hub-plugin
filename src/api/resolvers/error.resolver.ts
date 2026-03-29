@@ -151,7 +151,7 @@ export class DataHubErrorAdminResolver {
         if (!rec) return false;
 
         const runRepo = this.connection.getRepository(ctx, PipelineRun);
-        const run = await runRepo.findOne({ where: { id: rec.run.id }, relations: { pipeline: true } });
+        const run = await runRepo.findOne({ where: { id: rec.runId }, relations: { pipeline: true } });
         if (!run?.pipeline?.id) return false;
 
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, run.pipeline.id);

@@ -15,7 +15,7 @@ export class DataHubLogAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args() args: { options?: ListQueryOptions<PipelineLog> },
     ) {
-        return this.logService.list(ctx, args.options);
+        return this.logService.list(ctx, args.options ?? undefined);
     }
 
     @Query()

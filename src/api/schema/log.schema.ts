@@ -46,13 +46,6 @@ export const logSchema = `
         ERROR: Int!
     }
 
-    input DataHubLogListOptions {
-        skip: Int
-        take: Int
-        sort: JSON
-        filter: JSON
-        filterOperator: LogicalOperator
-    }
 `;
 
 export const logQueries = `
@@ -61,7 +54,7 @@ export const logQueries = `
         Query logs with standard Vendure list options (filter, sort, pagination).
         Use the filter parameter with operators like: { pipelineId: { eq: "123" }, level: { eq: "ERROR" } }
         """
-        dataHubLogs(options: DataHubLogListOptions): DataHubLogList!
+        dataHubLogs: DataHubLogList!
         dataHubRunLogs(runId: ID!): [DataHubLog!]!
         dataHubLogStats(pipelineId: ID): DataHubLogStats!
         dataHubRecentLogs(limit: Int): [DataHubLog!]!
