@@ -193,7 +193,7 @@ const DISALLOWED_KEYWORDS_PATTERN = new RegExp(
 const SCRIPT_ALLOWED_KEYWORDS = new Set(['new', 'class', 'extends']);
 
 /**
- * Disallowed keywords for script blocks — a subset of DISALLOWED_KEYWORDS
+ * Disallowed keywords for script blocks - a subset of DISALLOWED_KEYWORDS
  * that excludes keywords safe in the sandboxed VM context.
  */
 const SCRIPT_DISALLOWED_KEYWORDS = DISALLOWED_KEYWORDS.filter(
@@ -303,21 +303,18 @@ export function validateScriptBlock(
         );
     }
 
-    // Normalize code for analysis
-    const normalizedCode = code.replace(/\s+/g, ' ').trim();
-
-    // Check encoding/obfuscation patterns (but NOT statements/comments which are valid in scripts)
-    checkScriptDangerousPatterns(normalizedCode);
-
-    // Strip comments before keyword/pollution checks to avoid false positives
-    // from words in comments (e.g. "// this constructor is safe")
-    const codeWithoutComments = normalizedCode
+    // Strip comments BEFORE normalizing whitespace so single-line comments
+    // don't consume code that follows on the next line
+    const codeWithoutComments = code
         .replace(/\/\/[^\n]*/g, '')
         .replace(/\/\*[\s\S]*?\*\//g, '')
         .trim();
 
-    checkScriptDisallowedKeywords(codeWithoutComments);
-    checkPrototypePollution(codeWithoutComments);
+    const normalizedCode = codeWithoutComments.replace(/\s+/g, ' ').trim();
+
+    checkScriptDangerousPatterns(normalizedCode);
+    checkScriptDisallowedKeywords(normalizedCode);
+    checkPrototypePollution(normalizedCode);
 }
 
 /**
@@ -352,7 +349,7 @@ export function validateConditionExpression(
 }
 
 /**
- * Checks for dangerous code patterns (expression mode — strict)
+ * Checks for dangerous code patterns (expression mode - strict)
  */
 function checkDangerousPatterns(code: string): void {
     const patterns = DANGEROUS_PATTERNS;
@@ -434,7 +431,7 @@ function checkScriptDangerousPatterns(code: string): void {
 }
 
 /**
- * Checks for disallowed keywords (strict — for simple expressions)
+ * Checks for disallowed keywords (strict - for simple expressions)
  */
 function checkDisallowedKeywords(code: string): void {
     if (DISALLOWED_KEYWORDS_PATTERN.test(code)) {
@@ -446,7 +443,7 @@ function checkDisallowedKeywords(code: string): void {
 }
 
 /**
- * Checks for disallowed keywords in script blocks (permissive — allows new/class/extends)
+ * Checks for disallowed keywords in script blocks (permissive - allows new/class/extends)
  */
 function checkScriptDisallowedKeywords(code: string): void {
     if (SCRIPT_DISALLOWED_KEYWORDS_PATTERN.test(code)) {

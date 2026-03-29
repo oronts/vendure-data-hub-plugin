@@ -95,22 +95,22 @@ export function isRetryableError(error: unknown): boolean {
     const message = getErrorMessage(error).toLowerCase();
 
     const retryablePatterns = [
-        /timeout/i,
-        /network/i,
-        /connection/i,
-        /econnreset/i,
-        /econnrefused/i,
-        /enotfound/i,
-        /socket/i,
-        /temporary/i,
-        /transient/i,
-        /rate.?limit/i,
-        /too.?many.?requests/i,
+        /timeout/,
+        /network/,
+        /connection/,
+        /econnreset/,
+        /econnrefused/,
+        /enotfound/,
+        /socket/,
+        /temporary/,
+        /transient/,
+        /rate.?limit/,
+        /too.?many.?requests/,
         /429/,
         /503/,
-        /service.?unavailable/i,
-        /fetch.?failed/i,
-        /aborted/i,
+        /service.?unavailable/,
+        /fetch.?failed/,
+        /aborted/,
     ];
 
     return retryablePatterns.some(pattern => pattern.test(message));

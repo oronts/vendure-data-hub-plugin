@@ -8,7 +8,7 @@ export function formatSqlValue(value: JsonValue): string {
     if (typeof value === 'number') return String(value);
     if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
     if (typeof value === 'string') {
-        return `'${value.replace(/'/g, "''")}'`;
+        return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
     }
     if (value instanceof Date) {
         return `'${value.toISOString()}'`;
@@ -38,18 +38,12 @@ export function hasLimitClause(query: string): boolean {
     return /\bLIMIT\b/i.test(query);
 }
 
-const COMMON_COLUMN_WHITELIST = new Set([
-    'id', 'ID', '_id', 'Id',
-    'created_at', 'updated_at', 'deleted_at',
-    'createdAt', 'updatedAt', 'deletedAt',
-    'name', 'code', 'type', 'status', 'enabled',
-]);
-
-function validateColumnNameWithWhitelist(column: string | undefined): void {
+function validateColumnNameSafe(column: string | undefined): void {
     if (!column) {
         throw new Error('Column name is required');
     }
-    validateColumnName(column, COMMON_COLUMN_WHITELIST);
+    // Validate format only (letters, digits, underscores) - no whitelist restriction
+    validateColumnName(column);
 }
 
 export function buildPaginatedQuery(
@@ -70,9 +64,13 @@ export function buildPaginatedQuery(
 
     const pageSize = validateLimitOffset(pagination.pageSize, 1, PAGINATION.DATABASE_MAX_PAGE_SIZE);
 
+    // Wrap the user query in a subquery so we never modify the original SQL.
+    // This safely handles ORDER BY / LIMIT inside subqueries or quoted strings.
+    const baseQuery = `SELECT * FROM (${query.replace(/;\s*$/, '')}) AS _dh_paginated`;
+
     if (pagination.type === DatabasePaginationType.OFFSET) {
         const offset = validateLimitOffset(state.offset, 0, Number.MAX_SAFE_INTEGER);
-        return `${query} LIMIT ${pageSize} OFFSET ${offset}`;
+        return `${baseQuery} LIMIT ${pageSize} OFFSET ${offset}`;
     }
 
     if (pagination.type === DatabasePaginationType.CURSOR) {
@@ -80,21 +78,19 @@ export function buildPaginatedQuery(
             throw new Error('cursorColumn is required for cursor-based pagination');
         }
 
-        validateColumnNameWithWhitelist(pagination.cursorColumn);
+        validateColumnNameSafe(pagination.cursorColumn);
+        const col = escapeSqlIdentifier(pagination.cursorColumn);
 
         if (state.cursor !== undefined) {
             const cursorValue = formatSqlValue(state.cursor);
-            const cursorFilter = `${escapeSqlIdentifier(pagination.cursorColumn)} > ${cursorValue}`;
-            if (/WHERE/i.test(query)) {
-                return `${query} AND ${cursorFilter} ORDER BY ${escapeSqlIdentifier(pagination.cursorColumn)} LIMIT ${pageSize}`;
-            }
-            return `${query} WHERE ${cursorFilter} ORDER BY ${escapeSqlIdentifier(pagination.cursorColumn)} LIMIT ${pageSize}`;
+            const cursorFilter = `${col} > ${cursorValue}`;
+            return `${baseQuery} WHERE ${cursorFilter} ORDER BY ${col} LIMIT ${pageSize}`;
         }
 
-        return `${query} ORDER BY ${escapeSqlIdentifier(pagination.cursorColumn)} LIMIT ${pageSize}`;
+        return `${baseQuery} ORDER BY ${col} LIMIT ${pageSize}`;
     }
 
-    return `${query} LIMIT ${pageSize}`;
+    return `${baseQuery} LIMIT ${pageSize}`;
 }
 
 export function appendIncrementalFilter(
@@ -116,7 +112,7 @@ export function appendIncrementalFilter(
     }
 
     const column = config.incremental.column;
-    validateColumnNameWithWhitelist(column);
+    validateColumnNameSafe(column);
 
     const operator = '>';
     const value = formatSqlValue(lastValue);

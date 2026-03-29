@@ -248,7 +248,6 @@ export class SafeEvaluator {
         expression: string,
         contextKeys: string[],
     ): { script: vm.Script; params: string[] } {
-        // Create cache key from expression and context keys
         const cacheKey = `${expression}|${contextKeys.sort().join(',')}`;
 
         // Check cache
@@ -261,7 +260,6 @@ export class SafeEvaluator {
             }
         }
 
-        // Create the safe script
         const { script, params } = this.createSafeScript(expression, contextKeys);
 
         // Cache if enabled
@@ -291,7 +289,6 @@ export class SafeEvaluator {
         const sandboxKeys = Object.keys(this.sandbox);
         const allParams = [...sandboxKeys, ...contextKeys];
 
-        // Build the script body with strict mode and expression evaluation
         const scriptBody = `"use strict"; (${expr});`;
 
         try {
@@ -327,7 +324,6 @@ export class SafeEvaluator {
             ([, a], [, b]) => a.lastUsed - b.lastUsed,
         );
 
-        // Remove the oldest entries
         for (let i = 0; i < count && i < entries.length; i++) {
             this.cache.delete(entries[i][0]);
         }
@@ -339,7 +335,6 @@ export class SafeEvaluator {
         context: Record<string, unknown>,
         timeoutMs: number,
     ): unknown {
-        // Build the vm sandbox with sandbox values and context values
         const sandboxKeys = Object.keys(this.sandbox);
         const vmSandbox: Record<string, unknown> = {};
 
@@ -353,7 +348,9 @@ export class SafeEvaluator {
 
         // Use vm.createContext + script.runInContext for hard CPU timeout enforcement.
         // vm enforces timeout at the V8 level (kills the microtask).
-        const vmContext = vm.createContext(vmSandbox);
+        const vmContext = vm.createContext(vmSandbox, {
+            codeGeneration: { strings: false, wasm: false },
+        });
         try {
             return script.runInContext(vmContext, { timeout: timeoutMs });
         } catch (error) {

@@ -7,7 +7,8 @@ export function getNestedValue(obj: JsonObject | unknown, path: string): JsonVal
         return undefined;
     }
 
-    const parts = path.split('.');
+    const normalizedPath = path.replace(/\[(\d+)\]/g, '.$1');
+    const parts = normalizedPath.split('.');
     let current: unknown = obj;
 
     for (const part of parts) {
@@ -17,10 +18,15 @@ export function getNestedValue(obj: JsonObject | unknown, path: string): JsonVal
         if (current === null || current === undefined) {
             return undefined;
         }
-        if (typeof current !== 'object' || Array.isArray(current)) {
+        if (Array.isArray(current)) {
+            const idx = parseInt(part, 10);
+            if (isNaN(idx)) return undefined;
+            current = current[idx];
+        } else if (typeof current === 'object') {
+            current = (current as Record<string, unknown>)[part];
+        } else {
             return undefined;
         }
-        current = (current as Record<string, unknown>)[part];
     }
 
     return current as JsonValue | undefined;
@@ -93,7 +99,7 @@ export function removeNestedValue(obj: JsonObject, path: string): void {
         return;
     }
 
-    const parts = path.split('.');
+    const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.');
     let current: JsonObject = obj;
 
     for (let i = 0; i < parts.length - 1; i++) {
@@ -119,7 +125,7 @@ export function hasNestedValue(obj: JsonObject, path: string): boolean {
         return false;
     }
 
-    const parts = path.split('.');
+    const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.');
     let current: JsonValue = obj;
 
     for (const part of parts) {
@@ -129,7 +135,13 @@ export function hasNestedValue(obj: JsonObject, path: string): boolean {
         if (current === null || current === undefined) {
             return false;
         }
-        if (typeof current !== 'object' || Array.isArray(current)) {
+        if (Array.isArray(current)) {
+            const idx = parseInt(part, 10);
+            if (isNaN(idx) || idx >= current.length) return false;
+            current = current[idx] as JsonValue;
+            continue;
+        }
+        if (typeof current !== 'object') {
             return false;
         }
         if (!(part in (current as JsonObject))) {

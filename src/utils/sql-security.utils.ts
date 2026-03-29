@@ -102,10 +102,14 @@ export function containsSqlInjection(str: string): boolean {
         return true;
     }
 
-    // Pattern 5: Multiple single quotes (potential string escape attack)
-    // Count single quotes instead of using regex that could ReDoS
+    // Pattern 5: OR-based tautology (e.g., ' OR '1'='1)
+    if (/'\s*OR\s*'[^']*'\s*=\s*'[^']*'/i.test(checkStr)) {
+        return true;
+    }
+
+    // Pattern 6: Many single quotes (potential string escape attack)
     const quoteCount = (checkStr.match(/'/g) || []).length;
-    if (quoteCount >= 4) {
+    if (quoteCount >= 8) {
         return true;
     }
 
