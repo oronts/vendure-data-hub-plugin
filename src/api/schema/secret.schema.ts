@@ -8,8 +8,16 @@ export const secretSchema = `
         updatedAt: DateTime!
         code: String!
         provider: String!
-        value: String
+        hasValue: Boolean!
+        valueStatus: String!
+        isOverridden: Boolean!
         metadata: JSON
+    }
+
+    type DataHubSecretSecurity {
+        mode: String!
+        inlineStorageAvailable: Boolean!
+        codeFirstInlineAllowed: Boolean!
     }
 
     type DataHubSecretList implements PaginatedList {
@@ -19,8 +27,8 @@ export const secretSchema = `
 
     input CreateDataHubSecretInput {
         code: String!
-        provider: String = "INLINE"
-        value: String
+        provider: String = "ENV"
+        value: String!
         metadata: JSON
     }
 
@@ -30,6 +38,7 @@ export const secretSchema = `
         provider: String
         value: String
         metadata: JSON
+        clearValue: Boolean! = false
     }
 `;
 
@@ -37,6 +46,7 @@ export const secretQueries = `
     extend type Query {
         dataHubSecrets: DataHubSecretList!
         dataHubSecret(id: ID!): DataHubSecret
+        dataHubSecretSecurity: DataHubSecretSecurity!
     }
 `;
 

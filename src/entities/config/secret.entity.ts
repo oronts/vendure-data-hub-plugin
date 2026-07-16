@@ -1,5 +1,5 @@
 import { Column, Entity, Index } from 'typeorm';
-import { DeepPartial, VendureEntity } from '@vendure/core';
+import { Calculated, DeepPartial, VendureEntity } from '@vendure/core';
 import type { JsonObject } from '../../types/index';
 import { SecretProvider } from '../../constants/enums';
 import { TABLE_NAMES } from '../../constants/table-names';
@@ -23,4 +23,9 @@ export class DataHubSecret extends VendureEntity {
 
     @Column({ type: 'simple-json', nullable: true })
     metadata!: JsonObject | null;
+
+    @Calculated({ expression: "(datahubsecret.value IS NOT NULL AND datahubsecret.value <> '')" })
+    get hasValue(): boolean {
+        return this.value !== null && this.value !== '';
+    }
 }

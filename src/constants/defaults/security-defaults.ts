@@ -27,3 +27,10 @@ export const SAFE_EVALUATOR = {
     /** Cache eviction percentage (10% of cache evicted when full) */
     CACHE_EVICTION_PERCENT: 0.1,
 } as const;
+
+export const SECRET_SECURITY = {
+    MASTER_KEY_ENV: 'DATAHUB_MASTER_KEY',
+    NODE_ENV: 'NODE_ENV',
+    PRODUCTION_ENV: 'production',
+    MIN_MASTER_KEY_LENGTH: 32,
+} as const;
