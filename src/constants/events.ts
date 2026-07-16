@@ -1,5 +1,7 @@
+import { VENDURE_EVENT_TYPES, type VendureEventType } from '../../shared/types';
+
 /**
- * Pipeline run-level event types for SSE/WebSocket subscriptions
+ * Pipeline run-level domain event types.
  *
  * Note: These use PascalCase for consistency with Vendure event naming conventions
  */
@@ -17,7 +19,6 @@ export const RUN_EVENT_TYPES = [
  * Note: These use PascalCase for consistency with Vendure event naming conventions
  */
 export const WEBHOOK_EVENT_TYPES = [
-    'WebhookDeliveryAttempted',
     'WebhookDeliverySucceeded',
     'WebhookDeliveryFailed',
     'WebhookDeliveryRetrying',
@@ -32,7 +33,6 @@ export const WEBHOOK_EVENT_TYPES = [
  */
 export const STEP_EVENT_TYPES = [
     'StepStarted',
-    'StepProgress',
     'StepCompleted',
     'StepFailed',
     'RECORD_EXTRACTED',
@@ -68,15 +68,6 @@ export const TRIGGER_EVENT_TYPES = [
 ] as const;
 
 /**
- * Log event types for real-time log streaming
- *
- * Note: These use PascalCase for consistency with Vendure event naming conventions
- */
-export const LOG_EVENT_TYPES = [
-    'LogAdded',
-] as const;
-
-/**
  * Pipeline lifecycle event types for CRUD and status transitions
  *
  * Note: These use PascalCase for consistency with Vendure event naming conventions
@@ -97,31 +88,35 @@ export const PIPELINE_EVENT_TYPES = [
  */
 export const INTERNAL_EVENT_TYPES = [
     'PIPELINE_STARTED',
+    'PIPELINE_COMPLETED',
+    'PIPELINE_FAILED',
     'PipelineStepSkipped',
     'PipelinePaused',
     'RECORD_REJECTED',
     'RECORD_DEAD_LETTERED',
 ] as const;
 
-/**
- * Vendure domain events that can trigger pipelines via EVENT trigger type.
- * This is the single source of truth for event metadata (including category for UI grouping).
- */
-export const VENDURE_EVENTS = [
-    { event: 'ProductEvent', label: 'Product Changed', description: 'Any product change', category: 'Catalog' },
-    { event: 'ProductVariantEvent', label: 'Variant Changed', description: 'Any variant change', category: 'Catalog' },
-    { event: 'ProductVariantPriceEvent', label: 'Price Changed', description: 'Variant price updated', category: 'Catalog' },
-    { event: 'CollectionModificationEvent', label: 'Collection Modified', description: 'Collection changed', category: 'Catalog' },
-    { event: 'AssetEvent', label: 'Asset Changed', description: 'Asset created/updated', category: 'Catalog' },
-    { event: 'StockMovementEvent', label: 'Stock Movement', description: 'Stock level changed', category: 'Inventory' },
-    { event: 'OrderStateTransitionEvent', label: 'Order State Changed', description: 'Order transitioned', category: 'Orders' },
-    { event: 'OrderPlacedEvent', label: 'Order Placed', description: 'New order placed', category: 'Orders' },
-    { event: 'RefundStateTransitionEvent', label: 'Refund State Changed', description: 'Refund transitioned', category: 'Orders' },
-    { event: 'PaymentStateTransitionEvent', label: 'Payment State Changed', description: 'Payment transitioned', category: 'Orders' },
-    { event: 'CustomerEvent', label: 'Customer Changed', description: 'Customer created/updated', category: 'Customers' },
-    { event: 'AccountRegistrationEvent', label: 'Account Registered', description: 'New account registered', category: 'Customers' },
-    { event: 'CustomerAddressEvent', label: 'Address Changed', description: 'Customer address updated', category: 'Customers' },
-] as const;
+/** Metadata for the Vendure domain events supported by EVENT triggers. */
+const VENDURE_EVENT_METADATA = {
+    ProductEvent: { label: 'Product Changed', description: 'Product created, updated, or deleted', category: 'Catalog' },
+    ProductVariantEvent: { label: 'Variant Changed', description: 'Variant created, updated, or deleted', category: 'Catalog' },
+    ProductVariantPriceEvent: { label: 'Price Changed', description: 'Variant price created, updated, or deleted', category: 'Catalog' },
+    CollectionModificationEvent: { label: 'Collection Modified', description: 'Collection membership changed', category: 'Catalog' },
+    AssetEvent: { label: 'Asset Changed', description: 'Asset created, updated, or deleted', category: 'Catalog' },
+    StockMovementEvent: { label: 'Stock Movement', description: 'Stock movement created', category: 'Inventory' },
+    OrderStateTransitionEvent: { label: 'Order State Changed', description: 'Order transitioned to another state', category: 'Orders' },
+    OrderPlacedEvent: { label: 'Order Placed', description: 'Order reached its configured placed state', category: 'Orders' },
+    RefundStateTransitionEvent: { label: 'Refund State Changed', description: 'Refund transitioned to another state', category: 'Orders' },
+    PaymentStateTransitionEvent: { label: 'Payment State Changed', description: 'Payment transitioned to another state', category: 'Orders' },
+    CustomerEvent: { label: 'Customer Changed', description: 'Customer created, updated, or deleted', category: 'Customers' },
+    AccountRegistrationEvent: { label: 'Account Registered', description: 'Customer account registered', category: 'Customers' },
+    CustomerAddressEvent: { label: 'Address Changed', description: 'Customer address created, updated, or deleted', category: 'Customers' },
+} as const satisfies Record<VendureEventType, { label: string; description: string; category: string }>;
+
+export const VENDURE_EVENTS = VENDURE_EVENT_TYPES.map(event => ({
+    event,
+    ...VENDURE_EVENT_METADATA[event],
+}));
 
 /** Union type of all pipeline run event types */
 export type RunEventType = (typeof RUN_EVENT_TYPES)[number];
@@ -137,9 +132,6 @@ export type GateEventType = (typeof GATE_EVENT_TYPES)[number];
 
 /** Union type of all trigger lifecycle event types */
 export type TriggerEventType = (typeof TRIGGER_EVENT_TYPES)[number];
-
-/** Union type of all log event types */
-export type LogEventType = (typeof LOG_EVENT_TYPES)[number];
 
 /** Union type of all pipeline lifecycle event types */
 export type PipelineEventType = (typeof PIPELINE_EVENT_TYPES)[number];

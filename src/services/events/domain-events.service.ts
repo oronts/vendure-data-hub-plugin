@@ -3,7 +3,6 @@ import { EventBus } from '@vendure/core';
 import { Subject, Observable } from 'rxjs';
 import { share } from 'rxjs/operators';
 import { DOMAIN_EVENTS } from '../../constants/index';
-import { generateTimestampedId } from '../../utils/id-generation.utils';
 
 export type DomainEventPayload = Record<string, unknown>;
 
@@ -45,7 +44,11 @@ export class DomainEventsService implements OnModuleDestroy {
             const createdAt = new Date();
 
             if (this.eventBus) {
-                this.eventBus.publish(new DataHubDomainEvent<T>(name, payload));
+                // Domain events are observational; consume async EventBus failures so
+                // telemetry cannot create an unhandled rejection in pipeline execution.
+                void this.eventBus
+                    .publish(new DataHubDomainEvent<T>(name, payload))
+                    .catch(() => undefined);
             }
 
             const ev: BufferedEvent = { name, payload, createdAt };
@@ -165,25 +168,6 @@ export class DomainEventsService implements OnModuleDestroy {
             pipelineId,
             pipelineCode,
             archivedAt: new Date(),
-        });
-    }
-
-    publishLog(
-        level: 'DEBUG' | 'INFO' | 'WARN' | 'ERROR',
-        message: string,
-        options?: {
-            pipelineCode?: string;
-            runId?: string;
-            stepKey?: string;
-            metadata?: Record<string, unknown>;
-        },
-    ): void {
-        this.publish('LogAdded', {
-            id: generateTimestampedId('log', 6),
-            timestamp: new Date(),
-            level,
-            message,
-            ...options,
         });
     }
 
