@@ -7,7 +7,8 @@
 import { JsonObject } from '../../types/index';
 import { HttpResponse } from './types';
 import { getNestedValue } from '../../operators/helpers';
-import { HTTP_STATUS } from '../../constants/defaults';
+import { HTTP_STATUS, OUTBOUND_RESPONSE_LIMITS } from '../../constants/defaults';
+import { readResponseText } from '../../utils/secure-response-body.utils';
 
 /**
  * Extract records from response data using a data path
@@ -42,7 +43,10 @@ export function parseResponseHeaders(
  * Build HTTP response wrapper from fetch response
  */
 export async function buildHttpResponse(response: Response): Promise<HttpResponse> {
-    const text = await response.text();
+    const text = await readResponseText(response, {
+        maxBytes: OUTBOUND_RESPONSE_LIMITS.CONNECTOR_EXTRACT_BYTES,
+        context: 'HTTP API extractor response',
+    });
     let data: unknown;
     try {
         data = JSON.parse(text);

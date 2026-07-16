@@ -26,6 +26,7 @@ export function updatePaginationState(
     const pagination = config.pagination;
     let hasMore = false;
     let cursor = currentState.cursor;
+    let nextUrl = currentState.nextUrl;
     let offset = currentState.offset;
     let page = currentState.page;
 
@@ -42,11 +43,12 @@ export function updatePaginationState(
 
         case PaginationType.PAGE:
             page += 1;
-            hasMore = currentState.recordCount >= (pagination?.pageSize || HTTP_DEFAULTS.pageLimit);
+            hasMore = currentState.recordCount >= (pagination?.limit || HTTP_DEFAULTS.pageLimit);
             break;
 
         case PaginationType.LINK_HEADER:
-            hasMore = hasNextLink(response);
+            nextUrl = getNextPageUrl(response);
+            hasMore = nextUrl !== undefined;
             break;
 
         case PaginationType.NONE:
@@ -54,7 +56,7 @@ export function updatePaginationState(
             break;
     }
 
-    return { hasMore, cursor, offset, page };
+    return { hasMore, cursor, nextUrl, offset, page };
 }
 
 /**
@@ -89,16 +91,6 @@ function determineCursorHasMore(
 
     // Fall back to checking if we got a cursor and full page
     return !!cursor && recordCount >= (pagination?.limit || HTTP_DEFAULTS.pageLimit);
-}
-
-/**
- * Check if response has next link in Link header
- */
-function hasNextLink(response: HttpResponse): boolean {
-    const linkHeader = response.headers['link'];
-    if (!linkHeader) return false;
-
-    return linkHeader.includes('rel="next"') || linkHeader.includes("rel='next'");
 }
 
 /**

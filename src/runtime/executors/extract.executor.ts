@@ -1,25 +1,29 @@
 import { Injectable, Optional } from '@nestjs/common';
-import { RequestContext, TransactionalConnection } from '@vendure/core';
-import { JsonObject, PipelineStepDefinition, DataExtractor, BatchDataExtractor, ExtractorContext as InternalExtractorContext } from '../../types/index';
+import { RequestContext } from '@vendure/core';
+import {
+    BatchDataExtractor,
+    DataExtractor,
+    ExtractorContext as InternalExtractorContext,
+    ExtractorValidationResult,
+    JsonObject,
+    PipelineStepDefinition,
+} from '../../types/index';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
 import { FileStorageService } from '../../services/storage/file-storage.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
+import { FileParserService } from '../../parsers/file-parser.service';
 import { ID } from '@vendure/core';
 import { RecordObject, OnRecordErrorCallback, ExecutorContext } from '../executor-types';
 import { LOGGER_CONTEXTS, EXTRACTOR_CODE } from '../../constants/index';
-import { AdapterType } from '../../constants/enums';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { ExtractorRegistryService } from '../../extractors/extractor-registry.service';
-import { ExtractorAdapter, ExtractContext } from '../../sdk/types';
+import { BatchExtractorAdapter, ExtractorAdapter, ExtractContext } from '../../sdk/types';
 import { createSecretsAdapter, createConnectionsAdapter, createLoggerAdapter } from './context-adapters';
 import {
     ExtractHandler,
     ExtractHandlerContext,
 } from './extractors';
-import { RestExtractHandler } from './extractors/rest-extract.handler';
-import { GraphqlExtractHandler } from './extractors/graphql-extract.handler';
-import { VendureExtractHandler } from './extractors/vendure-extract.handler';
 import { FileExtractHandler } from './extractors/file-extract.handler';
 import { MemoryExtractHandler } from './extractors/memory-extract.handler';
 import { getAdapterCode } from '../../types/step-configs';
@@ -33,8 +37,8 @@ export class ExtractExecutor {
     constructor(
         private secretService: SecretService,
         private connectionService: ConnectionService,
-        private connection: TransactionalConnection,
         private fileStorageService: FileStorageService,
+        private fileParserService: FileParserService,
         loggerFactory: DataHubLoggerFactory,
         @Optional() private registry?: DataHubRegistryService,
         @Optional() private extractorRegistry?: ExtractorRegistryService,
@@ -47,12 +51,11 @@ export class ExtractExecutor {
     private initializeHandlers(loggerFactory: DataHubLoggerFactory): Map<string, ExtractHandler> {
         const handlers = new Map<string, ExtractHandler>();
 
-        handlers.set(EXTRACTOR_CODE.HTTP_API, new RestExtractHandler(this.secretService, this.connectionService, loggerFactory));
-        handlers.set(EXTRACTOR_CODE.GRAPHQL, new GraphqlExtractHandler(this.secretService, loggerFactory));
-        handlers.set(EXTRACTOR_CODE.VENDURE_QUERY, new VendureExtractHandler(this.connection, loggerFactory));
-        handlers.set(EXTRACTOR_CODE.CSV, new FileExtractHandler(this.fileStorageService, loggerFactory));
-        handlers.set(EXTRACTOR_CODE.JSON, new FileExtractHandler(this.fileStorageService, loggerFactory));
-        handlers.set(EXTRACTOR_CODE.XML, new FileExtractHandler(this.fileStorageService, loggerFactory));
+        const fileHandler = new FileExtractHandler(this.fileStorageService, loggerFactory, this.fileParserService);
+        handlers.set(EXTRACTOR_CODE.CSV, fileHandler);
+        handlers.set(EXTRACTOR_CODE.JSON, fileHandler);
+        handlers.set(EXTRACTOR_CODE.XML, fileHandler);
+        handlers.set(EXTRACTOR_CODE.XLSX, fileHandler);
         handlers.set(EXTRACTOR_CODE.IN_MEMORY, new MemoryExtractHandler(loggerFactory));
         handlers.set(EXTRACTOR_CODE.GENERATOR, new MemoryExtractHandler(loggerFactory));
 
@@ -66,33 +69,41 @@ export class ExtractExecutor {
         onRecordError?: OnRecordErrorCallback,
         pipelineId?: ID,
         runId?: ID,
+        sourceRecords?: readonly JsonObject[],
     ): Promise<RecordObject[]> {
         const adapterCode = getAdapterCode(step) || undefined;
         const startTime = Date.now();
 
         this.logger.debug(`Executing extract step`, { stepKey: step.key, adapterCode });
 
-        // Try built-in extractors first
+        if (executorCtx.recordLimit !== undefined && executorCtx.recordLimit <= 0) {
+            return [];
+        }
+        // Execute inline handlers for Vendure, file, and memory sources.
         const handler = adapterCode ? this.handlers.get(adapterCode) : undefined;
         if (handler) {
             const context: ExtractHandlerContext = { ctx, step, executorCtx, onRecordError };
-            const result = await handler.extract(context);
+            const result = this.limitRecords(await handler.extract(context), executorCtx);
             this.logOperationResult(adapterCode ?? 'unknown', result.length, startTime, step.key);
             return result;
         }
 
-        // Try built-in extractors from extractor registry (CDC, DATABASE, S3, FTP, WEBHOOK, etc.)
+        // Execute registered extractors, including the canonical HTTP and GraphQL implementations.
         if (adapterCode && this.extractorRegistry) {
             const streamingExtractor = this.extractorRegistry.getStreamingExtractor(adapterCode);
             if (streamingExtractor) {
-                const result = await this.executeRegistryExtractor(ctx, step, executorCtx, streamingExtractor, onRecordError, pipelineId, runId);
+                const result = await this.executeRegistryExtractor(
+                    ctx, step, executorCtx, streamingExtractor, onRecordError, pipelineId, runId, sourceRecords,
+                );
                 this.logOperationResult(adapterCode, result.length, startTime, step.key);
                 return result;
             }
 
             const batchExtractor = this.extractorRegistry.getBatchExtractor(adapterCode);
             if (batchExtractor) {
-                const result = await this.executeRegistryBatchExtractor(ctx, step, executorCtx, batchExtractor, onRecordError, pipelineId, runId);
+                const result = await this.executeRegistryBatchExtractor(
+                    ctx, step, executorCtx, batchExtractor, onRecordError, pipelineId, runId, sourceRecords,
+                );
                 this.logOperationResult(adapterCode, result.length, startTime, step.key);
                 return result;
             }
@@ -100,21 +111,49 @@ export class ExtractExecutor {
 
         // Try custom extractors from SDK registry
         if (adapterCode && this.registry) {
-            const customExtractor = this.registry.getRuntime(AdapterType.EXTRACTOR, adapterCode) as ExtractorAdapter<unknown> | undefined;
-            if (customExtractor && typeof customExtractor.extract === 'function') {
-                const result = await this.executeCustomExtractor(ctx, step, executorCtx, customExtractor, onRecordError, pipelineId);
+            const customExtractor = this.registry.getExtractorRuntime(adapterCode);
+            if (customExtractor && 'extract' in customExtractor) {
+                const result = await this.executeCustomExtractor(
+                    ctx,
+                    step,
+                    executorCtx,
+                    customExtractor,
+                    onRecordError,
+                    pipelineId,
+                );
+                this.logOperationResult(adapterCode, result.length, startTime, step.key);
+                return result;
+            }
+            if (customExtractor && 'extractAll' in customExtractor) {
+                const result = await this.executeCustomBatchExtractor(
+                    ctx,
+                    step,
+                    executorCtx,
+                    customExtractor,
+                    onRecordError,
+                    pipelineId,
+                );
                 this.logOperationResult(adapterCode, result.length, startTime, step.key);
                 return result;
             }
         }
 
-        const errorMsg = `Unknown extractor adapter: ${adapterCode ?? '(none)'}`;
-        this.logger.warn(errorMsg, { adapterCode, stepKey: step.key });
-        if (onRecordError) {
-            await onRecordError(step.key, errorMsg, { adapterCode: adapterCode ?? 'unknown' });
-        }
-        this.logOperationResult(adapterCode ?? 'unknown', 0, startTime, step.key);
-        return [];
+        const error = new Error(`Unknown extractor adapter: ${adapterCode ?? '(none)'}`);
+        return this.failExtractor(
+            error,
+            adapterCode ?? 'unknown',
+            step.key,
+            onRecordError,
+        );
+    }
+
+    private limitRecords(records: RecordObject[], executorCtx: ExecutorContext): RecordObject[] {
+        if (executorCtx.recordLimit === undefined) return records;
+        return records.slice(0, Math.max(0, Math.floor(executorCtx.recordLimit)));
+    }
+
+    private hasReachedRecordLimit(records: RecordObject[], executorCtx: ExecutorContext): boolean {
+        return executorCtx.recordLimit !== undefined && records.length >= executorCtx.recordLimit;
     }
 
     private logOperationResult(adapterCode: string, recordCount: number, startTime: number, stepKey: string): void {
@@ -136,13 +175,40 @@ export class ExtractExecutor {
 
         try {
             for await (const envelope of extractor.extract(extractContext, cfg)) {
+                if (this.hasReachedRecordLimit(records, executorCtx)) break;
                 records.push(envelope.data as RecordObject);
             }
         } catch (error) {
-            await this.handleCustomExtractorError(error, extractor.code, step.key, onRecordError);
+            return this.failExtractor(error, extractor.code, step.key, onRecordError);
         }
 
         return records;
+    }
+
+    private async executeCustomBatchExtractor(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        executorCtx: ExecutorContext,
+        extractor: BatchExtractorAdapter<unknown>,
+        onRecordError?: OnRecordErrorCallback,
+        pipelineId?: ID,
+    ): Promise<RecordObject[]> {
+        const cfg = step.config as JsonObject;
+        const extractContext = this.buildExtractContext(
+            ctx,
+            step,
+            executorCtx,
+            cfg,
+            pipelineId,
+        );
+
+        try {
+            const result = await extractor.extractAll(extractContext, cfg);
+            const records = result.records.map(envelope => envelope.data as RecordObject);
+            return this.limitRecords(records, executorCtx);
+        } catch (error) {
+            return this.failExtractor(error, extractor.code, step.key, onRecordError);
+        }
     }
 
     private async executeRegistryExtractor(
@@ -153,17 +219,21 @@ export class ExtractExecutor {
         onRecordError?: OnRecordErrorCallback,
         pipelineId?: ID,
         runId?: ID,
+        sourceRecords?: readonly JsonObject[],
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;
-        const extractorContext = this.buildExtractorContext(ctx, step, executorCtx, pipelineId, runId);
+        const extractorContext = this.buildExtractorContext(ctx, step, executorCtx, pipelineId, runId, sourceRecords);
         const records: RecordObject[] = [];
 
         try {
+            const validation = await extractor.validate(extractorContext, cfg);
+            this.assertValidExtractorConfig(extractor.code, validation);
             for await (const envelope of extractor.extract(extractorContext, cfg)) {
+                if (this.hasReachedRecordLimit(records, executorCtx)) break;
                 records.push(envelope.data as RecordObject);
             }
         } catch (error) {
-            await this.handleCustomExtractorError(error, extractor.code, step.key, onRecordError);
+            return this.failExtractor(error, extractor.code, step.key, onRecordError);
         }
 
         return records;
@@ -177,17 +247,42 @@ export class ExtractExecutor {
         onRecordError?: OnRecordErrorCallback,
         pipelineId?: ID,
         runId?: ID,
+        sourceRecords?: readonly JsonObject[],
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;
-        const extractorContext = this.buildExtractorContext(ctx, step, executorCtx, pipelineId, runId);
+        const extractorContext = this.buildExtractorContext(ctx, step, executorCtx, pipelineId, runId, sourceRecords);
 
         try {
+            const validation = await extractor.validate(extractorContext, cfg);
+            this.assertValidExtractorConfig(extractor.code, validation);
             const result = await extractor.extractAll(extractorContext, cfg);
-            return result.records.map(envelope => envelope.data as RecordObject);
+            const records = result.records.map(envelope => envelope.data as RecordObject);
+            return this.limitRecords(records, executorCtx);
         } catch (error) {
-            await this.handleCustomExtractorError(error, extractor.code, step.key, onRecordError);
-            return [];
+            return this.failExtractor(error, extractor.code, step.key, onRecordError);
         }
+    }
+
+    private assertValidExtractorConfig(
+        adapterCode: string,
+        validation: ExtractorValidationResult,
+    ): void {
+        if (validation.warnings?.length) {
+            this.logger.warn('Extractor configuration validation warnings', {
+                adapterCode,
+                warnings: validation.warnings,
+            });
+        }
+        if (validation.valid) {
+            return;
+        }
+
+        const errors = validation.errors
+            .map(error => `${error.field}: ${error.message}`)
+            .join('; ');
+        throw new Error(
+            `Invalid configuration for extractor "${adapterCode}": ${errors || 'unknown validation error'}`,
+        );
     }
 
     private buildExtractorContext(
@@ -196,6 +291,7 @@ export class ExtractExecutor {
         executorCtx: ExecutorContext,
         pipelineId?: ID,
         runId?: ID,
+        sourceRecords?: readonly JsonObject[],
     ): InternalExtractorContext {
         return {
             ctx,
@@ -203,10 +299,11 @@ export class ExtractExecutor {
             runId: runId ?? '0',
             stepKey: step.key,
             checkpoint: { data: executorCtx.cpData?.[step.key] as JsonObject ?? {} },
+            sourceRecords,
             logger: createLoggerAdapter(this.logger),
             secrets: createSecretsAdapter(this.secretService, ctx),
             connections: createConnectionsAdapter(this.connectionService, ctx) as InternalExtractorContext['connections'],
-            dryRun: false,
+            dryRun: executorCtx.recordLimit !== undefined,
             setCheckpoint: (data: JsonObject) => this.handleCheckpointUpdate(executorCtx, step.key, data),
             isCancelled: executorCtx.onCancelRequested ?? (async () => false),
         };
@@ -238,20 +335,31 @@ export class ExtractExecutor {
         }
     }
 
-    private async handleCustomExtractorError(
+    private async failExtractor(
         error: unknown,
         adapterCode: string,
         stepKey: string,
         onRecordError?: OnRecordErrorCallback,
-    ): Promise<void> {
-        const errorMsg = getErrorMessage(error);
-        this.logger.error(`Custom extractor failed: ${errorMsg}`, toErrorOrUndefined(error), {
+    ): Promise<never> {
+        const errorMessage = getErrorMessage(error);
+        const message = `Extractor failed: ${errorMessage}`;
+        this.logger.error(message, toErrorOrUndefined(error), {
             adapterCode,
             stepKey,
         });
 
         if (onRecordError) {
-            await onRecordError(stepKey, `Custom extractor failed: ${errorMsg}`, { adapterCode });
+            try {
+                await onRecordError(stepKey, message, { adapterCode });
+            } catch (callbackError) {
+                this.logger.warn('Failed to record extractor error', {
+                    adapterCode,
+                    stepKey,
+                    error: getErrorMessage(callbackError),
+                });
+            }
         }
+
+        throw error instanceof Error ? error : new Error(errorMessage);
     }
 }

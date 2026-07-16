@@ -13,9 +13,7 @@ import { Type } from '@vendure/core';
 import { DataExtractor, BatchDataExtractor } from '../types/index';
 import { AdapterDefinition } from '../sdk/types';
 import { HttpApiExtractor } from './http-api';
-import { WebhookExtractor } from './webhook';
 import { VendureQueryExtractor } from './vendure-query';
-import { FileExtractor } from './file';
 import { FtpExtractor } from './ftp';
 import { S3Extractor } from './s3';
 import { DatabaseExtractor } from './database';
@@ -23,11 +21,9 @@ import { GraphQLExtractor } from './graphql';
 import { CdcExtractor } from './cdc';
 import { HTTP_API_EXTRACTOR_SCHEMA } from './http-api/schema';
 import { VENDURE_QUERY_EXTRACTOR_SCHEMA } from './vendure-query/schema';
-import { GRAPHQL_EXTRACTOR_SCHEMA } from './graphql/schema';
+import { GRAPHQL_EXTRACTOR_CODE, GRAPHQL_EXTRACTOR_SCHEMA } from './graphql/schema';
 import { CDC_EXTRACTOR_SCHEMA } from './cdc/schema';
 import { DATABASE_EXTRACTOR_SCHEMA } from './database/schema';
-import { WEBHOOK_EXTRACTOR_SCHEMA } from './webhook/schema';
-import { FILE_EXTRACTOR_SCHEMA } from './file/schema';
 import { FTP_EXTRACTOR_SCHEMA } from './ftp/schema';
 import { S3_EXTRACTOR_SCHEMA } from './s3/schema';
 
@@ -60,17 +56,6 @@ export const EXTRACTOR_HANDLER_REGISTRY = new Map<string, ExtractorRegistryEntry
             schema: HTTP_API_EXTRACTOR_SCHEMA,
         },
     }],
-    ['webhook', {
-        handler: WebhookExtractor,
-        definition: {
-            type: 'EXTRACTOR',
-            code: 'webhook',
-            description: 'Process incoming webhook payloads as records.',
-            icon: 'webhook',
-            color: '#ec4899',
-            schema: WEBHOOK_EXTRACTOR_SCHEMA,
-        },
-    }],
     ['vendureQuery', {
         handler: VendureQueryExtractor,
         definition: {
@@ -81,17 +66,6 @@ export const EXTRACTOR_HANDLER_REGISTRY = new Map<string, ExtractorRegistryEntry
             color: '#6366f1',
             wizardHidden: true,
             schema: VENDURE_QUERY_EXTRACTOR_SCHEMA,
-        },
-    }],
-    ['file', {
-        handler: FileExtractor,
-        definition: {
-            type: 'EXTRACTOR',
-            code: 'file',
-            description: 'Extract data from local files (CSV, JSON, XML, Excel) with glob patterns.',
-            icon: 'file',
-            color: '#3b82f6',
-            schema: FILE_EXTRACTOR_SCHEMA,
         },
     }],
     ['ftp', {
@@ -127,11 +101,11 @@ export const EXTRACTOR_HANDLER_REGISTRY = new Map<string, ExtractorRegistryEntry
             schema: DATABASE_EXTRACTOR_SCHEMA,
         },
     }],
-    ['graphql', {
+    [GRAPHQL_EXTRACTOR_CODE, {
         handler: GraphQLExtractor,
         definition: {
             type: 'EXTRACTOR',
-            code: 'graphql',
+            code: GRAPHQL_EXTRACTOR_CODE,
             description: 'Extract records by querying a GraphQL endpoint with optional cursor pagination.',
             icon: 'code',
             color: '#e11d48',
@@ -196,7 +170,6 @@ const FORMAT_ONLY_EXTRACTORS: AdapterDefinition[] = [
                 { key: 'hasHeader', label: 'Header row', type: 'boolean', description: 'Whether first row is header (default: true)' },
                 { key: 'csvText', label: 'CSV text (alternative)', type: 'json', description: 'Raw CSV string instead of file upload' },
                 { key: 'rows', label: 'Rows (JSON array)', type: 'json', description: 'Alternative to file: array of arrays or objects' },
-                { key: 'csvPath', label: 'CSV file path', type: 'string', description: 'Read from filesystem path (dev/testing only)' },
                 { key: 'resetCheckpoint', label: 'Reset Checkpoint Each Run', type: 'boolean', defaultValue: false, description: 'When enabled, always starts from the beginning of the file instead of resuming from the last checkpoint' },
             ],
         },
@@ -212,7 +185,6 @@ const FORMAT_ONLY_EXTRACTORS: AdapterDefinition[] = [
                 { key: 'fileId', label: 'Upload JSON File', type: 'file', description: 'Upload a JSON file to extract data from. Preferred method for file imports.' },
                 { key: 'itemsPath', label: 'Items path', type: 'string', description: 'Dot-path to array of records (e.g., "data.items")' },
                 { key: 'jsonText', label: 'JSON text (alternative)', type: 'json', description: 'Raw JSON string instead of file upload' },
-                { key: 'jsonPath', label: 'JSON file path', type: 'string', description: 'Read from filesystem path (dev/testing only)' },
                 { key: 'resetCheckpoint', label: 'Reset Checkpoint Each Run', type: 'boolean', defaultValue: false, description: 'When enabled, always starts from the beginning of the file instead of resuming from the last checkpoint' },
             ],
         },
@@ -226,10 +198,23 @@ const FORMAT_ONLY_EXTRACTORS: AdapterDefinition[] = [
         schema: {
             fields: [
                 { key: 'fileId', label: 'Upload XML File', type: 'file', description: 'Upload an XML file to extract data from.' },
-                { key: 'itemsPath', label: 'Items path', type: 'string', description: 'Dot-path to array of records inside parsed XML' },
-                { key: 'rootElement', label: 'Root element', type: 'string', description: 'XML root element name to start parsing from' },
-                { key: 'itemElement', label: 'Item element', type: 'string', description: 'Element name for each record (e.g., "product")' },
-                { key: 'xmlPath', label: 'XML file path', type: 'string', description: 'Read from filesystem path (dev/testing only)' },
+                { key: 'recordPath', label: 'Record path', type: 'string', description: 'Dot-path to record elements inside parsed XML (e.g., "catalog.product")' },
+                { key: 'attributePrefix', label: 'Attribute prefix', type: 'string', description: 'Prefix used for XML attributes (default: @)' },
+                { key: 'resetCheckpoint', label: 'Reset Checkpoint Each Run', type: 'boolean', defaultValue: false, description: 'When enabled, always starts from the beginning of the file instead of resuming from the last checkpoint' },
+            ],
+        },
+    },
+    {
+        type: 'EXTRACTOR',
+        code: 'xlsx',
+        description: 'Extract records from uploaded Excel workbooks.',
+        icon: 'sheet',
+        color: '#16a34a',
+        schema: {
+            fields: [
+                { key: 'fileId', label: 'Upload Excel File', type: 'file', description: 'Upload an XLSX or XLS workbook to extract data from.' },
+                { key: 'sheetName', label: 'Sheet Name/Index', type: 'string', description: 'Sheet name or zero-based index. Defaults to the first sheet.' },
+                { key: 'hasHeader', label: 'Header row', type: 'boolean', description: 'Whether the first row contains column names (default: true).' },
                 { key: 'resetCheckpoint', label: 'Reset Checkpoint Each Run', type: 'boolean', defaultValue: false, description: 'When enabled, always starts from the beginning of the file instead of resuming from the last checkpoint' },
             ],
         },

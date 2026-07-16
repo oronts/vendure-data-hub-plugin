@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { HTTP, GraphQLPaginationType } from '../../constants/index';
+import { HTTP, GraphQLPaginationType, OUTBOUND_RESPONSE_LIMITS } from '../../constants/index';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { executeWithRetry, createRetryConfig } from '../../utils/retry.utils';
+import { secureFetch } from '../../utils/secure-fetch.utils';
+import { readResponseText } from '../../utils/secure-response-body.utils';
 import {
     DataExtractor,
     ExtractorContext,
@@ -18,18 +20,19 @@ import {
     GraphQLResponse,
     GRAPHQL_DEFAULTS,
 } from './types';
+import { validateRemoteRequestConfig } from '../shared/request-config-validation';
 import {
     buildUrl,
     buildHeaders,
-    extractRecords,
+    extractGraphqlResponseRecords,
     buildPaginatedVariables,
     initPaginationState,
     updatePaginationState,
     isValidGraphQLUrl,
     isValidGraphQLQuery,
 } from './helpers';
-import { getNestedValue } from '../../utils/object-path.utils';
 import { GRAPHQL_EXTRACTOR_SCHEMA } from './schema';
+import { assertCanonicalExtractorConfig } from '../extractor-config.contract';
 
 /**
  * GraphQL Extractor
@@ -55,7 +58,7 @@ import { GRAPHQL_EXTRACTOR_SCHEMA } from './schema';
  *   `,
  *   dataPath: 'data.products.items',
  *   pagination: {
- *     type: 'offset',
+ *     type: 'OFFSET',
  *     limit: 100,
  *   },
  * };
@@ -77,6 +80,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
         context: ExtractorContext,
         config: GraphQLExtractorConfig,
     ): AsyncGenerator<RecordEnvelope, void, undefined> {
+        assertCanonicalExtractorConfig('graphql', config as unknown as Record<string, unknown>);
         const startTime = Date.now();
         let totalFetched = 0;
         let requestCount = 0;
@@ -100,7 +104,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                     context.logger.warn(`GraphQL errors: ${errorMsgs}`);
                 }
 
-                const records = extractRecords(response.data, config.dataPath);
+                const records = extractGraphqlResponseRecords(response, config.dataPath);
                 context.logger.debug(`Extracted ${records.length} records`);
 
                 for (const record of records) {
@@ -140,7 +144,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                         context.logger.warn(`GraphQL errors on page ${state.page + 1}: ${errorMsgs}`);
                     }
 
-                    const records = extractRecords(response.data, config.dataPath);
+                    const records = extractGraphqlResponseRecords(response, config.dataPath);
 
                     for (const record of records) {
                         yield {
@@ -154,14 +158,9 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                         totalFetched++;
                     }
 
-                    // Get the nested response for pagination state update
-                    const nestedResponse = config.dataPath
-                        ? (getNestedValue(response.data, config.dataPath.replace(/\.items$|\.nodes$|\.edges$/, '')) as Record<string, unknown>)
-                        : response.data as Record<string, unknown>;
-
                     const result = updatePaginationState(
                         config.pagination,
-                        nestedResponse || {},
+                        response as unknown as Record<string, unknown>,
                         state,
                         records.length,
                     );
@@ -204,6 +203,23 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
     ): Promise<ExtractorValidationResult> {
         const errors: Array<{ field: string; message: string; code?: string }> = [];
         const warnings: Array<{ field?: string; message: string }> = [];
+
+        try {
+            assertCanonicalExtractorConfig('graphql', config as unknown as Record<string, unknown>);
+        } catch (error) {
+            errors.push({
+                field: 'config',
+                message: getErrorMessage(error),
+                code: 'invalid-extractor-config-contract',
+            });
+        }
+        errors.push(...validateRemoteRequestConfig(config));
+        if (config.rateLimit !== undefined) {
+            errors.push({
+                field: 'rateLimit',
+                message: 'GraphQL extraction does not support rateLimit configuration',
+            });
+        }
 
         // Validate URL
         if (!config.url && !config.connectionCode) {
@@ -291,7 +307,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
             }
 
             const response = await this.executeQuery(context, config, variables);
-            const records = extractRecords(response.data, config.dataPath);
+            const records = extractGraphqlResponseRecords(response, config.dataPath);
             const preview = records.slice(0, limit);
 
             return {
@@ -325,6 +341,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
         variables?: Record<string, unknown>,
         queryOverride?: string,
     ): Promise<GraphQLResponse> {
+        assertCanonicalExtractorConfig('graphql', config as unknown as Record<string, unknown>);
         const retryConfig = createRetryConfig({
             maxAttempts: config.retry?.maxAttempts || HTTP.MAX_RETRIES,
             initialDelayMs: config.retry?.initialDelayMs,
@@ -347,7 +364,7 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                     hasVariables: !!variables,
                 });
 
-                const response = await fetch(url, {
+                const response = await secureFetch(url, {
                     method: 'POST',
                     headers,
                     body,
@@ -359,7 +376,10 @@ export class GraphQLExtractor implements DataExtractor<GraphQLExtractorConfig> {
                 }
 
                 let result: GraphQLResponse;
-                const responseText = await response.text();
+                const responseText = await readResponseText(response, {
+                    maxBytes: OUTBOUND_RESPONSE_LIMITS.CONNECTOR_EXTRACT_BYTES,
+                    context: 'GraphQL extractor response',
+                });
                 try {
                     result = JSON.parse(responseText) as GraphQLResponse;
                 } catch {

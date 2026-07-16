@@ -171,6 +171,17 @@ export class VendureQueryExtractor implements DataExtractor<VendureQueryExtracto
         if (config.batchSize && config.batchSize <= 0) {
             errors.push({ field: 'batchSize', message: 'Batch size must be positive' });
         }
+        if (config.relations !== undefined) {
+            if (!Array.isArray(config.relations)) {
+                errors.push({ field: 'relations', message: 'Relations must be an array of relation paths' });
+            } else {
+                for (const relation of config.relations) {
+                    if (typeof relation !== 'string' || !validateFieldName(relation)) {
+                        errors.push({ field: 'relations', message: `Invalid relation path: ${String(relation)}` });
+                    }
+                }
+            }
+        }
 
         return { valid: errors.length === 0, errors };
     }

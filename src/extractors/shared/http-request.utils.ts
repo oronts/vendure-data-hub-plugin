@@ -44,6 +44,60 @@ const DEFAULT_HEADERS: Record<string, string> = {
     [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
 };
 
+const HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const RESTRICTED_STATIC_HEADER_PATTERN =
+    /authorization|cookie|api[-_]?key|token|secret|signature/i;
+const RESTRICTED_STATIC_HEADERS = new Set([
+    'host',
+    'content-length',
+    'transfer-encoding',
+    'connection',
+    'upgrade',
+    'proxy-authorization',
+    'proxy-authenticate',
+    '__proto__',
+    'constructor',
+    'prototype',
+]);
+
+function getStaticHeaders(value: unknown, source: string): Record<string, string> {
+    if (value === undefined) return {};
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error(`${source} headers must be a string map`);
+    }
+    const entries = Object.entries(value);
+    if (entries.some(([, headerValue]) => typeof headerValue !== 'string')) {
+        throw new Error(`${source} headers must contain only string values`);
+    }
+    for (const [name] of entries) {
+        const normalizedName = name.toLowerCase();
+        if (!HEADER_NAME_PATTERN.test(name)) {
+            throw new Error(`${source} header "${name}" is invalid`);
+        }
+        if (
+            RESTRICTED_STATIC_HEADERS.has(normalizedName) ||
+            RESTRICTED_STATIC_HEADER_PATTERN.test(normalizedName)
+        ) {
+            throw new Error(
+                `${source} header "${name}" cannot contain credentials or control request routing; use auth with a Secret Code`,
+            );
+        }
+    }
+    return Object.fromEntries(entries) as Record<string, string>;
+}
+
+function getConnectionAuth(value: unknown): AuthConfig | undefined {
+    if (value === undefined) return undefined;
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('HTTP connection auth must be an object');
+    }
+    const auth = value as Record<string, unknown>;
+    if (typeof auth.type !== 'string') {
+        throw new Error('HTTP connection auth requires a type');
+    }
+    return auth as AuthConfig;
+}
+
 /**
  * Build full URL from extractor config, resolving connection base URL if needed.
  * Validates URL against SSRF attacks before returning.
@@ -64,7 +118,7 @@ export async function buildExtractorUrl(
 
     if (config.connectionCode) {
         const connection = await context.connections.get(config.connectionCode);
-        url = buildUrlWithConnection(config.url, connection);
+        url = buildUrlWithConnection(config.url, connection?.config);
     }
 
     // Validate URL against SSRF attacks
@@ -104,17 +158,18 @@ export async function buildExtractorHeaders(
     // Apply connection headers and auth
     if (config.connectionCode) {
         const connection = await context.connections.get(config.connectionCode);
-        if (connection?.headers) {
-            Object.assign(headers, connection.headers);
-        }
-        if (connection?.auth) {
-            await applyAuthentication(headers, connection.auth as unknown as AuthConfig, secretResolver);
-        }
+        const connectionConfig = connection?.config;
+        Object.assign(headers, getStaticHeaders(connectionConfig?.headers, 'HTTP connection'));
+        await applyAuthentication(
+            headers,
+            getConnectionAuth(connectionConfig?.auth),
+            secretResolver,
+        );
     }
 
     // Config headers override connection headers
     if (config.headers) {
-        Object.assign(headers, config.headers);
+        Object.assign(headers, getStaticHeaders(config.headers, 'Extractor'));
     }
 
     // Config auth overrides connection auth

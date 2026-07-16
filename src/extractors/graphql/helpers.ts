@@ -1,6 +1,6 @@
 import { JsonObject } from '../../types/index';
 import { ExtractorContext } from '../../types/index';
-import { GraphQLExtractorConfig, GraphQLPaginationConfig, GRAPHQL_DEFAULTS } from './types';
+import { GraphQLExtractorConfig, GraphQLPaginationConfig, GraphQLResponse, GRAPHQL_DEFAULTS } from './types';
 import { GraphQLPaginationType, HTTP_HEADERS, CONTENT_TYPES } from '../../constants/index';
 import { UrlSecurityConfig } from '../../utils/url-security.utils';
 import { isValidGraphQLUrl as isValidGraphQLUrlUtil } from '../../utils/url-helpers';
@@ -99,6 +99,16 @@ export function extractRecords(
     }
 
     return current ? [current as JsonObject] : [];
+}
+
+export function extractGraphqlResponseRecords(
+    response: GraphQLResponse | unknown,
+    dataPath?: string,
+): JsonObject[] {
+    const source = dataPath
+        ? response
+        : (response as GraphQLResponse | null | undefined)?.data;
+    return extractRecords(source, dataPath);
 }
 
 /**
