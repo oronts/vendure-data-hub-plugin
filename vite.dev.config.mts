@@ -34,10 +34,6 @@ export default defineConfig({
     build: {
         outDir: join(__dirname, 'dist/dashboard'),
         emptyOutDir: true,
-        rollupOptions: {
-            // Ensure React is not duplicated - use single instance from dashboard
-            external: [],
-        },
     },
     plugins: [
         resolveFileUrls(),
@@ -54,11 +50,6 @@ export default defineConfig({
         alias: {
             '@/gql': resolve(__dirname, 'dev-server/gql/graphql.ts'),
             '/src/app/main.jsx': join(dashboardRoot, 'src/app/main.tsx'),
-            // Force single React instance from dashboard
-            'react': join(dashboardRoot, 'node_modules/react'),
-            'react-dom': join(dashboardRoot, 'node_modules/react-dom'),
-            'react/jsx-runtime': join(dashboardRoot, 'node_modules/react/jsx-runtime'),
-            'react/jsx-dev-runtime': join(dashboardRoot, 'node_modules/react/jsx-dev-runtime'),
         },
         dedupe: ['react', 'react-dom'],
     },

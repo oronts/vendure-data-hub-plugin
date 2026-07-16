@@ -2,23 +2,29 @@
   "root": true,
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
-    "project": "./tsconfig.build.json",
+    "project": "./tsconfig.eslint.json",
     "sourceType": "module"
   },
-  "plugins": ["@typescript-eslint"],
+  "plugins": ["@typescript-eslint", "react-hooks"],
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended"
   ],
   "env": {
     "node": true,
+    "browser": true,
     "es2020": true
   },
   "rules": {
-    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
-    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": ["warn", {
+      "argsIgnorePattern": "^_",
+      "varsIgnorePattern": "^_"
+    }],
+    "@typescript-eslint/no-explicit-any": "error",
     "@typescript-eslint/explicit-module-boundary-types": "off",
     "@typescript-eslint/no-non-null-assertion": "off",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
     "no-console": "warn",
     "prefer-const": "warn",
     "no-empty": ["error", { "allowEmptyCatch": true }]
@@ -26,9 +32,16 @@
   "ignorePatterns": [
     "dist/",
     "node_modules/",
-    "dashboard/",
-    "dev-server/",
-    "e2e/",
-    "src/__tests__/"
+    "dashboard/gql/",
+    "src/gql/generated.ts",
+    "dev-server/gql/"
+  ],
+  "overrides": [
+    {
+      "files": ["dev-server/**/*.ts", "scripts/**/*.ts"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
   ]
 }

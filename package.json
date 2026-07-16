@@ -1,6 +1,6 @@
 {
   "name": "@oronts/vendure-data-hub-plugin",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "ETL data integration plugin for Vendure e-commerce",
   "author": {
     "name": "Oronts Website",
@@ -16,11 +16,39 @@
   "license": "PolyForm-Noncommercial-1.0.0",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "require": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./sdk": {
+      "types": "./dist/src/sdk/index.d.ts",
+      "require": "./dist/src/sdk/index.js",
+      "default": "./dist/src/sdk/index.js"
+    },
+    "./shared": {
+      "types": "./dist/shared/index.d.ts",
+      "require": "./dist/shared/index.js",
+      "default": "./dist/shared/index.js"
+    },
+    "./connectors": {
+      "types": "./dist/connectors/index.d.ts",
+      "require": "./dist/connectors/index.js",
+      "default": "./dist/connectors/index.js"
+    },
+    "./connectors/pimcore": {
+      "types": "./dist/connectors/pimcore/index.d.ts",
+      "require": "./dist/connectors/pimcore/index.js",
+      "default": "./dist/connectors/pimcore/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
-    "dist",
-    "shared",
-    "sdk",
-    "dashboard",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/dashboard/**/*.ts",
+    "dist/dashboard/**/*.tsx",
     "docs",
     "README.md",
     "CHANGELOG.md",
@@ -54,61 +82,82 @@
     "dev": "npm run build:dev && npm run start",
     "start": "ts-node dev-server/index.ts",
     "populate": "ts-node dev-server/populate.ts",
-    "build": "rimraf dist && npm run compile && cp -r dashboard dist/dashboard && npm run build:dashboard",
+    "build": "rimraf dist && npm run compile && npm run copy:dashboard && npm run build:dashboard",
     "build:dev": "vite build --config vite.dev.config.mts",
     "build:dashboard": "vite build",
     "compile": "tsc -p tsconfig.build.json",
     "compile:watch": "tsc -p tsconfig.build.json --watch",
+    "copy:dashboard": "ts-node scripts/copy-dashboard.ts",
     "clean": "rimraf dist .dashboard-build",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint \"src/**/*.ts\"",
-    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "typecheck:dashboard": "tsc -p tsconfig.dashboard.json",
+    "lint": "eslint --ext .ts,.tsx src shared connectors dashboard dev-server e2e scripts vendure-config.dev.ts codegen.ts",
+    "lint:fix": "npm run lint -- --fix",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "prepublishOnly": "npm run build",
     "schema": "ts-node scripts/generate-schema.ts",
-    "codegen": "graphql-codegen --config codegen.ts",
-    "codegen:watch": "graphql-codegen --config codegen.ts --watch"
+    "codegen": "npm run schema && ts-node scripts/generate-shared-enums.ts && graphql-codegen --config codegen.ts",
+    "codegen:watch": "npm run schema && ts-node scripts/generate-shared-enums.ts && graphql-codegen --config codegen.ts --watch"
   },
   "peerDependencies": {
-    "@vendure/core": "^3.0.0",
-    "@vendure/dashboard": "^3.0.0",
-    "typeorm": "^0.3.0"
+    "@tanstack/react-query": ">=5.66.7 <6.0.0",
+    "@tanstack/react-router": ">=1.154.0 <2.0.0",
+    "@tanstack/react-table": ">=8.21.2 <9.0.0",
+    "@vendure/core": ">=3.5.7 <4.0.0",
+    "@vendure/dashboard": ">=3.5.7 <4.0.0",
+    "lucide-react": ">=0.475.0 <1.0.0",
+    "react": ">=19.0.0 <20.0.0",
+    "react-dom": ">=19.0.0 <20.0.0",
+    "sonner": ">=2.0.6 <3.0.0",
+    "typeorm": ">=0.3.29 <0.4.0"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.700.0",
-    "@aws-sdk/s3-request-presigner": "^3.967.0",
+    "@aws-sdk/client-s3": "3.1088.0",
+    "@aws-sdk/s3-request-presigner": "3.1088.0",
     "@xyflow/react": "^12.10.0",
     "amqplib": "^0.10.9",
-    "basic-ftp": "^5.0.0",
-    "fast-xml-parser": "^5.0.0",
-    "glob": "^10.0.0",
+    "basic-ftp": "5.3.1",
+    "croner": "^9.1.0",
+    "express": "^5.2.1",
+    "fast-xml-parser": "5.10.1",
+    "graphql": "16.12.0",
+    "graphql-tag": "2.12.6",
     "ioredis": "^5.9.1",
-    "js-yaml": "^4.1.0",
-    "minimatch": "^9.0.0",
-    "multer": "^2.0.0",
+    "js-yaml": "5.2.1",
+    "minimatch": "9.0.7",
+    "multer": "2.2.0",
     "mysql2": "^3.11.0",
-    "nodemailer": "^7.0.12",
+    "nodemailer": "9.0.3",
     "papaparse": "^5.4.0",
+    "pdf-lib": "1.17.1",
     "pg": "^8.13.0",
+    "react-hook-form": "7.70.0",
+    "sharp": "0.34.5",
     "ssh2-sftp-client": "^11.0.0",
-    "xlsx": "^0.18.0"
+    "undici": "^6.27.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@graphql-codegen/cli": "^5.0.0",
     "@graphql-codegen/client-preset": "^4.0.0",
     "@graphql-codegen/typescript": "^4.0.0",
+    "@tanstack/react-query": "5.66.7",
+    "@tanstack/react-router": "1.154.1",
+    "@tanstack/react-table": "8.21.2",
+    "@tanstack/router-devtools": "1.154.1",
+    "@tanstack/router-plugin": "1.154.1",
     "@types/amqplib": "^0.10.8",
-    "@types/express": "^4.17.0",
+    "@types/express": "^5.0.6",
     "@types/js-yaml": "^4.0.0",
     "@types/multer": "^2.0.0",
     "@types/node": "^20.0.0",
     "@types/nodemailer": "^6.4.0",
     "@types/papaparse": "^5.3.0",
     "@types/pg": "^8.11.0",
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "19.0.10",
+    "@types/react-dom": "19.0.4",
     "@types/ssh2-sftp-client": "^9.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
@@ -117,23 +166,36 @@
     "@vendure/dashboard": "3.5.7",
     "@vendure/testing": "3.5.7",
     "@vitejs/plugin-react": "^4.3.0",
-    "better-sqlite3": "^11.0.0",
     "eslint": "^8.57.0",
-    "graphql-tag": "^2.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "knip": "^5.83.1",
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0",
+    "lucide-react": "0.475.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
     "rimraf": "^5.0.0",
+    "sonner": "2.0.6",
     "ts-node": "^10.9.0",
+    "typeorm": "0.3.29",
     "typescript": "^5.0.0",
     "unplugin-swc": "^1.5.9",
     "vite": "^5.4.0",
     "vitest": "^1.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
+  },
+  "overrides": {
+    "@tanstack/react-router": "1.154.1",
+    "@tanstack/router-devtools": "1.154.1",
+    "@tanstack/router-plugin": "1.154.1",
+    "diff": "4.0.4",
+    "path-to-regexp": "8.4.0",
+    "qs": "6.15.2"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "11.10.0"
   }
 }

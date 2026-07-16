@@ -36,6 +36,8 @@ export default defineConfig({
                 '@vendure/dashboard',
                 '@vendure/core',
                 '@tanstack/react-query',
+                '@tanstack/react-router',
+                '@tanstack/react-table',
                 'graphql',
                 'graphql-request',
                 'sonner',
