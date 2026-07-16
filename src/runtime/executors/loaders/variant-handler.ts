@@ -11,6 +11,7 @@ import {
     RequestContextService,
     TaxCategoryService,
     ChannelService,
+    ConfigService,
     ProductVariant,
     StockLocationService,
     ApiType,
@@ -27,10 +28,10 @@ import {
     UpdateProductVariantPriceInput,
 } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition } from '../../../types/index';
-import { TRANSFORM_LIMITS } from '../../../constants/index';
 import { LoadStrategy } from '../../../constants/enums';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import {
     findVariantBySku,
     resolveTaxCategoryId,
@@ -43,14 +44,19 @@ import {
     createOptionGroupCache,
 } from './shared-lookups';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
+import { majorToMinorUnits, resolveMoneyPrecision } from '../../../utils/money.utils';
 import { getStringValue, getNumberValue, getObjectValue } from '../../../loaders/shared-helpers';
 import { LOGGER_CONTEXTS } from '../../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import {
+    persistVariantCurrencyPrices,
+    resolveDefaultCurrencyPrice,
+} from './variant-price-persistence';
 
 /**
  * Configuration for VariantHandler step
  */
-interface VariantHandlerConfig {
+interface VariantHandlerConfig extends CreateDuplicateHandlingConfig {
     skuField?: string;
     nameField?: string;
     priceField?: string;
@@ -114,6 +120,52 @@ function buildVariantTranslations(
     return [{ languageCode: opCtx.languageCode as LanguageCode, name }];
 }
 
+function extractVariantPrices(
+    rec: RecordObject,
+    priceKey: string,
+    priceMapKey: string | undefined,
+    precision: number,
+    ctx: RequestContext,
+): { priceMinor?: number; prices?: UpdateProductVariantPriceInput[] } {
+    const priceRaw = rec[priceKey];
+    const priceMapRaw = priceMapKey ? rec[priceMapKey] : undefined;
+
+    if (priceMapRaw != null && priceRaw != null) {
+        throw new Error('Configure either priceField or priceByCurrencyField data, not both');
+    }
+    if (priceMapRaw != null) {
+        if (typeof priceMapRaw !== 'object' || Array.isArray(priceMapRaw)) {
+            throw new Error('Currency prices must be an object');
+        }
+
+        const entries = Object.entries(priceMapRaw);
+        if (entries.length === 0) {
+            throw new Error('Price map cannot be empty');
+        }
+        const availableCurrencies = ctx.channel?.availableCurrencyCodes ?? [];
+        const prices = entries.map(([rawCurrencyCode, value]) => {
+            const currencyCode = rawCurrencyCode.toUpperCase();
+            if (!Object.values(CurrencyCode).includes(currencyCode as CurrencyCode)) {
+                throw new Error(`Invalid currency code "${rawCurrencyCode}"`);
+            }
+            if (availableCurrencies.length > 0 && !availableCurrencies.includes(currencyCode as CurrencyCode)) {
+                throw new Error(
+                    `Currency "${currencyCode}" is not available in channel "${ctx.channel?.code ?? 'default'}"`,
+                );
+            }
+            return {
+                currencyCode: currencyCode as CurrencyCode,
+                price: majorToMinorUnits(value, precision),
+            };
+        });
+        return { prices };
+    }
+    if (priceRaw != null) {
+        return { priceMinor: majorToMinorUnits(priceRaw, precision) };
+    }
+    return {};
+}
+
 @Injectable()
 export class VariantHandler implements LoaderHandler {
     private readonly logger: DataHubLogger;
@@ -127,6 +179,7 @@ export class VariantHandler implements LoaderHandler {
         private taxCategoryService: TaxCategoryService,
         private channelService: ChannelService,
         private stockLocationService: StockLocationService,
+        private configService: ConfigService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PRODUCT_VARIANT_LOADER);
@@ -157,6 +210,7 @@ export class VariantHandler implements LoaderHandler {
         const optionCodesKey = config.optionCodesField;
         const enabledKey = config.enabledField ?? 'enabled';
         const strategy = config.strategy ?? LoadStrategy.UPSERT;
+        const moneyPrecision = resolveMoneyPrecision(this.configService);
 
         for (const rec of input) {
             try {
@@ -189,7 +243,8 @@ export class VariantHandler implements LoaderHandler {
                         apiType,
                         channelOrToken: channelCode
                     });
-                    if (req) opCtx = req;
+                    if (!req) throw new Error(`Channel not found: ${channelCode}`);
+                    opCtx = req;
                 }
 
                 const existingVariant = await findVariantBySku(this.productVariantService, opCtx, sku);
@@ -202,39 +257,13 @@ export class VariantHandler implements LoaderHandler {
                     stockByLocation as Record<string, number> | undefined
                 );
 
-                let priceMinor: number | undefined;
-                let prices: UpdateProductVariantPriceInput[] | undefined;
-
-                const priceMap = priceMapKey ? getObjectValue(rec, priceMapKey) : undefined;
-                const priceRaw = rec[priceKey];
-
-                if (priceMap && typeof priceMap === 'object') {
-                    // Validate currency codes against the channel's available currencies.
-                    // Skip unavailable currencies with a WARN rather than failing the record.
-                    const availableCurrencies: CurrencyCode[] = opCtx.channel?.availableCurrencyCodes ?? [];
-                    const allPriceEntries = Object.entries(priceMap);
-                    const validPrices: UpdateProductVariantPriceInput[] = [];
-
-                    for (const [cc, v] of allPriceEntries) {
-                        if (availableCurrencies.length > 0 && !availableCurrencies.includes(cc as CurrencyCode)) {
-                            this.logger.warn(
-                                `Currency "${cc}" is not available in channel "${opCtx.channel?.code ?? 'default'}" - skipping price for variant "${sku}". Available currencies: ${availableCurrencies.join(', ')}`,
-                            );
-                            continue;
-                        }
-                        validPrices.push({
-                            currencyCode: cc as CurrencyCode,
-                            price: Math.round(Number(v) * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER),
-                        });
-                    }
-                    if (validPrices.length > 0) {
-                        prices = validPrices;
-                    }
-                }
-                if (priceRaw != null) {
-                    const priceValue = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw);
-                    if (!Number.isNaN(priceValue)) priceMinor = Math.round(priceValue * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
-                }
+                const { priceMinor, prices } = extractVariantPrices(
+                    rec,
+                    priceKey,
+                    priceMapKey,
+                    moneyPrecision,
+                    opCtx,
+                );
 
                 const stockOnHand = getNumberValue(rec, stockKey);
                 const customFields = getObjectValue(rec, customFieldsKey);
@@ -249,6 +278,7 @@ export class VariantHandler implements LoaderHandler {
                 if (existingVariant) {
                     // Skip update if strategy is CREATE-only
                     if (strategy === LoadStrategy.CREATE) {
+                        assertCreateDuplicateCanBeSkipped(config, 'variant', sku);
                         ok++;
                         continue;
                     }
@@ -297,7 +327,12 @@ export class VariantHandler implements LoaderHandler {
                                     channelIds,
                                 );
                             } catch (error) {
-                                this.logger.warn(`Failed to assign variant ${variantId} to record channels: ${getErrorMessage(error)}`);
+                                this.logger.warn('Failed to assign variant to record channels', {
+                                    variantId,
+                                    channelIds,
+                                    error: getErrorMessage(error),
+                                });
+                                throw error;
                             }
                         }
                     }
@@ -421,13 +456,8 @@ export class VariantHandler implements LoaderHandler {
 
         if (prices && prices.length > 0) {
             update.prices = prices;
-        }
-        if (typeof priceMinor === 'number') {
+        } else if (typeof priceMinor === 'number') {
             update.price = priceMinor;
-        }
-        // When multi-currency prices array is set, remove the scalar price to avoid ambiguity
-        if (update.prices && update.prices.length > 0) {
-            delete (update as any).price;
         }
         if (typeof stockOnHand === 'number') {
             update.stockOnHand = Math.max(0, Math.floor(stockOnHand));
@@ -457,7 +487,12 @@ export class VariantHandler implements LoaderHandler {
                     );
                 }
             } catch (error) {
-                this.logger.warn(`Failed to assign variant ${updated.id} to channel: ${getErrorMessage(error)}`);
+                this.logger.warn('Failed to assign updated variant to target channel', {
+                    variantId: updated.id,
+                    channelId: opCtx.channelId,
+                    error: getErrorMessage(error),
+                });
+                throw error;
             }
         }
     }
@@ -487,15 +522,8 @@ export class VariantHandler implements LoaderHandler {
             ...(typeof enabled === 'boolean' ? { enabled } : {}),
         };
 
-        if (prices && prices.length > 0) {
-            createInput.prices = prices;
-        }
-        if (typeof priceMinor === 'number') {
+        if (!prices && typeof priceMinor === 'number') {
             createInput.price = priceMinor;
-        }
-        // When multi-currency prices array is set, remove the scalar price to avoid ambiguity
-        if (createInput.prices && createInput.prices.length > 0) {
-            delete (createInput as any).price;
         }
         if (typeof stockOnHand === 'number') {
             createInput.stockOnHand = Math.max(0, Math.floor(stockOnHand));
@@ -513,7 +541,20 @@ export class VariantHandler implements LoaderHandler {
             createInput.optionIds = optionIds;
         }
 
+        if (prices && prices.length > 0) {
+            createInput.price = resolveDefaultCurrencyPrice(opCtx, prices);
+        }
+
         const [created] = await this.productVariantService.create(opCtx, [createInput]);
+
+        if (prices && prices.length > 0) {
+            await persistVariantCurrencyPrices(
+                this.productVariantService,
+                opCtx,
+                created.id,
+                prices,
+            );
+        }
 
         if (channelCode) {
             try {
@@ -524,7 +565,12 @@ export class VariantHandler implements LoaderHandler {
                     [opCtx.channelId]
                 );
             } catch (error) {
-                this.logger.warn(`Failed to assign created variant ${created.id} to channel: ${getErrorMessage(error)}`);
+                this.logger.warn('Failed to assign created variant to target channel', {
+                    variantId: created.id,
+                    channelId: opCtx.channelId,
+                    error: getErrorMessage(error),
+                });
+                throw error;
             }
         }
 

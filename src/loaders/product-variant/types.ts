@@ -7,7 +7,7 @@ export interface ProductVariantInput extends InputRecord {
     sku: string;
     /** Display name for the variant */
     name?: string;
-    /** Price in cents (e.g., 1999 = $19.99) */
+    /** Price in major units (e.g., 19.99) */
     price: number;
     /** Name of the parent product (for auto-creation) */
     productName?: string;
@@ -45,7 +45,7 @@ export const PRODUCT_VARIANT_LOADER_METADATA = {
     name: 'Product Variant Loader',
     description: 'Imports product variants with SKU-based lookup, prices, stock, and options',
     adapterCode: 'variantUpsert',
-    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
+    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['sku', 'id', 'customFields.externalId'],
     requiredFields: ['sku', 'price'],
 } as const;

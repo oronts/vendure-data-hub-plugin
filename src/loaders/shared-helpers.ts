@@ -1,17 +1,32 @@
 import { ID, RequestContext, FacetValueService, ProductVariantService, ProductService, AssetService, CollectionService, Asset } from '@vendure/core';
-import { Readable } from 'stream';
 import { slugify } from '../operators/helpers';
-import { DataHubLogger } from '../services/logger';
+import type { DataHubLogger } from '../services/logger/datahub-logger';
 import { RecordObject } from '../runtime/executor-types';
 import { JsonValue, FacetValuesMode, AssetsMode, FeaturedAssetMode } from '../types/index';
-import { assertUrlSafe } from '../utils/url-security.utils';
-import { HTTP } from '../../shared/constants/index';
-import { EXTENSION_MIME_MAP, CONTENT_TYPES } from '../constants/services';
-import { sleep } from '../runtime/utils';
+import { downloadAsset } from '../utils/asset-download.utils';
+import {
+    createReadStreamFromBuffer,
+    extractFilenameFromUrl,
+    getAssetMimeType,
+} from '../utils/asset-file.utils';
+import { sanitizeUrlForLogging } from '../utils/url-sanitize.utils';
 import { getNestedValue } from '../utils/object-path.utils';
 import { getErrorMessage } from '../utils/error.utils';
 
+export { isRecoverableError } from './error-utils';
 export { slugify };
+
+interface VendureUpdateInput {
+    id: ID;
+    facetValueIds?: ID[];
+    assetIds?: ID[];
+    featuredAssetId?: ID;
+}
+
+interface ExistingAsset {
+    id: ID;
+    source?: string;
+}
 
 // =============================================================================
 // Vendure Service Helpers
@@ -24,13 +39,45 @@ export { slugify };
 async function updateViaService(
     ctx: RequestContext,
     service: ProductService | ProductVariantService | CollectionService,
-    input: Record<string, unknown>,
+    input: VendureUpdateInput,
 ): Promise<void> {
     if (service instanceof ProductVariantService) {
-        await (service as ProductVariantService).update(ctx, [input as any]);
-    } else {
-        await (service as ProductService | CollectionService).update(ctx, input as any);
+        await service.update(ctx, [input]);
+        return;
     }
+    if (service instanceof ProductService) {
+        await service.update(ctx, input);
+        return;
+    }
+    await service.update(ctx, input);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function toId(value: unknown): ID | undefined {
+    return typeof value === 'string' || typeof value === 'number' ? value : undefined;
+}
+
+function getExistingAssets(entity: unknown): ExistingAsset[] {
+    if (!isRecord(entity) || !Array.isArray(entity.assets)) {
+        return [];
+    }
+    return entity.assets.flatMap(value => {
+        if (!isRecord(value)) {
+            return [];
+        }
+        const nestedAsset = isRecord(value.asset) ? value.asset : value;
+        const id = toId(nestedAsset.id) ?? toId(value.assetId);
+        if (id === undefined) {
+            return [];
+        }
+        return [{
+            id,
+            source: typeof nestedAsset.source === 'string' ? nestedAsset.source : undefined,
+        }];
+    });
 }
 
 // =============================================================================
@@ -84,17 +131,6 @@ export function getArrayValue<T>(record: RecordObject, key: string): T[] | undef
     return value as T[];
 }
 
-export function isRecoverableError(error: unknown): boolean {
-    if (error instanceof Error) {
-        const message = error.message.toLowerCase();
-        return (
-            message.includes('timeout') ||
-            message.includes('connection') ||
-            message.includes('temporarily')
-        );
-    }
-    return false;
-}
 
 export function shouldUpdateField(
     field: string,
@@ -186,85 +222,10 @@ export async function resolveFacetValueIds(
 // Asset Helper Functions
 // =============================================================================
 
-/** Maximum allowed download size (50 MB) to prevent OOM on large files */
-const MAX_DOWNLOAD_SIZE = 50 * 1024 * 1024;
 
 /**
  * Download file from URL with retry logic and SSRF protection
  */
-async function downloadFile(url: string): Promise<Buffer | null> {
-    try {
-        await assertUrlSafe(url);
-    } catch {
-        return null;
-    }
-
-    for (let attempt = 0; attempt <= HTTP.MAX_RETRIES; attempt++) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), HTTP.TIMEOUT_MS);
-
-            const response = await fetch(url, { signal: controller.signal });
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                if (attempt === HTTP.MAX_RETRIES) return null;
-                await sleep(HTTP.RETRY_DELAY_MS * (attempt + 1));
-                continue;
-            }
-
-            // Check Content-Length header first to reject obviously oversized files
-            const contentLength = response.headers.get('content-length');
-            if (contentLength && parseInt(contentLength, 10) > MAX_DOWNLOAD_SIZE) {
-                return null;
-            }
-
-            const arrayBuffer = await response.arrayBuffer();
-            if (arrayBuffer.byteLength > MAX_DOWNLOAD_SIZE) {
-                return null;
-            }
-            return Buffer.from(arrayBuffer);
-        } catch {
-            if (attempt === HTTP.MAX_RETRIES) return null;
-            await sleep(HTTP.RETRY_DELAY_MS * (attempt + 1));
-        }
-    }
-    return null;
-}
-
-/**
- * Convert Buffer to Readable stream for AssetService
- */
-function bufferToStream(buffer: Buffer): Readable {
-    const stream = new Readable();
-    stream.push(buffer);
-    stream.push(null);
-    return stream;
-}
-
-/**
- * Extract filename from URL
- */
-function extractFilenameFromUrl(url: string): string {
-    try {
-        const urlObj = new URL(url);
-        const pathname = urlObj.pathname;
-        const parts = pathname.split('/');
-        const filename = parts[parts.length - 1];
-        return filename || `asset-${Date.now()}`;
-    } catch {
-        return `asset-${Date.now()}`;
-    }
-}
-
-/**
- * Get MIME type from URL extension using the centralized EXTENSION_MIME_MAP.
- */
-function getMimeType(url: string): string {
-    const ext = url.split('.').pop()?.toLowerCase();
-    return (ext ? EXTENSION_MIME_MAP[`.${ext}`] : undefined) ?? CONTENT_TYPES.OCTET_STREAM;
-}
-
 /**
  * Find asset by source URL
  */
@@ -290,19 +251,19 @@ async function createAssetFromUrl(
     logger: DataHubLogger,
 ): Promise<ID | undefined> {
     try {
-        const fileData = await downloadFile(url);
+        const fileData = await downloadAsset(url, 'Loader asset download');
         if (!fileData) {
-            logger.warn(`Failed to download asset from URL: ${url}`);
+            logger.warn(`Failed to download asset from URL: ${sanitizeUrlForLogging(url)}`);
             return undefined;
         }
 
         const filename = extractFilenameFromUrl(url);
-        const mimeType = getMimeType(url);
+        const mimeType = getAssetMimeType(url);
 
         const file = {
             filename,
             mimetype: mimeType,
-            createReadStream: () => bufferToStream(fileData),
+            createReadStream: () => createReadStreamFromBuffer(fileData),
         };
 
         const result = await assetService.create(ctx, { file });
@@ -311,11 +272,11 @@ async function createAssetFromUrl(
             return result.id;
         } else {
             const err = result as { message?: string; errorCode?: string };
-            logger.warn(`Asset creation failed for ${url}: [${err.errorCode ?? 'UNKNOWN'}] ${err.message ?? 'Unknown error'}`);
+            logger.warn(`Asset creation failed for ${sanitizeUrlForLogging(url)}: [${err.errorCode ?? 'UNKNOWN'}] ${err.message ?? 'Unknown error'}`);
             return undefined;
         }
     } catch (error) {
-        logger.warn(`Error creating asset from ${url}: ${getErrorMessage(error)}`);
+        logger.warn(`Error creating asset from ${sanitizeUrlForLogging(url)}: ${getErrorMessage(error)}`);
         return undefined;
     }
 }
@@ -348,16 +309,15 @@ async function upsertAssetsByUrl(
     ctx: RequestContext,
     assetService: AssetService,
     urls: string[],
-    existingAssets: any[],
+    existingAssets: ExistingAsset[],
     logger: DataHubLogger,
 ): Promise<ID[]> {
     const assetIds: ID[] = [];
     const existingAssetMap = new Map<string, ID>();
 
     // Build map of existing assets by source URL
-    for (const assetWrapper of existingAssets) {
-        const asset = assetWrapper.asset || assetWrapper;
-        if (asset?.source) {
+    for (const asset of existingAssets) {
+        if (asset.source) {
             existingAssetMap.set(asset.source, asset.id);
         }
     }
@@ -366,18 +326,18 @@ async function upsertAssetsByUrl(
         const existingId = existingAssetMap.get(url);
         if (existingId) {
             assetIds.push(existingId);
-            logger.debug(`Reusing existing asset ${existingId} for URL: ${url}`);
+            logger.debug(`Reusing existing asset ${existingId} for URL: ${sanitizeUrlForLogging(url)}`);
         } else {
             // Need to check if asset exists in DB (might not be attached to this entity)
             const existing = await findAssetBySource(ctx, assetService, url);
             if (existing) {
                 assetIds.push(existing.id);
-                logger.debug(`Found existing asset ${existing.id} for URL: ${url}`);
+                logger.debug(`Found existing asset ${existing.id} for URL: ${sanitizeUrlForLogging(url)}`);
             } else {
                 const assetId = await createAssetFromUrl(ctx, assetService, url, logger);
                 if (assetId) {
                     assetIds.push(assetId);
-                    logger.debug(`Created new asset ${assetId} for URL: ${url}`);
+                    logger.debug(`Created new asset ${assetId} for URL: ${sanitizeUrlForLogging(url)}`);
                 }
             }
         }
@@ -412,14 +372,19 @@ export async function handleFacetValues(
     mode: FacetValuesMode = 'REPLACE_ALL',
     logger: DataHubLogger,
 ): Promise<void> {
-    if (!facetValueCodes || facetValueCodes.length === 0) {
-        logger.debug(`No facet value codes provided, skipping`);
-        return;
-    }
-
     // SKIP mode - do nothing
     if (mode === 'SKIP') {
         logger.debug(`Skipping facet value handling (mode: SKIP)`);
+        return;
+    }
+
+    if (!facetValueCodes || facetValueCodes.length === 0) {
+        if (mode === 'REPLACE_ALL') {
+            await updateViaService(ctx, service, { id: entityId, facetValueIds: [] });
+            logger.debug('Cleared all facet values (mode: REPLACE_ALL)');
+        } else {
+            logger.debug(`No facet value codes provided, skipping (mode: ${mode})`);
+        }
         return;
     }
 
@@ -440,7 +405,7 @@ export async function handleFacetValues(
 
     // For MERGE and REMOVE modes, we need to fetch existing facet values
     const entity = await service.findOne(ctx, entityId, ['facetValues']);
-    const existingIds = (entity?.facetValues?.map((fv: any) => fv.id) ?? []) as ID[];
+    const existingIds = entity?.facetValues?.map(facetValue => facetValue.id) ?? [];
 
     // MERGE mode - add new, keep existing
     if (mode === 'MERGE') {
@@ -510,7 +475,7 @@ export async function handleAssets(
             return;
         }
 
-        const existingAssets = (entity as any).assets || [];
+        const existingAssets = getExistingAssets(entity);
         logger.debug(`Entity ${entityId} has ${existingAssets.length} existing assets`);
 
         switch (mode) {
@@ -541,7 +506,7 @@ export async function handleAssets(
             case 'APPEND_ONLY': {
                 // Always create new assets, append to existing
                 const newAssetIds = await createAssetsFromUrls(ctx, assetService, assetUrls, logger);
-                const existingIds = existingAssets.map((a: any) => a.assetId || a.asset?.id).filter(Boolean);
+                const existingIds = existingAssets.map(asset => asset.id);
                 const allAssetIds = [...existingIds, ...newAssetIds];
                 await updateViaService(ctx, service, { id: entityId, assetIds: allAssetIds });
                 logger.debug(
@@ -599,11 +564,11 @@ export async function handleFeaturedAsset(
                 const existing = await findAssetBySource(ctx, assetService, featuredAssetUrl);
                 if (existing) {
                     assetId = existing.id;
-                    logger.debug(`UPSERT_BY_URL: Reusing existing asset ${assetId} for URL: ${featuredAssetUrl}`);
+                    logger.debug(`UPSERT_BY_URL: Reusing existing asset ${assetId} for URL: ${sanitizeUrlForLogging(featuredAssetUrl)}`);
                 } else {
                     assetId = await createAssetFromUrl(ctx, assetService, featuredAssetUrl, logger);
                     if (assetId) {
-                        logger.debug(`UPSERT_BY_URL: Created new asset ${assetId} from URL: ${featuredAssetUrl}`);
+                        logger.debug(`UPSERT_BY_URL: Created new asset ${assetId} from URL: ${sanitizeUrlForLogging(featuredAssetUrl)}`);
                     }
                 }
                 break;
@@ -613,7 +578,7 @@ export async function handleFeaturedAsset(
                 // Always create new asset
                 assetId = await createAssetFromUrl(ctx, assetService, featuredAssetUrl, logger);
                 if (assetId) {
-                    logger.debug(`REPLACE: Created new asset ${assetId} from URL: ${featuredAssetUrl}`);
+                    logger.debug(`REPLACE: Created new asset ${assetId} from URL: ${sanitizeUrlForLogging(featuredAssetUrl)}`);
                 }
                 break;
             }
@@ -628,7 +593,7 @@ export async function handleFeaturedAsset(
             await updateViaService(ctx, service, { id: entityId, featuredAssetId: assetId });
             logger.debug(`Set featured asset ${assetId} on entity ${entityId}`);
         } else {
-            logger.warn(`Failed to create/find asset for URL: ${featuredAssetUrl}`);
+            logger.warn(`Failed to create/find asset for URL: ${sanitizeUrlForLogging(featuredAssetUrl)}`);
         }
     } catch (error) {
         // Log error but don't fail the pipeline
@@ -637,4 +602,3 @@ export async function handleFeaturedAsset(
         );
     }
 }
-

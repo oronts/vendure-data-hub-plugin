@@ -344,19 +344,16 @@ export async function resolveChannelIds(
     } else if (typeof rawValue === 'string') {
         codes = rawValue.split(',').map(s => s.trim()).filter(Boolean);
     } else {
-        return [];
+        throw new Error('Channel assignment must be a channel code or an array of channel codes');
     }
 
+    codes = [...new Set(codes)];
     if (codes.length === 0) return [];
 
-    const result: ID[] = [];
     const uncached: string[] = [];
 
     for (const code of codes) {
-        const cached = cache.get(code);
-        if (cached) {
-            result.push(cached);
-        } else {
+        if (!cache.has(code)) {
             uncached.push(code);
         }
     }
@@ -370,23 +367,21 @@ export async function resolveChannelIds(
             for (const channel of allChannels.items) {
                 cache.set(channel.code, channel.id);
             }
-
-            // Re-resolve uncached codes now that we've loaded them
-            for (const code of uncached) {
-                const id = cache.get(code);
-                if (id) {
-                    result.push(id);
-                } else {
-                    logger.warn(`Channel code "${code}" not found - skipped`);
-                }
-            }
         } catch (error) {
             logger.warn('Failed to resolve channel codes', {
                 codes: uncached,
                 error: getErrorMessage(error),
             });
+            throw error;
         }
     }
 
-    return result;
+    const missingCodes = codes.filter(code => !cache.has(code));
+    if (missingCodes.length > 0) {
+        const error = new Error(`Channel code${missingCodes.length === 1 ? '' : 's'} not found: ${missingCodes.join(', ')}`);
+        logger.warn(error.message, { codes: missingCodes });
+        throw error;
+    }
+
+    return codes.map(code => cache.get(code) as ID);
 }

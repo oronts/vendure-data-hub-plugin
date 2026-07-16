@@ -108,8 +108,7 @@ export async function handleOptions(
 
     // REPLACE_ALL mode - replace all options
     if (mode === 'REPLACE_ALL') {
-        // Vendure API accepts optionIds on update but type definition omits it
-        await variantService.update(ctx, [{ id: variantId, optionIds: newOptionIds } as any]);
+        await variantService.update(ctx, [{ id: variantId, optionIds: newOptionIds }]);
         logger.debug(`Replaced all options with ${newOptionIds.length} options (mode: REPLACE_ALL)`);
         return;
     }
@@ -121,8 +120,7 @@ export async function handleOptions(
         const mergedIds = [...new Set([...existingIds, ...newOptionIds])];
         const addedCount = mergedIds.length - existingIds.length;
 
-        // Vendure API accepts optionIds on update but type definition omits it
-        await variantService.update(ctx, [{ id: variantId, optionIds: mergedIds } as any]);
+        await variantService.update(ctx, [{ id: variantId, optionIds: mergedIds }]);
         logger.debug(
             `Merged options: ${existingIds.length} existing + ${newOptionIds.length} new = ${mergedIds.length} total (${addedCount} added, mode: MERGE)`,
         );

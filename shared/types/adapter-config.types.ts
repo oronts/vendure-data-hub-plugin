@@ -1,3 +1,5 @@
+import type { AuthConfig, RateLimitConfig, RetryConfig } from './extractor.types';
+
 /**
  * Typed Adapter Configuration Types
  *
@@ -21,45 +23,39 @@ export enum ConnectionAuthType {
 
 // EXTRACTOR CONFIGS
 
-/** CSV Extractor - Parse CSV files */
+/** CSV Extractor - Parse uploaded files or explicit inline data */
 export interface CsvExtractorConfig {
     adapterCode: 'csv';
-    /** Path to CSV file or connection-relative path */
-    csvPath?: string;
-    /** Column delimiter (default: ',') */
+    fileId?: string;
+    csvText?: string;
+    rows?: unknown[];
     delimiter?: string;
-    /** First row contains headers (default: true) */
     hasHeader?: boolean;
-    /** Skip first N rows */
-    skipRows?: number;
-    /** Encoding (default: 'utf-8') */
-    encoding?: string;
-    /** Connection code for remote files */
-    connectionCode?: string;
 }
 
-/** JSON Extractor - Parse JSON files/arrays */
+/** JSON Extractor - Parse uploaded files or explicit inline data */
 export interface JsonExtractorConfig {
     adapterCode: 'json';
-    /** Path to JSON file */
-    jsonPath?: string;
-    /** JSONPath expression to extract records */
+    fileId?: string;
+    jsonText?: string;
     itemsPath?: string;
-    /** Connection code for remote files */
-    connectionCode?: string;
 }
 
-/** Excel Extractor - Parse Excel files */
-export interface ExcelExtractorConfig {
-    adapterCode: 'excel';
-    /** Path to Excel file */
-    excelPath?: string;
-    /** Sheet name or index */
-    sheet?: string | number;
-    /** First row contains headers */
+/** XML Extractor - Parse uploaded files or explicit inline data */
+export interface XmlExtractorConfig {
+    adapterCode: 'xml';
+    fileId?: string;
+    xmlText?: string;
+    recordPath?: string;
+    attributePrefix?: string;
+}
+
+/** Excel Extractor - Parse uploaded workbooks */
+export interface XlsxExtractorConfig {
+    adapterCode: 'xlsx';
+    fileId: string;
+    sheetName?: string | number;
     hasHeader?: boolean;
-    /** Connection code for remote files */
-    connectionCode?: string;
 }
 
 /** HTTP API Extractor - Fetch data from HTTP/REST APIs with pagination support */
@@ -96,66 +92,72 @@ export interface HttpApiExtractorConfig {
         pageParam?: string;
         /** For page pagination: page size parameter name */
         pageSizeParam?: string;
-        /** For page pagination: records per page */
-        pageSize?: number;
         /** Maximum pages to fetch (safety limit) */
         maxPages?: number;
     };
-    /** GraphQL query (if using GraphQL) */
-    graphqlQuery?: string;
-    /** GraphQL variables */
-    graphqlVariables?: Record<string, unknown>;
+    rateLimit?: RateLimitConfig;
+    retry?: RetryConfig;
+    auth?: AuthConfig;
+    timeoutMs?: number;
 }
 
 /** GraphQL Extractor - Query GraphQL APIs */
 export interface GraphqlExtractorConfig {
     adapterCode: 'graphql';
     /** GraphQL endpoint URL */
-    endpoint: string;
+    url: string;
     /** GraphQL query */
     query: string;
     /** Query variables */
     variables?: Record<string, unknown>;
     /** Request headers */
     headers?: Record<string, string>;
-    /** Field containing items (for arrays) */
-    itemsField?: string;
-    /** Connection-style: edges field */
-    edgesField?: string;
-    /** Connection-style: node field within edge */
-    nodeField?: string;
-    /** Cursor pagination variable name */
-    cursorVar?: string;
-    /** Field containing next cursor */
-    nextCursorField?: string;
+    /** Full response path to the extracted records. */
+    dataPath?: string;
+    connectionCode?: string;
+    auth?: AuthConfig;
+    pagination?: {
+        type: 'NONE' | 'OFFSET' | 'CURSOR' | 'RELAY';
+        limit?: number;
+        maxPages?: number;
+        offsetVariable?: string;
+        limitVariable?: string;
+        cursorVariable?: string;
+        pageInfoPath?: string;
+        hasNextPagePath?: string;
+        endCursorPath?: string;
+        totalCountPath?: string;
+    };
+    timeoutMs?: number;
+    operationName?: string;
+    includeExtensions?: boolean;
 }
 
 /** Vendure Query Extractor - Query Vendure entities */
 export interface VendureQueryExtractorConfig {
     adapterCode: 'vendureQuery';
     /** Entity to query */
-    entity: 'PRODUCT' | 'PRODUCT_VARIANT' | 'CUSTOMER' | 'ORDER' | 'COLLECTION' | 'FACET' | 'FACET_VALUE' | 'ASSET';
-    /** Relations to load (comma-separated) */
-    relations?: string;
-    /** Filter conditions */
-    filter?: Record<string, unknown>;
+    entity: 'PRODUCT' | 'PRODUCT_VARIANT' | 'CUSTOMER' | 'ORDER' | 'COLLECTION' | 'FACET' | 'FACET_VALUE' | 'PROMOTION' | 'ASSET';
+    /** Relations to load */
+    relations?: string[];
+    /** Structured filter conditions */
+    filters?: Array<{
+        field: string;
+        operator: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'like' | 'contains';
+        value: unknown;
+    }>;
+    includeFields?: string[];
+    excludeFields?: string[];
+    channelCodes?: string[];
+    languageCode?: string;
+    flattenTranslations?: boolean;
+    where?: Record<string, unknown>;
     /** Batch size for pagination */
     batchSize?: number;
     /** Sort field */
     sortBy?: string;
     /** Sort direction */
     sortOrder?: 'ASC' | 'DESC';
-}
-
-/** Webhook Extractor - Receive data via webhook */
-export interface WebhookExtractorConfig {
-    adapterCode: 'webhook';
-    /** Expected content type */
-    contentType?: 'application/json' | 'application/xml' | 'text/csv';
-    /** HMAC validation secret code */
-    hmacSecretCode?: string;
-    /** HMAC header name */
-    hmacHeader?: string;
 }
 
 /** Database Extractor - Query SQL databases */
@@ -204,11 +206,11 @@ export interface GenericExtractorConfig {
 export type TypedExtractorConfig =
     | CsvExtractorConfig
     | JsonExtractorConfig
-    | ExcelExtractorConfig
+    | XlsxExtractorConfig
+    | XmlExtractorConfig
     | HttpApiExtractorConfig
     | GraphqlExtractorConfig
     | VendureQueryExtractorConfig
-    | WebhookExtractorConfig
     | DatabaseExtractorConfig
     | CdcExtractorConfig
     | GenericExtractorConfig;
@@ -321,8 +323,13 @@ export type TypedOperatorConfig =
 
 // LOADER CONFIGS
 
+
+export interface CreateDuplicateHandlingConfig {
+    /** When CREATE finds an existing record, skip it instead of failing the record. */
+    skipDuplicates?: boolean;
+}
 /** Product Upsert Loader */
-export interface ProductUpsertLoaderConfig {
+export interface ProductUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'productUpsert';
     /** Channel code */
     channel?: string;
@@ -346,8 +353,10 @@ export interface ProductUpsertLoaderConfig {
     translationsField?: string;
     /** Field containing SKU */
     skuField?: string;
-    /** Field containing price */
+    /** Field containing price in major units (e.g., 19.99) */
     priceField?: string;
+    /** Field containing a currency-to-major-unit price map (e.g., { USD: 19.99, EUR: 17.50 }) */
+    priceByCurrencyField?: string;
     /** Field containing stock quantity */
     stockField?: string;
     /** Field containing stock by location map */
@@ -360,6 +369,8 @@ export interface ProductUpsertLoaderConfig {
     customFieldsField?: string;
     /** Whether to create/update variants alongside the product (default: true). Set to false when variants are handled by a separate variantUpsert step. */
     createVariants?: boolean;
+    /** Record field containing facet value codes or objects with a code property (default: facetValueCodes) */
+    facetValuesField?: string;
     /** How to handle product facet values on update */
     facetValuesMode?: FacetValuesMode;
     /** How to handle product assets on update */
@@ -369,7 +380,7 @@ export interface ProductUpsertLoaderConfig {
 }
 
 /** Variant Upsert Loader */
-export interface VariantUpsertLoaderConfig {
+export interface VariantUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'variantUpsert';
     /** Channel code */
     channel?: string;
@@ -405,7 +416,7 @@ export interface VariantUpsertLoaderConfig {
     optionCodesField?: string;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE.
      *  UPSERT: update existing or create new (record must contain productSlug, productId, or productName for creation).
-     *  CREATE: only create new variants, skip existing.
+     *  CREATE: create new variants; existing variants skip only when skipDuplicates is true, otherwise fail.
      *  UPDATE: only update existing variants, skip missing. */
     strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
     /** How to handle variant facet values on update */
@@ -421,7 +432,7 @@ export interface VariantUpsertLoaderConfig {
 // NESTED ENTITY MODE TYPES
 
 /** How to handle customer addresses on update */
-export type AddressesMode = 'UPSERT_BY_MATCH' | 'REPLACE_ALL' | 'APPEND_ONLY' | 'UPDATE_BY_ID' | 'SKIP';
+export type AddressesMode = 'UPSERT_BY_MATCH' | 'REPLACE_ALL' | 'APPEND_ONLY' | 'SKIP';
 
 /** How to handle facet values on product/variant update */
 export type FacetValuesMode = 'REPLACE_ALL' | 'MERGE' | 'REMOVE' | 'SKIP';
@@ -451,7 +462,7 @@ export type ActionsMode = 'REPLACE_ALL' | 'MERGE' | 'SKIP';
 export type GroupsMode = 'ADD' | 'SET';
 
 /** Customer Upsert Loader */
-export interface CustomerUpsertLoaderConfig {
+export interface CustomerUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'customerUpsert';
     /** Field containing email (required) */
     emailField: string;
@@ -509,20 +520,26 @@ export interface RestPostLoaderConfig {
     hmacSecretCode?: string;
     /** HMAC header name */
     hmacHeader?: string;
+    /** HMAC payload template */
+    hmacPayloadTemplate?: string;
     /** Batch mode: single record or array */
-    batchMode?: 'SINGLE' | 'ARRAY';
+    batchMode?: 'single' | 'array';
     /** Max records per batch */
     maxBatchSize?: number;
     /** Number of retries */
     retries?: number;
     /** Delay between retries (ms) */
     retryDelayMs?: number;
+    /** Maximum delay between retries (ms) */
+    maxRetryDelayMs?: number;
+    /** Exponential retry multiplier */
+    backoffMultiplier?: number;
     /** Request timeout (ms) */
     timeoutMs?: number;
 }
 
 /** Order Upsert Loader */
-export interface OrderUpsertLoaderConfig {
+export interface OrderUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'orderUpsert';
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
     strategy?: 'UPSERT' | 'CREATE' | 'UPDATE';
@@ -583,7 +600,7 @@ export interface OrderTransitionLoaderConfig {
 }
 
 /** Collection Upsert Loader */
-export interface CollectionUpsertLoaderConfig {
+export interface CollectionUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'collectionUpsert';
     /** Channel code */
     channel?: string;
@@ -636,7 +653,7 @@ export interface ApplyCouponLoaderConfig {
 }
 
 /** Promotion Upsert Loader */
-export interface PromotionUpsertLoaderConfig {
+export interface PromotionUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'promotionUpsert';
     /** Field containing coupon code (required) */
     codeField: string;
@@ -690,19 +707,23 @@ export interface GraphqlMutationLoaderConfig {
     /** Basic auth secret code */
     basicSecretCode?: string;
     /** Batch mode */
-    batchMode?: 'SINGLE' | 'BATCH';
+    batchMode?: 'single' | 'batch';
     /** Max records per batch */
     maxBatchSize?: number;
     /** Number of retries */
     retries?: number;
     /** Delay between retries (ms) */
     retryDelayMs?: number;
+    /** Maximum delay between retries (ms) */
+    maxRetryDelayMs?: number;
+    /** Exponential retry multiplier */
+    backoffMultiplier?: number;
     /** Request timeout (ms) */
     timeoutMs?: number;
 }
 
 /** Facet Upsert Loader */
-export interface FacetUpsertLoaderConfig {
+export interface FacetUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'facetUpsert';
     /** Field containing facet code (required) */
     codeField: string;
@@ -723,7 +744,7 @@ export interface FacetUpsertLoaderConfig {
 }
 
 /** Facet Value Upsert Loader */
-export interface FacetValueUpsertLoaderConfig {
+export interface FacetValueUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'facetValueUpsert';
     /** Field containing parent facet code (required) */
     facetCodeField: string;
@@ -759,7 +780,7 @@ export interface AssetImportLoaderConfig {
 }
 
 /** Tax Rate Upsert Loader */
-export interface TaxRateUpsertLoaderConfig {
+export interface TaxRateUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'taxRateUpsert';
     /** Field containing tax rate name (required) */
     nameField: string;
@@ -780,7 +801,7 @@ export interface TaxRateUpsertLoaderConfig {
 }
 
 /** Payment Method Upsert Loader */
-export interface PaymentMethodUpsertLoaderConfig {
+export interface PaymentMethodUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'paymentMethodUpsert';
     /** Field containing payment method name (required) */
     nameField: string;
@@ -805,7 +826,7 @@ export interface PaymentMethodUpsertLoaderConfig {
 }
 
 /** Channel Upsert Loader */
-export interface ChannelUpsertLoaderConfig {
+export interface ChannelUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'channelUpsert';
     /** Field containing unique channel code (required) */
     codeField: string;
@@ -834,7 +855,7 @@ export interface ChannelUpsertLoaderConfig {
 }
 
 /** Shipping Method Upsert Loader */
-export interface ShippingMethodUpsertLoaderConfig {
+export interface ShippingMethodUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'shippingMethodUpsert';
     /** Field containing display name (required) */
     nameField: string;
@@ -859,7 +880,7 @@ export interface ShippingMethodUpsertLoaderConfig {
 }
 
 /** Customer Group Upsert Loader */
-export interface CustomerGroupUpsertLoaderConfig {
+export interface CustomerGroupUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'customerGroupUpsert';
     /** Field containing group name (required) */
     nameField: string;
@@ -870,7 +891,7 @@ export interface CustomerGroupUpsertLoaderConfig {
 }
 
 /** Stock Location Upsert Loader */
-export interface StockLocationUpsertLoaderConfig {
+export interface StockLocationUpsertLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'stockLocationUpsert';
     /** Field containing stock location name (required) */
     nameField: string;
@@ -881,7 +902,7 @@ export interface StockLocationUpsertLoaderConfig {
 }
 
 /** Inventory Adjust Loader */
-export interface InventoryAdjustLoaderConfig {
+export interface InventoryAdjustLoaderConfig extends CreateDuplicateHandlingConfig {
     adapterCode: 'inventoryAdjust';
     /** Field containing variant SKU (required) */
     skuField: string;
@@ -951,8 +972,9 @@ export type TypedLoaderConfig =
 /** CSV Export */
 export interface CsvExportConfig {
     adapterCode: 'csvExport';
-    /** Output path (required) */
-    outputPath: string;
+    /** Local output directory when destinationType is omitted. */
+    path?: string;
+    filenamePattern?: string;
     /** Include header row */
     includeHeader?: boolean;
     /** Column delimiter */
@@ -968,8 +990,9 @@ export interface CsvExportConfig {
 /** JSON Export */
 export interface JsonExportConfig {
     adapterCode: 'jsonExport';
-    /** Output path (required) */
-    outputPath: string;
+    /** Local output directory when destinationType is omitted. */
+    path?: string;
+    filenamePattern?: string;
     /** Format */
     format?: 'JSON' | 'NDJSON';
     /** Pretty print */
@@ -981,8 +1004,9 @@ export interface JsonExportConfig {
 /** XML Export */
 export interface XmlExportConfig {
     adapterCode: 'xmlExport';
-    /** Output path (required) */
-    outputPath: string;
+    /** Local output directory when destinationType is omitted. */
+    path?: string;
+    filenamePattern?: string;
     /** Root element name */
     rootElement?: string;
     /** Item element name */
@@ -1008,65 +1032,69 @@ export type TypedExporterConfig =
 
 // FEED CONFIGS
 
+/** Localization controls shared by built-in feed generators. */
+export interface FeedLocalizationConfig {
+    /** Translation language to flatten into the record. */
+    languageCode?: string;
+    /** Record field containing the translations array. */
+    translationsField?: string;
+    /** Retain only records assigned to this channel code. */
+    channelCode?: string;
+}
+
+/** Field-path overrides shared by the built-in commerce feed handlers. */
+export interface CommerceFeedFieldMappingConfig extends FeedLocalizationConfig {
+    titleField?: string;
+    descriptionField?: string;
+    priceField?: string;
+    priceUnit?: 'MINOR' | 'MAJOR';
+    imageField?: string;
+    brandField?: string;
+}
+
 /** Google Merchant Feed */
-export interface GoogleMerchantFeedConfig {
+export interface GoogleMerchantFeedConfig extends CommerceFeedFieldMappingConfig {
     adapterCode: 'googleMerchant';
     /** Output file path (required) */
     outputPath: string;
-    /** Feed format (required) */
-    format: 'XML' | 'TSV';
-    /** Target country ISO code (required) */
-    targetCountry: string;
-    /** Content language ISO code (required) */
-    contentLanguage: string;
     /** Currency ISO code (required) */
     currency: string;
+    /** Field path for the product URL */
+    linkField?: string;
+    /** Field path for UPC, EAN, or GTIN */
+    gtinField?: string;
+    /** Field path for availability */
+    availabilityField?: string;
     /** Store URL (required) */
     storeUrl: string;
-    /** Channel ID */
-    channelId?: string;
-    /** Include out of stock products */
-    includeOutOfStock?: boolean;
-    /** Store name */
-    storeName?: string;
-    /** Shipping info JSON */
-    shippingInfo?: Record<string, unknown>;
 }
 
 /** Meta (Facebook) Catalog Feed */
-export interface MetaCatalogFeedConfig {
+export interface MetaCatalogFeedConfig extends CommerceFeedFieldMappingConfig {
     adapterCode: 'metaCatalog';
     /** Output file path (required) */
     outputPath: string;
-    /** Feed format (required) */
-    format: 'CSV' | 'XML';
     /** Currency ISO code (required) */
     currency: string;
-    /** Channel ID */
-    channelId?: string;
-    /** Brand field path */
-    brandField?: string;
-    /** Category field path */
-    categoryField?: string;
-    /** Include variants */
-    includeVariants?: boolean;
+    /** Field path for the product URL */
+    linkField?: string;
+    /** Field path for availability */
+    availabilityField?: string;
 }
 
 /** Amazon Feed */
-export interface AmazonFeedConfig {
+export interface AmazonFeedConfig extends CommerceFeedFieldMappingConfig {
     adapterCode: 'amazonFeed';
     /** Output file path (required) */
     outputPath: string;
-    /** Marketplace (required) */
-    marketplace: 'US' | 'UK' | 'DE' | 'FR' | 'CA';
-    /** Seller ID (required) */
-    sellerId: string;
-    /** Feed type */
-    feedType?: 'INVENTORY' | 'PRICING' | 'PRODUCT';
+    /** Currency ISO code (required) */
+    currency: string;
+    /** Field path for UPC, EAN, or GTIN */
+    gtinField?: string;
 }
 
 /** Custom Feed */
-export interface CustomFeedConfig {
+export interface CustomFeedConfig extends FeedLocalizationConfig {
     adapterCode: 'customFeed';
     /** Output file path (required) */
     outputPath: string;
@@ -1074,14 +1102,6 @@ export interface CustomFeedConfig {
     format: 'XML' | 'CSV' | 'JSON' | 'TSV';
     /** Field mapping (required) */
     fieldMapping: Record<string, string>;
-    /** Template for item rendering */
-    template?: string;
-    /** Root element for XML */
-    rootElement?: string;
-    /** Item element for XML */
-    itemElement?: string;
-    /** Upload connection code */
-    connectionCode?: string;
 }
 
 /** Generic config for custom feed adapters */
@@ -1161,4 +1181,3 @@ export type LoaderAdapterCode =
     | UpdateSettingsLoaders
     | UpdateShippingMethodLoaders
     | UpdateDataHubSettingsLoaders;
-

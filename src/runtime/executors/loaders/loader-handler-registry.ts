@@ -25,6 +25,7 @@ import {
     GROUPS_MODE_OPTIONS,
     ASSET_ENTITY_TYPE_OPTIONS,
     ADDRESSES_MODE_OPTIONS,
+    FACET_VALUES_MODE_OPTIONS,
     LINES_MODE_OPTIONS,
 } from '../../../constants/adapter-schema-options';
 import { LoaderHandler } from './types';
@@ -58,6 +59,14 @@ interface LoaderRegistryEntry {
     definition: AdapterDefinition;
 }
 
+const SKIP_DUPLICATES_FIELD = {
+    key: 'skipDuplicates',
+    label: 'Skip existing records on CREATE',
+    type: 'boolean',
+    defaultValue: false,
+    description: 'When CREATE finds an existing record, skip it instead of failing the record.',
+} as const;
+
 /**
  * Convert a VendureEntityType enum value to the kebab-case entity code
  * used by the frontend (e.g., PRODUCT_VARIANT -> 'product-variant').
@@ -87,13 +96,15 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
                 fields: [
                     { key: 'channel', label: 'Channel code', type: 'string', required: true },
                     { key: 'strategy', label: 'Load strategy', type: 'select', required: true, options: LOAD_STRATEGY_OPTIONS },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'conflictStrategy', label: 'Conflict strategy', type: 'select', required: true, options: CONFLICT_RESOLUTION_OPTIONS },
                     { key: 'nameField', label: 'Name field (from record)', type: 'string' },
                     { key: 'slugField', label: 'Slug field (from record)', type: 'string' },
                     { key: 'descriptionField', label: 'Description field (from record)', type: 'string' },
                     { key: 'enabledField', label: 'Enabled field (from record)', type: 'string', description: 'Record field containing product enabled/published flag (defaults to "enabled")' },
                     { key: 'skuField', label: 'SKU field (from record)', type: 'string' },
-                    { key: 'priceField', label: 'Price field (from record)', type: 'string' },
+                    { key: 'priceField', label: 'Major-unit price field (from record)', type: 'string', description: 'Converted once to Vendure minor units using the configured MoneyStrategy precision' },
+                    { key: 'priceByCurrencyField', label: 'Major-unit price map field (object)', type: 'string', description: 'Record field containing currency prices such as { USD: 19.99, EUR: 17.50 }' },
                     { key: 'taxCategoryName', label: 'Tax category name', type: 'string' },
                     { key: 'trackInventory', label: 'Track inventory', type: 'select', options: BOOLEAN_SELECT_OPTIONS },
                     { key: 'stockField', label: 'Stock on hand field', type: 'string' },
@@ -102,6 +113,8 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
                     { key: 'createVariants', label: 'Create variants', type: 'boolean', description: 'Create/update a default variant alongside the product. Set to false when variants are handled by a separate variantUpsert step.' },
                     { key: 'channelsField', label: 'Channels field (array/string)', type: 'string', description: 'Record field containing channel codes for dynamic per-record channel assignment (array or comma-separated)' },
                     { key: 'translationsField', label: 'Translations field', type: 'string', description: 'Record field containing multi-language translations (array or object map). Overrides name/slug/description fields.' },
+                    { key: 'facetValuesField', label: 'Facet values field (array)', type: 'string', description: 'Record field containing facet value codes or objects with a code property. Defaults to facetValueCodes.' },
+                    { key: 'facetValuesMode', label: 'Facet values mode', type: 'select', options: FACET_VALUES_MODE_OPTIONS, description: 'Replace, merge, remove, or preserve product facet assignments when the facet values field is present.' },
                 ],
             },
         },
@@ -121,10 +134,11 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
                 fields: [
                     { key: 'channel', label: 'Channel code', type: 'string' },
                     { key: 'strategy', label: 'Load strategy', type: 'select', required: true, options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'skuField', label: 'SKU field (from record)', type: 'string', required: true },
                     { key: 'nameField', label: 'Name field (from record)', type: 'string' },
-                    { key: 'priceField', label: 'Price field (from record)', type: 'string' },
-                    { key: 'priceByCurrencyField', label: 'Price map field (object)', type: 'string' },
+                    { key: 'priceField', label: 'Major-unit price field (from record)', type: 'string', description: 'Converted once to Vendure minor units using the configured MoneyStrategy precision' },
+                    { key: 'priceByCurrencyField', label: 'Major-unit price map field (object)', type: 'string', description: 'Record field containing currency prices such as { USD: 19.99, EUR: 17.50 }' },
                     { key: 'taxCategoryName', label: 'Tax category name', type: 'string' },
                     { key: 'stockField', label: 'Stock on hand field', type: 'string' },
                     { key: 'stockByLocationField', label: 'Stock by location field (object)', type: 'string' },
@@ -153,6 +167,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'emailField', label: 'Email field', type: 'string', required: true },
                     { key: 'firstNameField', label: 'First name field', type: 'string' },
                     { key: 'lastNameField', label: 'Last name field', type: 'string' },
@@ -181,6 +196,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'lookupFields', label: 'Lookup fields', type: 'string', description: 'Comma-separated fields for existing entity lookup (default: code)' },
                     { key: 'codeField', label: 'Order code field', type: 'string', description: 'Record field for order code (default: code)' },
                     { key: 'customerEmailField', label: 'Customer email field', type: 'string', description: 'Record field for customer email (default: customerEmail)' },
@@ -276,6 +292,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
                 fields: [
                     { key: 'channel', label: 'Channel code', type: 'string' },
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'slugField', label: 'Slug field', type: 'string', required: true },
                     { key: 'nameField', label: 'Name field', type: 'string', required: true },
                     { key: 'parentSlugField', label: 'Parent slug field', type: 'string' },
@@ -303,6 +320,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'codeField', label: 'Coupon code field', type: 'string', required: true },
                     { key: 'nameField', label: 'Name field', type: 'string' },
                     { key: 'enabledField', label: 'Enabled field', type: 'string' },
@@ -397,6 +415,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'codeField', label: 'Code field', type: 'string', required: true },
                     { key: 'nameField', label: 'Name field', type: 'string', required: true },
                     { key: 'privateField', label: 'Private field', type: 'string' },
@@ -422,6 +441,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'facetCodeField', label: 'Facet code field', type: 'string', required: true },
                     { key: 'codeField', label: 'Value code field', type: 'string', required: true },
                     { key: 'nameField', label: 'Value name field', type: 'string', required: true },
@@ -449,9 +469,9 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
                     { key: 'method', label: 'Method', type: 'select', required: true, options: HTTP_METHOD_WRITE_OPTIONS },
                     { key: 'headers', label: 'Headers (JSON)', type: 'json' },
                     { key: 'auth', label: 'Auth preset', type: 'select', options: AUTH_TYPE_REST_OPTIONS },
-                    { key: 'bearerTokenSecretCode', label: 'Bearer token secret code', type: 'string' },
-                    { key: 'basicSecretCode', label: 'Basic auth secret code', type: 'string' },
-                    { key: 'hmacSecretCode', label: 'HMAC secret code', type: 'string' },
+                    { key: 'bearerTokenSecretCode', label: 'Bearer token secret code', type: 'secret' },
+                    { key: 'basicSecretCode', label: 'Basic auth secret code', type: 'secret' },
+                    { key: 'hmacSecretCode', label: 'HMAC secret code', type: 'secret' },
                     { key: 'hmacHeader', label: 'HMAC header name', type: 'string' },
                     { key: 'hmacPayloadTemplate', label: 'HMAC payload template', type: 'string', description: 'e.g. ${method}:${path}:${timestamp}' },
                     { key: 'batchMode', label: 'Batch mode', type: 'select', options: BATCH_MODE_REST_OPTIONS },
@@ -480,8 +500,8 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
                     { key: 'variableMapping', label: 'Variable mapping (JSON)', type: 'json', required: true, description: 'Maps GraphQL variable paths to record field paths (e.g. {"input.name": "productName", "input.sku": "sku"})' },
                     { key: 'headers', label: 'Headers (JSON)', type: 'json' },
                     { key: 'auth', label: 'Auth preset', type: 'select', options: AUTH_TYPE_GRAPHQL_OPTIONS },
-                    { key: 'bearerTokenSecretCode', label: 'Bearer token secret code', type: 'string' },
-                    { key: 'basicSecretCode', label: 'Basic auth secret code', type: 'string' },
+                    { key: 'bearerTokenSecretCode', label: 'Bearer token secret code', type: 'secret' },
+                    { key: 'basicSecretCode', label: 'Basic auth secret code', type: 'secret' },
                     { key: 'batchMode', label: 'Batch mode', type: 'select', options: BATCH_MODE_GRAPHQL_OPTIONS },
                     { key: 'maxBatchSize', label: 'Max batch size', type: 'number', description: 'Chunk size when batchMode=batch' },
                     { key: 'retries', label: 'Retries', type: 'number', description: 'Number of retries for failed requests' },
@@ -505,6 +525,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'nameField', label: 'Name field', type: 'string', required: true, description: 'Field containing tax rate name' },
                     { key: 'valueField', label: 'Value field', type: 'string', required: true, description: 'Field containing tax rate percentage (0-100)' },
                     { key: 'enabledField', label: 'Enabled field', type: 'string', description: 'Field indicating if rate is active' },
@@ -530,6 +551,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'nameField', label: 'Name field', type: 'string', required: true, description: 'Field containing payment method name' },
                     { key: 'codeField', label: 'Code field', type: 'string', required: true, description: 'Field containing unique payment method code' },
                     { key: 'descriptionField', label: 'Description field', type: 'string', description: 'Field containing description shown to customers' },
@@ -557,6 +579,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'codeField', label: 'Code field', type: 'string', required: true, description: 'Field containing unique channel code' },
                     { key: 'tokenField', label: 'Token field', type: 'string', description: 'Field containing channel token (auto-generated if not provided)' },
                     { key: 'defaultLanguageCodeField', label: 'Default language code field', type: 'string', required: true, description: 'Field containing default language (e.g., "en")' },
@@ -586,6 +609,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'nameField', label: 'Name field', type: 'string', required: true, description: 'Field containing shipping method display name' },
                     { key: 'codeField', label: 'Code field', type: 'string', required: true, description: 'Field containing unique shipping method code' },
                     { key: 'descriptionField', label: 'Description field', type: 'string', description: 'Field containing description shown to customers' },
@@ -613,6 +637,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'nameField', label: 'Name field', type: 'string', required: true, description: 'Field containing unique customer group name' },
                     { key: 'customerEmailsField', label: 'Customer emails field', type: 'string', description: 'Field containing array of customer email addresses to add' },
                 ],
@@ -633,6 +658,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'nameField', label: 'Name field', type: 'string', required: true, description: 'Field containing stock location name' },
                     { key: 'descriptionField', label: 'Description field', type: 'string', description: 'Field containing location description' },
                 ],
@@ -653,6 +679,7 @@ export const LOADER_HANDLER_REGISTRY = new Map<string, LoaderRegistryEntry>([
             schema: {
                 fields: [
                     { key: 'strategy', label: 'Load strategy', type: 'select', options: LOAD_STRATEGY_OPTIONS, description: 'UPSERT: create or update. CREATE: only create new. UPDATE: only update existing.' },
+                    SKIP_DUPLICATES_FIELD,
                     { key: 'skuField', label: 'SKU field', type: 'string', required: true, description: 'Field containing the product variant SKU' },
                     { key: 'stockOnHandField', label: 'Stock on hand field', type: 'string', required: true, description: 'Field containing the new absolute stock level' },
                     { key: 'stockLocationNameField', label: 'Stock location name field', type: 'string', description: 'Field containing stock location name (uses default if not specified)' },

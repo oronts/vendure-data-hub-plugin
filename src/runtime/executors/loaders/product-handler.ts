@@ -9,9 +9,11 @@ import {
     RequestContextService,
     TaxCategoryService,
     ChannelService,
+    ConfigService,
     Product,
     ProductVariant,
     StockLocationService,
+    FacetValueService,
     ID,
     LanguageCode,
 } from '@vendure/core';
@@ -26,10 +28,15 @@ import {
     ProductTranslationInput,
     ProductVariantTranslationInput,
 } from '@vendure/common/lib/generated-types';
-import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
+import {
+    PipelineStepDefinition,
+    ErrorHandlingConfig,
+    FacetValuesMode,
+} from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
 import { slugify } from '../../utils';
 import { LoaderHandler, CoercedProductFields } from './types';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import {
     findVariantBySku,
     resolveTaxCategoryId,
@@ -37,16 +44,26 @@ import {
     resolveChannelIds,
     parseTranslationsInput,
 } from './shared-lookups';
-import { TRANSFORM_LIMITS, LOGGER_CONTEXTS } from '../../../constants/index';
+import { LOGGER_CONTEXTS } from '../../../constants/index';
 import { LoadStrategy, ConflictStrategy } from '../../../constants/enums';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getNumberValue, getObjectValue } from '../../../loaders/shared-helpers';
+import { majorToMinorUnits, resolveMoneyPrecision } from '../../../utils/money.utils';
+import {
+    getStringValue,
+    getNumberValue,
+    getObjectValue,
+    handleFacetValues,
+} from '../../../loaders/shared-helpers';
+import {
+    persistVariantCurrencyPrices,
+    resolveDefaultCurrencyPrice,
+} from './variant-price-persistence';
 
 /**
  * Configuration for product handler step
  */
-interface ProductHandlerConfig {
+interface ProductHandlerConfig extends CreateDuplicateHandlingConfig {
     /** Field name for product name */
     nameField?: string;
     /** Field name for product slug */
@@ -57,6 +74,8 @@ interface ProductHandlerConfig {
     skuField?: string;
     /** Field name for variant price */
     priceField?: string;
+    /** Field name for a currency-to-price map */
+    priceByCurrencyField?: string;
     /** Field name for stock on hand */
     stockField?: string;
     /** Field name for stock by location map */
@@ -81,6 +100,10 @@ interface ProductHandlerConfig {
     channelsField?: string;
     /** Record field containing a translations array or object map for multi-language support */
     translationsField?: string;
+    /** Record field containing facet value codes or objects with a code property */
+    facetValuesField?: string;
+    /** How facet values are applied when the configured record field is present */
+    facetValuesMode?: FacetValuesMode;
 }
 
 /**
@@ -95,6 +118,12 @@ interface ProductProcessingContext {
     rec: RecordObject;
 }
 
+interface ProductUpsertResult {
+    productId: ID | undefined;
+    existing: Product | undefined;
+    skipped?: boolean;
+}
+
 /**
  * Safely cast step config to ProductHandlerConfig
  */
@@ -105,13 +134,17 @@ function getConfig(config: Record<string, unknown>): ProductHandlerConfig {
 /**
  * Helper to convert price object to currency-price map
  */
-function parsePriceByCurrency(priceObj: Record<string, unknown>): Record<string, number> {
+function parsePriceByCurrency(priceObj: Record<string, unknown>, precision: number): Record<string, number> {
     const result: Record<string, number> = {};
     for (const [cc, val] of Object.entries(priceObj)) {
-        const numericValue = typeof val === 'number' ? val : Number(val);
-        if (!Number.isNaN(numericValue)) {
-            result[cc] = Math.round(numericValue * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
+        const currencyCode = cc.toUpperCase();
+        if (!Object.values(CurrencyCode).includes(currencyCode as CurrencyCode)) {
+            throw new Error(`Invalid currency code "${cc}"`);
         }
+        result[currencyCode] = majorToMinorUnits(val, precision);
+    }
+    if (Object.keys(result).length === 0) {
+        throw new Error('Price map cannot be empty');
     }
     return result;
 }
@@ -177,23 +210,34 @@ function buildVariantStockFields(
 function extractPriceFields(
     rec: RecordObject,
     priceKey: string,
+    priceMapKey: string | undefined,
+    precision: number,
 ): { priceMinor: number | undefined; priceByCurrency: Record<string, number> | undefined } {
     const priceRaw = rec[priceKey];
-    let priceMinor: number | undefined;
-    let priceByCurrency: Record<string, number> | undefined;
+    const configuredPriceMap = priceMapKey ? rec[priceMapKey] : undefined;
+    const inlinePriceMap = priceRaw && typeof priceRaw === 'object' && !Array.isArray(priceRaw)
+        ? priceRaw as Record<string, unknown>
+        : undefined;
 
-    if (typeof priceRaw === 'number') {
-        priceMinor = Math.round(priceRaw * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
-    } else if (typeof priceRaw === 'string') {
-        const num = Number(priceRaw);
-        if (!Number.isNaN(num)) {
-            priceMinor = Math.round(num * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER);
-        }
-    } else if (priceRaw && typeof priceRaw === 'object' && !Array.isArray(priceRaw)) {
-        priceByCurrency = parsePriceByCurrency(priceRaw as Record<string, unknown>);
+    if (configuredPriceMap != null && priceRaw != null) {
+        throw new Error('Configure either priceField or priceByCurrencyField data, not both');
     }
 
-    return { priceMinor, priceByCurrency };
+    const priceMap = configuredPriceMap ?? inlinePriceMap;
+    if (priceMap != null) {
+        if (typeof priceMap !== 'object' || Array.isArray(priceMap)) {
+            throw new Error('Currency prices must be an object');
+        }
+        return {
+            priceMinor: undefined,
+            priceByCurrency: parsePriceByCurrency(priceMap as Record<string, unknown>, precision),
+        };
+    }
+    if (priceRaw != null) {
+        return { priceMinor: majorToMinorUnits(priceRaw, precision), priceByCurrency: undefined };
+    }
+
+    return { priceMinor: undefined, priceByCurrency: undefined };
 }
 
 /**
@@ -254,6 +298,28 @@ function extractSkuField(rec: RecordObject, skuKey: string, slug: string | undef
     return sku;
 }
 
+function parseFacetValueCodes(value: unknown): string[] | undefined {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (!Array.isArray(value)) {
+        throw new Error('Product facet values must be an array');
+    }
+
+    return value.map((item, index) => {
+        if (typeof item === 'string' && item.trim()) {
+            return item.trim();
+        }
+        if (item && typeof item === 'object') {
+            const code = Reflect.get(item, 'code');
+            if (typeof code === 'string' && code.trim()) {
+                return code.trim();
+            }
+        }
+        throw new Error(`Invalid product facet value at index ${index}`);
+    });
+}
+
 @Injectable()
 export class ProductHandler implements LoaderHandler {
     private readonly logger: DataHubLogger;
@@ -265,6 +331,8 @@ export class ProductHandler implements LoaderHandler {
         private taxCategoryService: TaxCategoryService,
         private channelService: ChannelService,
         private stockLocationService: StockLocationService,
+        private facetValueService: FacetValueService,
+        private configService: ConfigService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PRODUCT_LOADER);
@@ -312,10 +380,20 @@ export class ProductHandler implements LoaderHandler {
                     continue;
                 }
 
-                const opCtx = await this.resolveRequestContext(ctx, step, cfg);
+                const opCtx = await this.resolveRequestContext(ctx, cfg);
+                if (cfg.strategy === LoadStrategy.CREATE && cfg.createVariants !== false && fields.sku) {
+                    const existingVariant = await findVariantBySku(this.productVariantService, opCtx, fields.sku);
+                    if (existingVariant) {
+                        assertCreateDuplicateCanBeSkipped(cfg, 'variant', fields.sku);
+                    }
+                }
                 const procCtx: ProductProcessingContext = { ctx, opCtx, step, cfg, fields, rec };
 
                 const productResult = await this.createOrUpdateProduct(procCtx);
+                if (productResult.skipped) {
+                    ok++;
+                    continue;
+                }
                 if (!productResult.productId) {
                     if (onRecordError) {
                         await onRecordError(step.key, `Product not found for update: ${fields.slug}`, rec);
@@ -326,6 +404,7 @@ export class ProductHandler implements LoaderHandler {
 
                 await this.assignProductToChannel(procCtx, productResult.productId);
                 await this.assignToRecordChannels(opCtx, rec, cfg, productResult.productId, channelCache);
+                await this.handleProductFacetValues(procCtx, productResult.productId);
                 if (cfg.createVariants !== false) {
                     await this.handleProductVariants(procCtx, productResult.productId);
                 }
@@ -341,12 +420,33 @@ export class ProductHandler implements LoaderHandler {
         return { ok, fail };
     }
 
+    private async handleProductFacetValues(
+        procCtx: ProductProcessingContext,
+        productId: ID,
+    ): Promise<void> {
+        const { opCtx, cfg, rec } = procCtx;
+        const field = cfg.facetValuesField ?? 'facetValueCodes';
+        const codes = parseFacetValueCodes(rec[field]);
+        if (codes === undefined) {
+            return;
+        }
+
+        await handleFacetValues(
+            opCtx,
+            this.productService,
+            this.facetValueService,
+            productId,
+            codes,
+            cfg.facetValuesMode ?? 'REPLACE_ALL',
+            this.logger,
+        );
+    }
+
     /**
      * Resolve the appropriate request context (handles channel switching)
      */
     private async resolveRequestContext(
         ctx: RequestContext,
-        step: PipelineStepDefinition,
         cfg: ProductHandlerConfig,
     ): Promise<RequestContext> {
         const targetChannel = cfg.channel;
@@ -354,25 +454,16 @@ export class ProductHandler implements LoaderHandler {
             return ctx;
         }
 
-        try {
-            return await this.requestContextService.create({ apiType: 'admin', channelOrToken: targetChannel });
-        } catch (error) {
-            this.logger.warn('Failed to create request context for target channel, using original context', {
-                stepKey: step.key,
-                targetChannel,
-                error: getErrorMessage(error),
-            });
-            return ctx;
-        }
+        return this.requestContextService.create({ apiType: 'admin', channelOrToken: targetChannel });
     }
 
     /**
      * Create or update a product based on strategy and conflict resolution
-     * Returns the product ID or undefined if the operation was skipped
+     * Returns an explicit skip state so CREATE duplicates do not trigger downstream side effects
      */
     private async createOrUpdateProduct(
         procCtx: ProductProcessingContext,
-    ): Promise<{ productId: ID | undefined; existing: Product | undefined }> {
+    ): Promise<ProductUpsertResult> {
         const { ctx, opCtx, cfg, fields, rec } = procCtx;
         const { slug, customFields, enabled } = fields;
         const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
@@ -386,7 +477,8 @@ export class ProductHandler implements LoaderHandler {
         if (existing) {
             // Skip if strategy is 'create' only (don't update existing)
             if (strategy === LoadStrategy.CREATE) {
-                return { productId: existing.id, existing };
+                assertCreateDuplicateCanBeSkipped(cfg, 'product', slug!);
+                return { productId: existing.id, existing, skipped: true };
             }
             // Keep existing Vendure data, don't update
             if (conflictResolution === ConflictStrategy.VENDURE_WINS) {
@@ -476,6 +568,7 @@ export class ProductHandler implements LoaderHandler {
                 targetChannel,
                 error: getErrorMessage(error),
             });
+            throw error;
         }
     }
 
@@ -504,6 +597,7 @@ export class ProductHandler implements LoaderHandler {
                 channelIds,
                 error: getErrorMessage(error),
             });
+            throw error;
         }
     }
 
@@ -523,8 +617,22 @@ export class ProductHandler implements LoaderHandler {
         const targetChannel = cfg.channel;
 
         const existingVariant = await findVariantBySku(this.productVariantService, opCtx, sku);
+        if (existingVariant && strategy === LoadStrategy.CREATE) {
+            assertCreateDuplicateCanBeSkipped(cfg, 'variant', sku);
+            return;
+        }
         const taxCategoryId = await resolveTaxCategoryId(this.taxCategoryService, opCtx, cfg.taxCategoryName, this.logger);
         const stockLevels = await resolveStockLevels(this.stockLocationService, opCtx, stockByLocation, this.logger);
+        if (priceByCurrency) {
+            const availableCurrencies = opCtx.channel?.availableCurrencyCodes ?? [];
+            const unavailableCurrencies = Object.keys(priceByCurrency)
+                .filter(code => availableCurrencies.length > 0 && !availableCurrencies.includes(code as CurrencyCode));
+            if (unavailableCurrencies.length > 0) {
+                throw new Error(
+                    `Currencies not available in channel "${opCtx.channel?.code ?? 'default'}": ${unavailableCurrencies.join(', ')}`,
+                );
+            }
+        }
 
         const shouldUpdateVariant = existingVariant && strategy !== LoadStrategy.CREATE && conflictResolution !== ConflictStrategy.VENDURE_WINS;
         const shouldCreateVariant = !existingVariant && strategy !== LoadStrategy.UPDATE;
@@ -612,13 +720,12 @@ export class ProductHandler implements LoaderHandler {
         variantTranslation: ProductVariantTranslationInput,
         taxCategoryId: ID | undefined,
         priceMinor: number | undefined,
-        priceByCurrency: Record<string, number> | undefined,
         stockOnHand: number | undefined,
         stockLevels: StockLevelInput[] | undefined,
         trackInventory: boolean | undefined,
         customFields: Record<string, unknown> | undefined,
     ): CreateProductVariantInput {
-        const priceFields = buildVariantPrices(priceMinor, priceByCurrency);
+        const priceFields = typeof priceMinor === 'number' ? { price: priceMinor } : {};
         const stockFields = buildVariantStockFields(stockOnHand, stockLevels, trackInventory);
 
         return {
@@ -661,6 +768,7 @@ export class ProductHandler implements LoaderHandler {
                 targetChannel,
                 error: getErrorMessage(error),
             });
+            throw error;
         }
     }
 
@@ -683,12 +791,27 @@ export class ProductHandler implements LoaderHandler {
         customFields: Record<string, unknown> | undefined,
     ): Promise<void> {
         const stockLevels = await resolveStockLevels(this.stockLocationService, opCtx, stockByLocation, this.logger);
+        const currencyPrices = priceByCurrency
+            ? buildVariantPrices(undefined, priceByCurrency).prices
+            : undefined;
+        const createPrice = currencyPrices
+            ? resolveDefaultCurrencyPrice(opCtx, currencyPrices)
+            : priceMinor;
         const input = this.buildVariantInput(
             productId, sku, variantTranslation, taxCategoryId,
-            priceMinor, priceByCurrency, stockOnHand, stockLevels, trackInventory, customFields,
+            createPrice, stockOnHand, stockLevels, trackInventory, customFields,
         );
 
         const createdVariant = await this.createVariantRecord(opCtx, input);
+
+        if (createdVariant && currencyPrices) {
+            await persistVariantCurrencyPrices(
+                this.productVariantService,
+                opCtx,
+                createdVariant.id,
+                currencyPrices,
+            );
+        }
 
         if (targetChannel && createdVariant) {
             await this.assignCreatedVariantToChannel(opCtx, step, createdVariant.id, targetChannel);
@@ -719,6 +842,7 @@ export class ProductHandler implements LoaderHandler {
                 targetChannel,
                 error: getErrorMessage(error),
             });
+            throw error;
         }
     }
 
@@ -748,13 +872,15 @@ export class ProductHandler implements LoaderHandler {
         const descKey = cfg?.descriptionField ?? 'description';
         const skuKey = cfg?.skuField ?? 'sku';
         const priceKey = cfg?.priceField ?? 'price';
+        const priceMapKey = cfg?.priceByCurrencyField;
 
         const name = getStringValue(rec, nameKey) || undefined;
         const description = getStringValue(rec, descKey);
         const slug = extractSlugField(rec, slugKey, name);
         const sku = extractSkuField(rec, skuKey, slug);
 
-        const { priceMinor, priceByCurrency } = extractPriceFields(rec, priceKey);
+        const precision = resolveMoneyPrecision(this.configService);
+        const { priceMinor, priceByCurrency } = extractPriceFields(rec, priceKey, priceMapKey, precision);
         const { stockOnHand, stockByLocation } = extractStockFields(rec, cfg);
         const trackInventory = parseTrackInventory(cfg);
 

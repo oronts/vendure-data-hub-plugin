@@ -15,6 +15,7 @@ import {
     Product,
     ProductVariant,
     LanguageCode,
+    ConfigService,
 } from '@vendure/core';
 import { GlobalFlag } from '@vendure/common/lib/generated-types';
 import {
@@ -48,6 +49,7 @@ import {
 } from '../shared-helpers';
 import { handleOptions } from './helpers';
 import { VariantUpsertLoaderConfig } from '../../types/index';
+import { majorToMinorUnits, resolveMoneyPrecision } from '../../utils/money.utils';
 
 /** Loads ProductVariant entities via ProductVariantService. Supports CREATE, UPDATE, UPSERT. */
 @Injectable()
@@ -68,6 +70,7 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
         private optionService: ProductOptionService,
         private stockMovementService: StockMovementService,
         private stockLevelService: StockLevelService,
+        private configService: ConfigService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         super();
@@ -125,7 +128,7 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
         if (operation === TARGET_OPERATION.CREATE || operation === TARGET_OPERATION.UPSERT) {
             if (record.price === undefined || record.price === null) {
                 builder.addError('price', 'Price is required', 'REQUIRED');
-            } else if (typeof record.price !== 'number' || isNaN(record.price)) {
+            } else if (typeof record.price !== 'number' || !Number.isFinite(record.price)) {
                 builder.addError('price', 'Price must be a valid number', 'INVALID_TYPE');
             } else if (record.price < 0) {
                 builder.addError('price', 'Price cannot be negative', 'INVALID_VALUE');
@@ -188,8 +191,8 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
                     label: 'Price',
                     type: 'number',
                     required: true,
-                    description: 'Price in cents (e.g., 1999 = $19.99)',
-                    example: 1999,
+                    description: 'Price in major units (e.g., 19.99)',
+                    example: 19.99,
                 },
                 {
                     key: 'productName',
@@ -308,7 +311,7 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
                 productId: product.id,
                 sku: record.sku,
                 translations,
-                price: record.price,
+                price: majorToMinorUnits(record.price, resolveMoneyPrecision(this.configService)),
                 taxCategoryId,
                 facetValueIds,
                 trackInventory: record.trackInventory === false ? GlobalFlag.FALSE : GlobalFlag.TRUE,
@@ -366,7 +369,7 @@ export class ProductVariantLoader extends BaseEntityLoader<ProductVariantInput, 
             updateInput.sku = record.sku;
         }
         if (record.price !== undefined && shouldUpdateField('price', options.updateOnlyFields)) {
-            updateInput.price = record.price;
+            updateInput.price = majorToMinorUnits(record.price, resolveMoneyPrecision(this.configService));
         }
         if (record.trackInventory !== undefined && shouldUpdateField('trackInventory', options.updateOnlyFields)) {
             updateInput.trackInventory = record.trackInventory === false ? GlobalFlag.FALSE : GlobalFlag.TRUE;

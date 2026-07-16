@@ -26,7 +26,7 @@ export const PRODUCT_LOADER_METADATA = {
     name: 'Product Loader',
     description: 'Imports products with slug-based lookup, facets, and assets',
     adapterCode: 'productUpsert',
-    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT', 'DELETE'] as TargetOperation[],
+    supportedOperations: ['CREATE', 'UPDATE', 'UPSERT'] as TargetOperation[],
     lookupFields: ['slug', 'id', 'customFields.externalId'],
     requiredFields: ['name'],
 } as const;
