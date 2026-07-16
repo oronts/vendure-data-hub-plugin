@@ -251,7 +251,7 @@ export class OrderLoader extends BaseEntityLoader<OrderInput, Order> {
             const order = await this.orderService.create(ctx);
             await this.connection.getRepository(ctx, Order).update(
                 { id: order.id },
-                { customer: { id: customer.id } as any }, // TypeORM accepts relation-by-ID pattern
+                { customerId: customer.id },
             );
 
             // Preserve PIM order code (Vendure auto-generates codes; we override with source system code for idempotency)

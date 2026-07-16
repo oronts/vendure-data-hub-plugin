@@ -1,22 +1,14 @@
 /**
  * Order Lines Mode E2E Tests
  *
- * Tests linesMode for Order loader:
- * NOTE: The OrderUpsertHandler delegates to OrderLoader via buildSandboxLoaderContext(),
- * but does NOT propagate linesMode through options.config. As a result, linesMode
- * always uses the OrderLoader defaults:
- * - CREATE path: defaults to 'APPEND_ONLY'
- * - UPDATE path: defaults to 'REPLACE_ALL'
- *
- * These tests verify the actual behavior with those defaults.
- *
- * Verifies: order creation/update, edge cases, performance
+ * Verifies exact REPLACE_ALL, MERGE_BY_SKU, APPEND_ONLY, and SKIP behavior,
+ * plus validation edge cases and bulk performance.
  *
  * NOTE: Order creation requires products/variants AND customers to exist.
  * The OrderUpsertHandler bridges to the OrderLoader (BaseEntityLoader).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { OrderService, ProductService, ProductVariantService } from '@vendure/core';
+import { OrderService } from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { OrderUpsertHandler } from '../../src/runtime/executors/loaders/order-upsert-handler';
 import { ProductHandler } from '../../src/runtime/executors/loaders/product-handler';
@@ -28,6 +20,19 @@ describe('Order Lines Mode', () => {
     let handler: OrderUpsertHandler;
     let orderService: OrderService;
     let ctx: import('@vendure/core').RequestContext;
+
+    async function getLineQuantities(code: string): Promise<Record<string, number>> {
+        const order = await orderService.findOneByCode(ctx, code, [
+            'lines',
+            'lines.productVariant',
+        ]);
+        if (!order) {
+            throw new Error(`Order "${code}" not found`);
+        }
+        return Object.fromEntries(
+            order.lines.map(line => [line.productVariant.sku, line.quantity]),
+        );
+    }
 
     beforeAll(async () => {
         await server.init({
@@ -42,12 +47,13 @@ describe('Order Lines Mode', () => {
 
         // Create products with variants that orders can reference
         const productStep = makeStep('setup-order-products', { strategy: 'UPSERT' });
-        await productHandler.execute(ctx, productStep, [
-            { name: 'Order Product A', slug: 'order-prod-a', sku: 'ORD-SKU-A', price: 10.00 },
-            { name: 'Order Product B', slug: 'order-prod-b', sku: 'ORD-SKU-B', price: 20.00 },
-            { name: 'Order Product C', slug: 'order-prod-c', sku: 'ORD-SKU-C', price: 30.00 },
-            { name: 'Order Product D', slug: 'order-prod-d', sku: 'ORD-SKU-D', price: 40.00 },
+        const productResult = await productHandler.execute(ctx, productStep, [
+            { name: 'Order Product A', slug: 'order-prod-a', sku: 'ORD-SKU-A', price: 10.00, stockOnHand: 1000 },
+            { name: 'Order Product B', slug: 'order-prod-b', sku: 'ORD-SKU-B', price: 20.00, stockOnHand: 1000 },
+            { name: 'Order Product C', slug: 'order-prod-c', sku: 'ORD-SKU-C', price: 30.00, stockOnHand: 1000 },
+            { name: 'Order Product D', slug: 'order-prod-d', sku: 'ORD-SKU-D', price: 40.00, stockOnHand: 1000 },
         ]);
+        expect(productResult).toEqual({ ok: 4, fail: 0 });
 
         // Create customers that orders reference (OrderLoader requires existing customers)
         const customerHandler = server.app.get(CustomerHandler);
@@ -84,10 +90,8 @@ describe('Order Lines Mode', () => {
         await server.destroy();
     });
 
-    describe('REPLACE_ALL mode (default for UPDATE path)', () => {
+    describe('REPLACE_ALL mode', () => {
         it('should create and update order idempotently', async () => {
-            // linesMode is not propagated through buildSandboxLoaderContext,
-            // so UPDATE path always uses REPLACE_ALL default
             const step = makeStep('ord-replace-idemp', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -106,9 +110,9 @@ describe('Order Lines Mode', () => {
                 expect(result.ok).toBe(1);
                 expect(result.fail).toBe(0);
             }
-            // Verify the order exists
-            const orders = await orderService.findAll(ctx, { filter: { code: { eq: 'ORD-REPLACE-IDEMP-001' } } } as never);
-            expect(orders.items.length).toBe(1);
+            expect(await getLineQuantities('ORD-REPLACE-IDEMP-001')).toEqual({
+                'ORD-SKU-A': 2,
+            });
         });
 
         it('should update existing order on re-run', async () => {
@@ -127,7 +131,7 @@ describe('Order Lines Mode', () => {
             }]);
             expect(r1.ok).toBe(1);
 
-            // Replace with C, D (UPDATE path uses REPLACE_ALL default)
+            // Replace with C and D.
             const r2 = await handler.execute(ctx, step, [{
                 code: 'ORD-REPLACE-NEW-001',
                 customerEmail: 'order-replace-new@test.de',
@@ -135,8 +139,10 @@ describe('Order Lines Mode', () => {
             }]);
             expect(r2.ok).toBe(1);
 
-            const orders = await orderService.findAll(ctx, { filter: { code: { eq: 'ORD-REPLACE-NEW-001' } } } as never);
-            expect(orders.items.length).toBe(1);
+            expect(await getLineQuantities('ORD-REPLACE-NEW-001')).toEqual({
+                'ORD-SKU-C': 1,
+                'ORD-SKU-D': 1,
+            });
         });
 
         it('should reject empty lines array on UPSERT (validation requires lines)', async () => {
@@ -167,10 +173,8 @@ describe('Order Lines Mode', () => {
         });
     });
 
-    describe('MERGE_BY_SKU mode (config not propagated, uses REPLACE_ALL default)', () => {
-        it('should process order lines (REPLACE_ALL default applies)', async () => {
-            // linesMode: 'MERGE_BY_SKU' is set in step config but not propagated to OrderLoader.
-            // UPDATE path always uses REPLACE_ALL default.
+    describe('MERGE_BY_SKU mode', () => {
+        it('should add imported quantity to an existing SKU', async () => {
             const step = makeStep('ord-merge-qty', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -186,16 +190,19 @@ describe('Order Lines Mode', () => {
             }]);
             expect(r1.ok).toBe(1);
 
-            // "Merge" with SKU-A: qty 5 - actually replaces due to default
+            // Merge another five units into the existing line.
             const r2 = await handler.execute(ctx, step, [{
                 code: 'ORD-MERGE-QTY-001',
                 customerEmail: 'order-merge@test.de',
                 lines: [{ sku: 'ORD-SKU-A', quantity: 5 }],
             }]);
             expect(r2.ok).toBe(1);
+            expect(await getLineQuantities('ORD-MERGE-QTY-001')).toEqual({
+                'ORD-SKU-A': 7,
+            });
         });
 
-        it('should update existing order (REPLACE_ALL default)', async () => {
+        it('should retain existing SKUs and add new SKUs', async () => {
             const step = makeStep('ord-merge-add', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -211,16 +218,20 @@ describe('Order Lines Mode', () => {
             }]);
             expect(r1.ok).toBe(1);
 
-            // "Merge" B - actually replaces all with just B
+            // Merge B without removing A.
             const r2 = await handler.execute(ctx, step, [{
                 code: 'ORD-MERGE-ADD-001',
                 customerEmail: 'order-merge-add@test.de',
                 lines: [{ sku: 'ORD-SKU-B', quantity: 1 }],
             }]);
             expect(r2.ok).toBe(1);
+            expect(await getLineQuantities('ORD-MERGE-ADD-001')).toEqual({
+                'ORD-SKU-A': 1,
+                'ORD-SKU-B': 1,
+            });
         });
 
-        it('should be idempotent on re-run (REPLACE_ALL default)', async () => {
+        it('should accumulate quantities on repeated imports', async () => {
             const step = makeStep('ord-merge-idemp', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -233,17 +244,17 @@ describe('Order Lines Mode', () => {
                 customerEmail: 'order-merge-idemp@test.de',
                 lines: [{ sku: 'ORD-SKU-A', quantity: 2 }, { sku: 'ORD-SKU-B', quantity: 3 }],
             }];
-            // Run multiple times - should all succeed
             for (let i = 0; i < 3; i++) {
                 const result = await handler.execute(ctx, step, data);
                 expect(result.ok).toBe(1);
             }
-            // Order should still exist as a single entity
-            const orders = await orderService.findAll(ctx, { filter: { code: { eq: 'ORD-MERGE-IDEMP-001' } } } as never);
-            expect(orders.items.length).toBe(1);
+            expect(await getLineQuantities('ORD-MERGE-IDEMP-001')).toEqual({
+                'ORD-SKU-A': 6,
+                'ORD-SKU-B': 9,
+            });
         });
 
-        it('should handle mixed updates (REPLACE_ALL default)', async () => {
+        it('should merge existing and new SKUs in one import', async () => {
             const step = makeStep('ord-merge-mixed', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -259,18 +270,23 @@ describe('Order Lines Mode', () => {
             }]);
             expect(r1.ok).toBe(1);
 
-            // "Merge" A:5, C:3 - actually replaces all with A and C
+            // Add five A and three C while retaining B.
             const r2 = await handler.execute(ctx, step, [{
                 code: 'ORD-MERGE-MIXED-001',
                 customerEmail: 'order-merge-mixed@test.de',
                 lines: [{ sku: 'ORD-SKU-A', quantity: 5 }, { sku: 'ORD-SKU-C', quantity: 3 }],
             }]);
             expect(r2.ok).toBe(1);
+            expect(await getLineQuantities('ORD-MERGE-MIXED-001')).toEqual({
+                'ORD-SKU-A': 7,
+                'ORD-SKU-B': 1,
+                'ORD-SKU-C': 3,
+            });
         });
     });
 
-    describe('APPEND_ONLY mode (config not propagated, uses defaults)', () => {
-        it('should create and update order successfully', async () => {
+    describe('APPEND_ONLY mode', () => {
+        it('should preserve existing lines while appending new SKUs', async () => {
             const step = makeStep('ord-append', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -285,13 +301,16 @@ describe('Order Lines Mode', () => {
             }]);
             expect(r1.ok).toBe(1);
 
-            // Second run uses UPDATE path (REPLACE_ALL default), not APPEND
             const r2 = await handler.execute(ctx, step, [{
                 code: 'ORD-APPEND-001',
                 customerEmail: 'order-append@test.de',
-                lines: [{ sku: 'ORD-SKU-A', quantity: 3 }],
+                lines: [{ sku: 'ORD-SKU-B', quantity: 3 }],
             }]);
             expect(r2.ok).toBe(1);
+            expect(await getLineQuantities('ORD-APPEND-001')).toEqual({
+                'ORD-SKU-A': 2,
+                'ORD-SKU-B': 3,
+            });
         });
 
         it('should handle re-runs without error', async () => {
@@ -316,13 +335,14 @@ describe('Order Lines Mode', () => {
             }]);
             expect(r2.ok).toBe(1);
 
-            const orders = await orderService.findAll(ctx, { filter: { code: { eq: 'ORD-APPEND-DUP-001' } } } as never);
-            expect(orders.items.length).toBe(1);
+            expect(await getLineQuantities('ORD-APPEND-DUP-001')).toEqual({
+                'ORD-SKU-A': 2,
+            });
         });
     });
 
-    describe('SKIP mode (config not propagated, uses REPLACE_ALL default on UPDATE)', () => {
-        it('should create and update order (SKIP not propagated)', async () => {
+    describe('SKIP mode', () => {
+        it('should leave existing lines unchanged', async () => {
             // Create order with lines
             const createStep = makeStep('ord-skip-create', {
                 strategy: 'UPSERT',
@@ -338,7 +358,6 @@ describe('Order Lines Mode', () => {
             }]);
             expect(r1.ok).toBe(1);
 
-            // Run with SKIP mode (not propagated, UPDATE uses REPLACE_ALL default)
             const skipStep = makeStep('ord-skip', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -352,9 +371,12 @@ describe('Order Lines Mode', () => {
                 lines: [{ sku: 'ORD-SKU-B', quantity: 5 }, { sku: 'ORD-SKU-C', quantity: 3 }],
             }]);
             expect(r2.ok).toBe(1);
+            expect(await getLineQuantities('ORD-SKIP-001')).toEqual({
+                'ORD-SKU-A': 1,
+            });
         });
 
-        it('should update order despite SKIP mode (not propagated)', async () => {
+        it('should ignore any number of incoming lines', async () => {
             const createStep = makeStep('ord-skip-count-create', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -388,8 +410,10 @@ describe('Order Lines Mode', () => {
             }]);
             expect(r2.ok).toBe(1);
 
-            const orders = await orderService.findAll(ctx, { filter: { code: { eq: 'ORD-SKIP-COUNT-001' } } } as never);
-            expect(orders.items.length).toBe(1);
+            expect(await getLineQuantities('ORD-SKIP-COUNT-001')).toEqual({
+                'ORD-SKU-A': 1,
+                'ORD-SKU-B': 1,
+            });
         });
     });
 
