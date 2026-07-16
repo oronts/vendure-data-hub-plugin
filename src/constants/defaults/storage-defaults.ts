@@ -2,18 +2,18 @@
  * File storage and output format defaults
  */
 
-import * as os from 'os';
 import * as path from 'path';
 import { IS_BROWSER } from '../../utils/environment';
 
-const getTempBase = (): string => {
+const getExportRoot = (): string => {
     if (IS_BROWSER) {
-        return '/tmp';
+        return '/exports';
     }
-    return process.env.DATA_HUB_TEMP_DIR || os.tmpdir();
+    const configuredRoot = process.env.DATA_HUB_EXPORT_ROOT?.trim();
+    return path.resolve(configuredRoot || path.join(process.cwd(), 'exports'));
 };
 
-const TEMP_BASE = getTempBase();
+const EXPORT_ROOT = getExportRoot();
 
 /**
  * File storage defaults
@@ -25,8 +25,10 @@ export const FILE_STORAGE = {
     FILE_MAX_FILES: 10,
     /** File expiry time in minutes */
     EXPIRY_MINUTES: 60 * 24, // 24 hours
-    /** Temp directory for exports (configurable via DATA_HUB_TEMP_DIR env var) */
-    TEMP_DIR: TEMP_BASE,
+    /** Maximum temporary file expiry time accepted by the upload API */
+    MAX_EXPIRY_MINUTES: 60 * 24 * 10,
+    /** Root for all server-local exports */
+    EXPORT_ROOT,
     /** Maximum number of entries in the in-memory file index before LRU eviction */
     MAX_FILE_INDEX_SIZE: 10_000,
     /** Percentage of entries to evict when file index reaches max size (0.0-1.0) */
@@ -53,6 +55,14 @@ export const FILE_WATCH = {
     DEFAULT_MIN_FILE_AGE_MS: 30_000,
     /** Maximum number of active file watchers */
     MAX_WATCHERS: 500,
+    /** Maximum directory depth traversed by recursive FTP/SFTP discovery */
+    MAX_REMOTE_DIRECTORY_DEPTH: 20,
+    /** Maximum number of remote entries examined during one discovery poll */
+    MAX_REMOTE_ENTRIES_PER_POLL: 10_000,
+    /** Poll interval while a triggered pipeline run is active */
+    RUN_STATUS_POLL_INTERVAL_MS: 5_000,
+    /** Crash-recovery idempotency window for a file-triggered run */
+    RUN_IDEMPOTENCY_TTL_SEC: 7 * 24 * 60 * 60,
 } as const;
 
 /**
@@ -60,9 +70,5 @@ export const FILE_WATCH = {
  */
 export function getOutputPath(pipelineCode: string, format: string, extension?: string): string {
     const ext = extension || format;
-    const timestamp = Date.now();
-    if (IS_BROWSER) {
-        return `${TEMP_BASE}/${pipelineCode}-${timestamp}.${ext}`;
-    }
-    return path.join(TEMP_BASE, `${pipelineCode}-${timestamp}.${ext}`);
+    return `${pipelineCode}-${Date.now()}.${ext}`;
 }
