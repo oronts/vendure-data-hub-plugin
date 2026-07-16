@@ -59,7 +59,7 @@ export const operators = {
     hash(
         source: string | string[],
         target: string,
-        algorithm: 'md5' | 'sha1' | 'sha256' | 'sha512' = 'sha256',
+        algorithm: 'sha256' | 'sha512' = 'sha256',
         encoding: 'hex' | 'base64' = 'hex',
     ): OperatorConfig {
         if (typeof source === 'string') {
@@ -264,11 +264,11 @@ export const operators = {
     },
 
     /** `operators.dateParse('dateStr', 'parsedDate', 'DD/MM/YYYY')` */
-    dateParse(source: string, target: string, format: string, timezone?: string): OperatorConfig {
+    dateParse(source: string, target: string, format: string): OperatorConfig {
         validateNonEmptyString(source, 'Source');
         validateNonEmptyString(target, 'Target');
         validateNonEmptyString(format, 'Format');
-        return { op: TRANSFORM_OPERATOR.DATE_PARSE, args: { source, target, format, timezone } };
+        return { op: TRANSFORM_OPERATOR.DATE_PARSE, args: { source, target, format } };
     },
 
     /** `operators.dateAdd('createdAt', 'expiresAt', 30, 'days')` */
@@ -298,9 +298,9 @@ export const operators = {
     },
 
     /** `operators.now('processedAt')` or `operators.now('timestamp', 'ISO', 'UTC')` */
-    now(target: string, format?: string, timezone?: string): OperatorConfig {
+    now(target: string, format?: string): OperatorConfig {
         validateNonEmptyString(target, 'Target');
-        return { op: TRANSFORM_OPERATOR.NOW, args: { target, format, timezone } };
+        return { op: TRANSFORM_OPERATOR.NOW, args: { target, format } };
     },
 
     // =========================================================================
@@ -526,8 +526,7 @@ export const operators = {
     multiJoin(config: {
         leftKey: string;
         rightKey: string;
-        rightDataPath?: string;
-        rightData?: JsonObject[];
+        rightData: JsonObject[];
         type?: 'INNER' | 'LEFT' | 'RIGHT' | 'FULL';
         prefix?: string;
         select?: string[];
@@ -605,7 +604,7 @@ export const operators = {
         return { op: TRANSFORM_OPERATOR.IMAGE_CONVERT, args: { ...config } };
     },
 
-    /** `operators.pdfGenerate({ template: '<h1>{{name}}</h1>', targetField: 'pdfData' })` */
+    /** `operators.pdfGenerate({ template: 'Invoice for {{customer.name}}', targetField: 'files.pdfData' })` */
     pdfGenerate(config: {
         template?: string;
         templateField?: string;

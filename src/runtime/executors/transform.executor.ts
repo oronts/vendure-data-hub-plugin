@@ -31,6 +31,14 @@ import {
     BranchConfig,
 } from '../../types/step-configs';
 
+const OPERATOR_CHECKPOINTS_KEY = '__operatorCheckpoints';
+
+function asJsonObject(value: JsonValue | undefined): JsonObject {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+        ? value as JsonObject
+        : {};
+}
+
 /**
  * Error thrown when an operator is not found in the registry
  */
@@ -111,6 +119,7 @@ export class TransformExecutor {
         cfg: JsonObject,
         executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
+        operatorStateKey = `single:${adapterCode}`,
     ): Promise<RecordObject[]> {
         // Try built-in first
         let operator: OperatorAdapter<unknown> | SingleRecordOperator<unknown> | undefined =
@@ -133,6 +142,8 @@ export class TransformExecutor {
             step,
             input,
             operator as OperatorAdapter<unknown> | SingleRecordOperator<unknown>,
+            executorCtx,
+            operatorStateKey,
             pipelineContext,
         );
     }
@@ -168,35 +179,16 @@ export class TransformExecutor {
                 config: { adapterCode: opCode, ...args },
             };
 
-            try {
-                currentRecords = await this.executeSingleOperator(
-                    ctx,
-                    syntheticStep,
-                    currentRecords,
-                    opCode,
-                    { adapterCode: opCode, ...args } as JsonObject,
-                    executorCtx,
-                    pipelineContext,
-                );
-            } catch (error) {
-                this.logger.warn(
-                    `Operator "${opCode}" failed for ${currentRecords.length} record(s) in step "${step.key}" ` +
-                    `(operator ${i + 1}/${operators.length}): ${getErrorMessage(error)} - ` +
-                    `skipping remaining operators and returning records in their last good state`,
-                    {
-                        stepKey: step.key,
-                        op: opCode,
-                        operatorIndex: i,
-                        recordCount: currentRecords.length,
-                    },
-                );
-                // The records are tainted by this operator's failure. Don't apply
-                // more operators to potentially corrupted data. Break the operator
-                // chain and return the records as they were before this operator ran
-                // (i.e. the last successfully transformed state). This allows the
-                // pipeline to continue with partial data rather than losing everything.
-                break;
-            }
+            currentRecords = await this.executeSingleOperator(
+                ctx,
+                syntheticStep,
+                currentRecords,
+                opCode,
+                { adapterCode: opCode, ...args } as JsonObject,
+                executorCtx,
+                pipelineContext,
+                `array:${i}:${opCode}`,
+            );
         }
 
         return currentRecords;
@@ -328,8 +320,11 @@ export class TransformExecutor {
      */
     private buildCryptoHelpers(): AdapterOperatorHelpers['crypto'] {
         return {
-            hash: (value: string, algorithm?: 'md5' | 'sha256' | 'sha512') => {
+            hash: (value: string, algorithm?: 'sha256' | 'sha512') => {
                 const algo = algorithm ?? 'sha256';
+                if (algo !== 'sha256' && algo !== 'sha512') {
+                    throw new Error(`Unsupported hash algorithm: ${String(algo)}`);
+                }
                 return crypto.createHash(algo).update(value).digest('hex');
             },
             hmac: (value: string, secret: string, algorithm?: 'sha256' | 'sha512') => {
@@ -346,12 +341,32 @@ export class TransformExecutor {
     private loadCustomOperator(
         ctx: RequestContext,
         operatorCtx: OperatorContext,
+        executorCtx: ExecutorContext,
+        operatorStateKey: string,
     ): AdapterOperatorHelpers {
         const pathHelpers = this.buildPathHelpers();
+        const stepCheckpoint = executorCtx.cpData?.[operatorCtx.stepKey];
+        const operatorCheckpoints = asJsonObject(stepCheckpoint?.[OPERATOR_CHECKPOINTS_KEY]);
 
         return {
             ctx: operatorCtx,
             secrets: this.createSecretResolver(ctx),
+            checkpoint: asJsonObject(operatorCheckpoints[operatorStateKey]),
+            setCheckpoint: checkpoint => {
+                if (!executorCtx.cpData) return;
+                const currentStepCheckpoint = executorCtx.cpData[operatorCtx.stepKey] ?? {};
+                const currentOperatorCheckpoints = asJsonObject(
+                    currentStepCheckpoint[OPERATOR_CHECKPOINTS_KEY],
+                );
+                executorCtx.cpData[operatorCtx.stepKey] = {
+                    ...currentStepCheckpoint,
+                    [OPERATOR_CHECKPOINTS_KEY]: {
+                        ...currentOperatorCheckpoints,
+                        [operatorStateKey]: checkpoint,
+                    },
+                };
+                executorCtx.markCheckpointDirty();
+            },
             get: pathHelpers.get,
             set: pathHelpers.set,
             remove: pathHelpers.remove,
@@ -409,6 +424,20 @@ export class TransformExecutor {
         if ('apply' in operator && typeof (operator as OperatorAdapter<unknown>).apply === 'function') {
             const batchOperator = operator as OperatorAdapter<unknown>;
             const result = await batchOperator.apply(input as readonly JsonObject[], cfg, helpers);
+            if (result.errors && result.errors.length > 0) {
+                const firstError = result.errors[0];
+                if (cfg.failOnError === true) {
+                    throw new Error(
+                        `${result.errors.length} operator record(s) failed: ${firstError.message}`,
+                    );
+                }
+                this.logger.warn('Operator completed with recoverable record errors', {
+                    operatorCode: operator.code,
+                    errorCount: result.errors.length,
+                    firstError: firstError.message,
+                    firstErrorField: firstError.field,
+                });
+            }
             return result.records as RecordObject[];
         }
 
@@ -461,13 +490,15 @@ export class TransformExecutor {
         step: PipelineStepDefinition,
         input: RecordObject[],
         operator: OperatorAdapter<unknown> | SingleRecordOperator<unknown>,
+        executorCtx: ExecutorContext,
+        operatorStateKey: string,
         pipelineContext?: PipelineContext,
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;
 
         const operatorCtx = this.prepareCustomContext(ctx, step, pipelineContext);
 
-        const helpers = this.loadCustomOperator(ctx, operatorCtx);
+        const helpers = this.loadCustomOperator(ctx, operatorCtx, executorCtx, operatorStateKey);
 
         const stepCfg = step.config as TransformStepConfig | undefined;
         const retryConfig = stepCfg?.retryPerRecord;
@@ -523,6 +554,7 @@ export class TransformExecutor {
                 if ('minLength' in spec) fields[fieldName].minLength = spec.minLength as number;
                 if ('maxLength' in spec) fields[fieldName].maxLength = spec.maxLength as number;
                 if ('enum' in spec) fields[fieldName].enum = spec.enum as JsonValue[];
+                if ('error' in spec) fields[fieldName].error = spec.error as string;
             }
         } else if (cfg.fields) {
             // Use fields directly if provided

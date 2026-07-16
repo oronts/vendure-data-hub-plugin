@@ -7,6 +7,8 @@
 import { LoadStrategy, ConflictStrategy, FileFormat, FileEncoding, HttpMethod, PaginationType, TriggerType, QueueType, AckMode, VendureEntityType, DatabaseType, DatabasePaginationType, GraphQLPaginationType, SortOrder } from './enums';
 import { ConnectionAuthType } from '../../shared/types/adapter-config.types';
 import type { OptionValue, TypedOptionValue } from './enum-metadata';
+import { QUEUE } from './defaults/runtime-defaults';
+import { DEFAULT_WEBHOOK_CONFIG } from './trigger-adapters';
 import { LOAD_STRATEGY_METADATA, CONFLICT_STRATEGY_METADATA } from './enum-metadata';
 
 /** Load strategy select options for loader adapter schemas (auto-derived from metadata; excludes delete strategies) */
@@ -168,12 +170,6 @@ export const HTTP_METHOD_GET_POST_OPTIONS = httpMethodsByScope('enrich');
 
 /** Auth type select options for HTTP destinations: NONE, BASIC, BEARER, API_KEY (auto-derived from AUTH_TYPE_METADATA) */
 export const AUTH_TYPE_HTTP_DESTINATION_OPTIONS = authTypesByScope('destination');
-
-/** S3 Select input serialization options (CSV/JSON only, as S3 Select supports only these) */
-export const S3_SELECT_FORMAT_OPTIONS = [
-    { value: FileFormat.CSV, label: 'CSV' },
-    { value: FileFormat.JSON, label: 'JSON' },
-];
 
 /** Pagination type options for HTTP extractors */
 export const PAGINATION_TYPE_OPTIONS = [
@@ -362,13 +358,11 @@ export const CUSTOM_FEED_FORMAT_OPTIONS = [
 // Database & extractor options
 // ---------------------------------------------------------------------------
 
-/** Single-source metadata for database types, each type declares whether it supports CDC */
-const DATABASE_TYPE_METADATA: Record<string, { label: string; supportsCDC: boolean }> = {
+/** Single-source metadata for supported database types and CDC capability. */
+const DATABASE_TYPE_METADATA: Record<DatabaseType, { label: string; supportsCDC: boolean }> = {
     [DatabaseType.POSTGRESQL]: { label: 'PostgreSQL', supportsCDC: true },
     [DatabaseType.MYSQL]:      { label: 'MySQL / MariaDB', supportsCDC: true },
     [DatabaseType.SQLITE]:     { label: 'SQLite', supportsCDC: false },
-    [DatabaseType.MSSQL]:      { label: 'SQL Server', supportsCDC: false },
-    [DatabaseType.ORACLE]:     { label: 'Oracle', supportsCDC: false },
 };
 
 /** Database type options for all database adapters (auto-derived from DATABASE_TYPE_METADATA) */
@@ -413,27 +407,17 @@ export const CDC_TRACKING_TYPE_OPTIONS = [
     { value: 'VERSION', label: 'Version / Sequence Number' },
 ];
 
-/** Incremental extraction column type options */
-export const INCREMENTAL_COLUMN_TYPE_OPTIONS = [
-    { value: 'timestamp', label: 'Timestamp' },
-    { value: 'sequence', label: 'Sequence/Numeric' },
-    { value: 'id', label: 'Auto-increment ID' },
-];
-
 /** HMAC/signature algorithm options */
 export const SIGNATURE_ALGORITHM_OPTIONS = [
     { value: 'sha256', label: 'SHA-256' },
-    { value: 'sha1', label: 'SHA-1' },
-    { value: 'md5', label: 'MD5' },
+    { value: 'sha512', label: 'SHA-512' },
 ];
 
 /** Hash algorithm options for cryptographic hashing */
 export const HASH_ALGORITHM_OPTIONS = [
-    { value: 'md5', label: 'MD5' },
-    { value: 'sha1', label: 'SHA-1' },
     { value: 'sha256', label: 'SHA-256' },
     { value: 'sha512', label: 'SHA-512' },
-];
+] as const;
 
 /** Hash output encoding options */
 export const HASH_ENCODING_OPTIONS = [
@@ -492,15 +476,12 @@ export const CLEANUP_STRATEGIES: OptionValue[] = [
 
 /** Destination type options for export/feed delivery */
 export const DESTINATION_TYPES: OptionValue[] = [
-    { value: 'FILE', label: 'Local File', icon: 'folder-open' },
-    { value: 'DOWNLOAD', label: 'Download', icon: 'folder-open' },
+    { value: 'LOCAL', label: 'Local Directory', icon: 'hard-drive' },
     { value: 'SFTP', label: 'SFTP Server', icon: 'server' },
     { value: 'FTP', label: 'FTP Server', icon: 'upload' },
     { value: 'HTTP', label: 'HTTP Endpoint', icon: 'send' },
     { value: 'S3', label: 'AWS S3', icon: 'cloud' },
-    { value: 'WEBHOOK', label: 'Webhook', icon: 'globe' },
     { value: 'EMAIL', label: 'Email', icon: 'mail' },
-    { value: 'LOCAL', label: 'Local Directory', icon: 'hard-drive' },
 ];
 
 /** Common gate config fields shown for all approval types */
@@ -557,11 +538,12 @@ export const TRIGGER_TYPE_SCHEMAS: TypedOptionValue[] = [
     {
         value: TriggerType.SCHEDULE,
         label: 'Schedule',
-        description: 'Run on a cron schedule',
+        description: 'Run on a cron expression or fixed interval',
         icon: 'clock',
         fields: [
-            { key: 'schedule', label: 'Cron Expression', type: 'string', required: true, placeholder: '* * * * *', description: 'Format: minute hour day month weekday', optionsRef: 'cronPresets' },
-            { key: 'timezone', label: 'Timezone', type: 'string', placeholder: 'UTC (default)' },
+            { key: 'schedule', label: 'Cron Expression', type: 'string', placeholder: '* * * * *', description: 'Configure this or Interval Seconds, but not both. Format: minute hour day month weekday.', optionsRef: 'cronPresets' },
+            { key: 'intervalSec', label: 'Interval Seconds', type: 'number', placeholder: '300', description: 'Positive whole seconds. Leave Cron Expression empty when using an interval.' },
+            { key: 'timezone', label: 'Timezone', type: 'string', placeholder: 'UTC (default)', description: 'IANA timezone used by cron schedules.' },
         ],
         configKeyMap: { schedule: 'cron' },
         wizardScopes: ['import', 'export'],
@@ -572,9 +554,46 @@ export const TRIGGER_TYPE_SCHEMAS: TypedOptionValue[] = [
         description: 'Trigger via HTTP webhook',
         icon: 'webhook',
         fields: [
-            { key: 'webhookCode', label: 'Webhook Code', type: 'string', required: true, placeholder: 'my-webhook', description: 'Endpoint: /data-hub/webhook/{code}' },
-            { key: 'authentication', label: 'Authentication', type: 'select', optionsRef: 'authTypes', defaultValue: 'NONE' },
-            { key: 'secretCode', label: 'Secret', type: 'secret', placeholder: 'Select secret...' },
+            {
+                key: 'authentication',
+                label: 'Authentication',
+                type: 'select',
+                required: true,
+                options: [
+                    { value: 'HMAC', label: 'HMAC signature' },
+                    { value: 'API_KEY', label: 'API key' },
+                    { value: 'BASIC', label: 'Basic authentication' },
+                    { value: 'JWT', label: 'JWT (HS256)' },
+                    { value: 'NONE', label: 'None (unsafe)' },
+                ],
+                defaultValue: DEFAULT_WEBHOOK_CONFIG.authentication,
+                description: 'The endpoint is /data-hub/webhook/{pipeline-code}.',
+            },
+            { key: 'secretCode', label: 'HMAC Secret', type: 'secret', placeholder: 'Required for HMAC' },
+            { key: 'hmacHeaderName', label: 'HMAC Header', type: 'string', defaultValue: DEFAULT_WEBHOOK_CONFIG.hmacHeaderName },
+            {
+                key: 'hmacAlgorithm',
+                label: 'HMAC Algorithm',
+                type: 'select',
+                options: [
+                    { value: 'SHA256', label: 'SHA-256' },
+                    { value: 'SHA512', label: 'SHA-512' },
+                ],
+                defaultValue: DEFAULT_WEBHOOK_CONFIG.hmacAlgorithm,
+            },
+            { key: 'apiKeySecretCode', label: 'API Key Secret', type: 'secret', placeholder: 'Required for API key auth' },
+            { key: 'apiKeyHeaderName', label: 'API Key Header', type: 'string', defaultValue: DEFAULT_WEBHOOK_CONFIG.apiKeyHeaderName },
+            { key: 'apiKeyPrefix', label: 'API Key Prefix', type: 'string', placeholder: 'Optional, e.g. Bearer ' },
+            { key: 'basicSecretCode', label: 'Basic Credentials Secret', type: 'secret', placeholder: 'Required; store username:password' },
+            { key: 'jwtSecretCode', label: 'JWT Secret', type: 'secret', placeholder: 'Required for JWT auth' },
+            { key: 'jwtHeaderName', label: 'JWT Header', type: 'string', defaultValue: DEFAULT_WEBHOOK_CONFIG.jwtHeaderName },
+            { key: 'jwtIssuer', label: 'JWT Issuer', type: 'string', placeholder: 'Required issuer claim (optional)' },
+            { key: 'jwtAudience', label: 'JWT Audience', type: 'string', placeholder: 'Required audience claim (optional)' },
+            { key: 'rateLimit', label: 'Requests Per Window', type: 'number', defaultValue: DEFAULT_WEBHOOK_CONFIG.rateLimit },
+            { key: 'rateLimitWindow', label: 'Rate Limit Window (seconds)', type: 'number', defaultValue: DEFAULT_WEBHOOK_CONFIG.rateLimitWindow },
+            { key: 'requireIdempotencyKey', label: 'Require Idempotency Key', type: 'boolean', defaultValue: DEFAULT_WEBHOOK_CONFIG.requireIdempotencyKey },
+            { key: 'idempotencyKeyHeader', label: 'Idempotency Header', type: 'string', defaultValue: DEFAULT_WEBHOOK_CONFIG.idempotencyKeyHeader },
+            { key: 'idempotencyTtlSec', label: 'Idempotency TTL (seconds)', type: 'number', defaultValue: DEFAULT_WEBHOOK_CONFIG.idempotencyTtlSec },
         ],
         wizardScopes: ['import', 'export'],
     },
@@ -607,11 +626,12 @@ export const TRIGGER_TYPE_SCHEMAS: TypedOptionValue[] = [
         icon: 'message-square',
         fields: [
             { key: 'queueType', label: 'Queue Type', type: 'select', required: true, optionsRef: 'queueTypes' },
-            { key: 'connectionCode', label: 'Connection Code', type: 'string', required: true, placeholder: 'my-queue-connection', description: 'Reference to a connection with queue credentials' },
+            { key: 'connectionCode', label: 'Connection Code', type: 'string', placeholder: 'my-queue-connection', description: 'Required for every queue type except INTERNAL' },
             { key: 'queueName', label: 'Queue Name', type: 'string', required: true, placeholder: 'my-queue' },
             { key: 'batchSize', label: 'Batch Size', type: 'number', defaultValue: 10, description: 'Messages per poll (1-100)' },
             { key: 'ackMode', label: 'Ack Mode', type: 'select', optionsRef: 'ackModes', defaultValue: 'MANUAL' },
-            { key: 'consumerGroup', label: 'Consumer Group (Optional)', type: 'string', placeholder: 'datahub-consumers', description: 'Consumer group for Redis Streams or Kafka' },
+            { key: 'maxRetries', label: 'Max Retries', type: 'number', defaultValue: QUEUE.DEFAULT_MESSAGE_RETRIES, description: `Immediate enqueue retries after the first failure (0-${QUEUE.MAX_MESSAGE_RETRIES})` },
+            { key: 'consumerGroup', label: 'Consumer Group (Optional)', type: 'string', placeholder: 'datahub-consumers', description: 'Redis Streams consumer group; unsupported for other queue types' },
             { key: 'deadLetterQueue', label: 'Dead Letter Queue (Optional)', type: 'string', placeholder: 'my-queue-dlq', description: 'Failed messages are routed here' },
             { key: 'autoStart', label: 'Auto-start consumer on startup', type: 'boolean', defaultValue: true },
         ],
@@ -621,6 +641,7 @@ export const TRIGGER_TYPE_SCHEMAS: TypedOptionValue[] = [
             queueName: 'message.queueName',
             batchSize: 'message.batchSize',
             ackMode: 'message.ackMode',
+            maxRetries: 'message.maxRetries',
             consumerGroup: 'message.consumerGroup',
             deadLetterQueue: 'message.deadLetterQueue',
             autoStart: 'message.autoStart',
@@ -649,7 +670,7 @@ export const ENRICHMENT_SOURCE_TYPES: TypedOptionValue[] = [
             { key: 'target', label: 'Target Field', type: 'string', placeholder: 'enrichment', description: 'Field name to store the enrichment result on each record' },
             { key: 'responsePath', label: 'Response Path', type: 'string', placeholder: 'data', description: 'JSON path to extract from the HTTP response (e.g. data.items)' },
             { key: 'method', label: 'HTTP Method', type: 'string', placeholder: 'GET', description: 'HTTP method (GET or POST)' },
-            { key: 'bearerTokenSecretCode', label: 'Bearer Token Secret', type: 'string', placeholder: 'my-api-token', description: 'Secret code for Bearer token authentication' },
+            { key: 'bearerTokenSecretCode', label: 'Bearer Token Secret', type: 'secret', placeholder: 'my-api-token', description: 'Secret code for Bearer token authentication' },
             { key: 'cacheTtlSec', label: 'Cache TTL (sec)', type: 'number', placeholder: '3600', description: 'Cache duration in seconds for HTTP responses' },
             { key: 'skipOn404', label: 'Skip on 404', type: 'boolean', description: 'Skip enrichment instead of failing when endpoint returns 404' },
         ],
@@ -752,4 +773,3 @@ export const ACK_MODE_OPTIONS: OptionValue[] = [
 export const FILE_FORMAT_COLORS: Record<string, string> = Object.fromEntries(
     Object.entries(FILE_FORMAT_METADATA).map(([k, v]) => [k, v.color]),
 );
-

@@ -1,8 +1,12 @@
 import { JsonObject, JsonValue } from '../types';
 import { getNestedValue, setNestedValue, deepClone } from '../helpers';
 import { DateUnit } from './types';
-import { TIME_UNITS } from '../../constants/index';
+import { TIME_UNITS } from '../../constants/time';
 import { formatDate } from '../../transforms/field/date-transforms';
+
+function validDate(date: Date): Date | null {
+    return Number.isNaN(date.getTime()) ? null : date;
+}
 
 function parseDate(value: JsonValue | undefined, format?: string): Date | null {
     if (value === null || value === undefined) {
@@ -10,27 +14,19 @@ function parseDate(value: JsonValue | undefined, format?: string): Date | null {
     }
 
     if (value instanceof Date) {
-        return value;
+        return validDate(value);
     }
 
     if (typeof value === 'number') {
-        // Assume milliseconds timestamp
-        return new Date(value);
+        return validDate(new Date(value));
     }
 
     if (typeof value === 'string') {
-        // Try ISO format first
-        const isoDate = new Date(value);
-        if (!isNaN(isoDate.getTime())) {
-            return isoDate;
-        }
-
-        // If format is provided, try to parse with format
         if (format) {
             return parseDateWithFormat(value, format);
         }
 
-        return null;
+        return validDate(new Date(value));
     }
 
     return null;
@@ -109,14 +105,22 @@ function parseDateWithFormat(value: string, format: string): Date | null {
             }
         }
 
-        return new Date(Date.UTC(
-            parts.year,
-            parts.month,
-            parts.day,
-            parts.hour,
-            parts.minute,
-            parts.second,
-        ));
+        const date = new Date(0);
+        date.setUTCFullYear(parts.year, parts.month, parts.day);
+        date.setUTCHours(parts.hour, parts.minute, parts.second, 0);
+
+        if (
+            date.getUTCFullYear() !== parts.year ||
+            date.getUTCMonth() !== parts.month ||
+            date.getUTCDate() !== parts.day ||
+            date.getUTCHours() !== parts.hour ||
+            date.getUTCMinutes() !== parts.minute ||
+            date.getUTCSeconds() !== parts.second
+        ) {
+            return null;
+        }
+
+        return date;
     } catch {
         // Date parsing failed - return null as fallback
         return null;
@@ -129,7 +133,6 @@ export function applyDateFormat(
     target: string,
     format: string,
     inputFormat?: string,
-    _timezone?: string,
 ): JsonObject {
     const result = deepClone(record);
     const value = getNestedValue(record, source);
@@ -148,7 +151,6 @@ export function applyDateParse(
     source: string,
     target: string,
     format: string,
-    _timezone?: string,
 ): JsonObject {
     const result = deepClone(record);
     const value = getNestedValue(record, source);
@@ -182,25 +184,25 @@ export function applyDateAdd(
 
     switch (unit) {
         case 'seconds':
-            newDate.setSeconds(newDate.getSeconds() + amount);
+            newDate.setUTCSeconds(newDate.getUTCSeconds() + amount);
             break;
         case 'minutes':
-            newDate.setMinutes(newDate.getMinutes() + amount);
+            newDate.setUTCMinutes(newDate.getUTCMinutes() + amount);
             break;
         case 'hours':
-            newDate.setHours(newDate.getHours() + amount);
+            newDate.setUTCHours(newDate.getUTCHours() + amount);
             break;
         case 'days':
-            newDate.setDate(newDate.getDate() + amount);
+            newDate.setUTCDate(newDate.getUTCDate() + amount);
             break;
         case 'weeks':
-            newDate.setDate(newDate.getDate() + (amount * 7));
+            newDate.setUTCDate(newDate.getUTCDate() + (amount * 7));
             break;
         case 'months':
-            newDate.setMonth(newDate.getMonth() + amount);
+            newDate.setUTCMonth(newDate.getUTCMonth() + amount);
             break;
         case 'years':
-            newDate.setFullYear(newDate.getFullYear() + amount);
+            newDate.setUTCFullYear(newDate.getUTCFullYear() + amount);
             break;
     }
 
@@ -279,7 +281,6 @@ export function applyNow(
     record: JsonObject,
     target: string,
     format: string = 'ISO',
-    _timezone?: string,
 ): JsonObject {
     const result = deepClone(record);
     const now = new Date();

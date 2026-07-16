@@ -5,14 +5,12 @@ export interface DateFormatOperatorConfig extends BaseOperatorConfig {
     readonly target: string;
     readonly format: string;
     readonly inputFormat?: string;
-    readonly timezone?: string;
 }
 
 export interface DateParseOperatorConfig extends BaseOperatorConfig {
     readonly source: string;
     readonly target: string;
     readonly format: string;
-    readonly timezone?: string;
 }
 
 export type DateUnit = 'seconds' | 'minutes' | 'hours' | 'days' | 'weeks' | 'months' | 'years';
@@ -47,6 +45,4 @@ export interface NowOperatorConfig extends BaseOperatorConfig {
     readonly target: string;
     /** Output format: 'ISO', 'timestamp', 'date', 'datetime', or custom format string */
     readonly format?: NowFormat;
-    /** Timezone (e.g., 'UTC', 'America/New_York'). Default: UTC */
-    readonly timezone?: string;
 }

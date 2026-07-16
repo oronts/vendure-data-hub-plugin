@@ -60,11 +60,10 @@ export interface ConversionHelpers {
  * SDK/adapter-facing crypto helpers with a simplified API
  * for use within adapter implementations.
  *
- * @see shared/types/operator.types.ts CryptoHelpers for the shared/domain version
- *   which uses md5/sha256/hmac/uuid method names.
+ * @see shared/types/operator.types.ts CryptoHelpers for the shared/domain version.
  */
 export interface AdapterCryptoHelpers {
-    hash(value: string, algorithm?: 'md5' | 'sha256' | 'sha512'): string;
+    hash(value: string, algorithm?: 'sha256' | 'sha512'): string;
     hmac(value: string, secret: string, algorithm?: 'sha256' | 'sha512'): string;
     uuid(): string;
 }
@@ -84,6 +83,10 @@ export interface OperatorSecretResolver {
 export interface AdapterOperatorHelpers {
     readonly ctx: OperatorContext;
     readonly secrets?: OperatorSecretResolver;
+    /** Persisted state scoped to the current pipeline step and operator. */
+    readonly checkpoint?: JsonObject;
+    /** Replace the persisted state for the current pipeline step and operator. */
+    readonly setCheckpoint?: (checkpoint: JsonObject) => void;
     get(record: JsonObject, path: string): JsonValue | undefined;
     set(record: JsonObject, path: string, value: JsonValue): void;
     remove(record: JsonObject, path: string): void;

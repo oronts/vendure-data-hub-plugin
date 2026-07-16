@@ -55,7 +55,7 @@ export async function imageResizeOperator(
     config: ImageResizeConfig,
     _helpers: AdapterOperatorHelpers,
 ): Promise<OperatorResult> {
-    const output = await processImageRecords(records, config, async (sharp, inputBuffer, cfg) => {
+    return processImageRecords(records, config, async (sharp, inputBuffer, cfg) => {
         let pipeline = sharp(inputBuffer);
 
         if (cfg.width || cfg.height) {
@@ -74,5 +74,4 @@ export async function imageResizeOperator(
         return await pipeline.toBuffer();
     });
 
-    return { records: output };
 }
