@@ -3,7 +3,7 @@ import { RequestContext, RequestContextService, TransactionalConnection } from '
 import type { Request } from 'express';
 import * as crypto from 'crypto';
 import type { PipelineTrigger, PipelineDefinition, JsonValue } from '../../types/index';
-import { LOGGER_CONTEXTS, INTERNAL_TIMINGS, PipelineStatus, WEBHOOK, DEFAULT_WEBHOOK_CONFIG, AUTH_SCHEMES, TIME } from '../../constants';
+import { LOGGER_CONTEXTS, PipelineStatus, WEBHOOK, DEFAULT_WEBHOOK_CONFIG, AUTH_SCHEMES } from '../../constants';
 import { TriggerType as TriggerTypeEnum } from '../../constants/enums';
 import { ConnectionAuthType } from '../../../shared/types/adapter-config.types';
 import { Pipeline } from '../../entities/pipeline';
@@ -13,6 +13,21 @@ import { DomainEventsService } from '../../services/events/domain-events.service
 import { DataHubLoggerFactory, DataHubLogger } from '../../services/logger';
 import { RateLimitService } from '../../services/rate-limit';
 import { isValidPipelineCode, findEnabledTriggersByType } from '../../utils';
+import { PipelineRunIdempotencyConflictError } from '../../services/pipeline/pipeline-run-idempotency';
+import { getNestedValue } from '../../../shared/utils/object-path';
+
+const INCOMING_WEBHOOK_AUTH_TYPES = new Set([
+    ConnectionAuthType.NONE,
+    ConnectionAuthType.BASIC,
+    ConnectionAuthType.API_KEY,
+    ConnectionAuthType.HMAC,
+    ConnectionAuthType.JWT,
+]);
+import {
+    resolveIncomingWebhookIdempotency,
+    resolveIncomingWebhookRateLimit,
+    verifyIncomingWebhookJwt,
+} from './webhook-request.utils';
 
 @Controller('data-hub/webhook')
 export class DataHubWebhookController {
@@ -48,22 +63,31 @@ export class DataHubWebhookController {
         @Param('code') code: string,
         @Body() body: Record<string, unknown> | unknown[],
         @Req() req: Request,
-    ): Promise<{ accepted: boolean }> {
+    ): Promise<{ accepted: true; duplicate: boolean; runId: string }> {
         if (!code || !isValidPipelineCode(code)) {
             throw new HttpException('Invalid pipeline code format', HttpStatus.BAD_REQUEST);
         }
 
-        // Reject oversized payloads based on actual body size (not Content-Length header,
-        // which can be omitted or forged, and is already consumed by the time NestJS parses the body).
-        // Prefer rawBody length (exact wire bytes) over JSON.stringify (re-serialized approximation).
+        const ip = req.ip ||
+            (req as Request & { connection?: { remoteAddress?: string } })
+                .connection?.remoteAddress ||
+            'unknown';
+        const preAuthRateLimit = this.rateLimitService.isRateLimited(
+            { ip, identifier: 'webhook-pre-auth' },
+            WEBHOOK.PRE_AUTH_RATE_LIMIT_REQUESTS,
+            WEBHOOK.PRE_AUTH_RATE_LIMIT_WINDOW_MS,
+        );
+        if (preAuthRateLimit.limited) {
+            throw new HttpException('Too many webhook requests', HttpStatus.TOO_MANY_REQUESTS);
+        }
+
         const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
         const bodySize = rawBody ? rawBody.length : Buffer.byteLength(JSON.stringify(body ?? {}));
         if (bodySize > WEBHOOK.MAX_PAYLOAD_SIZE) {
             throw new HttpException('Payload too large', HttpStatus.PAYLOAD_TOO_LARGE);
         }
 
-        const ip = req.ip || (req as Request & { connection?: { remoteAddress?: string } }).connection?.remoteAddress || 'unknown';
-        const ctx = await this.requestContextService.create({ apiType: 'admin' });
+        const ctx = await this.requestContextService.create({ apiType: 'admin', req });
         const repo = this.connection.getRepository(ctx, Pipeline);
         const pipeline = await repo.findOne({ where: { code } });
 
@@ -143,49 +167,80 @@ export class DataHubWebhookController {
 
         const cfg = (authenticatedTrigger.config ?? {}) as unknown as Partial<PipelineTrigger>;
 
-        const configuredRateLimit = typeof cfg.rateLimit === 'number' ? cfg.rateLimit : INTERNAL_TIMINGS.DEFAULT_WEBHOOK_RATE_LIMIT;
-        if (configuredRateLimit > 0) {
+        const rateLimit = resolveIncomingWebhookRateLimit(cfg);
+        if (rateLimit.maxRequests > 0) {
             const rateLimitResult = this.rateLimitService.isRateLimited(
                 { ip, pipelineCode: code },
-                configuredRateLimit,
-                INTERNAL_TIMINGS.DEFAULT_RATE_LIMIT_WINDOW_MS,
+                rateLimit.maxRequests,
+                rateLimit.windowMs,
             );
-
             if (rateLimitResult.limited) {
                 throw new HttpException('Too many webhook requests', HttpStatus.TOO_MANY_REQUESTS);
             }
         }
 
-        if (cfg.requireIdempotencyKey) {
-            const idk = req.headers['x-idempotency-key'] as string | undefined;
-            if (!idk) {
-                throw new HttpException('Missing X-Idempotency-Key', HttpStatus.BAD_REQUEST);
-            }
-        }
-
+        const idempotency = resolveIncomingWebhookIdempotency(req.headers, cfg);
         const authType = this.resolveWebhookAuthType(cfg);
-
         const records: JsonValue[] = this.extractRecordsFromBody(body, definition);
-
-        await this.pipelineService.startRunWithSeed(ctx, pipeline.id, records, {
+        const runOptions = {
+            triggerKey: authenticatedTrigger.key,
             skipPermissionCheck: true,
             triggeredBy: `webhook:${authenticatedTrigger.key}`,
-        });
+        };
+        let runResult: { run: { id: unknown }; duplicate: boolean };
+        try {
+            runResult = idempotency
+                ? await this.pipelineService.startIdempotentRunWithSeed(
+                    ctx,
+                    pipeline.id,
+                    records,
+                    {
+                        ...runOptions,
+                        idempotencyKey: idempotency.key,
+                        idempotencyTtlSeconds: idempotency.ttlSeconds,
+                        requestFingerprint: crypto.createHash('sha256')
+                            .update(rawBody ?? Buffer.from(JSON.stringify(body ?? {})))
+                            .digest('hex'),
+                    },
+                )
+                : {
+                    run: await this.pipelineService.startRunWithSeed(
+                        ctx,
+                        pipeline.id,
+                        records,
+                        runOptions,
+                    ),
+                    duplicate: false,
+                };
+        } catch (error) {
+            if (error instanceof PipelineRunIdempotencyConflictError) {
+                throw new HttpException(error.message, HttpStatus.CONFLICT);
+            }
+            throw error;
+        }
 
-        this.domainEvents.publishTriggerFired(
-            String(pipeline.id),
-            'WEBHOOK',
-            { pipelineCode: code, triggerKey: authenticatedTrigger.key, recordCount: records.length },
-        );
+        if (!runResult.duplicate) {
+            this.domainEvents.publishTriggerFired(
+                String(pipeline.id),
+                'WEBHOOK',
+                { pipelineCode: code, triggerKey: authenticatedTrigger.key, recordCount: records.length },
+            );
+        }
 
-        this.logger.debug(`Webhook accepted for pipeline: ${code}`, {
+        this.logger.debug(`Webhook ${runResult.duplicate ? 'duplicate' : 'accepted'} for pipeline: ${code}`, {
             pipelineCode: code,
             triggerKey: authenticatedTrigger.key,
             recordCount: records.length,
             authType,
+            duplicate: runResult.duplicate,
+            runId: runResult.run.id,
         });
 
-        return { accepted: true };
+        return {
+            accepted: true,
+            duplicate: runResult.duplicate,
+            runId: String(runResult.run.id),
+        };
     }
 
     private async verifyApiKey(
@@ -228,7 +283,7 @@ export class DataHubWebhookController {
     private async verifyHmacSignature(
         ctx: RequestContext,
         req: Request,
-        body: Record<string, unknown> | unknown[],
+        _body: Record<string, unknown> | unknown[],
         cfg: Partial<PipelineTrigger>,
     ): Promise<void> {
         const headerName = cfg.hmacHeaderName ?? DEFAULT_WEBHOOK_CONFIG.hmacHeaderName!;
@@ -242,8 +297,7 @@ export class DataHubWebhookController {
             throw new HttpException('Invalid signature format', HttpStatus.BAD_REQUEST);
         }
 
-        const rawCfg = cfg as Record<string, unknown>;
-        const secretCode = cfg.secretCode || (rawCfg.hmacSecretCode as string | undefined);
+        const secretCode = cfg.secretCode;
         if (!secretCode) {
             throw new HttpException('HMAC secret code not configured', HttpStatus.INTERNAL_SERVER_ERROR);
         }
@@ -259,20 +313,14 @@ export class DataHubWebhookController {
             throw new HttpException('Unsupported HMAC algorithm', HttpStatus.BAD_REQUEST);
         }
 
-        // Use raw request bytes for HMAC verification when available.
-        // JSON.stringify(body) differs from the sender's original bytes (key ordering,
-        // whitespace, Unicode escaping) which causes signature mismatches.
-        // Enable rawBody in NestJS via app.useBodyParser('json', { rawBody: true }).
         const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
         if (!rawBody) {
-            this.logger.warn(
-                'HMAC verification using re-serialized body (req.rawBody unavailable). ' +
-                'Enable rawBody in NestJS for reliable signature verification: ' +
-                'app.useBodyParser(\'json\', { rawBody: true })',
-                { authType: 'hmac' },
+            throw new HttpException(
+                'HMAC webhook authentication requires the Data Hub early JSON middleware to capture the request before parsing',
+                HttpStatus.INTERNAL_SERVER_ERROR,
             );
         }
-        const payload = rawBody ?? Buffer.from(JSON.stringify(body ?? {}));
+        const payload = rawBody;
         const expectedHash = crypto.createHmac(algorithm, secretValue)
             .update(payload)
             .digest('hex');
@@ -372,63 +420,14 @@ export class DataHubWebhookController {
             throw new HttpException('JWT secret not found', HttpStatus.UNAUTHORIZED);
         }
 
-        const jwtParts = token.split('.');
-        if (jwtParts.length !== WEBHOOK.JWT_PARTS_COUNT) {
-            throw new HttpException('Invalid JWT format', HttpStatus.UNAUTHORIZED);
-        }
-
-        const [headerB64, payloadB64, signatureB64] = jwtParts;
-
-        // Validate JWT algorithm header to prevent alg:none and other attacks
-        try {
-            const headerJson = Buffer.from(headerB64, 'base64url').toString('utf8');
-            const header = JSON.parse(headerJson);
-            if (header.alg !== WEBHOOK.REQUIRED_JWT_ALGORITHM) {
-                throw new HttpException(
-                    `Unsupported JWT algorithm: '${header.alg}'. Only HS256 is accepted.`,
-                    HttpStatus.UNAUTHORIZED,
-                );
-            }
-        } catch (error) {
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            throw new HttpException('Invalid JWT header', HttpStatus.UNAUTHORIZED);
-        }
-
-        const signingInput = `${headerB64}.${payloadB64}`;
-        const expectedSignature = crypto
-            .createHmac('sha256', secretValue)
-            .update(signingInput)
-            .digest('base64url');
-
-        if (!this.timingSafeCompare(expectedSignature, signatureB64)) {
-            throw new HttpException('Invalid JWT signature', HttpStatus.UNAUTHORIZED);
-        }
-
-        try {
-            const payloadJson = Buffer.from(payloadB64, 'base64url').toString('utf8');
-            const payload = JSON.parse(payloadJson);
-
-            const nowUnix = Math.floor(Date.now() / TIME.SECOND);
-            if (payload.exp && payload.exp < nowUnix) {
-                throw new HttpException('JWT has expired', HttpStatus.UNAUTHORIZED);
-            }
-
-            if (payload.nbf && payload.nbf > nowUnix) {
-                throw new HttpException('JWT is not yet valid', HttpStatus.UNAUTHORIZED);
-            }
-        } catch (error) {
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            throw new HttpException('Invalid JWT payload', HttpStatus.UNAUTHORIZED);
-        }
+        verifyIncomingWebhookJwt(token, secretValue, {
+            issuer: cfg.jwtIssuer,
+            audience: cfg.jwtAudience,
+        });
     }
 
     /**
-     * Extracts records from webhook body, using the pipeline's extract step itemsField
-     * to unwrap nested payloads (e.g., {"orders":[...]} with itemsField: 'orders').
+     * Extracts records from a webhook body using the extract step's canonical dataPath.
      */
     private extractRecordsFromBody(
         body: Record<string, unknown> | unknown[],
@@ -438,13 +437,13 @@ export class DataHubWebhookController {
             return body as JsonValue[];
         }
 
-        // Check if any extract step defines an itemsField; use it to unwrap the body
+        // Webhook payload unwrapping follows the same path contract as HTTP extraction.
         const extractStep = definition?.steps?.find(
-            s => s.type === 'EXTRACT' && (s.config as Record<string, unknown>)?.itemsField,
+            s => s.type === 'EXTRACT' && (s.config as Record<string, unknown>)?.dataPath,
         );
         if (extractStep) {
-            const itemsField = (extractStep.config as Record<string, unknown>).itemsField as string;
-            const items = (body as Record<string, unknown>)[itemsField];
+            const dataPath = (extractStep.config as Record<string, unknown>).dataPath as string;
+            const items = getNestedValue(body as Record<string, unknown>, dataPath);
             if (Array.isArray(items)) {
                 return items as JsonValue[];
             }
@@ -458,20 +457,15 @@ export class DataHubWebhookController {
         return [body as JsonValue];
     }
 
-    /**
-     * Resolves the webhook auth type from trigger config, supporting both
-     * canonical field names (authentication: 'HMAC') and DSL shorthand (signature: 'hmac-sha256').
-     */
     private resolveWebhookAuthType(cfg: Partial<PipelineTrigger>): ConnectionAuthType {
-        if (cfg.authentication) {
-            return cfg.authentication as ConnectionAuthType;
+        const authType = cfg.authentication as ConnectionAuthType | undefined;
+        if (!authType || !INCOMING_WEBHOOK_AUTH_TYPES.has(authType)) {
+            throw new HttpException(
+                'Invalid webhook authentication configuration',
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
         }
-        const rawCfg = cfg as Record<string, unknown>;
-        const signature = rawCfg.signature as string | undefined;
-        if (signature && signature !== 'none') {
-            return ConnectionAuthType.HMAC;
-        }
-        return ConnectionAuthType.NONE;
+        return authType;
     }
 
     private timingSafeCompare(expected: string, provided: string): boolean {
