@@ -15,15 +15,14 @@ export const webhookSchema = `
         webhookId: String!
         url: String!
         method: String!
-        headers: JSON!
-        payload: JSON!
+        payloadHash: String!
+        payloadBytes: Int!
         status: DataHubWebhookDeliveryStatus!
         attempts: Int!
         maxAttempts: Int!
         lastAttemptAt: DateTime
         nextRetryAt: DateTime
         responseStatus: Int
-        responseBody: String
         error: String
         createdAt: DateTime!
         deliveredAt: DateTime

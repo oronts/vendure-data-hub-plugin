@@ -1,6 +1,5 @@
 import * as crypto from 'crypto';
 import { Inject, Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { sanitizeUrlForLogging } from '../../utils/url-sanitize.utils';
 import { ID, RequestContext } from '@vendure/core';
 import { createContext, Script } from 'vm';
 import {
@@ -23,11 +22,12 @@ import { ModuleRef } from '@nestjs/core';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { WebhookRetryService, WebhookConfig } from '../webhooks/webhook-retry.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { DATAHUB_PLUGIN_OPTIONS, LOGGER_CONTEXTS, HOOK, HTTP_HEADERS, CONTENT_TYPES, WEBHOOK, TRUNCATION, CIRCUIT_BREAKER } from '../../constants/index';
+import { DATAHUB_PLUGIN_OPTIONS, LOGGER_CONTEXTS, HOOK, WEBHOOK, TRUNCATION } from '../../constants/index';
 import { HookActionType } from '../../constants/enums';
 import { validateScriptBlock } from '../../utils/code-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
-import { assertUrlSafe, validateUrlSafety } from '../../utils/url-security.utils';
+import { validateUrlSafety } from '../../utils/url-security.utils';
+import { assertWebhookHookSecurity } from '../validation/hook-security';
 
 /** Context passed to action handlers during hook execution */
 interface ActionHandlerContext {
@@ -42,7 +42,6 @@ interface ActionHandlerContext {
 export class HookService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private webhookRetryService: WebhookRetryService | null = null;
-    private registeredWebhooks = new Set<string>();
     private registeredScripts = new Map<string, ScriptFunction>();
     /** Cache of compiled vm.Script instances keyed by wrapped code string */
     private scriptCache = new Map<string, Script>();
@@ -83,15 +82,8 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
     }
 
     async onModuleInit() {
-        // Get webhook retry service if available
-        try {
-            this.webhookRetryService = this.moduleRef.get(WebhookRetryService, { strict: false });
-            if (this.webhookRetryService) {
-                this.logger.info('WebhookRetryService connected for reliable webhook delivery');
-            }
-        } catch {
-            this.logger.debug('WebhookRetryService not available, using simple fetch for webhooks');
-        }
+        this.webhookRetryService = this.moduleRef.get(WebhookRetryService, { strict: false });
+        this.logger.info('WebhookRetryService connected for reliable webhook delivery');
 
         // Register scripts from plugin options
         if (this.options.scripts) {
@@ -103,7 +95,6 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
     }
 
     onModuleDestroy() {
-        this.registeredWebhooks.clear();
         this.registeredScripts.clear();
         this.scriptCache.clear();
         this.webhookRetryService = null;
@@ -375,7 +366,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
             payload: handlerCtx.payload ?? null,
             record: handlerCtx.record ?? null,
             runId: handlerCtx.runId?.toString() ?? null,
-        });
+        }, handlerCtx.ctx);
     }
 
     private async handleEmit(action: HookAction, handlerCtx: ActionHandlerContext): Promise<void> {
@@ -390,14 +381,18 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
     }
 
     private async handleTriggerPipeline(action: HookAction, handlerCtx: ActionHandlerContext): Promise<void> {
-        const triggerAction = action as HookAction & { pipelineCode: string };
+        const triggerAction = action as Extract<HookAction, { type: 'TRIGGER_PIPELINE' }>;
         try {
             const pipelineService = this.moduleRef.get(PipelineService, { strict: false });
             if (pipelineService) {
                 const seedRecords = Array.isArray(handlerCtx.payload)
                     ? handlerCtx.payload
                     : (handlerCtx.record ? [handlerCtx.record] : []);
-                await pipelineService.startRunByCode(handlerCtx.ctx, triggerAction.pipelineCode, { seedRecords });
+                await pipelineService.startRunByCode(handlerCtx.ctx, triggerAction.pipelineCode, {
+                    seedRecords,
+                    triggerKey: triggerAction.triggerKey,
+                    triggeredBy: `hook:${triggerAction.triggerKey}`,
+                });
             }
         } catch (error) {
             this.logger.warn('Failed to trigger pipeline from hook', {
@@ -433,100 +428,62 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
     /**
      * Call webhook with retry support if WebhookRetryService is available
      */
-    private async callWebhook(action: HookAction, body: JsonObject): Promise<void> {
-        // Type guard to ensure this is a webhook action
+    private async callWebhook(
+        action: HookAction,
+        body: JsonObject,
+        ctx: RequestContext,
+    ): Promise<void> {
         if (action.type !== HookActionType.WEBHOOK) return;
 
         const webhookAction = action as WebhookHookAction;
-        const url = webhookAction.url;
-        const headers = webhookAction.headers;
-
-        if (!url) return;
-
-        // SSRF protection: validate webhook URL before making the request
-        const urlSafety = await validateUrlSafety(url);
+        assertWebhookHookSecurity(webhookAction);
+        const urlSafety = await validateUrlSafety(webhookAction.url);
         if (!urlSafety.safe) {
-            this.logger.warn('Webhook URL blocked by SSRF protection', {
-                url: sanitizeUrlForLogging(url),
-                reason: urlSafety.reason,
-            });
-            return;
+            throw new Error(`Webhook URL blocked by SSRF protection: ${urlSafety.reason ?? 'unknown reason'}`);
+        }
+        if (!this.webhookRetryService) {
+            throw new Error('Webhook delivery service is unavailable');
         }
 
-        // Use WebhookRetryService for reliable delivery with retries
-        if (this.webhookRetryService) {
-            // Generate a unique webhook ID for this URL
-            const webhookId = this.getWebhookId(url, webhookAction);
-
-            // Register webhook config if not already registered
-            if (!this.registeredWebhooks.has(webhookId)) {
-                if (this.registeredWebhooks.size >= CIRCUIT_BREAKER.MAX_REGISTERED_WEBHOOKS) {
-                    this.logger.debug('Registered webhooks cache full, clearing');
-                    this.registeredWebhooks.clear();
-                }
-                const config: WebhookConfig = {
-                    id: webhookId,
-                    url,
-                    method: 'POST',
-                    headers,
-                    secret: webhookAction.secret,
-                    signatureHeader: webhookAction.signatureHeader,
-                    retryConfig: webhookAction.retryConfig || {
-                        maxAttempts: WEBHOOK.MAX_ATTEMPTS,
-                        initialDelayMs: WEBHOOK.INITIAL_DELAY_MS,
-                        maxDelayMs: WEBHOOK.HOOK_MAX_DELAY_MS,
-                        backoffMultiplier: WEBHOOK.BACKOFF_MULTIPLIER,
-                    },
-                    enabled: true,
-                };
-                await this.webhookRetryService.registerWebhook(config);
-                this.registeredWebhooks.add(webhookId);
-            }
-
-            // Send via retry service
-            await this.webhookRetryService.sendWebhook(webhookId, body, {
-                headers,
-                idempotencyKey: body.runId ? `${webhookId}-${body.runId}-${body.stage}` : undefined,
-            });
-        } else {
-            // Fallback to simple fetch
-            await this.simpleFetch(url, headers, body);
-        }
+        const webhookId = this.getWebhookId(webhookAction.url, webhookAction);
+        const config: WebhookConfig = {
+            id: webhookId,
+            url: webhookAction.url,
+            method: 'POST',
+            headers: { ...webhookAction.headers },
+            secretCode: webhookAction.secretCode,
+            headerSecretCodes: { ...webhookAction.headerSecretCodes },
+            signatureHeader: webhookAction.signatureHeader,
+            retryConfig: webhookAction.retryConfig ?? {
+                maxAttempts: WEBHOOK.MAX_ATTEMPTS,
+                initialDelayMs: WEBHOOK.INITIAL_DELAY_MS,
+                maxDelayMs: WEBHOOK.HOOK_MAX_DELAY_MS,
+                backoffMultiplier: WEBHOOK.BACKOFF_MULTIPLIER,
+            },
+            enabled: true,
+        };
+        await this.webhookRetryService.sendWebhook(ctx, config, body, {
+            idempotencyKey: body.runId
+                ? `${webhookId}-${body.runId}-${body.stage}`
+                : undefined,
+        });
     }
 
-    /**
-     * Generate a consistent webhook ID for registration
-     */
+
     private getWebhookId(url: string, action: WebhookHookAction): string {
-        const seed = `${url}:${action.secret ?? ''}:${action.signatureHeader ?? ''}:${JSON.stringify(action.retryConfig ?? {})}`;
-        const hash = crypto.createHash('sha256').update(seed).digest('hex').slice(0, TRUNCATION.WEBHOOK_ID_HASH_LENGTH);
+        const seed = JSON.stringify({
+            url,
+            secretCode: action.secretCode,
+            headerSecretCodes: action.headerSecretCodes,
+            signatureHeader: action.signatureHeader,
+            retryConfig: action.retryConfig,
+        });
+        const hash = crypto.createHash('sha256')
+            .update(seed)
+            .digest('hex')
+            .slice(0, TRUNCATION.WEBHOOK_ID_HASH_LENGTH);
         return `hook_${hash}`;
     }
 
-    /**
-     * Simple fetch fallback when WebhookRetryService is not available
-     */
-    private async simpleFetch(url: string, headers: Record<string, string> | undefined, body: JsonObject): Promise<void> {
-        try {
-            await assertUrlSafe(url);
-
-            const fetchImpl = (globalThis as { fetch?: typeof fetch }).fetch;
-            if (!fetchImpl) return;
-            const response = await fetchImpl(url, {
-                method: 'POST',
-                headers: { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON, ...(headers ?? {}) },
-                body: JSON.stringify(body ?? {}),
-                signal: AbortSignal.timeout(WEBHOOK.TIMEOUT_MS),
-            });
-            if (!response.ok) {
-                this.logger.warn('Webhook returned non-OK status', { url: sanitizeUrlForLogging(url), status: response.status });
-            }
-        } catch (error) {
-            this.logger.warn('Simple webhook fetch failed', {
-                url: sanitizeUrlForLogging(url),
-                error: getErrorMessage(error),
-            });
-        }
-    }
 
 }

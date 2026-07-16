@@ -4,6 +4,7 @@ import type { JsonObject, PipelineDefinition, HookStageValue, PipelineHooks } fr
 import { HookService } from '../../services';
 import { Pipeline } from '../../entities/pipeline';
 import { DataHubPipelinePermission } from '../../permissions';
+import { sanitizePipelineDefinitionForOutput } from '../../services/validation/hook-security';
 
 @Resolver()
 export class DataHubHookAdminResolver {
@@ -17,7 +18,9 @@ export class DataHubHookAdminResolver {
     async dataHubPipelineHooks(@Ctx() ctx: RequestContext, @Args() args: { pipelineId: ID }): Promise<PipelineHooks> {
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, args.pipelineId);
         const definition = pipeline.definition as PipelineDefinition | undefined;
-        return definition?.hooks ?? {};
+        return definition
+            ? sanitizePipelineDefinitionForOutput(definition).hooks ?? {}
+            : {};
     }
 
     @Mutation()
