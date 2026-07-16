@@ -1,6 +1,6 @@
 import { TransactionalConnection, RequestContextService, ID } from '@vendure/core';
 import { Pipeline } from '../../entities/pipeline';
-import { PipelineStatus, AckMode, SCHEDULER } from '../../constants/index';
+import { PipelineStatus, AckMode, SCHEDULER, QUEUE } from '../../constants/index';
 import { TriggerType as TriggerTypeEnum, QueueType } from '../../constants/enums';
 import type { PipelineDefinition } from '../../types/index';
 import { DataHubLogger } from '../logger';
@@ -117,7 +117,10 @@ export class ConsumerDiscovery {
                 ackMode: (msg.ackMode as AckMode) || (
                     String(msg.queueType ?? QueueType.RABBITMQ).toLowerCase() === 'rabbitmq' ? AckMode.AUTO : AckMode.MANUAL
                 ),
-                maxRetries: Math.max(0, Number(msg.maxRetries) || 3),
+                maxRetries: Math.min(
+                    QUEUE.MAX_MESSAGE_RETRIES,
+                    Math.max(0, Number(msg.maxRetries ?? QUEUE.DEFAULT_MESSAGE_RETRIES) || 0),
+                ),
                 deadLetterQueue: msg.deadLetterQueue as string | undefined,
                 pollIntervalMs: Math.max(SCHEDULER.MIN_INTERVAL_MS, Number(msg.pollIntervalMs) || SCHEDULER.MIN_INTERVAL_MS),
                 autoStart: msg.autoStart !== false,

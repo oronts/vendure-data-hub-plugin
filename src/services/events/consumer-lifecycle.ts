@@ -1,7 +1,7 @@
 import { RequestContextService } from '@vendure/core';
 import { ConnectionService } from '../config/connection.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
-import { DISTRIBUTED_LOCK } from '../../constants/index';
+import { AckMode, DISTRIBUTED_LOCK } from '../../constants/index';
 import { DataHubLogger } from '../logger';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { MessageConsumerConfig, getConsumerKey } from './consumer-discovery';
@@ -23,6 +23,24 @@ export interface ActiveConsumer {
     lockToken?: string;
     /** Timer for refreshing the lock */
     lockRefreshTimer?: NodeJS.Timeout;
+}
+
+export function assertConsumerRuntimeConfig(config: MessageConsumerConfig): void {
+    const queueType = config.queueType.toLowerCase().replace(/_/g, '-');
+
+    if (config.ackMode !== AckMode.AUTO && config.ackMode !== AckMode.MANUAL) {
+        throw new Error(`Unsupported message acknowledgment mode: ${config.ackMode}`);
+    }
+
+    if (config.consumerGroup && queueType !== 'redis-streams') {
+        throw new Error('consumerGroup is supported only for REDIS_STREAMS message triggers');
+    }
+
+    if (queueType === 'rabbitmq' && config.ackMode === AckMode.MANUAL) {
+        throw new Error(
+            'RabbitMQ HTTP consumers support AUTO acknowledgment only; use RABBITMQ_AMQP for MANUAL acknowledgment',
+        );
+    }
 }
 
 /**
@@ -57,6 +75,8 @@ export class ConsumerLifecycle {
             });
             return null;
         }
+
+        assertConsumerRuntimeConfig(config);
 
         // Try to acquire distributed lock for this consumer
         const lockKey = `message-consumer:${key}`;
@@ -162,7 +182,6 @@ export class ConsumerLifecycle {
                     this.logger.warn(`Failed to extend lock for consumer ${consumerKey}, stopping`, {
                         pipelineCode: consumer.config.pipelineCode,
                     });
-                    // Lock lost - stop this consumer
                     await this.stopConsumer(consumerKey, consumers);
                 }
             } catch (error) {
@@ -170,6 +189,7 @@ export class ConsumerLifecycle {
                     toErrorOrUndefined(error), {
                     pipelineCode: consumer.config.pipelineCode,
                 });
+                await this.stopConsumer(consumerKey, consumers);
             }
         }, DISTRIBUTED_LOCK.MESSAGE_CONSUMER_LOCK_REFRESH_MS);
 

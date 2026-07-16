@@ -9,6 +9,21 @@ import { queueAdapterRegistry, QueueConnectionConfig, QueueAdapter } from '../..
 import { ActiveConsumer } from './consumer-lifecycle';
 import { DomainEventsService } from './domain-events.service';
 
+type ConsumedMessage = {
+    messageId: string;
+    payload: Record<string, unknown>;
+    headers?: Record<string, string>;
+    deliveryTag?: string;
+};
+
+const QUEUE_SECRET_FIELDS = [
+    ['passwordSecretCode', 'password'],
+    ['accessKeyIdSecretCode', 'accessKeyId'],
+    ['secretAccessKeySecretCode', 'secretAccessKey'],
+    ['privateKeySecretCode', 'privateKey'],
+    ['apiKeySecretCode', 'apiKey'],
+] as const;
+
 /**
  * Message Processing Module
  *
@@ -90,7 +105,7 @@ export class MessageProcessing {
         let connectionConfig: QueueConnectionConfig = {} as QueueConnectionConfig;
 
         if (!isInternal) {
-            const conn = await this.connectionService.getByCode(ctx, config.connectionCode);
+            const conn = await this.connectionService.getRuntimeByCode(ctx, config.connectionCode);
             if (!conn) {
                 this.logger.warn(`Connection not found for consumer`, {
                     connectionCode: config.connectionCode,
@@ -99,7 +114,11 @@ export class MessageProcessing {
                 return;
             }
             const rawConfig = conn.config as Record<string, unknown>;
-            connectionConfig = await this.resolveConnectionSecrets(ctx, rawConfig) as QueueConnectionConfig;
+            const resolvedConfig = await this.resolveConnectionSecrets(ctx, rawConfig);
+            connectionConfig = {
+                ...resolvedConfig,
+                ...(config.consumerGroup ? { consumerGroup: config.consumerGroup } : {}),
+            } as QueueConnectionConfig;
         }
 
         const fetchCount = Math.min(config.batchSize, availableSlots);
@@ -125,37 +144,7 @@ export class MessageProcessing {
                 consumer.inFlightCount++;
 
                 try {
-                    await this.processConsumedMessage(consumer, msg);
-                    consumer.messagesProcessed++;
-                    consumer.lastMessageAt = new Date();
-
-                    // Acknowledge if manual mode
-                    if (config.ackMode === AckMode.MANUAL && msg.deliveryTag) {
-                        await adapter.ack(connectionConfig, msg.deliveryTag);
-                    }
-                } catch (error) {
-                    consumer.messagesFailed++;
-                    this.logger.error(`Failed to process message`,
-                        toErrorOrUndefined(error), {
-                        pipelineCode: config.pipelineCode,
-                        messageId: msg.messageId,
-                    });
-
-                    let dlqSuccess = false;
-                    if (config.deadLetterQueue && msg.deliveryTag) {
-                        try {
-                            await this.routeMessageToDLQ(consumer, adapter, connectionConfig, msg, error);
-                            dlqSuccess = true;
-                        } catch {
-                            dlqSuccess = false;
-                        }
-                    }
-
-                    if (config.ackMode === AckMode.MANUAL && msg.deliveryTag) {
-                        const noDlq = !config.deadLetterQueue;
-                        const requeue = (noDlq || !dlqSuccess) && !(msg.redelivered ?? false);
-                        await adapter.nack(connectionConfig, msg.deliveryTag, requeue).catch(() => {});
-                    }
+                    await this.processDelivery(consumer, adapter, connectionConfig, msg);
                 } finally {
                     consumer.inFlightCount--;
                 }
@@ -172,12 +161,112 @@ export class MessageProcessing {
         }
     }
 
+    private async processDelivery(
+        consumer: ActiveConsumer,
+        adapter: QueueAdapter,
+        connectionConfig: QueueConnectionConfig,
+        message: ConsumedMessage,
+    ): Promise<void> {
+        const { config } = consumer;
+        if (config.ackMode === AckMode.MANUAL && !message.deliveryTag) {
+            throw new Error('Queue adapter returned a MANUAL delivery without a delivery tag');
+        }
+
+        try {
+            await this.processConsumedMessageWithRetries(consumer, message);
+        } catch (error) {
+            await this.handleTerminalProcessingFailure(
+                consumer,
+                adapter,
+                connectionConfig,
+                message,
+                error,
+            );
+            return;
+        }
+
+        if (config.ackMode === AckMode.MANUAL && message.deliveryTag) {
+            try {
+                await adapter.ack(connectionConfig, message.deliveryTag);
+            } catch (error) {
+                consumer.messagesFailed++;
+                this.logger.error(
+                    'Failed to acknowledge successfully enqueued message',
+                    toErrorOrUndefined(error),
+                    {
+                        pipelineCode: config.pipelineCode,
+                        messageId: message.messageId,
+                    },
+                );
+                throw error;
+            }
+        }
+
+        consumer.messagesProcessed++;
+        consumer.lastMessageAt = new Date();
+    }
+
+    private async handleTerminalProcessingFailure(
+        consumer: ActiveConsumer,
+        adapter: QueueAdapter,
+        connectionConfig: QueueConnectionConfig,
+        message: ConsumedMessage,
+        error: unknown,
+    ): Promise<void> {
+        const { config } = consumer;
+        consumer.messagesFailed++;
+        this.logger.error('Failed to process message', toErrorOrUndefined(error), {
+            pipelineCode: config.pipelineCode,
+            messageId: message.messageId,
+        });
+
+        let dlqPublished = false;
+        if (config.deadLetterQueue) {
+            try {
+                await this.routeMessageToDLQ(consumer, adapter, connectionConfig, message, error);
+                dlqPublished = true;
+            } catch {
+                dlqPublished = false;
+            }
+        }
+
+        if (config.ackMode === AckMode.MANUAL && message.deliveryTag) {
+            const requeue = Boolean(config.deadLetterQueue) && !dlqPublished;
+            await adapter.nack(connectionConfig, message.deliveryTag, requeue);
+        }
+    }
+
+    private async processConsumedMessageWithRetries(
+        consumer: ActiveConsumer,
+        message: ConsumedMessage,
+    ): Promise<void> {
+        const { maxRetries, pipelineCode } = consumer.config;
+
+        for (let retry = 0; retry <= maxRetries; retry++) {
+            try {
+                await this.processConsumedMessage(consumer, message);
+                return;
+            } catch (error) {
+                if (retry === maxRetries) {
+                    throw error;
+                }
+                this.logger.warn('Retrying message after pipeline enqueue failure', {
+                    pipelineCode,
+                    messageId: message.messageId,
+                    retry: retry + 1,
+                    maxRetries,
+                    error: getErrorMessage(error),
+                });
+            }
+        }
+    }
+
     /**
      * Process a consumed message by triggering the pipeline
      */
     private async processConsumedMessage(
         consumer: ActiveConsumer,
-        message: { messageId: string; payload: Record<string, unknown>; headers?: Record<string, string> },
+        message: ConsumedMessage,
     ): Promise<void> {
         const { config } = consumer;
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
@@ -197,17 +286,24 @@ export class MessageProcessing {
 
         const run = await this.pipelineService.startRunByCode(ctx, config.pipelineCode, {
             seedRecords: [seedRecord],
+            triggerKey: config.triggerKey,
             skipPermissionCheck: true,
             triggeredBy: `message:${config.triggerKey}`,
         });
 
-        if (run) {
-            const pipelineId = run.pipeline?.id?.toString() ?? run.pipelineId?.toString();
+        const pipelineId = run.pipeline?.id?.toString() ?? run.pipelineId?.toString();
+        try {
             this.domainEvents.publishTriggerFired(pipelineId, 'MESSAGE_QUEUE', {
                 pipelineCode: config.pipelineCode,
                 triggerKey: config.triggerKey,
                 queueName: config.queueName,
                 messageId: message.messageId,
+            });
+        } catch (error) {
+            this.logger.warn('Pipeline run was enqueued but trigger event publication failed', {
+                pipelineCode: config.pipelineCode,
+                messageId: message.messageId,
+                error: getErrorMessage(error),
             });
         }
     }
@@ -219,14 +315,14 @@ export class MessageProcessing {
         consumer: ActiveConsumer,
         adapter: QueueAdapter,
         connectionConfig: QueueConnectionConfig,
-        message: { messageId: string; payload: Record<string, unknown>; headers?: Record<string, string> },
+        message: ConsumedMessage,
         error: unknown,
     ): Promise<void> {
         const { config } = consumer;
         if (!config.deadLetterQueue) return;
 
         try {
-            await adapter.publish(connectionConfig, config.deadLetterQueue, [{
+            const results = await adapter.publish(connectionConfig, config.deadLetterQueue, [{
                 id: message.messageId,
                 payload: {
                     ...message.payload,
@@ -240,6 +336,16 @@ export class MessageProcessing {
                     'x-error': getErrorMessage(error),
                 },
             }]);
+
+            const [result] = results;
+            if (
+                results.length !== 1 ||
+                !result ||
+                result.messageId !== message.messageId ||
+                !result.success
+            ) {
+                throw new Error(result?.error ?? 'Queue adapter did not confirm dead-letter delivery');
+            }
 
             this.logger.info(`Routed message to DLQ`, {
                 pipelineCode: config.pipelineCode,
@@ -261,19 +367,26 @@ export class MessageProcessing {
         raw: Record<string, unknown>,
     ): Promise<Record<string, unknown>> {
         const resolved = { ...raw };
-        const secretFields = [
-            ['passwordSecretCode', 'password'],
-            ['accessKeyIdSecretCode', 'accessKeyId'],
-            ['secretAccessKeySecretCode', 'secretAccessKey'],
-            ['privateKeySecretCode', 'privateKey'],
-            ['apiKeySecretCode', 'apiKey'],
-        ];
-        for (const [secretField, targetField] of secretFields) {
+        for (const [secretField, targetField] of QUEUE_SECRET_FIELDS) {
+            if (!Object.prototype.hasOwnProperty.call(raw, secretField)) continue;
+            delete resolved[secretField];
             const code = raw[secretField];
-            if (typeof code === 'string' && code) {
-                const value = await this.secretService.resolve(ctx, code);
-                if (value) resolved[targetField] = value;
+            if (typeof code !== 'string' || code.trim() === '') {
+                throw new Error(`Queue connection field "${secretField}" must reference a non-empty Secret Code`);
             }
+            const normalizedCode = code.trim();
+            const value = await this.secretService.resolve(ctx, normalizedCode);
+            if (typeof value !== 'string' || value.trim() === '') {
+                throw new Error(
+                    `Queue connection Secret Code "${normalizedCode}" configured by "${secretField}" could not be resolved`,
+                );
+            }
+            resolved[targetField] = value;
+        }
+        const unsupportedSecretField = Object.keys(resolved)
+            .find(field => field.endsWith('SecretCode'));
+        if (unsupportedSecretField) {
+            throw new Error(`Unsupported queue connection Secret Code field "${unsupportedSecretField}"`);
         }
         if (raw.ssl !== undefined && resolved.useTls === undefined) {
             resolved.useTls = !!raw.ssl;

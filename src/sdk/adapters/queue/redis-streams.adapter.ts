@@ -21,6 +21,7 @@ import { JsonObject } from '../../../types/index';
 import { AckMode, INTERNAL_TIMINGS } from '../../../constants';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
+import { createQueueConnectionIdentity } from './connection-identity';
 
 /** Maximum delay between Redis connection retries */
 const REDIS_RETRY_MAX_DELAY_MS = 3000;
@@ -38,6 +39,8 @@ interface RedisConnectionConfig extends QueueConnectionConfig {
     consumerName?: string;
     /** Database index (0-15) */
     db?: number;
+    /** TLS flag persisted by the REDIS connection schema */
+    ssl?: boolean;
 }
 
 /**
@@ -90,6 +93,7 @@ interface PendingEntry {
     streamKey: string;
     consumerGroup: string;
     messageId: string;
+    connectionIdentity: string;
     createdAt: number;
 }
 const pendingEntries = new Map<string, PendingEntry>();
@@ -98,25 +102,26 @@ const pendingEntries = new Map<string, PendingEntry>();
  * Generate cache key for connection config
  */
 function getCacheKey(config: RedisConnectionConfig): string {
-    return `${config.host ?? 'localhost'}:${config.port ?? 6379}:${config.db ?? 0}`;
+    return createQueueConnectionIdentity('redis-streams', config);
 }
 
 /**
  * Dynamically loaded Redis module
  */
-let redisModule: {
+type RedisModule = {
     default: new (options: Record<string, unknown>) => RedisClient;
-} | null = null;
+};
+let redisModule: RedisModule | null = null;
 
 /**
  * Load ioredis module dynamically
  */
-async function loadRedisModule(): Promise<typeof redisModule> {
+async function loadRedisModule(): Promise<RedisModule | null> {
     if (redisModule) return redisModule;
 
     try {
         // Dynamic import - ioredis is an optional dependency
-        const mod = await (Function('return import("ioredis")')() as Promise<typeof redisModule>);
+        const mod = await (Function('return import("ioredis")')() as Promise<RedisModule>);
         redisModule = mod;
         return mod;
     } catch {
@@ -130,7 +135,10 @@ async function loadRedisModule(): Promise<typeof redisModule> {
 /**
  * Get or create Redis client
  */
-async function getClient(config: RedisConnectionConfig): Promise<RedisClient> {
+async function getClient(
+    config: RedisConnectionConfig,
+    moduleLoader: typeof loadRedisModule,
+): Promise<RedisClient> {
     const key = getCacheKey(config);
     const cached = clientCache.get(key);
 
@@ -144,7 +152,7 @@ async function getClient(config: RedisConnectionConfig): Promise<RedisClient> {
         throw new Error(`SSRF protection: hostname '${host}' is blocked for security reasons`);
     }
 
-    const redis = await loadRedisModule();
+    const redis = await moduleLoader();
     if (!redis) throw new Error('Redis module not loaded');
 
     const Redis = redis.default;
@@ -153,6 +161,7 @@ async function getClient(config: RedisConnectionConfig): Promise<RedisClient> {
         port: config.port ?? 6379,
         password: config.password,
         db: config.db ?? 0,
+        tls: (config.useTls ?? config.ssl) ? {} : undefined,
         retryStrategy: (times: number) => {
             if (times > 10) return null;
             return Math.min(times * 100, REDIS_RETRY_MAX_DELAY_MS);
@@ -223,6 +232,8 @@ export class RedisStreamsAdapter implements QueueAdapter {
 
     private cleanupHandle?: ReturnType<typeof setInterval>;
 
+    constructor(private readonly moduleLoader: typeof loadRedisModule = loadRedisModule) {}
+
     /**
      * Start the periodic cleanup interval for idle clients and stale pending entries.
      * Called automatically on first use; safe to call multiple times.
@@ -284,7 +295,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
     ): Promise<PublishResult[]> {
         this.startCleanup();
         const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
+        const client = await getClient(config, this.moduleLoader);
         const streamKey = `stream:${queueName}`;
 
         const results: PublishResult[] = [];
@@ -339,7 +350,8 @@ export class RedisStreamsAdapter implements QueueAdapter {
     ): Promise<ConsumeResult[]> {
         this.startCleanup();
         const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
+        const client = await getClient(config, this.moduleLoader);
+        const connectionIdentity = getCacheKey(config);
         const streamKey = `stream:${queueName}`;
         const groupName = config.consumerGroup ?? 'datahub-consumers';
         const consumerName = config.consumerName ?? `consumer-${process.pid}`;
@@ -375,7 +387,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
             }
 
             const messageId = parsed.messageId ?? streamId;
-            const deliveryTag = `redis:${streamKey}:${groupName}:${streamId}`;
+            const deliveryTag = `redis:${connectionIdentity}:${streamKey}:${groupName}:${streamId}`;
 
             // Auto-ack: acknowledge immediately
             if (options.ackMode === AckMode.AUTO) {
@@ -402,6 +414,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
                     streamKey,
                     consumerGroup: groupName,
                     messageId: streamId,
+                    connectionIdentity,
                     createdAt: Date.now(),
                 });
             }
@@ -438,7 +451,11 @@ export class RedisStreamsAdapter implements QueueAdapter {
         }
 
         const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
+        const connectionIdentity = getCacheKey(config);
+        if (pending.connectionIdentity !== connectionIdentity) {
+            throw new Error('Redis delivery tag belongs to a different connection');
+        }
+        const client = await getClient(config, this.moduleLoader);
 
         await client.xack(pending.streamKey, pending.consumerGroup, pending.messageId);
         pendingEntries.delete(deliveryTag);
@@ -455,7 +472,11 @@ export class RedisStreamsAdapter implements QueueAdapter {
         }
 
         const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
+        const connectionIdentity = getCacheKey(config);
+        if (pending.connectionIdentity !== connectionIdentity) {
+            throw new Error('Redis delivery tag belongs to a different connection');
+        }
+        const client = await getClient(config, this.moduleLoader);
 
         if (requeue) {
             // In Redis Streams, not acknowledging leaves the message in PEL
@@ -473,7 +494,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
         this.startCleanup();
         try {
             const config = connectionConfig as RedisConnectionConfig;
-            const client = await getClient(config);
+            const client = await getClient(config, this.moduleLoader);
             const result = await client.ping();
             return result === 'PONG';
         } catch {
@@ -492,7 +513,8 @@ export class RedisStreamsAdapter implements QueueAdapter {
         count: number,
     ): Promise<ConsumeResult[]> {
         const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
+        const client = await getClient(config, this.moduleLoader);
+        const connectionIdentity = getCacheKey(config);
         const streamKey = `stream:${queueName}`;
         const groupName = config.consumerGroup ?? 'datahub-consumers';
         const consumerName = config.consumerName ?? `consumer-${process.pid}`;
@@ -539,7 +561,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
                 payload = { rawPayload: parsed.payload };
             }
 
-            const deliveryTag = `redis:${streamKey}:${groupName}:${streamId}`;
+            const deliveryTag = `redis:${connectionIdentity}:${streamKey}:${groupName}:${streamId}`;
 
             results.push({
                 messageId: parsed.messageId ?? streamId,
@@ -553,6 +575,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
                 streamKey,
                 consumerGroup: groupName,
                 messageId: streamId,
+                connectionIdentity,
                 createdAt: Date.now(),
             });
         }
@@ -569,7 +592,7 @@ export class RedisStreamsAdapter implements QueueAdapter {
         maxLen: number,
     ): Promise<number> {
         const config = connectionConfig as RedisConnectionConfig;
-        const client = await getClient(config);
+        const client = await getClient(config, this.moduleLoader);
         const streamKey = `stream:${queueName}`;
 
         return client.xtrim(streamKey, 'MAXLEN', '~', maxLen);

@@ -9,13 +9,18 @@ import {
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
 import { AckMode } from '../../../constants/enums';
-import { HTTP_HEADERS, CONTENT_TYPES, AUTH_SCHEMES, HTTP_STATUS, HTTP } from '../../../constants/index';
+import {
+    HTTP_HEADERS,
+    CONTENT_TYPES,
+    AUTH_SCHEMES,
+    HTTP_STATUS,
+    HTTP,
+    OUTBOUND_RESPONSE_LIMITS,
+} from '../../../constants/index';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
+import { secureFetch } from '../../../utils/secure-fetch.utils';
+import { readResponseJson, readResponseText } from '../../../utils/secure-response-body.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
-import { DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
-import { LOGGER_CONTEXTS } from '../../../constants/core';
-
-const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.RABBITMQ_HTTP_ADAPTER);
 
 export class RabbitMQAdapter implements QueueAdapter {
     readonly code = 'rabbitmq';
@@ -69,7 +74,7 @@ export class RabbitMQAdapter implements QueueAdapter {
             };
 
             try {
-                const response = await fetch(publishUrl, {
+                const response = await secureFetch(publishUrl, {
                     method: 'POST',
                     headers: {
                         [HTTP_HEADERS.AUTHORIZATION]: auth,
@@ -80,14 +85,20 @@ export class RabbitMQAdapter implements QueueAdapter {
                 });
 
                 if (response.ok) {
-                    const body = await response.json() as { routed?: boolean };
+                    const body = await readResponseJson<{ routed?: boolean }>(response, {
+                        maxBytes: OUTBOUND_RESPONSE_LIMITS.ERROR_BODY_BYTES,
+                        context: 'RabbitMQ publish response',
+                    });
                     results.push({
                         success: body.routed !== false,
                         messageId: msg.id,
                         error: body.routed === false ? 'Message was not routed to any queue' : undefined,
                     });
                 } else {
-                    const errorText = await response.text();
+                    const errorText = await readResponseText(response, {
+                        maxBytes: OUTBOUND_RESPONSE_LIMITS.ERROR_BODY_BYTES,
+                        context: 'RabbitMQ publish error response',
+                    });
                     results.push({
                         success: false,
                         messageId: msg.id,
@@ -115,14 +126,20 @@ export class RabbitMQAdapter implements QueueAdapter {
             prefetch?: number;
         },
     ): Promise<ConsumeResult[]> {
+        if (options.ackMode !== AckMode.AUTO) {
+            throw new Error(
+                'RabbitMQ HTTP consumption supports AUTO acknowledgment only; use rabbitmq-amqp for MANUAL acknowledgment',
+            );
+        }
         const baseUrl = this.buildBaseUrl(connectionConfig);
+
         const auth = this.buildAuthHeader(connectionConfig);
         const vhost = this.encodeVhost(connectionConfig);
 
         const getUrl = `${baseUrl}/queues/${vhost}/${encodeURIComponent(queueName)}/get`;
 
         try {
-            const response = await fetch(getUrl, {
+            const response = await secureFetch(getUrl, {
                 method: 'POST',
                 headers: {
                     [HTTP_HEADERS.AUTHORIZATION]: auth,
@@ -137,10 +154,14 @@ export class RabbitMQAdapter implements QueueAdapter {
             });
 
             if (!response.ok) {
+                const errorText = await readResponseText(response, {
+                    maxBytes: OUTBOUND_RESPONSE_LIMITS.ERROR_BODY_BYTES,
+                    context: 'RabbitMQ consume error response',
+                });
                 if (response.status === HTTP_STATUS.NOT_FOUND) {
                     return [];
                 }
-                throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
             }
 
             interface RabbitMQMessage {
@@ -153,7 +174,10 @@ export class RabbitMQAdapter implements QueueAdapter {
                 delivery_tag?: number;
                 redelivered?: boolean;
             }
-            const messages = await response.json() as RabbitMQMessage[];
+            const messages = await readResponseJson<RabbitMQMessage[]>(response, {
+                maxBytes: OUTBOUND_RESPONSE_LIMITS.CONNECTOR_EXTRACT_BYTES,
+                context: 'RabbitMQ consume response',
+            });
             if (!Array.isArray(messages) || messages.length === 0) {
                 return [];
             }
@@ -176,7 +200,6 @@ export class RabbitMQAdapter implements QueueAdapter {
                     messageId: msg.properties?.message_id || crypto.randomUUID(),
                     payload,
                     headers: msg.properties?.headers,
-                    deliveryTag: String(msg.delivery_tag),
                     redelivered: msg.redelivered,
                 };
             });
@@ -189,7 +212,9 @@ export class RabbitMQAdapter implements QueueAdapter {
         _connectionConfig: QueueConnectionConfig,
         _deliveryTag: string,
     ): Promise<void> {
-        logger.warn('RabbitMQ HTTP adapter does not support individual message acknowledgement. Messages are auto-acked on consume. Use rabbitmq-amqp adapter for manual ack support.');
+        throw new Error(
+            'RabbitMQ HTTP messages are auto-acknowledged during consume and cannot be acknowledged individually',
+        );
     }
 
     async nack(
@@ -197,7 +222,9 @@ export class RabbitMQAdapter implements QueueAdapter {
         _deliveryTag: string,
         _requeue: boolean,
     ): Promise<void> {
-        logger.warn('RabbitMQ HTTP adapter does not support individual message rejection. Messages are auto-acked on consume. Use rabbitmq-amqp adapter for manual nack support.');
+        throw new Error(
+            'RabbitMQ HTTP messages are auto-acknowledged during consume and cannot be rejected individually',
+        );
     }
 
     async destroy(): Promise<void> {
@@ -209,10 +236,14 @@ export class RabbitMQAdapter implements QueueAdapter {
         const auth = this.buildAuthHeader(connectionConfig);
 
         try {
-            const response = await fetch(`${baseUrl}/overview`, {
+            const response = await secureFetch(`${baseUrl}/overview`, {
                 method: 'GET',
                 headers: { [HTTP_HEADERS.AUTHORIZATION]: auth },
                 signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
+            });
+            await readResponseText(response, {
+                maxBytes: OUTBOUND_RESPONSE_LIMITS.ERROR_BODY_BYTES,
+                context: 'RabbitMQ overview response',
             });
             return response.ok;
         } catch {

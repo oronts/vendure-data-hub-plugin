@@ -22,6 +22,7 @@ import { JsonObject } from '../../../types/index';
 import { AckMode, INTERNAL_TIMINGS, TIME } from '../../../constants';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
+import { createQueueConnectionIdentity } from './connection-identity';
 
 /** Queue name used for SQS connection tests */
 const SQS_TEST_CONNECTION_QUEUE = 'data-hub-test-connection';
@@ -43,6 +44,8 @@ interface SqsConnectionConfig extends QueueConnectionConfig {
     endpoint?: string;
     /** Account ID for queue URL construction */
     accountId?: string;
+    /** Direct queue URL; bypasses account-based URL construction */
+    queueUrl?: string;
 }
 
 /**
@@ -111,6 +114,7 @@ const clientCache = new Map<string, { client: SQSClient; lastUsed: number }>();
 interface PendingReceipt {
     queueUrl: string;
     receiptHandle: string;
+    connectionIdentity: string;
     createdAt: number;
 }
 const pendingReceipts = new Map<string, PendingReceipt>();
@@ -119,27 +123,46 @@ const pendingReceipts = new Map<string, PendingReceipt>();
  * Generate cache key for connection config
  */
 function getCacheKey(config: SqsConnectionConfig): string {
-    return `${config.region ?? 'us-east-1'}:${config.accessKeyId ?? 'default'}:${config.endpoint ?? 'aws'}`;
+    return createQueueConnectionIdentity('sqs', config);
 }
 
 /**
  * Build queue URL from config and queue name
  */
 function buildQueueUrl(config: SqsConnectionConfig, queueName: string): string {
-    if (!config.accountId) {
+    if (config.queueUrl?.trim()) {
+        return validateSqsUrl(config.queueUrl.trim(), 'queueUrl');
+    }
+    const accountId = config.accountId?.trim();
+    if (!accountId) {
         throw new Error(
-            'SQS accountId is required in connection config. ' +
-            'Provide your AWS account ID (e.g., "123456789012") to construct the queue URL.',
+            'SQS accountId is required when queueUrl is not configured.',
         );
     }
-    const accountId = config.accountId;
 
     if (config.endpoint) {
-        // LocalStack or custom endpoint
-        return `${config.endpoint}/${accountId}/${queueName}`;
+        const endpoint = validateSqsUrl(config.endpoint, 'endpoint').replace(/\/+$/, '');
+        return `${endpoint}/${encodeURIComponent(accountId)}/${encodeURIComponent(queueName)}`;
     }
     const region = config.region ?? 'us-east-1';
-    return `https://sqs.${region}.amazonaws.com/${accountId}/${queueName}`;
+    return `https://sqs.${region}.amazonaws.com/${encodeURIComponent(accountId)}/${encodeURIComponent(queueName)}`;
+}
+
+function validateSqsUrl(value: string, field: 'endpoint' | 'queueUrl'): string {
+    const normalizedValue = value.trim();
+    let parsed: URL;
+    try {
+        parsed = new URL(normalizedValue);
+    } catch {
+        throw new Error(`Invalid SQS ${field} URL: ${value}`);
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error(`SQS ${field} must use http or https`);
+    }
+    if (isBlockedHostname(parsed.hostname)) {
+        throw new Error(`SSRF protection: ${field} hostname '${parsed.hostname}' is blocked for security reasons`);
+    }
+    return normalizedValue;
 }
 
 /**
@@ -176,7 +199,10 @@ async function loadSqsModule(): Promise<typeof sqsModule> {
 /**
  * Get or create SQS client
  */
-async function getClient(config: SqsConnectionConfig): Promise<SQSClient> {
+async function getClient(
+    config: SqsConnectionConfig,
+    moduleLoader: typeof loadSqsModule,
+): Promise<SQSClient> {
     const key = getCacheKey(config);
     const cached = clientCache.get(key);
 
@@ -185,13 +211,19 @@ async function getClient(config: SqsConnectionConfig): Promise<SQSClient> {
         return cached.client;
     }
 
-    const sqs = await loadSqsModule();
+    const sqs = await moduleLoader();
     if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
 
     const clientConfig: Record<string, unknown> = {
         region: config.region ?? 'us-east-1',
     };
+    if (config.queueUrl !== undefined) {
+        validateSqsUrl(config.queueUrl, 'queueUrl');
+    }
 
+    if (Boolean(config.accessKeyId) !== Boolean(config.secretAccessKey)) {
+        throw new Error('SQS accessKeyId and secretAccessKey must be configured together');
+    }
     if (config.accessKeyId && config.secretAccessKey) {
         clientConfig.credentials = {
             accessKeyId: config.accessKeyId,
@@ -200,19 +232,7 @@ async function getClient(config: SqsConnectionConfig): Promise<SQSClient> {
     }
 
     if (config.endpoint) {
-        // SSRF validation for custom SQS endpoint URLs
-        try {
-            const endpointUrl = new URL(config.endpoint);
-            if (isBlockedHostname(endpointUrl.hostname)) {
-                throw new Error(`SSRF protection: endpoint hostname '${endpointUrl.hostname}' is blocked for security reasons`);
-            }
-        } catch (e) {
-            if (e instanceof Error && e.message.startsWith('SSRF protection:')) {
-                throw e;
-            }
-            throw new Error(`Invalid SQS endpoint URL: ${config.endpoint}`);
-        }
-        clientConfig.endpoint = config.endpoint;
+        clientConfig.endpoint = validateSqsUrl(config.endpoint, 'endpoint');
     }
 
     const client = new sqs.SQSClient(clientConfig) as unknown as SQSClient;
@@ -250,6 +270,8 @@ export class SqsAdapter implements QueueAdapter {
     readonly description = 'AWS Simple Queue Service adapter';
 
     private cleanupHandle?: ReturnType<typeof setInterval>;
+
+    constructor(private readonly moduleLoader: typeof loadSqsModule = loadSqsModule) {}
 
     /**
      * Start the periodic cleanup interval for idle clients and stale pending receipts.
@@ -307,11 +329,11 @@ export class SqsAdapter implements QueueAdapter {
     ): Promise<PublishResult[]> {
         this.startCleanup();
         const config = connectionConfig as SqsConnectionConfig;
-        const client = await getClient(config);
         const queueUrl = buildQueueUrl(config, queueName);
-        const isFifo = queueName.endsWith('.fifo');
+        const client = await getClient(config, this.moduleLoader);
+        const isFifo = queueName.endsWith('.fifo') || new URL(queueUrl).pathname.endsWith('.fifo');
 
-        const sqs = await loadSqsModule();
+        const sqs = await this.moduleLoader();
         if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
         const SendCmd = sqs.SendMessageBatchCommand;
 
@@ -408,16 +430,19 @@ export class SqsAdapter implements QueueAdapter {
     ): Promise<ConsumeResult[]> {
         this.startCleanup();
         const config = connectionConfig as SqsConnectionConfig;
-        const client = await getClient(config);
         const queueUrl = buildQueueUrl(config, queueName);
+        const client = await getClient(config, this.moduleLoader);
+        const connectionIdentity = getCacheKey(config);
 
-        const sqs = await loadSqsModule();
+        const sqs = await this.moduleLoader();
         if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
         const ReceiveCmd = sqs.ReceiveMessageCommand;
         const DeleteCmd = sqs.DeleteMessageCommand;
 
-        // SQS max is 10 messages per receive
-        const maxMessages = Math.min(10, options.count);
+        // AUTO uses one delivery so a later delete failure cannot discard an acknowledged batch.
+        const maxMessages = options.ackMode === AckMode.AUTO
+            ? 1
+            : Math.min(10, options.count);
 
         const response = await client.send(new ReceiveCmd({
             QueueUrl: queueUrl,
@@ -448,16 +473,11 @@ export class SqsAdapter implements QueueAdapter {
             const receiptHandle = msg.ReceiptHandle ?? '';
             const now = Date.now();
 
-            // Auto-ack: delete immediately
             if (options.ackMode === AckMode.AUTO) {
-                try {
-                    await client.send(new DeleteCmd({
-                        QueueUrl: queueUrl,
-                        ReceiptHandle: receiptHandle,
-                    }));
-                } catch {
-                    // Ignore delete errors for auto-ack
-                }
+                await client.send(new DeleteCmd({
+                    QueueUrl: queueUrl,
+                    ReceiptHandle: receiptHandle,
+                }));
             } else {
                 // Evict oldest pending receipt if at capacity
                 const maxPending = INTERNAL_TIMINGS.MAX_PENDING_MESSAGES ?? 10_000;
@@ -476,10 +496,11 @@ export class SqsAdapter implements QueueAdapter {
                 }
 
                 // Manual ack: store receipt handle
-                const deliveryTag = `sqs:${messageId}:${now}`;
+                const deliveryTag = `sqs:${connectionIdentity}:${messageId}:${now}`;
                 pendingReceipts.set(deliveryTag, {
                     queueUrl,
                     receiptHandle,
+                    connectionIdentity,
                     createdAt: now,
                 });
             }
@@ -499,7 +520,7 @@ export class SqsAdapter implements QueueAdapter {
                 payload,
                 headers: Object.keys(headers).length > 0 ? headers : undefined,
                 deliveryTag: options.ackMode === AckMode.MANUAL
-                    ? `sqs:${messageId}:${now}`
+                    ? `sqs:${connectionIdentity}:${messageId}:${now}`
                     : undefined,
                 redelivered: parseInt(msg.Attributes?.ApproximateReceiveCount ?? '1', 10) > 1,
             });
@@ -518,9 +539,12 @@ export class SqsAdapter implements QueueAdapter {
         }
 
         const config = connectionConfig as SqsConnectionConfig;
-        const client = await getClient(config);
+        if (pending.connectionIdentity !== getCacheKey(config)) {
+            throw new Error('SQS delivery tag belongs to a different connection');
+        }
+        const client = await getClient(config, this.moduleLoader);
 
-        const sqs = await loadSqsModule();
+        const sqs = await this.moduleLoader();
         if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
 
         await client.send(new sqs.DeleteMessageCommand({
@@ -542,9 +566,12 @@ export class SqsAdapter implements QueueAdapter {
         }
 
         const config = connectionConfig as SqsConnectionConfig;
-        const client = await getClient(config);
+        if (pending.connectionIdentity !== getCacheKey(config)) {
+            throw new Error('SQS delivery tag belongs to a different connection');
+        }
+        const client = await getClient(config, this.moduleLoader);
 
-        const sqs = await loadSqsModule();
+        const sqs = await this.moduleLoader();
         if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
 
         if (requeue) {
@@ -569,10 +596,10 @@ export class SqsAdapter implements QueueAdapter {
         this.startCleanup();
         try {
             const config = connectionConfig as SqsConnectionConfig;
-            const client = await getClient(config);
+            const client = await getClient(config, this.moduleLoader);
 
             // Try to get queue URL as a connection test
-            const sqs = await loadSqsModule();
+            const sqs = await this.moduleLoader();
             if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
 
             await client.send(new sqs.GetQueueUrlCommand({

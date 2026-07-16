@@ -1,0 +1,416 @@
+import { describe, expect, it, vi } from 'vitest';
+import { AckMode } from '../../constants';
+import { queueAdapterRegistry } from '../../sdk/adapters/queue';
+import type { QueueAdapter, QueueConnectionConfig } from '../../sdk/adapters/queue';
+import type { DataHubLogger } from '../logger';
+import type { MessageConsumerConfig } from './consumer-discovery';
+import type { ActiveConsumer } from './consumer-lifecycle';
+import { MessageProcessing } from './message-processing';
+
+function createConfig(overrides: Partial<MessageConsumerConfig> = {}): MessageConsumerConfig {
+    return {
+        pipelineId: 1,
+        pipelineCode: 'orders',
+        triggerKey: 'queue',
+        queueType: 'internal',
+        connectionCode: '',
+        queueName: 'orders',
+        batchSize: 1,
+        concurrency: 1,
+        ackMode: AckMode.MANUAL,
+        maxRetries: 2,
+        pollIntervalMs: 1_000,
+        autoStart: true,
+        ...overrides,
+    };
+}
+
+function createConsumer(overrides: Partial<MessageConsumerConfig> = {}): ActiveConsumer {
+    return {
+        config: createConfig(overrides),
+        running: true,
+        messagesProcessed: 0,
+        messagesFailed: 0,
+        startedAt: new Date(),
+        inFlightCount: 0,
+    };
+}
+
+function createLogger(): DataHubLogger {
+    return {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+    } as unknown as DataHubLogger;
+}
+
+function createAdapter(overrides: Partial<QueueAdapter> = {}): QueueAdapter {
+    return {
+        code: 'test',
+        name: 'Test',
+        description: 'Test adapter',
+        publish: vi.fn().mockResolvedValue([]),
+        consume: vi.fn().mockResolvedValue([]),
+        ack: vi.fn().mockResolvedValue(undefined),
+        nack: vi.fn().mockResolvedValue(undefined),
+        testConnection: vi.fn().mockResolvedValue(true),
+        destroy: vi.fn().mockResolvedValue(undefined),
+        ...overrides,
+    };
+}
+
+function createProcessor(
+    startRunByCode: ReturnType<typeof vi.fn>,
+    logger = createLogger(),
+    publishTriggerFired: () => unknown = vi.fn(),
+) {
+    const processor = new MessageProcessing(
+        { create: vi.fn().mockResolvedValue({}) } as never,
+        { startRunByCode } as never,
+        {} as never,
+        {} as never,
+        logger,
+        { publishTriggerFired } as never,
+    );
+    return { processor, logger };
+}
+
+type ProcessingInternals = {
+    processDelivery(
+        consumer: ActiveConsumer,
+        adapter: QueueAdapter,
+        connectionConfig: QueueConnectionConfig,
+        message: { messageId: string; payload: Record<string, unknown>; deliveryTag?: string },
+    ): Promise<void>;
+    pollMessages(consumer: ActiveConsumer): Promise<void>;
+};
+
+describe('MessageProcessing reliability', () => {
+    it('honors maxRetries and acknowledges only after a successful enqueue', async () => {
+        const startRunByCode = vi.fn()
+            .mockRejectedValueOnce(new Error('first'))
+            .mockRejectedValueOnce(new Error('second'))
+            .mockResolvedValue({ pipelineId: 1 });
+        const ack = vi.fn().mockResolvedValue(undefined);
+        const adapter = createAdapter({ ack });
+        const consumer = createConsumer({ maxRetries: 2 });
+        const { processor } = createProcessor(startRunByCode);
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            consumer,
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(startRunByCode).toHaveBeenCalledTimes(3);
+        expect(ack).toHaveBeenCalledOnce();
+        expect(startRunByCode.mock.invocationCallOrder[2]).toBeLessThan(ack.mock.invocationCallOrder[0]);
+        expect(consumer.messagesProcessed).toBe(1);
+        expect(consumer.messagesFailed).toBe(0);
+    });
+
+    it('does not retry an enqueued run when trigger event publication fails', async () => {
+        const startRunByCode = vi.fn().mockResolvedValue({ pipelineId: 1 });
+        const publishTriggerFired = vi.fn(() => {
+            throw new Error('event publication failed');
+        });
+        const ack = vi.fn().mockResolvedValue(undefined);
+        const adapter = createAdapter({ ack });
+        const consumer = createConsumer();
+        const { processor, logger } = createProcessor(
+            startRunByCode,
+            createLogger(),
+            publishTriggerFired,
+        );
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            consumer,
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(startRunByCode).toHaveBeenCalledOnce();
+        expect(ack).toHaveBeenCalledOnce();
+        expect(logger.warn).toHaveBeenCalledWith(
+            'Pipeline run was enqueued but trigger event publication failed',
+            expect.objectContaining({ messageId: 'message-1' }),
+        );
+    });
+
+    it('requeues the original when a resolved DLQ publish result reports failure', async () => {
+        const startRunByCode = vi.fn().mockRejectedValue(new Error('enqueue failed'));
+        const publish = vi.fn().mockResolvedValue([{
+            success: false,
+            messageId: 'message-1',
+            error: 'not routed',
+        }]);
+        const nack = vi.fn().mockResolvedValue(undefined);
+        const adapter = createAdapter({ publish, nack });
+        const consumer = createConsumer({ maxRetries: 1, deadLetterQueue: 'orders.dlq' });
+        const { processor, logger } = createProcessor(startRunByCode);
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            consumer,
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(startRunByCode).toHaveBeenCalledTimes(2);
+        expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', true);
+        expect(logger.info).not.toHaveBeenCalledWith(
+            'Routed message to DLQ',
+            expect.anything(),
+        );
+    });
+
+    it('rejects the original without requeue only after confirmed DLQ delivery', async () => {
+        const startRunByCode = vi.fn().mockRejectedValue(new Error('enqueue failed'));
+        const publish = vi.fn().mockResolvedValue([{
+            success: true,
+            messageId: 'message-1',
+        }]);
+        const nack = vi.fn().mockResolvedValue(undefined);
+        const adapter = createAdapter({ publish, nack });
+        const consumer = createConsumer({ maxRetries: 0, deadLetterQueue: 'orders.dlq' });
+        const { processor } = createProcessor(startRunByCode);
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            consumer,
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(startRunByCode).toHaveBeenCalledOnce();
+        expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', false);
+    });
+
+    it('does not route an already-enqueued message to the DLQ when acknowledgment fails', async () => {
+        const startRunByCode = vi.fn().mockResolvedValue({ pipelineId: 1 });
+        const publish = vi.fn();
+        const ackError = new Error('ack failed');
+        const adapter = createAdapter({
+            ack: vi.fn().mockRejectedValue(ackError),
+            publish,
+        });
+        const consumer = createConsumer({ deadLetterQueue: 'orders.dlq' });
+        const { processor } = createProcessor(startRunByCode);
+
+        await expect(
+            (processor as unknown as ProcessingInternals).processDelivery(
+                consumer,
+                adapter,
+                {} as QueueConnectionConfig,
+                { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+            ),
+        ).rejects.toThrow('ack failed');
+
+        expect(publish).not.toHaveBeenCalled();
+        expect(consumer.messagesProcessed).toBe(0);
+        expect(consumer.messagesFailed).toBe(1);
+    });
+
+    it('passes the configured consumerGroup to Redis Streams', async () => {
+        const consume = vi.fn().mockResolvedValue([]);
+        const adapter = createAdapter({ consume });
+        const registrySpy = vi.spyOn(queueAdapterRegistry, 'get').mockReturnValue(adapter);
+        const processor = new MessageProcessing(
+            { create: vi.fn().mockResolvedValue({}) } as never,
+            {} as never,
+            { getRuntimeByCode: vi.fn().mockResolvedValue({ config: { host: 'redis.example.com', port: 6379 } }) } as never,
+            { resolve: vi.fn() } as never,
+            createLogger(),
+            {} as never,
+        );
+        const consumer = createConsumer({
+            queueType: 'redis-streams',
+            connectionCode: 'redis',
+            consumerGroup: 'order-workers',
+            ackMode: AckMode.MANUAL,
+        });
+
+        try {
+            await (processor as unknown as ProcessingInternals).pollMessages(consumer);
+        } finally {
+            registrySpy.mockRestore();
+        }
+
+        expect(consume).toHaveBeenCalledWith(
+            expect.objectContaining({ consumerGroup: 'order-workers' }),
+            'orders',
+            expect.objectContaining({ ackMode: AckMode.MANUAL }),
+        );
+    });
+
+    it.each([
+        {
+            queueType: 'rabbitmq-amqp',
+            rawConfig: {
+                host: 'rabbitmq.example.com',
+                port: 5672,
+                passwordSecretCode: 'rabbitmq-password',
+            },
+            secrets: { 'rabbitmq-password': 'rabbitmq-secret' },
+            expected: { password: 'rabbitmq-secret' },
+            removedFields: ['passwordSecretCode'],
+        },
+        {
+            queueType: 'redis-streams',
+            rawConfig: {
+                host: 'redis.example.com',
+                port: 6379,
+                passwordSecretCode: 'redis-password',
+                ssl: true,
+            },
+            secrets: { 'redis-password': 'redis-secret' },
+            expected: { password: 'redis-secret', useTls: true },
+            removedFields: ['passwordSecretCode'],
+        },
+        {
+            queueType: 'sqs',
+            rawConfig: {
+                region: 'eu-central-1',
+                queueUrl: 'https://sqs.eu-central-1.amazonaws.com/123456789012/orders',
+                accessKeyIdSecretCode: 'sqs-access-key',
+                secretAccessKeySecretCode: 'sqs-secret-key',
+            },
+            secrets: {
+                'sqs-access-key': 'access-key',
+                'sqs-secret-key': 'secret-key',
+            },
+            expected: { accessKeyId: 'access-key', secretAccessKey: 'secret-key' },
+            removedFields: ['accessKeyIdSecretCode', 'secretAccessKeySecretCode'],
+        },
+    ])('resolves and removes Secret Code references for $queueType consumers', async ({
+        queueType,
+        rawConfig,
+        secrets,
+        expected,
+        removedFields,
+    }) => {
+        const consume = vi.fn().mockResolvedValue([]);
+        const adapter = createAdapter({ consume });
+        const registrySpy = vi.spyOn(queueAdapterRegistry, 'get').mockReturnValue(adapter);
+        const resolve = vi.fn(async (_ctx: unknown, code: string) => (
+            secrets[code as keyof typeof secrets] ?? null
+        ));
+        const processor = new MessageProcessing(
+            { create: vi.fn().mockResolvedValue({}) } as never,
+            {} as never,
+            { getRuntimeByCode: vi.fn().mockResolvedValue({ config: rawConfig }) } as never,
+            { resolve } as never,
+            createLogger(),
+            {} as never,
+        );
+
+        try {
+            await (processor as unknown as ProcessingInternals).pollMessages(createConsumer({
+                queueType,
+                connectionCode: `${queueType}-connection`,
+            }));
+        } finally {
+            registrySpy.mockRestore();
+        }
+
+        const resolvedConfig = consume.mock.calls[0]?.[0] as Record<string, unknown>;
+        expect(resolvedConfig).toMatchObject(expected);
+        for (const field of removedFields) {
+            expect(resolvedConfig).not.toHaveProperty(field);
+        }
+    });
+
+    it.each([
+        ['rabbitmq-amqp', { host: 'rabbitmq.example.com', passwordSecretCode: 'missing-rabbitmq-password' }],
+        ['redis-streams', { host: 'redis.example.com', passwordSecretCode: 'missing-redis-password' }],
+        ['sqs', {
+            region: 'eu-central-1',
+            queueUrl: 'https://sqs.eu-central-1.amazonaws.com/123456789012/orders',
+            accessKeyIdSecretCode: 'missing-sqs-access-key',
+            secretAccessKeySecretCode: 'missing-sqs-secret-key',
+        }],
+    ])('fails closed when a %s consumer Secret Code cannot be resolved', async (queueType, rawConfig) => {
+        const consume = vi.fn().mockResolvedValue([]);
+        const adapter = createAdapter({ consume });
+        const registrySpy = vi.spyOn(queueAdapterRegistry, 'get').mockReturnValue(adapter);
+        const processor = new MessageProcessing(
+            { create: vi.fn().mockResolvedValue({}) } as never,
+            {} as never,
+            { getRuntimeByCode: vi.fn().mockResolvedValue({ config: rawConfig }) } as never,
+            { resolve: vi.fn().mockResolvedValue(null) } as never,
+            createLogger(),
+            {} as never,
+        );
+
+        try {
+            await expect(
+                (processor as unknown as ProcessingInternals).pollMessages(createConsumer({
+                    queueType,
+                    connectionCode: `${queueType}-connection`,
+                })),
+            ).rejects.toThrow('could not be resolved');
+        } finally {
+            registrySpy.mockRestore();
+        }
+        expect(consume).not.toHaveBeenCalled();
+    });
+
+    it('fails closed on an empty configured queue Secret Code', async () => {
+        const consume = vi.fn().mockResolvedValue([]);
+        const registrySpy = vi.spyOn(queueAdapterRegistry, 'get')
+            .mockReturnValue(createAdapter({ consume }));
+        const processor = new MessageProcessing(
+            { create: vi.fn().mockResolvedValue({}) } as never,
+            {} as never,
+            { getRuntimeByCode: vi.fn().mockResolvedValue({
+                config: { host: 'redis.example.com', passwordSecretCode: '   ' },
+            }) } as never,
+            { resolve: vi.fn() } as never,
+            createLogger(),
+            {} as never,
+        );
+
+        try {
+            await expect(
+                (processor as unknown as ProcessingInternals).pollMessages(createConsumer({
+                    queueType: 'redis-streams',
+                    connectionCode: 'redis',
+                })),
+            ).rejects.toThrow('must reference a non-empty Secret Code');
+        } finally {
+            registrySpy.mockRestore();
+        }
+        expect(consume).not.toHaveBeenCalled();
+    });
+
+    it.each(['', '   '])('fails closed on an empty resolved queue secret (%j)', async resolvedSecret => {
+        const consume = vi.fn().mockResolvedValue([]);
+        const registrySpy = vi.spyOn(queueAdapterRegistry, 'get')
+            .mockReturnValue(createAdapter({ consume }));
+        const processor = new MessageProcessing(
+            { create: vi.fn().mockResolvedValue({}) } as never,
+            {} as never,
+            { getRuntimeByCode: vi.fn().mockResolvedValue({
+                config: { host: 'redis.example.com', passwordSecretCode: 'redis-password' },
+            }) } as never,
+            { resolve: vi.fn().mockResolvedValue(resolvedSecret) } as never,
+            createLogger(),
+            {} as never,
+        );
+
+        try {
+            await expect(
+                (processor as unknown as ProcessingInternals).pollMessages(createConsumer({
+                    queueType: 'redis-streams',
+                    connectionCode: 'redis',
+                })),
+            ).rejects.toThrow('could not be resolved');
+        } finally {
+            registrySpy.mockRestore();
+        }
+        expect(consume).not.toHaveBeenCalled();
+    });
+});

@@ -22,10 +22,11 @@ import { AckMode, INTERNAL_TIMINGS, LOGGER_CONTEXTS, CONTENT_TYPES } from '../..
 import { DataHubLoggerFactory } from '../../../services/logger';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
+import { createQueueConnectionIdentity } from './connection-identity';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.RABBITMQ_ADAPTER);
 
-// Types for amqplib - using any for flexibility since types may vary by version
+// Minimal structural interfaces isolate the adapter from amqplib version-specific types.
 type AmqpConnection = {
     createConfirmChannel(): Promise<AmqpChannel>;
     close(): Promise<void>;
@@ -75,7 +76,7 @@ const connectingPromises = new Map<string, Promise<{ connection: AmqpConnection;
  * Generate a unique key for a connection configuration
  */
 function getConnectionKey(config: QueueConnectionConfig): string {
-    return `${config.host}:${config.port}:${config.username ?? 'guest'}:${config.vhost ?? '/'}`;
+    return createQueueConnectionIdentity('rabbitmq-amqp', config);
 }
 
 /**
@@ -201,6 +202,7 @@ async function closeConnection(config: QueueConnectionConfig): Promise<void> {
 interface PendingMessage {
     channel: AmqpChannel;
     deliveryTag: number;
+    connectionIdentity: string;
     createdAt: number;
 }
 const pendingMessages = new Map<string, PendingMessage>();
@@ -428,6 +430,7 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
                 pendingMessages.set(deliveryTag, {
                     channel,
                     deliveryTag: msg.fields.deliveryTag,
+                    connectionIdentity: getConnectionKey(connectionConfig),
                     createdAt: Date.now(),
                 });
             }
@@ -452,6 +455,9 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         if (!pending) {
             throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
         }
+        if (pending.connectionIdentity !== getConnectionKey(connectionConfig)) {
+            throw new Error('RabbitMQ delivery tag belongs to a different connection');
+        }
 
         pending.channel.ack({ fields: { deliveryTag: pending.deliveryTag } });
         pendingMessages.delete(deliveryTag);
@@ -465,6 +471,9 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         const pending = pendingMessages.get(deliveryTag);
         if (!pending) {
             throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
+        }
+        if (pending.connectionIdentity !== getConnectionKey(connectionConfig)) {
+            throw new Error('RabbitMQ delivery tag belongs to a different connection');
         }
 
         pending.channel.nack(
