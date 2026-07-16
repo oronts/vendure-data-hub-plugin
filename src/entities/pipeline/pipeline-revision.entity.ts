@@ -1,5 +1,5 @@
 import { Column, Entity, Index, ManyToOne } from 'typeorm';
-import { DeepPartial, VendureEntity } from '@vendure/core';
+import { DeepPartial, EntityId, ID, VendureEntity } from '@vendure/core';
 import { Pipeline } from './pipeline.entity';
 import { PipelineDefinition } from '../../types/index';
 import { RevisionType } from '../../constants/enums';
@@ -30,8 +30,8 @@ export class PipelineRevision extends VendureEntity {
     pipeline!: Pipeline;
 
     @Index()
-    @Column({ type: 'int' })
-    pipelineId!: number;
+    @EntityId()
+    pipelineId!: ID;
 
     @Column({ type: 'int', default: 0 })
     version!: number;
@@ -59,8 +59,8 @@ export class PipelineRevision extends VendureEntity {
      * Indexed for efficient history lookups and diff generation.
      */
     @Index()
-    @Column({ type: 'int', nullable: true })
-    previousRevisionId!: number | null;
+    @EntityId({ nullable: true })
+    previousRevisionId!: ID | null;
 
     @Column({ type: 'int', default: 0 })
     definitionSize!: number;

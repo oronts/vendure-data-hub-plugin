@@ -1,7 +1,7 @@
 import { Column, Entity, Index, ManyToOne } from 'typeorm';
-import { DeepPartial, VendureEntity } from '@vendure/core';
+import { DeepPartial, EntityId, ID, VendureEntity } from '@vendure/core';
 import { Pipeline } from './pipeline.entity';
-import { PipelineCheckpoint, PipelineMetrics } from '../../types/index';
+import { PipelineCheckpoint, PipelineDefinition, PipelineMetrics } from '../../types/index';
 import { RunStatus } from '../../constants/enums';
 import { TABLE_NAMES } from '../../constants/table-names';
 
@@ -10,6 +10,10 @@ import { TABLE_NAMES } from '../../constants/table-names';
 @Index(['status', 'createdAt'])
 @Index(['pipelineId', 'status']) // Composite for pipeline-specific status queries
 @Index(['startedAt']) // For sorting by execution time
+@Index(
+    ['idempotencyChannelId', 'pipelineId', 'idempotencyTriggerKeyHash', 'idempotencyKeyHash'],
+    { unique: true },
+)
 export class PipelineRun extends VendureEntity {
     constructor(input?: DeepPartial<PipelineRun>) {
         super(input);
@@ -19,16 +23,16 @@ export class PipelineRun extends VendureEntity {
     pipeline!: Pipeline;
 
     @Index()
-    @Column({ type: 'int' })
-    pipelineId!: number;
+    @EntityId()
+    pipelineId!: ID;
 
     @Column({ type: 'varchar', length: 20 })
     status!: RunStatus;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: Date, nullable: true })
     startedAt!: Date | null;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: Date, nullable: true })
     finishedAt!: Date | null;
 
     @Column({ type: 'simple-json', nullable: true })
@@ -36,6 +40,9 @@ export class PipelineRun extends VendureEntity {
 
     @Column({ type: 'text', nullable: true })
     error!: string | null;
+
+    @Column({ type: 'simple-json', nullable: true })
+    definitionSnapshot!: PipelineDefinition | null;
 
     @Column({ type: 'simple-json', nullable: true })
     checkpoint!: PipelineCheckpoint | null;
@@ -47,6 +54,21 @@ export class PipelineRun extends VendureEntity {
     @Column({ type: 'varchar', length: 255, nullable: true })
     triggeredBy!: string | null;
 
+
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    idempotencyChannelId!: string | null;
+
+    @Column({ type: 'varchar', length: 64, nullable: true })
+    idempotencyTriggerKeyHash!: string | null;
+
+    @Column({ type: 'varchar', length: 64, nullable: true })
+    idempotencyKeyHash!: string | null;
+
+    @Column({ type: 'varchar', length: 64, nullable: true })
+    idempotencyPayloadHash!: string | null;
+
+    @Column({ type: Date, nullable: true })
+    idempotencyExpiresAt!: Date | null;
     /** Virtual alias for `finishedAt` - exposed on the GraphQL type as `completedAt` */
     get completedAt(): Date | null {
         return this.finishedAt;

@@ -14,16 +14,36 @@ import {
     TransactionalConnection,
 } from '@vendure/core';
 import { Pipeline, PipelineRevision, PipelineRun } from '../../entities/pipeline';
-import { JsonObject, JsonValue, PipelineDefinition, PipelineMetrics, RunStatus } from '../../types/index';
+import { JsonObject, PipelineDefinition, PipelineMetrics, RunStatus } from '../../types/index';
 import { PipelineStatus, RevisionType, SortOrder, StepType } from '../../constants/enums';
 import { DefinitionValidationService } from '../validation/definition-validation.service';
 import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
+import { createSeededGraphInput, type SeededInputMode } from '../../runtime/orchestration';
+import { DataHubRegistryService } from '../../sdk/registry.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { PipelineQueueRequestEvent } from '../events/pipeline-events';
 import { getErrorMessage, isDuplicateEntryError } from '../../utils/error.utils';
 import { CheckpointService } from '../data/checkpoint.service';
 import { DomainEventsService } from '../events/domain-events.service';
+import { RevisionService } from '../versioning/revision.service';
+import {
+    assertPipelineRunnable,
+    clonePipelineDefinition,
+    assertPipelineStatus,
+    assertValidPipelineCode,
+    definitionsEqual,
+    normalizePipelineDefinition,
+    normalizePipelineVersion,
+    statusAfterExecutableUpdate,
+} from './pipeline-policy';
+import { getMissingPipelinePermissions } from './pipeline-capabilities';
+import { sanitizePipelineDefinitionForOutput } from '../validation/hook-security';
+import {
+    createPipelineRunIdempotencyScope,
+    PipelineRunIdempotencyConflictError,
+    type PipelineRunIdempotencyScope,
+} from './pipeline-run-idempotency';
 
 export interface CreatePipelineInput {
     code: string;
@@ -42,6 +62,37 @@ export interface UpdatePipelineInput {
     definition?: PipelineDefinition;
 }
 
+export interface SeededRunOptions {
+    triggerKey: string;
+    skipPermissionCheck?: boolean;
+    triggeredBy?: string;
+    seedMode?: SeededInputMode;
+    deferQueueEnqueue?: boolean;
+}
+
+export interface IdempotentSeededRunOptions extends SeededRunOptions {
+    idempotencyKey: string;
+    idempotencyTtlSeconds: number;
+    requestFingerprint: string;
+}
+
+export interface IdempotentSeededRunResult {
+    run: PipelineRun;
+    duplicate: boolean;
+}
+
+function toPublicPipeline(pipeline: Pipeline): Pipeline {
+    const sanitized = Object.assign(new Pipeline(), pipeline);
+    sanitized.definition = sanitizePipelineDefinitionForOutput(pipeline.definition);
+    return sanitized;
+}
+
+function toPublicRevision(revision: PipelineRevision): PipelineRevision {
+    const sanitized = Object.assign(new PipelineRevision(), revision);
+    sanitized.definition = sanitizePipelineDefinitionForOutput(revision.definition);
+    return sanitized;
+}
+
 @Injectable()
 export class PipelineService {
     private readonly logger: DataHubLogger;
@@ -52,8 +103,10 @@ export class PipelineService {
         private eventBus: EventBus,
         private definitionValidator: DefinitionValidationService,
         private adapterRuntime: AdapterRuntimeService,
+        private registry: DataHubRegistryService,
         private checkpointService: CheckpointService,
         private domainEvents: DomainEventsService,
+        private revisionService: RevisionService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PIPELINE_SERVICE);
@@ -65,18 +118,21 @@ export class PipelineService {
     ): Promise<PaginatedList<Pipeline>> {
         const qb = this.listQueryBuilder.build(Pipeline, options, { ctx });
         const [items, totalItems] = await qb.getManyAndCount();
-        return { items, totalItems };
+        return { items: items.map(toPublicPipeline), totalItems };
     }
 
-    findOne(ctx: RequestContext, id: ID): Promise<Pipeline | null> {
-        return this.connection.getRepository(ctx, Pipeline).findOne({ where: { id } });
+    async findOne(ctx: RequestContext, id: ID): Promise<Pipeline | null> {
+        const pipeline = await this.connection.getRepository(ctx, Pipeline).findOne({ where: { id } });
+        return pipeline ? toPublicPipeline(pipeline) : null;
     }
 
     async findByCodes(ctx: RequestContext, codes: string[]): Promise<Pipeline[]> {
         if (!codes?.length) return [];
-        return this.connection.getRepository(ctx, Pipeline).createQueryBuilder('pipeline')
+        const pipelines = await this.connection.getRepository(ctx, Pipeline)
+            .createQueryBuilder('pipeline')
             .where('pipeline.code IN (:...codes)', { codes })
             .getMany();
+        return pipelines.map(toPublicPipeline);
     }
 
     async findDependents(ctx: RequestContext, code: string): Promise<Pipeline[]> {
@@ -84,10 +140,12 @@ export class PipelineService {
         const qb = repo.createQueryBuilder('pipeline')
             .where(`pipeline.definition LIKE :pattern`, { pattern: `%${code}%` });
         const candidates = await qb.getMany();
-        return candidates.filter(p => {
-            const def = p.definition as PipelineDefinition & { dependsOn?: string[] };
-            return Array.isArray(def?.dependsOn) && def.dependsOn.includes(code);
-        });
+        return candidates
+            .filter(pipeline => {
+                const definition = pipeline.definition as PipelineDefinition & { dependsOn?: string[] };
+                return Array.isArray(definition?.dependsOn) && definition.dependsOn.includes(code);
+            })
+            .map(toPublicPipeline);
     }
 
     async findByCode(ctx: RequestContext, code: string): Promise<Pipeline | null> {
@@ -96,22 +154,17 @@ export class PipelineService {
 
     async create(ctx: RequestContext, input: CreatePipelineInput): Promise<Pipeline> {
         this.logger.debug('Creating pipeline', { pipelineCode: input.code });
+        assertValidPipelineCode(input.code);
         // Quick-fail optimization: check code availability before save.
         // The DB unique constraint on Pipeline.code is the true guard against race conditions.
         await this.assertCodeAvailable(ctx, input.code);
-        const definition = { ...input.definition };
-        if (!definition.version || definition.version < 1) {
-            definition.version = 1;
-        }
-        if (typeof definition.version === 'string') {
-            definition.version = parseInt(String(definition.version), 10) || 1;
-        }
+        const definition = normalizePipelineDefinition(input.definition, 1);
         this.definitionValidator.validate(definition);
         const entity = new Pipeline();
         entity.code = input.code;
         entity.name = input.name;
         entity.enabled = input.enabled ?? true;
-        entity.version = input.version ?? definition.version ?? 1;
+        entity.version = normalizePipelineVersion(input.version, definition.version);
         entity.definition = definition;
         let saved: Pipeline;
         try {
@@ -135,27 +188,35 @@ export class PipelineService {
     async update(ctx: RequestContext, input: UpdatePipelineInput): Promise<Pipeline> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         const entity = await this.connection.getEntityOrThrow(ctx, Pipeline, input.id);
+        let executableChanged = false;
+
         if (input.code && input.code !== entity.code) {
+            assertValidPipelineCode(input.code);
             await this.assertCodeAvailable(ctx, input.code, entity.id);
             entity.code = input.code;
+            executableChanged = true;
         }
         if (typeof input.name === 'string') entity.name = input.name;
         if (typeof input.enabled === 'boolean') entity.enabled = input.enabled;
         if (input.version !== undefined) {
-            const ver = typeof input.version === 'string' ? parseInt(input.version, 10) : input.version;
-            if (typeof ver === 'number' && !isNaN(ver)) entity.version = ver;
+            const version = normalizePipelineVersion(input.version, entity.version);
+            executableChanged ||= version !== entity.version;
+            entity.version = version;
         }
         if (input.definition) {
-            const definition = { ...input.definition };
-            if (!definition.version || definition.version < 1) {
-                definition.version = entity.version || 1;
-            }
-            if (typeof definition.version === 'string') {
-                definition.version = parseInt(String(definition.version), 10) || 1;
-            }
+            const definition = normalizePipelineDefinition(input.definition, entity.version);
             this.definitionValidator.validate(definition);
-            entity.definition = definition;
+            if (!definitionsEqual(entity.definition, definition)) {
+                entity.definition = definition;
+                executableChanged = true;
+            }
         }
+        const nextStatus = statusAfterExecutableUpdate(entity.status, executableChanged);
+        if (nextStatus !== entity.status) {
+            entity.status = nextStatus;
+            entity.draftRevisionId = null;
+        }
+
         await repo.save(entity, { reload: false });
         this.domainEvents.publishPipelineUpdated(entity.id.toString(), entity.code);
         return assertFound(this.findOne(ctx, entity.id));
@@ -177,60 +238,24 @@ export class PipelineService {
     }
 
     async publish(ctx: RequestContext, id: ID): Promise<Pipeline> {
-        const repo = this.connection.getRepository(ctx, Pipeline);
-        const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
-        this.definitionValidator.validate(pipeline.definition);
-        await this.assertCapabilitiesAllowed(ctx, pipeline.definition);
-
-        const newVersion = (pipeline.version ?? 0) + 1;
-
-        // Save revision FIRST so version increment is only committed on success
-        let savedRevisionId: number | undefined;
-        try {
-            const revRepo = this.connection.getRepository(ctx, PipelineRevision);
-            const revision = new PipelineRevision();
-            revision.pipeline = pipeline;
-            revision.pipelineId = Number(pipeline.id);
-            revision.version = newVersion;
-            revision.definition = pipeline.definition;
-            revision.type = RevisionType.PUBLISHED;
-            revision.authorUserId = ctx.activeUserId?.toString() ?? null;
-            revision.definitionSize = JSON.stringify(pipeline.definition).length;
-            const savedRevision = await revRepo.save(revision);
-            savedRevisionId = Number(savedRevision.id);
-        } catch (e) {
-            this.logger.warn('Failed to save pipeline revision — aborting publish', {
-                pipelineCode: pipeline.code,
-                error: getErrorMessage(e),
-            });
-            throw e;
-        }
-
-        // Commit all pipeline changes in a single save
-        pipeline.version = newVersion;
-        pipeline.status = PipelineStatus.PUBLISHED;
-        pipeline.publishedAt = new Date();
-        pipeline.publishedByUserId = ctx.activeUserId?.toString() ?? null;
-        if (savedRevisionId != null) {
-            pipeline.currentRevisionId = savedRevisionId;
-            pipeline.publishedVersionCount = (pipeline.publishedVersionCount ?? 0) + 1;
-        }
-        await repo.save(pipeline, { reload: false });
-
-        this.logger.info('Pipeline published', {
-            pipelineCode: pipeline.code,
-            version: newVersion,
-            revisionId: savedRevisionId,
+        const revision = await this.revisionService.publishVersion(ctx, {
+            pipelineId: id,
+            authorUserId: ctx.activeUserId?.toString(),
         });
-        this.domainEvents.publishPipelinePublished(pipeline.id.toString(), pipeline.code);
+        return assertFound(this.findOne(ctx, revision.pipelineId));
+    }
 
-        return assertFound(this.findOne(ctx, pipeline.id));
+    async approve(ctx: RequestContext, id: ID): Promise<Pipeline> {
+        const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
+        assertPipelineStatus(pipeline.status, [PipelineStatus.REVIEW], 'approve');
+        return this.publish(ctx, id);
     }
 
     async submitForReview(ctx: RequestContext, id: ID): Promise<Pipeline> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
-        if (pipeline.status === PipelineStatus.PUBLISHED) return pipeline;
+        assertPipelineStatus(pipeline.status, [PipelineStatus.DRAFT], 'submit for review');
+        this.definitionValidator.validate(pipeline.definition);
         pipeline.status = PipelineStatus.REVIEW;
         await repo.save(pipeline, { reload: false });
         return assertFound(this.findOne(ctx, pipeline.id));
@@ -239,7 +264,7 @@ export class PipelineService {
     async rejectReview(ctx: RequestContext, id: ID): Promise<Pipeline> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
-        if (pipeline.status !== PipelineStatus.REVIEW) return pipeline;
+        assertPipelineStatus(pipeline.status, [PipelineStatus.REVIEW], 'reject review for');
         pipeline.status = PipelineStatus.DRAFT;
         await repo.save(pipeline, { reload: false });
         return assertFound(this.findOne(ctx, pipeline.id));
@@ -248,6 +273,7 @@ export class PipelineService {
     async archive(ctx: RequestContext, id: ID): Promise<Pipeline> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
+        assertPipelineStatus(pipeline.status, [PipelineStatus.PUBLISHED], 'archive');
         pipeline.status = PipelineStatus.ARCHIVED;
         pipeline.enabled = false;
         await repo.save(pipeline, { reload: false });
@@ -257,38 +283,19 @@ export class PipelineService {
 
     async listRevisions(ctx: RequestContext, pipelineId: ID): Promise<PipelineRevision[]> {
         const repo = this.connection.getRepository(ctx, PipelineRevision);
-        return repo.find({
-            where: { pipelineId: Number(pipelineId) },
+        const revisions = await repo.find({
+            where: { pipelineId },
             order: { createdAt: SortOrder.DESC },
         });
+        return revisions.map(toPublicRevision);
     }
 
     async revertToRevision(ctx: RequestContext, revisionId: ID): Promise<Pipeline> {
-        const revRepo = this.connection.getRepository(ctx, PipelineRevision);
-        const revision = await this.connection.getEntityOrThrow(ctx, PipelineRevision, revisionId);
-        if (!revision.pipelineId) {
-            throw new Error('Revision has no associated pipeline');
-        }
-        const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, revision.pipelineId);
-        try {
-            const rev = new PipelineRevision();
-            rev.pipeline = pipeline;
-            rev.version = pipeline.version;
-            rev.definition = pipeline.definition;
-            rev.authorUserId = ctx.activeUserId?.toString() ?? null;
-            await revRepo.save(rev);
-        } catch (error) {
-            this.logger.warn('Failed to save pre-revert revision snapshot', {
-                pipelineCode: pipeline.code,
-                revisionId,
-                error: getErrorMessage(error),
-            });
-        }
-        pipeline.definition = revision.definition;
-        pipeline.version = (pipeline.version ?? 1) + 1;
-        pipeline.status = PipelineStatus.DRAFT;
-        await this.connection.getRepository(ctx, Pipeline).save(pipeline, { reload: false });
-        return assertFound(this.findOne(ctx, pipeline.id));
+        const revision = await this.revisionService.revertToRevision(ctx, {
+            revisionId,
+            authorUserId: ctx.activeUserId?.toString(),
+        });
+        return assertFound(this.findOne(ctx, revision.pipelineId));
     }
 
     async listRuns(
@@ -320,15 +327,10 @@ export class PipelineService {
         options?: { skipPermissionCheck?: boolean; triggeredBy?: string },
     ): Promise<PipelineRun> {
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, pipelineId);
-        if (!pipeline.enabled) {
-            this.logger.warn('Attempted to start disabled pipeline', {
-                pipelineId,
-                pipelineCode: pipeline.code,
-            });
-            throw new Error('Pipeline is disabled');
-        }
+        assertPipelineRunnable(pipeline);
+        const definition = await this.getPublishedDefinition(ctx, pipeline);
         if (!options?.skipPermissionCheck) {
-            await this.assertCapabilitiesAllowed(ctx, pipeline.definition);
+            await this.assertCapabilitiesAllowed(ctx, definition);
         }
         const repo = this.connection.getRepository(ctx, PipelineRun);
         const runEntity = new PipelineRun();
@@ -338,6 +340,7 @@ export class PipelineService {
         runEntity.finishedAt = null;
         runEntity.metrics = null;
         runEntity.error = null;
+        runEntity.definitionSnapshot = definition;
         runEntity.checkpoint = null;
         runEntity.startedByUserId = ctx.activeUserId?.toString() ?? null;
         runEntity.triggeredBy = options?.triggeredBy ?? (ctx.activeUserId ? `manual:${ctx.activeUserId}` : 'manual');
@@ -395,16 +398,111 @@ export class PipelineService {
         ctx: RequestContext,
         pipelineId: ID,
         seed: unknown[],
-        options?: { skipPermissionCheck?: boolean; triggeredBy?: string },
+        options: SeededRunOptions,
     ): Promise<PipelineRun> {
+        return this.createSeededRun(ctx, pipelineId, seed, options);
+    }
+
+    async startIdempotentRunWithSeed(
+        ctx: RequestContext,
+        pipelineId: ID,
+        seed: unknown[],
+        options: IdempotentSeededRunOptions,
+    ): Promise<IdempotentSeededRunResult> {
+        const scope = createPipelineRunIdempotencyScope(
+            ctx.channelId,
+            options.triggerKey,
+            options.idempotencyKey,
+            options.requestFingerprint,
+            options.idempotencyTtlSeconds,
+        );
+        const existing = await this.findIdempotentRun(ctx, pipelineId, scope);
+        if (existing && !this.isIdempotencyExpired(existing)) {
+            return this.toDuplicateIdempotentResult(existing, scope);
+        }
+        if (existing) {
+            await this.releaseIdempotencyScope(ctx, existing);
+        }
+
+        try {
+            const run = await this.createSeededRun(ctx, pipelineId, seed, options, scope);
+            return { run, duplicate: false };
+        } catch (error) {
+            if (!isDuplicateEntryError(getErrorMessage(error))) {
+                throw error;
+            }
+            const winner = await this.findIdempotentRun(ctx, pipelineId, scope);
+            if (!winner) {
+                throw error;
+            }
+            return this.toDuplicateIdempotentResult(winner, scope);
+        }
+    }
+
+    private async findIdempotentRun(
+        ctx: RequestContext,
+        pipelineId: ID,
+        scope: PipelineRunIdempotencyScope,
+    ): Promise<PipelineRun | null> {
+        return this.connection.getRepository(ctx, PipelineRun).findOne({
+            where: {
+                pipelineId,
+                idempotencyChannelId: scope.channelId,
+                idempotencyTriggerKeyHash: scope.triggerKeyHash,
+                idempotencyKeyHash: scope.keyHash,
+            },
+            relations: { pipeline: true },
+        });
+    }
+
+    private isIdempotencyExpired(run: PipelineRun): boolean {
+        return run.idempotencyExpiresAt !== null &&
+            run.idempotencyExpiresAt.getTime() <= Date.now();
+    }
+
+    private toDuplicateIdempotentResult(
+        run: PipelineRun,
+        scope: PipelineRunIdempotencyScope,
+    ): IdempotentSeededRunResult {
+        if (run.idempotencyPayloadHash !== scope.payloadHash) {
+            throw new PipelineRunIdempotencyConflictError();
+        }
+        return { run, duplicate: true };
+    }
+
+    private async releaseIdempotencyScope(
+        ctx: RequestContext,
+        run: PipelineRun,
+    ): Promise<void> {
+        run.idempotencyChannelId = null;
+        run.idempotencyTriggerKeyHash = null;
+        run.idempotencyKeyHash = null;
+        run.idempotencyPayloadHash = null;
+        run.idempotencyExpiresAt = null;
+        await this.connection.getRepository(ctx, PipelineRun).save(run, { reload: false });
+    }
+
+    private async createSeededRun(
+        ctx: RequestContext,
+        pipelineId: ID,
+        seed: unknown[],
+        options: SeededRunOptions,
+        idempotency?: PipelineRunIdempotencyScope,
+    ): Promise<PipelineRun> {
+        const seededInput = createSeededGraphInput(options.triggerKey, seed, options.seedMode);
+        const seedCheckpoint: JsonObject = {
+            __seed: {
+                triggerKey: seededInput.triggerKey,
+                records: seededInput.records,
+                mode: seededInput.mode,
+            },
+        };
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, pipelineId);
-        if (!pipeline.enabled) {
-            throw new Error('Pipeline is disabled');
+        assertPipelineRunnable(pipeline);
+        const definition = await this.getPublishedDefinition(ctx, pipeline);
+        if (!options.skipPermissionCheck) {
+            await this.assertCapabilitiesAllowed(ctx, definition);
         }
-        if (!options?.skipPermissionCheck) {
-            await this.assertCapabilitiesAllowed(ctx, pipeline.definition);
-        }
-        const repo = this.connection.getRepository(ctx, PipelineRun);
         const runEntity = new PipelineRun();
         runEntity.pipeline = pipeline;
         runEntity.status = RunStatus.PENDING;
@@ -412,32 +510,53 @@ export class PipelineService {
         runEntity.finishedAt = null;
         runEntity.metrics = null;
         runEntity.error = null;
-        runEntity.checkpoint = { __seed: seed as JsonValue[] };
+        runEntity.definitionSnapshot = definition;
+        runEntity.checkpoint = seedCheckpoint;
         runEntity.startedByUserId = ctx.activeUserId?.toString() ?? null;
-        runEntity.triggeredBy = options?.triggeredBy ?? (ctx.activeUserId ? `manual:${ctx.activeUserId}` : 'manual');
-        const run = await repo.save(runEntity);
-        this.eventBus.publish(new PipelineQueueRequestEvent(
-            run.id,
-            pipelineId,
-            runEntity.triggeredBy,
-            { __seed: seed as JsonValue[] },
-        ));
+        runEntity.triggeredBy = options.triggeredBy ??
+            (ctx.activeUserId ? `manual:${ctx.activeUserId}` : 'manual');
+        runEntity.idempotencyChannelId = idempotency?.channelId ?? null;
+        runEntity.idempotencyTriggerKeyHash = idempotency?.triggerKeyHash ?? null;
+        runEntity.idempotencyKeyHash = idempotency?.keyHash ?? null;
+        runEntity.idempotencyPayloadHash = idempotency?.payloadHash ?? null;
+        runEntity.idempotencyExpiresAt = idempotency?.expiresAt ?? null;
+
+        const run = await this.connection.getRepository(ctx, PipelineRun).save(runEntity);
+        if (!options.deferQueueEnqueue) {
+            this.eventBus.publish(new PipelineQueueRequestEvent(
+                run.id,
+                pipelineId,
+                runEntity.triggeredBy,
+                seedCheckpoint,
+            ));
+        }
         return assertFound(this.runById(ctx, run.id));
     }
 
     async startRunByCode(
         ctx: RequestContext,
         code: string,
-        opts?: { seedRecords?: unknown[]; skipPermissionCheck?: boolean; triggeredBy?: string },
+        opts?: {
+            seedRecords?: unknown[];
+            triggerKey?: string;
+            seedMode?: SeededInputMode;
+            skipPermissionCheck?: boolean;
+            triggeredBy?: string;
+        },
     ): Promise<PipelineRun> {
         const pipeline = await this.findByCode(ctx, code);
         if (!pipeline) {
             throw new Error(`Pipeline with code "${code}" not found`);
         }
-        if (opts?.seedRecords && opts.seedRecords.length) {
+        if (opts?.seedRecords) {
+            if (!opts.triggerKey) {
+                throw new Error('Seeded pipeline execution requires a trigger key');
+            }
             return this.startRunWithSeed(ctx, pipeline.id, opts.seedRecords, {
-                skipPermissionCheck: opts?.skipPermissionCheck,
-                triggeredBy: opts?.triggeredBy,
+                triggerKey: opts.triggerKey,
+                skipPermissionCheck: opts.skipPermissionCheck,
+                triggeredBy: opts.triggeredBy,
+                seedMode: opts.seedMode,
             });
         }
         return this.startRun(ctx, pipeline.id, {
@@ -457,7 +576,7 @@ export class PipelineService {
 
         // Atomic status transition: only succeeds if run is currently PAUSED
         const updateResult = await repo.update(
-            { id: runId as any, status: RunStatus.PAUSED },
+            { id: runId, status: RunStatus.PAUSED },
             { status: RunStatus.RUNNING },
         );
         if (updateResult.affected === 0) {
@@ -519,7 +638,7 @@ export class PipelineService {
 
         // Atomic status transition: only succeeds if run is currently PAUSED
         const updateResult = await repo.update(
-            { id: runId as any, status: RunStatus.PAUSED },
+            { id: runId, status: RunStatus.PAUSED },
             {
                 status: RunStatus.CANCELLED,
                 finishedAt: new Date(),
@@ -552,6 +671,27 @@ export class PipelineService {
         return assertFound(this.runById(ctx, run.id));
     }
 
+    private async getPublishedDefinition(
+        ctx: RequestContext,
+        pipeline: Pipeline,
+    ): Promise<PipelineDefinition> {
+        if (pipeline.currentRevisionId == null) {
+            throw new Error(`Published pipeline "${pipeline.code}" has no active revision`);
+        }
+
+        const revision = await this.connection.getRepository(ctx, PipelineRevision).findOne({
+            where: {
+                id: pipeline.currentRevisionId,
+                pipelineId: pipeline.id,
+                type: RevisionType.PUBLISHED,
+            },
+        });
+        if (!revision) {
+            throw new Error(`Active revision not found for pipeline "${pipeline.code}"`);
+        }
+        return clonePipelineDefinition(revision.definition);
+    }
+
     private async assertCodeAvailable(ctx: RequestContext, code: string, excludeId?: ID): Promise<void> {
         const repo = this.connection.getRepository(ctx, Pipeline);
         const existing = await repo.findOne({ where: { code } });
@@ -567,6 +707,7 @@ export class PipelineService {
     }> {
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, pipelineId);
         this.definitionValidator.validate(pipeline.definition);
+        await this.assertCapabilitiesAllowed(ctx, pipeline.definition);
 
         this.logger.debug('Starting dry run', {
             pipelineId,
@@ -606,23 +747,13 @@ export class PipelineService {
     }
 
     private async assertCapabilitiesAllowed(ctx: RequestContext, definition: PipelineDefinition): Promise<void> {
-        const requires: string[] = Array.isArray(definition?.capabilities?.requires) ? (definition.capabilities.requires as string[]) : [];
-        if (!requires.length) return;
+        const missing = getMissingPipelinePermissions(this.registry, ctx, definition);
+        if (!missing.length) return;
 
-        const userPermissions = ctx.session?.user?.channelPermissions?.flatMap(cp => cp.permissions) ?? [];
-        const permissionSet = new Set(userPermissions.map(p => String(p)));
-
-        // SuperAdmin has all permissions
-        if (permissionSet.has('SuperAdmin')) return;
-
-        const missing = requires.filter(r => !permissionSet.has(r));
-        if (missing.length) {
-            this.logger.warn('Pipeline requires permissions not held by user', {
-                userId: ctx.activeUserId,
-                required: requires,
-                missing,
-            });
-            throw new Error(`Missing required permissions for this pipeline: ${missing.join(', ')}`);
-        }
+        this.logger.warn('Pipeline requires permissions not held by user', {
+            userId: ctx.activeUserId,
+            missing,
+        });
+        throw new Error(`Missing required permissions for this pipeline: ${missing.join(', ')}`);
     }
 }

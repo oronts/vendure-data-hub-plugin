@@ -44,6 +44,7 @@ import { SinkStepStrategy } from './sink-step.strategy';
 import { GateStepStrategy } from './gate-step.strategy';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { DataHubLoggerFactory } from '../../../services/logger';
+import type { SeededInputMode } from '../seeded-graph';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.STEP_DISPATCHER);
 
@@ -78,6 +79,7 @@ export interface StepExecutionParams {
     pipelineId?: ID;
     runId?: ID;
     stepLog?: StepLogCallback;
+    seedMode?: SeededInputMode;
 }
 
 /**
@@ -126,9 +128,12 @@ export class StepDispatcher {
 
         switch (step.type) {
             case StepType.TRIGGER:
-                return this.executeTrigger(key);
+                return this.executeSeededInput(step, key, input, params.seedMode !== undefined);
 
             case StepType.EXTRACT:
+                if (params.seedMode === 'RECORDS') {
+                    return this.executeSeededInput(step, key, input, true);
+                }
                 return this.executeWithStrategy(this.extractStrategy, context);
 
             case StepType.TRANSFORM:
@@ -179,20 +184,25 @@ export class StepDispatcher {
             runId: params.runId,
             stepLog: params.stepLog,
             onRecordError: params.onRecordError,
+            seedMode: params.seedMode,
         };
     }
 
-    /**
-     * Execute TRIGGER step (no-op, returns empty)
-     */
-    private executeTrigger(key: string): StepExecutionResult {
+    private executeSeededInput(
+        step: PipelineStepDefinition,
+        key: string,
+        input: RecordObject[],
+        seeded: boolean,
+    ): StepExecutionResult {
+        const output = seeded ? input : [];
+        const extracted = step.type === StepTypeEnum.EXTRACT ? output.length : 0;
         return {
-            output: [],
-            detail: { stepKey: key, type: StepTypeEnum.TRIGGER },
-            processed: 0,
-            succeeded: 0,
+            output,
+            detail: { stepKey: key, type: step.type, seeded },
+            processed: extracted,
+            succeeded: extracted,
             failed: 0,
-            counters: {},
+            counters: extracted > 0 ? { extracted } : {},
         };
     }
 

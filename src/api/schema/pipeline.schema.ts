@@ -188,8 +188,6 @@ export const pipelineSchema = `
     enum DataHubRunStatus {
         "Run created but not yet started"
         PENDING
-        "Run queued for execution"
-        QUEUED
         "Run currently executing"
         RUNNING
         "Run paused (resumable)"

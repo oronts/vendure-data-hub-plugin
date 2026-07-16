@@ -26,13 +26,11 @@ export class ExecutionLifecycleManager {
         definition: PipelineDefinition,
         pipelineId?: ID,
         runId?: ID,
-        options?: { resume?: boolean },
+        options?: { resume?: boolean; resetCheckpoint?: boolean },
     ): Promise<RequestContext> {
-        const resume = options?.resume ?? false;
         const pipelineCtx = await this.resolvePipelineContext(ctx, definition);
 
-        // Handle checkpoint: clear for fresh runs, load for resume
-        if (pipelineId && !resume) {
+        if (pipelineId && options?.resetCheckpoint === true) {
             await this.checkpointManager.clearCheckpoint(ctx, pipelineId);
         }
         await this.checkpointManager.loadCheckpoint(ctx, pipelineId);

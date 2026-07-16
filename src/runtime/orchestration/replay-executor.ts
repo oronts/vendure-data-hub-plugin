@@ -63,7 +63,7 @@ export async function replayFromStepLinear(params: {
     if (idx === -1) {
         throw new Error(`Replay start step "${startStepKey}" not found in pipeline definition`);
     }
-    const steps = definition.steps.slice(idx + 1);
+    const steps = definition.steps.slice(idx);
 
     let records: RecordObject[] = seed;
     let processed = 0;
@@ -176,6 +176,9 @@ export async function replayFromStepGraph(params: {
     const steps = definition.steps;
     const stepByKey = new Map<string, typeof steps[number]>();
     for (const s of steps) stepByKey.set(s.key, s);
+    if (!stepByKey.has(startStepKey)) {
+        throw new Error(`Replay start step "${startStepKey}" not found in pipeline definition`);
+    }
 
     const edges = definition.edges ?? [];
 
@@ -217,18 +220,10 @@ export async function replayFromStepGraph(params: {
     }
 
     const outputs = new Map<string, RecordObject[] | BranchOutput>();
-    outputs.set(startStepKey, seed);
-
-    // Reduce indegree of neighbors of start step
-    for (const n of adj.get(startStepKey) ?? []) {
-        indeg.set(n.to, Math.max(0, (indeg.get(n.to) ?? 1) - 1));
-    }
-
-    // Build initial queue (steps with zero indegree, excluding start step)
-    const queue: string[] = [];
+    const queue: string[] = [startStepKey];
     for (const [k, d] of indeg.entries()) {
         if (k === startStepKey) continue;
-        if ((d ?? 0) === 0 && k !== startStepKey) queue.push(k);
+        if ((d ?? 0) === 0) queue.push(k);
     }
 
     let processed = 0;
@@ -243,7 +238,7 @@ export async function replayFromStepGraph(params: {
         if (onCancelRequested && (await onCancelRequested())) break;
 
         // Gather input from predecessors
-        let input: RecordObject[] = [];
+        let input: RecordObject[] = key === startStepKey ? seed : [];
         const parents = (preds.get(key) ?? []).filter(
             p => p.from === startStepKey || reachable.has(p.from)
         );

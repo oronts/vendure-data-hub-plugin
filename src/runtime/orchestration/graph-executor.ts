@@ -38,6 +38,7 @@ import { getErrorMessage } from '../../utils/error.utils';
 import { StepType as StepTypeEnum } from '../../constants/enums';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
+import { SeededGraphInput, selectSeededGraph } from './seeded-graph';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.GRAPH_EXECUTOR);
 
@@ -78,6 +79,7 @@ export interface ExecuteGraphParams {
     runId?: ID;
     /** Optional step logging callback for database persistence */
     stepLog?: StepLogCallback;
+    seed?: SeededGraphInput;
 }
 
 /**
@@ -341,9 +343,11 @@ function getParallelConfig(definition: PipelineDefinition): Required<ParallelExe
  * Supports both sequential and parallel execution modes
  */
 export async function executeGraph(params: ExecuteGraphParams): Promise<GraphExecutionResult> {
-    const { definition, domainEvents, onCancelRequested, pipelineId } = params;
+    const definition = params.seed ? selectSeededGraph(params.definition, params.seed) : params.definition;
+    const executionParams = definition === params.definition ? params : { ...params, definition };
+    const { domainEvents, onCancelRequested, pipelineId } = executionParams;
 
-    const stepDispatcher = createDispatcher(params);
+    const stepDispatcher = createDispatcher(executionParams);
     const { stepByKey, edges, topology } = buildExecutionOrder(definition);
     const { preds, indeg, queue } = topology;
 
@@ -351,7 +355,7 @@ export async function executeGraph(params: ExecuteGraphParams): Promise<GraphExe
     const parallelConfig = getParallelConfig(definition);
 
     // Run PIPELINE_STARTED hook (mirrors linear executor's publishPipelineStarted)
-    await params.hookService.run(params.ctx, definition, 'PIPELINE_STARTED');
+    await executionParams.hookService.run(executionParams.ctx, definition, 'PIPELINE_STARTED');
 
     // Publish pipeline started event
     try {
@@ -367,12 +371,12 @@ export async function executeGraph(params: ExecuteGraphParams): Promise<GraphExe
     if (parallelConfig.enabled) {
         await executeParallel(
             queue, stepByKey, edges, preds, indeg, outputs, metrics,
-            stepDispatcher, params, parallelConfig, onCancelRequested,
+            stepDispatcher, executionParams, parallelConfig, onCancelRequested,
         );
     } else {
         await executeSequential(
             queue, stepByKey, edges, preds, indeg, outputs, metrics,
-            stepDispatcher, params, onCancelRequested,
+            stepDispatcher, executionParams, onCancelRequested,
         );
     }
 
@@ -417,9 +421,12 @@ async function executeSequential(
         let stepResult: StepExecutionResult;
         let durationMs: number;
         try {
-            const input = collectNodeOutputs(key, preds, outputs);
+            const input = params.seed?.triggerKey === key
+                ? params.seed.records
+                : collectNodeOutputs(key, preds, outputs);
             const nodeResult = await executeNode(stepDispatcher, {
                 ctx, definition, step, key, input, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog,
+                seedMode: params.seed?.mode,
             });
             stepResult = nodeResult.stepResult;
             durationMs = nodeResult.durationMs;
@@ -503,7 +510,9 @@ async function executeParallel(
             const step = stepByKey.get(key);
             if (!step) continue;
 
-            const input = collectNodeOutputs(key, preds, outputs);
+            const input = params.seed?.triggerKey === key
+                ? params.seed.records
+                : collectNodeOutputs(key, preds, outputs);
 
             // Publish StepStarted event (typed helper already wraps in try/catch)
             domainEvents.publishStepStarted(pipelineIdStr, runIdStr, key, step.type);
@@ -517,6 +526,7 @@ async function executeParallel(
             const stepType = step.type;
             const promise = executeNode(stepDispatcher, {
                 ctx, definition, step, key, input, executorCtx, hookService, domainEvents, onRecordError, pipelineId, runId, stepLog,
+                seedMode: params.seed?.mode,
             })
                 .then(({ stepResult, durationMs }) => ({ key, stepResult, durationMs }))
                 .catch((error: unknown) => {

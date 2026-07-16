@@ -7,7 +7,7 @@ import { Injectable } from '@nestjs/common';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { In } from 'typeorm';
 import { PipelineDefinition, StepType } from '../../types/index';
-import { StepType as StepTypeEnum } from '../../constants/enums';
+import { AdapterType as AdapterTypeEnum, StepType as StepTypeEnum } from '../../constants/enums';
 import { LOGGER_CONTEXTS, STEP_TYPE_TO_ADAPTER_TYPE } from '../../constants/index';
 import { Pipeline } from '../../entities/pipeline';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -23,12 +23,16 @@ import {
     validateAdapterConfig,
     validateAdapterConnectivity,
     validateAdapterFields,
+    validateExtractorConfigContract,
+    validateSinkConfigContract,
     validateGraphQLExtractor,
     isUsingBuiltInEnrichment,
     isGraphQLExtractor,
 } from './adapter-validation';
 import { validateTransformOperators, TransformStepConfig } from './step-validation';
 import { validateCapabilities, validateContext } from './context-validation';
+import { validateWebhookHooks } from './hook-security';
+import { parseInlineExportDestination } from '../destinations/inline-export-destination';
 
 // ============================================================================
 // Type Definitions
@@ -102,6 +106,7 @@ export class DefinitionValidationService {
         this.validateAdapters(definition, issues, warnings);
         validateCapabilities(definition, issues);
         validateContext(definition, issues);
+        validateWebhookHooks(definition, issues);
 
         return { isValid: issues.length === 0, issues, warnings, level };
     }
@@ -254,6 +259,24 @@ export class DefinitionValidationService {
             const { adapter, adapterCode } = adapterResult;
             validateAdapterConnectivity(step.key, adapterCode, adapterType, adapter, definition, issues);
             validateAdapterFields(step.key, cfg, adapter, issues);
+            if (adapterType === AdapterTypeEnum.EXTRACTOR) {
+                validateExtractorConfigContract(step.key, adapterCode, cfg, issues);
+            }
+            if (adapterType === AdapterTypeEnum.SINK) {
+                validateSinkConfigContract(step.key, adapterCode, cfg, issues);
+            }
+            if (type === StepTypeEnum.EXPORT) {
+                try {
+                    parseInlineExportDestination(step.key, cfg);
+                } catch (error) {
+                    issues.push({
+                        message: `Step "${step.key}": ${getErrorMessage(error)}`,
+                        stepKey: step.key,
+                        field: 'destinationType',
+                        errorCode: 'invalid-export-destination',
+                    });
+                }
+            }
 
             // Special validation for GraphQL extractors
             if (isGraphQLExtractor(adapterType, adapterCode)) {

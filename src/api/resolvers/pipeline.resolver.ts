@@ -173,7 +173,7 @@ export class DataHubPipelineAdminResolver {
     @Transaction()
     @Allow(ReviewDataHubPipelinePermission.Permission)
     approveDataHubPipeline(@Ctx() ctx: RequestContext, @Args() args: { id: ID }) {
-        return this.pipelineService.publish(ctx, args.id);
+        return this.pipelineService.approve(ctx, args.id);
     }
 
     @Mutation()

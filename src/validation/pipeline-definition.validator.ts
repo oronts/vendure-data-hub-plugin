@@ -39,18 +39,17 @@ export function validatePipelineDefinition(definition: PipelineDefinition): void
         ]);
     }
 
-    // Coerce version to number if string
-    let version = definition.version;
-    if (typeof version === 'string') {
-        version = parseInt(version, 10);
-    }
-    if (typeof version !== 'number' || isNaN(version) || version < 1) {
+    const version = definition.version;
+    if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
         throw new PipelineDefinitionError([
-            createIssue('PipelineDefinition.version must be a positive number', PIPELINE_VALIDATION_ERROR.INVALID_VERSION, undefined, 'version'),
+            createIssue(
+                'PipelineDefinition.version must be a positive integer',
+                PIPELINE_VALIDATION_ERROR.INVALID_VERSION,
+                undefined,
+                'version',
+            ),
         ]);
     }
-    // Update the definition with coerced version (mutable operation for validation normalization)
-    (definition as { version: number }).version = version;
 
     if (!Array.isArray(definition.steps)) {
         throw new PipelineDefinitionError([

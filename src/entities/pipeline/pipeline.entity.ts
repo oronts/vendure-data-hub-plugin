@@ -1,5 +1,5 @@
 import { Column, Entity, Index } from 'typeorm';
-import { DeepPartial, VendureEntity } from '@vendure/core';
+import { DeepPartial, EntityId, ID, VendureEntity } from '@vendure/core';
 import { PipelineDefinition } from '../../types/index';
 import { PipelineStatus } from '../../constants/enums';
 import { TABLE_NAMES } from '../../constants/table-names';
@@ -30,7 +30,7 @@ export class Pipeline extends VendureEntity {
     @Column({ type: 'varchar', length: 20, default: PipelineStatus.DRAFT })
     status!: PipelineStatus;
 
-    @Column({ type: 'datetime', nullable: true })
+    @Column({ type: Date, nullable: true })
     publishedAt!: Date | null;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
@@ -41,16 +41,16 @@ export class Pipeline extends VendureEntity {
      * Indexed for efficient lookups when loading the active revision.
      */
     @Index()
-    @Column({ type: 'int', nullable: true })
-    currentRevisionId!: number | null;
+    @EntityId({ nullable: true })
+    currentRevisionId!: ID | null;
 
     /**
      * Reference to the current draft revision (no ManyToOne to avoid circular dependency).
      * Indexed for efficient lookups when loading the draft revision.
      */
     @Index()
-    @Column({ type: 'int', nullable: true })
-    draftRevisionId!: number | null;
+    @EntityId({ nullable: true })
+    draftRevisionId!: ID | null;
 
     @Column({ type: 'int', default: 0 })
     publishedVersionCount!: number;
