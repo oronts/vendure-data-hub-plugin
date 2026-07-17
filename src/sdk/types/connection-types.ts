@@ -4,10 +4,11 @@ import {
     AdapterLogger,
     ConnectionAuthType,
 } from '../../../shared/types';
+import type { UIConnectionType } from '../../../shared/constants';
 
 export { ConnectionAuthType };
 
-export type ConnectionType = 'HTTP' | 'S3' | 'FTP' | 'SFTP' | 'DATABASE' | 'CUSTOM' | 'POSTGRES' | 'MYSQL' | 'MSSQL' | 'MONGODB' | 'RABBITMQ' | 'SQS' | 'REDIS' | 'REST' | 'GRAPHQL';
+export type ConnectionType = UIConnectionType;
 
 export interface ConnectionAuth {
     readonly type: ConnectionAuthType;
@@ -16,21 +17,13 @@ export interface ConnectionAuth {
 }
 
 /**
- * SDK ConnectionConfig - the full connection entity with `code` identifier.
- * Readonly contract for adapter implementors.
- *
- * Related ConnectionConfig types:
- * - shared/types/extractor.types.ts ConnectionConfig - inline connection format for
- *   extractor configs (no `code`, narrower type set, mutable)
- * - src/utils/url-helpers.ts UrlConnectionConfig - minimal interface for URL building
+ * Runtime connection resolved by code. Adapter-specific values live only in
+ * `config`, avoiding collisions with the connection identity fields.
  */
 export interface ConnectionConfig {
     readonly code: string;
     readonly type: ConnectionType;
-    readonly baseUrl?: string;
-    readonly headers?: Record<string, string>;
-    readonly auth?: ConnectionAuth;
-    readonly config?: JsonObject;
+    readonly config: JsonObject;
 }
 
 export type { SecretResolver, AdapterLogger };
@@ -38,34 +31,4 @@ export type { SecretResolver, AdapterLogger };
 export interface ConnectionResolver {
     get(code: string): Promise<ConnectionConfig | undefined>;
     getRequired(code: string): Promise<ConnectionConfig>;
-}
-
-export type MessengerType = 'JOB_QUEUE' | 'RABBITMQ';
-
-export interface EnqueueOptions {
-    readonly delayMs?: number;
-    readonly priority?: number;
-    readonly retries?: number;
-    readonly deduplicationId?: string;
-    readonly groupId?: string;
-    readonly headers?: Record<string, string>;
-}
-
-export interface QueueStats {
-    readonly pending: number;
-    readonly processing: number;
-    readonly completed: number;
-    readonly failed: number;
-    readonly delayed?: number;
-}
-
-export interface MessengerAdapter {
-    readonly id: MessengerType;
-    readonly name: string;
-    readonly description?: string;
-
-    enqueue<T extends JsonObject>(queue: string, payload: T, options?: EnqueueOptions): Promise<string>;
-    ack(messageId: string): Promise<void>;
-    reject(messageId: string, requeue?: boolean): Promise<void>;
-    getQueueStats(queue: string): Promise<QueueStats>;
 }

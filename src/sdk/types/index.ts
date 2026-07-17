@@ -16,10 +16,6 @@ export {
     SecretResolver,
     ConnectionResolver,
     AdapterLogger,
-    MessengerType,
-    EnqueueOptions,
-    QueueStats,
-    MessengerAdapter,
 } from './connection-types';
 
 export {
