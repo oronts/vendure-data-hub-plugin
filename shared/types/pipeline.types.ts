@@ -7,7 +7,7 @@ import { Throughput, PipelineStepDefinition, PipelineEdge, PipelineCapabilities,
 import { FieldMapping } from './mapping.types';
 import { FilterCondition } from './filter.types';
 import { PipelineHooksConfig, PipelineHooks } from './hook.types';
-import { TriggerConfig, WebhookAuthType } from './trigger.types';
+import { TriggerConfig, WebhookAuthType, VendureEventType } from './trigger.types';
 
 // PIPELINE TYPE ENUMS
 
@@ -61,7 +61,7 @@ export type FileFormat = 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'TSV' | 'P
 /**
  * Type of export destination.
  */
-export type DestinationType = 'FILE' | 'DOWNLOAD' | 'S3' | 'FTP' | 'SFTP' | 'HTTP' | 'EMAIL' | 'WEBHOOK' | 'LOCAL';
+export type DestinationType = 'S3' | 'FTP' | 'SFTP' | 'HTTP' | 'EMAIL' | 'LOCAL';
 
 /** Type of product feed for e-commerce platforms */
 export type FeedType =
@@ -77,14 +77,6 @@ export type FeedType =
     | 'CUSTOM';
 
 // CONTEXT TYPES
-
-/** Policy for handling late-arriving events (internal, used by PipelineContext) */
-type LateEventPolicyType = 'DROP' | 'BUFFER';
-
-interface LateEventPolicy {
-    policy: LateEventPolicyType;
-    bufferMs?: number;
-}
 
 /**
  * Configuration for error handling and retry behavior
@@ -130,7 +122,7 @@ export interface CheckpointingConfig {
  */
 
 /** Execution mode for the pipeline */
-export type RunModeValue = 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
+export type RunModeValue = 'SYNC' | 'ASYNC' | 'BATCH';
 
 /** Strategy for handling multilingual content */
 export type LanguageStrategyValue = 'SPECIFIC' | 'FALLBACK' | 'MULTI';
@@ -144,7 +136,7 @@ export type ConflictStrategyValue = 'SOURCE_WINS' | 'VENDURE_WINS' | 'MERGE' | '
 export interface ParallelExecutionConfig {
     /** Enable parallel step execution (default: false for sequential) */
     enabled?: boolean;
-    /** Maximum concurrent steps (default: 4) */
+    /** Maximum concurrent steps (default: 4, range: 1-16) */
     maxConcurrentSteps?: number;
     /**
      * Error handling policy for parallel execution:
@@ -175,10 +167,6 @@ export interface PipelineContext {
     runMode?: RunModeValue;
     /** Throughput/rate limiting configuration */
     throughput?: Throughput;
-    /** Policy for late events in streaming mode */
-    lateEvents?: LateEventPolicy;
-    /** Watermark for event time processing in milliseconds */
-    watermarkMs?: number;
     /** Error handling configuration */
     errorHandling?: ErrorHandlingConfig;
     /** Checkpointing configuration */
@@ -362,6 +350,7 @@ interface HttpApiSourceConfig {
     path?: string;
     headers?: Record<string, string>;
     body?: JsonObject;
+    dataPath?: string;
     pagination?: {
         type: PaginationTypeValue;
         pageParam?: string;
@@ -369,7 +358,6 @@ interface HttpApiSourceConfig {
         limit?: number;
         cursorPath?: string;
         hasMorePath?: string;
-        dataPath?: string;
     };
     rateLimit?: {
         requestsPerSecond?: number;
@@ -413,8 +401,7 @@ interface VendureQuerySourceConfig {
 
 interface EventSourceConfig {
     type: 'EVENT';
-    eventType: string;
-    filter?: string;
+    event: VendureEventType;
 }
 
 type SourceTypeConfig =

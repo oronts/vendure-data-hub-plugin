@@ -48,7 +48,6 @@ const multiSourceProductSync = createPipeline()
 
     .capabilities({
         writes: ['CATALOG'],
-        streamSafe: true,
     })
 
     // Trigger: Scheduled daily at 2 AM
@@ -201,10 +200,10 @@ const multiSourceProductSync = createPipeline()
     .sink('index-search', {
         adapterCode: 'meilisearch',
         indexName: 'products',
-        host: 'localhost',
-        port: 7700,
-        idField: 'sku',
-        bulkSize: 500,
+        host: 'http://localhost:7700',
+        apiKeySecretCode: 'meilisearch-api-key',
+        primaryKey: 'sku',
+        batchSize: 500,
     })
 
     // Define data flow
@@ -376,7 +375,7 @@ const inventorySync = createPipeline()
     })
 
     .export('send-oos-alerts', {
-        adapterCode: 'webhook',
+        adapterCode: 'webhookExport',
         url: 'https://alerts.example.com/out-of-stock',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -442,7 +441,7 @@ const customerEnrichment = createPipeline()
     .extract('get-customer', {
         adapterCode: 'vendureQuery',
         entity: 'CUSTOMER',
-        relations: 'addresses,orders',
+        relations: ['addresses', 'orders'],
     })
 
     // Enrich with Clearbit
@@ -453,11 +452,8 @@ const customerEnrichment = createPipeline()
                 args: {
                     url: 'https://person.clearbit.com/v2/combined/find?email={{emailAddress}}',
                     target: 'demographics',
-                    headers: {
-                        Authorization: 'Bearer {{clearbitApiKey}}',
-                    },
-                    cache: true,
-                    cacheTtl: 86400,  // 24 hours
+                    bearerTokenSecretCode: 'clearbit-api-key',
+                    cacheTtlSec: 86400,
                 },
             },
         ],
@@ -639,10 +635,11 @@ const orderProcessing = createPipeline()
 
     .trigger('webhook', {
         type: 'WEBHOOK',
-        path: '/order-placed',
-        signature: 'hmac-sha256',
+        authentication: 'HMAC',
         secretCode: 'webhook-secret',
-        idempotencyKey: 'X-Order-ID',
+        hmacAlgorithm: 'SHA256',
+        requireIdempotencyKey: true,
+        idempotencyKeyHeader: 'X-Order-ID',
     })
 
     // Extract order from webhook payload
@@ -742,10 +739,10 @@ const orderProcessing = createPipeline()
 
     // Send to fulfillment
     .export('send-to-shipstation', {
-        adapterCode: 'api-export',
+        adapterCode: 'restPostExport',
         url: 'https://api.shipstation.com/orders/createorder',
         method: 'POST',
-        apiKeySecretCode: 'shipstation-api-key',
+        headerSecretCodes: { 'X-API-Key': 'shipstation-api-key' },
     })
 
     // Send confirmation email
@@ -996,7 +993,7 @@ const productFeedGeneration = createPipeline()
     .extract('get-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants,featuredAsset,facetValues',
+        relations: ['variants', 'featuredAsset', 'facetValues'],
         batchSize: 500,
     })
 
@@ -1049,7 +1046,7 @@ const productFeedGeneration = createPipeline()
         adapterCode: 'googleMerchant',
         feedType: 'GOOGLE_SHOPPING',
         format: 'XML',
-        outputPath: '/feeds/google-shopping.xml',
+        outputPath: 'feeds/google-shopping.xml',
         targetCountry: 'US',
         contentLanguage: 'en',
         currency: 'USD',
@@ -1068,7 +1065,7 @@ const productFeedGeneration = createPipeline()
         adapterCode: 'metaCatalog',
         feedType: 'META_CATALOG',
         format: 'CSV',
-        outputPath: '/feeds/meta-catalog.csv',
+        outputPath: 'feeds/meta-catalog.csv',
     })
 
     // Upload Meta feed to FTP
@@ -1353,17 +1350,16 @@ const dlqRecovery = createPipeline()
 
     // Alert on permanent failures
     .export('alert-permanent-failures', {
-        adapterCode: 'webhook',
+        adapterCode: 'webhookExport',
         url: 'https://alerts.example.com/dlq-permanent-failure',
         method: 'POST',
     })
 
     // Log unknown failures
     .export('log-unknown-failures', {
-        adapterCode: 'file-export',
-        path: '/logs/dlq',
-        filename: 'unknown-failures-{{date}}.json',
-        format: 'JSON',
+        adapterCode: 'jsonExport',
+        path: 'logs/dlq',
+        filenamePattern: 'unknown-failures-${date:YYYY-MM-DD}.json',
     })
 
     // Edges
@@ -1421,9 +1417,8 @@ const approvalWorkflow = createPipeline()
 
     // Extract products from import file
     .extract('parse-csv', {
-        adapterCode: 'file',
-        path: '/imports/new-products.csv',
-        format: 'CSV',
+        adapterCode: 'csv',
+        fileId: 'new-products-upload-id',
         hasHeader: true,
     })
 
@@ -1567,16 +1562,13 @@ const eventDrivenSync = createPipeline()
     .trigger('event', {
         type: 'EVENT',
         event: 'ProductEvent',
-        filter: {
-            type: 'updated',
-        },
     })
 
     // Extract product details
     .extract('get-product', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants,assets,facetValues',
+        relations: ['variants', 'assets', 'facetValues'],
     })
 
     // Transform for search index
@@ -1597,9 +1589,9 @@ const eventDrivenSync = createPipeline()
     .sink('update-search', {
         adapterCode: 'meilisearch',
         indexName: 'products',
-        host: 'localhost',
-        port: 7700,
-        idField: 'id',
+        host: 'http://localhost:7700',
+        apiKeySecretCode: 'meilisearch-api-key',
+        primaryKey: 'id',
     })
 
     // Transform for PIM
@@ -1619,34 +1611,28 @@ const eventDrivenSync = createPipeline()
 
     // Sync to PIM
     .export('sync-to-pim', {
-        adapterCode: 'api-export',
-        connectionCode: 'pim-api',
-        url: '/products/${slug}',
+        adapterCode: 'restPostExport',
+        url: 'https://pim.example.com/products/bulk',
         method: 'PUT',
+        headerSecretCodes: { Authorization: 'pim-api-token' },
     })
 
     // Invalidate CDN cache
     .export('purge-cdn', {
-        adapterCode: 'webhook',
+        adapterCode: 'webhookExport',
         url: 'https://cdn.example.com/purge',
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-            urls: [
-                'https://shop.example.com/products/${slug}',
-                'https://shop.example.com/api/products/${slug}',
-            ],
-        }),
     })
 
     // Update recommendation engine
     .export('update-recommendations', {
-        adapterCode: 'api-export',
-        url: 'https://recommendations.example.com/products/${id}',
+        adapterCode: 'restPostExport',
+        url: 'https://recommendations.example.com/products/bulk',
         method: 'PUT',
-        apiKeySecretCode: 'recommendations-api-key',
+        headerSecretCodes: { 'X-API-Key': 'recommendations-api-key' },
     })
 
     // Edges

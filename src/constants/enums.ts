@@ -39,7 +39,6 @@ export enum RevisionType {
  */
 export enum RunStatus {
     PENDING = 'PENDING',
-    QUEUED = 'QUEUED',
     RUNNING = 'RUNNING',
     PAUSED = 'PAUSED',
     COMPLETED = 'COMPLETED',
@@ -216,7 +215,6 @@ export enum RunMode {
     SYNC = 'SYNC',
     ASYNC = 'ASYNC',
     BATCH = 'BATCH',
-    STREAM = 'STREAM',
 }
 
 /**
@@ -226,14 +224,6 @@ export enum DrainStrategy {
     BACKOFF = 'BACKOFF',
     SHED = 'SHED',
     QUEUE = 'QUEUE',
-}
-
-/**
- * Late events policy for windowed operations
- */
-export enum LateEventsPolicy {
-    DROP = 'DROP',
-    BUFFER = 'BUFFER',
 }
 
 /**
@@ -255,22 +245,16 @@ export enum ValidationStrictness {
 /**
  * Connection types for external services.
  *
- * These are the core backend connection types used by TypeORM entities and NestJS services.
- * The shared `CONNECTION_TYPE` in `shared/constants/index.ts` is a superset that includes
- * UI-specific subtypes (REST, GRAPHQL, POSTGRES, MYSQL, MSSQL, MONGODB, RABBITMQ, SQS, REDIS)
- * for richer connection configuration in the dashboard.
+ * Canonical saved connection types accepted by persistence and runtime validation.
  */
 export enum ConnectionType {
     HTTP = 'HTTP',
     S3 = 'S3',
     FTP = 'FTP',
     SFTP = 'SFTP',
-    DATABASE = 'DATABASE',
     CUSTOM = 'CUSTOM',
     POSTGRES = 'POSTGRES',
     MYSQL = 'MYSQL',
-    MSSQL = 'MSSQL',
-    MONGODB = 'MONGODB',
     RABBITMQ = 'RABBITMQ',
     SQS = 'SQS',
     REDIS = 'REDIS',
@@ -315,8 +299,6 @@ export enum DatabaseType {
     POSTGRESQL = 'POSTGRESQL',
     MYSQL = 'MYSQL',
     SQLITE = 'SQLITE',
-    MSSQL = 'MSSQL',
-    ORACLE = 'ORACLE',
 }
 
 /**
@@ -736,10 +718,6 @@ export enum ExtractorCategory {
 export enum FeedFormat {
     GOOGLE_SHOPPING = 'GOOGLE_SHOPPING',
     META_CATALOG = 'META_CATALOG',
-    AMAZON = 'AMAZON',
-    PINTEREST = 'PINTEREST',
-    TIKTOK = 'TIKTOK',
-    BING_SHOPPING = 'BING_SHOPPING',
     CSV = 'CSV',
     JSON = 'JSON',
     XML = 'XML',
@@ -801,18 +779,6 @@ export const DATE_FORMAT = {
     ISO_DATETIME: 'YYYY-MM-DDTHH:mm:ss',
     ISO_DATETIME_Z: 'YYYY-MM-DDTHH:mm:ssZ',
 } as const;
-
-/**
- * Event kinds for pipeline event triggers
- */
-export enum EventKind {
-    PRODUCT = 'PRODUCT',
-    VARIANT = 'VARIANT',
-    ASSET = 'ASSET',
-    COLLECTION = 'COLLECTION',
-    CUSTOMER = 'CUSTOMER',
-    ORDER_STATE = 'ORDER_STATE',
-}
 
 /**
  * Math operations for numeric transforms
@@ -879,12 +845,10 @@ export const PIPELINE_VALIDATION_ERROR = {
 
 /**
  * Re-export DESTINATION_TYPE from shared constants (single source of truth).
- * The shared object includes DOWNLOAD (UI-only); runtime code should use the
- * narrowed DestinationType below for type safety.
  */
 export { DESTINATION_TYPE } from '../../shared/constants';
 
 /**
- * Runtime delivery destination type, excludes 'DOWNLOAD' which is UI-only.
+ * Runtime delivery destination type.
  */
-export type DestinationType = Exclude<import('../../shared/types').DestinationType, 'DOWNLOAD'>;
+export type DestinationType = import('../../shared/types').DestinationType;

@@ -65,8 +65,6 @@ interface PipelineCapabilities {
     /** Additional Vendure permissions required */
     requires?: string[];
 
-    /** Safe for streaming mode execution */
-    streamSafe?: boolean;
 }
 ```
 
@@ -110,7 +108,7 @@ interface PipelineContext {
     idempotencyKeyField?: string;
 
     /** Execution mode */
-    runMode?: 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
+    runMode?: 'SYNC' | 'ASYNC' | 'BATCH';
 
     /** Default throughput configuration */
     throughput?: Throughput;
@@ -182,7 +180,7 @@ interface ParallelExecutionConfig {
     enabled?: boolean;
 
     /** Maximum concurrent steps (2-16, default: 4) */
-    maxConcurrentSteps?: number;
+    maxConcurrentSteps?: number; // Integer from 1 to 16; default 4
 
     /** Error handling policy */
     errorPolicy?: 'FAIL_FAST' | 'CONTINUE' | 'BEST_EFFORT';
@@ -254,24 +252,23 @@ interface TriggerConfig {
     idempotencyKey?: string;
 
     // EVENT trigger
-    /** Vendure event class name */
-    event?: string;
-    /** Event filter criteria */
-    filter?: Record<string, any>;
+    /** Exact supported Vendure event class name */
+    event?: VendureEventType;
 
-    // FILE trigger
-    /** File path pattern (glob supported) */
-    filePattern?: string;
-    /** Poll interval in seconds (min: 30) */
-    pollIntervalSeconds?: number;
-    /** Minimum file age in seconds before processing */
-    minFileAge?: number;
-    /** Recursive directory watching */
-    recursive?: boolean;
+    // FILE trigger (remote file-system connection)
+    fileWatch?: {
+        connectionCode: string;
+        path: string;
+        pattern?: string;
+        pollIntervalMs?: number;
+        minFileAge?: number;
+        recursive?: boolean;
+        events?: Array<'CREATE' | 'MODIFY' | 'DELETE'>;
+    };
 
     // MESSAGE trigger
     /** Queue type */
-    queueType?: 'RABBITMQ' | 'SQS' | 'REDIS_STREAMS';
+    queueType?: 'RABBITMQ_AMQP' | 'SQS' | 'REDIS_STREAMS' | 'INTERNAL';
     /** Connection code */
     connectionCode?: string;
     /** Queue/topic name */
@@ -279,7 +276,7 @@ interface TriggerConfig {
     /** Consumer group name (Redis Streams) */
     consumerGroup?: string;
     /** Acknowledgment mode */
-    ackMode?: 'AUTO' | 'MANUAL';
+    ackMode?: 'MANUAL';
     /** Prefetch count */
     prefetchCount?: number;
 }
@@ -315,19 +312,22 @@ interface ExtractStepConfig {
     /** Pagination configuration */
     pagination?: PaginationConfig;
 
-    // File extractors
-    /** File path */
-    path?: string;
-    /** File format */
-    format?: 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON' | 'TSV';
-    /** CSV delimiter */
+    // Uploaded or inline CSV, JSON, XML, and XLSX extractors
+    /** Data Hub upload ID */
+    fileId?: string;
+    /** Inline CSV, JSON, or XML text */
+    csvText?: string;
+    jsonText?: string;
+    xmlText?: string;
+    /** Inline CSV rows */
+    rows?: JsonValue[];
+    /** Format-specific parsing options */
     delimiter?: string;
-    /** CSV has header row */
     hasHeader?: boolean;
-    /** JSON array path */
-    arrayPath?: string;
-    /** XML root element */
-    rootElement?: string;
+    itemsPath?: string;
+    recordPath?: string;
+    attributePrefix?: string;
+    sheetName?: string | number;
 
     // Database extractors
     /** SQL query */
@@ -354,7 +354,7 @@ interface ExtractStepConfig {
     async?: boolean;
 
     /** Additional adapter-specific config */
-    [key: string]: any;
+    [key: string]: unknown;
 }
 ```
 
@@ -446,7 +446,7 @@ interface OperatorConfig {
     op: string;
 
     /** Operator-specific arguments */
-    args: Record<string, any>;
+    args: JsonObject;
 
     /** Conditional execution */
     condition?: FilterCondition | FilterCondition[];
@@ -477,14 +477,11 @@ Validate records against rules.
 
 ```typescript
 interface ValidateStepConfig {
-    /** Error handling mode */
-    errorHandlingMode: 'FAIL_FAST' | 'ACCUMULATE';
+    /** Error handling mode; defaults to FAIL_FAST */
+    errorHandlingMode?: 'FAIL_FAST' | 'ACCUMULATE';
 
     /** Validation rules */
     rules?: ValidationRuleConfig[];
-
-    /** Schema reference for validation */
-    schemaRef?: SchemaRefConfig;
 
     /** Throughput configuration */
     throughput?: Throughput;
@@ -496,18 +493,18 @@ interface ValidateStepConfig {
 ```typescript
 interface ValidationRuleConfig {
     /** Rule type */
-    type: 'business' | 'schema' | 'custom';
+    type: 'business' | 'schema' | 'ref';
 
     /** Rule specification */
     spec: {
         /** Field to validate */
-        field?: string;
+        field: string;
 
         /** Field is required */
         required?: boolean;
 
         /** Field type */
-        type?: 'string' | 'number' | 'boolean' | 'date' | 'email' | 'url';
+        type?: 'string' | 'number' | 'boolean';
 
         /** Minimum value/length */
         min?: number;
@@ -519,32 +516,11 @@ interface ValidationRuleConfig {
         pattern?: string;
 
         /** Allowed values */
-        enum?: any[];
+        enum?: JsonValue[];
 
-        /** Custom validation function code */
-        validate?: string;
-
-        /** Error message template */
-        message?: string;
+        /** Custom error message */
+        error?: string;
     };
-}
-```
-
-#### SchemaRefConfig
-
-```typescript
-interface SchemaRefConfig {
-    /** Schema format */
-    type: 'json-schema' | 'ajv' | 'yup' | 'zod';
-
-    /** Inline schema definition */
-    schema?: JsonObject;
-
-    /** External schema URL */
-    url?: string;
-
-    /** Schema validation options */
-    options?: Record<string, any>;
 }
 ```
 
@@ -629,7 +605,7 @@ interface FilterCondition {
     cmp: 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'nin' | 'contains' | 'regex' | 'exists';
 
     /** Comparison value */
-    value?: any;
+    value?: JsonValue;
 
     /** Negate the condition */
     not?: boolean;
@@ -719,35 +695,41 @@ interface ExportStepConfig {
     /** Exporter adapter code */
     adapterCode: string;
 
-    /** Export target type */
-    target?: 'FILE' | 'API' | 'WEBHOOK' | 'S3' | 'SFTP' | 'EMAIL';
+    /** Optional remote or explicit local delivery */
+    destinationType?: 'LOCAL' | 'HTTP' | 'S3' | 'SFTP' | 'FTP' | 'EMAIL';
 
     /** Export format */
     format?: 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON';
 
     // File export
-    /** Output path */
+    /** Directory relative to DATA_HUB_EXPORT_ROOT */
     path?: string;
-    /** Output filename */
-    filename?: string;
+    /** Output filename pattern */
+    filenamePattern?: string;
 
     // S3 export
     /** S3 bucket */
     bucket?: string;
     /** S3 key prefix */
     prefix?: string;
-    /** Connection code */
-    connectionCode?: string;
+    accessKeyIdSecretCode?: string;
+    secretAccessKeySecretCode?: string;
+    acl?: 'private' | 'public-read';
 
-    // API/Webhook export
-    /** Endpoint URL */
+    // HTTP export
     url?: string;
-    /** HTTP method */
     method?: 'POST' | 'PUT' | 'PATCH';
-    /** Request headers */
+    /** Non-sensitive static headers only */
     headers?: Record<string, string>;
-    /** API key secret */
-    apiKeySecretCode?: string;
+    /** Header name to Secret Code mapping */
+    headerSecretCodes?: Record<string, string>;
+    auth?: {
+        type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY';
+        secretCode?: string;
+        headerName?: string;
+        username?: string;
+        usernameSecretCode?: string;
+    };
 
     // Format options
     /** CSV delimiter */
@@ -761,6 +743,13 @@ interface ExportStepConfig {
     throughput?: Throughput;
 }
 ```
+
+When `destinationType` is omitted, the CSV, JSON, and XML exporters keep their
+direct local-file behavior using `path`. When it is present, the value is
+validated and dispatched through the destination delivery handlers; unknown
+values never fall back to a local write. HTTP configuration uses `url`, not
+`endpoint`. Sensitive static headers such as `Authorization`, cookies, API
+keys, tokens, or passwords are rejected and must reference Secret Codes.
 
 ### Feed Step
 
@@ -777,7 +766,7 @@ interface FeedStepConfig {
     /** Output format */
     format?: 'XML' | 'CSV' | 'TSV' | 'JSON' | 'NDJSON';
 
-    /** Output file path */
+    /** File path relative to DATA_HUB_EXPORT_ROOT */
     outputPath?: string;
 
     // Common feed fields
@@ -817,55 +806,59 @@ interface FeedStepConfig {
 
 ### Sink Step
 
-Index data to search engines or message queues.
+Index data to search engines, publish queue messages, or call an outgoing
+webhook. Sink-specific required fields are enforced by the selected adapter.
 
 ```typescript
 interface SinkStepConfig {
     /** Sink adapter code */
     adapterCode: string;
 
-    /** Sink type */
-    sinkType?: 'ELASTICSEARCH' | 'OPENSEARCH' | 'MEILISEARCH' | 'ALGOLIA' | 'TYPESENSE' | 'RABBITMQ' | 'SQS' | 'REDIS_STREAMS' | 'WEBHOOK' | 'CUSTOM';
+    defaultOperation?: 'UPSERT' | 'DELETE';
+    batchSize?: number;
+    fields?: string[];
+    excludeFields?: string[];
+    languageCode?: string;
+    translationsField?: string;
+    channelCode?: string;
+    channelField?: string;
 
-    // Search engine sinks
-    /** Index name */
+    // Search sinks
+    host?: string;             // MeiliSearch or Typesense
+    node?: string;             // Elasticsearch or OpenSearch
+    port?: number;             // Typesense
+    protocol?: 'http' | 'https';
     indexName?: string;
-    /** Host */
-    host?: string;
-    /** Port */
-    port?: number;
-    /** ID field */
+    collectionName?: string;
+    primaryKey?: string;       // MeiliSearch
     idField?: string;
-    /** Bulk batch size */
-    bulkSize?: number;
-    /** Connection code */
-    connectionCode?: string;
+    searchableFields?: string[];
+    filterableFields?: string[];
+    sortableFields?: string[];
+    appId?: string;            // Algolia
+    apiKeySecretCode?: string;
+    usernameSecretCode?: string;
+    passwordSecretCode?: string;
 
-    // Message queue sinks
-    /** Queue/topic name */
+    // Queue producer
+    queueType?: 'RABBITMQ' | 'RABBITMQ_AMQP' | 'SQS' | 'REDIS_STREAMS';
+    connectionCode?: string;
     queueName?: string;
-    /** Exchange name (RabbitMQ) */
-    exchangeName?: string;
-    /** Routing key (RabbitMQ) */
     routingKey?: string;
-    /** Message group ID (SQS) */
-    messageGroupId?: string;
+    headers?: Record<string, string>;
+    persistent?: boolean;
+    priority?: number;
+    ttlMs?: number;
 
     // Webhook sink
-    /** Webhook URL */
     url?: string;
-    /** HTTP method */
-    method?: 'POST' | 'PUT';
-    /** Headers */
-    headers?: Record<string, string>;
-    /** API key secret */
-    apiKeySecretCode?: string;
-
-    /** Additional sink config */
-    config?: JsonObject;
-
-    /** Throughput configuration */
-    throughput?: Throughput;
+    method?: 'POST' | 'PUT' | 'PATCH';
+    bearerTokenSecretCode?: string;
+    apiKeyHeader?: string;
+    hmacSecretCode?: string;
+    signatureHeaderName?: string;
+    timeoutMs?: number;
+    retries?: number;
 }
 ```
 
@@ -1009,7 +1002,7 @@ interface ScriptHookAction {
     /** Pre-registered script function name */
     scriptName: string;
     /** Arguments to pass to script */
-    args?: Record<string, any>;
+    args?: JsonObject;
 }
 
 interface WebhookHookAction {
@@ -1039,8 +1032,8 @@ interface TriggerPipelineHookAction {
     type: 'TRIGGER_PIPELINE';
     /** Pipeline code to trigger */
     pipelineCode: string;
-    /** Parameters to pass */
-    parameters?: JsonObject;
+    /** Trigger step that receives the hook records */
+    triggerKey: string;
 }
 
 interface LogHookAction {
@@ -1165,7 +1158,6 @@ const pipeline = createPipeline()
     // Capabilities
     .capabilities({
         writes: ['CATALOG'],
-        streamSafe: true,
     })
 
     // Lifecycle hooks
@@ -1282,10 +1274,10 @@ const pipeline = createPipeline()
     .sink('index-search', {
         adapterCode: 'meilisearch',
         indexName: 'products',
-        host: 'localhost',
-        port: 7700,
-        idField: 'id',
-        bulkSize: 500,
+        host: 'http://localhost:7700',
+        apiKeySecretCode: 'meilisearch-api-key',
+        primaryKey: 'id',
+        batchSize: 500,
     })
 
     // Edges

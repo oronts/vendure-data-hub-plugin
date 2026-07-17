@@ -1,8 +1,6 @@
 import { AdapterType as AdapterTypeEnum } from '../../constants/enums';
-import { PipelineDefinition } from '../../types/index';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
-import { validateOperatorStreamSafety } from './adapter-validation';
 
 // ============================================================================
 // Type Definitions
@@ -47,7 +45,6 @@ export function isOperatorConfig(value: unknown): value is OperatorConfig {
 export function validateTransformOperators(
     stepKey: string,
     cfg: TransformStepConfig,
-    definition: PipelineDefinition,
     registry: DataHubRegistryService,
     issues: PipelineDefinitionIssue[],
 ): void {
@@ -57,7 +54,7 @@ export function validateTransformOperators(
     }
 
     for (let i = 0; i < operators.length; i++) {
-        validateOperatorParams(stepKey, operators[i], i, definition, registry, issues);
+        validateOperatorParams(stepKey, operators[i], i, registry, issues);
     }
 }
 
@@ -91,7 +88,6 @@ export function validateOperatorParams(
     stepKey: string,
     op: unknown,
     index: number,
-    definition: PipelineDefinition,
     registry: DataHubRegistryService,
     issues: PipelineDefinitionIssue[],
 ): void {
@@ -123,6 +119,4 @@ export function validateOperatorParams(
         });
         return;
     }
-
-    validateOperatorStreamSafety(stepKey, opCode, adapter, definition, issues);
 }

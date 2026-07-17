@@ -21,7 +21,6 @@ import {
     AdapterStepConfig,
     AdapterType,
     validateAdapterConfig,
-    validateAdapterConnectivity,
     validateAdapterFields,
     validateExtractorConfigContract,
     validateSinkConfigContract,
@@ -236,7 +235,7 @@ export class DefinitionValidationService {
 
             // Handle TRANSFORM steps with operators (special validation path)
             if (type === StepTypeEnum.TRANSFORM) {
-                validateTransformOperators(step.key, cfg as TransformStepConfig, definition, this.registry, issues);
+                validateTransformOperators(step.key, cfg as TransformStepConfig, this.registry, issues);
                 continue;
             }
 
@@ -257,7 +256,6 @@ export class DefinitionValidationService {
             }
 
             const { adapter, adapterCode } = adapterResult;
-            validateAdapterConnectivity(step.key, adapterCode, adapterType, adapter, definition, issues);
             validateAdapterFields(step.key, cfg, adapter, issues);
             if (adapterType === AdapterTypeEnum.EXTRACTOR) {
                 validateExtractorConfigContract(step.key, adapterCode, cfg, issues);

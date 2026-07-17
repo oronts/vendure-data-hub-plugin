@@ -1,12 +1,16 @@
 import { PipelineContext, PipelineCapabilities, Throughput, HookAction } from '../../types/index';
+import type { WebhookHookAction } from '../../types/index';
 import { HOOK_ACTION } from '../constants';
 
 // HOOK BUILDERS
 
 export const hooks = {
-    /** `hooks.webhook('https://api.example.com/notify', { 'X-API-Key': 'secret' })` */
-    webhook(url: string, headers?: Record<string, string>): HookAction {
-        return { type: HOOK_ACTION.WEBHOOK, url, headers };
+    /** `hooks.webhook('https://api.example.com/notify', { headerSecretCodes: { Authorization: 'api-token' } })` */
+    webhook(
+        url: string,
+        options: Omit<WebhookHookAction, 'type' | 'url'> = {},
+    ): HookAction {
+        return { type: HOOK_ACTION.WEBHOOK, url, ...options };
     },
 
     /** `hooks.emit('product.imported')` */
@@ -14,9 +18,9 @@ export const hooks = {
         return { type: HOOK_ACTION.EMIT, event };
     },
 
-    /** `hooks.triggerPipeline('index-products')` */
-    triggerPipeline(pipelineCode: string): HookAction {
-        return { type: HOOK_ACTION.TRIGGER_PIPELINE, pipelineCode };
+    /** `hooks.triggerPipeline('index-products', 'webhook')` */
+    triggerPipeline(pipelineCode: string, triggerKey: string): HookAction {
+        return { type: HOOK_ACTION.TRIGGER_PIPELINE, pipelineCode, triggerKey };
     },
 
     /** `hooks.log('INFO', 'Pipeline completed with {{recordCount}} records')` */
@@ -41,11 +45,6 @@ export const context = {
     /** `context.batch(100, { channel: 'default' })` */
     batch(batchSize: number, options?: Partial<Omit<PipelineContext, 'throughput'>>): PipelineContext {
         return { throughput: { batchSize }, runMode: 'BATCH', ...options };
-    },
-
-    /** `context.stream({ channel: 'realtime' })` */
-    stream(options?: Partial<Omit<PipelineContext, 'runMode'>>): PipelineContext {
-        return { runMode: 'STREAM', ...options };
     },
 };
 

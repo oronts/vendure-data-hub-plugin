@@ -81,13 +81,8 @@ export interface CustomExportTemplate {
 }
 
 export type {
-    BatchConfig,
-    HttpConfig,
     CircuitBreakerConfig,
-    ConnectionPoolConfig,
-    RuntimePaginationConfig,
     SchedulerConfig,
-    EventTriggerServiceConfig,
     RuntimeLimitsConfig,
     CodeFirstPipeline,
     CodeFirstSecret,
@@ -159,7 +154,6 @@ export interface DataHubPluginOptions {
     feedGenerators?: CustomFeedGenerator[];
     configPath?: string;
     debug?: boolean;
-    enableDashboard?: boolean;
     runtime?: RuntimeLimitsConfig;
     /**
      * Security configuration options

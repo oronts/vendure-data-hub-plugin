@@ -19,7 +19,6 @@ export const TRIGGER_TYPE = {
  */
 export const RUN_STATUS = {
     PENDING: 'PENDING',
-    QUEUED: 'QUEUED',
     RUNNING: 'RUNNING',
     PAUSED: 'PAUSED',
     COMPLETED: 'COMPLETED',
@@ -155,18 +154,13 @@ export const ACK_MODE = {
 
 /**
  * Export destination types for file/data delivery.
- * Backend runtime excludes DOWNLOAD (UI-only); use the narrowed
- * DestinationType from src/constants/enums.ts for runtime code.
  */
 export const DESTINATION_TYPE = {
-    FILE: 'FILE',
-    DOWNLOAD: 'DOWNLOAD',
     S3: 'S3',
     FTP: 'FTP',
     SFTP: 'SFTP',
     HTTP: 'HTTP',
     EMAIL: 'EMAIL',
-    WEBHOOK: 'WEBHOOK',
     LOCAL: 'LOCAL',
 } as const;
 

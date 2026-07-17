@@ -3,13 +3,20 @@
  * Handles validation of adapter codes, field schemas, and connectivity requirements.
  */
 
-import { RunMode, AdapterType as AdapterTypeEnum, StepType as StepTypeEnum } from '../../constants/enums';
-import { EXTRACTOR_CODE } from '../../constants/adapters';
-import { JsonValue, PipelineDefinition, StepType } from '../../types/index';
-import { DataHubRegistryService } from '../../sdk/registry.service';
-import { AdapterDefinition, StepConfigSchema, StepConfigSchemaField, SelectOption } from '../../sdk/types';
-import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
-import { AdapterType } from '../../../shared/types';
+import {
+    AdapterType as AdapterTypeEnum,
+    StepType as StepTypeEnum,
+} from '../../constants/enums';
+import { GRAPHQL_EXTRACTOR_CODE } from '../../extractors/graphql/schema';
+import type { JsonValue, StepType } from '../../types/index';
+import type { DataHubRegistryService } from '../../sdk/registry.service';
+import type { AdapterDefinition, StepConfigSchema, StepConfigSchemaField, SelectOption } from '../../sdk/types';
+import type { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
+import type { AdapterType } from '../../../shared/types';
+import { validateFieldConstraints } from './field-constraint-validation';
+import { getNestedValue } from '../../../shared/utils/object-path';
+import { assertCanonicalExtractorConfig } from '../../extractors/extractor-config.contract';
+import { getErrorMessage } from '../../utils/error.utils';
 
 export type { AdapterType } from '../../../shared/types';
 
@@ -54,38 +61,6 @@ export function isFieldWithOptions(
     return Array.isArray(field.options) && field.options.length > 0;
 }
 
-/**
- * Type guard to check if adapter has pure property
- */
-export function hasStreamSafetyInfo(
-    adapter: AdapterDefinition | undefined,
-): adapter is AdapterDefinition & { pure: boolean } {
-    return adapter !== undefined && typeof adapter.pure === 'boolean';
-}
-
-/**
- * Validates that an operator is stream-safe when running in STREAM mode.
- */
-export function validateOperatorStreamSafety(
-    stepKey: string,
-    opCode: string,
-    adapter: AdapterDefinition,
-    definition: PipelineDefinition,
-    issues: PipelineDefinitionIssue[],
-): void {
-    if (definition.context?.runMode !== RunMode.STREAM) {
-        return;
-    }
-
-    if (!hasStreamSafetyInfo(adapter) || adapter.pure !== true) {
-        issues.push({
-            message: `Step "${stepKey}": operator "${opCode}" is not stream-safe (pure=false)`,
-            stepKey,
-            errorCode: 'operator-not-pure',
-        });
-    }
-}
-
 // ============================================================================
 // Validation Functions
 // ============================================================================
@@ -125,22 +100,6 @@ export function validateAdapterConfig(
 }
 
 /**
- * Validates adapter connectivity and stream safety requirements.
- */
-export function validateAdapterConnectivity(
-    stepKey: string,
-    adapterCode: string,
-    adapterType: AdapterType,
-    adapter: AdapterDefinition,
-    definition: PipelineDefinition,
-    issues: PipelineDefinitionIssue[],
-): void {
-    if (adapterType === AdapterTypeEnum.OPERATOR) {
-        validateOperatorStreamSafety(stepKey, adapterCode, adapter, definition, issues);
-    }
-}
-
-/**
  * Validates all fields in an adapter configuration against the schema.
  */
 export function validateAdapterFields(
@@ -154,12 +113,88 @@ export function validateAdapterFields(
     }
 
     for (const field of adapter.schema.fields) {
-        const fieldValue = cfg[field.key] as JsonValue | undefined;
+        const fieldValue = getNestedValue(cfg, field.key) as JsonValue | undefined;
         validateRequiredFields(stepKey, field, fieldValue, issues);
         if (fieldValue != null) {
-            validateFieldTypes(stepKey, field, fieldValue, issues);
-            validateFieldMappings(stepKey, field, fieldValue, issues);
+            const validType = validateFieldTypes(stepKey, field, fieldValue, issues);
+            if (validType) {
+                validateFieldMappings(stepKey, field, fieldValue, issues);
+                validateFieldConstraints(stepKey, field, fieldValue, issues);
+            }
         }
+    }
+}
+
+export function validateExtractorConfigContract(
+    stepKey: string,
+    adapterCode: string,
+    cfg: AdapterStepConfig,
+    issues: PipelineDefinitionIssue[],
+): void {
+    if (adapterCode !== 'httpApi' && adapterCode !== GRAPHQL_EXTRACTOR_CODE) return;
+
+    try {
+        assertCanonicalExtractorConfig(adapterCode, cfg);
+    } catch (error) {
+        issues.push({
+            message: `Step "${stepKey}": ${getErrorMessage(error)}`,
+            stepKey,
+            errorCode: 'invalid-extractor-config-contract',
+        });
+    }
+}
+
+const BUILT_IN_SINK_CODES = new Set([
+    'meilisearch',
+    'elasticsearch',
+    'opensearch',
+    'algolia',
+    'typesense',
+    'queueProducer',
+    'webhook',
+]);
+
+const REMOVED_SINK_FIELDS = [
+    'sinkType',
+    'hosts',
+    'indexPrefix',
+    'pipeline',
+    'refresh',
+    'applicationId',
+    'routing',
+    'bulkSize',
+    'flushIntervalMs',
+    'fieldMapping',
+    'deleteOnMissing',
+    'upsert',
+    'basicSecretCode',
+] as const;
+
+export function validateSinkConfigContract(
+    stepKey: string,
+    adapterCode: string,
+    cfg: AdapterStepConfig,
+    issues: PipelineDefinitionIssue[],
+): void {
+    if (!BUILT_IN_SINK_CODES.has(adapterCode)) return;
+
+    const unsupportedFields: string[] = REMOVED_SINK_FIELDS.filter(
+        field => cfg[field] !== undefined,
+    );
+    if ((adapterCode === 'elasticsearch' || adapterCode === 'opensearch') && cfg.host !== undefined) {
+        unsupportedFields.push('host');
+    }
+    if (adapterCode !== 'queueProducer' && cfg.connectionCode !== undefined) {
+        unsupportedFields.push('connectionCode');
+    }
+
+    for (const field of unsupportedFields) {
+        issues.push({
+            message: `Step "${stepKey}": sink field "${field}" is not supported`,
+            stepKey,
+            field,
+            errorCode: 'unsupported-sink-field',
+        });
     }
 }
 
@@ -190,11 +225,11 @@ export function validateFieldTypes(
     field: StepConfigSchemaField,
     value: JsonValue,
     issues: PipelineDefinitionIssue[],
-): void {
+): boolean {
     const fieldType = String(field.type).toLowerCase();
     const typeValidators: Record<string, () => boolean> = {
         string: () => typeof value === 'string',
-        number: () => typeof value === 'number',
+        number: () => typeof value === 'number' && Number.isFinite(value),
         boolean: () => typeof value === 'boolean',
         json: () => typeof value === 'object' && value !== null,
     };
@@ -207,7 +242,9 @@ export function validateFieldTypes(
             field: field.key,
             errorCode: 'invalid-field-type',
         });
+        return false;
     }
+    return true;
 }
 
 /**
@@ -302,5 +339,5 @@ export function isUsingBuiltInEnrichment(stepType: StepType, cfg: AdapterStepCon
  * Checks if this is a GraphQL extractor step.
  */
 export function isGraphQLExtractor(adapterType: AdapterType, adapterCode: string): boolean {
-    return adapterType === AdapterTypeEnum.EXTRACTOR && adapterCode === EXTRACTOR_CODE.GRAPHQL;
+    return adapterType === AdapterTypeEnum.EXTRACTOR && adapterCode === GRAPHQL_EXTRACTOR_CODE;
 }

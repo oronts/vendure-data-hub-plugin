@@ -33,12 +33,11 @@ createPipeline()
     contentLanguage: 'en',
     channelStrategy: 'EXPLICIT',  // 'EXPLICIT' | 'INHERIT' | 'MULTI'
     validationMode: 'STRICT',     // 'STRICT' | 'LENIENT'
-    runMode: 'BATCH',             // 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM'
+    runMode: 'BATCH',             // 'SYNC' | 'ASYNC' | 'BATCH'
 })
 .capabilities({
     writes: ['CATALOG'],     // 'CATALOG' | 'CUSTOMERS' | 'ORDERS' | 'PROMOTIONS' | 'INVENTORY' | 'CUSTOM'
     requires: [],            // Required permissions
-    streamSafe: true,        // Safe for streaming mode
 })
 ```
 
@@ -49,7 +48,7 @@ Enables parallel step execution for the pipeline. When enabled, independent step
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| maxConcurrentSteps | number | No | Maximum steps to run concurrently (default: 4, range: 2-16) |
+| maxConcurrentSteps | number | No | Maximum steps to run concurrently (default: 4, range: 1-16) |
 | errorPolicy | string | No | `'FAIL_FAST'` \| `'CONTINUE'` \| `'BEST_EFFORT'`. Default: `'FAIL_FAST'` |
 
 **Error policies:**
@@ -160,6 +159,7 @@ array of `HookAction` objects. Six action types are supported: `INTERCEPTOR`, `S
     AFTER_LOAD: [{
         type: 'TRIGGER_PIPELINE',
         pipelineCode: 'post-import-sync',
+        triggerKey: 'hook',
     }],
     PIPELINE_STARTED: [{
         type: 'LOG',
@@ -200,9 +200,11 @@ Define how the pipeline starts:
 ```typescript
 .trigger('webhook', {
     type: 'WEBHOOK',
-    path: '/product-sync',
-    signature: 'hmac-sha256',
-    idempotencyKey: 'X-Request-ID',
+    authentication: 'HMAC',
+    secretCode: 'product-sync-webhook-secret',
+    hmacAlgorithm: 'SHA256',
+    requireIdempotencyKey: true,
+    idempotencyKeyHeader: 'X-Request-ID',
 })
 ```
 
@@ -211,9 +213,11 @@ Define how the pipeline starts:
 .trigger('on-order', {
     type: 'EVENT',
     event: 'OrderPlacedEvent',
-    filter: { state: 'ArrangingPayment' },
 })
 ```
+
+The event selector is an exact Vendure class name. Filter the seeded records in
+a downstream step when only some operations or states should continue.
 
 ### extract
 
@@ -255,12 +259,11 @@ Pull data from external sources:
 })
 ```
 
-**File:**
+**Uploaded CSV:**
 ```typescript
-.extract('parse-file', {
-    adapterCode: 'file',
-    path: '/uploads/products.csv',
-    format: 'CSV',
+.extract('parse-csv', {
+    adapterCode: 'csv',
+    fileId: 'products-upload-id',
     delimiter: ',',
     hasHeader: true,
 })
@@ -271,7 +274,7 @@ Pull data from external sources:
 .extract('query-vendure', {
     adapterCode: 'vendureQuery',
     entity: 'PRODUCT',  // UPPERCASE: PRODUCT, COLLECTION, FACET, CUSTOMER, ORDER, etc.
-    relations: 'variants,featuredAsset,translations',
+    relations: ['variants', 'featuredAsset', 'translations'],
     languageCode: 'en',
     batchSize: 500,
 })
@@ -336,7 +339,6 @@ Validate records:
 .validate('step-key', {
     errorHandlingMode: 'FAIL_FAST' | 'ACCUMULATE',
     rules: ValidationRuleConfig[],
-    schemaRef?: SchemaRefConfig,
     throughput?: Throughput,
 })
 ```
@@ -467,34 +469,41 @@ Send data to external destinations:
 ```typescript
 .export('step-key', {
     adapterCode: string,
-    target?: 'FILE' | 'API' | 'WEBHOOK' | 'S3' | 'SFTP' | 'EMAIL',
+    destinationType?: 'LOCAL' | 'HTTP' | 'S3' | 'SFTP' | 'FTP' | 'EMAIL',
     format?: 'CSV' | 'JSON' | 'XML' | 'XLSX' | 'NDJSON',
-    // Target-specific options...
+    // Destination-specific options...
 })
 ```
 
 **File Export:**
 ```typescript
 .export('write-file', {
-    adapterCode: 'file-export',
-    target: 'FILE',
-    format: 'CSV',
-    path: '/exports',
-    filename: 'products.csv',
+    adapterCode: 'csvExport',
+    destinationType: 'LOCAL',
+    directory: 'catalog',
+    filenamePattern: 'products.csv',
 })
 ```
+
+For local exports, `directory` is relative to `DATA_HUB_EXPORT_ROOT`; feed
+`outputPath` uses the same root-relative contract. The root defaults to
+`<cwd>/exports`. Absolute local paths and URLs are not valid directory values.
 
 **S3 Export:**
 ```typescript
 .export('upload-s3', {
-    adapterCode: 's3-export',
-    target: 'S3',
+    adapterCode: 'jsonExport',
+    destinationType: 'S3',
     bucket: 'my-bucket',
+    region: 'eu-central-1',
     prefix: 'exports/',
-    format: 'JSON',
-    connectionCode: 'aws-s3',
+    accessKeyIdSecretCode: 'aws-access-key-id',
+    secretAccessKeySecretCode: 'aws-secret-access-key',
 })
 ```
+
+HTTP destinations use `url`. Put only non-sensitive values in `headers`; use
+`auth` or `headerSecretCodes` for credentials and sensitive header values.
 
 ### feed
 
@@ -515,7 +524,7 @@ Generate product feeds:
     adapterCode: 'googleMerchant',
     feedType: 'GOOGLE_SHOPPING',
     format: 'XML',
-    outputPath: '/feeds/google.xml',
+    outputPath: 'feeds/google.xml',
     targetCountry: 'US',
     contentLanguage: 'en',
     currency: 'USD',
@@ -532,9 +541,7 @@ Index data to search engines:
 
 ```typescript
 .sink('step-key', {
-    adapterCode: 'elasticsearch' | 'meilisearch' | 'algolia' | 'typesense',
-    sinkType?: 'ELASTICSEARCH' | 'OPENSEARCH' | 'MEILISEARCH' | 'ALGOLIA' | 'TYPESENSE' | 'CUSTOM',
-    indexName: string,
+    adapterCode: 'elasticsearch' | 'opensearch' | 'meilisearch' | 'algolia' | 'typesense',
     // Sink-specific options...
 })
 ```
@@ -543,12 +550,10 @@ Index data to search engines:
 ```typescript
 .sink('index-products', {
     adapterCode: 'elasticsearch',
-    sinkType: 'ELASTICSEARCH',
-    host: 'localhost',
-    port: 9200,
+    node: 'http://localhost:9200',
     indexName: 'products',
     idField: 'id',
-    bulkSize: 500,
+    batchSize: 500,
 })
 ```
 
@@ -670,7 +675,7 @@ const productSync = createPipeline()
     .name('Daily Product Sync')
     .description('Sync products from ERP every day')
     .version(1)
-    .capabilities({ writes: ['CATALOG'], streamSafe: true })
+    .capabilities({ writes: ['CATALOG'] })
 
     .trigger('schedule', {
         type: 'SCHEDULE',

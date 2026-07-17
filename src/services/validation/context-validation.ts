@@ -1,9 +1,9 @@
 /**
  * Context and capabilities validation for pipeline definitions.
- * Handles validation of pipeline context settings, capabilities, and late events policies.
+ * Handles validation of pipeline context settings and capabilities.
  */
 
-import { LateEventsPolicy } from '../../constants/enums';
+import { PARALLEL_EXECUTION } from '../../constants/defaults/runtime-defaults';
 import { PipelineDefinition } from '../../types/index';
 import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
 
@@ -17,16 +17,9 @@ import { PipelineDefinitionIssue } from '../../validation/pipeline-definition-er
 interface PipelineCapabilitiesConfig {
     writes?: string[];
     requires?: string[];
-    streamSafe?: boolean;
 }
 
-/**
- * Late events policy configuration
- */
-interface LateEventsConfig {
-    policy: string;
-    bufferMs?: number;
-}
+const SUPPORTED_RUN_MODES = new Set(['SYNC', 'ASYNC', 'BATCH']);
 
 // ============================================================================
 // Validation Functions
@@ -53,9 +46,9 @@ export function validateCapabilities(definition: PipelineDefinition, issues: Pip
         });
     }
 
-    if (caps.streamSafe !== undefined && typeof caps.streamSafe !== 'boolean') {
+    if ('streamSafe' in caps) {
         issues.push({
-            message: 'capabilities.streamSafe must be a boolean',
+            message: 'capabilities.streamSafe is not supported',
             errorCode: 'capabilities-invalid',
         });
     }
@@ -83,52 +76,79 @@ function validateCapabilitiesWrites(writes: unknown, issues: PipelineDefinitionI
 }
 
 /**
- * Validates pipeline context configuration including late events and watermarks.
+ * Validates pipeline context configuration.
  */
 export function validateContext(definition: PipelineDefinition, issues: PipelineDefinitionIssue[]): void {
     if (!definition.context) {
         return;
     }
 
-    if (definition.context.lateEvents) {
-        validateLateEvents(definition.context.lateEvents as LateEventsConfig, issues);
-    }
-
-    validateWatermark(definition.context.watermarkMs, issues);
-}
-
-/**
- * Validates late events policy configuration.
- */
-function validateLateEvents(le: LateEventsConfig, issues: PipelineDefinitionIssue[]): void {
-    const policyLower = typeof le.policy === 'string' ? le.policy.toLowerCase() : '';
-
-    if (policyLower !== LateEventsPolicy.DROP && policyLower !== LateEventsPolicy.BUFFER) {
-        issues.push({
-            message: 'context.lateEvents.policy must be drop|buffer',
-            errorCode: 'context-invalid',
-        });
-    }
-
-    if (policyLower === LateEventsPolicy.BUFFER && (typeof le.bufferMs !== 'number' || le.bufferMs <= 0)) {
-        issues.push({
-            message: 'context.lateEvents.bufferMs must be a positive number when policy=buffer',
-            errorCode: 'context-invalid',
-        });
-    }
-}
-
-/**
- * Validates watermark configuration.
- */
-function validateWatermark(watermarkMs: unknown, issues: PipelineDefinitionIssue[]): void {
+    const context = definition.context as Record<string, unknown>;
     if (
-        watermarkMs !== undefined &&
-        watermarkMs !== null &&
-        (typeof watermarkMs !== 'number' || watermarkMs < 0)
+        context.runMode !== undefined &&
+        !SUPPORTED_RUN_MODES.has(String(context.runMode))
     ) {
         issues.push({
-            message: 'context.watermarkMs must be a non-negative number',
+            message: 'context.runMode must be SYNC, ASYNC, or BATCH',
+            errorCode: 'context-invalid',
+        });
+    }
+    if ('lateEvents' in context) {
+        issues.push({
+            message: 'context.lateEvents is not supported',
+            errorCode: 'context-invalid',
+        });
+    }
+    if ('watermarkMs' in context) {
+        issues.push({
+            message: 'context.watermarkMs is not supported',
+            errorCode: 'context-invalid',
+        });
+    }
+
+    validateParallelExecution(definition.context.parallelExecution, issues);
+}
+
+function validateParallelExecution(
+    value: unknown,
+    issues: PipelineDefinitionIssue[],
+): void {
+    if (value === undefined) return;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        issues.push({
+            message: 'context.parallelExecution must be an object',
+            errorCode: 'context-invalid',
+        });
+        return;
+    }
+    const config = value as Record<string, unknown>;
+    if (config.enabled !== undefined && typeof config.enabled !== 'boolean') {
+        issues.push({
+            message: 'context.parallelExecution.enabled must be a boolean',
+            errorCode: 'context-invalid',
+        });
+    }
+    if (
+        config.maxConcurrentSteps !== undefined
+        && (
+            !Number.isSafeInteger(config.maxConcurrentSteps)
+            || (config.maxConcurrentSteps as number) < 1
+            || (config.maxConcurrentSteps as number) > PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS
+        )
+    ) {
+        issues.push({
+            message: `context.parallelExecution.maxConcurrentSteps must be an integer from 1 to ${PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS}`,
+            errorCode: 'context-invalid',
+        });
+    }
+    if (
+        config.errorPolicy !== undefined
+        && !PARALLEL_EXECUTION.ERROR_POLICIES.some(
+            policy => policy === config.errorPolicy,
+        )
+    ) {
+        issues.push({
+            message: 'context.parallelExecution.errorPolicy must be FAIL_FAST, CONTINUE, or BEST_EFFORT',
             errorCode: 'context-invalid',
         });
     }

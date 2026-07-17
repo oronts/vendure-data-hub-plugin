@@ -14,6 +14,12 @@ export const SANDBOX = {
     DEFAULT_TIMEOUT_MS: 60000,
 } as const;
 
+export const PARALLEL_EXECUTION = {
+    DEFAULT_MAX_CONCURRENT_STEPS: 4,
+    MAX_CONCURRENT_STEPS: 16,
+    ERROR_POLICIES: ['FAIL_FAST', 'CONTINUE', 'BEST_EFFORT'],
+} as const;
+
 /**
  * Hook execution defaults
  */
@@ -42,6 +48,19 @@ export const SPAN_TRACKER = {
 export const QUEUE = {
     /** Default limit for recent failed runs query */
     DEFAULT_RECENT_FAILED_LIMIT: 10,
+    /** Retry attempts after the initial pipeline enqueue failure */
+    DEFAULT_MESSAGE_RETRIES: 3,
+    /** Prevent a malformed definition from creating an excessive retry loop */
+    MAX_MESSAGE_RETRIES: 10,
+    /** Poll interval while a queue delivery waits for its correlated run */
+    RUN_STATUS_POLL_INTERVAL_MS: 5_000,
+    /**
+     * Keep the wait below broker delivery leases and pending-entry cleanup windows.
+     * A non-terminal run after this limit is treated as a processing timeout.
+     */
+    RUN_STATUS_WAIT_TIMEOUT_MS: 4 * 60 * 1_000,
+    /** Redeliveries reuse their correlated run for this duration */
+    RUN_IDEMPOTENCY_TTL_SECONDS: 7 * 24 * 60 * 60,
 } as const;
 
 /**

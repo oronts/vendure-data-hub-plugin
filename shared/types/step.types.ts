@@ -247,7 +247,7 @@ export interface StepContextOverride {
     channelStrategy?: ChannelStrategy;
     channelIds?: string[];
     validationMode?: ValidationModeType;
-    runMode?: 'SYNC' | 'ASYNC' | 'BATCH' | 'STREAM';
+    runMode?: 'SYNC' | 'ASYNC' | 'BATCH';
 }
 
 /**
@@ -291,5 +291,4 @@ export interface OperatorConfig {
 export interface PipelineCapabilities {
     writes?: PipelineCapabilityDomain[];
     requires?: string[];
-    streamSafe?: boolean;
 }
