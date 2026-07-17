@@ -19,6 +19,10 @@ import { PipelineStatus, RevisionType, SortOrder, StepType } from '../../constan
 import { DefinitionValidationService } from '../validation/definition-validation.service';
 import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
 import { createSeededGraphInput, type SeededInputMode } from '../../runtime/orchestration';
+import {
+    getGateCheckpointKeys,
+    type GateCheckpointKeys,
+} from '../../runtime/gate-checkpoint';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
@@ -27,6 +31,10 @@ import { getErrorMessage, isDuplicateEntryError } from '../../utils/error.utils'
 import { CheckpointService } from '../data/checkpoint.service';
 import { DomainEventsService } from '../events/domain-events.service';
 import { RevisionService } from '../versioning/revision.service';
+import {
+    PublishDataHubPipelinePermission,
+    ReviewDataHubPipelinePermission,
+} from '../../permissions';
 import {
     assertPipelineRunnable,
     clonePipelineDefinition,
@@ -44,6 +52,7 @@ import {
     PipelineRunIdempotencyConflictError,
     type PipelineRunIdempotencyScope,
 } from './pipeline-run-idempotency';
+import { getPipelineRunChannel } from './pipeline-run-channel';
 
 export interface CreatePipelineInput {
     code: string;
@@ -193,6 +202,7 @@ export class PipelineService {
         if (input.code && input.code !== entity.code) {
             assertValidPipelineCode(input.code);
             await this.assertCodeAvailable(ctx, input.code, entity.id);
+            await this.assertNoDependents(ctx, entity.code, 'rename');
             entity.code = input.code;
             executableChanged = true;
         }
@@ -229,6 +239,13 @@ export class PipelineService {
         const deletedId = entity.id.toString();
         const deletedCode = entity.code;
         try {
+            const dependents = await this.findDependents(ctx, deletedCode);
+            if (dependents.length > 0) {
+                return {
+                    result: DeletionResult.NOT_DELETED,
+                    message: this.dependentPipelineMessage(deletedCode, dependents, 'delete'),
+                };
+            }
             await repo.remove(entity);
             this.domainEvents.publishPipelineDeleted(deletedId, deletedCode);
             return { result: DeletionResult.DELETED };
@@ -238,6 +255,8 @@ export class PipelineService {
     }
 
     async publish(ctx: RequestContext, id: ID): Promise<Pipeline> {
+        const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
+        assertPipelineStatus(pipeline.status, [PipelineStatus.REVIEW], 'publish');
         const revision = await this.revisionService.publishVersion(ctx, {
             pipelineId: id,
             authorUserId: ctx.activeUserId?.toString(),
@@ -245,9 +264,39 @@ export class PipelineService {
         return assertFound(this.findOne(ctx, revision.pipelineId));
     }
 
+    private async assertNoDependents(
+        ctx: RequestContext,
+        pipelineCode: string,
+        action: 'delete' | 'rename',
+    ): Promise<void> {
+        const dependents = await this.findDependents(ctx, pipelineCode);
+        if (dependents.length === 0) return;
+        throw new Error(this.dependentPipelineMessage(pipelineCode, dependents, action));
+    }
+
+    private dependentPipelineMessage(
+        pipelineCode: string,
+        dependents: readonly Pipeline[],
+        action: 'delete' | 'rename',
+    ): string {
+        const dependentCodes = dependents
+            .map(pipeline => pipeline.code)
+            .sort((left, right) => left.localeCompare(right));
+        return `Cannot ${action} pipeline "${pipelineCode}" because it is required by: ${dependentCodes.join(', ')}`;
+    }
+
     async approve(ctx: RequestContext, id: ID): Promise<Pipeline> {
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
         assertPipelineStatus(pipeline.status, [PipelineStatus.REVIEW], 'approve');
+        const canReview = ctx.userHasPermissions([
+            ReviewDataHubPipelinePermission.Permission,
+        ]);
+        const canPublish = ctx.userHasPermissions([
+            PublishDataHubPipelinePermission.Permission,
+        ]);
+        if (!canReview || !canPublish) {
+            throw new Error('Approving a pipeline requires both review and publish permissions');
+        }
         return this.publish(ctx, id);
     }
 
@@ -278,6 +327,17 @@ export class PipelineService {
         pipeline.enabled = false;
         await repo.save(pipeline, { reload: false });
         this.domainEvents.publishPipelineArchived(pipeline.id.toString(), pipeline.code);
+        return assertFound(this.findOne(ctx, pipeline.id));
+    }
+    async reactivate(ctx: RequestContext, id: ID): Promise<Pipeline> {
+        const repo = this.connection.getRepository(ctx, Pipeline);
+        const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, id);
+        assertPipelineStatus(pipeline.status, [PipelineStatus.ARCHIVED], 'reactivate');
+        pipeline.definition = await this.getPublishedDefinition(ctx, pipeline);
+        pipeline.status = PipelineStatus.PUBLISHED;
+        pipeline.enabled = true;
+        await repo.save(pipeline, { reload: false });
+        this.domainEvents.publishPipelineReactivated(pipeline.id.toString(), pipeline.code);
         return assertFound(this.findOne(ctx, pipeline.id));
     }
 
@@ -326,6 +386,7 @@ export class PipelineService {
         pipelineId: ID,
         options?: { skipPermissionCheck?: boolean; triggeredBy?: string },
     ): Promise<PipelineRun> {
+        const runChannel = getPipelineRunChannel(ctx);
         const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, pipelineId);
         assertPipelineRunnable(pipeline);
         const definition = await this.getPublishedDefinition(ctx, pipeline);
@@ -335,6 +396,7 @@ export class PipelineService {
         const repo = this.connection.getRepository(ctx, PipelineRun);
         const runEntity = new PipelineRun();
         runEntity.pipeline = pipeline;
+        runEntity.revisionId = pipeline.currentRevisionId;
         runEntity.status = RunStatus.PENDING;
         runEntity.startedAt = null;
         runEntity.finishedAt = null;
@@ -344,8 +406,13 @@ export class PipelineService {
         runEntity.checkpoint = null;
         runEntity.startedByUserId = ctx.activeUserId?.toString() ?? null;
         runEntity.triggeredBy = options?.triggeredBy ?? (ctx.activeUserId ? `manual:${ctx.activeUserId}` : 'manual');
+        runEntity.channelId = runChannel.channelId;
+        runEntity.channelToken = runChannel.channelToken;
+        runEntity.queueRequestedAt = new Date();
+        runEntity.queueDispatchedAt = null;
         const run = await repo.save(runEntity);
         this.eventBus.publish(new PipelineQueueRequestEvent(
+            ctx,
             run.id,
             pipelineId,
             runEntity.triggeredBy,
@@ -383,6 +450,8 @@ export class PipelineService {
         } else if (run.status === RunStatus.PENDING) {
             run.status = RunStatus.CANCELLED;
             run.finishedAt = new Date();
+            run.queueRequestedAt = null;
+            run.queueDispatchedAt = null;
             await repo.save(run, { reload: false });
             this.domainEvents.publishRunCancelled(
                 run.pipelineId?.toString(),
@@ -489,6 +558,7 @@ export class PipelineService {
         options: SeededRunOptions,
         idempotency?: PipelineRunIdempotencyScope,
     ): Promise<PipelineRun> {
+        const runChannel = getPipelineRunChannel(ctx);
         const seededInput = createSeededGraphInput(options.triggerKey, seed, options.seedMode);
         const seedCheckpoint: JsonObject = {
             __seed: {
@@ -505,6 +575,7 @@ export class PipelineService {
         }
         const runEntity = new PipelineRun();
         runEntity.pipeline = pipeline;
+        runEntity.revisionId = pipeline.currentRevisionId;
         runEntity.status = RunStatus.PENDING;
         runEntity.startedAt = null;
         runEntity.finishedAt = null;
@@ -515,6 +586,10 @@ export class PipelineService {
         runEntity.startedByUserId = ctx.activeUserId?.toString() ?? null;
         runEntity.triggeredBy = options.triggeredBy ??
             (ctx.activeUserId ? `manual:${ctx.activeUserId}` : 'manual');
+        runEntity.channelId = runChannel.channelId;
+        runEntity.channelToken = runChannel.channelToken;
+        runEntity.queueRequestedAt = new Date();
+        runEntity.queueDispatchedAt = null;
         runEntity.idempotencyChannelId = idempotency?.channelId ?? null;
         runEntity.idempotencyTriggerKeyHash = idempotency?.triggerKeyHash ?? null;
         runEntity.idempotencyKeyHash = idempotency?.keyHash ?? null;
@@ -524,6 +599,7 @@ export class PipelineService {
         const run = await this.connection.getRepository(ctx, PipelineRun).save(runEntity);
         if (!options.deferQueueEnqueue) {
             this.eventBus.publish(new PipelineQueueRequestEvent(
+                ctx,
                 run.id,
                 pipelineId,
                 runEntity.triggeredBy,
@@ -572,37 +648,42 @@ export class PipelineService {
      * can flip PAUSED -> RUNNING. Subsequent callers see 0 affected rows and fail.
      */
     async approveGate(ctx: RequestContext, runId: ID, stepKey: string): Promise<PipelineRun> {
-        const repo = this.connection.getRepository(ctx, PipelineRun);
-
-        // Atomic status transition: only succeeds if run is currently PAUSED
-        const updateResult = await repo.update(
-            { id: runId, status: RunStatus.PAUSED },
-            { status: RunStatus.RUNNING },
+        const gateState = await this.connection.withTransaction(
+            ctx,
+            async transactionCtx => {
+                const repo = this.connection.getRepository(transactionCtx, PipelineRun);
+                const state = await this.getPausedGateState(
+                    transactionCtx,
+                    runId,
+                    stepKey,
+                );
+                const updateResult = await repo.update(
+                    { id: runId, status: RunStatus.PAUSED },
+                    {
+                        status: RunStatus.RUNNING,
+                        queueRequestedAt: new Date(),
+                        queueDispatchedAt: null,
+                    },
+                );
+                if (updateResult.affected === 0) {
+                    const existing = await repo.findOne({ where: { id: runId } });
+                    if (!existing) throw new Error(`Pipeline run not found: ${runId}`);
+                    throw new Error(`Cannot approve gate: run is not paused (current status: ${existing.status})`);
+                }
+                await this.checkpointService.setForPipeline(
+                    transactionCtx,
+                    state.pipelineId,
+                    {
+                        ...state.checkpointData,
+                        [state.keys.approved]: true,
+                    },
+                );
+                return state;
+            },
         );
-        if (updateResult.affected === 0) {
-            const existing = await repo.findOne({ where: { id: runId } });
-            if (!existing) throw new Error(`Pipeline run not found: ${runId}`);
-            throw new Error(`Cannot approve gate: run is not paused (current status: ${existing.status})`);
-        }
-
-        const run = await repo.findOne({
-            where: { id: runId },
-            relations: { pipeline: true },
-        });
-        if (!run) throw new Error(`Pipeline run not found after approval: ${runId}`);
-
-        const pipelineId = run.pipeline?.id ?? run.pipelineId;
-
-        // Mark the gate as approved in the DataHubCheckpoint entity (read by the executor on resume)
-        if (pipelineId) {
-            const existing = await this.checkpointService.getByPipeline(ctx, pipelineId);
-            const cpData: JsonObject = { ...(existing?.data ?? {}) };
-            cpData[`__gateApproved:${stepKey}`] = true;
-            await this.checkpointService.setForPipeline(ctx, pipelineId, cpData);
-        }
 
         this.domainEvents.publishGateApproved(
-            pipelineId?.toString(),
+            gateState.pipelineId.toString(),
             String(runId),
             stepKey,
             ctx.activeUserId?.toString(),
@@ -611,20 +692,19 @@ export class PipelineService {
         this.logger.info('Gate approved, resuming pipeline run', {
             runId,
             stepKey,
-            pipelineId,
+            pipelineId: gateState.pipelineId,
             userId: ctx.activeUserId,
         });
 
         // Dispatch the run for continued execution via the job queue
-        if (pipelineId) {
-            this.eventBus.publish(new PipelineQueueRequestEvent(
-                runId,
-                pipelineId,
-                ctx.activeUserId ? `gate-approve:${ctx.activeUserId}` : 'gate-approve',
-            ));
-        }
+        this.eventBus.publish(new PipelineQueueRequestEvent(
+            ctx,
+            runId,
+            gateState.pipelineId,
+            ctx.activeUserId ? `gate-approve:${ctx.activeUserId}` : 'gate-approve',
+        ));
 
-        return assertFound(this.runById(ctx, run.id));
+        return assertFound(this.runById(ctx, gateState.run.id));
     }
 
     /**
@@ -634,31 +714,44 @@ export class PipelineService {
      * can flip PAUSED -> CANCELLED. Subsequent callers see 0 affected rows and fail.
      */
     async rejectGate(ctx: RequestContext, runId: ID, stepKey: string): Promise<PipelineRun> {
-        const repo = this.connection.getRepository(ctx, PipelineRun);
+        const gateState = await this.connection.withTransaction(
+            ctx,
+            async transactionCtx => {
+                const repo = this.connection.getRepository(transactionCtx, PipelineRun);
+                const state = await this.getPausedGateState(
+                    transactionCtx,
+                    runId,
+                    stepKey,
+                );
+                const updateResult = await repo.update(
+                    { id: runId, status: RunStatus.PAUSED },
+                    {
+                        status: RunStatus.CANCELLED,
+                        finishedAt: new Date(),
+                        error: `Gate step "${stepKey}" rejected by user`,
+                    },
+                );
+                if (updateResult.affected === 0) {
+                    const existing = await repo.findOne({ where: { id: runId } });
+                    if (!existing) throw new Error(`Pipeline run not found: ${runId}`);
+                    throw new Error(`Cannot reject gate: run is not paused (current status: ${existing.status})`);
+                }
 
-        // Atomic status transition: only succeeds if run is currently PAUSED
-        const updateResult = await repo.update(
-            { id: runId, status: RunStatus.PAUSED },
-            {
-                status: RunStatus.CANCELLED,
-                finishedAt: new Date(),
-                error: `Gate step "${stepKey}" rejected by user`,
+                const checkpointData: JsonObject = { ...state.checkpointData };
+                delete checkpointData[state.keys.pending];
+                delete checkpointData[state.keys.approved];
+                delete checkpointData[state.keys.timeout];
+                await this.checkpointService.setForPipeline(
+                    transactionCtx,
+                    state.pipelineId,
+                    checkpointData,
+                );
+                return state;
             },
         );
-        if (updateResult.affected === 0) {
-            const existing = await repo.findOne({ where: { id: runId } });
-            if (!existing) throw new Error(`Pipeline run not found: ${runId}`);
-            throw new Error(`Cannot reject gate: run is not paused (current status: ${existing.status})`);
-        }
-
-        const run = await repo.findOne({
-            where: { id: runId },
-            relations: { pipeline: true },
-        });
-        if (!run) throw new Error(`Pipeline run not found after rejection: ${runId}`);
 
         this.domainEvents.publishGateRejected(
-            run.pipelineId?.toString(),
+            gateState.pipelineId.toString(),
             String(runId),
             stepKey,
             `Rejected by user ${ctx.activeUserId ?? 'unknown'}`,
@@ -668,7 +761,67 @@ export class PipelineService {
             stepKey,
             userId: ctx.activeUserId,
         });
-        return assertFound(this.runById(ctx, run.id));
+        return assertFound(this.runById(ctx, gateState.run.id));
+    }
+
+    private async getPausedGateState(
+        ctx: RequestContext,
+        runId: ID,
+        stepKey: string,
+    ): Promise<{
+        run: PipelineRun;
+        pipelineId: ID;
+        checkpointData: JsonObject;
+        keys: GateCheckpointKeys;
+    }> {
+        const run = await this.connection.getRepository(ctx, PipelineRun).findOne({
+            where: { id: runId },
+            relations: { pipeline: true },
+        });
+        if (!run) {
+            throw new Error(`Pipeline run not found: ${runId}`);
+        }
+        if (run.status !== RunStatus.PAUSED) {
+            throw new Error(
+                `Cannot act on gate: run is not paused (current status: ${run.status})`,
+            );
+        }
+        const pausedAtStep = typeof run.metrics?.pausedAtStep === 'string'
+            ? run.metrics.pausedAtStep
+            : null;
+        if (pausedAtStep !== stepKey) {
+            throw new Error(
+                `Cannot act on gate "${stepKey}": run is paused at "${pausedAtStep ?? 'unknown'}"`,
+            );
+        }
+        const definition = run.definitionSnapshot ?? run.pipeline?.definition;
+        const step = definition?.steps.find(candidate => candidate.key === stepKey);
+        if (step?.type !== StepType.GATE) {
+            throw new Error(
+                `Cannot act on gate "${stepKey}": run snapshot does not contain that gate`,
+            );
+        }
+        const pipelineId = run.pipelineId ?? run.pipeline?.id;
+        if (pipelineId == null) {
+            throw new Error(`Pipeline run ${runId} has no pipeline`);
+        }
+        const checkpoint = await this.checkpointService.getByPipeline(
+            ctx,
+            pipelineId,
+        );
+        const checkpointData: JsonObject = { ...(checkpoint?.data ?? {}) };
+        const keys = getGateCheckpointKeys(runId, stepKey);
+        if (!(keys.pending in checkpointData)) {
+            throw new Error(
+                `Cannot act on gate "${stepKey}": pending gate state was not found for run ${runId}`,
+            );
+        }
+        return {
+            run,
+            pipelineId,
+            checkpointData,
+            keys,
+        };
     }
 
     private async getPublishedDefinition(
@@ -731,6 +884,28 @@ export class PipelineService {
 
         if (result.errors?.length) {
             notes.push(...result.errors.map(e => `Error: ${e}`));
+        }
+        const dryRunDetails = Array.isArray(result.metrics.details)
+            ? result.metrics.details
+            : [];
+        for (const detail of dryRunDetails) {
+            if (
+                !detail
+                || typeof detail !== 'object'
+                || Array.isArray(detail)
+                || detail.simulation !== 'SKIPPED'
+            ) {
+                continue;
+            }
+            const stepKey = typeof detail.stepKey === 'string'
+                ? detail.stepKey
+                : 'unknown';
+            const stepType = typeof detail.stepType === 'string'
+                ? detail.stepType
+                : 'step';
+            notes.push(
+                `${stepType} step "${stepKey}" was not executed; dry run preserved its input records.`,
+            );
         }
 
         this.logger.debug('Dry run completed', {

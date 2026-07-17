@@ -20,6 +20,7 @@ import { DomainEventsService } from '../events/domain-events.service';
 import { RevisionService } from '../versioning/revision.service';
 import { DataHubLoggerFactory } from '../logger';
 import { DefinitionValidationService } from '../validation/definition-validation.service';
+import type { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
 import { PipelineService } from './pipeline.service';
 
 export const publishedDefinition: PipelineDefinition = {
@@ -68,9 +69,19 @@ export function createPipelineServiceFixture(
     revision.definition = publishedDefinition;
 
     let savedRun: PipelineRun | null = null;
+    let checkpointData: Record<string, unknown> = {};
+    let dependentPipelines: Pipeline[] = [];
+    let repositoryPipelines: Pipeline[] = [pipeline];
+    const dependentQueryBuilder = {
+        where: vi.fn().mockReturnThis(),
+        getMany: vi.fn(async () => dependentPipelines),
+    };
     const pipelineRepository = {
         findOne: vi.fn(async () => pipeline),
+        find: vi.fn(async () => repositoryPipelines),
         save: vi.fn(async (entity: Pipeline) => entity),
+        remove: vi.fn(async (entity: Pipeline) => entity),
+        createQueryBuilder: vi.fn(() => dependentQueryBuilder),
     };
     const revisionRepository = {
         findOne: vi.fn(async (): Promise<PipelineRevision | null> => revision),
@@ -83,6 +94,20 @@ export function createPipelineServiceFixture(
             savedRun = run;
             return run;
         }),
+        update: vi.fn(async (
+            criteria: { id: ID; status: string },
+            updates: Partial<PipelineRun>,
+        ) => {
+            if (
+                !savedRun
+                || String(savedRun.id) !== String(criteria.id)
+                || savedRun.status !== criteria.status
+            ) {
+                return { affected: 0 };
+            }
+            Object.assign(savedRun, updates);
+            return { affected: 1 };
+        }),
     };
     const connection = {
         getEntityOrThrow: vi.fn(async () => pipeline),
@@ -91,16 +116,54 @@ export function createPipelineServiceFixture(
             if (entity === PipelineRun) return runRepository;
             return pipelineRepository;
         }),
+        withTransaction: vi.fn(async (
+            ctx: RequestContext,
+            work: (transactionCtx: RequestContext) => Promise<unknown>,
+        ) => work(ctx)),
     };
     const eventBus = { publish: vi.fn() };
-    const definitionValidator = { validate: vi.fn() };
-    const domainEvents = { publishPipelineUpdated: vi.fn() };
+    const definitionValidator = {
+        validate: vi.fn(),
+        validateAsync: vi.fn(async () => ({
+            isValid: true,
+            issues: [] as PipelineDefinitionIssue[],
+            warnings: [] as PipelineDefinitionIssue[],
+            level: 'FULL',
+        })),
+    };
+    const domainEvents = {
+        publishPipelineUpdated: vi.fn(),
+        publishPipelineArchived: vi.fn(),
+        publishPipelineReactivated: vi.fn(),
+        publishPipelineDeleted: vi.fn(),
+        publishGateApproved: vi.fn(),
+        publishGateRejected: vi.fn(),
+    };
+    const revisionService = {
+        publishVersion: vi.fn(async () => {
+            pipeline.status = PipelineStatus.PUBLISHED;
+            return { pipelineId: pipeline.id };
+        }),
+    };
     const logger = {
         debug: vi.fn(),
         info: vi.fn(),
         warn: vi.fn(),
     };
     const loggerFactory = { createLogger: vi.fn(() => logger) };
+    const checkpointService = {
+        getByPipeline: vi.fn(async () => ({
+            data: checkpointData,
+        })),
+        setForPipeline: vi.fn(async (
+            _ctx: RequestContext,
+            _pipelineId: ID,
+            data: Record<string, unknown>,
+        ) => {
+            checkpointData = data;
+            return { data };
+        }),
+    };
 
     const service = new PipelineService(
         connection as unknown as TransactionalConnection,
@@ -109,18 +172,39 @@ export function createPipelineServiceFixture(
         definitionValidator as unknown as DefinitionValidationService,
         {} as AdapterRuntimeService,
         { find: vi.fn() } as unknown as DataHubRegistryService,
-        {} as CheckpointService,
+        checkpointService as unknown as CheckpointService,
         domainEvents as unknown as DomainEventsService,
-        {} as RevisionService,
+        revisionService as unknown as RevisionService,
         loggerFactory as unknown as DataHubLoggerFactory,
     );
 
     return {
         service,
+        ids,
+        connection,
         pipeline,
         pipelineRepository,
         revisionRepository,
         runRepository,
         eventBus,
+        domainEvents,
+        revisionService,
+        checkpointService,
+        definitionValidator,
+        setCheckpointData(data: Record<string, unknown>): void {
+            checkpointData = data;
+        },
+        getCheckpointData(): Record<string, unknown> {
+            return checkpointData;
+        },
+        setRun(run: PipelineRun): void {
+            savedRun = run;
+        },
+        setDependentPipelines(pipelines: Pipeline[]): void {
+            dependentPipelines = pipelines;
+        },
+        setRepositoryPipelines(pipelines: Pipeline[]): void {
+            repositoryPipelines = pipelines;
+        },
     };
 }
