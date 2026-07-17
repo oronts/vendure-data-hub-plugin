@@ -21,7 +21,10 @@ import { LOGGER_CONTEXTS, PAGINATION } from '../../constants/index';
 import { Pipeline, PipelineRevision, PipelineRun } from '../../entities/pipeline';
 import { DiffService } from './diff.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { DefinitionValidationService } from '../validation/definition-validation.service';
+import {
+    DefinitionValidationService,
+    ValidationLevel,
+} from '../validation/definition-validation.service';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { DomainEventsService } from '../events/domain-events.service';
 import {
@@ -35,6 +38,8 @@ import {
     withEffectivePipelineCapabilities,
 } from '../pipeline/pipeline-capabilities';
 import { sanitizePipelineDefinitionForOutput } from '../validation/hook-security';
+import { PipelineDefinitionError } from '../../validation/pipeline-definition-error';
+import { findReachableDependencyCycle } from '../pipeline/pipeline-dependency-graph';
 
 const COMMIT_MESSAGE_MAX_LENGTH = 500;
 const MAX_DRAFT_THROTTLE_ENTRIES = 1000;
@@ -182,7 +187,7 @@ export class RevisionService {
             }
             assertPipelineStatus(
                 pipeline.status,
-                [PipelineStatus.DRAFT, PipelineStatus.REVIEW],
+                [PipelineStatus.REVIEW],
                 'publish',
             );
 
@@ -234,11 +239,7 @@ export class RevisionService {
             }
             assertPipelineStatus(
                 pipeline.status,
-                [
-                    PipelineStatus.DRAFT,
-                    PipelineStatus.REVIEW,
-                    PipelineStatus.PUBLISHED,
-                ],
+                [PipelineStatus.PUBLISHED],
                 'revert',
             );
 
@@ -267,7 +268,7 @@ export class RevisionService {
             this.registry,
             normalizePipelineDefinition(candidateDefinition, candidateDefinition.version),
         );
-        this.definitionValidator.validate(definition);
+        await this.assertPublicationDefinition(ctx, pipeline, definition);
         this.assertCapabilitiesAllowed(ctx, definition);
 
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
@@ -294,6 +295,18 @@ export class RevisionService {
         }
 
         const newVersion = (pipeline.publishedVersionCount ?? 0) + 1;
+        const allocation = await pipelineRepo.update(
+            {
+                id: pipeline.id,
+                publishedVersionCount: pipeline.publishedVersionCount ?? 0,
+            },
+            { publishedVersionCount: newVersion },
+        );
+        if (allocation.affected !== 1) {
+            throw new Error(
+                `Pipeline "${pipeline.code}" was published concurrently; reload before publishing again`,
+            );
+        }
         const revision = new PipelineRevision();
         revision.pipeline = pipeline;
         revision.pipelineId = pipeline.id;
@@ -342,6 +355,37 @@ export class RevisionService {
         return saved;
     }
 
+    private async assertPublicationDefinition(
+        ctx: RequestContext,
+        pipeline: Pipeline,
+        definition: PipelineDefinition,
+    ): Promise<void> {
+        const validation = await this.definitionValidator.validateAsync(
+            definition,
+            { level: ValidationLevel.FULL },
+            ctx,
+        );
+        const dependencyCheckFailures = validation.warnings.filter(
+            warning => warning.errorCode === 'depends-on-check-failed',
+        );
+        const publicationIssues = [...validation.issues, ...dependencyCheckFailures];
+        if (publicationIssues.length > 0) {
+            throw new PipelineDefinitionError(publicationIssues);
+        }
+
+        const candidates = await this.connection.getRepository(ctx, Pipeline).find({
+            select: { code: true, definition: true },
+        });
+        const cycle = findReachableDependencyCycle(
+            pipeline.code,
+            definition,
+            candidates,
+        );
+        if (cycle) {
+            throw new Error(`Pipeline dependency cycle detected: ${cycle.join(' -> ')}`);
+        }
+    }
+
     private assertCapabilitiesAllowed(
         ctx: RequestContext,
         definition: PipelineDefinition,
@@ -372,17 +416,22 @@ export class RevisionService {
             where: { id: pipelineId },
         });
 
-        // Pre-fetch all runs for the pipeline in a single query
+        // New runs pin the exact published revision they execute. Historical
+        // rows without revisionId cannot be attributed safely and are omitted.
         const allRuns = await runRepo.find({
-            where: { pipeline: { id: pipelineId } },
+            where: { pipelineId },
             order: { createdAt: SortOrder.DESC },
         });
 
         const timeline: TimelineEntry[] = [];
 
         for (const revision of revisions) {
-            // For published revisions, use all runs; for drafts, no runs
-            const revisionRuns = revision.type === RevisionType.PUBLISHED ? allRuns : [];
+            const revisionRuns = revision.type === RevisionType.PUBLISHED
+                ? allRuns.filter(run => (
+                    run.revisionId != null
+                    && String(run.revisionId) === String(revision.id)
+                ))
+                : [];
 
             const lastRun = revisionRuns[0];
 

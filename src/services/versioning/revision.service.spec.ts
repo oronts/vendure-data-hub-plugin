@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ID, RequestContext, TransactionalConnection } from '@vendure/core';
 import type { Permission } from '@vendure/core';
-import { AdapterType, PipelineStatus, RevisionType, StepType } from '../../constants/enums';
-import { Pipeline, PipelineRevision } from '../../entities/pipeline';
+import { AdapterType, PipelineStatus, RevisionType, RunStatus, StepType } from '../../constants/enums';
+import { Pipeline, PipelineRevision, PipelineRun } from '../../entities/pipeline';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import type { PipelineDefinition } from '../../types';
+import type { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
 import { DomainEventsService } from '../events/domain-events.service';
 import { DataHubLoggerFactory } from '../logger';
 import { DefinitionValidationService } from '../validation/definition-validation.service';
@@ -61,7 +62,7 @@ function createFixture(useUuidIds = false) {
     pipeline.enabled = true;
     pipeline.version = 2;
     pipeline.definition = publishedDefinition;
-    pipeline.status = PipelineStatus.DRAFT;
+    pipeline.status = PipelineStatus.REVIEW;
     pipeline.currentRevisionId = ids.previousRevision;
     pipeline.draftRevisionId = ids.draftRevision;
     pipeline.publishedVersionCount = 2;
@@ -86,7 +87,9 @@ function createFixture(useUuidIds = false) {
 
     const pipelineRepository = {
         findOne: vi.fn(async () => pipeline),
+        find: vi.fn(async (): Promise<Pipeline[]> => [pipeline]),
         save: vi.fn(async (entity: Pipeline) => entity),
+        update: vi.fn(async () => ({ affected: 1 })),
     };
     const revisionRepository = {
         findOne: vi.fn(async (options: { where: { id?: ID; type?: RevisionType } }) => {
@@ -101,12 +104,15 @@ function createFixture(useUuidIds = false) {
             }
             return null;
         }),
-        find: vi.fn(async () => []),
+        find: vi.fn(async (): Promise<PipelineRevision[]> => []),
         save: vi.fn(async (revision: PipelineRevision) => {
             revision.id = ids.savedRevision;
             return revision;
         }),
         delete: vi.fn(async () => ({ affected: 0 })),
+    };
+    const runRepository = {
+        find: vi.fn(async (): Promise<PipelineRun[]> => []),
     };
     const connection = {
         withTransaction: vi.fn(async (
@@ -114,10 +120,22 @@ function createFixture(useUuidIds = false) {
             work: (transactionCtx: RequestContext) => Promise<unknown>,
         ) => work(ctx)),
         getRepository: vi.fn((_ctx: RequestContext, entity: unknown) => (
-            entity === PipelineRevision ? revisionRepository : pipelineRepository
+            entity === PipelineRevision
+                ? revisionRepository
+                : entity === PipelineRun
+                    ? runRepository
+                    : pipelineRepository
         )),
     };
-    const definitionValidator = { validate: vi.fn() };
+    const definitionValidator = {
+        validate: vi.fn(),
+        validateAsync: vi.fn(async () => ({
+            isValid: true,
+            issues: [] as PipelineDefinitionIssue[],
+            warnings: [] as PipelineDefinitionIssue[],
+            level: 'FULL',
+        })),
+    };
     const registry = {
         find: vi.fn((type: string, code: string) => (
             type === AdapterType.LOADER && code === 'productUpsert'
@@ -154,6 +172,7 @@ function createFixture(useUuidIds = false) {
         targetRevision,
         pipelineRepository,
         revisionRepository,
+        runRepository,
         definitionValidator,
         domainEvents,
     };
@@ -191,6 +210,10 @@ describe('RevisionService lifecycle', () => {
         expect(fixture.pipeline.draftRevisionId).toBeNull();
         expect(fixture.pipeline.status).toBe(PipelineStatus.PUBLISHED);
         expect(fixture.revisionRepository.save).toHaveBeenCalledOnce();
+        expect(fixture.pipelineRepository.update).toHaveBeenCalledWith(
+            { id: 1, publishedVersionCount: 2 },
+            { publishedVersionCount: 3 },
+        );
         expect(fixture.pipelineRepository.save).toHaveBeenCalledOnce();
         expect(fixture.domainEvents.publishPipelinePublished).toHaveBeenCalledOnce();
     });
@@ -223,15 +246,137 @@ describe('RevisionService lifecycle', () => {
         expect(fixture.domainEvents.publishPipelinePublished).not.toHaveBeenCalled();
     });
 
-    it('rejects invalid lifecycle states before validating or saving', async () => {
+    it('rejects a concurrent publication before creating a duplicate version', async () => {
         const fixture = createFixture();
-        fixture.pipeline.status = PipelineStatus.ARCHIVED;
+        fixture.pipelineRepository.update.mockResolvedValueOnce({ affected: 0 });
+
+        await expect(fixture.service.publishVersion(
+            createContext(allPermissions),
+            { pipelineId: fixture.pipeline.id },
+        )).rejects.toThrow(/published concurrently/);
+
+        expect(fixture.revisionRepository.save).not.toHaveBeenCalled();
+        expect(fixture.pipelineRepository.save).not.toHaveBeenCalled();
+        expect(fixture.domainEvents.publishPipelinePublished).not.toHaveBeenCalled();
+    });
+
+    it('attributes timeline run metrics only to their persisted revision', async () => {
+        const fixture = createFixture();
+        fixture.revisionRepository.find.mockResolvedValueOnce([
+            fixture.previousRevision,
+        ]);
+        const attributed = new PipelineRun();
+        attributed.id = 21;
+        attributed.pipelineId = fixture.pipeline.id;
+        attributed.revisionId = fixture.previousRevision.id;
+        attributed.status = RunStatus.COMPLETED;
+        attributed.finishedAt = new Date('2026-07-16T10:00:00.000Z');
+        const historical = new PipelineRun();
+        historical.id = 22;
+        historical.pipelineId = fixture.pipeline.id;
+        historical.revisionId = null;
+        historical.status = RunStatus.FAILED;
+        historical.finishedAt = new Date('2026-07-16T11:00:00.000Z');
+        fixture.runRepository.find.mockResolvedValueOnce([
+            historical,
+            attributed,
+        ]);
+
+        const timeline = await fixture.service.getTimeline(
+            createContext(allPermissions),
+            fixture.pipeline.id,
+        );
+
+        expect(timeline).toHaveLength(1);
+        expect(timeline[0]).toMatchObject({
+            runCount: 1,
+            lastRunAt: attributed.finishedAt,
+            lastRunStatus: 'SUCCESS',
+        });
+    });
+
+    it.each([
+        PipelineStatus.DRAFT,
+        PipelineStatus.ARCHIVED,
+    ])('rejects publication from %s before validating or saving', async status => {
+        const fixture = createFixture();
+        fixture.pipeline.status = status;
 
         await expect(fixture.service.publishVersion(createContext(allPermissions), {
             pipelineId: 1,
         })).rejects.toThrow(/Cannot publish/);
 
-        expect(fixture.definitionValidator.validate).not.toHaveBeenCalled();
+        expect(fixture.definitionValidator.validateAsync).not.toHaveBeenCalled();
+        expect(fixture.revisionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects publication when a dependency is unknown', async () => {
+        const fixture = createFixture();
+        fixture.definitionValidator.validateAsync.mockResolvedValueOnce({
+            isValid: false,
+            issues: [{
+                message: 'dependsOn references unknown pipeline code "missing"',
+                errorCode: 'depends-on-unknown-code',
+            }],
+            warnings: [],
+            level: 'FULL',
+        });
+
+        await expect(fixture.service.publishVersion(createContext(allPermissions), {
+            pipelineId: fixture.pipeline.id,
+        })).rejects.toThrow('dependsOn references unknown pipeline code "missing"');
+
+        expect(fixture.pipelineRepository.update).not.toHaveBeenCalled();
+        expect(fixture.revisionRepository.save).not.toHaveBeenCalled();
+        expect(fixture.domainEvents.publishPipelinePublished).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when dependency lookup cannot be completed', async () => {
+        const fixture = createFixture();
+        fixture.definitionValidator.validateAsync.mockResolvedValueOnce({
+            isValid: true,
+            issues: [],
+            warnings: [{
+                message: 'Pipeline dependency validation could not be completed',
+                errorCode: 'depends-on-check-failed',
+            }],
+            level: 'FULL',
+        });
+
+        await expect(fixture.service.publishVersion(createContext(allPermissions), {
+            pipelineId: fixture.pipeline.id,
+        })).rejects.toThrow('Pipeline dependency validation could not be completed');
+
+        expect(fixture.pipelineRepository.update).not.toHaveBeenCalled();
+        expect(fixture.revisionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects publication when the reachable dependency graph is cyclic', async () => {
+        const fixture = createFixture();
+        fixture.pipeline.definition = {
+            ...publishedDefinition,
+            dependsOn: ['inventory-sync'],
+        };
+        const inventory = new Pipeline();
+        inventory.id = 2;
+        inventory.code = 'inventory-sync';
+        inventory.definition = {
+            version: 1,
+            steps: [],
+            dependsOn: ['catalog-sync'],
+        };
+        fixture.pipelineRepository.find.mockResolvedValueOnce([
+            fixture.pipeline,
+            inventory,
+        ]);
+
+        await expect(fixture.service.publishVersion(createContext(allPermissions), {
+            pipelineId: fixture.pipeline.id,
+        })).rejects.toThrow(
+            'Pipeline dependency cycle detected: catalog-sync -> inventory-sync -> catalog-sync',
+        );
+
+        expect(fixture.pipelineRepository.update).not.toHaveBeenCalled();
         expect(fixture.revisionRepository.save).not.toHaveBeenCalled();
     });
 
@@ -261,6 +406,46 @@ describe('RevisionService lifecycle', () => {
         expect(fixture.pipeline.status).toBe(PipelineStatus.PUBLISHED);
         expect(fixture.pipeline.currentRevisionId).toBe(9);
         expect(fixture.domainEvents.publishPipelinePublished).toHaveBeenCalledOnce();
+    });
+
+    it('applies full dependency validation before reverting a revision', async () => {
+        const fixture = createFixture();
+        fixture.pipeline.status = PipelineStatus.PUBLISHED;
+        fixture.definitionValidator.validateAsync.mockResolvedValueOnce({
+            isValid: false,
+            issues: [{
+                message: 'dependsOn references unknown pipeline code "removed-source"',
+                errorCode: 'depends-on-unknown-code',
+            }],
+            warnings: [],
+            level: 'FULL',
+        });
+
+        await expect(fixture.service.revertToRevision(
+            createContext(allPermissions),
+            { revisionId: fixture.targetRevision.id },
+        )).rejects.toThrow('dependsOn references unknown pipeline code "removed-source"');
+
+        expect(fixture.pipelineRepository.update).not.toHaveBeenCalled();
+        expect(fixture.revisionRepository.save).not.toHaveBeenCalled();
+        expect(fixture.domainEvents.publishPipelinePublished).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        PipelineStatus.DRAFT,
+        PipelineStatus.REVIEW,
+        PipelineStatus.ARCHIVED,
+    ])('rejects revision reversion from %s', async status => {
+        const fixture = createFixture();
+        fixture.pipeline.status = status;
+
+        await expect(fixture.service.revertToRevision(
+            createContext(allPermissions),
+            { revisionId: fixture.targetRevision.id },
+        )).rejects.toThrow(/Cannot revert/);
+
+        expect(fixture.revisionRepository.save).not.toHaveBeenCalled();
+        expect(fixture.domainEvents.publishPipelinePublished).not.toHaveBeenCalled();
     });
 
     it('moves a changed published working copy to draft without losing its active revision', async () => {
