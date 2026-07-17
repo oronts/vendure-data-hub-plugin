@@ -17,7 +17,7 @@ import {
     Badge,
 } from '@vendure/dashboard';
 import { Trash2, Calendar } from 'lucide-react';
-import type { PipelineTrigger, TriggerType, TriggerFormProps } from '../../../types';
+import type { PipelineTrigger, TriggerFormProps } from '../../../types';
 import { SELECT_WIDTHS } from '../../../constants';
 import {
     useConfigOptions,
@@ -29,6 +29,11 @@ import {
 } from '../../../hooks';
 import { screamingSnakeToKebab } from '../../../../shared/utils/string-case';
 import { getNestedValue } from '../../../../shared/utils/object-path';
+import {
+    applyTriggerSchemaDefaults,
+    isTriggerSchemaFieldVisible,
+    resolveTriggerFieldOptions,
+} from '../../../utils/trigger-schema';
 
 // ---------------------------------------------------------------------------
 // Nested path helpers
@@ -43,7 +48,8 @@ function setNestedValue(trigger: PipelineTrigger, path: string, value: unknown):
     // For nested paths like 'message.queueType', merge into the nested object
     const rootKey = parts[0];
     const nestedKey = parts.slice(1).join('.');
-    const existingNested = (trigger as Record<string, unknown>)[rootKey];
+    const triggerRecord: Record<string, unknown> = { ...trigger };
+    const existingNested = triggerRecord[rootKey];
     const nestedObj = typeof existingNested === 'object' && existingNested != null
         ? { ...existingNested as Record<string, unknown> }
         : {};
@@ -77,25 +83,6 @@ function setDeep(obj: Record<string, unknown>, path: string, value: unknown): vo
 type ConfigOptionsData = Record<string, ConfigOptionValue[] | unknown>;
 
 /** Resolve optionsRef to the actual option list from configOptions data */
-function resolveOptions(
-    field: ConnectionSchemaField,
-    configData: ConfigOptionsData | undefined,
-    fallbacks: Record<string, ConfigOptionValue[]>,
-): ConfigOptionValue[] {
-    // Static options on the field itself take priority
-    if (field.options && field.options.length > 0) {
-        return field.options.map(o => ({ value: o.value, label: o.label }));
-    }
-    if (!field.optionsRef) return [];
-
-    const ref = field.optionsRef;
-    const backendOptions = configData?.[ref];
-    if (Array.isArray(backendOptions) && backendOptions.length > 0) {
-        return (backendOptions as ConfigOptionValue[]).filter(o => o.value !== '');
-    }
-    return (fallbacks[ref] ?? []).filter(o => o.value !== '');
-}
-
 // ---------------------------------------------------------------------------
 // Schema-driven field renderer
 // ---------------------------------------------------------------------------
@@ -118,9 +105,7 @@ function SchemaDrivenFields({
     if (schema.fields.length === 0) return null;
 
     const keyMap = schema.configKeyMap ?? {};
-    const triggerRecord = trigger as Record<string, unknown>;
-
-    const optionFallbacks: Record<string, ConfigOptionValue[]> = {};
+    const triggerRecord: Record<string, unknown> = { ...trigger };
 
     const handleFieldChange = (field: ConnectionSchemaField, rawValue: unknown) => {
         const pipelinePath = (keyMap as Record<string, string>)[field.key] ?? field.key;
@@ -140,23 +125,16 @@ function SchemaDrivenFields({
         return getNestedValue(triggerRecord, pipelinePath);
     };
 
-    /** Secret-type fields are hidden when the trigger has no authentication configured */
-    const isSecretFieldVisible = (field: ConnectionSchemaField): boolean => {
-        if (field.type.toLowerCase() !== 'secret') return true;
-        const auth = triggerRecord['authentication'];
-        return auth != null && auth !== '' && auth !== 'NONE';
-    };
-
     const typeSuffix = screamingSnakeToKebab(trigger.type);
 
     return (
         <div className="space-y-4 border-t pt-4" data-testid={`datahub-triggerform-field-${typeSuffix}`}>
             {schema.fields.map(field => {
-                if (!isSecretFieldVisible(field)) return null;
+                if (!isTriggerSchemaFieldVisible(field, triggerRecord)) return null;
 
                 const fieldType = field.type.toLowerCase();
                 const currentValue = getFieldValue(field);
-                const options = resolveOptions(field, configData, optionFallbacks);
+                const options = resolveTriggerFieldOptions(field, configData);
 
                 // String field with optionsRef='cronPresets' renders a side-by-side presets picker
                 if (fieldType === 'string' && field.optionsRef === 'cronPresets') {
@@ -312,6 +290,8 @@ function SchemaDrivenFields({
                                 value={numValue}
                                 onChange={(e) => handleFieldChange(field, e.target.value)}
                                 placeholder={field.placeholder ?? undefined}
+                                min={field.min ?? undefined}
+                                max={field.max ?? undefined}
                                 disabled={readOnly}
                             />
                             {field.description && (
@@ -386,6 +366,15 @@ export function TriggerForm({
 
     const TriggerIcon = resolveTriggerIcon(trigger.type);
 
+    const handleTriggerTypeChange = useCallback((type: string) => {
+        const schema = triggerSchemas.find(item => item.value === type);
+        onChange(applyTriggerSchemaDefaults(
+            trigger as unknown as Record<string, unknown>,
+            type,
+            schema,
+        ) as unknown as PipelineTrigger);
+    }, [onChange, trigger, triggerSchemas]);
+
     const formContent = (
         <>
             {!compact && (
@@ -404,7 +393,7 @@ export function TriggerForm({
                 <Label>Trigger Type</Label>
                 <Select
                     value={trigger.type}
-                    onValueChange={(v) => handleChange('type', v as TriggerType)}
+                    onValueChange={handleTriggerTypeChange}
                     disabled={readOnly}
                 >
                     <SelectTrigger>

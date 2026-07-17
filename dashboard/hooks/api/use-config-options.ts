@@ -21,16 +21,22 @@ const configOptionsDocument = graphql(`
             stepTypes { type label description icon color bgColor borderColor inputs outputs category adapterType nodeType }
             loadStrategies { value label description icon }
             conflictStrategies { value label description icon }
-            triggerTypes { value label description icon fields { key label type required placeholder defaultValue description options { value label } optionsRef } defaultValues configKeyMap wizardScopes }
+            triggerTypes { value label description icon fields { key label type required placeholder defaultValue description min max options { value label } optionsRef } defaultValues configKeyMap wizardScopes }
             fileEncodings { value label description icon }
             csvDelimiters { value label description icon }
-            compressionTypes { value label description icon }
             httpMethods { value label description icon }
             authTypes { value label description icon }
             destinationTypes { value label description icon }
-            fileFormats { value label description }
-            cleanupStrategies { value label description icon }
-            newRecordStrategies { value label description icon }
+            fileFormats {
+                value
+                label
+                description
+                extensions
+                mimeTypes
+                supportsPreview
+                requiresClientParser
+                parseable
+            }
             validationModes { value label description icon }
             queueTypes { value label description icon }
             vendureEvents { value label description icon category }
@@ -113,6 +119,14 @@ export interface TypedOptionValue extends ConfigOptionValue {
     wizardScopes?: string[] | null;
 }
 
+export interface FileFormatOption extends ConfigOptionValue {
+    extensions: string[];
+    mimeTypes: string[];
+    supportsPreview: boolean;
+    requiresClientParser: boolean;
+    parseable: boolean;
+}
+
 export interface ComparisonOperatorOption {
     value: string;
     label: string;
@@ -155,6 +169,8 @@ export interface ConnectionSchemaField {
     placeholder?: string | null;
     defaultValue?: unknown;
     description?: string | null;
+    min?: number | null;
+    max?: number | null;
     options?: ConnectionSchemaFieldOption[] | null;
     /** Reference to a dynamic option list served by configOptions (e.g. 'authTypes', 'queueTypes', 'vendureEvents') */
     optionsRef?: string | null;
@@ -223,13 +239,10 @@ interface ConfigOptionsData {
     triggerTypes: TypedOptionValue[];
     fileEncodings: ConfigOptionValue[];
     csvDelimiters: ConfigOptionValue[];
-    compressionTypes: ConfigOptionValue[];
     httpMethods: ConfigOptionValue[];
     authTypes: ConfigOptionValue[];
     destinationTypes: ConfigOptionValue[];
-    fileFormats: ConfigOptionValue[];
-    cleanupStrategies: ConfigOptionValue[];
-    newRecordStrategies: ConfigOptionValue[];
+    fileFormats: FileFormatOption[];
     validationModes: ConfigOptionValue[];
     queueTypes: ConfigOptionValue[];
     vendureEvents: ConfigOptionValue[];
@@ -277,6 +290,15 @@ export function useOptionValues(field: ConfigOptionValueField): { options: Confi
     const options = useMemo(
         () => (data?.[field] ?? []).filter(o => o.value !== ''),
         [data, field],
+    );
+    return { options, isLoading };
+}
+
+export function useFileFormats(): { options: FileFormatOption[]; isLoading: boolean } {
+    const { data, isLoading } = useConfigOptions();
+    const options = useMemo(
+        () => (data?.fileFormats ?? []).filter(format => format.parseable),
+        [data?.fileFormats],
     );
     return { options, isLoading };
 }

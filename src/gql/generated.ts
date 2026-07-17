@@ -1796,6 +1796,8 @@ export type DataHubConnectionSchemaField = {
   description?: Maybe<Scalars['String']['output']>;
   key: Scalars['String']['output'];
   label: Scalars['String']['output'];
+  max?: Maybe<Scalars['Float']['output']>;
+  min?: Maybe<Scalars['Float']['output']>;
   options?: Maybe<Array<DataHubOption>>;
   /** Reference to a dynamic option list served by configOptions (e.g. authTypes, queueTypes, vendureEvents) */
   optionsRef?: Maybe<Scalars['String']['output']>;
@@ -2380,7 +2382,7 @@ export type DataHubImpactAnalysis = {
   entityBreakdown: Array<DataHubEntityImpact>;
   estimatedDuration: DataHubDurationEstimate;
   fullDatasetSize?: Maybe<Scalars['Int']['output']>;
-  resourceUsage: DataHubResourceEstimate;
+  resourceUsage?: Maybe<DataHubResourceEstimate>;
   riskAssessment: DataHubRiskAssessment;
   sampleRecords: Array<DataHubSampleRecordFlow>;
   sampleSize: Scalars['Int']['output'];
@@ -2882,6 +2884,7 @@ export type DataHubRecordDetail = {
   diff?: Maybe<Scalars['JSON']['output']>;
   entityType: Scalars['String']['output'];
   operation: DataHubRecordOperation;
+  /** Normalized loader input preview; final persistence can differ */
   proposedState: Scalars['JSON']['output'];
   recordId: Scalars['String']['output'];
   validationErrors: Array<Scalars['String']['output']>;
@@ -2916,7 +2919,9 @@ export type DataHubRecordErrorPage = {
 export enum DataHubRecordOperation {
   CREATE = 'CREATE',
   DELETE = 'DELETE',
+  ERROR = 'ERROR',
   SKIP = 'SKIP',
+  UNKNOWN = 'UNKNOWN',
   UPDATE = 'UPDATE'
 }
 

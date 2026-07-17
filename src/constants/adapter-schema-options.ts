@@ -221,6 +221,14 @@ export const QUEUE_TYPE_OPTIONS = [
     { value: QueueType.REDIS_STREAMS, label: 'Redis Streams' },
 ];
 
+/** Queue types that can defer message-trigger acknowledgment until run completion */
+export const MESSAGE_QUEUE_TYPE_OPTIONS = [
+    { value: QueueType.RABBITMQ_AMQP, label: 'RabbitMQ (AMQP) - Recommended' },
+    { value: QueueType.SQS, label: 'Amazon SQS' },
+    { value: QueueType.REDIS_STREAMS, label: 'Redis Streams' },
+    { value: QueueType.INTERNAL, label: 'Internal (Development)' },
+];
+
 /** Batch mode options for REST loader (single record vs array batch) */
 export const BATCH_MODE_REST_OPTIONS = [
     { value: 'single', label: 'single (one per request)' },
@@ -628,7 +636,10 @@ export const TRIGGER_TYPE_SCHEMAS: TypedOptionValue[] = [
             { key: 'queueType', label: 'Queue Type', type: 'select', required: true, optionsRef: 'queueTypes' },
             { key: 'connectionCode', label: 'Connection Code', type: 'string', placeholder: 'my-queue-connection', description: 'Required for every queue type except INTERNAL' },
             { key: 'queueName', label: 'Queue Name', type: 'string', required: true, placeholder: 'my-queue' },
-            { key: 'batchSize', label: 'Batch Size', type: 'number', defaultValue: 10, description: 'Messages per poll (1-100)' },
+            { key: 'batchSize', label: 'Batch Size', type: 'number', defaultValue: QUEUE.DEFAULT_MESSAGE_BATCH_SIZE, min: QUEUE.MIN_MESSAGE_BATCH_SIZE, max: QUEUE.MAX_MESSAGE_BATCH_SIZE, description: `Messages per poll (${QUEUE.MIN_MESSAGE_BATCH_SIZE}-${QUEUE.MAX_MESSAGE_BATCH_SIZE})` },
+            { key: 'concurrency', label: 'Concurrency', type: 'number', defaultValue: QUEUE.DEFAULT_MESSAGE_CONCURRENCY, min: QUEUE.MIN_MESSAGE_CONCURRENCY, max: QUEUE.MAX_MESSAGE_CONCURRENCY, description: `Parallel message deliveries (${QUEUE.MIN_MESSAGE_CONCURRENCY}-${QUEUE.MAX_MESSAGE_CONCURRENCY})` },
+            { key: 'prefetch', label: 'Prefetch', type: 'number', min: QUEUE.MIN_MESSAGE_PREFETCH, max: QUEUE.MAX_MESSAGE_PREFETCH, description: `Optional broker prefetch window (${QUEUE.MIN_MESSAGE_PREFETCH}-${QUEUE.MAX_MESSAGE_PREFETCH})` },
+            { key: 'pollIntervalMs', label: 'Poll Interval (ms)', type: 'number', defaultValue: QUEUE.DEFAULT_MESSAGE_POLL_INTERVAL_MS, min: QUEUE.DEFAULT_MESSAGE_POLL_INTERVAL_MS, max: QUEUE.MAX_MESSAGE_POLL_INTERVAL_MS, description: `Delay between broker polls (${QUEUE.DEFAULT_MESSAGE_POLL_INTERVAL_MS}-${QUEUE.MAX_MESSAGE_POLL_INTERVAL_MS} ms)` },
             { key: 'ackMode', label: 'Ack Mode', type: 'select', optionsRef: 'ackModes', defaultValue: 'MANUAL' },
             { key: 'maxRetries', label: 'Max Retries', type: 'number', defaultValue: QUEUE.DEFAULT_MESSAGE_RETRIES, description: `Immediate enqueue retries after the first failure (0-${QUEUE.MAX_MESSAGE_RETRIES})` },
             { key: 'consumerGroup', label: 'Consumer Group (Optional)', type: 'string', placeholder: 'datahub-consumers', description: 'Redis Streams consumer group; unsupported for other queue types' },
@@ -640,6 +651,9 @@ export const TRIGGER_TYPE_SCHEMAS: TypedOptionValue[] = [
             connectionCode: 'message.connectionCode',
             queueName: 'message.queueName',
             batchSize: 'message.batchSize',
+            concurrency: 'message.concurrency',
+            prefetch: 'message.prefetch',
+            pollIntervalMs: 'message.pollIntervalMs',
             ackMode: 'message.ackMode',
             maxRetries: 'message.maxRetries',
             consumerGroup: 'message.consumerGroup',
@@ -765,8 +779,7 @@ export const CRON_PRESETS: OptionValue[] = [
 
 /** Acknowledgment mode options for message queue consumers */
 export const ACK_MODE_OPTIONS: OptionValue[] = [
-    { value: AckMode.AUTO, label: 'Auto', description: 'Messages are acknowledged automatically after processing' },
-    { value: AckMode.MANUAL, label: 'Manual', description: 'Messages must be explicitly acknowledged by the pipeline' },
+    { value: AckMode.MANUAL, label: 'Manual', description: 'Acknowledge only after the correlated pipeline run completes successfully' },
 ];
 
 /** Hex color codes for each FileFormat, auto-derived from FILE_FORMAT_METADATA */

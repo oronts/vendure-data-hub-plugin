@@ -53,6 +53,8 @@ export const configOptionsSchema = `
         placeholder: String
         defaultValue: JSON
         description: String
+        min: Float
+        max: Float
         options: [DataHubOption!]
         "Reference to a dynamic option list served by configOptions (e.g. authTypes, queueTypes, vendureEvents)"
         optionsRef: String
@@ -160,6 +162,8 @@ export const configOptionsSchema = `
         supportsPreview: Boolean!
         "Whether frontend needs JavaScript parser (vs backend-only parsing)"
         requiresClientParser: Boolean!
+        "Whether the runtime has an import parser for this format"
+        parseable: Boolean!
         "Optional description for UI tooltips"
         description: String
     }
