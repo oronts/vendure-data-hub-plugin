@@ -23,17 +23,23 @@ let defaultDispatcher: Agent | undefined;
 
 function createDispatcher(config?: UrlSecurityConfig): Agent {
     const lookup: LookupFunction = (hostname, options, callback) => {
-        dnsLookup(hostname, { ...options, all: false }, (error, address, family) => {
+        dnsLookup(hostname, options, (error, address, family) => {
             if (error) {
                 callback(error, address, family);
                 return;
             }
-            if (!validateResolvedIp(address, config)) {
+            const addresses = Array.isArray(address)
+                ? address
+                : [{ address, family }];
+            const blockedAddress = addresses.find(
+                value => !validateResolvedIp(value.address, config),
+            );
+            if (blockedAddress) {
                 const blocked = new Error(
-                    `SSRF protection: ${hostname} resolved to blocked address ${address}`,
+                    `SSRF protection: ${hostname} resolved to blocked address ${blockedAddress.address}`,
                 ) as NodeJS.ErrnoException;
                 blocked.code = 'ECONNREFUSED';
-                callback(blocked, '', 0);
+                callback(blocked, Array.isArray(address) ? [] : '', 0);
                 return;
             }
             callback(null, address, family);

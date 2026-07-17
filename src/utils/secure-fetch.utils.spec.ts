@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { secureFetch } from './secure-fetch.utils';
 
 describe('secureFetch', () => {
@@ -56,5 +58,30 @@ describe('secureFetch', () => {
         expect(headers.has('cookie')).toBe(false);
         expect(headers.has('apikey')).toBe(false);
         expect(headers.has('x-api-key')).toBe(false);
+    });
+
+    it('preserves multi-address DNS lookup results used by current Node fetch', async () => {
+        const server = createServer((_request, response) => {
+            response.end('ok');
+        });
+        await new Promise<void>((resolve, reject) => {
+            server.once('error', reject);
+            server.listen(0, resolve);
+        });
+
+        try {
+            const { port } = server.address() as AddressInfo;
+            const response = await secureFetch(
+                `http://localhost:${port}`,
+                {},
+                { disableSsrfProtection: true },
+            );
+
+            await expect(response.text()).resolves.toBe('ok');
+        } finally {
+            await new Promise<void>((resolve, reject) => {
+                server.close(error => error ? reject(error) : resolve());
+            });
+        }
     });
 });
