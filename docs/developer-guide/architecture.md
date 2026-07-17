@@ -79,7 +79,7 @@ Understanding the plugin architecture helps you use it effectively and extend it
 | Entity | Purpose |
 |--------|---------|
 | `Pipeline` | Pipeline definitions |
-| `PipelineRun` | Execution history |
+| `PipelineRun` | Execution history, published revision, immutable definition snapshot, initiating channel, and durable queue request |
 | `PipelineRevision` | Version history |
 | `PipelineLog` | Execution logs |
 | `DataHubConnection` | External connections |
@@ -94,7 +94,7 @@ Understanding the plugin architecture helps you use it effectively and extend it
 | Service | Responsibility |
 |---------|----------------|
 | `PipelineService` | CRUD operations for pipelines |
-| `PipelineRunnerService` | Orchestrates pipeline execution |
+| `PipelineRunnerService` | Restores the run's persisted channel and orchestrates execution |
 | `AdapterRuntimeService` | Executes adapters |
 | `SecretService` | Manages secrets |
 | `ConnectionService` | Manages connections |
@@ -143,15 +143,12 @@ A pipeline run starts when:
 
 ### 2. Job Queue
 
-Runs are processed via Vendure's job queue:
-
-```typescript
-await jobQueue.add({
-    type: 'data-hub.run',
-    pipelineId: pipeline.id,
-    triggeredBy: 'manual',
-});
-```
+Runs are processed via Vendure's `data-hub.run` queue. Creating or resuming a
+run stores a durable queue request on `PipelineRun` in the same database
+transaction as the lifecycle change. The queue handler atomically claims that
+request before adding the Vendure job and periodically recovers missing or
+stale claims. The runner clears the request only after it holds the distributed
+execution lock.
 
 ### 3. Pipeline Runner
 
@@ -280,13 +277,14 @@ See [Extending the Plugin](./extending/README.md) for details.
 
 ## Configuration Sync
 
-Code-first configurations are synced on startup:
+Code-first configuration has two startup paths:
 
-1. Plugin loads options from `DataHubPlugin.init()`
-2. Pipelines, secrets, connections are compared with database
-3. New items are created
-4. Existing items are updated if code-first takes precedence
-5. UI shows code-first items as read-only
+1. SecretService loads and validates configured file secrets during module initialization, before watchers and other secret consumers start.
+2. Inline plugin secret options are merged after file secrets and win on cross-source code collisions.
+3. The complete immutable secret snapshot is published atomically; duplicate codes within a source or any invalid entry abort startup.
+4. ConfigSyncService later creates or updates database-backed pipelines and connections. It does not persist code-first secret values.
+5. Runtime secret resolution checks the in-memory code-first registry before the database.
+6. Same-code historical database rows remain inactive but can become active fallback after a code-first definition is removed, so removal requires an explicit row review.
 
 ## Security
 
@@ -304,13 +302,34 @@ dataHubPipelines() { ... }
 startDataHubPipelineRun() { ... }
 ```
 
-### Secret Encryption
+### Secret Storage and Initialization
 
-Secrets are encrypted at rest using Vendure's encryption utilities.
+Database INLINE secrets require DATAHUB_MASTER_KEY with at least 32 characters and use AES-256-GCM envelopes. Without a valid key, database INLINE writes and resolution fail closed. Unencrypted database values are never resolved.
+
+Code-first INLINE secrets are different: their configuration value is already plaintext in TypeScript, JSON, or YAML. A master key cannot protect that source, so production startup rejects code-first INLINE definitions. Environment-backed definitions accept one canonical variable name and resolve the environment separately in each executing API server or worker.
 
 ### Webhook Signatures
 
 Webhook requests can be verified with HMAC signatures.
+
+### Outgoing Webhook Delivery
+
+Webhook observation hooks persist a channel-scoped delivery row before queueing
+network work. The row is the recovery authority; Vendure jobs contain only its
+database ID and a short-lived lease token. Expired leases and failed queue
+publications return to the dispatcher without deleting pending work.
+
+The URL, payload, ordinary headers, Secret Code references, and retry policy are
+stored together in an AES-256-GCM replay envelope. Signing and sensitive header
+values are resolved from Secret Codes only inside each worker attempt. GraphQL
+returns a sanitized URL, payload hash and size, status, attempts, timestamps,
+HTTP status, and bounded safe error text; it never returns the envelope, request
+headers, payload, secrets, tokens, or response bodies.
+
+Delivery is at-least-once. A channel-scoped idempotency key returns the existing
+delivery only when its webhook ID and payload fingerprint match; conflicting
+reuse fails. Receivers must also enforce the transmitted idempotency key.
+
 
 ## Performance Considerations
 

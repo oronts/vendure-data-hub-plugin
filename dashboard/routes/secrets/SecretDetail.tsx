@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {
     Button,
+    ConfirmationDialog,
     DashboardRouteDefinition,
     DetailFormGrid,
     FormFieldWrapper,
@@ -20,84 +21,91 @@ import {
     SelectValue,
     PermissionGuard,
 } from '@vendure/dashboard';
-import { AnyRoute, useNavigate } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
-import { AlertCircle, Key, Server } from 'lucide-react';
-import { getErrorMessage } from '../../../shared';
-import { CODE_PATTERN } from '../../utils';
-import { DATAHUB_PERMISSIONS, ROUTES, SECRET_PROVIDER, SELECT_WIDTHS, TOAST_SECRET, ERROR_MESSAGES } from '../../constants';
+import { AlertCircle, Key, Server, Trash2, Undo2 } from 'lucide-react';
+import { ENV_VARIABLE_NAME_PATTERN, getErrorMessage } from '../../../shared';
+import { CODE_PATTERN, getEntityLabel } from '../../utils';
+import {
+    DATAHUB_PERMISSIONS,
+    ROUTES,
+    SECRET_PROVIDER,
+    SELECT_WIDTHS,
+    TOAST_SECRET,
+    ERROR_MESSAGES,
+} from '../../constants';
 import { FieldError } from '../../components/common';
+import { prepareSecretCreateInput, prepareSecretUpdateInput } from './secret-form-input';
 import {
     secretDetailDocument,
     createSecretDocument,
     updateSecretDocument,
+    useSecretSecurity,
 } from '../../hooks';
-import type { DataHubSecret } from '../../types';
+import { AllPermissionsGuard } from '../../components/shared';
 
-type SecretFormInput = Pick<DataHubSecret, 'id' | 'code' | 'provider' | 'value' | 'metadata'> & {
-    hasValue: boolean;
-};
+const SECRET_DETAIL_PAGE_ID = 'data-hub-secret-detail';
 
 export const secretDetail: DashboardRouteDefinition = {
     path: `${ROUTES.SECRETS}/$id`,
     loader: detailPageRouteLoader({
+        pageId: SECRET_DETAIL_PAGE_ID,
         queryDocument: secretDetailDocument,
         breadcrumb: (isNew, entity) => [
             { path: ROUTES.SECRETS, label: 'Secrets' },
-            isNew ? 'New Secret' : (entity?.code ?? ''),
+            isNew
+                ? 'New Secret'
+                : getEntityLabel(entity, 'code'),
         ],
     }),
-    component: route => (
-        <PermissionGuard requires={[DATAHUB_PERMISSIONS.READ_SECRET]}>
-            <SecretDetailPage route={route} />
-        </PermissionGuard>
-    ),
+    component: route => <SecretDetailPermissionGate route={route} />,
 };
 
-function SecretDetailPage({ route }: { route: AnyRoute }) {
+type DashboardRoute = Parameters<DashboardRouteDefinition['component']>[0];
+
+function SecretDetailPermissionGate({ route }: { route: DashboardRoute }) {
+    const params = route.useParams();
+    const requiredPermissions = params.id === 'new'
+        ? [DATAHUB_PERMISSIONS.CREATE_SECRET, DATAHUB_PERMISSIONS.READ_SECRET]
+        : [DATAHUB_PERMISSIONS.READ_SECRET];
+    return (
+        <AllPermissionsGuard requires={requiredPermissions}>
+            <SecretDetailPage route={route} />
+        </AllPermissionsGuard>
+    );
+}
+
+function SecretDetailPage({ route }: { route: DashboardRoute }) {
     const params = route.useParams();
     const navigate = useNavigate();
     const creating = params.id === 'new';
 
+    const { data: secretSecurity } = useSecretSecurity();
     const { form, submitHandler, entity, isPending, resetForm } = useDetailPage({
+        pageId: SECRET_DETAIL_PAGE_ID,
         queryDocument: secretDetailDocument,
+        entityField: 'dataHubSecret',
         createDocument: createSecretDocument,
         updateDocument: updateSecretDocument,
-        setValuesForCreate: () => ({
-            code: '',
-            provider: SECRET_PROVIDER.INLINE,
-            value: '',
-            metadata: null,
-            hasValue: false,
-        }),
-        setValuesForUpdate: s => ({
-            id: s?.id ?? '',
-            code: s?.code ?? '',
-            provider: s?.provider ?? SECRET_PROVIDER.INLINE,
+        setValuesForUpdate: (s) => ({
+            id: s.id,
+            code: s.code,
+            provider: s.provider,
             value: '',
             metadata: s?.metadata ?? null,
-            hasValue: Boolean(s?.value),
+            clearValue: false,
         }),
-        transformInput: (input: SecretFormInput) => {
-            const { hasValue, ...rest } = input;
-            const result: Record<string, unknown> = { ...rest };
-            if (!rest.value && hasValue && rest.id) {
-                delete result.value;
-            }
-            if (rest.provider === SECRET_PROVIDER.INLINE && rest.value === '') {
-                result.value = null;
-            }
-            return result;
-        },
+        transformCreateInput: prepareSecretCreateInput,
+        transformUpdateInput: prepareSecretUpdateInput,
         params: { id: params.id },
-        onSuccess: async data => {
+        onSuccess: async (data) => {
             toast.success(TOAST_SECRET.SAVE_SUCCESS);
             resetForm();
-            if (creating) {
+            if (creating && typeof data === 'object' && data !== null && 'id' in data) {
                 await navigate({ to: `../$id`, params: { id: data.id } });
             }
         },
-        onError: err => {
+        onError: (err) => {
             toast.error(TOAST_SECRET.SAVE_ERROR, {
                 description: getErrorMessage(err),
             });
@@ -106,36 +114,41 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
 
     React.useEffect(() => {
         if (creating && !form.getValues('provider')) {
-            form.setValue('provider', SECRET_PROVIDER.INLINE, { shouldDirty: false, shouldValidate: true });
+            form.setValue('provider', SECRET_PROVIDER.ENV, {
+                shouldDirty: false,
+                shouldValidate: true,
+            });
         }
     }, [creating, form]);
 
-    React.useEffect(() => {
-        if (!entity) return;
-        form.reset(
-            {
-                id: entity.id ?? '',
-                code: entity.code ?? '',
-                provider: entity.provider ?? SECRET_PROVIDER.INLINE,
-                value: '',
-                metadata: entity.metadata ?? null,
-                hasValue: Boolean(entity.value),
-            },
-            { keepDirty: false, keepTouched: false },
-        );
-    }, [entity?.id, form]);
+    const provider = (form.watch('provider') || entity?.provider || SECRET_PROVIDER.ENV) as 'INLINE' | 'ENV';
+    const existingProvider = (entity?.provider ?? SECRET_PROVIDER.ENV) as 'INLINE' | 'ENV';
+    const hasStoredValue = entity?.hasValue === true;
+    const currentValue = form.watch('value') ?? '';
+    const clearScheduled = form.watch('clearValue') === true;
+    const providerChanged = !creating && provider !== existingProvider;
+    const hasReplacement = currentValue.trim().length > 0;
 
-    const provider = (form.watch('provider') || entity?.provider || SECRET_PROVIDER.INLINE) as 'INLINE' | 'ENV';
-    const hasStoredValue = Boolean(form.watch('hasValue') ?? (entity?.value ? true : false));
-    const currentValue = form.watch('value');
-
+    const inlineDescription = secretSecurity?.mode === 'ENCRYPTED'
+        ? 'The actual secret value (stored encrypted)'
+        : 'Inline storage is unavailable until a master key is configured';
     return (
-        <Page pageId="data-hub-secret-detail" form={form} submitHandler={submitHandler}>
+        <Page pageId={SECRET_DETAIL_PAGE_ID} form={form} submitHandler={submitHandler}>
             <PageTitle>{creating ? 'New Secret' : (entity?.code ?? '')}</PageTitle>
             <PageActionBar>
                 <PageActionBarRight>
-                    <PermissionGuard requires={creating ? [DATAHUB_PERMISSIONS.CREATE_SECRET] : [DATAHUB_PERMISSIONS.UPDATE_SECRET]}>
-                        <Button type="submit" disabled={!form.formState.isDirty || !form.formState.isValid || isPending}>
+                    <PermissionGuard
+                        requires={creating ? [DATAHUB_PERMISSIONS.CREATE_SECRET] : [DATAHUB_PERMISSIONS.UPDATE_SECRET]}
+                    >
+                        <Button
+                            type="submit"
+                            disabled={
+                                !form.formState.isDirty ||
+                                !form.formState.isValid ||
+                                isPending ||
+                                entity?.isOverridden === true
+                            }
+                        >
                             {creating ? 'Create' : 'Update'}
                         </Button>
                     </PermissionGuard>
@@ -143,6 +156,40 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
             </PageActionBar>
             <PageLayout>
                 <PageBlock column="main" blockId="secret-form">
+                    {entity?.isOverridden && (
+                        <div className="mb-4 p-3 bg-amber-500/10 rounded-lg flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5" />
+                            <div className="text-sm">
+                                <p className="font-medium">Overridden by code-first configuration</p>
+                                <p className="text-muted-foreground">
+                                    Runtime resolution uses the in-memory definition with this code. This database row
+                                    cannot be updated; delete it before removing the code-first definition to prevent a
+                                    unencrypted credential from becoming active.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                    {entity?.valueStatus === 'UNENCRYPTED' && (
+                        <div className="mb-4 p-3 bg-destructive/10 rounded-lg flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
+                            <div className="text-sm">
+                                <p className="font-medium text-destructive">Unencrypted inline value</p>
+                                <p className="text-muted-foreground">
+                                    Strict runtime resolution rejects this value. Enter a replacement while the correct
+                                    master key is configured to store it encrypted.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                    {secretSecurity?.mode === 'STRICT_DISABLED' && (
+                        <div className="mb-4 p-3 bg-muted rounded-lg flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
+                            <p className="text-sm text-muted-foreground">
+                                Inline storage is disabled until DATAHUB_MASTER_KEY is configured. Use an environment
+                                variable reference.
+                            </p>
+                        </div>
+                    )}
                     <DetailFormGrid>
                         <FormFieldWrapper
                             control={form.control}
@@ -159,8 +206,11 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                                 <div>
                                     <Input
                                         {...field}
+                                        disabled={entity?.isOverridden === true}
                                         placeholder="my-api-key"
-                                        className={fieldState.error ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                        className={
+                                            fieldState.error ? 'border-destructive focus-visible:ring-destructive' : ''
+                                        }
                                     />
                                     <FieldError error={fieldState.error?.message} touched={fieldState.isTouched} />
                                     {!fieldState.error && (
@@ -177,54 +227,58 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                             label="Provider"
                             rules={{ required: ERROR_MESSAGES.PROVIDER_REQUIRED }}
                             render={({ field, fieldState }) => {
-                                // Ensure the form state has a valid provider value, not just a visual fallback.
-                                // Without this, the Select displays the correct default but the form
-                                // submits an empty string because field.value was never updated.
-                                const effectiveProvider = (field.value as string) || (entity?.provider ?? SECRET_PROVIDER.INLINE);
-                                if (field.value !== effectiveProvider) {
-                                    queueMicrotask(() => field.onChange(effectiveProvider));
-                                }
+                                const effectiveProvider =
+                                    (field.value as string) || (entity?.provider ?? SECRET_PROVIDER.ENV);
                                 return (
-                                <div>
-                                    <Select
-                                        value={effectiveProvider}
-                                        onValueChange={field.onChange}
-                                    >
-                                        <SelectTrigger className={SELECT_WIDTHS.PROVIDER}>
-                                            <SelectValue placeholder="Select provider" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value={SECRET_PROVIDER.INLINE}>
-                                                <div className="flex items-center gap-2">
-                                                    <Key className="w-4 h-4" />
-                                                    Inline Value
-                                                </div>
-                                            </SelectItem>
-                                            <SelectItem value={SECRET_PROVIDER.ENV}>
-                                                <div className="flex items-center gap-2">
-                                                    <Server className="w-4 h-4" />
-                                                    Environment Variable
-                                                </div>
-                                            </SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <FieldError error={fieldState.error?.message} touched={fieldState.isTouched} />
-                                    {!fieldState.error && (
-                                        <p className="mt-1 text-xs text-muted-foreground">
-                                            How the secret value is resolved
-                                        </p>
-                                    )}
-                                </div>
+                                    <div>
+                                        <Select
+                                            disabled={entity?.isOverridden === true}
+                                            value={effectiveProvider}
+                                            onValueChange={(value) => {
+                                                field.onChange(value);
+                                                form.setValue('value', '', {
+                                                    shouldDirty: true,
+                                                    shouldValidate: true,
+                                                });
+                                                form.setValue('clearValue', false, {
+                                                    shouldDirty: true,
+                                                    shouldValidate: true,
+                                                });
+                                                void form.trigger('value');
+                                            }}
+                                        >
+                                            <SelectTrigger className={SELECT_WIDTHS.PROVIDER}>
+                                                <SelectValue placeholder="Select provider" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem
+                                                    value={SECRET_PROVIDER.INLINE}
+                                                    disabled={secretSecurity?.inlineStorageAvailable === false}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Key className="w-4 h-4" />
+                                                        Inline Value
+                                                    </div>
+                                                </SelectItem>
+                                                <SelectItem value={SECRET_PROVIDER.ENV}>
+                                                    <div className="flex items-center gap-2">
+                                                        <Server className="w-4 h-4" />
+                                                        Environment Variable
+                                                    </div>
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <FieldError error={fieldState.error?.message} touched={fieldState.isTouched} />
+                                        {!fieldState.error && (
+                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                How the secret value is resolved
+                                            </p>
+                                        )}
+                                    </div>
                                 );
                             }}
                         />
                     </DetailFormGrid>
-
-                    <FormFieldWrapper
-                        name="hasValue"
-                        control={form.control}
-                        render={({ field }) => <input type="hidden" {...field} value={field.value ? 'true' : 'false'} />}
-                    />
 
                     <div className="mt-6">
                         <FormFieldWrapper
@@ -232,14 +286,27 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                             name="value"
                             label={provider === SECRET_PROVIDER.ENV ? 'Environment Variable Name' : 'Secret Value'}
                             rules={{
-                                validate: (value: string) => {
-                                    if (provider === SECRET_PROVIDER.ENV && (!value || value.trim() === '')) {
-                                        return ERROR_MESSAGES.ENV_VAR_NAME_REQUIRED;
+                                validate: (value: string | undefined) => {
+                                    const selectedProvider = (form.getValues('provider') || existingProvider) as
+                                        | 'INLINE'
+                                        | 'ENV';
+                                    const normalizedValue = value?.trim() ?? '';
+                                    const replacementProvided = normalizedValue.length > 0;
+                                    const providerWillChange = !creating && selectedProvider !== existingProvider;
+
+                                    if (form.getValues('clearValue') === true && !providerWillChange) {
+                                        return true;
                                     }
-                                    if (creating && provider === SECRET_PROVIDER.INLINE && (!value || value.trim() === '')) {
-                                        return ERROR_MESSAGES.SECRET_VALUE_REQUIRED;
+                                    if ((creating || providerWillChange) && !replacementProvided) {
+                                        return selectedProvider === SECRET_PROVIDER.ENV
+                                            ? ERROR_MESSAGES.ENV_VAR_NAME_REQUIRED
+                                            : ERROR_MESSAGES.SECRET_VALUE_REQUIRED;
                                     }
-                                    if (provider === SECRET_PROVIDER.ENV && value && !/^[A-Z][A-Z0-9_]*$/.test(value)) {
+                                    if (
+                                        selectedProvider === SECRET_PROVIDER.ENV &&
+                                        replacementProvided &&
+                                        !ENV_VARIABLE_NAME_PATTERN.test(normalizedValue)
+                                    ) {
                                         return ERROR_MESSAGES.ENV_VAR_FORMAT;
                                     }
                                     return true;
@@ -251,15 +318,28 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                                         type={provider === SECRET_PROVIDER.ENV ? 'text' : 'password'}
                                         {...field}
                                         value={field.value || ''}
-                                        placeholder={provider === SECRET_PROVIDER.ENV ? 'MY_API_KEY' : 'Enter secret value'}
-                                        className={fieldState.error ? 'border-destructive focus-visible:ring-destructive' : ''}
+                                        disabled={clearScheduled || entity?.isOverridden === true}
+                                        placeholder={
+                                            provider === SECRET_PROVIDER.ENV ? 'MY_API_KEY' : 'Enter secret value'
+                                        }
+                                        className={
+                                            fieldState.error ? 'border-destructive focus-visible:ring-destructive' : ''
+                                        }
+                                        onChange={(event) => {
+                                            if (form.getValues('clearValue') === true) {
+                                                form.setValue('clearValue', false, {
+                                                    shouldDirty: true,
+                                                });
+                                            }
+                                            field.onChange(event);
+                                        }}
                                     />
                                     <FieldError error={fieldState.error?.message} touched={fieldState.isTouched} />
                                     {!fieldState.error && (
                                         <p className="mt-1 text-xs text-muted-foreground">
                                             {provider === SECRET_PROVIDER.ENV
                                                 ? 'Name of the environment variable to read at runtime'
-                                                : 'The actual secret value (stored encrypted)'}
+                                                : inlineDescription}
                                         </p>
                                     )}
                                 </div>
@@ -267,12 +347,72 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                         />
                     </div>
 
-                    {hasStoredValue && provider !== SECRET_PROVIDER.ENV && !currentValue && (
+                    {!creating && hasStoredValue && !entity?.isOverridden && (
+                        <div className="mt-4">
+                            <PermissionGuard requires={[DATAHUB_PERMISSIONS.UPDATE_SECRET]}>
+                                {clearScheduled ? (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => {
+                                            form.setValue('clearValue', false, {
+                                                shouldDirty: true,
+                                                shouldValidate: true,
+                                            });
+                                            void form.trigger('value');
+                                        }}
+                                    >
+                                        <Undo2 className="w-4 h-4" />
+                                        Undo clear
+                                    </Button>
+                                ) : (
+                                    <ConfirmationDialog
+                                        title="Clear stored secret value?"
+                                        description="The stored value or environment variable reference will be removed when you save this secret. This cannot be recovered from the Data Hub."
+                                        confirmText="Clear value"
+                                        onConfirm={() => {
+                                            form.setValue('value', '', {
+                                                shouldDirty: true,
+                                                shouldValidate: true,
+                                            });
+                                            form.setValue('clearValue', true, {
+                                                shouldDirty: true,
+                                                shouldValidate: true,
+                                            });
+                                            void form.trigger('value');
+                                        }}
+                                    >
+                                        <Button type="button" variant="outline">
+                                            <Trash2 className="w-4 h-4" />
+                                            Clear stored value
+                                        </Button>
+                                    </ConfirmationDialog>
+                                )}
+                            </PermissionGuard>
+                        </div>
+                    )}
+
+                    {clearScheduled && (
+                        <div className="mt-4 p-3 bg-destructive/10 rounded-lg flex items-start gap-2">
+                            <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
+                            <div className="text-sm">
+                                <p className="font-medium text-destructive">Stored value will be cleared</p>
+                                <p className="text-muted-foreground">
+                                    Select Undo clear to retain it, or update the secret to apply the removal.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {hasStoredValue && !hasReplacement && !clearScheduled && !providerChanged && (
                         <div className="mt-4 p-3 bg-muted rounded-lg flex items-start gap-2">
                             <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
                             <div className="text-sm text-muted-foreground">
                                 <p className="font-medium">Existing value retained</p>
-                                <p>Enter a new secret to replace the stored value, or leave blank to keep the current one.</p>
+                                <p>
+                                    Enter a replacement to change it, or leave this field blank to keep the current
+                                    value.
+                                </p>
                             </div>
                         </div>
                     )}
@@ -282,7 +422,10 @@ function SecretDetailPage({ route }: { route: AnyRoute }) {
                             <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
                             <div className="text-sm text-muted-foreground">
                                 <p className="font-medium">Environment Variable</p>
-                                <p>The value will be read from the server environment at runtime. Make sure the variable is set in your deployment environment.</p>
+                                <p>
+                                    The value will be read from the server environment at runtime. Make sure the
+                                    variable is set in your deployment environment.
+                                </p>
                             </div>
                         </div>
                     )}

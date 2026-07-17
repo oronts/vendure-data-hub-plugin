@@ -2,131 +2,142 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.1.x   | Yes                |
+| Version | Supported |
+| ------- | --------- |
+| 0.1.x   | Yes       |
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in the Data Hub plugin, please report it responsibly.
+Do not open a public issue for a suspected security vulnerability. Email
+**office@oronts.com** with:
 
-**Do not open a public GitHub issue for security vulnerabilities.**
+- a description of the vulnerability;
+- reproducible steps;
+- the potential impact; and
+- a suggested fix, if available.
 
-Instead, please email us at: **office@oronts.com**
+We aim to acknowledge a report within 48 hours and provide an initial assessment
+within seven days.
 
-Include the following in your report:
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Any suggested fixes (optional)
+## Security Boundaries
 
-## Response Timeline
+### Outbound HTTP and SSRF
 
-- We will acknowledge receipt within 48 hours
-- We will provide an initial assessment within 7 days
-- We will work with you to understand and resolve the issue
+Outbound HTTP features call the plugin's URL validator before the initial
+request. The validator accepts only HTTP and HTTPS URLs, rejects known local and
+metadata hostnames, resolves DNS, and rejects private or reserved IP addresses by
+default.
 
-## Built-in Security Features
+This validation is defense in depth, not a replacement for network controls. A
+preflight DNS check does not pin every client connection or redirect to the
+validated address. Use an outbound proxy or firewall allowlist for high-security
+deployments, restrict redirect behavior in custom clients, and do not disable
+SSRF protection for untrusted pipeline configuration.
 
-### SSRF Protection
+`allowedHostnames` is an explicit bypass of the normal hostname and IP checks.
+Only use it for hosts that are trusted even if they resolve to a private address.
 
-The plugin includes SSRF protection in `src/utils/url-security.utils.ts`:
+### Expressions and Scripts
 
-- **Private IP blocking**: Blocks requests to private networks (10.x.x.x, 172.16-31.x.x, 192.168.x.x)
-- **Loopback protection**: Blocks localhost and 127.x.x.x addresses
-- **Cloud metadata protection**: Blocks AWS (169.254.169.254), GCP, and Azure metadata endpoints
-- **IPv6 protection**: Blocks link-local (fe80::) and loopback (::1) addresses
-- **DNS rebinding prevention**: Validates hostnames before making requests
-- **Configurable allow/block lists**: Customize which hosts are allowed or blocked
+Expression operators use a whitelist validator and a Node VM timeout. Script
+operators also validate source text, limit execution time, restrict the globals
+supplied by the plugin, and copy record data into the VM context.
 
-### SQL Injection Prevention
+Node's VM is not a strong isolation boundary for hostile code. Treat users who
+can create, edit, review, or publish script-bearing pipelines as trusted
+administrators. Disable script operators when that trust model is inappropriate:
 
-The plugin includes SQL security utilities in `src/utils/sql-security.utils.ts`:
-
-- **Column/table name validation**: Whitelist-based validation of SQL identifiers
-- **Injection pattern detection**: Detects common SQL injection patterns
-- **Identifier escaping**: Proper escaping of table and column names
-- **Reserved word protection**: Prevents use of SQL reserved words as identifiers
-
-### Code Sandboxing
-
-Expression evaluation is sandboxed in `src/runtime/sandbox/safe-evaluator.ts`:
-
-- **Whitelist-based validation**: Only allowed methods and operators can be used
-- **No global access**: Prevents access to global objects (window, process, etc.)
-- **Timeout enforcement**: Configurable execution timeouts prevent infinite loops
-- **Prototype pollution prevention**: Blocks access to __proto__ and constructor
-- **LRU caching**: Compiled expressions are cached for performance
-
-### Permission Model
-
-The plugin uses Vendure's permission system with 27 granular permissions:
-
-- **Read permissions**: View pipelines, secrets, connections, runs, logs
-- **Write permissions**: Create, update, delete pipelines, secrets, connections
-- **Execute permissions**: Run pipelines, cancel runs, retry failed runs
-- **Admin permissions**: Manage settings, view all data
-
-## Security Best Practices
-
-When using the Data Hub plugin:
-
-1. **Secrets Management**
-   - Use environment variables for sensitive credentials (`provider: 'ENV'`)
-   - Never commit secrets to version control
-   - Rotate API keys and passwords regularly
-
-2. **Permissions**
-   - Follow the principle of least privilege
-   - Only grant necessary permissions to users
-   - Review user access periodically
-
-3. **Network Security**
-   - Use HTTPS for all API connections
-   - Configure firewalls to restrict database access
-   - Use VPN or private networks for sensitive connections
-
-4. **Data Handling**
-   - Validate and sanitize all input data
-   - Be cautious with data from external sources
-   - Review pipeline definitions before running
-
-5. **Pipeline Security**
-   - Review custom expressions before enabling
-   - Use the built-in validation before running pipelines
-   - Monitor pipeline execution logs for anomalies
-
-## Configuration Options
-
-### URL Security
-
-Configure allowed/blocked hosts in your pipeline connections:
-
-```typescript
-{
-  config: {
-    allowedHosts: ['api.trusted-partner.com'],
-    blockedHosts: ['internal.company.com'],
-    allowPrivateIPs: false, // default: false
-  }
-}
-```
-
-### Expression Sandbox
-
-Configure sandbox limits in plugin options:
-
-```typescript
+```ts
 DataHubPlugin.init({
-  sandbox: {
-    timeout: 5000,        // max execution time in ms
-    maxIterations: 10000, // max loop iterations
-  }
-})
+    security: {
+        script: { enabled: false },
+    },
+});
 ```
+
+### SQL
+
+The plugin provides identifier validation and escaping utilities, and supported
+database handlers use parameter binding for values. Custom adapters and custom
+queries remain responsible for parameterizing values, validating identifiers,
+using a least-privilege database account, and applying any required channel or
+tenant scope.
+
+### Permissions
+
+The plugin registers two Vendure CRUD permission groups and 19 task-specific
+permissions. Assign the smallest applicable set to each role. In particular,
+separate pipeline read/edit permissions from run, review, and publish permissions
+where operational separation is required.
+
+## Secret Handling
+
+- Prefer `provider: 'ENV'` for production credentials. Define each referenced
+  environment variable in every API and worker process that can execute a
+  pipeline.
+- Database-backed `INLINE` values are encrypted at rest with AES-256-GCM. The
+  same `DATAHUB_MASTER_KEY`, with at least 32 characters, must be available to
+  every API and worker process.
+- Production rejects code-first `INLINE` secrets because source configuration is
+  not an encrypted storage boundary. Use code-first `ENV` references instead.
+- Secret values are write-only through the Admin API. Status metadata can report
+  whether a value is encrypted, environment-backed, unencrypted, or missing,
+  but it must never include the resolved value.
+- Back up the current master key separately from the database. Losing or changing
+  the key makes existing encrypted values unreadable. To rotate it, decrypt with
+  the old key and re-save every inline value with the new key before removing the
+  old key.
+- A code-first secret overrides a database row with the same code for that
+  process. Removing the code-first definition can reactivate the historical
+  database row on the next startup. Delete or deliberately migrate that row
+  before removing the override.
+- Never commit secret values or production master keys to version control.
+
+## Plugin Security Configuration
+
+The security options belong under `security` in `DataHubPlugin.init()`:
+
+```ts
+DataHubPlugin.init({
+    security: {
+        ssrf: {
+            allowedHostnames: ['api.trusted-partner.example'],
+            additionalBlockedHostnames: ['legacy.internal.example'],
+            additionalBlockedRanges: ['198.51.100.0/24'],
+            allowPrivateIPs: false,
+        },
+        script: {
+            enabled: true,
+            defaultTimeoutMs: 5_000,
+            validation: {
+                maxCodeLength: 10_000,
+                maxConditionLength: 2_000,
+            },
+        },
+    },
+});
+```
+
+`disableSsrfProtection` and `allowPrivateIPs` materially reduce protection. Keep
+their default `false` values unless the deployment is isolated and the risk is
+explicitly accepted.
+
+## Deployment Checklist
+
+- Require HTTPS at the ingress and for external services.
+- Keep Vendure, this plugin, database drivers, and transitive dependencies on
+  supported security patch levels.
+- Disable GraphQL introspection and debug playgrounds where the production threat
+  model requires it.
+- Restrict database, object-storage, message-broker, and outbound-network access
+  at infrastructure level.
+- Review pipeline revisions before publishing and monitor failed runs, retries,
+  webhook deliveries, and unusual outbound destinations.
+- Back up the database, configuration, and encryption key, then test restoration.
+- Rotate service credentials and review Vendure role assignments periodically.
 
 ## Contact
 
-For security concerns: office@oronts.com
+Security reports: **office@oronts.com**
 
-For general support: https://oronts.com
+General support: <https://oronts.com>

@@ -16,7 +16,6 @@ DataHubPlugin.init({
     enabled: true,
     registerBuiltinAdapters: true,
     debug: false,
-    enableDashboard: true,
 
     // Retention
     retentionDaysRuns: 30,
@@ -35,8 +34,8 @@ DataHubPlugin.init({
 
     // Runtime configuration
     runtime: {
-        batch: { size: 50, bulkSize: 100 },
-        http: { timeoutMs: 30000, maxRetries: 3 },
+        circuitBreaker: { failureThreshold: 5 },
+        scheduler: { refreshIntervalMs: 60_000 },
     },
 
     // Security configuration
@@ -60,13 +59,21 @@ DataHubPlugin.init({
 |---|---|
 | Type | `boolean` |
 | Default | `true` |
-| Description | Enable or disable the plugin entirely |
+| Description | Enable code-first pipeline/connection synchronization and code-first secret registration |
 
 ```typescript
 DataHubPlugin.init({
     enabled: process.env.DATAHUB_ENABLED !== 'false',
 })
 ```
+
+Setting `enabled: false` does not unregister the plugin's API, dashboard,
+controllers, jobs, or built-in adapters. Omit `DataHubPlugin` from the Vendure
+configuration when the entire plugin must be absent.
+
+The standalone dashboard development server binds to `127.0.0.1` and requires
+its configured port by default. Set `VITE_DEV_HOST=0.0.0.0` only when remote or
+container access is intentional and protected by the surrounding network.
 
 ### registerBuiltinAdapters
 
@@ -92,19 +99,6 @@ DataHubPlugin.init({
 })
 ```
 
-### enableDashboard
-
-| | |
-|---|---|
-| Type | `boolean` |
-| Default | `true` |
-| Description | Enable or disable the Data Hub dashboard UI |
-
-```typescript
-DataHubPlugin.init({
-    enableDashboard: true,
-})
-```
 
 ### retentionDaysRuns
 
@@ -158,9 +152,11 @@ interface CodeFirstSecret {
     code: string;
     provider: 'INLINE' | 'ENV';
     value: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
 }
 ```
+
+ENV values must be one canonical environment-variable name and must exist in every executing API server or worker. Code-first INLINE values stay plaintext in source and are rejected in production even when DATAHUB_MASTER_KEY is set. The master key encrypts database-backed INLINE values only. In non-production, code-first INLINE requires a valid master key.
 
 ### connections
 
@@ -174,7 +170,6 @@ interface CodeFirstSecret {
 interface CodeFirstConnection {
     code: string;           // Unique connection identifier
     type: string;           // Connection type (e.g., 'postgres', 'mysql', 'rest', 's3')
-    name: string;           // Human-readable name
     settings: JsonObject;   // Connection settings - supports env var references like ${DB_HOST}
 }
 ```
@@ -242,44 +237,24 @@ DataHubPlugin.init({
 | | |
 |---|---|
 | Type | `RuntimeLimitsConfig` |
-| Default | See below |
-| Description | Runtime configuration for batch processing, HTTP, circuit breaker, etc. |
+| Default | Built-in constants |
+| Description | Global settings read by runtime services |
+
+The current runtime consumers apply these groups:
 
 ```typescript
-interface RuntimeLimitsConfig {
-    batch?: {
-        size?: number;              // Default batch size (default: 50)
-        bulkSize?: number;          // Bulk operation size (default: 100)
-        maxInFlight?: number;       // Max concurrent operations (default: 5)
-        rateLimitRps?: number;      // Requests per second (default: 10)
-    };
-    http?: {
-        timeoutMs?: number;         // Request timeout (default: 30000)
-        maxRetries?: number;        // Max retry attempts (default: 3)
-        retryDelayMs?: number;      // Initial retry delay (default: 1000)
-        retryMaxDelayMs?: number;   // Max retry delay (default: 30000)
-        exponentialBackoff?: boolean;  // Enable exponential backoff (default: true)
-        backoffMultiplier?: number; // Backoff multiplier (default: 2)
-    };
+interface EffectiveRuntimeLimits {
     circuitBreaker?: {
-        enabled?: boolean;          // Enable circuit breaker (default: true)
-        failureThreshold?: number;  // Failures before opening (default: 5)
-        successThreshold?: number;  // Successes to close (default: 3)
-        resetTimeoutMs?: number;    // Time before reset attempt (default: 30000)
-    };
-    connectionPool?: {
-        min?: number;               // Min connections (default: 1)
-        max?: number;               // Max connections (default: 10)
-        idleTimeoutMs?: number;     // Idle timeout (default: 30000)
-    };
-    pagination?: {
-        maxPages?: number;          // Max pages to fetch (default: 100)
-        pageSize?: number;          // Default page size (default: 100)
-        databasePageSize?: number;  // Database page size (default: 1000)
+        enabled?: boolean;
+        failureThreshold?: number;
+        successThreshold?: number;
+        resetTimeoutMs?: number;
+        failureWindowMs?: number;
     };
     scheduler?: {
-        checkIntervalMs?: number;   // Cron check interval (default: 30000)
-        refreshIntervalMs?: number; // Cache refresh interval (default: 60000)
+        checkIntervalMs?: number;
+        refreshIntervalMs?: number;
+        minIntervalMs?: number;
     };
 }
 ```
@@ -289,9 +264,14 @@ Example:
 ```typescript
 DataHubPlugin.init({
     runtime: {
-        batch: { size: 100, maxInFlight: 10 },
-        http: { timeoutMs: 60000, maxRetries: 5 },
-        circuitBreaker: { failureThreshold: 10 },
+        circuitBreaker: {
+            failureThreshold: 10,
+            resetTimeoutMs: 60_000,
+        },
+        scheduler: {
+            checkIntervalMs: 30_000,
+            refreshIntervalMs: 60_000,
+        },
     },
 })
 ```
@@ -306,21 +286,24 @@ DataHubPlugin.init({
 
 ```typescript
 interface SecurityConfig {
-    ssrf?: UrlSecurityConfig;     // SSRF protection settings
-    script?: ScriptSecurityConfig; // Script operator security settings
-}
-
-interface ScriptSecurityConfig {
-    enabled?: boolean;            // Enable script operators (default: true)
-    validation?: {                // Code validation settings
-        maxExpressionLength?: number;
-        // ... other validation options
+    ssrf?: UrlSecurityConfig;
+    script?: {
+        enabled?: boolean;
+        defaultTimeoutMs?: number;
+        validation?: {
+            maxCodeLength?: number;
+            maxConditionLength?: number;
+            maxExpressionComplexity?: number;
+            maxPropertyAccessDepth?: number;
+            allowArrayMethods?: boolean;
+            allowStringMethods?: boolean;
+        };
     };
-    maxCacheSize?: number;        // Max cached expressions (default: 1000)
-    defaultTimeoutMs?: number;    // Script timeout (default: 5000)
-    enableCache?: boolean;        // Enable expression caching (default: true)
 }
 ```
+
+Node VM execution is not a hostile-code security boundary. Disable scripts when
+pipeline authors are not trusted administrators.
 
 Example:
 
@@ -403,32 +386,44 @@ interface CustomImportTemplate {
 
 #### Including Connector Templates
 
-Connectors (like Pimcore) ship their own templates. Built-in export templates are served automatically by the `TemplateRegistryService`. To include connector templates in the wizard, pass them via plugin options:
+Connectors such as Pimcore ship templates, adapters, and pipeline factories. Register the configured connector and pass its generated pipelines explicitly:
 
 ```typescript
 import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
-import { DEFAULT_IMPORT_TEMPLATES } from '@oronts/vendure-data-hub-plugin';
+
+const pimcore = PimcoreConnector({
+    connection: {
+        endpoint: 'https://pimcore.example.com/pimcore-graphql-webservices/shop',
+        apiKeySecretCode: 'pimcore-api-key',
+    },
+});
 
 DataHubPlugin.init({
-    importTemplates: [
-        ...DEFAULT_IMPORT_TEMPLATES,
-        ...(PimcoreConnector.importTemplates ?? []),
-    ],
-    exportTemplates: [
-        ...(PimcoreConnector.exportTemplates ?? []),
-    ],
-})
+    connectors: [pimcore],
+    pipelines: pimcore.pipelines,
+});
 ```
 
 If using `ConnectorRegistry` with multiple connectors:
 
 ```typescript
-const connectorTemplates = registry.getPluginTemplates();
+import { ConnectorRegistry, PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors';
+
+const registry = new ConnectorRegistry();
+registry.register(PimcoreConnector, {
+    connection: {
+        endpoint: 'https://pimcore.example.com/pimcore-graphql-webservices/shop',
+        apiKeySecretCode: 'pimcore-api-key',
+    },
+});
 
 DataHubPlugin.init({
-    importTemplates: [...DEFAULT_IMPORT_TEMPLATES, ...connectorTemplates.importTemplates],
-    exportTemplates: connectorTemplates.exportTemplates,
-})
+    connectors: registry.getConnectors().map(({ connector, config }) => ({
+        definition: connector,
+        config,
+    })),
+    pipelines: registry.getAllPipelines(),
+});
 ```
 
 ### exportTemplates
@@ -516,9 +511,42 @@ DataHubPlugin.init({
 })
 ```
 
+Relative paths resolve from the process working directory. Only .json, .yaml, and .yml are accepted, and the document root must be an object. When configPath is configured, missing, unreadable, unsupported, malformed, or invalid secret configuration aborts startup.
+
+File secrets stay in memory. They are loaded before secret consumers, then inline plugin secret options are overlaid so inline options win on cross-source codes. Duplicate codes within the file or within inline options are rejected. Connections and pipelines are synchronized separately after application bootstrap.
+
+A config file is not an encrypted secret store. Production code-first INLINE values are rejected; use ENV references.
+
 ## Environment Variables
 
 Use environment variables in configurations:
+
+### Server-local output
+
+`DATA_HUB_EXPORT_ROOT` sets the root for local exporter and feed files. It defaults to `<cwd>/exports` and is resolved when the process starts. In production, point it at a writable persistent directory:
+
+```bash
+DATA_HUB_EXPORT_ROOT=/var/lib/vendure-data-hub/exports
+```
+
+Pipeline values stay relative to that root: use `path: 'catalog'` for a local exporter directory and `outputPath: 'feeds/catalog.xml'` for a feed. Do not put absolute server paths or URLs in those pipeline fields. FTP/SFTP remote paths and HTTP destination URLs use their destination-specific settings.
+
+### Asset storage
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATA_HUB_STORAGE_TYPE` | No | `local` (default) or `s3`; unknown values fail startup |
+| `DATA_HUB_STORAGE_PATH` | Local only | Local base directory; defaults to `data-hub-uploads` |
+| `DATA_HUB_S3_BUCKET` | S3 | Bucket name |
+| `DATA_HUB_S3_REGION` | No | Region; defaults to `us-east-1` |
+| `DATA_HUB_S3_ACCESS_KEY_ID` | No | Static access key; configure together with the secret key |
+| `DATA_HUB_S3_SECRET_ACCESS_KEY` | No | Static secret key; configure together with the access key |
+| `DATA_HUB_S3_ENDPOINT` | No | HTTP(S) endpoint for an S3-compatible service |
+| `DATA_HUB_S3_PREFIX` | No | Object-key prefix |
+| `DATA_HUB_S3_URL_EXPIRY` | No | Positive integer signed-URL lifetime; defaults to `3600` seconds |
+
+When static S3 credentials are omitted, the AWS SDK credential chain is used.
+Prefer a workload role in production.
 
 ### In Secrets
 
@@ -530,19 +558,27 @@ secrets: [
 
 ### In Connections
 
-Use `${VAR}` syntax:
+Use `${VAR}` for non-secret values and Secret Codes for credentials:
 
 ```typescript
-connections: [
-    {
-        code: 'db',
-        type: 'postgres',
-        settings: {
-            host: '${DB_HOST}',
-            password: '${DB_PASSWORD}',
+DataHubPlugin.init({
+    secrets: [
+        { code: 'db-password', provider: 'ENV', value: 'DB_PASSWORD' },
+    ],
+    connections: [
+        {
+            code: 'db',
+            type: 'POSTGRES',
+            settings: {
+                host: '${DB_HOST}',
+                port: 5432,
+                database: '${DB_NAME}',
+                username: '${DB_USER}',
+                passwordSecretCode: 'db-password',
+            },
         },
-    },
-]
+    ],
+})
 ```
 
 ## External Config File
@@ -555,17 +591,19 @@ secrets:
   - code: supplier-api
     provider: ENV
     value: SUPPLIER_API_KEY
+  - code: erp-db-password
+    provider: ENV
+    value: ERP_DB_PASSWORD
 
 connections:
   - code: erp-db
-    type: postgres
-    name: ERP Database
+    type: POSTGRES
     settings:
       host: ${ERP_DB_HOST}
       port: 5432
       database: erp
       username: ${ERP_DB_USER}
-      password: ${ERP_DB_PASSWORD}
+      passwordSecretCode: erp-db-password
 
 pipelines:
   - code: product-sync
@@ -586,7 +624,7 @@ pipelines:
 ```json
 {
     "secrets": [
-        { "code": "api-key", "provider": "env", "value": "API_KEY" }
+        { "code": "api-key", "provider": "ENV", "value": "API_KEY" }
     ],
     "connections": [],
     "pipelines": []
@@ -601,7 +639,7 @@ These settings can be changed via Admin UI or GraphQL:
 |---------|-------------|
 | `retentionDaysRuns` | Run history retention |
 | `retentionDaysErrors` | Error retention |
-| `retentionDaysLogs` | Log retention |
+| `retentionDaysLogs` | Positive days purge older pipeline logs; `null` or `0` disables log purging |
 | `logPersistenceLevel` | Minimum log level to persist |
 
 ```graphql
@@ -609,7 +647,7 @@ mutation {
     updateDataHubSettings(input: {
         retentionDaysRuns: 60
         retentionDaysErrors: 90
-        logPersistenceLevel: "info"
+        logPersistenceLevel: PIPELINE
     }) {
         retentionDaysRuns
         retentionDaysErrors
@@ -625,7 +663,7 @@ Configure Vendure's job queue for pipeline execution:
 // vendure-config.ts
 export const config: VendureConfig = {
     jobQueueOptions: {
-        activeQueues: ['default', 'data-hub.run', 'data-hub.schedule'],
+        activeQueues: ['default', 'data-hub.event-trigger-outbox', 'data-hub.webhook-retry', 'data-hub.run'],
         pollInterval: 1000,
     },
 };
@@ -636,7 +674,11 @@ export const config: VendureConfig = {
 | Queue | Purpose |
 |-------|---------|
 | `data-hub.run` | Pipeline execution jobs |
-| `data-hub.schedule` | Schedule checking jobs |
+| `data-hub.event-trigger-outbox` | Durable Vendure event handoff jobs |
+| `data-hub.webhook-retry` | Durable outgoing webhook delivery jobs |
+
+Schedule checking uses process timers plus distributed locks. Scheduled starts
+are enqueued on `data-hub.run`; no separate schedule queue is required.
 
 ### Worker Scaling
 
@@ -644,12 +686,19 @@ For high-volume pipelines, run dedicated workers:
 
 ```typescript
 // worker.ts
-import { bootstrapWorker } from '@vendure/core';
+import { bootstrapWorker, Logger } from '@vendure/core';
 import config from './vendure-config';
 
 bootstrapWorker(config)
     .then(worker => worker.startJobQueue())
-    .then(() => console.log('Worker started'));
+    .then(worker => worker.startHealthCheckServer({ port: 3020 }))
+    .catch(err => {
+        Logger.error(
+            `Worker failed to start: ${err instanceof Error ? err.message : String(err)}`,
+            'DataHubWorker',
+        );
+        process.exitCode = 1;
+    });
 ```
 
 ## Example Configurations
@@ -662,7 +711,7 @@ DataHubPlugin.init({
     debug: true,
     retentionDaysRuns: 7,
     secrets: [
-        { code: 'test-api', provider: 'INLINE', value: 'test-key' },
+        { code: 'test-api', provider: 'ENV', value: 'TEST_API_KEY' },
     ],
 })
 ```
@@ -690,15 +739,18 @@ DataHubPlugin.init({
     retentionDaysRuns: isProd ? 30 : 7,
     secrets: [
         { code: 'api-key', provider: 'ENV', value: 'API_KEY' },
+        { code: 'main-db-password', provider: 'ENV', value: 'DB_PASSWORD' },
     ],
     connections: [
         {
             code: 'main-db',
-            type: 'postgres',
-            name: isProd ? 'Production DB' : 'Dev DB',
+            type: 'POSTGRES',
             settings: {
                 host: '${DB_HOST}',
+                port: 5432,
                 database: '${DB_NAME}',
+                username: '${DB_USER}',
+                passwordSecretCode: 'main-db-password',
             },
         },
     ],

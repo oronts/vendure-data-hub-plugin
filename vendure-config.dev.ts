@@ -1,7 +1,7 @@
 /**
  * Data Hub Plugin Dev Server Configuration
  *
- * 37 example pipelines + 4 custom adapter demos + 5 hook demos + 4 Pimcore connector pipelines = 50 total
+ * 37 example pipelines + 4 custom adapter demos + 5 hook demos + 3 Pimcore connector pipelines = 49 total
  */
 import { DefaultJobQueuePlugin, DefaultSchedulerPlugin, DefaultSearchPlugin, dummyPaymentHandler, VendureConfig } from '@vendure/core';
 import { AssetServerPlugin } from '@vendure/asset-server-plugin';
@@ -10,6 +10,10 @@ import path from 'path';
 
 import { DataHubPlugin } from './src';
 import { pimcoreConnectorDefinition, PimcoreConnectorConfig, pimcoreGraphQLExtractor } from './connectors/pimcore';
+import {
+    DEFAULT_DEV_MASTER_KEY,
+    DEFAULT_DEV_PIMCORE_API_KEY,
+} from './dev-server/dev-credentials';
 import {
     allCustomAdapters,
     allCustomFeedGenerators,
@@ -64,24 +68,33 @@ import {
     allStagesHookDemo,
 } from './dev-server/examples/pipelines';
 
+process.env.DATAHUB_LOCK_BACKEND ??= 'MEMORY';
+process.env.DATAHUB_MASTER_KEY ??= DEFAULT_DEV_MASTER_KEY;
+process.env.PIMCORE_API_KEY ??= DEFAULT_DEV_PIMCORE_API_KEY;
+process.env.PIMCORE_WEBHOOK_KEY ??= 'demo-webhook-key';
+process.env.DEMO_PG_PASSWORD ??= 'postgres';
+
 const PORT = process.env.PORT ? +process.env.PORT : 3000;
 const VENDURE_BASE_URL = process.env.VENDURE_BASE_URL || `http://localhost:${PORT}`;
 const VITE_DEV_PORT = process.env.VITE_DEV_PORT ? +process.env.VITE_DEV_PORT : 5173;
+export const DEV_DATABASE_PATH = path.resolve(
+    process.env.DATA_HUB_DEV_DB_PATH ?? path.join(__dirname, 'dev-server/vendure.sqlite'),
+);
 
 // =============================================================================
 // PIMCORE CONNECTOR
 // =============================================================================
 const pimcoreConfig: PimcoreConnectorConfig = {
     connection: {
-        endpoint: process.env.PIMCORE_ENDPOINT || 'https://pimcore.example.com/pimcore-datahub-webservices/shop',
+        endpoint: process.env.PIMCORE_ENDPOINT || 'https://pimcore.example.com/pimcore-graphql-webservices/shop',
         apiKeySecretCode: 'pimcore-api-key',
     },
     vendureChannel: '__default_channel__',
     defaultLanguage: 'en',
-    languages: ['en', 'de'],
     sync: {
         deltaSync: true,
         batchSize: 100,
+        maxPages: 100,
         includeUnpublished: false,
         includeVariants: true,
     },
@@ -89,11 +102,10 @@ const pimcoreConfig: PimcoreConnectorConfig = {
         productSync: { enabled: true, schedule: '0 */4 * * *' },
         categorySync: { enabled: true, schedule: '0 2 * * *' },
         assetSync: { enabled: true, schedule: '0 3 * * *' },
-        facetSync: { enabled: true, schedule: '0 1 * * 0' },
     },
 };
 
-const [productSync, categorySync, assetSync, facetSync] = pimcoreConnectorDefinition.createPipelines(pimcoreConfig);
+const [productSync, categorySync, assetSync] = pimcoreConnectorDefinition.createPipelines(pimcoreConfig);
 
 export const config: VendureConfig = {
     apiOptions: {
@@ -118,7 +130,7 @@ export const config: VendureConfig = {
         type: 'better-sqlite3',
         synchronize: true,
         logging: false,
-        database: path.join(__dirname, 'dev-server/vendure.sqlite'),
+        database: DEV_DATABASE_PATH,
     },
     paymentOptions: {
         paymentMethodHandlers: [dummyPaymentHandler],
@@ -234,12 +246,11 @@ export const config: VendureConfig = {
                 { code: 'hook-all-stages', name: 'Hook Demo: All Stages', definition: allStagesHookDemo, enabled: true },
 
                 // =================================================================
-                // PIMCORE CONNECTOR PIPELINES (4)
+                // PIMCORE CONNECTOR PIPELINES (3)
                 // =================================================================
                 { code: 'pimcore-product-sync', name: 'Pimcore Product Sync', definition: productSync, enabled: true },
                 { code: 'pimcore-category-sync', name: 'Pimcore Category Sync', definition: categorySync, enabled: true },
                 { code: 'pimcore-asset-sync', name: 'Pimcore Asset Sync', definition: assetSync, enabled: true },
-                { code: 'pimcore-facet-sync', name: 'Pimcore Facet Sync', definition: facetSync, enabled: true },
             ],
 
             secrets: [
@@ -250,9 +261,9 @@ export const config: VendureConfig = {
                 { code: 'google-merchant-key', provider: 'INLINE', value: 'google-merchant-demo-key' },
                 { code: 'facebook-catalog-key', provider: 'INLINE', value: 'fb-catalog-demo-key' },
                 { code: 'magento-bearer-token', provider: 'INLINE', value: 'magento-dev-token-static-12345' },
-                { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY|demo-pimcore-key' },
-                { code: 'pimcore-webhook-key', provider: 'ENV', value: 'PIMCORE_WEBHOOK_KEY|demo-webhook-key' },
-                { code: 'demo-pg-password', provider: 'ENV', value: 'DEMO_PG_PASSWORD|postgres' },
+                { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY' },
+                { code: 'pimcore-webhook-key', provider: 'ENV', value: 'PIMCORE_WEBHOOK_KEY' },
+                { code: 'demo-pg-password', provider: 'ENV', value: 'DEMO_PG_PASSWORD' },
                 { code: 'meilisearch-api-key', provider: 'INLINE', value: 'testMasterKey123' },
                 { code: 'elasticsearch-api-key', provider: 'INLINE', value: 'elastic-demo-key' },
                 { code: 'opensearch-basic-auth', provider: 'INLINE', value: 'admin:admin' },
@@ -263,8 +274,7 @@ export const config: VendureConfig = {
             connections: [
                 {
                     code: 'demo-postgres',
-                    type: 'DATABASE',
-                    name: 'Demo PostgreSQL',
+                    type: 'POSTGRES',
                     settings: {
                         host: process.env.DEMO_PG_HOST || 'localhost',
                         port: 5432,
@@ -276,8 +286,14 @@ export const config: VendureConfig = {
                 {
                     code: 'erp-api',
                     type: 'HTTP',
-                    name: 'ERP API Connection',
-                    settings: { baseUrl: 'https://erp.example.com/api', headers: { 'X-API-Key': '{{secret:demo-api-key}}' } },
+                    settings: {
+                        baseUrl: 'https://erp.example.com/api',
+                        auth: {
+                            type: 'API_KEY',
+                            secretCode: 'demo-api-key',
+                            headerName: 'X-API-Key',
+                        },
+                    },
                 },
             ],
         }),
