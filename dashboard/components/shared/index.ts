@@ -43,3 +43,4 @@ export { FilterConditionsEditor } from './filter-conditions-editor';
 export { ErrorBoundary } from './error-boundary';
 
 export { LoadMoreButton } from './LoadMoreButton';
+export { AllPermissionsGuard } from './AllPermissionsGuard';

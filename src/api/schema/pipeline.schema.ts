@@ -128,6 +128,13 @@ export const pipelineSchema = `
         stackTrace: String
     }
 
+    type DataHubRecordErrorPage {
+        items: [DataHubRecordError!]!
+        totalItems: Int!
+        hasNextPage: Boolean!
+        endCursor: String
+    }
+
     """
     Audit trail for retry attempts on failed records
     """
@@ -140,10 +147,42 @@ export const pipelineSchema = `
         userId: ID
         "Record state before the retry patch"
         previousPayload: JSON!
-        "JSON Patch operations applied"
+        "Accepted field patch applied to the retried payload"
         patch: JSON!
         "Record state after applying the patch"
         resultingPayload: JSON!
+    }
+    enum DataHubRecordRetryOutcome {
+        APPLIED
+        RECORD_NOT_FOUND
+        RUN_NOT_FOUND
+        PIPELINE_NOT_FOUND
+        STEP_NOT_FOUND
+        PATCH_REJECTED
+        REPLAY_FAILED
+    }
+
+    """
+    Structured result of retrying one quarantined record.
+    """
+    type DataHubRecordRetryResult {
+        success: Boolean!
+        outcome: DataHubRecordRetryOutcome!
+        message: String!
+        errorId: ID!
+        runId: ID
+        stepKey: String
+        adapterCode: String
+        definitionVersion: Int
+        "The accepted field patch. Empty when validation rejects the request before replay."
+        appliedPatch: JSON!
+        "Requested field names rejected by the loader patch policy."
+        rejectedPatchKeys: [String!]!
+        processed: Int!
+        succeeded: Int!
+        failed: Int!
+        auditId: ID
+        auditRecorded: Boolean!
     }
 
     """
@@ -267,6 +306,28 @@ export const pipelineSchema = `
         "Any issues encountered during conversion"
         issues: [String!]!
     }
+
+    enum DataHubHookExecutionStatus {
+        EXECUTED
+        PARTIAL
+        FAILED
+        SKIPPED
+    }
+
+    type DataHubHookExecutionFailure {
+        action: String!
+        type: String!
+        error: String!
+    }
+
+    type DataHubHookExecutionResult {
+        status: DataHubHookExecutionStatus!
+        configured: Int!
+        executed: Int!
+        skipped: Int!
+        failed: Int!
+        errors: [DataHubHookExecutionFailure!]!
+    }
 `;
 
 export const pipelineQueries = `
@@ -275,9 +336,9 @@ export const pipelineQueries = `
         dataHubPipeline(id: ID!): DataHubPipeline
         dataHubPipelineRuns(pipelineId: ID): DataHubPipelineRunList!
         dataHubPipelineRun(id: ID!): DataHubPipelineRun
-        dataHubRunErrors(runId: ID!): [DataHubRecordError!]!
-        dataHubRecordRetryAudits(errorId: ID!): [DataHubRecordRetryAudit!]!
-        dataHubDeadLetters: [DataHubRecordError!]!
+        dataHubRunErrors(runId: ID!, first: Int = 20, after: String): DataHubRecordErrorPage!
+        dataHubRecordRetryAudits(errorId: ID!, limit: Int = 20): [DataHubRecordRetryAudit!]!
+        dataHubDeadLetters(first: Int = 20, after: String): DataHubRecordErrorPage!
         dataHubPipelineDependencies(id: ID!): [DataHubPipeline!]!
         dataHubPipelineDependents(id: ID!): [DataHubPipeline!]!
         dataHubCheckpoint(pipelineId: ID!): DataHubCheckpoint
@@ -301,13 +362,14 @@ export const pipelineMutations = `
         approveDataHubPipeline(id: ID!): DataHubPipeline!
         rejectDataHubPipelineReview(id: ID!): DataHubPipeline!
         archiveDataHubPipeline(id: ID!): DataHubPipeline!
+        reactivateDataHubPipeline(id: ID!): DataHubPipeline!
         startDataHubPipelineRun(pipelineId: ID!): DataHubPipelineRun!
         cancelDataHubPipelineRun(id: ID!): DataHubPipelineRun!
         startDataHubPipelineDryRun(pipelineId: ID!): DataHubDryRunResult!
-        retryDataHubRecord(errorId: ID!, patch: JSON): Boolean!
+        retryDataHubRecord(errorId: ID!, patch: JSON): DataHubRecordRetryResult!
         updateDataHubCheckpoint(pipelineId: ID!, data: JSON!): DataHubCheckpoint!
         markDataHubDeadLetter(id: ID!, deadLetter: Boolean!): Boolean!
         revertDataHubPipelineToRevision(revisionId: ID!): DataHubPipeline!
-        runDataHubHookTest(pipelineId: ID!, stage: String!, payload: JSON): Boolean!
+        runDataHubHookTest(pipelineId: ID!, stage: String!, payload: JSON): DataHubHookExecutionResult!
     }
 `;

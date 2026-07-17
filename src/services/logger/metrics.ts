@@ -6,7 +6,7 @@
  */
 
 import { Counter, Histogram } from './logger.types';
-import { METRICS } from '../../constants/index';
+import { METRICS } from '../../constants/defaults/reliability-defaults';
 
 /**
  * In-memory counter implementation

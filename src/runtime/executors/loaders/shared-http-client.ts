@@ -5,9 +5,10 @@
  * previously copy-pasted across RestPostHandler and GraphqlMutationHandler.
  */
 import { CircuitBreakerService } from '../../../services/runtime/circuit-breaker.service';
-import { sleep } from '../../utils';
-import { HTTP_STATUS, HTTP } from '../../../constants/index';
-import { DataHubLogger } from '../../../services/logger';
+import { sleep } from '../../../utils/retry.utils';
+import { HTTP_STATUS, HTTP } from '../../../constants/defaults/http-defaults';
+import { DataHubLogger } from '../../../services/logger/datahub-logger';
+import { secureFetch } from '../../../utils/secure-fetch.utils';
 
 /** Result of a single HTTP fetch attempt */
 export type HttpFetchResult = { ok: true } | { ok: false; error: string; isCircuitOpen?: boolean };
@@ -88,7 +89,6 @@ export function resolveHttpRetryConfig(
  */
 export async function doHttpFetch(opts: HttpFetchOptions): Promise<HttpFetchResult> {
     const { endpoint, method, headers, body, timeoutMs, circuitKey, circuitBreaker, logger, stepKey, onResponse } = opts;
-    const fetchImpl = globalThis.fetch;
 
     // Circuit breaker guard
     if (circuitBreaker && !circuitBreaker.canExecute(circuitKey)) {
@@ -102,7 +102,7 @@ export async function doHttpFetch(opts: HttpFetchOptions): Promise<HttpFetchResu
     }
 
     try {
-        const res = await fetchImpl(endpoint, {
+        const res = await secureFetch(endpoint, {
             method,
             headers,
             body,

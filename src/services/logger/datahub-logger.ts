@@ -7,12 +7,28 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ID } from '@vendure/core';
 
 import { MetricStatus, SpanStatus } from '../../constants/enums';
-import { CACHE, calculateThroughput } from '../../constants/index';
+import { CACHE } from '../../constants/defaults/reliability-defaults';
+import { calculateThroughput } from '../../constants/time';
 import { LogContext, LogMetadata, SpanData } from './logger.types';
 import { MetricsRegistry } from './metrics';
 import { SpanTracker, SpanContext } from './span-tracker';
 import { extractErrorDetails } from './error-utils';
 import { sanitizeForLog } from './sanitizer';
+
+const LOGGER_FAILURE_EVENT = 'datahub_logger_failure';
+
+function reportLoggerFailure(component: string, error: unknown): void {
+    const errorName = error instanceof Error ? error.name : 'UnknownError';
+    try {
+        process.stderr.write(`${JSON.stringify({
+            event: LOGGER_FAILURE_EVENT,
+            component,
+            errorName,
+        })}\n`);
+    } catch {
+        // Logging failures must never interrupt application execution.
+    }
+}
 
 export class DataHubLogger {
     private readonly nestLogger: Logger;
@@ -107,8 +123,8 @@ export class DataHubLogger {
     debug(message: string, metadata?: LogMetadata): void {
         try {
             this.nestLogger.debug(this.formatMessage(message, metadata));
-        } catch (e) {
-            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ } // eslint-disable-line no-console
+        } catch (error) {
+            reportLoggerFailure(this.componentName, error);
         }
     }
 
@@ -118,8 +134,8 @@ export class DataHubLogger {
     info(message: string, metadata?: LogMetadata): void {
         try {
             this.nestLogger.log(this.formatMessage(message, metadata));
-        } catch (e) {
-            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ } // eslint-disable-line no-console
+        } catch (error) {
+            reportLoggerFailure(this.componentName, error);
         }
     }
 
@@ -136,8 +152,8 @@ export class DataHubLogger {
     warn(message: string, metadata?: LogMetadata): void {
         try {
             this.nestLogger.warn(this.formatMessage(message, metadata));
-        } catch (e) {
-            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ } // eslint-disable-line no-console
+        } catch (error) {
+            reportLoggerFailure(this.componentName, error);
         }
     }
 
@@ -175,8 +191,8 @@ export class DataHubLogger {
                     category: errorDetails?.category ?? 'unknown',
                 });
             }
-        } catch (e) {
-            try { console.error('DataHubLogger failed:', e); } catch { /* truly silent */ } // eslint-disable-line no-console
+        } catch (error) {
+            reportLoggerFailure(this.componentName, error);
         }
     }
 
@@ -431,12 +447,14 @@ export class DataHubLogger {
         operation: 'create' | 'update' | 'delete' | 'skip' | 'upsert',
         succeeded: number,
         failed: number,
+        skipped: number,
         durationMs: number,
     ): void {
         this.info(`Loader "${loaderCode}" ${operation} completed`, {
             adapterCode: loaderCode,
             recordsSucceeded: succeeded,
             recordsFailed: failed,
+            recordsSkipped: skipped,
             durationMs,
         });
 
@@ -452,6 +470,11 @@ export class DataHubLogger {
             });
 
             this.metricsRegistry.getCounter('datahub_loader_failed_total').increment(failed, {
+                loader: loaderCode,
+                operation,
+            });
+
+            this.metricsRegistry.getCounter('datahub_loader_skipped_total').increment(skipped, {
                 loader: loaderCode,
                 operation,
             });

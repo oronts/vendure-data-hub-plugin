@@ -10,8 +10,8 @@ import {
     Promotion,
     ID,
 } from '@vendure/core';
+import { createChannelRequestContext } from '../../helpers/channel-request-context';
 import {
-    ConfigurableOperationInput,
     CreatePromotionInput,
     UpdatePromotionInput,
     AssignPromotionsToChannelInput,
@@ -19,20 +19,24 @@ import {
     PromotionTranslationInput,
 } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
-import { safeJson } from '../../utils';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getObjectValue } from '../../../loaders/shared-helpers';
 import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
+import {
+    parsePromotionOperations,
+    requirePromotionActions,
+} from './promotion-operation-input';
 
 /**
  * Configuration interface for the promotion handler step
  */
-interface PromotionHandlerConfig {
+interface PromotionHandlerConfig extends CreateDuplicateHandlingConfig {
     /** Field name in record containing the coupon code (default: 'code') */
     codeField?: string;
     /** Field name in record containing the enabled flag (default: 'enabled') */
@@ -97,6 +101,18 @@ function hasId(value: unknown): value is PromotionResult {
     );
 }
 
+function promotionResultError(action: 'create' | 'update', value: unknown): Error {
+    const result = value && typeof value === 'object'
+        ? value as { errorCode?: unknown; message?: unknown }
+        : {};
+    const detail = typeof result.message === 'string'
+        ? result.message
+        : typeof result.errorCode === 'string'
+            ? result.errorCode
+            : 'Vendure returned no promotion ID';
+    return new Error(`Failed to ${action} promotion: ${detail}`);
+}
+
 /**
  * Type guard for checking if value is a Promotion entity
  */
@@ -112,22 +128,6 @@ function isPromotion(value: unknown): value is Promotion {
 /**
  * Safely parse conditions/actions JSON into ConfigurableOperationInput array
  */
-function parseConfigurableOperations(
-    jsonValue: unknown,
-): ConfigurableOperationInput[] {
-    if (!Array.isArray(jsonValue)) {
-        return [];
-    }
-    // Filter and validate each operation
-    return jsonValue.filter(
-        (item): item is ConfigurableOperationInput =>
-            typeof item === 'object' &&
-            item !== null &&
-            typeof item.code === 'string' &&
-            Array.isArray(item.arguments),
-    );
-}
-
 /**
  * Convert a raw value to boolean
  */
@@ -174,9 +174,10 @@ export class PromotionHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0,
-            fail = 0;
+            fail = 0,
+            skipped = 0;
         const config = getConfig(step.config);
 
         const channelCache = new Map<string, ID>();
@@ -230,15 +231,16 @@ export class PromotionHandler implements LoaderHandler {
                 const endsAtRaw = getRecordField(rec, endsAtFieldName);
                 const endsAt = toDateOrUndefined(endsAtRaw);
 
-                const conditionsRaw = conditionsJsonField
-                    ? safeJson(getRecordField(rec, conditionsJsonField))
-                    : null;
-                const actionsRaw = actionsJsonField
-                    ? safeJson(getRecordField(rec, actionsJsonField))
-                    : null;
-
-                const conditions = parseConfigurableOperations(conditionsRaw ?? []);
-                const actions = parseConfigurableOperations(actionsRaw ?? []);
+                const conditionsInput = parsePromotionOperations(
+                    rec,
+                    conditionsJsonField,
+                    'conditions',
+                );
+                const actionsInput = parsePromotionOperations(
+                    rec,
+                    actionsJsonField,
+                    'actions',
+                );
 
                 const customFields = getObjectValue(rec, customFieldsKey);
 
@@ -267,13 +269,11 @@ export class PromotionHandler implements LoaderHandler {
                 let opCtx = ctx;
 
                 if (channel) {
-                    const newCtx = await this.requestContextService.create({
-                        apiType: ctx.apiType,
-                        channelOrToken: channel,
-                    });
-                    if (newCtx) {
-                        opCtx = newCtx;
-                    }
+                    opCtx = await createChannelRequestContext(
+                        this.requestContextService,
+                        ctx,
+                        channel,
+                    );
                 }
 
                 const strategy = config.strategy ?? LoadStrategy.UPSERT;
@@ -281,7 +281,8 @@ export class PromotionHandler implements LoaderHandler {
 
                 if (existing && isPromotion(existing)) {
                     if (strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(config, 'promotion', code);
+                        skipped++;
                         continue;
                     }
                     const updateInput: UpdatePromotionInput = {
@@ -290,12 +291,16 @@ export class PromotionHandler implements LoaderHandler {
                         startsAt,
                         endsAt,
                         couponCode: code,
-                        conditions,
-                        actions,
                         translations,
                         ...(customFields ? { customFields } : {}),
                         ...(perCustomerUsageLimit !== undefined ? { perCustomerUsageLimit } : {}),
                     };
+                    if (conditionsInput.present) {
+                        updateInput.conditions = conditionsInput.operations;
+                    }
+                    if (actionsInput.present) {
+                        updateInput.actions = requirePromotionActions(actionsInput);
+                    }
                     const updated = await this.promotionService.updatePromotion(
                         opCtx,
                         updateInput,
@@ -314,11 +319,16 @@ export class PromotionHandler implements LoaderHandler {
                                     assignInput,
                                 );
                             } catch (error) {
-                                this.logger.warn(
-                                    `Failed to assign promotion ${updated.id} to channel: ${getErrorMessage(error)}`,
-                                );
+                                this.logger.warn('Failed to assign updated promotion to target channel', {
+                                    promotionId: updated.id,
+                                    channelId: opCtx.channelId,
+                                    error: getErrorMessage(error),
+                                });
+                                throw error;
                             }
                         }
+                    } else {
+                        throw promotionResultError('update', updated);
                     }
                 } else {
                     if (strategy === LoadStrategy.UPDATE) {
@@ -333,8 +343,8 @@ export class PromotionHandler implements LoaderHandler {
                         startsAt,
                         endsAt,
                         couponCode: code,
-                        conditions,
-                        actions,
+                        conditions: conditionsInput.operations ?? [],
+                        actions: requirePromotionActions(actionsInput),
                         translations,
                         ...(customFields ? { customFields } : {}),
                         ...(perCustomerUsageLimit !== undefined ? { perCustomerUsageLimit } : {}),
@@ -357,11 +367,16 @@ export class PromotionHandler implements LoaderHandler {
                                     assignInput,
                                 );
                             } catch (error) {
-                                this.logger.warn(
-                                    `Failed to assign promotion ${created.id} to channel: ${getErrorMessage(error)}`,
-                                );
+                                this.logger.warn('Failed to assign created promotion to target channel', {
+                                    promotionId: created.id,
+                                    channelId: opCtx.channelId,
+                                    error: getErrorMessage(error),
+                                });
+                                throw error;
                             }
                         }
+                    } else {
+                        throw promotionResultError('create', created);
                     }
                 }
 
@@ -373,7 +388,14 @@ export class PromotionHandler implements LoaderHandler {
                         if (channelIds.length > 0) {
                             try {
                                 await this.channelService.assignToChannels(opCtx, Promotion, promotionId, channelIds);
-                            } catch { /* channel assignment is best-effort */ }
+                            } catch (error) {
+                                this.logger.warn('Failed to assign promotion to record channels', {
+                                    promotionId,
+                                    channelIds,
+                                    error: getErrorMessage(error),
+                                });
+                                throw error;
+                            }
                         }
                     }
                 }
@@ -391,7 +413,7 @@ export class PromotionHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     /**

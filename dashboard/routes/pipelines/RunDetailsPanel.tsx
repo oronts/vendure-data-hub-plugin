@@ -9,6 +9,7 @@ import {
     DialogTitle,
     PermissionGuard,
     Json,
+    usePermissions,
 } from '@vendure/dashboard';
 import { Link } from '@tanstack/react-router';
 import { toast } from 'sonner';
@@ -43,11 +44,16 @@ function findPausedGateStep(metrics: IndividualRunMetrics): string | undefined {
 
 export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCancelling }: RunDetailsPanelProps) {
     const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false);
+    const { hasPermissions } = usePermissions();
+    const canViewQuarantine = hasPermissions([DATAHUB_PERMISSIONS.VIEW_QUARANTINE]);
     const { data: runData, refetch, isFetching } = usePipelineRun(runId);
-    const { data: errors } = useRunErrors(runId);
+    const errorsQuery = useRunErrors(canViewQuarantine ? runId : undefined);
     const retryError = useRetryError();
     const approveGate = useApproveGate();
     const rejectGate = useRejectGate();
+    const { mutateAsync: retryRunError } = retryError;
+    const { mutateAsync: approveRunGate } = approveGate;
+    const { mutateAsync: rejectRunGate } = rejectGate;
 
     const run = runData;
     const status = run?.status ?? initialData.status;
@@ -55,25 +61,42 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
     const processed = Number(metrics.processed ?? 0);
     const succeeded = Number(metrics.succeeded ?? 0);
     const failed = Number(metrics.failed ?? 0);
-    const summary = `${processed} processed • ${succeeded} succeeded • ${failed} failed`;
+    const skipped = Number(metrics.skipped ?? 0);
+    const sourceRecords = Number(metrics.sourceRecords ?? 0);
+    const summary = `${sourceRecords} source • ${processed} processed • ${succeeded} succeeded • ${skipped} skipped • ${failed} failed`;
+    const errorPages = errorsQuery.data?.pages ?? [];
+    const errors = errorPages.flatMap(page => page.items);
+    const totalErrors = errorPages[0]?.totalItems ?? 0;
 
     const pausedGateStepKey = status === RUN_STATUS.PAUSED ? findPausedGateStep(metrics) : undefined;
 
     const handleRetry = React.useCallback(async (errorId: string, patch: Record<string, unknown>) => {
         try {
-            await retryError.mutateAsync({ errorId, patch });
-            toast.success(TOAST_PIPELINE.RECORD_RETRY_QUEUED);
+            const result = await retryRunError({ errorId, patch });
+            if (!result.success) {
+                toast.error(result.message, {
+                    description: result.rejectedPatchKeys.length > 0
+                        ? `Rejected fields: ${result.rejectedPatchKeys.join(', ')}`
+                        : `Outcome: ${result.outcome}`,
+                });
+                return false;
+            }
+            toast.success(TOAST_PIPELINE.RECORD_RETRY_APPLIED, {
+                description: result.auditRecorded ? `Audit ${String(result.auditId)}` : result.message,
+            });
+            return true;
         } catch (err) {
             handleMutationError('retry record', err);
+            return false;
         }
-    }, [retryError.mutateAsync]);
+    }, [retryRunError]);
 
     const handleCancel = React.useCallback(() => {
         setCancelDialogOpen(true);
     }, []);
 
     const handleConfirmCancel = React.useCallback(() => {
-        onCancel(run?.id ?? runId);
+        onCancel(String(run?.id ?? runId));
         setCancelDialogOpen(false);
     }, [onCancel, run?.id, runId]);
 
@@ -87,7 +110,7 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
     const handleApproveGate = React.useCallback(async () => {
         if (!pausedGateStepKey) return;
         try {
-            const result = await approveGate.mutateAsync({ runId: run?.id ?? runId, stepKey: pausedGateStepKey });
+            const result = await approveRunGate({ runId: String(run?.id ?? runId), stepKey: pausedGateStepKey });
             if (result?.success) {
                 toast.success(TOAST_PIPELINE.GATE_APPROVED);
             } else {
@@ -96,12 +119,12 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
         } catch (err) {
             handleMutationError('approve gate', err);
         }
-    }, [approveGate.mutateAsync, run?.id, runId, pausedGateStepKey]);
+    }, [approveRunGate, run?.id, runId, pausedGateStepKey]);
 
     const handleRejectGate = React.useCallback(async () => {
         if (!pausedGateStepKey) return;
         try {
-            const result = await rejectGate.mutateAsync({ runId: run?.id ?? runId, stepKey: pausedGateStepKey });
+            const result = await rejectRunGate({ runId: String(run?.id ?? runId), stepKey: pausedGateStepKey });
             if (result?.success) {
                 toast.success(TOAST_PIPELINE.GATE_REJECTED);
             } else {
@@ -110,7 +133,7 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
         } catch (err) {
             handleMutationError('reject gate', err);
         }
-    }, [rejectGate.mutateAsync, run?.id, runId, pausedGateStepKey]);
+    }, [rejectRunGate, run?.id, runId, pausedGateStepKey]);
 
     return (
         <div className="p-4 space-y-4" data-testid="datahub-run-details-panel">
@@ -185,15 +208,19 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
             )}
 
             {(status === RUN_STATUS.RUNNING || status === RUN_STATUS.PENDING) && (
-                <Button variant="secondary" onClick={handleCancel} disabled={isCancelling} data-testid="datahub-run-details-cancel-button">
-                    Cancel run
-                </Button>
+                <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
+                    <Button variant="secondary" onClick={handleCancel} disabled={isCancelling} data-testid="datahub-run-details-cancel-button">
+                        Cancel run
+                    </Button>
+                </PermissionGuard>
             )}
 
             {run?.pipeline?.id && (
-                <Button variant="outline" onClick={handleRerun} data-testid="datahub-run-details-rerun-button">
-                    Re-run
-                </Button>
+                <PermissionGuard requires={[DATAHUB_PERMISSIONS.RUN_PIPELINE]}>
+                    <Button variant="outline" onClick={handleRerun} data-testid="datahub-run-details-rerun-button">
+                        Re-run
+                    </Button>
+                </PermissionGuard>
             )}
 
             <div className="mt-4">
@@ -201,7 +228,14 @@ export function RunDetailsPanel({ runId, initialData, onCancel, onRerun, isCance
                 <div className="text-sm text-muted-foreground mb-2">Failed records captured during this run</div>
                 <PermissionGuard requires={[DATAHUB_PERMISSIONS.VIEW_QUARANTINE]}>
                     <RunErrorsList
-                        items={errors ?? []}
+                        items={errors.map(error => ({
+                            ...error,
+                            id: String(error.id),
+                        }))}
+                        totalItems={totalErrors}
+                        hasNextPage={errorsQuery.hasNextPage}
+                        isFetchingNextPage={errorsQuery.isFetchingNextPage}
+                        onLoadMore={() => void errorsQuery.fetchNextPage()}
                         onRetry={handleRetry}
                     />
                 </PermissionGuard>

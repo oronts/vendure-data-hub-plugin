@@ -103,7 +103,11 @@ export class CustomEntityLoader implements LoaderAdapter<CustomLoaderConfig> {
                     succeeded++;
                 } else {
                     if (config.strategy === 'UPDATE') {
-                        skipped++;
+                        failed++;
+                        errors.push({
+                            record,
+                            message: `Cannot update missing custom entity "${String(code)}"`,
+                        });
                         continue;
                     }
 
@@ -380,8 +384,11 @@ export class TagLoader implements LoaderAdapter {
                     succeeded++;
                 } else {
                     if (config.strategy === 'UPDATE') {
-                        skipped++;
-                        logger.debug(`Tag "${value}" not found, skipping`);
+                        failed++;
+                        errors.push({
+                            record,
+                            message: `Cannot update missing tag "${value}"`,
+                        });
                         continue;
                     }
 

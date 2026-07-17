@@ -14,7 +14,7 @@
   <a href="https://github.com/oronts/vendure-data-hub-plugin/actions/workflows/ci.yml"><img src="https://github.com/oronts/vendure-data-hub-plugin/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://www.npmjs.com/package/@oronts/vendure-data-hub-plugin"><img src="https://img.shields.io/npm/v/@oronts/vendure-data-hub-plugin.svg" alt="npm version"></a>
   <a href="#license"><img src="https://img.shields.io/badge/License-Commercial-red.svg" alt="License"></a>
-  <a href="https://www.vendure.io/"><img src="https://img.shields.io/badge/vendure-%5E3.0.0-blue" alt="Vendure version"></a>
+  <a href="https://www.vendure.io/"><img src="https://img.shields.io/badge/vendure-3.5.7-blue" alt="Vendure version"></a>
 </p>
 
 <p align="center">
@@ -39,19 +39,19 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
 
 - **Visual Pipeline Builder** - Drag-and-drop workflow editor with live validation
 - **Code-First DSL** - TypeScript API for defining pipelines programmatically
-- **9 Data Extractors** - HTTP/REST API, GraphQL, Vendure Query, File (CSV/JSON/XML/XLSX/NDJSON/TSV), Database (SQL), S3, FTP/SFTP, Webhook, CDC (Change Data Capture)
+- **13 Data Extractors** - HTTP/REST API, GraphQL, Vendure Query, uploaded or inline CSV/JSON/XML/XLSX, in-memory data, generators, Database (SQL), S3, FTP/SFTP, and CDC (Change Data Capture)
 - **24 Entity Loaders (16 entity types, 4 order operations, 1 deletion, 2 external API, 1 inventory)** - Products, Variants, Customers, Customer Groups, Collections, Facets, Facet Values, Promotions, Orders (upsert, notes, transitions, coupons), Shipping Methods, Stock Locations, Stock/Inventory, Assets, Tax Rates, Payment Methods, Channels, Entity Deletion, REST POST, GraphQL Mutation
 - **61 Transform Operators** - String (12), Date (5), Numeric (9), Logic (4), JSON (4), Data (8), Enrichment (5), Aggregation (8), Validation (2), Script (1), File (3) - **includes HTTP Lookup with caching, circuit breaker, and rate limiting**
 - **4 Feed Generators** - Google Merchant Center, Meta/Facebook Catalog, Amazon Seller Central, Custom Feed (CSV/JSON/XML/TSV)
 - **7 Search & Integration Sinks** - Elasticsearch, OpenSearch, MeiliSearch, Algolia, Typesense, Queue Producer (RabbitMQ/SQS/Redis), Webhook (with HMAC signing)
 - **24 Hook Stages** (18 for step types and 6 global) - Interceptors and scripts to modify data at any pipeline stage
-- **7 Connection Types** - HTTP/REST, S3, FTP, SFTP, Database (PostgreSQL/MySQL/SQLite/MSSQL/Oracle), Message Queue (RabbitMQ/SQS/Redis), Custom
-- **6 Trigger Types** - Manual, Scheduled (cron), Webhook, Vendure Events, File Watch, **Message Queue Consumer**
+- **12 Canonical Connection Types** - HTTP, REST, GraphQL, S3, FTP, SFTP, PostgreSQL, MySQL, RabbitMQ, SQS, Redis, and Custom
+- **6 Trigger Types** - Manual, Scheduled (cron or interval), Webhook, Vendure Events, File Watch, **Message Queue Consumer**
 - **Bi-directional Queue Support** - Consume from and produce to RabbitMQ (AMQP), Amazon SQS, Redis Streams, and internal queue adapter
 - **Horizontal Scaling** - Distributed locks via Redis or PostgreSQL for multi-instance deployments
 - **Checkpoint Recovery** - Resume failed pipelines from last successful record
-- **File Upload** - Drag-and-drop CSV/JSON file upload with automatic processing
-- **Real-time Monitoring** - Logs, analytics, error tracking, and dead letter queue
+- **File Upload** - Drag-and-drop CSV, JSON, XML, and XLSX uploads with preview and managed processing
+- **Operational Monitoring** - Polling logs, run details, queue statistics, and dead letter records
 - **Nested Entity Modes** - Configurable behavior for all nested entities (addresses, facet values, order lines, assets, etc.) to prevent duplicates and provide full control over data management
 
 ## Screenshots
@@ -80,7 +80,7 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
 <p align="center">
   <img src="docs/images/05-logs-analytics.png" alt="Logs & Analytics" width="800">
   <br>
-  <em>Logs & Analytics - Real-time monitoring and pipeline health</em>
+  <em>Logs & Analytics - Polling log feed and pipeline log statistics</em>
 </p>
 
 <p align="center">
@@ -132,9 +132,7 @@ import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
 
 export const config: VendureConfig = {
     plugins: [
-        DataHubPlugin.init({
-            enabled: true,
-        }),
+        DataHubPlugin.init(),
     ],
 };
 ```
@@ -159,7 +157,7 @@ const productImport = createPipeline()
         method: 'GET',
         dataPath: 'data.products',
         pagination: {
-            type: 'page',
+            type: 'PAGE',
             limit: 100,
             maxPages: 100,
         },
@@ -202,7 +200,7 @@ export const config: VendureConfig = {
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `enabled` | `boolean` | `true` | Enable or disable the plugin |
+| `enabled` | `boolean` | `true` | Enable code-first config/secret startup synchronization; does not unregister plugin APIs |
 | `registerBuiltinAdapters` | `boolean` | `true` | Register built-in extractors, operators, loaders |
 | `retentionDaysRuns` | `number` | `30` | Days to keep pipeline run history |
 | `retentionDaysErrors` | `number` | `90` | Days to keep error records |
@@ -212,10 +210,20 @@ export const config: VendureConfig = {
 | `adapters` | `AdapterDefinition[]` | `[]` | Register custom adapters |
 | `feedGenerators` | `CustomFeedGenerator[]` | `[]` | Register custom feed generators |
 | `configPath` | `string` | - | Path to external configuration file |
-| `enableDashboard` | `boolean` | `true` | Enable the admin dashboard UI |
-| `runtime` | `RuntimeLimitsConfig` | - | Runtime limits (batch size, timeouts, etc.) |
-| `security` | `SecurityConfig` | - | Security settings (SSRF protection, script sandboxing) |
+| `runtime` | `RuntimeLimitsConfig` | - | Circuit-breaker, scheduler, and event-trigger timing overrides |
+| `security` | `SecurityConfig` | - | SSRF and script execution controls |
 | `debug` | `boolean` | `false` | Enable debug logging |
+
+### Local output storage
+
+`DATA_HUB_EXPORT_ROOT` sets the root for server-local exporter and feed files. It defaults to `<cwd>/exports`, where `<cwd>` is the process working directory. Local exporter `path` values and feed `outputPath` values must be relative to this root, such as `catalog` or `feeds/google-shopping.xml`; absolute paths, URLs, and `..` traversal are not valid local outputs.
+
+Uploaded and generated assets use a separate storage backend. `DATA_HUB_STORAGE_TYPE`
+accepts `local` (the default) or `s3`. Local storage uses
+`DATA_HUB_STORAGE_PATH` (default `data-hub-uploads`). S3 requires
+`DATA_HUB_S3_BUCKET`; it uses the AWS SDK credential chain by default, or the
+`DATA_HUB_S3_ACCESS_KEY_ID` and `DATA_HUB_S3_SECRET_ACCESS_KEY` pair when
+both are configured. See [Configuration](CONFIGURATION.md#storage-backend).
 
 ---
 
@@ -225,14 +233,18 @@ export const config: VendureConfig = {
 
 | Extractor | Code | Description |
 |-----------|------|-------------|
-| HTTP/REST API | `httpApi` | Fetch from REST APIs with pagination, auth (Bearer/Basic/HMAC), field mapping |
+| HTTP/REST API | `httpApi` | Fetch from REST APIs with pagination and Secret-backed Bearer, Basic, or API-key authentication |
 | GraphQL | `graphql` | Query GraphQL endpoints with cursor/offset/relay pagination, variables, auth |
 | Vendure Query | `vendureQuery` | Query Vendure entities (Product, ProductVariant, Customer, Order, Collection, Facet, FacetValue, Promotion, Asset) |
-| File | `file` | Parse CSV, JSON, XML, XLSX, NDJSON, TSV files with custom delimiters and encoding |
-| Database | `database` | Query PostgreSQL, MySQL, MSSQL, SQLite with parameterized queries |
+| CSV | `csv` | Parse managed CSV uploads, raw CSV text, or inline rows with configurable delimiter and header handling |
+| JSON | `json` | Parse managed JSON uploads or raw JSON text with an optional items path |
+| XML | `xml` | Parse managed XML uploads or raw XML text with a configurable record path |
+| XLSX | `xlsx` | Parse managed spreadsheet uploads with sheet and header selection |
+| In Memory | `inMemory` | Read an inline object or array from step configuration |
+| Generator | `generator` | Generate configurable records for pipeline tests |
+| Database | `database` | Query PostgreSQL, MySQL/MariaDB, or SQLite with positional parameters |
 | S3 | `s3` | Read files from AWS S3 and S3-compatible storage (MinIO, DigitalOcean Spaces) |
 | FTP/SFTP | `ftp` | Download files from FTP/SFTP servers with SSH key support |
-| Webhook | `webhook` | Receive incoming webhook data with HMAC signature verification |
 | CDC | `cdc` | Polling-based change data capture with checkpoint tracking |
 
 ### HTTP API Extractor
@@ -246,7 +258,7 @@ export const config: VendureConfig = {
     dataPath: 'data.items',              // JSON path to records array
     connectionCode: 'my-api',            // Optional: use saved connection
     pagination: {
-        type: 'page',
+        type: 'PAGE',
         limit: 100,
         maxPages: 10,
     },
@@ -259,7 +271,7 @@ export const config: VendureConfig = {
 .extract('products', {
     adapterCode: 'vendureQuery',
     entity: 'PRODUCT',
-    relations: 'variants,featuredAsset,facetValues',
+    relations: ['variants', 'featuredAsset', 'facetValues'],
     batchSize: 100,
 })
 ```
@@ -375,7 +387,7 @@ Aggregation operators include array manipulation, grouping, and data joining (8 
 | `first` | Get first element | `{ op: 'first', args: { source: 'items', target: 'firstItem' } }` |
 | `last` | Get last element | `{ op: 'last', args: { source: 'items', target: 'lastItem' } }` |
 | `expand` | Explode to records | `{ op: 'expand', args: { path: 'variants' } }` |
-| `multiJoin` | Join datasets by key | `{ op: 'multiJoin', args: { leftKey: 'customerId', rightKey: 'id', rightDataPath: 'orders', type: 'LEFT' } }` |
+| `multiJoin` | Join records with an inline dataset | `{ op: 'multiJoin', args: { leftKey: 'customerId', rightKey: 'id', rightData: [{ id: 'c1', tier: 'gold' }], type: 'LEFT' } }` |
 
 ### Advanced Operators
 
@@ -456,7 +468,7 @@ Execute custom JavaScript for complex transformations:
 | Facet Loader | `facetUpsert` | Create/update facets with translations |
 | Facet Value Loader | `facetValueUpsert` | Create/update facet values with translations |
 | Entity Deletion Loader | `entityDeletion` | Soft-delete any of 13 entity types (Products, Variants, Collections, Facets, FacetValues, Customers, CustomerGroups, Promotions, ShippingMethods, PaymentMethods, TaxRates, Assets, StockLocations) by slug, SKU, ID, code, email, or name |
-| GraphQL Mutation Loader | `graphqlMutation` | Execute arbitrary GraphQL mutations against Vendure |
+| GraphQL Mutation Loader | `graphqlMutation` | Execute GraphQL mutations against a configured external API |
 | Asset Import Loader | `assetImport` | Import assets from URLs or file paths |
 | REST POST Loader | `restPost` | POST/PUT records to external REST endpoints |
 
@@ -467,7 +479,7 @@ Execute custom JavaScript for complex transformations:
     adapterCode: 'productUpsert',
     channel: '__default_channel__',
     strategy: 'UPSERT',                  // CREATE, UPDATE, UPSERT
-    conflictStrategy: 'SOURCE_WINS',     // SOURCE_WINS, VENDURE_WINS, MERGE, MANUAL_QUEUE
+    conflictStrategy: 'SOURCE_WINS',     // SOURCE_WINS, VENDURE_WINS, MERGE
     nameField: 'name',
     slugField: 'slug',
     skuField: 'sku',
@@ -640,7 +652,7 @@ Notify external systems:
         type: 'WEBHOOK',
         url: 'https://slack.webhook.example.com/notify',
         headers: { 'Content-Type': 'application/json' },
-        secret: 'webhook-signing-key',
+        secretCode: 'webhook-signing-key',
         signatureHeader: 'X-Signature',
         retryConfig: {
             maxAttempts: 5,
@@ -656,6 +668,13 @@ Notify external systems:
 })
 ```
 
+Outgoing webhook deliveries are persisted before dispatch and retried by the
+`data-hub.webhook-retry` Vendure job queue. Configure the same
+`DATAHUB_MASTER_KEY` (at least 32 characters) for every API and worker process;
+it encrypts the replay payload and non-secret-reference headers at rest. The
+worker resolves `secretCode` values immediately before each attempt, so rotated
+secrets are used without storing plaintext credentials in delivery records.
+
 ### Trigger Pipeline Hooks
 
 Chain pipelines together:
@@ -664,7 +683,8 @@ Chain pipelines together:
 .hooks({
     AFTER_LOAD: [{
         type: 'TRIGGER_PIPELINE',
-        pipelineCode: 'reindex-search',  // Runs with loaded records as seed
+        pipelineCode: 'reindex-search',
+        triggerKey: 'hook', // Receives the loaded records as seed input
     }],
 })
 ```
@@ -680,14 +700,10 @@ Generate feeds for advertising platforms.
 ```typescript
 .feed('google-feed', {
     adapterCode: 'googleMerchant',
-    format: 'xml',                       // xml or tsv
-    targetCountry: 'US',
-    contentLanguage: 'en',
     currency: 'USD',
     storeUrl: 'https://mystore.com',
-    storeName: 'My Store',
-    includeOutOfStock: false,
-    outputPath: '/feeds/google-shopping.xml',
+    languageCode: 'en',
+    outputPath: 'feeds/google-shopping.xml',
 })
 ```
 
@@ -696,12 +712,9 @@ Generate feeds for advertising platforms.
 ```typescript
 .feed('meta-catalog', {
     adapterCode: 'metaCatalog',
-    format: 'csv',
     currency: 'USD',
     brandField: 'customFields.brand',
-    categoryField: 'customFields.googleCategory',
-    includeVariants: true,
-    outputPath: '/feeds/facebook-catalog.csv',
+    outputPath: 'feeds/facebook-catalog.csv',
 })
 ```
 
@@ -711,14 +724,12 @@ Generate feeds for advertising platforms.
 .feed('custom-feed', {
     adapterCode: 'customFeed',
     format: 'json',                      // xml, csv, json, tsv
-    rootElement: 'products',
-    itemElement: 'product',
     fieldMapping: {
         product_id: 'id',
         product_name: 'name',
         product_price: 'priceFormatted',
     },
-    outputPath: '/feeds/custom-products.json',
+    outputPath: 'feeds/custom-products.json',
 })
 ```
 
@@ -737,7 +748,6 @@ Index products to search engines.
     indexName: 'products',
     idField: 'id',
     batchSize: 500,
-    refresh: true,
 })
 ```
 
@@ -830,7 +840,7 @@ Common patterns:
 | `API_KEY` | API key in header | `apiKeySecretCode`, `apiKeyHeaderName`, `apiKeyPrefix` |
 | `HMAC` | HMAC-SHA256 signature | `secretCode`, `hmacHeaderName`, `hmacAlgorithm` |
 | `BASIC` | HTTP Basic Auth | `basicSecretCode` (stores `username:password`) |
-| `JWT` | JWT Bearer token | `jwtSecretCode`, `jwtHeaderName` |
+| `JWT` | Expiring HS256 JWT Bearer token | `jwtSecretCode`, `jwtHeaderName`, optional `jwtIssuer` and `jwtAudience` |
 
 **Example - HMAC Authentication:**
 ```typescript
@@ -845,11 +855,13 @@ Common patterns:
 
 **Endpoint:** `POST /data-hub/webhook/{pipeline-code}`
 
+**Request parsing:** The plugin installs one early, route-aware JSON parser through Vendure's `beforeListen` middleware. Webhook paths retain the exact bytes required for HMAC verification and enforce a 10 MiB limit; other JSON paths use the normal Express JSON parser. No separate Nest `rawBody` bootstrap option is required. A reverse proxy can still impose a smaller limit.
+
 **Security Features:**
 - Timing-safe comparison for all credential checks
-- Configurable rate limiting per pipeline
-- IP-based rate limiting with sliding window
-- JWT expiration validation
+- Durable, conflict-detecting idempotency per pipeline and trigger
+- Configurable per-process, fixed-window rate limiting by IP and pipeline; use an ingress or shared limiter for cluster-wide limits
+- JWT HS256 signature verification with a required valid `exp`; optional `nbf` and `iat` are validated, and configured `jwtIssuer`/`jwtAudience` claims are enforced
 
 ### Event Trigger
 
@@ -857,9 +869,17 @@ Common patterns:
 .trigger('on-order', {
     type: 'EVENT',
     event: 'OrderPlacedEvent',
-    filter: { state: 'ArrangingPayment' },
 })
 ```
+
+EVENT triggers accept an exact class name from the Dashboard catalog. Apply
+record-level filtering in a downstream transform, route, or gate.
+
+Matching events are written to a transaction-bound outbox before Vendure commits.
+Delivery preserves the event channel, creates an idempotent run, and retries
+failed queue handoffs with persisted error details. Production workers must use
+a persistent Vendure job queue and activate `data-hub.event-trigger-outbox` and
+`data-hub.run`.
 
 ---
 
@@ -880,21 +900,24 @@ The plugin includes a full-featured admin dashboard:
 - View record diffs (before/after transformations)
 - Metrics summary (processed, succeeded, failed, skipped)
 - Step-by-step execution details
+- Explicitly reports ENRICH, EXPORT, FEED, SINK, and GATE steps whose side
+  effects are not executed by the simulator
 
 ### Monitoring
-- Real-time execution logs with filtering
-- Analytics dashboard with metrics
-- Per-pipeline health stats
-- Error rate tracking
-- `completedAt` and `errorMessage` fields on pipeline runs for precise tracking
+- Auto-refreshing recent logs plus persisted-log filtering by run, pipeline, level, text, and date
+- Log-statistics overview with total, warning, error, duration, and per-pipeline counts
+- Per-pipeline run history with status, `startedAt`, `finishedAt`, metrics, terminal error, and gate actions
+- Dry-run metrics and before/after samples without loader writes
 
 ### Queue Management
-- View pending, running, and failed pipeline runs
-- Dead letter queue for quarantined records
-- Retry failed records with payload patching
+- Aggregate pending, running, failed, and completed-today run counts plus recent failures
+- Dead letter records and message-consumer lifecycle controls
+- Retry quarantined records with an audited payload patch
 
 ### Hooks Testing
-- Test any of the 24 hook stages (18 for step types and 6 global)
+- Test configured observation actions at any of the 24 hook stages
+- See exact executed, skipped, and failed counts with per-action errors
+- Use pipeline dry run for `INTERCEPTOR` and `SCRIPT` record modifications
 - View recent events
 - Hook configuration viewer
 
@@ -907,36 +930,41 @@ The plugin includes a full-featured admin dashboard:
 ```typescript
 DataHubPlugin.init({
     secrets: [
-        { code: 'api-key', provider: 'ENV', value: 'SUPPLIER_API_KEY' },
-        { code: 'ftp-pass', provider: 'INLINE', value: 'secret123' },
+        { code: 'supplier-api-key', provider: 'ENV', value: 'SUPPLIER_API_KEY' },
+        { code: 'db-password', provider: 'ENV', value: 'SUPPLIER_DB_PASSWORD' },
+        { code: 'aws-access-key', provider: 'ENV', value: 'AWS_ACCESS_KEY_ID' },
+        { code: 'aws-secret-key', provider: 'ENV', value: 'AWS_SECRET_ACCESS_KEY' },
+        { code: 'sftp-key', provider: 'ENV', value: 'SUPPLIER_SFTP_PRIVATE_KEY' },
+        { code: 'sftp-host-key', provider: 'ENV', value: 'SUPPLIER_SFTP_HOST_KEY_SHA256' },
     ],
 })
 ```
 
 ### Code-First Connections
 
-Supported connection types: `http`, `postgres`, `mysql`, `s3`, `ftp`, `sftp`, `rabbitmq`, `custom`
+Supported canonical connection types are `HTTP`, `S3`, `FTP`, `SFTP`,
+`CUSTOM`, `POSTGRES`, `MYSQL`, `RABBITMQ`, `SQS`, `REDIS`, `REST`, and
+`GRAPHQL`. Input is
+case-insensitive and is normalized to the canonical value.
 
 ```typescript
 DataHubPlugin.init({
     connections: [
         {
             code: 'supplier-api',
-            type: 'http',
-            name: 'Supplier REST API',
+            type: 'HTTP',
             settings: {
                 baseUrl: 'https://api.supplier.com',
                 timeout: 30000,
                 auth: {
-                    type: 'bearer',
+                    type: 'BEARER',
                     secretCode: 'supplier-api-key',
                 },
             },
         },
         {
             code: 'supplier-db',
-            type: 'postgres',
-            name: 'Supplier Database',
+            type: 'POSTGRES',
             settings: {
                 host: '${DB_HOST}',
                 port: 5432,
@@ -948,8 +976,7 @@ DataHubPlugin.init({
         },
         {
             code: 'product-bucket',
-            type: 's3',
-            name: 'Product Feed Bucket',
+            type: 'S3',
             settings: {
                 bucket: 'product-feeds',
                 region: 'us-east-1',
@@ -959,13 +986,13 @@ DataHubPlugin.init({
         },
         {
             code: 'sftp-server',
-            type: 'sftp',
-            name: 'Supplier SFTP',
+            type: 'SFTP',
             settings: {
                 host: 'sftp.supplier.com',
                 port: 22,
                 username: '${SFTP_USER}',
                 privateKeySecretCode: 'sftp-key',
+                hostKeyFingerprintSecretCode: 'sftp-host-key',
             },
         },
     ],
@@ -973,6 +1000,8 @@ DataHubPlugin.init({
 ```
 
 ---
+
+For SFTP, `hostKeyFingerprintSecretCode` must resolve to the trusted server key in OpenSSH `SHA256:<base64>` format. Production connections fail closed when this reference is missing or the server presents a different key.
 
 ## Custom Adapters
 
@@ -1098,7 +1127,6 @@ const webhookNotify: LoaderAdapter<WebhookNotifyConfig> = {
 | `ManageDataHubConnections` | Manage connections |
 | `ManageDataHubAdapters` | Configure adapters |
 | `ViewDataHubRuns` | View execution history |
-| `RetryDataHubRecord` | Retry failed records |
 | `ViewDataHubQuarantine` | View dead letter queue |
 | `EditDataHubQuarantine` | Manage quarantined records |
 | `ReplayDataHubRecord` | Replay processed records |
@@ -1108,7 +1136,6 @@ const webhookNotify: LoaderAdapter<WebhookNotifyConfig> = {
 | `ManageDataHubDestinations` | Manage export destinations |
 | `ManageDataHubFeeds` | Manage product feeds |
 | `ViewDataHubEntitySchemas` | View entity schemas |
-| `SubscribeDataHubEvents` | Subscribe to pipeline events |
 | `ManageDataHubFiles` | Upload and manage files |
 | `ReadDataHubFiles` | Read uploaded files |
 
@@ -1138,26 +1165,20 @@ const exportPipeline = createPipeline()
 const pipeline = createPipeline()
     .context({
         errorHandling: {
-            strategy: 'continue',        // continue, stop, dead-letter
             maxRetries: 3,
             retryDelayMs: 1000,
+            maxRetryDelayMs: 30000,
+            backoffMultiplier: 2,
+            deadLetterQueue: true,
+            errorThresholdPercent: 10,
         },
     })
     .build();
 ```
 
-### Step-Level
-
-```typescript
-.load('import', {
-    adapterCode: 'productUpsert',
-    errorHandling: {
-        mode: 'queue',                   // stop, continue, queue, dead-letter
-        retryAttempts: 3,
-        retryDelayMs: 1000,
-    },
-})
-```
+Retry settings for external HTTP loaders are adapter-specific. See the
+[Loaders Reference](docs/reference/loaders.md) for the `restPost` and
+`graphqlMutation` retry fields.
 
 ### Stack Traces
 
@@ -1169,8 +1190,8 @@ Failed records automatically capture JavaScript stack traces when errors origina
 
 | Requirement | Version |
 |-------------|---------|
-| Vendure | ^3.0.0 |
-| Node.js | >=18.0.0 |
+| Vendure | >=3.5.7 <4 |
+| Node.js | >=20.0.0 |
 
 ## Documentation
 

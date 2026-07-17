@@ -27,14 +27,15 @@ import {
     ID,
     LanguageCode,
 } from '@vendure/core';
+import { createChannelRequestContext } from '../../helpers/channel-request-context';
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { findVariantBySku } from './shared-lookups';
 import { getStringValue } from '../../../loaders/shared-helpers';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 
 /**
  * Configuration for entity deletion handler step
@@ -107,7 +108,7 @@ export class DeletionHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0;
         let fail = 0;
         const cfg = getConfig(step.config);
@@ -121,7 +122,11 @@ export class DeletionHandler implements LoaderHandler {
         let opCtx = ctx;
         if (cfg.channel) {
             try {
-                opCtx = await this.requestContextService.create({ apiType: 'admin', channelOrToken: cfg.channel });
+                opCtx = await createChannelRequestContext(
+                    this.requestContextService,
+                    ctx,
+                    cfg.channel,
+                );
             } catch {
                 this.logger.warn('Failed to create context for channel, using original', { channel: cfg.channel });
             }
@@ -189,7 +194,7 @@ export class DeletionHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped: 0 };
     }
 
     private async deleteVariant(ctx: RequestContext, identifier: string, matchBy: string): Promise<void> {

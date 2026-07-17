@@ -14,6 +14,7 @@ import {
     BranchOutput,
     OnRecordErrorCallback,
     ExecutorContext,
+    LoaderExecutionResult,
 } from '../executor-types';
 import {
     ExtractExecutor,
@@ -39,6 +40,7 @@ import { StepType as StepTypeEnum } from '../../constants/enums';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
 import { SeededGraphInput, selectSeededGraph } from './seeded-graph';
+import { PARALLEL_EXECUTION } from '../../constants/defaults/runtime-defaults';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.GRAPH_EXECUTOR);
 
@@ -70,7 +72,7 @@ export interface ExecuteGraphParams {
         batch: RecordObject[],
         definition: PipelineDefinition,
         onRecordError?: OnRecordErrorCallback,
-    ) => Promise<{ ok: number; fail: number }>;
+    ) => Promise<LoaderExecutionResult>;
     applyIdempotency: (records: RecordObject[], definition: PipelineDefinition) => RecordObject[];
     onCancelRequested?: () => Promise<boolean>;
     onRecordError?: OnRecordErrorCallback;
@@ -98,6 +100,7 @@ interface ExecutionMetrics {
     processed: number;
     succeeded: number;
     failed: number;
+    skipped: number;
     details: Array<import('../../types/index').JsonObject>;
     counters: Record<string, number>;
     paused?: boolean;
@@ -188,6 +191,7 @@ function updateMetrics(
     metrics.processed += stepResult.processed;
     metrics.succeeded += stepResult.succeeded;
     metrics.failed += stepResult.failed;
+    metrics.skipped += stepResult.skipped;
 
     for (const [k, v] of Object.entries(stepResult.counters)) {
         metrics.counters[k] = (metrics.counters[k] ?? 0) + v;
@@ -221,6 +225,7 @@ function createInitialMetrics(): ExecutionMetrics {
         processed: 0,
         succeeded: 0,
         failed: 0,
+        skipped: 0,
         details: [],
         counters: {
             extracted: 0,
@@ -322,7 +327,7 @@ function createDispatcher(params: ExecuteGraphParams): StepDispatcher {
  */
 const DEFAULT_PARALLEL_CONFIG: Required<ParallelExecutionConfig> = {
     enabled: false,
-    maxConcurrentSteps: 4,
+    maxConcurrentSteps: PARALLEL_EXECUTION.DEFAULT_MAX_CONCURRENT_STEPS,
     errorPolicy: 'FAIL_FAST',
 };
 
@@ -331,10 +336,32 @@ const DEFAULT_PARALLEL_CONFIG: Required<ParallelExecutionConfig> = {
  */
 function getParallelConfig(definition: PipelineDefinition): Required<ParallelExecutionConfig> {
     const config = definition.context?.parallelExecution;
+    const maxConcurrentSteps = config?.maxConcurrentSteps
+        ?? DEFAULT_PARALLEL_CONFIG.maxConcurrentSteps;
+    if (
+        !Number.isSafeInteger(maxConcurrentSteps)
+        || maxConcurrentSteps < 1
+        || maxConcurrentSteps > PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS
+    ) {
+        throw new Error(
+            `parallelExecution.maxConcurrentSteps must be an integer from 1 to ${PARALLEL_EXECUTION.MAX_CONCURRENT_STEPS}`,
+        );
+    }
+    const errorPolicy = config?.errorPolicy
+        ?? DEFAULT_PARALLEL_CONFIG.errorPolicy;
+    if (
+        !PARALLEL_EXECUTION.ERROR_POLICIES.some(
+            policy => policy === errorPolicy,
+        )
+    ) {
+        throw new Error(
+            `parallelExecution.errorPolicy must be one of ${PARALLEL_EXECUTION.ERROR_POLICIES.join(', ')}`,
+        );
+    }
     return {
         enabled: config?.enabled ?? DEFAULT_PARALLEL_CONFIG.enabled,
-        maxConcurrentSteps: config?.maxConcurrentSteps ?? DEFAULT_PARALLEL_CONFIG.maxConcurrentSteps,
-        errorPolicy: config?.errorPolicy ?? DEFAULT_PARALLEL_CONFIG.errorPolicy,
+        maxConcurrentSteps,
+        errorPolicy,
     };
 }
 
@@ -540,6 +567,7 @@ async function executeParallel(
                             processed: 0,
                             succeeded: 0,
                             failed: 0,
+                            skipped: 0,
                             detail: { error: getErrorMessage(error) },
                             counters: {},
                         } as StepExecutionResult,

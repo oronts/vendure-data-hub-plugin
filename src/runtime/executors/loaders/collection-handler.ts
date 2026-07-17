@@ -10,6 +10,7 @@ import {
     Collection,
     ID,
 } from '@vendure/core';
+import { createChannelRequestContext } from '../../helpers/channel-request-context';
 import {
     LanguageCode,
     CreateCollectionTranslationInput,
@@ -17,20 +18,20 @@ import {
     UpdateCollectionInput,
 } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { getStringValue, getObjectValue } from '../../../loaders/shared-helpers';
+import { getStringValue, getObjectValue, slugify } from '../../../loaders/shared-helpers';
 import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
-import { slugify } from '../../utils';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 
 /**
  * Configuration for collection handler step
  */
-interface CollectionHandlerConfig {
+interface CollectionHandlerConfig extends CreateDuplicateHandlingConfig {
     /** Field name for collection name */
     nameField?: string;
     /** Field name for collection slug */
@@ -53,6 +54,11 @@ interface CollectionHandlerConfig {
     channelsField?: string;
     /** Record field containing isPrivate flag */
     isPrivateField?: string;
+}
+
+interface CollectionUpsertResult {
+    collectionId: ID | undefined;
+    skipped: boolean;
 }
 
 /**
@@ -108,9 +114,10 @@ export class CollectionHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0;
         let fail = 0;
+        let skipped = 0;
         const cfg = getConfig(step.config);
 
         const channelCache = new Map<string, ID>();
@@ -145,7 +152,6 @@ export class CollectionHandler implements LoaderHandler {
 
                 const customFieldsKey = cfg.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
-                const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
 
                 // Resolve isPrivate from record
                 const isPrivate = cfg.isPrivateField
@@ -156,7 +162,22 @@ export class CollectionHandler implements LoaderHandler {
                 const translations = this.buildTranslations(ctx, rec, cfg, name, slug, description);
 
                 const opCtx = await this.resolveRequestContext(ctx, cfg);
-                const collectionId = await this.upsertCollection(opCtx, slug, name, description, parentSlug, customFields, strategy, translations, isPrivate);
+                const collectionResult = await this.upsertCollection(
+                    opCtx,
+                    slug,
+                    name,
+                    description,
+                    parentSlug,
+                    customFields,
+                    cfg,
+                    translations,
+                    isPrivate,
+                );
+                if (collectionResult.skipped) {
+                    skipped++;
+                    continue;
+                }
+                const { collectionId } = collectionResult;
 
                 if (collectionId) {
                     await this.maybeApplyFilters(opCtx, cfg, collectionId);
@@ -175,7 +196,7 @@ export class CollectionHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     /**
@@ -190,17 +211,7 @@ export class CollectionHandler implements LoaderHandler {
             return ctx;
         }
 
-        try {
-            return await this.requestContextService.create({
-                apiType: 'admin',
-                channelOrToken: channel,
-            });
-        } catch (err) {
-            // Channel resolution failed - fall back to original context
-            // This is expected when the channel token is invalid
-            this.logger.warn(`Failed to resolve channel context: ${getErrorMessage(err)}`);
-            return ctx;
-        }
+        return createChannelRequestContext(this.requestContextService, ctx, channel);
     }
 
     /**
@@ -259,9 +270,12 @@ export class CollectionHandler implements LoaderHandler {
         try {
             await this.channelService.assignToChannels(opCtx, Collection, collectionId, channelIds);
         } catch (error) {
-            this.logger.warn(
-                `Failed to assign collection ${String(collectionId)} to channels: ${getErrorMessage(error)}`,
-            );
+            this.logger.warn('Failed to assign collection to record channels', {
+                collectionId,
+                channelIds,
+                error: getErrorMessage(error),
+            });
+            throw error;
         }
     }
 
@@ -275,15 +289,17 @@ export class CollectionHandler implements LoaderHandler {
         description: string | undefined,
         parentSlug: string | undefined,
         customFields: Record<string, unknown> | undefined,
-        strategy: LoadStrategy,
+        cfg: CollectionHandlerConfig,
         translations: CreateCollectionTranslationInput[],
         isPrivate: boolean | undefined,
-    ): Promise<ID | undefined> {
+    ): Promise<CollectionUpsertResult> {
+        const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
         const existing = await this.collectionService.findOneBySlug(opCtx, slug);
 
         if (existing) {
             if (strategy === LoadStrategy.CREATE) {
-                return existing.id;
+                assertCreateDuplicateCanBeSkipped(cfg, 'collection', slug);
+                return { collectionId: existing.id, skipped: true };
             }
             const updateInput: UpdateCollectionInput = {
                 id: existing.id,
@@ -294,11 +310,11 @@ export class CollectionHandler implements LoaderHandler {
                 updateInput.customFields = customFields;
             }
             const updated = await this.collectionService.update(opCtx, updateInput);
-            return updated.id;
+            return { collectionId: updated.id, skipped: false };
         }
 
         if (strategy === LoadStrategy.UPDATE) {
-            return undefined;
+            return { collectionId: undefined, skipped: false };
         }
 
         // Creating new collection
@@ -320,7 +336,7 @@ export class CollectionHandler implements LoaderHandler {
             createInput.customFields = customFields;
         }
         const created = await this.collectionService.create(opCtx, createInput);
-        return created.id;
+        return { collectionId: created.id, skipped: false };
     }
 
     /**

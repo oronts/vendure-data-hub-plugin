@@ -5,7 +5,7 @@
  * Covers: create, update, upsert, addresses, groups, groupsMode, and error handling.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { CustomerService, CustomerGroupService } from '@vendure/core';
+import { CustomerService } from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { CustomerHandler } from '../../src/runtime/executors/loaders/customer-handler';
 import { CustomerGroupHandler } from '../../src/runtime/executors/loaders/customer-group-handler';
@@ -17,7 +17,6 @@ describe('CustomerHandler e2e', () => {
     let customerHandler: CustomerHandler;
     let groupHandler: CustomerGroupHandler;
     let customerService: CustomerService;
-    let groupService: CustomerGroupService;
     let ctx: import('@vendure/core').RequestContext;
 
     beforeAll(async () => {
@@ -29,7 +28,6 @@ describe('CustomerHandler e2e', () => {
         customerHandler = server.app.get(CustomerHandler);
         groupHandler = server.app.get(CustomerGroupHandler);
         customerService = server.app.get(CustomerService);
-        groupService = server.app.get(CustomerGroupService);
         ctx = await getSuperadminContext(server.app);
 
         // Create customer groups for group assignment tests
@@ -210,6 +208,7 @@ describe('CustomerHandler e2e', () => {
     it('skips existing customer with CREATE strategy', async () => {
         const step = makeStep('test-create-only', {
             strategy: 'CREATE',
+            skipDuplicates: true,
             emailField: 'email',
             firstNameField: 'firstName',
         });
@@ -219,7 +218,7 @@ describe('CustomerHandler e2e', () => {
         }];
 
         const result = await customerHandler.execute(ctx, step, input);
-        expect(result.ok).toBe(1); // Counted as ok (skip)
+        expect(result).toEqual({ ok: 0, fail: 0, skipped: 1 });
 
         const list = await customerService.findAll(ctx, {
             filter: { emailAddress: { eq: 'max@labtech.de' } },

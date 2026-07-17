@@ -11,18 +11,20 @@ import {
     TransactionalConnection,
     ID,
 } from '@vendure/core';
+import { createChannelRequestContext } from '../../helpers/channel-request-context';
 import { FacetTranslationInput } from '@vendure/common/lib/generated-types';
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getObjectValue } from '../../../loaders/shared-helpers';
 import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 
-interface FacetUpsertConfig {
+interface FacetUpsertConfig extends CreateDuplicateHandlingConfig {
     channel?: string;
     codeField?: string;
     nameField?: string;
@@ -35,7 +37,7 @@ interface FacetUpsertConfig {
     channelsField?: string;
 }
 
-interface FacetValueUpsertConfig {
+interface FacetValueUpsertConfig extends CreateDuplicateHandlingConfig {
     channel?: string;
     facetCodeField?: string;
     codeField?: string;
@@ -72,8 +74,8 @@ export class FacetHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
-        let ok = 0, fail = 0;
+    ): Promise<LoaderExecutionResult> {
+        let ok = 0, fail = 0, skipped = 0;
         const cfg = (step.config ?? {}) as FacetUpsertConfig;
         const channelCache = new Map<string, ID>();
 
@@ -103,8 +105,11 @@ export class FacetHandler implements LoaderHandler {
 
                 let opCtx = ctx;
                 if (cfg.channel) {
-                    const req = await this.requestContextService.create({ apiType: ctx.apiType, channelOrToken: cfg.channel });
-                    if (req) opCtx = req;
+                    opCtx = await createChannelRequestContext(
+                        this.requestContextService,
+                        ctx,
+                        cfg.channel,
+                    );
                 }
 
                 // Build translations
@@ -116,7 +121,8 @@ export class FacetHandler implements LoaderHandler {
 
                 if (existing) {
                     if (strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(cfg, 'facet', code);
+                        skipped++;
                         continue;
                     }
                     const updated = await this.facetService.update(opCtx, {
@@ -149,7 +155,14 @@ export class FacetHandler implements LoaderHandler {
                         if (channelIds.length > 0) {
                             try {
                                 await this.channelService.assignToChannels(opCtx, Facet, facetId, channelIds);
-                            } catch { /* channel assignment is best-effort */ }
+                            } catch (error) {
+                                this.logger.warn('Failed to assign facet to record channels', {
+                                    facetId,
+                                    channelIds,
+                                    error: getErrorMessage(error),
+                                });
+                                throw error;
+                            }
                         }
                     }
                 }
@@ -160,7 +173,7 @@ export class FacetHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     /**
@@ -212,8 +225,8 @@ export class FacetValueHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
-        let ok = 0, fail = 0;
+    ): Promise<LoaderExecutionResult> {
+        let ok = 0, fail = 0, skipped = 0;
         const cfg = (step.config ?? {}) as FacetValueUpsertConfig;
         const channelCache = new Map<string, ID>();
 
@@ -245,8 +258,11 @@ export class FacetValueHandler implements LoaderHandler {
 
                 let opCtx = ctx;
                 if (cfg.channel) {
-                    const req = await this.requestContextService.create({ apiType: ctx.apiType, channelOrToken: cfg.channel });
-                    if (req) opCtx = req;
+                    opCtx = await createChannelRequestContext(
+                        this.requestContextService,
+                        ctx,
+                        cfg.channel,
+                    );
                 }
 
                 // Build translations
@@ -266,7 +282,8 @@ export class FacetValueHandler implements LoaderHandler {
 
                 if (existing) {
                     if (strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(cfg, 'facet value', `${facetCode}/${code}`);
+                        skipped++;
                         continue;
                     }
                     const updated = await this.facetValueService.update(opCtx, {
@@ -297,7 +314,14 @@ export class FacetValueHandler implements LoaderHandler {
                         if (channelIds.length > 0) {
                             try {
                                 await this.channelService.assignToChannels(opCtx, FacetValue, facetValueId, channelIds);
-                            } catch { /* channel assignment is best-effort */ }
+                            } catch (error) {
+                                this.logger.warn('Failed to assign facet value to record channels', {
+                                    facetValueId,
+                                    channelIds,
+                                    error: getErrorMessage(error),
+                                });
+                                throw error;
+                            }
                         }
                     }
                 }
@@ -308,7 +332,7 @@ export class FacetValueHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     /**

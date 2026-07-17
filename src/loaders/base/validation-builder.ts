@@ -95,17 +95,6 @@ export class ValidationBuilder {
     private recordIdentifier?: string;
     private recordLineNumber?: number;
 
-    /**
-     * Extract the source line/row number from a record's metadata fields.
-     *
-     * Records produced by file extractors (CSV, Excel, etc.) carry `_lineNumber`
-     * or `_rowIndex` metadata. This helper reads those fields in a type-safe way,
-     * eliminating the `(record as any)._lineNumber || (record as any)._rowIndex`
-     * pattern that was duplicated across loaders.
-     *
-     * @param record - The input record (typed as a generic object)
-     * @returns The line number if present, otherwise undefined
-     */
     static getLineNumber(record: Record<string, unknown>): number | undefined {
         return (typeof record._lineNumber === 'number' ? record._lineNumber : undefined)
             ?? (typeof record._rowIndex === 'number' ? record._rowIndex : undefined);

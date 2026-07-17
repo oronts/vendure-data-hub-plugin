@@ -8,7 +8,7 @@
 import { Injectable } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { buildSandboxLoaderContext, SandboxHandlerConfig } from '../../executor-helpers';
 import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
@@ -58,7 +58,7 @@ export class OrderUpsertHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         const cfg = getConfig(step.config);
         const loaderContext = buildSandboxLoaderContext(ctx, cfg, ['code']);
         if (cfg.linesMode) {
@@ -80,6 +80,7 @@ export class OrderUpsertHandler implements LoaderHandler {
         return {
             ok: result.succeeded,
             fail: result.failed,
+            skipped: result.skipped,
         };
     }
 

@@ -30,6 +30,7 @@ export function createStepLogCallback(
                 recordsOut: info.recordsOut,
                 succeeded: info.succeeded,
                 failed: info.failed,
+                skipped: info.skipped,
                 durationMs: info.durationMs,
                 sampleRecord: info.sampleOutput as JsonObject | undefined,
             }, options);

@@ -38,8 +38,8 @@ export class ExtractStepStrategy implements StepStrategy {
 
         return {
             records: afterAfterHook,
-            processed: out.length,
-            succeeded: out.length,
+            processed: 0,
+            succeeded: 0,
             failed: 0,
             detail: createStepDetail(step, { out: out.length }, durationMs),
             counters: { extracted: out.length },
@@ -61,8 +61,17 @@ export class ExtractStepStrategy implements StepStrategy {
     }
 
     private async executeExtract(context: StepExecutionContext): Promise<RecordObject[]> {
-        const { ctx, step, executorCtx, onRecordError, pipelineId, runId } = context;
-        return this.extractExecutor.execute(ctx, step, executorCtx, onRecordError, pipelineId, runId);
+        const { ctx, step, executorCtx, onRecordError, pipelineId, runId, records, seedMode } = context;
+        const sourceRecords = seedMode === 'SOURCE_REFERENCES' ? records : undefined;
+        return this.extractExecutor.execute(
+            ctx,
+            step,
+            executorCtx,
+            onRecordError,
+            pipelineId,
+            runId,
+            sourceRecords,
+        );
     }
 
     private async runAfterHook(context: StepExecutionContext, records: RecordObject[]): Promise<RecordObject[]> {

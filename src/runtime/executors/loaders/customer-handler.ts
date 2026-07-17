@@ -25,12 +25,12 @@ import {
     JsonObject,
 } from '../../../types/index';
 import type { CustomerUpsertLoaderConfig } from '../../../../shared/types';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
-import { toStringOrUndefined } from '../../utils';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getArrayValue, getObjectValue } from '../../../loaders/shared-helpers';
 
@@ -38,7 +38,7 @@ import { getStringValue, getArrayValue, getObjectValue } from '../../../loaders/
  * Configuration extracted from step.config for customer upsert operations.
  * Extends the shared CustomerUpsertLoaderConfig with normalized groupsMode values.
  */
-interface CustomerStepConfig {
+interface CustomerStepConfig extends CreateDuplicateHandlingConfig {
     emailField: string;
     firstNameField?: string;
     lastNameField?: string;
@@ -100,7 +100,8 @@ function hasCustomerLoaderConfigShape(config: unknown): config is Partial<Custom
         (cfg.addressesField === undefined || typeof cfg.addressesField === 'string') &&
         (cfg.groupsField === undefined || typeof cfg.groupsField === 'string') &&
         (cfg.groupsMode === undefined || typeof cfg.groupsMode === 'string') &&
-        (cfg.customFieldsField === undefined || typeof cfg.customFieldsField === 'string')
+        (cfg.customFieldsField === undefined || typeof cfg.customFieldsField === 'string') &&
+        (cfg.skipDuplicates === undefined || typeof cfg.skipDuplicates === 'boolean')
     );
 }
 
@@ -115,12 +116,17 @@ function isAddressRecord(value: unknown): value is AddressRecord {
  * Convert an address record to Vendure CreateAddressInput
  */
 function toCreateAddressInput(addr: AddressRecord): CreateAddressInput {
+    const streetLine1 = (addr.streetLine1 ?? addr.address1 ?? '').trim();
+    const countryCode = (addr.countryCode ?? '').trim().toUpperCase();
+    if (!streetLine1 || !countryCode) {
+        throw new Error('Customer addresses require streetLine1 and countryCode');
+    }
     return {
-        streetLine1: addr.streetLine1 ?? addr.address1 ?? '',
+        streetLine1,
         streetLine2: addr.streetLine2 ?? addr.address2,
         city: addr.city,
         postalCode: addr.postalCode ?? addr.zip,
-        countryCode: addr.countryCode || '',
+        countryCode,
         phoneNumber: addr.phoneNumber,
         province: addr.province,
         company: addr.company,
@@ -148,8 +154,8 @@ export class CustomerHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
-        let ok = 0, fail = 0;
+    ): Promise<LoaderExecutionResult> {
+        let ok = 0, fail = 0, skipped = 0;
 
         // Extract and validate config
         const config = this.extractConfig(step.config);
@@ -177,7 +183,8 @@ export class CustomerHandler implements LoaderHandler {
                     const exists = list.items.length > 0;
 
                     if (exists && strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(config, 'customer', email);
+                        skipped++;
                         continue;
                     }
                     if (!exists && strategy === LoadStrategy.UPDATE) {
@@ -189,9 +196,9 @@ export class CustomerHandler implements LoaderHandler {
                     }
                 }
 
-                const firstName = toStringOrUndefined(getStringValue(rec, config.firstNameField ?? 'firstName'));
-                const lastName = toStringOrUndefined(getStringValue(rec, config.lastNameField ?? 'lastName'));
-                const phoneNumber = toStringOrUndefined(getStringValue(rec, config.phoneNumberField ?? 'phoneNumber'));
+                const firstName = getStringValue(rec, config.firstNameField ?? 'firstName');
+                const lastName = getStringValue(rec, config.lastNameField ?? 'lastName');
+                const phoneNumber = getStringValue(rec, config.phoneNumberField ?? 'phoneNumber');
 
                 const customFieldsKey = config.customFieldsField ?? 'customFields';
                 const customFields = getObjectValue(rec, customFieldsKey);
@@ -221,7 +228,7 @@ export class CustomerHandler implements LoaderHandler {
                 const customer = createdOrError as Customer;
 
                 // Merge addresses
-                await this.processAddresses(ctx, step.key, rec, config, customer);
+                await this.processAddresses(ctx, rec, config, customer);
 
                 // Process groups
                 await this.processGroups(ctx, step.key, rec, config, customer);
@@ -234,7 +241,7 @@ export class CustomerHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     async simulate(
@@ -284,6 +291,7 @@ export class CustomerHandler implements LoaderHandler {
                 groupsMode: stepConfig.groupsMode as CustomerStepConfig['groupsMode'],
                 customFieldsField: stepConfig.customFieldsField as string | undefined,
                 strategy: cfg.strategy as LoadStrategy | undefined,
+                skipDuplicates: cfg.skipDuplicates as boolean | undefined,
             };
         }
         return {
@@ -311,104 +319,87 @@ export class CustomerHandler implements LoaderHandler {
      */
     private async processAddresses(
         ctx: RequestContext,
-        stepKey: string,
         rec: RecordObject,
         config: CustomerStepConfig,
         customer: Customer,
     ): Promise<void> {
-        const addressesField = config.addressesField;
-        if (!addressesField) {
+        if (!config.addressesField) {
             return;
         }
 
-        const addresses = getArrayValue<unknown>(rec, addressesField);
-        if (!addresses) {
+        const addresses = getArrayValue<unknown>(rec, config.addressesField);
+        if (!addresses || config.addressesMode === 'SKIP') {
+            return;
+        }
+        const addressInputs = addresses.map((address, index) => {
+            if (!isAddressRecord(address)) {
+                throw new Error(`Customer address at index ${index} must be an object`);
+            }
+            return toCreateAddressInput(address);
+        });
+        const mode = config.addressesMode ?? 'UPSERT_BY_MATCH';
+
+        if (mode === 'APPEND_ONLY') {
+            for (const input of addressInputs) {
+                await this.customerService.createAddress(ctx, customer.id, input);
+            }
             return;
         }
 
-        const mode = config.addressesMode || 'UPSERT_BY_MATCH';
-
-        if (mode === 'SKIP') {
-            return;
+        const customerWithAddresses = await this.customerService.findOne(
+            ctx,
+            customer.id,
+            ['addresses', 'addresses.country'],
+        );
+        if (!customerWithAddresses) {
+            throw new Error(`Customer "${String(customer.id)}" not found while processing addresses`);
         }
-
-        // Load existing addresses with country relation for matching
-        const customerWithAddresses = await this.customerService.findOne(ctx, customer.id, ['addresses', 'addresses.country']);
-        const existingAddresses = customerWithAddresses?.addresses || [];
+        const existingAddresses = customerWithAddresses.addresses ?? [];
 
         if (mode === 'REPLACE_ALL') {
-            // Delete all existing addresses first
+            for (const input of addressInputs) {
+                await this.customerService.createAddress(ctx, customer.id, input);
+            }
             for (const existing of existingAddresses) {
-                try {
-                    await this.customerService.deleteAddress(ctx, existing.id);
-                } catch (error) {
-                    this.logger.warn('Failed to delete address during REPLACE_ALL', {
-                        stepKey, addressId: existing.id, error: getErrorMessage(error),
-                    });
-                }
-            }
-            // Then create all new addresses
-            for (const addr of addresses) {
-                if (!isAddressRecord(addr)) continue;
-                try {
-                    await this.customerService.createAddress(ctx, customer.id, toCreateAddressInput(addr));
-                } catch (error) {
-                    this.logger.warn('Failed to create customer address', {
-                        stepKey, customerId: customer.id, error: getErrorMessage(error),
-                    });
-                }
+                await this.customerService.deleteAddress(ctx, existing.id);
             }
             return;
         }
 
-        if (mode === 'UPSERT_BY_MATCH') {
-            const matchFieldsStr = config.addressMatchFields || 'streetLine1,city,countryCode';
-            const matchFields = matchFieldsStr.split(',').map(f => f.trim());
-
-            for (const addr of addresses) {
-                if (!isAddressRecord(addr)) continue;
-                const newInput = toCreateAddressInput(addr);
-
-                // Find matching existing address
-                const match = existingAddresses.find(existing => {
-                    return matchFields.every(field => {
-                        const existingVal = this.getAddressFieldValue(existing as unknown as Record<string, unknown>, field);
-                        const newVal = this.getAddressFieldValue(newInput as unknown as Record<string, unknown>, field);
-                        return existingVal !== undefined && newVal !== undefined &&
-                            String(existingVal).trim().toLowerCase() === String(newVal).trim().toLowerCase();
-                    });
-                });
-
-                try {
-                    if (match) {
-                        // Update existing address
-                        await this.customerService.updateAddress(ctx, {
-                            id: match.id,
-                            ...newInput,
-                        });
-                        this.logger.debug(`Updated existing address ${match.id} for customer ${customer.id}`);
-                    } else {
-                        await this.customerService.createAddress(ctx, customer.id, newInput);
-                        this.logger.debug(`Created new address for customer ${customer.id}`);
-                    }
-                } catch (error) {
-                    this.logger.warn('Failed to upsert customer address', {
-                        stepKey, customerId: customer.id, error: getErrorMessage(error),
-                    });
-                }
-            }
-            return;
+        if (mode !== 'UPSERT_BY_MATCH') {
+            throw new Error(`Unsupported customer address mode "${mode}"`);
         }
 
-        // APPEND_ONLY: always create new addresses
-        for (const addr of addresses) {
-            if (!isAddressRecord(addr)) continue;
-            try {
-                await this.customerService.createAddress(ctx, customer.id, toCreateAddressInput(addr));
-            } catch (error) {
-                this.logger.warn('Failed to create customer address', {
-                    stepKey, customerId: customer.id, addressCity: addr.city, error: getErrorMessage(error),
-                });
+        const matchFields = (config.addressMatchFields ?? 'streetLine1,city,countryCode')
+            .split(',')
+            .map(field => field.trim())
+            .filter(Boolean);
+        if (matchFields.length === 0) {
+            throw new Error('Customer address matching requires at least one match field');
+        }
+
+        for (const input of addressInputs) {
+            const match = existingAddresses.find(existing =>
+                matchFields.every(field => {
+                    const existingValue = this.getAddressFieldValue(
+                        existing as unknown as Record<string, unknown>,
+                        field,
+                    );
+                    const newValue = this.getAddressFieldValue(
+                        input as unknown as Record<string, unknown>,
+                        field,
+                    );
+                    return existingValue !== undefined &&
+                        newValue !== undefined &&
+                        String(existingValue).trim().toLowerCase() ===
+                            String(newValue).trim().toLowerCase();
+                }),
+            );
+
+            if (match) {
+                await this.customerService.updateAddress(ctx, { id: match.id, ...input });
+            } else {
+                await this.customerService.createAddress(ctx, customer.id, input);
             }
         }
     }

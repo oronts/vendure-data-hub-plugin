@@ -26,6 +26,13 @@ import { DataHubLoggerFactory } from '../../services/logger';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.REPLAY_EXECUTOR);
 
+export interface ReplayExecutionResult {
+    processed: number;
+    succeeded: number;
+    failed: number;
+    skipped: number;
+}
+
 /**
  * Replay from a specific step in a linear pipeline
  */
@@ -42,7 +49,7 @@ export async function replayFromStepLinear(params: {
     sinkExecutor: SinkExecutor;
     onCancelRequested?: () => Promise<boolean>;
     onRecordError?: OnRecordErrorCallback;
-}): Promise<{ processed: number; succeeded: number; failed: number }> {
+}): Promise<ReplayExecutionResult> {
     const {
         ctx,
         definition,
@@ -69,6 +76,7 @@ export async function replayFromStepLinear(params: {
     let processed = 0;
     let succeeded = 0;
     let failed = 0;
+    let skipped = 0;
 
     for (const step of steps) {
         if (onCancelRequested && (await onCancelRequested())) break;
@@ -95,9 +103,11 @@ export async function replayFromStepLinear(params: {
             }
 
             case StepType.LOAD: {
-                const { ok, fail } = await loadExecutor.execute(ctx, step, records, onRecordError);
+                const result = await loadExecutor.execute(ctx, step, records, onRecordError);
+                const { ok, fail } = result;
                 succeeded += ok;
                 failed += fail;
+                skipped += result.skipped;
                 processed += records.length;
                 break;
             }
@@ -138,7 +148,7 @@ export async function replayFromStepLinear(params: {
         }
     }
 
-    return { processed, succeeded, failed };
+    return { processed, succeeded, failed, skipped };
 }
 
 /**
@@ -157,7 +167,7 @@ export async function replayFromStepGraph(params: {
     sinkExecutor: SinkExecutor;
     onCancelRequested?: () => Promise<boolean>;
     onRecordError?: OnRecordErrorCallback;
-}): Promise<{ processed: number; succeeded: number; failed: number }> {
+}): Promise<ReplayExecutionResult> {
     const {
         ctx,
         definition,
@@ -229,6 +239,7 @@ export async function replayFromStepGraph(params: {
     let processed = 0;
     let succeeded = 0;
     let failed = 0;
+    let skipped = 0;
 
     while (queue.length) {
         const key = queue.shift();
@@ -286,9 +297,11 @@ export async function replayFromStepGraph(params: {
             }
 
             case StepType.LOAD: {
-                const { ok, fail } = await loadExecutor.execute(ctx, step, input, onRecordError);
+                const result = await loadExecutor.execute(ctx, step, input, onRecordError);
+                const { ok, fail } = result;
                 succeeded += ok;
                 failed += fail;
+                skipped += result.skipped;
                 processed += input.length;
                 outputs.set(key, []);
                 break;
@@ -343,5 +356,5 @@ export async function replayFromStepGraph(params: {
         }
     }
 
-    return { processed, succeeded, failed };
+    return { processed, succeeded, failed, skipped };
 }

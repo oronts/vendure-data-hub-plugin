@@ -8,7 +8,7 @@
 import { RequestContext } from '@vendure/core';
 import { PipelineDefinition, PipelineStepDefinition } from '../../types/index';
 import type { DrainStrategy } from '../../../shared/types';
-import { RecordObject, OnRecordErrorCallback } from '../executor-types';
+import { LoaderExecutionResult, RecordObject, OnRecordErrorCallback } from '../executor-types';
 import { LoadExecutor } from '../executors';
 import { chunk, sleep } from '../utils';
 import { RATE_LIMIT, TIME, THROUGHPUT } from '../../constants/index';
@@ -35,7 +35,6 @@ export interface ThroughputConfig {
 class DrainQueue {
     private queue: RecordObject[][] = [];
     private readonly maxSize: number;
-    private droppedCount: number = 0;
 
     constructor(maxSize: number = THROUGHPUT.MAX_QUEUE_SIZE) {
         this.maxSize = maxSize;
@@ -43,28 +42,10 @@ class DrainQueue {
 
     enqueue(batch: RecordObject[]): boolean {
         if (this.queue.length >= this.maxSize) {
-            this.droppedCount++;
             return false;
         }
         this.queue.push(batch);
         return true;
-    }
-
-    dequeue(): RecordObject[] | undefined {
-        return this.queue.shift();
-    }
-
-    size(): number {
-        return this.queue.length;
-    }
-
-    getDroppedCount(): number {
-        return this.droppedCount;
-    }
-
-    clear(): void {
-        this.queue = [];
-        this.droppedCount = 0;
     }
 
     getAll(): RecordObject[][] {
@@ -84,7 +65,7 @@ export async function executeLoadWithThroughput(params: {
     definition: PipelineDefinition;
     loadExecutor: LoadExecutor;
     onRecordError?: OnRecordErrorCallback;
-}): Promise<{ ok: number; fail: number }> {
+}): Promise<LoaderExecutionResult> {
     const { ctx, step, batch, definition, loadExecutor, onRecordError } = params;
 
     const stepThroughput = step.throughput ?? {};
@@ -108,22 +89,28 @@ export async function executeLoadWithThroughput(params: {
 
     let succeeded = 0;
     let failed = 0;
+    let skipped = 0;
     let isPaused = false;
 
     // Get error handling config from pipeline context
     const errorHandling = definition.context?.errorHandling;
 
     const runNext = async (group: RecordObject[]) => {
-        const { ok, fail } = await loadExecutor.execute(ctx, step, group, onRecordError, errorHandling);
+        const result = await loadExecutor.execute(ctx, step, group, onRecordError, errorHandling);
+        const { ok, fail } = result;
         succeeded += ok;
         failed += fail;
+        skipped += result.skipped;
 
         // Check error rate and apply drain strategy
         const ratio = group.length > 0 ? fail / group.length : 0;
         if (pauseConfig && ratio >= Number(pauseConfig.threshold ?? 1)) {
             switch (drainStrategy) {
                 case 'SHED':
-                    // Drop remaining batches
+                    skipped += batchQueue.reduce(
+                        (recordCount, pendingBatch) => recordCount + pendingBatch.length,
+                        0,
+                    );
                     batchQueue.length = 0;
                     break;
 
@@ -133,7 +120,11 @@ export async function executeLoadWithThroughput(params: {
                     while (batchQueue.length > 0) {
                         const remaining = batchQueue.shift();
                         if (remaining === undefined) break;
-                        deferredQueue.enqueue(remaining);
+                        if (!deferredQueue.enqueue(remaining)) {
+                            throw new Error(
+                                `Deferred throughput queue exceeded ${THROUGHPUT.MAX_QUEUE_SIZE} batches; refusing to drop records`,
+                            );
+                        }
                     }
                     break;
 
@@ -184,9 +175,11 @@ export async function executeLoadWithThroughput(params: {
         while (batchQueue.length) {
             const grp = batchQueue.shift();
             if (grp === undefined) break;
-            const { ok, fail } = await loadExecutor.execute(ctx, step, grp, onRecordError, errorHandling);
+            const result = await loadExecutor.execute(ctx, step, grp, onRecordError, errorHandling);
+            const { ok, fail } = result;
             succeeded += ok;
             failed += fail;
+            skipped += result.skipped;
 
             if (rps > 0) {
                 await sleep(Math.max(0, Math.floor(TIME.SECOND / rps)));
@@ -194,5 +187,5 @@ export async function executeLoadWithThroughput(params: {
         }
     }
 
-    return { ok: succeeded, fail: failed };
+    return { ok: succeeded, fail: failed, skipped };
 }

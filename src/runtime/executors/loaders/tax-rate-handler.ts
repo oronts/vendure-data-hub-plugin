@@ -14,7 +14,8 @@ import {
     ID,
 } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
@@ -23,7 +24,7 @@ import { getStringValue, getNumberValue } from '../../../loaders/shared-helpers'
 /**
  * Configuration for the tax rate handler step (mirrors loader-handler-registry.ts schema)
  */
-interface TaxRateHandlerConfig {
+interface TaxRateHandlerConfig extends CreateDuplicateHandlingConfig {
     nameField?: string;
     valueField?: string;
     enabledField?: string;
@@ -59,9 +60,10 @@ export class TaxRateHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0;
         let fail = 0;
+        let skipped = 0;
         const cfg = getConfig(step.config);
 
         for (const rec of input) {
@@ -130,7 +132,8 @@ export class TaxRateHandler implements LoaderHandler {
 
                 if (existing) {
                     if (strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(cfg, 'tax rate', name);
+                        skipped++;
                         continue;
                     }
                     await this.taxRateService.update(ctx, {
@@ -165,7 +168,7 @@ export class TaxRateHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     private async findExistingByName(ctx: RequestContext, name: string): Promise<{ id: ID } | null> {

@@ -21,6 +21,10 @@ export interface PipelineMetrics {
     succeeded?: number;
     /** Number of failed records */
     failed?: number;
+    /** Number of records intentionally skipped without a write */
+    skipped?: number;
+    /** Number of records read from source steps */
+    sourceRecords?: number;
     /** Duration in milliseconds */
     durationMs?: number;
     /** Additional custom metrics */

@@ -853,7 +853,7 @@ export type CreateDataHubSecretInput = {
   code: Scalars['String']['input'];
   metadata?: InputMaybe<Scalars['JSON']['input']>;
   provider?: InputMaybe<Scalars['String']['input']>;
-  value?: InputMaybe<Scalars['String']['input']>;
+  value: Scalars['String']['input'];
 };
 
 export type CreateFacetInput = {
@@ -1548,32 +1548,6 @@ export type CustomerSortParameter = {
   updatedAt?: InputMaybe<SortOrder>;
 };
 
-export type DashboardMetricSummary = {
-  __typename?: 'DashboardMetricSummary';
-  entries: Array<DashboardMetricSummaryEntry>;
-  title: Scalars['String']['output'];
-  type: DashboardMetricType;
-};
-
-export type DashboardMetricSummaryEntry = {
-  __typename?: 'DashboardMetricSummaryEntry';
-  label: Scalars['String']['output'];
-  value: Scalars['Float']['output'];
-};
-
-export type DashboardMetricSummaryInput = {
-  endDate: Scalars['DateTime']['input'];
-  refresh?: InputMaybe<Scalars['Boolean']['input']>;
-  startDate: Scalars['DateTime']['input'];
-  types: Array<DashboardMetricType>;
-};
-
-export enum DashboardMetricType {
-  AverageOrderValue = 'AverageOrderValue',
-  OrderCount = 'OrderCount',
-  OrderTotal = 'OrderTotal'
-}
-
 export type DataHubAdapter = {
   __typename?: 'DataHubAdapter';
   async?: Maybe<Scalars['Boolean']['output']>;
@@ -1869,6 +1843,30 @@ export type DataHubDeliveryResult = {
   success: Scalars['Boolean']['output'];
 };
 
+export type DataHubDestinationAuth = {
+  __typename?: 'DataHubDestinationAuth';
+  headerName?: Maybe<Scalars['String']['output']>;
+  secretCode?: Maybe<Scalars['String']['output']>;
+  type: DataHubDestinationAuthType;
+  username?: Maybe<Scalars['String']['output']>;
+  usernameSecretCode?: Maybe<Scalars['String']['output']>;
+};
+
+export type DataHubDestinationAuthInput = {
+  headerName?: InputMaybe<Scalars['String']['input']>;
+  secretCode?: InputMaybe<Scalars['String']['input']>;
+  type: DataHubDestinationAuthType;
+  username?: InputMaybe<Scalars['String']['input']>;
+  usernameSecretCode?: InputMaybe<Scalars['String']['input']>;
+};
+
+export enum DataHubDestinationAuthType {
+  API_KEY = 'API_KEY',
+  BASIC = 'BASIC',
+  BEARER = 'BEARER',
+  NONE = 'NONE'
+}
+
 export type DataHubDestinationSchema = {
   __typename?: 'DataHubDestinationSchema';
   /** Key in the wizard destination state object (e.g. sftpConfig, s3Config) */
@@ -1885,6 +1883,25 @@ export type DataHubDestinationSchema = {
   type: Scalars['String']['output'];
 };
 
+export type DataHubDestinationSmtp = {
+  __typename?: 'DataHubDestinationSmtp';
+  host: Scalars['String']['output'];
+  passwordSecretCode?: Maybe<Scalars['String']['output']>;
+  port: Scalars['Int']['output'];
+  secure?: Maybe<Scalars['Boolean']['output']>;
+  username?: Maybe<Scalars['String']['output']>;
+  usernameSecretCode?: Maybe<Scalars['String']['output']>;
+};
+
+export type DataHubDestinationSmtpInput = {
+  host: Scalars['String']['input'];
+  passwordSecretCode?: InputMaybe<Scalars['String']['input']>;
+  port: Scalars['Int']['input'];
+  secure?: InputMaybe<Scalars['Boolean']['input']>;
+  username?: InputMaybe<Scalars['String']['input']>;
+  usernameSecretCode?: InputMaybe<Scalars['String']['input']>;
+};
+
 export type DataHubDestinationTestResult = {
   __typename?: 'DataHubDestinationTestResult';
   latencyMs?: Maybe<Scalars['Int']['output']>;
@@ -1892,12 +1909,10 @@ export type DataHubDestinationTestResult = {
   success: Scalars['Boolean']['output'];
 };
 
-/** Export Destinations API - S3, SFTP, HTTP, etc. */
+/** Export destinations resolve credential values from Data Hub Secret Codes only. */
 export enum DataHubDestinationType {
-  DOWNLOAD = 'DOWNLOAD',
   EMAIL = 'EMAIL',
   FTP = 'FTP',
-  GCS = 'GCS',
   HTTP = 'HTTP',
   LOCAL = 'LOCAL',
   S3 = 'S3',
@@ -2004,20 +2019,36 @@ export type DataHubEvent = {
 
 export type DataHubExportDestination = {
   __typename?: 'DataHubExportDestination';
-  authType?: Maybe<Scalars['String']['output']>;
+  accessKeyIdSecretCode?: Maybe<Scalars['String']['output']>;
+  acl?: Maybe<Scalars['String']['output']>;
+  auth?: Maybe<DataHubDestinationAuth>;
+  bcc?: Maybe<Array<Scalars['String']['output']>>;
+  body?: Maybe<Scalars['String']['output']>;
   bucket?: Maybe<Scalars['String']['output']>;
+  cc?: Maybe<Array<Scalars['String']['output']>>;
   directory?: Maybe<Scalars['String']['output']>;
   enabled: Scalars['Boolean']['output'];
   endpoint?: Maybe<Scalars['String']['output']>;
+  from?: Maybe<Scalars['String']['output']>;
+  headerSecretCodes?: Maybe<Scalars['JSON']['output']>;
+  headers?: Maybe<Scalars['JSON']['output']>;
   host?: Maybe<Scalars['String']['output']>;
+  hostKeyFingerprintSecretCode?: Maybe<Scalars['String']['output']>;
   id: Scalars['String']['output'];
   method?: Maybe<Scalars['String']['output']>;
   name: Scalars['String']['output'];
+  passphraseSecretCode?: Maybe<Scalars['String']['output']>;
+  passwordSecretCode?: Maybe<Scalars['String']['output']>;
   port?: Maybe<Scalars['Int']['output']>;
   prefix?: Maybe<Scalars['String']['output']>;
+  privateKeySecretCode?: Maybe<Scalars['String']['output']>;
   region?: Maybe<Scalars['String']['output']>;
   remotePath?: Maybe<Scalars['String']['output']>;
+  secretAccessKeySecretCode?: Maybe<Scalars['String']['output']>;
+  secure?: Maybe<Scalars['Boolean']['output']>;
+  smtp?: Maybe<DataHubDestinationSmtp>;
   subject?: Maybe<Scalars['String']['output']>;
+  timeout?: Maybe<Scalars['Int']['output']>;
   to?: Maybe<Array<Scalars['String']['output']>>;
   type: DataHubDestinationType;
   url?: Maybe<Scalars['String']['output']>;
@@ -2025,30 +2056,36 @@ export type DataHubExportDestination = {
 };
 
 export type DataHubExportDestinationInput = {
-  accessKeyId?: InputMaybe<Scalars['String']['input']>;
+  accessKeyIdSecretCode?: InputMaybe<Scalars['String']['input']>;
   acl?: InputMaybe<Scalars['String']['input']>;
-  authConfig?: InputMaybe<Scalars['JSON']['input']>;
-  authType?: InputMaybe<Scalars['String']['input']>;
+  auth?: InputMaybe<DataHubDestinationAuthInput>;
+  bcc?: InputMaybe<Array<Scalars['String']['input']>>;
   body?: InputMaybe<Scalars['String']['input']>;
   bucket?: InputMaybe<Scalars['String']['input']>;
   cc?: InputMaybe<Array<Scalars['String']['input']>>;
   directory?: InputMaybe<Scalars['String']['input']>;
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   endpoint?: InputMaybe<Scalars['String']['input']>;
+  from?: InputMaybe<Scalars['String']['input']>;
+  headerSecretCodes?: InputMaybe<Scalars['JSON']['input']>;
   headers?: InputMaybe<Scalars['JSON']['input']>;
   host?: InputMaybe<Scalars['String']['input']>;
+  hostKeyFingerprintSecretCode?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['String']['input'];
   method?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
-  password?: InputMaybe<Scalars['String']['input']>;
+  passphraseSecretCode?: InputMaybe<Scalars['String']['input']>;
+  passwordSecretCode?: InputMaybe<Scalars['String']['input']>;
   port?: InputMaybe<Scalars['Int']['input']>;
   prefix?: InputMaybe<Scalars['String']['input']>;
-  privateKey?: InputMaybe<Scalars['String']['input']>;
+  privateKeySecretCode?: InputMaybe<Scalars['String']['input']>;
   region?: InputMaybe<Scalars['String']['input']>;
   remotePath?: InputMaybe<Scalars['String']['input']>;
-  secretAccessKey?: InputMaybe<Scalars['String']['input']>;
+  secretAccessKeySecretCode?: InputMaybe<Scalars['String']['input']>;
   secure?: InputMaybe<Scalars['Boolean']['input']>;
+  smtp?: InputMaybe<DataHubDestinationSmtpInput>;
   subject?: InputMaybe<Scalars['String']['input']>;
+  timeout?: InputMaybe<Scalars['Int']['input']>;
   to?: InputMaybe<Array<Scalars['String']['input']>>;
   type: DataHubDestinationType;
   url?: InputMaybe<Scalars['String']['input']>;
@@ -2136,10 +2173,14 @@ export type DataHubFeed = Node & {
   channelToken?: Maybe<Scalars['String']['output']>;
   code: Scalars['String']['output'];
   createdAt: Scalars['DateTime']['output'];
+  customGeneratorCode?: Maybe<Scalars['String']['output']>;
+  downloadUrl?: Maybe<Scalars['String']['output']>;
   fieldMappings?: Maybe<Scalars['JSON']['output']>;
   filters?: Maybe<Scalars['JSON']['output']>;
   format: DataHubFeedFormat;
   id: Scalars['ID']['output'];
+  lastGeneratedAt?: Maybe<Scalars['DateTime']['output']>;
+  lastItemCount?: Maybe<Scalars['Int']['output']>;
   name: Scalars['String']['output'];
   options?: Maybe<Scalars['JSON']['output']>;
   schedule?: Maybe<DataHubFeedSchedule>;
@@ -2147,15 +2188,11 @@ export type DataHubFeed = Node & {
 };
 
 export enum DataHubFeedFormat {
-  AMAZON = 'AMAZON',
-  BING_SHOPPING = 'BING_SHOPPING',
   CSV = 'CSV',
   CUSTOM = 'CUSTOM',
   GOOGLE_SHOPPING = 'GOOGLE_SHOPPING',
   JSON = 'JSON',
   META_CATALOG = 'META_CATALOG',
-  PINTEREST = 'PINTEREST',
-  TIKTOK = 'TIKTOK',
   XML = 'XML'
 }
 
@@ -2179,6 +2216,7 @@ export type DataHubFeedGenerationResult = {
 export type DataHubFeedInput = {
   channelToken?: InputMaybe<Scalars['String']['input']>;
   code: Scalars['String']['input'];
+  customGeneratorCode?: InputMaybe<Scalars['String']['input']>;
   fieldMappings?: InputMaybe<Scalars['JSON']['input']>;
   filters?: InputMaybe<Scalars['JSON']['input']>;
   format: DataHubFeedFormat;
@@ -2198,11 +2236,13 @@ export type DataHubFeedSchedule = {
   __typename?: 'DataHubFeedSchedule';
   cron: Scalars['String']['output'];
   enabled: Scalars['Boolean']['output'];
+  timezone?: Maybe<Scalars['String']['output']>;
 };
 
 export type DataHubFeedScheduleInput = {
   cron: Scalars['String']['input'];
   enabled: Scalars['Boolean']['input'];
+  timezone?: InputMaybe<Scalars['String']['input']>;
 };
 
 /** Field change preview */
@@ -2249,6 +2289,8 @@ export type DataHubFileFormatMetadata = {
   label: Scalars['String']['output'];
   /** MIME types for validation and HTML accept attribute */
   mimeTypes: Array<Scalars['String']['output']>;
+  /** Whether the runtime has an import parser for this format */
+  parseable: Scalars['Boolean']['output'];
   /** Whether frontend needs JavaScript parser (vs backend-only parsing) */
   requiresClientParser: Scalars['Boolean']['output'];
   /** Whether this format supports client-side preview in ImportWizard */
@@ -2278,6 +2320,30 @@ export type DataHubGateActionResult = {
   /** Whether the action was successful */
   success: Scalars['Boolean']['output'];
 };
+
+export type DataHubHookExecutionFailure = {
+  __typename?: 'DataHubHookExecutionFailure';
+  action: Scalars['String']['output'];
+  error: Scalars['String']['output'];
+  type: Scalars['String']['output'];
+};
+
+export type DataHubHookExecutionResult = {
+  __typename?: 'DataHubHookExecutionResult';
+  configured: Scalars['Int']['output'];
+  errors: Array<DataHubHookExecutionFailure>;
+  executed: Scalars['Int']['output'];
+  failed: Scalars['Int']['output'];
+  skipped: Scalars['Int']['output'];
+  status: DataHubHookExecutionStatus;
+};
+
+export enum DataHubHookExecutionStatus {
+  EXECUTED = 'EXECUTED',
+  FAILED = 'FAILED',
+  PARTIAL = 'PARTIAL',
+  SKIPPED = 'SKIPPED'
+}
 
 export type DataHubHookStage = {
   __typename?: 'DataHubHookStage';
@@ -2450,18 +2516,6 @@ export type DataHubLog = Node & {
   run?: Maybe<DataHubPipelineRun>;
   runId?: Maybe<Scalars['ID']['output']>;
   stepKey?: Maybe<Scalars['String']['output']>;
-};
-
-export type DataHubLogEntry = {
-  __typename?: 'DataHubLogEntry';
-  id: Scalars['ID']['output'];
-  level: DataHubLogLevel;
-  message: Scalars['String']['output'];
-  metadata?: Maybe<Scalars['JSON']['output']>;
-  pipelineCode?: Maybe<Scalars['String']['output']>;
-  runId?: Maybe<Scalars['ID']['output']>;
-  stepKey?: Maybe<Scalars['String']['output']>;
-  timestamp: Scalars['DateTime']['output'];
 };
 
 export type DataHubLogFilterParameter = {
@@ -2752,22 +2806,6 @@ export type DataHubPipelineRunSortParameter = {
   updatedAt?: InputMaybe<SortOrder>;
 };
 
-/** Real-time Subscriptions for Pipeline Monitoring */
-export type DataHubPipelineRunUpdate = {
-  __typename?: 'DataHubPipelineRunUpdate';
-  currentStep?: Maybe<Scalars['String']['output']>;
-  error?: Maybe<Scalars['String']['output']>;
-  finishedAt?: Maybe<Scalars['DateTime']['output']>;
-  pipelineCode: Scalars['String']['output'];
-  progressMessage?: Maybe<Scalars['String']['output']>;
-  progressPercent: Scalars['Int']['output'];
-  recordsFailed: Scalars['Int']['output'];
-  recordsProcessed: Scalars['Int']['output'];
-  runId: Scalars['ID']['output'];
-  startedAt?: Maybe<Scalars['DateTime']['output']>;
-  status: DataHubRunStatus;
-};
-
 export type DataHubPipelineSortParameter = {
   code?: InputMaybe<SortOrder>;
   createdAt?: InputMaybe<SortOrder>;
@@ -2869,6 +2907,14 @@ export type DataHubRecordError = Node & {
   updatedAt: Scalars['DateTime']['output'];
 };
 
+export type DataHubRecordErrorPage = {
+  __typename?: 'DataHubRecordErrorPage';
+  endCursor?: Maybe<Scalars['String']['output']>;
+  hasNextPage: Scalars['Boolean']['output'];
+  items: Array<DataHubRecordError>;
+  totalItems: Scalars['Int']['output'];
+};
+
 export enum DataHubRecordOperation {
   CREATE = 'CREATE',
   DELETE = 'DELETE',
@@ -2888,7 +2934,7 @@ export type DataHubRecordRetryAudit = Node & {
   createdAt: Scalars['DateTime']['output'];
   error: DataHubRecordError;
   id: Scalars['ID']['output'];
-  /** JSON Patch operations applied */
+  /** Accepted field patch applied to the retried payload */
   patch: Scalars['JSON']['output'];
   /** Record state before the retry patch */
   previousPayload: Scalars['JSON']['output'];
@@ -2897,6 +2943,38 @@ export type DataHubRecordRetryAudit = Node & {
   updatedAt: Scalars['DateTime']['output'];
   /** User ID who performed the retry */
   userId?: Maybe<Scalars['ID']['output']>;
+};
+
+export enum DataHubRecordRetryOutcome {
+  APPLIED = 'APPLIED',
+  PATCH_REJECTED = 'PATCH_REJECTED',
+  PIPELINE_NOT_FOUND = 'PIPELINE_NOT_FOUND',
+  RECORD_NOT_FOUND = 'RECORD_NOT_FOUND',
+  REPLAY_FAILED = 'REPLAY_FAILED',
+  RUN_NOT_FOUND = 'RUN_NOT_FOUND',
+  STEP_NOT_FOUND = 'STEP_NOT_FOUND'
+}
+
+/** Structured result of retrying one quarantined record. */
+export type DataHubRecordRetryResult = {
+  __typename?: 'DataHubRecordRetryResult';
+  adapterCode?: Maybe<Scalars['String']['output']>;
+  /** The accepted field patch. Empty when validation rejects the request before replay. */
+  appliedPatch: Scalars['JSON']['output'];
+  auditId?: Maybe<Scalars['ID']['output']>;
+  auditRecorded: Scalars['Boolean']['output'];
+  definitionVersion?: Maybe<Scalars['Int']['output']>;
+  errorId: Scalars['ID']['output'];
+  failed: Scalars['Int']['output'];
+  message: Scalars['String']['output'];
+  outcome: DataHubRecordRetryOutcome;
+  processed: Scalars['Int']['output'];
+  /** Requested field names rejected by the loader patch policy. */
+  rejectedPatchKeys: Array<Scalars['String']['output']>;
+  runId?: Maybe<Scalars['ID']['output']>;
+  stepKey?: Maybe<Scalars['String']['output']>;
+  succeeded: Scalars['Int']['output'];
+  success: Scalars['Boolean']['output'];
 };
 
 export type DataHubRegisterDestinationResult = {
@@ -2994,8 +3072,6 @@ export enum DataHubRunStatus {
   PAUSED = 'PAUSED',
   /** Run created but not yet started */
   PENDING = 'PENDING',
-  /** Run queued for execution */
-  QUEUED = 'QUEUED',
   /** Run currently executing */
   RUNNING = 'RUNNING',
   /** Run exceeded time limit */
@@ -3389,11 +3465,13 @@ export type DataHubSecret = Node & {
   __typename?: 'DataHubSecret';
   code: Scalars['String']['output'];
   createdAt: Scalars['DateTime']['output'];
+  hasValue: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
+  isOverridden: Scalars['Boolean']['output'];
   metadata?: Maybe<Scalars['JSON']['output']>;
   provider: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
-  value?: Maybe<Scalars['String']['output']>;
+  valueStatus: Scalars['String']['output'];
 };
 
 export type DataHubSecretFilterParameter = {
@@ -3401,10 +3479,12 @@ export type DataHubSecretFilterParameter = {
   _or?: InputMaybe<Array<DataHubSecretFilterParameter>>;
   code?: InputMaybe<StringOperators>;
   createdAt?: InputMaybe<DateOperators>;
+  hasValue?: InputMaybe<BooleanOperators>;
   id?: InputMaybe<IdOperators>;
+  isOverridden?: InputMaybe<BooleanOperators>;
   provider?: InputMaybe<StringOperators>;
   updatedAt?: InputMaybe<DateOperators>;
-  value?: InputMaybe<StringOperators>;
+  valueStatus?: InputMaybe<StringOperators>;
 };
 
 export type DataHubSecretList = PaginatedList & {
@@ -3426,13 +3506,20 @@ export type DataHubSecretListOptions = {
   take?: InputMaybe<Scalars['Int']['input']>;
 };
 
+export type DataHubSecretSecurity = {
+  __typename?: 'DataHubSecretSecurity';
+  codeFirstInlineAllowed: Scalars['Boolean']['output'];
+  inlineStorageAvailable: Scalars['Boolean']['output'];
+  mode: Scalars['String']['output'];
+};
+
 export type DataHubSecretSortParameter = {
   code?: InputMaybe<SortOrder>;
   createdAt?: InputMaybe<SortOrder>;
   id?: InputMaybe<SortOrder>;
   provider?: InputMaybe<SortOrder>;
   updatedAt?: InputMaybe<SortOrder>;
-  value?: InputMaybe<SortOrder>;
+  valueStatus?: InputMaybe<SortOrder>;
 };
 
 export type DataHubSettings = {
@@ -3486,17 +3573,6 @@ export type DataHubStepConfigSchemaField = {
 export type DataHubStepErrorCount = {
   __typename?: 'DataHubStepErrorCount';
   count: Scalars['Int']['output'];
-  stepKey: Scalars['String']['output'];
-};
-
-export type DataHubStepProgress = {
-  __typename?: 'DataHubStepProgress';
-  durationMs: Scalars['Int']['output'];
-  recordsFailed: Scalars['Int']['output'];
-  recordsIn: Scalars['Int']['output'];
-  recordsOut: Scalars['Int']['output'];
-  runId: Scalars['ID']['output'];
-  status: Scalars['String']['output'];
   stepKey: Scalars['String']['output'];
 };
 
@@ -3712,14 +3788,13 @@ export type DataHubWebhookDelivery = {
   createdAt: Scalars['DateTime']['output'];
   deliveredAt?: Maybe<Scalars['DateTime']['output']>;
   error?: Maybe<Scalars['String']['output']>;
-  headers: Scalars['JSON']['output'];
   id: Scalars['String']['output'];
   lastAttemptAt?: Maybe<Scalars['DateTime']['output']>;
   maxAttempts: Scalars['Int']['output'];
   method: Scalars['String']['output'];
   nextRetryAt?: Maybe<Scalars['DateTime']['output']>;
-  payload: Scalars['JSON']['output'];
-  responseBody?: Maybe<Scalars['String']['output']>;
+  payloadBytes: Scalars['Int']['output'];
+  payloadHash: Scalars['String']['output'];
   responseStatus?: Maybe<Scalars['Int']['output']>;
   status: DataHubWebhookDeliveryStatus;
   url: Scalars['String']['output'];
@@ -3750,17 +3825,6 @@ export type DataHubWebhookStats = {
   pending: Scalars['Int']['output'];
   retrying: Scalars['Int']['output'];
   total: Scalars['Int']['output'];
-};
-
-export type DataHubWebhookUpdate = {
-  __typename?: 'DataHubWebhookUpdate';
-  attempts: Scalars['Int']['output'];
-  deliveryId: Scalars['String']['output'];
-  error?: Maybe<Scalars['String']['output']>;
-  lastAttemptAt?: Maybe<Scalars['DateTime']['output']>;
-  responseStatus?: Maybe<Scalars['Int']['output']>;
-  status: DataHubWebhookDeliveryStatus;
-  webhookId: Scalars['String']['output'];
 };
 
 export type DataHubWizardStrategyMapping = {
@@ -5102,6 +5166,7 @@ export type Mutation = {
   createTaxRate: TaxRate;
   /** Create a new Zone */
   createZone: Zone;
+  dataHubDeleteExportDestination: DeletionResponse;
   dataHubDeliverToDestination: DataHubDeliveryResult;
   /** Prune old draft revisions */
   dataHubPruneDrafts: Scalars['Int']['output'];
@@ -5153,6 +5218,7 @@ export type Mutation = {
   /** Deletes Customers */
   deleteCustomers: Array<DeletionResponse>;
   deleteDataHubConnection: DeletionResponse;
+  deleteDataHubFeed: DeletionResponse;
   deleteDataHubPipeline: DeletionResponse;
   deleteDataHubSecret: DeletionResponse;
   /** Deletes a draft Order */
@@ -5238,6 +5304,7 @@ export type Mutation = {
   previewDataHubExtract: DataHubPreviewResult;
   previewDataHubFeed: DataHubFeedPreview;
   publishDataHubPipeline: DataHubPipeline;
+  reactivateDataHubPipeline: DataHubPipeline;
   refundOrder: RefundOrderResult;
   reindex: Job;
   /** Reject a GATE step, cancelling the paused pipeline run */
@@ -5278,9 +5345,9 @@ export type Mutation = {
   removeStockLocationsFromChannel: Array<StockLocation>;
   /** Reset AutoMapper configuration to defaults (global or per-pipeline) */
   resetDataHubAutoMapperConfig: DataHubAutoMapperConfig;
-  retryDataHubRecord: Scalars['Boolean']['output'];
+  retryDataHubRecord: DataHubRecordRetryResult;
   revertDataHubPipelineToRevision: DataHubPipeline;
-  runDataHubHookTest: Scalars['Boolean']['output'];
+  runDataHubHookTest: DataHubHookExecutionResult;
   runPendingSearchIndexUpdates: Success;
   runScheduledTask: Success;
   setCustomerForDraftOrder: SetCustomerForDraftOrderResult;
@@ -5346,6 +5413,7 @@ export type Mutation = {
   updateDataHubAutoMapperConfig: DataHubAutoMapperConfig;
   updateDataHubCheckpoint: DataHubCheckpoint;
   updateDataHubConnection: DataHubConnection;
+  updateDataHubFeed: DataHubFeed;
   updateDataHubPipeline: DataHubPipeline;
   updateDataHubSecret: DataHubSecret;
   updateDataHubSettings: DataHubSettings;
@@ -5694,6 +5762,11 @@ export type MutationCreateZoneArgs = {
 };
 
 
+export type MutationDataHubDeleteExportDestinationArgs = {
+  id: Scalars['String']['input'];
+};
+
+
 export type MutationDataHubDeliverToDestinationArgs = {
   content: Scalars['String']['input'];
   destinationId: Scalars['String']['input'];
@@ -5843,6 +5916,11 @@ export type MutationDeleteCustomersArgs = {
 
 
 export type MutationDeleteDataHubConnectionArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationDeleteDataHubFeedArgs = {
   id: Scalars['ID']['input'];
 };
 
@@ -6072,6 +6150,11 @@ export type MutationPublishDataHubPipelineArgs = {
 };
 
 
+export type MutationReactivateDataHubPipelineArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationRefundOrderArgs = {
   input: RefundOrderInput;
 };
@@ -6255,19 +6338,19 @@ export type MutationSettleRefundArgs = {
 
 
 export type MutationSimulateDataHubLoadArgs = {
-  records: Scalars['JSON']['input'];
+  records: Array<Scalars['JSON']['input']>;
   step: Scalars['JSON']['input'];
 };
 
 
 export type MutationSimulateDataHubTransformArgs = {
-  records: Scalars['JSON']['input'];
+  records: Array<Scalars['JSON']['input']>;
   step: Scalars['JSON']['input'];
 };
 
 
 export type MutationSimulateDataHubValidateArgs = {
-  records: Scalars['JSON']['input'];
+  records: Array<Scalars['JSON']['input']>;
   step: Scalars['JSON']['input'];
 };
 
@@ -6388,6 +6471,12 @@ export type MutationUpdateDataHubCheckpointArgs = {
 
 export type MutationUpdateDataHubConnectionArgs = {
   input: UpdateDataHubConnectionInput;
+};
+
+
+export type MutationUpdateDataHubFeedArgs = {
+  id: Scalars['ID']['input'];
+  input: DataHubFeedInput;
 };
 
 
@@ -7195,8 +7284,6 @@ export enum Permission {
   ReadCustomer = 'ReadCustomer',
   /** Grants permission to read CustomerGroup */
   ReadCustomerGroup = 'ReadCustomerGroup',
-  /** Grants permission to read DashboardGlobalViews */
-  ReadDashboardGlobalViews = 'ReadDashboardGlobalViews',
   /** Grants permissions on ReadDataHubFiles operations */
   ReadDataHubFiles = 'ReadDataHubFiles',
   /** Grants permission to read DataHubPipeline */
@@ -7233,14 +7320,10 @@ export enum Permission {
   ReadZone = 'ReadZone',
   /** Grants permissions on ReplayDataHubRecord operations */
   ReplayDataHubRecord = 'ReplayDataHubRecord',
-  /** Grants permissions on RetryDataHubRecord operations */
-  RetryDataHubRecord = 'RetryDataHubRecord',
   /** Grants permissions on ReviewDataHubPipeline operations */
   ReviewDataHubPipeline = 'ReviewDataHubPipeline',
   /** Grants permissions on RunDataHubPipeline operations */
   RunDataHubPipeline = 'RunDataHubPipeline',
-  /** Grants permissions on SubscribeDataHubEvents operations */
-  SubscribeDataHubEvents = 'SubscribeDataHubEvents',
   /** SuperAdmin has unrestricted access to all operations */
   SuperAdmin = 'SuperAdmin',
   /** Grants permission to update Administrator */
@@ -7302,9 +7385,7 @@ export enum Permission {
   /** Grants permissions on ViewDataHubQuarantine operations */
   ViewDataHubQuarantine = 'ViewDataHubQuarantine',
   /** Grants permissions on ViewDataHubRuns operations */
-  ViewDataHubRuns = 'ViewDataHubRuns',
-  /** Grants permission to write DashboardGlobalViews */
-  WriteDashboardGlobalViews = 'WriteDashboardGlobalViews'
+  ViewDataHubRuns = 'ViewDataHubRuns'
 }
 
 export type PermissionDefinition = {
@@ -7827,8 +7908,6 @@ export type Query = {
   customerGroup?: Maybe<CustomerGroup>;
   customerGroups: CustomerGroupList;
   customers: CustomerList;
-  /** Get metrics for the given date range and metric types. */
-  dashboardMetricSummary: Array<DashboardMetricSummary>;
   dataHubAdapters: Array<DataHubAdapter>;
   dataHubAnalyticsOverview: DataHubAnalyticsOverview;
   /** Get the current AutoMapper configuration (global or per-pipeline) */
@@ -7844,7 +7923,7 @@ export type Query = {
   dataHubConnections: DataHubConnectionList;
   dataHubConsumers: Array<DataHubConsumerStatus>;
   dataHubDeadLetterQueue: Array<DataHubWebhookDelivery>;
-  dataHubDeadLetters: Array<DataHubRecordError>;
+  dataHubDeadLetters: DataHubRecordErrorPage;
   dataHubErrorAnalytics: DataHubErrorAnalytics;
   dataHubEvents: Array<DataHubEvent>;
   dataHubExportDestination?: Maybe<DataHubExportDestination>;
@@ -7859,6 +7938,7 @@ export type Query = {
   dataHubExtractors: Array<DataHubExtractor>;
   /** Get extractors grouped by category for UI display */
   dataHubExtractorsByCategory: Array<DataHubExtractorsByCategory>;
+  dataHubFeed?: Maybe<DataHubFeed>;
   dataHubFeedFormats: Array<DataHubFeedFormatInfo>;
   dataHubFeeds: Array<DataHubFeed>;
   /** Check if pipeline has unpublished changes */
@@ -7910,7 +7990,7 @@ export type Query = {
   dataHubRevision?: Maybe<DataHubPipelineRevisionExtended>;
   /** Get diff between two revisions */
   dataHubRevisionDiff: DataHubRevisionDiff;
-  dataHubRunErrors: Array<DataHubRecordError>;
+  dataHubRunErrors: DataHubRecordErrorPage;
   dataHubRunLogs: Array<DataHubLog>;
   /**
    * Execute a sandbox/dry run for a pipeline
@@ -7920,6 +8000,7 @@ export type Query = {
   /** Execute sandbox with a custom definition (for testing unpublished changes) */
   dataHubSandboxWithDefinition: DataHubSandboxResult;
   dataHubSecret?: Maybe<DataHubSecret>;
+  dataHubSecretSecurity: DataHubSecretSecurity;
   dataHubSecrets: DataHubSecretList;
   dataHubSettings: DataHubSettings;
   /** Analyze impact of a specific step */
@@ -8086,11 +8167,6 @@ export type QueryCustomersArgs = {
 };
 
 
-export type QueryDashboardMetricSummaryArgs = {
-  input?: InputMaybe<DashboardMetricSummaryInput>;
-};
-
-
 export type QueryDataHubAutoMapperConfigArgs = {
   pipelineId?: InputMaybe<Scalars['ID']['input']>;
 };
@@ -8119,6 +8195,12 @@ export type QueryDataHubConnectionsArgs = {
 };
 
 
+export type QueryDataHubDeadLettersArgs = {
+  after?: InputMaybe<Scalars['String']['input']>;
+  first?: InputMaybe<Scalars['Int']['input']>;
+};
+
+
 export type QueryDataHubErrorAnalyticsArgs = {
   pipelineId?: InputMaybe<Scalars['ID']['input']>;
   timeRange?: InputMaybe<Scalars['String']['input']>;
@@ -8142,6 +8224,11 @@ export type QueryDataHubExtractorArgs = {
 
 export type QueryDataHubExtractorSchemaArgs = {
   code: Scalars['String']['input'];
+};
+
+
+export type QueryDataHubFeedArgs = {
+  id: Scalars['ID']['input'];
 };
 
 
@@ -8251,6 +8338,7 @@ export type QueryDataHubRecordLineageDetailArgs = {
 
 export type QueryDataHubRecordRetryAuditsArgs = {
   errorId: Scalars['ID']['input'];
+  limit?: InputMaybe<Scalars['Int']['input']>;
 };
 
 
@@ -8266,6 +8354,8 @@ export type QueryDataHubRevisionDiffArgs = {
 
 
 export type QueryDataHubRunErrorsArgs = {
+  after?: InputMaybe<Scalars['String']['input']>;
+  first?: InputMaybe<Scalars['Int']['input']>;
   runId: Scalars['ID']['input'];
 };
 
@@ -9696,6 +9786,7 @@ export type UpdateDataHubPipelineInput = {
 };
 
 export type UpdateDataHubSecretInput = {
+  clearValue?: Scalars['Boolean']['input'];
   code?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
   metadata?: InputMaybe<Scalars['JSON']['input']>;
@@ -9977,7 +10068,7 @@ export type DataHubAdaptersApiQuery = { __typename?: 'Query', dataHubAdapters: A
 export type DataHubConfigOptionsApiQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type DataHubConfigOptionsApiQuery = { __typename?: 'Query', dataHubConfigOptions: { __typename?: 'DataHubConfigOptions', stepTypes: Array<{ __typename?: 'DataHubStepTypeConfig', type: string, label: string, description: string, icon: string, color: string, bgColor: string, borderColor: string, inputs: number, outputs: number, category: string, adapterType?: string | null, nodeType: string }>, loadStrategies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, conflictStrategies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, triggerTypes: Array<{ __typename?: 'DataHubTypedOptionValue', value: string, label: string, description?: string | null, icon?: string | null, defaultValues?: Record<string, unknown> | null, configKeyMap?: Record<string, unknown> | null, wizardScopes?: Array<string> | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, optionsRef?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, fileEncodings: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, csvDelimiters: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, compressionTypes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, httpMethods: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, authTypes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, destinationTypes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, fileFormats: Array<{ __typename?: 'DataHubFileFormatMetadata', value: string, label: string, description?: string | null }>, cleanupStrategies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, newRecordStrategies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, validationModes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, queueTypes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, vendureEvents: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null, category?: string | null }>, comparisonOperators: Array<{ __typename?: 'DataHubComparisonOperator', value: string, label: string, description?: string | null, valueType?: string | null, noValue?: boolean | null, example?: string | null }>, approvalTypes: Array<{ __typename?: 'DataHubTypedOptionValue', value: string, label: string, description?: string | null, icon?: string | null, defaultValues?: Record<string, unknown> | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, backoffStrategies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, enrichmentSourceTypes: Array<{ __typename?: 'DataHubTypedOptionValue', value: string, label: string, description?: string | null, icon?: string | null, defaultValues?: Record<string, unknown> | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, validationRuleTypes: Array<{ __typename?: 'DataHubTypedOptionValue', value: string, label: string, description?: string | null, icon?: string | null, defaultValues?: Record<string, unknown> | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, exportAdapterCodes: Array<{ __typename?: 'DataHubAdapterCodeMapping', value: string, label: string, adapterCode: string }>, feedAdapterCodes: Array<{ __typename?: 'DataHubAdapterCodeMapping', value: string, label: string, adapterCode: string }>, connectionSchemas: Array<{ __typename?: 'DataHubConnectionSchema', type: string, label: string, httpLike?: boolean | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, destinationSchemas: Array<{ __typename?: 'DataHubDestinationSchema', type: string, label: string, configKey: string, message?: string | null, fieldMapping?: Record<string, unknown> | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, hookStages: Array<{ __typename?: 'DataHubHookStage', key: string, label: string, description: string, icon: string, category: string }>, hookStageCategories: Array<{ __typename?: 'DataHubHookStageCategory', key: string, label: string, color: string, description: string, gridClass: string, order: number }>, logLevels: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, runModes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, checkpointStrategies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, parallelErrorPolicies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, logPersistenceLevels: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, adapterTypes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, runStatuses: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, fieldTransformTypes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null, category?: string | null }>, wizardStrategyMappings: Array<{ __typename?: 'DataHubWizardStrategyMapping', wizardValue: string, label: string, loadStrategy: string, conflictStrategy: string }>, queryTypeOptions: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, cronPresets: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, ackModes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }> } };
+export type DataHubConfigOptionsApiQuery = { __typename?: 'Query', dataHubConfigOptions: { __typename?: 'DataHubConfigOptions', stepTypes: Array<{ __typename?: 'DataHubStepTypeConfig', type: string, label: string, description: string, icon: string, color: string, bgColor: string, borderColor: string, inputs: number, outputs: number, category: string, adapterType?: string | null, nodeType: string }>, loadStrategies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, conflictStrategies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, triggerTypes: Array<{ __typename?: 'DataHubTypedOptionValue', value: string, label: string, description?: string | null, icon?: string | null, defaultValues?: Record<string, unknown> | null, configKeyMap?: Record<string, unknown> | null, wizardScopes?: Array<string> | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, optionsRef?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, fileEncodings: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, csvDelimiters: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, httpMethods: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, authTypes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, destinationTypes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, fileFormats: Array<{ __typename?: 'DataHubFileFormatMetadata', value: string, label: string, description?: string | null, extensions: Array<string>, mimeTypes: Array<string>, supportsPreview: boolean, requiresClientParser: boolean, parseable: boolean }>, validationModes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, queueTypes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, vendureEvents: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null, category?: string | null }>, comparisonOperators: Array<{ __typename?: 'DataHubComparisonOperator', value: string, label: string, description?: string | null, valueType?: string | null, noValue?: boolean | null, example?: string | null }>, approvalTypes: Array<{ __typename?: 'DataHubTypedOptionValue', value: string, label: string, description?: string | null, icon?: string | null, defaultValues?: Record<string, unknown> | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, backoffStrategies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, enrichmentSourceTypes: Array<{ __typename?: 'DataHubTypedOptionValue', value: string, label: string, description?: string | null, icon?: string | null, defaultValues?: Record<string, unknown> | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, validationRuleTypes: Array<{ __typename?: 'DataHubTypedOptionValue', value: string, label: string, description?: string | null, icon?: string | null, defaultValues?: Record<string, unknown> | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, exportAdapterCodes: Array<{ __typename?: 'DataHubAdapterCodeMapping', value: string, label: string, adapterCode: string }>, feedAdapterCodes: Array<{ __typename?: 'DataHubAdapterCodeMapping', value: string, label: string, adapterCode: string }>, connectionSchemas: Array<{ __typename?: 'DataHubConnectionSchema', type: string, label: string, httpLike?: boolean | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, destinationSchemas: Array<{ __typename?: 'DataHubDestinationSchema', type: string, label: string, configKey: string, message?: string | null, fieldMapping?: Record<string, unknown> | null, fields: Array<{ __typename?: 'DataHubConnectionSchemaField', key: string, label: string, type: string, required?: boolean | null, placeholder?: string | null, defaultValue?: Record<string, unknown> | null, description?: string | null, options?: Array<{ __typename?: 'DataHubOption', value: string, label: string }> | null }> }>, hookStages: Array<{ __typename?: 'DataHubHookStage', key: string, label: string, description: string, icon: string, category: string }>, hookStageCategories: Array<{ __typename?: 'DataHubHookStageCategory', key: string, label: string, color: string, description: string, gridClass: string, order: number }>, logLevels: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, runModes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, checkpointStrategies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, parallelErrorPolicies: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, logPersistenceLevels: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, adapterTypes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, runStatuses: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, fieldTransformTypes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null, category?: string | null }>, wizardStrategyMappings: Array<{ __typename?: 'DataHubWizardStrategyMapping', wizardValue: string, label: string, loadStrategy: string, conflictStrategy: string }>, queryTypeOptions: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, cronPresets: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }>, ackModes: Array<{ __typename?: 'DataHubOptionValue', value: string, label: string, description?: string | null, icon?: string | null }> } };
 
 export type DataHubConnectionsForListQueryVariables = Exact<{
   options?: InputMaybe<DataHubConnectionListOptions>;
@@ -10014,15 +10105,95 @@ export type DeleteDataHubConnectionApiMutationVariables = Exact<{
 
 export type DeleteDataHubConnectionApiMutation = { __typename?: 'Mutation', deleteDataHubConnection: { __typename?: 'DeletionResponse', result: DeletionResult } };
 
+export type DataHubManagedExportDestinationsApiQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type DataHubManagedExportDestinationsApiQuery = { __typename?: 'Query', dataHubExportDestinations: Array<{ __typename?: 'DataHubExportDestination', id: string, name: string, type: DataHubDestinationType, enabled: boolean }> };
+
+export type RegisterDataHubExportDestinationApiMutationVariables = Exact<{
+  input: DataHubExportDestinationInput;
+}>;
+
+
+export type RegisterDataHubExportDestinationApiMutation = { __typename?: 'Mutation', dataHubRegisterExportDestination: { __typename?: 'DataHubRegisterDestinationResult', success: boolean, id: string } };
+
+export type DeleteDataHubExportDestinationApiMutationVariables = Exact<{
+  id: Scalars['String']['input'];
+}>;
+
+
+export type DeleteDataHubExportDestinationApiMutation = { __typename?: 'Mutation', dataHubDeleteExportDestination: { __typename?: 'DeletionResponse', result: DeletionResult, message?: string | null } };
+
+export type TestDataHubExportDestinationApiMutationVariables = Exact<{
+  id: Scalars['String']['input'];
+}>;
+
+
+export type TestDataHubExportDestinationApiMutation = { __typename?: 'Mutation', dataHubTestExportDestination: { __typename?: 'DataHubDestinationTestResult', success: boolean, message: string, latencyMs?: number | null } };
+
 export type DataHubEntityFieldSchemasApiQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type DataHubEntityFieldSchemasApiQuery = { __typename?: 'Query', dataHubLoaderEntitySchemas: Array<{ __typename?: 'DataHubLoaderEntitySchema', entityType: string, fields: Array<{ __typename?: 'DataHubLoaderField', key: string, label: string, type: DataHubLoaderFieldType, required?: boolean | null, readonly?: boolean | null, lookupable?: boolean | null }> }> };
+export type DataHubEntityFieldSchemasApiQuery = { __typename?: 'Query', dataHubLoaderEntitySchemas: Array<{ __typename?: 'DataHubLoaderEntitySchema', entityType: string, fields: Array<{ __typename?: 'DataHubLoaderField', key: string, label: string, type: DataHubLoaderFieldType, required?: boolean | null, readonly?: boolean | null, lookupable?: boolean | null, translatable?: boolean | null, relatedEntity?: string | null, description?: string | null, example?: Record<string, unknown> | null, validation?: { __typename?: 'DataHubLoaderFieldValidation', minLength?: number | null, maxLength?: number | null, min?: number | null, max?: number | null, pattern?: string | null, enum?: Array<Record<string, unknown> | null> | null } | null, children?: Array<{ __typename?: 'DataHubLoaderField', key: string, label: string, type: DataHubLoaderFieldType, required?: boolean | null, readonly?: boolean | null, lookupable?: boolean | null, translatable?: boolean | null, relatedEntity?: string | null, description?: string | null, example?: Record<string, unknown> | null }> | null }> }> };
 
 export type DataHubSupportedEntitiesApiQueryVariables = Exact<{ [key: string]: never; }>;
 
 
 export type DataHubSupportedEntitiesApiQuery = { __typename?: 'Query', dataHubSupportedEntities: Array<{ __typename?: 'DataHubSupportedEntity', code: string, name: string, description?: string | null, supportedOperations: Array<string>, adapterCode: string }> };
+
+export type DataHubFeedsApiQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type DataHubFeedsApiQuery = { __typename?: 'Query', dataHubFeeds: Array<{ __typename?: 'DataHubFeed', id: string | number, createdAt: string, updatedAt: string, code: string, name: string, format: DataHubFeedFormat, lastGeneratedAt?: string | null, lastItemCount?: number | null, downloadUrl?: string | null, schedule?: { __typename?: 'DataHubFeedSchedule', enabled: boolean, cron: string, timezone?: string | null } | null }> };
+
+export type DataHubFeedDetailApiQueryVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type DataHubFeedDetailApiQuery = { __typename?: 'Query', dataHubFeed?: { __typename?: 'DataHubFeed', id: string | number, createdAt: string, updatedAt: string, code: string, name: string, format: DataHubFeedFormat, channelToken?: string | null, customGeneratorCode?: string | null, filters?: Record<string, unknown> | null, fieldMappings?: Record<string, unknown> | null, options?: Record<string, unknown> | null, lastGeneratedAt?: string | null, lastItemCount?: number | null, downloadUrl?: string | null, schedule?: { __typename?: 'DataHubFeedSchedule', enabled: boolean, cron: string, timezone?: string | null } | null } | null };
+
+export type DataHubFeedFormatsApiQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type DataHubFeedFormatsApiQuery = { __typename?: 'Query', dataHubFeedFormats: Array<{ __typename?: 'DataHubFeedFormatInfo', code: string, label: string, description: string }> };
+
+export type CreateDataHubFeedApiMutationVariables = Exact<{
+  input: DataHubFeedInput;
+}>;
+
+
+export type CreateDataHubFeedApiMutation = { __typename?: 'Mutation', createDataHubFeed: { __typename?: 'DataHubFeed', id: string | number, code: string, name: string } };
+
+export type UpdateDataHubFeedApiMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+  input: DataHubFeedInput;
+}>;
+
+
+export type UpdateDataHubFeedApiMutation = { __typename?: 'Mutation', updateDataHubFeed: { __typename?: 'DataHubFeed', id: string | number, code: string, name: string, updatedAt: string, downloadUrl?: string | null } };
+
+export type DeleteDataHubFeedApiMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type DeleteDataHubFeedApiMutation = { __typename?: 'Mutation', deleteDataHubFeed: { __typename?: 'DeletionResponse', result: DeletionResult, message?: string | null } };
+
+export type GenerateDataHubFeedApiMutationVariables = Exact<{
+  feedCode: Scalars['String']['input'];
+}>;
+
+
+export type GenerateDataHubFeedApiMutation = { __typename?: 'Mutation', generateDataHubFeed: { __typename?: 'DataHubFeedGenerationResult', success: boolean, itemCount: number, generatedAt: string, downloadUrl?: string | null, errors: Array<string>, warnings: Array<string> } };
+
+export type PreviewDataHubFeedApiMutationVariables = Exact<{
+  feedCode: Scalars['String']['input'];
+  limit?: InputMaybe<Scalars['Int']['input']>;
+}>;
+
+
+export type PreviewDataHubFeedApiMutation = { __typename?: 'Mutation', previewDataHubFeed: { __typename?: 'DataHubFeedPreview', content: string, contentType: string, itemCount: number } };
 
 export type DataHubPipelineHooksApiQueryVariables = Exact<{
   pipelineId: Scalars['ID']['input'];
@@ -10038,7 +10209,7 @@ export type RunDataHubHookTestApiMutationVariables = Exact<{
 }>;
 
 
-export type RunDataHubHookTestApiMutation = { __typename?: 'Mutation', runDataHubHookTest: boolean };
+export type RunDataHubHookTestApiMutation = { __typename?: 'Mutation', runDataHubHookTest: { __typename?: 'DataHubHookExecutionResult', status: DataHubHookExecutionStatus, configured: number, executed: number, skipped: number, failed: number, errors: Array<{ __typename?: 'DataHubHookExecutionFailure', action: string, type: string, error: string }> } };
 
 export type DataHubEventsApiQueryVariables = Exact<{
   limit?: InputMaybe<Scalars['Int']['input']>;
@@ -10068,6 +10239,28 @@ export type DataHubRecentLogsApiQueryVariables = Exact<{
 
 export type DataHubRecentLogsApiQuery = { __typename?: 'Query', dataHubRecentLogs: Array<{ __typename?: 'DataHubLog', id: string | number, createdAt: string, level: DataHubLogLevel, message: string, stepKey?: string | null, pipelineId?: string | number | null, runId?: string | number | null, durationMs?: number | null, recordsProcessed?: number | null, recordsFailed?: number | null, pipeline?: { __typename?: 'DataHubPipeline', id: string | number, code: string, name: string } | null }> };
 
+export type DataHubPipelineRevisionDiffApiQueryVariables = Exact<{
+  fromRevisionId: Scalars['ID']['input'];
+  toRevisionId: Scalars['ID']['input'];
+}>;
+
+
+export type DataHubPipelineRevisionDiffApiQuery = { __typename?: 'Query', dataHubRevisionDiff: { __typename?: 'DataHubRevisionDiff', fromVersion: number, toVersion: number, summary: string, unchangedCount: number, added: Array<{ __typename?: 'DataHubDiffEntry', path: string, label: string, type: DataHubDiffType, before?: Record<string, unknown> | null, after?: Record<string, unknown> | null }>, removed: Array<{ __typename?: 'DataHubDiffEntry', path: string, label: string, type: DataHubDiffType, before?: Record<string, unknown> | null, after?: Record<string, unknown> | null }>, modified: Array<{ __typename?: 'DataHubDiffEntry', path: string, label: string, type: DataHubDiffType, before?: Record<string, unknown> | null, after?: Record<string, unknown> | null }> } };
+
+export type RestoreDataHubPipelineDraftApiMutationVariables = Exact<{
+  revisionId: Scalars['ID']['input'];
+}>;
+
+
+export type RestoreDataHubPipelineDraftApiMutation = { __typename?: 'Mutation', dataHubRestoreDraft: { __typename?: 'DataHubPipeline', id: string | number, code: string, name: string, enabled: boolean, status: DataHubPipelineStatus, version: number, definition: Record<string, unknown> } };
+
+export type RevertDataHubPipelineRevisionApiMutationVariables = Exact<{
+  revisionId: Scalars['ID']['input'];
+}>;
+
+
+export type RevertDataHubPipelineRevisionApiMutation = { __typename?: 'Mutation', revertDataHubPipelineToRevision: { __typename?: 'DataHubPipeline', id: string | number, code: string, name: string, enabled: boolean, status: DataHubPipelineStatus, version: number, definition: Record<string, unknown> } };
+
 export type DataHubPipelineRunsApiQueryVariables = Exact<{
   pipelineId?: InputMaybe<Scalars['ID']['input']>;
   options?: InputMaybe<DataHubPipelineRunListOptions>;
@@ -10085,10 +10278,12 @@ export type DataHubPipelineRunDetailApiQuery = { __typename?: 'Query', dataHubPi
 
 export type DataHubRunErrorsApiQueryVariables = Exact<{
   runId: Scalars['ID']['input'];
+  first: Scalars['Int']['input'];
+  after?: InputMaybe<Scalars['String']['input']>;
 }>;
 
 
-export type DataHubRunErrorsApiQuery = { __typename?: 'Query', dataHubRunErrors: Array<{ __typename?: 'DataHubRecordError', id: string | number, stepKey: string, message: string, payload: Record<string, unknown>, stackTrace?: string | null }> };
+export type DataHubRunErrorsApiQuery = { __typename?: 'Query', dataHubRunErrors: { __typename?: 'DataHubRecordErrorPage', totalItems: number, hasNextPage: boolean, endCursor?: string | null, items: Array<{ __typename?: 'DataHubRecordError', id: string | number, stepKey: string, message: string, payload: Record<string, unknown>, stackTrace?: string | null }> } };
 
 export type CancelDataHubPipelineRunApiMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -10103,7 +10298,7 @@ export type RetryDataHubRecordApiMutationVariables = Exact<{
 }>;
 
 
-export type RetryDataHubRecordApiMutation = { __typename?: 'Mutation', retryDataHubRecord: boolean };
+export type RetryDataHubRecordApiMutation = { __typename?: 'Mutation', retryDataHubRecord: { __typename?: 'DataHubRecordRetryResult', success: boolean, outcome: DataHubRecordRetryOutcome, message: string, errorId: string | number, runId?: string | number | null, stepKey?: string | null, adapterCode?: string | null, definitionVersion?: number | null, appliedPatch: Record<string, unknown>, rejectedPatchKeys: Array<string>, processed: number, succeeded: number, failed: number, auditId?: string | number | null, auditRecorded: boolean } };
 
 export type ApproveDataHubGateApiMutationVariables = Exact<{
   runId: Scalars['ID']['input'];
@@ -10123,6 +10318,7 @@ export type RejectDataHubGateApiMutation = { __typename?: 'Mutation', rejectData
 
 export type DataHubRecordRetryAuditsApiQueryVariables = Exact<{
   errorId: Scalars['ID']['input'];
+  limit: Scalars['Int']['input'];
 }>;
 
 
@@ -10133,7 +10329,7 @@ export type DataHubPipelinesForListQueryVariables = Exact<{
 }>;
 
 
-export type DataHubPipelinesForListQuery = { __typename?: 'Query', dataHubPipelines: { __typename?: 'DataHubPipelineList', totalItems: number, items: Array<{ __typename?: 'DataHubPipeline', id: string | number, code: string, name: string, enabled: boolean, status: DataHubPipelineStatus, updatedAt: string }> } };
+export type DataHubPipelinesForListQuery = { __typename?: 'Query', dataHubPipelines: { __typename?: 'DataHubPipelineList', totalItems: number, items: Array<{ __typename?: 'DataHubPipeline', id: string | number, code: string, name: string, enabled: boolean, status: DataHubPipelineStatus, version: number, createdAt: string, updatedAt: string }> } };
 
 export type DataHubPipelineDetailQueryVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -10228,15 +10424,25 @@ export type ArchiveDataHubPipelineApiMutationVariables = Exact<{
 
 export type ArchiveDataHubPipelineApiMutation = { __typename?: 'Mutation', archiveDataHubPipeline: { __typename?: 'DataHubPipeline', id: string | number, status: DataHubPipelineStatus } };
 
+export type ReactivateDataHubPipelineApiMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type ReactivateDataHubPipelineApiMutation = { __typename?: 'Mutation', reactivateDataHubPipeline: { __typename?: 'DataHubPipeline', id: string | number, status: DataHubPipelineStatus, enabled: boolean } };
+
 export type DataHubQueueStatsApiQueryVariables = Exact<{ [key: string]: never; }>;
 
 
 export type DataHubQueueStatsApiQuery = { __typename?: 'Query', dataHubQueueStats: { __typename?: 'DataHubQueueStats', pending: number, running: number, failed: number, completedToday: number, byPipeline: Array<{ __typename?: 'DataHubQueueByPipeline', code: string, pending: number, running: number }>, recentFailed: Array<{ __typename?: 'DataHubRecentFailedRun', id: string | number, code: string, finishedAt?: string | null, error?: string | null }> } };
 
-export type DataHubDeadLettersApiQueryVariables = Exact<{ [key: string]: never; }>;
+export type DataHubDeadLettersApiQueryVariables = Exact<{
+  first: Scalars['Int']['input'];
+  after?: InputMaybe<Scalars['String']['input']>;
+}>;
 
 
-export type DataHubDeadLettersApiQuery = { __typename?: 'Query', dataHubDeadLetters: Array<{ __typename?: 'DataHubRecordError', id: string | number, stepKey: string, message: string, payload: Record<string, unknown>, stackTrace?: string | null }> };
+export type DataHubDeadLettersApiQuery = { __typename?: 'Query', dataHubDeadLetters: { __typename?: 'DataHubRecordErrorPage', totalItems: number, hasNextPage: boolean, endCursor?: string | null, items: Array<{ __typename?: 'DataHubRecordError', id: string | number, stepKey: string, message: string, payload: Record<string, unknown>, stackTrace?: string | null }> } };
 
 export type DataHubConsumersApiQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -10270,14 +10476,19 @@ export type DataHubSecretsForListQueryVariables = Exact<{
 }>;
 
 
-export type DataHubSecretsForListQuery = { __typename?: 'Query', dataHubSecrets: { __typename?: 'DataHubSecretList', totalItems: number, items: Array<{ __typename?: 'DataHubSecret', id: string | number, code: string, provider: string }> } };
+export type DataHubSecretsForListQuery = { __typename?: 'Query', dataHubSecrets: { __typename?: 'DataHubSecretList', totalItems: number, items: Array<{ __typename?: 'DataHubSecret', id: string | number, code: string, provider: string, valueStatus: string, isOverridden: boolean }> } };
 
 export type DataHubSecretDetailApiQueryVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type DataHubSecretDetailApiQuery = { __typename?: 'Query', dataHubSecret?: { __typename?: 'DataHubSecret', id: string | number, code: string, provider: string, value?: string | null, metadata?: Record<string, unknown> | null } | null };
+export type DataHubSecretDetailApiQuery = { __typename?: 'Query', dataHubSecret?: { __typename?: 'DataHubSecret', id: string | number, code: string, provider: string, hasValue: boolean, valueStatus: string, isOverridden: boolean, metadata?: Record<string, unknown> | null } | null };
+
+export type DataHubSecretSecurityApiQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type DataHubSecretSecurityApiQuery = { __typename?: 'Query', dataHubSecretSecurity: { __typename?: 'DataHubSecretSecurity', mode: string, inlineStorageAvailable: boolean, codeFirstInlineAllowed: boolean } };
 
 export type CreateDataHubSecretApiMutationVariables = Exact<{
   input: CreateDataHubSecretInput;
@@ -10322,7 +10533,7 @@ export type PreviewDataHubExtractApiMutation = { __typename?: 'Mutation', previe
 
 export type SimulateDataHubTransformApiMutationVariables = Exact<{
   step: Scalars['JSON']['input'];
-  records: Scalars['JSON']['input'];
+  records: Array<Scalars['JSON']['input']> | Scalars['JSON']['input'];
 }>;
 
 
@@ -10330,7 +10541,7 @@ export type SimulateDataHubTransformApiMutation = { __typename?: 'Mutation', sim
 
 export type SimulateDataHubLoadApiMutationVariables = Exact<{
   step: Scalars['JSON']['input'];
-  records: Scalars['JSON']['input'];
+  records: Array<Scalars['JSON']['input']> | Scalars['JSON']['input'];
 }>;
 
 
@@ -10338,45 +10549,52 @@ export type SimulateDataHubLoadApiMutation = { __typename?: 'Mutation', simulate
 
 export type SimulateDataHubValidateApiMutationVariables = Exact<{
   step: Scalars['JSON']['input'];
-  records: Scalars['JSON']['input'];
+  records: Array<Scalars['JSON']['input']> | Scalars['JSON']['input'];
 }>;
 
 
 export type SimulateDataHubValidateApiMutation = { __typename?: 'Mutation', simulateDataHubValidate: { __typename?: 'DataHubValidateResult', records: Array<Record<string, unknown>>, summary: { __typename?: 'DataHubValidationSummary', input: number, passed: number, failed: number, passRate: number } } };
 
-export type PreviewDataHubFeedApiMutationVariables = Exact<{
-  feedCode: Scalars['String']['input'];
-  limit?: InputMaybe<Scalars['Int']['input']>;
-}>;
-
-
-export type PreviewDataHubFeedApiMutation = { __typename?: 'Mutation', previewDataHubFeed: { __typename?: 'DataHubFeedPreview', content: string, contentType: string, itemCount: number } };
-
 
 export const DataHubAdaptersApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubAdaptersApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubAdapters"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"category"}},{"kind":"Field","name":{"kind":"Name","value":"categoryLabel"}},{"kind":"Field","name":{"kind":"Name","value":"categoryOrder"}},{"kind":"Field","name":{"kind":"Name","value":"schema"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}},{"kind":"Field","name":{"kind":"Name","value":"group"}},{"kind":"Field","name":{"kind":"Name","value":"dependsOn"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"field"}},{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"operator"}}]}},{"kind":"Field","name":{"kind":"Name","value":"validation"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"min"}},{"kind":"Field","name":{"kind":"Name","value":"max"}},{"kind":"Field","name":{"kind":"Name","value":"minLength"}},{"kind":"Field","name":{"kind":"Name","value":"maxLength"}},{"kind":"Field","name":{"kind":"Name","value":"pattern"}},{"kind":"Field","name":{"kind":"Name","value":"patternMessage"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"groups"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"color"}},{"kind":"Field","name":{"kind":"Name","value":"pure"}},{"kind":"Field","name":{"kind":"Name","value":"async"}},{"kind":"Field","name":{"kind":"Name","value":"batchable"}},{"kind":"Field","name":{"kind":"Name","value":"requires"}},{"kind":"Field","name":{"kind":"Name","value":"entityType"}},{"kind":"Field","name":{"kind":"Name","value":"formatType"}},{"kind":"Field","name":{"kind":"Name","value":"patchableFields"}},{"kind":"Field","name":{"kind":"Name","value":"editorType"}},{"kind":"Field","name":{"kind":"Name","value":"summaryTemplate"}},{"kind":"Field","name":{"kind":"Name","value":"wizardHidden"}},{"kind":"Field","name":{"kind":"Name","value":"builtIn"}}]}}]}}]} as unknown as DocumentNode<DataHubAdaptersApiQuery, DataHubAdaptersApiQueryVariables>;
-export const DataHubConfigOptionsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubConfigOptionsApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubConfigOptions"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"stepTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"color"}},{"kind":"Field","name":{"kind":"Name","value":"bgColor"}},{"kind":"Field","name":{"kind":"Name","value":"borderColor"}},{"kind":"Field","name":{"kind":"Name","value":"inputs"}},{"kind":"Field","name":{"kind":"Name","value":"outputs"}},{"kind":"Field","name":{"kind":"Name","value":"category"}},{"kind":"Field","name":{"kind":"Name","value":"adapterType"}},{"kind":"Field","name":{"kind":"Name","value":"nodeType"}}]}},{"kind":"Field","name":{"kind":"Name","value":"loadStrategies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"conflictStrategies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"triggerTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}},{"kind":"Field","name":{"kind":"Name","value":"optionsRef"}}]}},{"kind":"Field","name":{"kind":"Name","value":"defaultValues"}},{"kind":"Field","name":{"kind":"Name","value":"configKeyMap"}},{"kind":"Field","name":{"kind":"Name","value":"wizardScopes"}}]}},{"kind":"Field","name":{"kind":"Name","value":"fileEncodings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"csvDelimiters"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"compressionTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"httpMethods"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"authTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"destinationTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"fileFormats"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}}]}},{"kind":"Field","name":{"kind":"Name","value":"cleanupStrategies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"newRecordStrategies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"validationModes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"queueTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"vendureEvents"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"category"}}]}},{"kind":"Field","name":{"kind":"Name","value":"comparisonOperators"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"valueType"}},{"kind":"Field","name":{"kind":"Name","value":"noValue"}},{"kind":"Field","name":{"kind":"Name","value":"example"}}]}},{"kind":"Field","name":{"kind":"Name","value":"approvalTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"defaultValues"}}]}},{"kind":"Field","name":{"kind":"Name","value":"backoffStrategies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"enrichmentSourceTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"defaultValues"}}]}},{"kind":"Field","name":{"kind":"Name","value":"validationRuleTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"defaultValues"}}]}},{"kind":"Field","name":{"kind":"Name","value":"exportAdapterCodes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"adapterCode"}}]}},{"kind":"Field","name":{"kind":"Name","value":"feedAdapterCodes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"adapterCode"}}]}},{"kind":"Field","name":{"kind":"Name","value":"connectionSchemas"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"httpLike"}}]}},{"kind":"Field","name":{"kind":"Name","value":"destinationSchemas"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"configKey"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"fieldMapping"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"hookStages"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"category"}}]}},{"kind":"Field","name":{"kind":"Name","value":"hookStageCategories"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"color"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"gridClass"}},{"kind":"Field","name":{"kind":"Name","value":"order"}}]}},{"kind":"Field","name":{"kind":"Name","value":"logLevels"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"runModes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"checkpointStrategies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"parallelErrorPolicies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"logPersistenceLevels"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"adapterTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"runStatuses"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"fieldTransformTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"category"}}]}},{"kind":"Field","name":{"kind":"Name","value":"wizardStrategyMappings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"wizardValue"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"loadStrategy"}},{"kind":"Field","name":{"kind":"Name","value":"conflictStrategy"}}]}},{"kind":"Field","name":{"kind":"Name","value":"queryTypeOptions"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"cronPresets"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"ackModes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}}]}}]}}]} as unknown as DocumentNode<DataHubConfigOptionsApiQuery, DataHubConfigOptionsApiQueryVariables>;
+export const DataHubConfigOptionsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubConfigOptionsApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubConfigOptions"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"stepTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"color"}},{"kind":"Field","name":{"kind":"Name","value":"bgColor"}},{"kind":"Field","name":{"kind":"Name","value":"borderColor"}},{"kind":"Field","name":{"kind":"Name","value":"inputs"}},{"kind":"Field","name":{"kind":"Name","value":"outputs"}},{"kind":"Field","name":{"kind":"Name","value":"category"}},{"kind":"Field","name":{"kind":"Name","value":"adapterType"}},{"kind":"Field","name":{"kind":"Name","value":"nodeType"}}]}},{"kind":"Field","name":{"kind":"Name","value":"loadStrategies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"conflictStrategies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"triggerTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}},{"kind":"Field","name":{"kind":"Name","value":"optionsRef"}}]}},{"kind":"Field","name":{"kind":"Name","value":"defaultValues"}},{"kind":"Field","name":{"kind":"Name","value":"configKeyMap"}},{"kind":"Field","name":{"kind":"Name","value":"wizardScopes"}}]}},{"kind":"Field","name":{"kind":"Name","value":"fileEncodings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"csvDelimiters"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"httpMethods"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"authTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"destinationTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"fileFormats"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"extensions"}},{"kind":"Field","name":{"kind":"Name","value":"mimeTypes"}},{"kind":"Field","name":{"kind":"Name","value":"supportsPreview"}},{"kind":"Field","name":{"kind":"Name","value":"requiresClientParser"}},{"kind":"Field","name":{"kind":"Name","value":"parseable"}}]}},{"kind":"Field","name":{"kind":"Name","value":"validationModes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"queueTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"vendureEvents"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"category"}}]}},{"kind":"Field","name":{"kind":"Name","value":"comparisonOperators"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"valueType"}},{"kind":"Field","name":{"kind":"Name","value":"noValue"}},{"kind":"Field","name":{"kind":"Name","value":"example"}}]}},{"kind":"Field","name":{"kind":"Name","value":"approvalTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"defaultValues"}}]}},{"kind":"Field","name":{"kind":"Name","value":"backoffStrategies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"enrichmentSourceTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"defaultValues"}}]}},{"kind":"Field","name":{"kind":"Name","value":"validationRuleTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"defaultValues"}}]}},{"kind":"Field","name":{"kind":"Name","value":"exportAdapterCodes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"adapterCode"}}]}},{"kind":"Field","name":{"kind":"Name","value":"feedAdapterCodes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"adapterCode"}}]}},{"kind":"Field","name":{"kind":"Name","value":"connectionSchemas"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"httpLike"}}]}},{"kind":"Field","name":{"kind":"Name","value":"destinationSchemas"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"configKey"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"fieldMapping"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"placeholder"}},{"kind":"Field","name":{"kind":"Name","value":"defaultValue"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"options"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}}]}}]}}]}},{"kind":"Field","name":{"kind":"Name","value":"hookStages"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"category"}}]}},{"kind":"Field","name":{"kind":"Name","value":"hookStageCategories"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"color"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"gridClass"}},{"kind":"Field","name":{"kind":"Name","value":"order"}}]}},{"kind":"Field","name":{"kind":"Name","value":"logLevels"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"runModes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"checkpointStrategies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"parallelErrorPolicies"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"logPersistenceLevels"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"adapterTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"runStatuses"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"fieldTransformTypes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}},{"kind":"Field","name":{"kind":"Name","value":"category"}}]}},{"kind":"Field","name":{"kind":"Name","value":"wizardStrategyMappings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"wizardValue"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"loadStrategy"}},{"kind":"Field","name":{"kind":"Name","value":"conflictStrategy"}}]}},{"kind":"Field","name":{"kind":"Name","value":"queryTypeOptions"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"cronPresets"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}},{"kind":"Field","name":{"kind":"Name","value":"ackModes"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"icon"}}]}}]}}]}}]} as unknown as DocumentNode<DataHubConfigOptionsApiQuery, DataHubConfigOptionsApiQueryVariables>;
 export const DataHubConnectionsForListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubConnectionsForList"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"options"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubConnectionListOptions"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubConnections"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"options"},"value":{"kind":"Variable","name":{"kind":"Name","value":"options"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"type"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}}]}}]}}]} as unknown as DocumentNode<DataHubConnectionsForListQuery, DataHubConnectionsForListQueryVariables>;
 export const DataHubConnectionDetailApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubConnectionDetailApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubConnection"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"config"}}]}}]}}]} as unknown as DocumentNode<DataHubConnectionDetailApiQuery, DataHubConnectionDetailApiQueryVariables>;
 export const CreateDataHubConnectionApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateDataHubConnectionApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreateDataHubConnectionInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createDataHubConnection"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}}]}}]}}]} as unknown as DocumentNode<CreateDataHubConnectionApiMutation, CreateDataHubConnectionApiMutationVariables>;
 export const UpdateDataHubConnectionApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateDataHubConnectionApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UpdateDataHubConnectionInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateDataHubConnection"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}}]}}]}}]} as unknown as DocumentNode<UpdateDataHubConnectionApiMutation, UpdateDataHubConnectionApiMutationVariables>;
 export const DeleteDataHubConnectionApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeleteDataHubConnectionApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deleteDataHubConnection"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"result"}}]}}]}}]} as unknown as DocumentNode<DeleteDataHubConnectionApiMutation, DeleteDataHubConnectionApiMutationVariables>;
-export const DataHubEntityFieldSchemasApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubEntityFieldSchemasApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubLoaderEntitySchemas"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"entityType"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"readonly"}},{"kind":"Field","name":{"kind":"Name","value":"lookupable"}}]}}]}}]}}]} as unknown as DocumentNode<DataHubEntityFieldSchemasApiQuery, DataHubEntityFieldSchemasApiQueryVariables>;
+export const DataHubManagedExportDestinationsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubManagedExportDestinationsApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubExportDestinations"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"enabled"}}]}}]}}]} as unknown as DocumentNode<DataHubManagedExportDestinationsApiQuery, DataHubManagedExportDestinationsApiQueryVariables>;
+export const RegisterDataHubExportDestinationApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RegisterDataHubExportDestinationApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubExportDestinationInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubRegisterExportDestination"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"id"}}]}}]}}]} as unknown as DocumentNode<RegisterDataHubExportDestinationApiMutation, RegisterDataHubExportDestinationApiMutationVariables>;
+export const DeleteDataHubExportDestinationApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeleteDataHubExportDestinationApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubDeleteExportDestination"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"result"}},{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]} as unknown as DocumentNode<DeleteDataHubExportDestinationApiMutation, DeleteDataHubExportDestinationApiMutationVariables>;
+export const TestDataHubExportDestinationApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"TestDataHubExportDestinationApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubTestExportDestination"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"latencyMs"}}]}}]}}]} as unknown as DocumentNode<TestDataHubExportDestinationApiMutation, TestDataHubExportDestinationApiMutationVariables>;
+export const DataHubEntityFieldSchemasApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubEntityFieldSchemasApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubLoaderEntitySchemas"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"entityType"}},{"kind":"Field","name":{"kind":"Name","value":"fields"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"readonly"}},{"kind":"Field","name":{"kind":"Name","value":"lookupable"}},{"kind":"Field","name":{"kind":"Name","value":"translatable"}},{"kind":"Field","name":{"kind":"Name","value":"relatedEntity"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"example"}},{"kind":"Field","name":{"kind":"Name","value":"validation"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"minLength"}},{"kind":"Field","name":{"kind":"Name","value":"maxLength"}},{"kind":"Field","name":{"kind":"Name","value":"min"}},{"kind":"Field","name":{"kind":"Name","value":"max"}},{"kind":"Field","name":{"kind":"Name","value":"pattern"}},{"kind":"Field","name":{"kind":"Name","value":"enum"}}]}},{"kind":"Field","name":{"kind":"Name","value":"children"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"required"}},{"kind":"Field","name":{"kind":"Name","value":"readonly"}},{"kind":"Field","name":{"kind":"Name","value":"lookupable"}},{"kind":"Field","name":{"kind":"Name","value":"translatable"}},{"kind":"Field","name":{"kind":"Name","value":"relatedEntity"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"example"}}]}}]}}]}}]}}]} as unknown as DocumentNode<DataHubEntityFieldSchemasApiQuery, DataHubEntityFieldSchemasApiQueryVariables>;
 export const DataHubSupportedEntitiesApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSupportedEntitiesApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSupportedEntities"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"supportedOperations"}},{"kind":"Field","name":{"kind":"Name","value":"adapterCode"}}]}}]}}]} as unknown as DocumentNode<DataHubSupportedEntitiesApiQuery, DataHubSupportedEntitiesApiQueryVariables>;
+export const DataHubFeedsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubFeedsApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubFeeds"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"format"}},{"kind":"Field","name":{"kind":"Name","value":"schedule"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"enabled"}},{"kind":"Field","name":{"kind":"Name","value":"cron"}},{"kind":"Field","name":{"kind":"Name","value":"timezone"}}]}},{"kind":"Field","name":{"kind":"Name","value":"lastGeneratedAt"}},{"kind":"Field","name":{"kind":"Name","value":"lastItemCount"}},{"kind":"Field","name":{"kind":"Name","value":"downloadUrl"}}]}}]}}]} as unknown as DocumentNode<DataHubFeedsApiQuery, DataHubFeedsApiQueryVariables>;
+export const DataHubFeedDetailApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubFeedDetailApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubFeed"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"format"}},{"kind":"Field","name":{"kind":"Name","value":"channelToken"}},{"kind":"Field","name":{"kind":"Name","value":"customGeneratorCode"}},{"kind":"Field","name":{"kind":"Name","value":"filters"}},{"kind":"Field","name":{"kind":"Name","value":"fieldMappings"}},{"kind":"Field","name":{"kind":"Name","value":"options"}},{"kind":"Field","name":{"kind":"Name","value":"schedule"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"enabled"}},{"kind":"Field","name":{"kind":"Name","value":"cron"}},{"kind":"Field","name":{"kind":"Name","value":"timezone"}}]}},{"kind":"Field","name":{"kind":"Name","value":"lastGeneratedAt"}},{"kind":"Field","name":{"kind":"Name","value":"lastItemCount"}},{"kind":"Field","name":{"kind":"Name","value":"downloadUrl"}}]}}]}}]} as unknown as DocumentNode<DataHubFeedDetailApiQuery, DataHubFeedDetailApiQueryVariables>;
+export const DataHubFeedFormatsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubFeedFormatsApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubFeedFormats"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"description"}}]}}]}}]} as unknown as DocumentNode<DataHubFeedFormatsApiQuery, DataHubFeedFormatsApiQueryVariables>;
+export const CreateDataHubFeedApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateDataHubFeedApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubFeedInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createDataHubFeed"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}}]}}]} as unknown as DocumentNode<CreateDataHubFeedApiMutation, CreateDataHubFeedApiMutationVariables>;
+export const UpdateDataHubFeedApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateDataHubFeedApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubFeedInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateDataHubFeed"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}},{"kind":"Field","name":{"kind":"Name","value":"downloadUrl"}}]}}]}}]} as unknown as DocumentNode<UpdateDataHubFeedApiMutation, UpdateDataHubFeedApiMutationVariables>;
+export const DeleteDataHubFeedApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeleteDataHubFeedApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deleteDataHubFeed"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"result"}},{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]} as unknown as DocumentNode<DeleteDataHubFeedApiMutation, DeleteDataHubFeedApiMutationVariables>;
+export const GenerateDataHubFeedApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"GenerateDataHubFeedApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"feedCode"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"generateDataHubFeed"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"feedCode"},"value":{"kind":"Variable","name":{"kind":"Name","value":"feedCode"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"itemCount"}},{"kind":"Field","name":{"kind":"Name","value":"generatedAt"}},{"kind":"Field","name":{"kind":"Name","value":"downloadUrl"}},{"kind":"Field","name":{"kind":"Name","value":"errors"}},{"kind":"Field","name":{"kind":"Name","value":"warnings"}}]}}]}}]} as unknown as DocumentNode<GenerateDataHubFeedApiMutation, GenerateDataHubFeedApiMutationVariables>;
+export const PreviewDataHubFeedApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"PreviewDataHubFeedApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"feedCode"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"previewDataHubFeed"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"feedCode"},"value":{"kind":"Variable","name":{"kind":"Name","value":"feedCode"}}},{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"content"}},{"kind":"Field","name":{"kind":"Name","value":"contentType"}},{"kind":"Field","name":{"kind":"Name","value":"itemCount"}}]}}]}}]} as unknown as DocumentNode<PreviewDataHubFeedApiMutation, PreviewDataHubFeedApiMutationVariables>;
 export const DataHubPipelineHooksApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubPipelineHooksApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubPipelineHooks"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}}}]}]}}]} as unknown as DocumentNode<DataHubPipelineHooksApiQuery, DataHubPipelineHooksApiQueryVariables>;
-export const RunDataHubHookTestApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RunDataHubHookTestApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"stage"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"payload"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"runDataHubHookTest"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}}},{"kind":"Argument","name":{"kind":"Name","value":"stage"},"value":{"kind":"Variable","name":{"kind":"Name","value":"stage"}}},{"kind":"Argument","name":{"kind":"Name","value":"payload"},"value":{"kind":"Variable","name":{"kind":"Name","value":"payload"}}}]}]}}]} as unknown as DocumentNode<RunDataHubHookTestApiMutation, RunDataHubHookTestApiMutationVariables>;
+export const RunDataHubHookTestApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RunDataHubHookTestApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"stage"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"payload"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"runDataHubHookTest"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}}},{"kind":"Argument","name":{"kind":"Name","value":"stage"},"value":{"kind":"Variable","name":{"kind":"Name","value":"stage"}}},{"kind":"Argument","name":{"kind":"Name","value":"payload"},"value":{"kind":"Variable","name":{"kind":"Name","value":"payload"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"configured"}},{"kind":"Field","name":{"kind":"Name","value":"executed"}},{"kind":"Field","name":{"kind":"Name","value":"skipped"}},{"kind":"Field","name":{"kind":"Name","value":"failed"}},{"kind":"Field","name":{"kind":"Name","value":"errors"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"action"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"error"}}]}}]}}]}}]} as unknown as DocumentNode<RunDataHubHookTestApiMutation, RunDataHubHookTestApiMutationVariables>;
 export const DataHubEventsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubEventsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubEvents"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"payload"}}]}}]}}]} as unknown as DocumentNode<DataHubEventsApiQuery, DataHubEventsApiQueryVariables>;
 export const DataHubLogsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubLogsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"options"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubLogListOptions"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubLogs"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"options"},"value":{"kind":"Variable","name":{"kind":"Name","value":"options"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"level"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"stepKey"}},{"kind":"Field","name":{"kind":"Name","value":"context"}},{"kind":"Field","name":{"kind":"Name","value":"metadata"}},{"kind":"Field","name":{"kind":"Name","value":"pipelineId"}},{"kind":"Field","name":{"kind":"Name","value":"pipeline"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}},{"kind":"Field","name":{"kind":"Name","value":"runId"}},{"kind":"Field","name":{"kind":"Name","value":"durationMs"}},{"kind":"Field","name":{"kind":"Name","value":"recordsProcessed"}},{"kind":"Field","name":{"kind":"Name","value":"recordsFailed"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}}]}}]}}]} as unknown as DocumentNode<DataHubLogsApiQuery, DataHubLogsApiQueryVariables>;
 export const DataHubLogStatsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubLogStatsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubLogStats"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"total"}},{"kind":"Field","name":{"kind":"Name","value":"byLevel"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"DEBUG"}},{"kind":"Field","name":{"kind":"Name","value":"INFO"}},{"kind":"Field","name":{"kind":"Name","value":"WARN"}},{"kind":"Field","name":{"kind":"Name","value":"ERROR"}}]}},{"kind":"Field","name":{"kind":"Name","value":"errorsToday"}},{"kind":"Field","name":{"kind":"Name","value":"warningsToday"}},{"kind":"Field","name":{"kind":"Name","value":"avgDurationMs"}}]}}]}}]} as unknown as DocumentNode<DataHubLogStatsApiQuery, DataHubLogStatsApiQueryVariables>;
 export const DataHubRecentLogsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubRecentLogsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubRecentLogs"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"level"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"stepKey"}},{"kind":"Field","name":{"kind":"Name","value":"pipelineId"}},{"kind":"Field","name":{"kind":"Name","value":"pipeline"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}},{"kind":"Field","name":{"kind":"Name","value":"runId"}},{"kind":"Field","name":{"kind":"Name","value":"durationMs"}},{"kind":"Field","name":{"kind":"Name","value":"recordsProcessed"}},{"kind":"Field","name":{"kind":"Name","value":"recordsFailed"}}]}}]}}]} as unknown as DocumentNode<DataHubRecentLogsApiQuery, DataHubRecentLogsApiQueryVariables>;
+export const DataHubPipelineRevisionDiffApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubPipelineRevisionDiffApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"fromRevisionId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"toRevisionId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubRevisionDiff"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"fromRevisionId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"fromRevisionId"}}},{"kind":"Argument","name":{"kind":"Name","value":"toRevisionId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"toRevisionId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"fromVersion"}},{"kind":"Field","name":{"kind":"Name","value":"toVersion"}},{"kind":"Field","name":{"kind":"Name","value":"summary"}},{"kind":"Field","name":{"kind":"Name","value":"unchangedCount"}},{"kind":"Field","name":{"kind":"Name","value":"added"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"path"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"before"}},{"kind":"Field","name":{"kind":"Name","value":"after"}}]}},{"kind":"Field","name":{"kind":"Name","value":"removed"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"path"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"before"}},{"kind":"Field","name":{"kind":"Name","value":"after"}}]}},{"kind":"Field","name":{"kind":"Name","value":"modified"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"path"}},{"kind":"Field","name":{"kind":"Name","value":"label"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"before"}},{"kind":"Field","name":{"kind":"Name","value":"after"}}]}}]}}]}}]} as unknown as DocumentNode<DataHubPipelineRevisionDiffApiQuery, DataHubPipelineRevisionDiffApiQueryVariables>;
+export const RestoreDataHubPipelineDraftApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RestoreDataHubPipelineDraftApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"revisionId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubRestoreDraft"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"revisionId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"revisionId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"enabled"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"version"}},{"kind":"Field","name":{"kind":"Name","value":"definition"}}]}}]}}]} as unknown as DocumentNode<RestoreDataHubPipelineDraftApiMutation, RestoreDataHubPipelineDraftApiMutationVariables>;
+export const RevertDataHubPipelineRevisionApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RevertDataHubPipelineRevisionApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"revisionId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"revertDataHubPipelineToRevision"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"revisionId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"revisionId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"enabled"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"version"}},{"kind":"Field","name":{"kind":"Name","value":"definition"}}]}}]}}]} as unknown as DocumentNode<RevertDataHubPipelineRevisionApiMutation, RevertDataHubPipelineRevisionApiMutationVariables>;
 export const DataHubPipelineRunsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubPipelineRunsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"options"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubPipelineRunListOptions"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubPipelineRuns"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineId"}}},{"kind":"Argument","name":{"kind":"Name","value":"options"},"value":{"kind":"Variable","name":{"kind":"Name","value":"options"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"startedAt"}},{"kind":"Field","name":{"kind":"Name","value":"finishedAt"}},{"kind":"Field","name":{"kind":"Name","value":"metrics"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}}]}}]}}]} as unknown as DocumentNode<DataHubPipelineRunsApiQuery, DataHubPipelineRunsApiQueryVariables>;
 export const DataHubPipelineRunDetailApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubPipelineRunDetailApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubPipelineRun"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"startedAt"}},{"kind":"Field","name":{"kind":"Name","value":"finishedAt"}},{"kind":"Field","name":{"kind":"Name","value":"metrics"}},{"kind":"Field","name":{"kind":"Name","value":"error"}},{"kind":"Field","name":{"kind":"Name","value":"startedByUserId"}},{"kind":"Field","name":{"kind":"Name","value":"pipeline"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}}]}}]}}]} as unknown as DocumentNode<DataHubPipelineRunDetailApiQuery, DataHubPipelineRunDetailApiQueryVariables>;
-export const DataHubRunErrorsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubRunErrorsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"runId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubRunErrors"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"runId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"runId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"stepKey"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"payload"}},{"kind":"Field","name":{"kind":"Name","value":"stackTrace"}}]}}]}}]} as unknown as DocumentNode<DataHubRunErrorsApiQuery, DataHubRunErrorsApiQueryVariables>;
+export const DataHubRunErrorsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubRunErrorsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"runId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"first"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"after"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubRunErrors"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"runId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"runId"}}},{"kind":"Argument","name":{"kind":"Name","value":"first"},"value":{"kind":"Variable","name":{"kind":"Name","value":"first"}}},{"kind":"Argument","name":{"kind":"Name","value":"after"},"value":{"kind":"Variable","name":{"kind":"Name","value":"after"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"stepKey"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"payload"}},{"kind":"Field","name":{"kind":"Name","value":"stackTrace"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}},{"kind":"Field","name":{"kind":"Name","value":"hasNextPage"}},{"kind":"Field","name":{"kind":"Name","value":"endCursor"}}]}}]}}]} as unknown as DocumentNode<DataHubRunErrorsApiQuery, DataHubRunErrorsApiQueryVariables>;
 export const CancelDataHubPipelineRunApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CancelDataHubPipelineRunApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"cancelDataHubPipelineRun"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<CancelDataHubPipelineRunApiMutation, CancelDataHubPipelineRunApiMutationVariables>;
-export const RetryDataHubRecordApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RetryDataHubRecordApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"errorId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"patch"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"retryDataHubRecord"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"errorId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"errorId"}}},{"kind":"Argument","name":{"kind":"Name","value":"patch"},"value":{"kind":"Variable","name":{"kind":"Name","value":"patch"}}}]}]}}]} as unknown as DocumentNode<RetryDataHubRecordApiMutation, RetryDataHubRecordApiMutationVariables>;
+export const RetryDataHubRecordApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RetryDataHubRecordApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"errorId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"patch"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"retryDataHubRecord"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"errorId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"errorId"}}},{"kind":"Argument","name":{"kind":"Name","value":"patch"},"value":{"kind":"Variable","name":{"kind":"Name","value":"patch"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"outcome"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"errorId"}},{"kind":"Field","name":{"kind":"Name","value":"runId"}},{"kind":"Field","name":{"kind":"Name","value":"stepKey"}},{"kind":"Field","name":{"kind":"Name","value":"adapterCode"}},{"kind":"Field","name":{"kind":"Name","value":"definitionVersion"}},{"kind":"Field","name":{"kind":"Name","value":"appliedPatch"}},{"kind":"Field","name":{"kind":"Name","value":"rejectedPatchKeys"}},{"kind":"Field","name":{"kind":"Name","value":"processed"}},{"kind":"Field","name":{"kind":"Name","value":"succeeded"}},{"kind":"Field","name":{"kind":"Name","value":"failed"}},{"kind":"Field","name":{"kind":"Name","value":"auditId"}},{"kind":"Field","name":{"kind":"Name","value":"auditRecorded"}}]}}]}}]} as unknown as DocumentNode<RetryDataHubRecordApiMutation, RetryDataHubRecordApiMutationVariables>;
 export const ApproveDataHubGateApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"ApproveDataHubGateApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"runId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"stepKey"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"approveDataHubGate"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"runId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"runId"}}},{"kind":"Argument","name":{"kind":"Name","value":"stepKey"},"value":{"kind":"Variable","name":{"kind":"Name","value":"stepKey"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"run"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]}}]} as unknown as DocumentNode<ApproveDataHubGateApiMutation, ApproveDataHubGateApiMutationVariables>;
 export const RejectDataHubGateApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RejectDataHubGateApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"runId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"stepKey"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"rejectDataHubGate"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"runId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"runId"}}},{"kind":"Argument","name":{"kind":"Name","value":"stepKey"},"value":{"kind":"Variable","name":{"kind":"Name","value":"stepKey"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"run"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]}}]} as unknown as DocumentNode<RejectDataHubGateApiMutation, RejectDataHubGateApiMutationVariables>;
-export const DataHubRecordRetryAuditsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubRecordRetryAuditsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"errorId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubRecordRetryAudits"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"errorId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"errorId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"userId"}},{"kind":"Field","name":{"kind":"Name","value":"previousPayload"}},{"kind":"Field","name":{"kind":"Name","value":"patch"}},{"kind":"Field","name":{"kind":"Name","value":"resultingPayload"}}]}}]}}]} as unknown as DocumentNode<DataHubRecordRetryAuditsApiQuery, DataHubRecordRetryAuditsApiQueryVariables>;
-export const DataHubPipelinesForListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubPipelinesForList"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"options"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubPipelineListOptions"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubPipelines"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"options"},"value":{"kind":"Variable","name":{"kind":"Name","value":"options"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"enabled"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}}]}}]}}]} as unknown as DocumentNode<DataHubPipelinesForListQuery, DataHubPipelinesForListQueryVariables>;
+export const DataHubRecordRetryAuditsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubRecordRetryAuditsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"errorId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubRecordRetryAudits"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"errorId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"errorId"}}},{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"userId"}},{"kind":"Field","name":{"kind":"Name","value":"previousPayload"}},{"kind":"Field","name":{"kind":"Name","value":"patch"}},{"kind":"Field","name":{"kind":"Name","value":"resultingPayload"}}]}}]}}]} as unknown as DocumentNode<DataHubRecordRetryAuditsApiQuery, DataHubRecordRetryAuditsApiQueryVariables>;
+export const DataHubPipelinesForListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubPipelinesForList"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"options"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubPipelineListOptions"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubPipelines"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"options"},"value":{"kind":"Variable","name":{"kind":"Name","value":"options"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"enabled"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"version"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}}]}}]}}]} as unknown as DocumentNode<DataHubPipelinesForListQuery, DataHubPipelinesForListQueryVariables>;
 export const DataHubPipelineDetailDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubPipelineDetail"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubPipeline"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"enabled"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"version"}},{"kind":"Field","name":{"kind":"Name","value":"publishedAt"}},{"kind":"Field","name":{"kind":"Name","value":"definition"}}]}}]}}]} as unknown as DocumentNode<DataHubPipelineDetailQuery, DataHubPipelineDetailQueryVariables>;
 export const CreateDataHubPipelineApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateDataHubPipelineApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreateDataHubPipelineInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createDataHubPipeline"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}}]}}]} as unknown as DocumentNode<CreateDataHubPipelineApiMutation, CreateDataHubPipelineApiMutationVariables>;
 export const UpdateDataHubPipelineApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateDataHubPipelineApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UpdateDataHubPipelineInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateDataHubPipeline"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"name"}}]}}]}}]} as unknown as DocumentNode<UpdateDataHubPipelineApiMutation, UpdateDataHubPipelineApiMutationVariables>;
@@ -10390,21 +10608,22 @@ export const ApproveDataHubPipelineApiDocument = {"kind":"Document","definitions
 export const RejectDataHubPipelineReviewApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"RejectDataHubPipelineReviewApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"rejectDataHubPipelineReview"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<RejectDataHubPipelineReviewApiMutation, RejectDataHubPipelineReviewApiMutationVariables>;
 export const PublishDataHubPipelineApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"PublishDataHubPipelineApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"publishDataHubPipeline"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"publishedAt"}}]}}]}}]} as unknown as DocumentNode<PublishDataHubPipelineApiMutation, PublishDataHubPipelineApiMutationVariables>;
 export const ArchiveDataHubPipelineApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"ArchiveDataHubPipelineApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"archiveDataHubPipeline"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}}]}}]}}]} as unknown as DocumentNode<ArchiveDataHubPipelineApiMutation, ArchiveDataHubPipelineApiMutationVariables>;
+export const ReactivateDataHubPipelineApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"ReactivateDataHubPipelineApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"reactivateDataHubPipeline"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"enabled"}}]}}]}}]} as unknown as DocumentNode<ReactivateDataHubPipelineApiMutation, ReactivateDataHubPipelineApiMutationVariables>;
 export const DataHubQueueStatsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubQueueStatsApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubQueueStats"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"pending"}},{"kind":"Field","name":{"kind":"Name","value":"running"}},{"kind":"Field","name":{"kind":"Name","value":"failed"}},{"kind":"Field","name":{"kind":"Name","value":"completedToday"}},{"kind":"Field","name":{"kind":"Name","value":"byPipeline"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"pending"}},{"kind":"Field","name":{"kind":"Name","value":"running"}}]}},{"kind":"Field","name":{"kind":"Name","value":"recentFailed"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"finishedAt"}},{"kind":"Field","name":{"kind":"Name","value":"error"}}]}}]}}]}}]} as unknown as DocumentNode<DataHubQueueStatsApiQuery, DataHubQueueStatsApiQueryVariables>;
-export const DataHubDeadLettersApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubDeadLettersApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubDeadLetters"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"stepKey"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"payload"}},{"kind":"Field","name":{"kind":"Name","value":"stackTrace"}}]}}]}}]} as unknown as DocumentNode<DataHubDeadLettersApiQuery, DataHubDeadLettersApiQueryVariables>;
+export const DataHubDeadLettersApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubDeadLettersApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"first"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"after"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubDeadLetters"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"first"},"value":{"kind":"Variable","name":{"kind":"Name","value":"first"}}},{"kind":"Argument","name":{"kind":"Name","value":"after"},"value":{"kind":"Variable","name":{"kind":"Name","value":"after"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"stepKey"}},{"kind":"Field","name":{"kind":"Name","value":"message"}},{"kind":"Field","name":{"kind":"Name","value":"payload"}},{"kind":"Field","name":{"kind":"Name","value":"stackTrace"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}},{"kind":"Field","name":{"kind":"Name","value":"hasNextPage"}},{"kind":"Field","name":{"kind":"Name","value":"endCursor"}}]}}]}}]} as unknown as DocumentNode<DataHubDeadLettersApiQuery, DataHubDeadLettersApiQueryVariables>;
 export const DataHubConsumersApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubConsumersApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubConsumers"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"pipelineCode"}},{"kind":"Field","name":{"kind":"Name","value":"queueName"}},{"kind":"Field","name":{"kind":"Name","value":"isActive"}},{"kind":"Field","name":{"kind":"Name","value":"messagesProcessed"}},{"kind":"Field","name":{"kind":"Name","value":"messagesFailed"}},{"kind":"Field","name":{"kind":"Name","value":"lastMessageAt"}}]}}]}}]} as unknown as DocumentNode<DataHubConsumersApiQuery, DataHubConsumersApiQueryVariables>;
 export const StartDataHubConsumerApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"StartDataHubConsumerApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"startDataHubConsumer"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineCode"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}}}]}]}}]} as unknown as DocumentNode<StartDataHubConsumerApiMutation, StartDataHubConsumerApiMutationVariables>;
 export const StopDataHubConsumerApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"StopDataHubConsumerApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"stopDataHubConsumer"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineCode"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}}}]}]}}]} as unknown as DocumentNode<StopDataHubConsumerApiMutation, StopDataHubConsumerApiMutationVariables>;
 export const MarkDataHubDeadLetterApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"MarkDataHubDeadLetterApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"deadLetter"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"Boolean"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"markDataHubDeadLetter"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"Argument","name":{"kind":"Name","value":"deadLetter"},"value":{"kind":"Variable","name":{"kind":"Name","value":"deadLetter"}}}]}]}}]} as unknown as DocumentNode<MarkDataHubDeadLetterApiMutation, MarkDataHubDeadLetterApiMutationVariables>;
-export const DataHubSecretsForListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSecretsForList"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"options"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubSecretListOptions"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSecrets"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"options"},"value":{"kind":"Variable","name":{"kind":"Name","value":"options"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"provider"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}}]}}]}}]} as unknown as DocumentNode<DataHubSecretsForListQuery, DataHubSecretsForListQueryVariables>;
-export const DataHubSecretDetailApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSecretDetailApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSecret"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"provider"}},{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"metadata"}}]}}]}}]} as unknown as DocumentNode<DataHubSecretDetailApiQuery, DataHubSecretDetailApiQueryVariables>;
+export const DataHubSecretsForListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSecretsForList"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"options"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubSecretListOptions"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSecrets"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"options"},"value":{"kind":"Variable","name":{"kind":"Name","value":"options"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"provider"}},{"kind":"Field","name":{"kind":"Name","value":"valueStatus"}},{"kind":"Field","name":{"kind":"Name","value":"isOverridden"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}}]}}]}}]} as unknown as DocumentNode<DataHubSecretsForListQuery, DataHubSecretsForListQueryVariables>;
+export const DataHubSecretDetailApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSecretDetailApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSecret"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"provider"}},{"kind":"Field","name":{"kind":"Name","value":"hasValue"}},{"kind":"Field","name":{"kind":"Name","value":"valueStatus"}},{"kind":"Field","name":{"kind":"Name","value":"isOverridden"}},{"kind":"Field","name":{"kind":"Name","value":"metadata"}}]}}]}}]} as unknown as DocumentNode<DataHubSecretDetailApiQuery, DataHubSecretDetailApiQueryVariables>;
+export const DataHubSecretSecurityApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSecretSecurityApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSecretSecurity"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"mode"}},{"kind":"Field","name":{"kind":"Name","value":"inlineStorageAvailable"}},{"kind":"Field","name":{"kind":"Name","value":"codeFirstInlineAllowed"}}]}}]}}]} as unknown as DocumentNode<DataHubSecretSecurityApiQuery, DataHubSecretSecurityApiQueryVariables>;
 export const CreateDataHubSecretApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateDataHubSecretApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreateDataHubSecretInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createDataHubSecret"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}}]}}]}}]} as unknown as DocumentNode<CreateDataHubSecretApiMutation, CreateDataHubSecretApiMutationVariables>;
 export const UpdateDataHubSecretApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateDataHubSecretApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UpdateDataHubSecretInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateDataHubSecret"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}}]}}]}}]} as unknown as DocumentNode<UpdateDataHubSecretApiMutation, UpdateDataHubSecretApiMutationVariables>;
 export const DeleteDataHubSecretApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeleteDataHubSecretApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deleteDataHubSecret"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"result"}}]}}]}}]} as unknown as DocumentNode<DeleteDataHubSecretApiMutation, DeleteDataHubSecretApiMutationVariables>;
 export const DataHubSettingsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSettingsApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSettings"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"retentionDaysRuns"}},{"kind":"Field","name":{"kind":"Name","value":"retentionDaysErrors"}},{"kind":"Field","name":{"kind":"Name","value":"retentionDaysLogs"}},{"kind":"Field","name":{"kind":"Name","value":"logPersistenceLevel"}}]}}]}}]} as unknown as DocumentNode<DataHubSettingsApiQuery, DataHubSettingsApiQueryVariables>;
 export const UpdateDataHubSettingsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateDataHubSettingsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubSettingsInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateDataHubSettings"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"retentionDaysRuns"}},{"kind":"Field","name":{"kind":"Name","value":"retentionDaysErrors"}},{"kind":"Field","name":{"kind":"Name","value":"retentionDaysLogs"}},{"kind":"Field","name":{"kind":"Name","value":"logPersistenceLevel"}}]}}]}}]} as unknown as DocumentNode<UpdateDataHubSettingsApiMutation, UpdateDataHubSettingsApiMutationVariables>;
 export const PreviewDataHubExtractApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"PreviewDataHubExtractApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"step"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"previewDataHubExtract"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"step"},"value":{"kind":"Variable","name":{"kind":"Name","value":"step"}}},{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"records"}}]}}]}}]} as unknown as DocumentNode<PreviewDataHubExtractApiMutation, PreviewDataHubExtractApiMutationVariables>;
-export const SimulateDataHubTransformApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SimulateDataHubTransformApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"step"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"records"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"simulateDataHubTransform"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"step"},"value":{"kind":"Variable","name":{"kind":"Name","value":"step"}}},{"kind":"Argument","name":{"kind":"Name","value":"records"},"value":{"kind":"Variable","name":{"kind":"Name","value":"records"}}}]}]}}]} as unknown as DocumentNode<SimulateDataHubTransformApiMutation, SimulateDataHubTransformApiMutationVariables>;
-export const SimulateDataHubLoadApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SimulateDataHubLoadApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"step"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"records"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"simulateDataHubLoad"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"step"},"value":{"kind":"Variable","name":{"kind":"Name","value":"step"}}},{"kind":"Argument","name":{"kind":"Name","value":"records"},"value":{"kind":"Variable","name":{"kind":"Name","value":"records"}}}]}]}}]} as unknown as DocumentNode<SimulateDataHubLoadApiMutation, SimulateDataHubLoadApiMutationVariables>;
-export const SimulateDataHubValidateApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SimulateDataHubValidateApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"step"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"records"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"simulateDataHubValidate"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"step"},"value":{"kind":"Variable","name":{"kind":"Name","value":"step"}}},{"kind":"Argument","name":{"kind":"Name","value":"records"},"value":{"kind":"Variable","name":{"kind":"Name","value":"records"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"records"}},{"kind":"Field","name":{"kind":"Name","value":"summary"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"input"}},{"kind":"Field","name":{"kind":"Name","value":"passed"}},{"kind":"Field","name":{"kind":"Name","value":"failed"}},{"kind":"Field","name":{"kind":"Name","value":"passRate"}}]}}]}}]}}]} as unknown as DocumentNode<SimulateDataHubValidateApiMutation, SimulateDataHubValidateApiMutationVariables>;
-export const PreviewDataHubFeedApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"PreviewDataHubFeedApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"feedCode"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"limit"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"Int"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"previewDataHubFeed"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"feedCode"},"value":{"kind":"Variable","name":{"kind":"Name","value":"feedCode"}}},{"kind":"Argument","name":{"kind":"Name","value":"limit"},"value":{"kind":"Variable","name":{"kind":"Name","value":"limit"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"content"}},{"kind":"Field","name":{"kind":"Name","value":"contentType"}},{"kind":"Field","name":{"kind":"Name","value":"itemCount"}}]}}]}}]} as unknown as DocumentNode<PreviewDataHubFeedApiMutation, PreviewDataHubFeedApiMutationVariables>;
+export const SimulateDataHubTransformApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SimulateDataHubTransformApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"step"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"records"}},"type":{"kind":"NonNullType","type":{"kind":"ListType","type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"simulateDataHubTransform"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"step"},"value":{"kind":"Variable","name":{"kind":"Name","value":"step"}}},{"kind":"Argument","name":{"kind":"Name","value":"records"},"value":{"kind":"Variable","name":{"kind":"Name","value":"records"}}}]}]}}]} as unknown as DocumentNode<SimulateDataHubTransformApiMutation, SimulateDataHubTransformApiMutationVariables>;
+export const SimulateDataHubLoadApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SimulateDataHubLoadApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"step"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"records"}},"type":{"kind":"NonNullType","type":{"kind":"ListType","type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"simulateDataHubLoad"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"step"},"value":{"kind":"Variable","name":{"kind":"Name","value":"step"}}},{"kind":"Argument","name":{"kind":"Name","value":"records"},"value":{"kind":"Variable","name":{"kind":"Name","value":"records"}}}]}]}}]} as unknown as DocumentNode<SimulateDataHubLoadApiMutation, SimulateDataHubLoadApiMutationVariables>;
+export const SimulateDataHubValidateApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SimulateDataHubValidateApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"step"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"records"}},"type":{"kind":"NonNullType","type":{"kind":"ListType","type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"simulateDataHubValidate"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"step"},"value":{"kind":"Variable","name":{"kind":"Name","value":"step"}}},{"kind":"Argument","name":{"kind":"Name","value":"records"},"value":{"kind":"Variable","name":{"kind":"Name","value":"records"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"records"}},{"kind":"Field","name":{"kind":"Name","value":"summary"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"input"}},{"kind":"Field","name":{"kind":"Name","value":"passed"}},{"kind":"Field","name":{"kind":"Name","value":"failed"}},{"kind":"Field","name":{"kind":"Name","value":"passRate"}}]}}]}}]}}]} as unknown as DocumentNode<SimulateDataHubValidateApiMutation, SimulateDataHubValidateApiMutationVariables>;

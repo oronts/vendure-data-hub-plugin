@@ -25,28 +25,29 @@ This guide covers using the Data Hub Admin UI to create and manage data pipeline
 
 1. Log in to the Vendure Admin UI
 2. Click **Data Hub** in the left navigation menu
-3. You'll see the main dashboard with pipeline overview
+3. Open **Pipelines** to create, edit, run, and inspect pipelines
 
 ## Dashboard Overview
 
-The Data Hub dashboard shows:
-
-- **Active Pipelines** - Pipelines currently enabled
-- **Recent Runs** - Latest pipeline executions
-- **Failed Records** - Records requiring attention
-- **Upcoming Schedules** - Next scheduled runs
+Data Hub does not currently have a separate overview or upcoming-schedules
+page. Operational information is distributed across pipeline details,
+**Queues**, and **Logs & Analytics**.
 
 ## Navigation
 
 | Section | Purpose |
 |---------|---------|
-| Pipelines | Create, edit, run pipelines |
-| Runs | View execution history and logs |
+| Pipelines | Create, edit, publish, run, and inspect per-pipeline run history |
 | Connections | Manage external system connections |
 | Secrets | Store sensitive credentials |
-| Errors | Review and retry failed records |
-| Analytics | View performance metrics |
+| Adapters | Inspect registered runtime capabilities and schemas |
+| Queues | View queue aggregates, dead letters, recent failures, and message consumers |
+| Hooks | Inspect hooks and the process-local recent-event buffer |
+| Logs & Analytics | Search persisted logs, view log statistics, and follow the polling log feed |
 | Settings | Configure plugin options |
+
+Record errors are available from run details and the Queues dead-letter tab;
+there is no standalone Errors route.
 
 ## Required Permissions
 
@@ -60,6 +61,8 @@ To use Data Hub, your admin role needs these permissions:
 | View run history | `ViewDataHubRuns` |
 | Manage connections | `ManageDataHubConnections` |
 | Manage secrets | `CreateDataHubSecret`, `ReadDataHubSecret` |
+| View/retry quarantined records unchanged | `ViewDataHubQuarantine`, `ReplayDataHubRecord` |
+| Retry quarantined records with a payload patch | `ViewDataHubQuarantine`, `ReplayDataHubRecord`, `EditDataHubQuarantine` |
 | Configure settings | `UpdateDataHubSettings` |
 
 Ask your administrator to assign these permissions if you don't have access.

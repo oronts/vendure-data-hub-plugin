@@ -60,6 +60,7 @@ interface StepExecutionInfo {
     recordsOut: number;
     succeeded: number;
     failed: number;
+    skipped?: number;
     durationMs: number;
     sampleRecord?: JsonObject;
     fieldMappings?: FieldMappingInfo[];
@@ -389,7 +390,8 @@ export class ExecutionLogger {
     ): Promise<void> {
         const throughput = calculateThroughput(info.recordsIn, info.durationMs);
 
-        const message = `Step "${info.stepKey}" (${info.stepType}) completed: ${info.recordsIn} in → ${info.recordsOut} out, ${info.succeeded} ok, ${info.failed} failed [${info.durationMs}ms, ${throughput} rec/s]`;
+        const skippedSummary = info.skipped ? `, ${info.skipped} skipped` : '';
+        const message = `Step "${info.stepKey}" (${info.stepType}) completed: ${info.recordsIn} in → ${info.recordsOut} out, ${info.succeeded} ok, ${info.failed} failed${skippedSummary} [${info.durationMs}ms, ${throughput} rec/s]`;
 
         // Always log to console with full details
         this.consoleLogger.info(message, {
@@ -400,6 +402,7 @@ export class ExecutionLogger {
             recordsOut: info.recordsOut,
             succeeded: info.succeeded,
             failed: info.failed,
+            skipped: info.skipped ?? 0,
             durationMs: info.durationMs,
             throughput,
         });
@@ -419,6 +422,7 @@ export class ExecutionLogger {
                     adapterCode: info.adapterCode ?? null,
                     recordsOut: info.recordsOut,
                     succeeded: info.succeeded,
+                    skipped: info.skipped ?? 0,
                     throughput,
                 },
                 metadata: level === LogPersistenceLevel.DEBUG ? {

@@ -1,18 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { Readable } from 'stream';
 import {
     RequestContext,
     AssetService,
     RequestContextService,
 } from '@vendure/core';
+import { createChannelRequestContext } from '../../helpers/channel-request-context';
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { assertUrlSafe } from '../../../utils/url-security.utils';
-import { HTTP } from '../../../../shared/constants';
-import { sleep } from '../../../utils/retry.utils';
-import { getMimeType, extractFilenameFromUrl } from '../../../loaders/asset/helpers';
+import { downloadAsset } from '../../../utils/asset-download.utils';
+import {
+    createReadStreamFromBuffer,
+    extractFilenameFromUrl,
+    getAssetMimeType,
+} from '../../../utils/asset-file.utils';
+import { sanitizeUrlForLogging } from '../../../utils/url-sanitize.utils';
 
 interface AssetImportConfig {
     channel?: string;
@@ -39,7 +42,7 @@ export class AssetImportHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0, fail = 0;
         const cfg = (step.config ?? {}) as AssetImportConfig;
 
@@ -57,8 +60,11 @@ export class AssetImportHandler implements LoaderHandler {
 
                 let opCtx = ctx;
                 if (cfg.channel) {
-                    const req = await this.requestContextService.create({ apiType: ctx.apiType, channelOrToken: cfg.channel });
-                    if (req) opCtx = req;
+                    opCtx = await createChannelRequestContext(
+                        this.requestContextService,
+                        ctx,
+                        cfg.channel,
+                    );
                 }
 
                 const existing = await this.findByName(opCtx, name);
@@ -67,18 +73,24 @@ export class AssetImportHandler implements LoaderHandler {
                     continue;
                 }
 
-                const fileData = await downloadFile(sourceUrl);
+                const fileData = await downloadAsset(sourceUrl, 'Asset import download');
                 if (!fileData) {
-                    if (onRecordError) await onRecordError(step.key, `Failed to download: ${sourceUrl}`, rec as JsonObject);
+                    if (onRecordError) {
+                        await onRecordError(
+                            step.key,
+                            `Failed to download: ${sanitizeUrlForLogging(sourceUrl)}`,
+                            rec as JsonObject,
+                        );
+                    }
                     fail++;
                     continue;
                 }
 
-                const mimeType = getMimeType(sourceUrl);
+                const mimeType = getAssetMimeType(sourceUrl);
                 const file = {
                     filename,
                     mimetype: mimeType,
-                    createReadStream: () => bufferToStream(fileData),
+                    createReadStream: () => createReadStreamFromBuffer(fileData),
                 };
 
                 const tags = cfg.tagsField && Array.isArray(record[cfg.tagsField])
@@ -99,7 +111,7 @@ export class AssetImportHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped: 0 };
     }
 
     private async findByName(ctx: RequestContext, name: string) {
@@ -109,33 +121,4 @@ export class AssetImportHandler implements LoaderHandler {
         });
         return result.items[0] ?? null;
     }
-}
-
-async function downloadFile(url: string): Promise<Buffer | null> {
-    await assertUrlSafe(url);
-    for (let attempt = 0; attempt <= HTTP.MAX_RETRIES; attempt++) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), HTTP.TIMEOUT_MS);
-
-            const response = await fetch(url, { signal: controller.signal });
-            clearTimeout(timeoutId);
-
-            if (!response.ok) return null;
-
-            const arrayBuffer = await response.arrayBuffer();
-            return Buffer.from(arrayBuffer);
-        } catch {
-            if (attempt === HTTP.MAX_RETRIES) return null;
-            await sleep(HTTP.RETRY_DELAY_MS * (attempt + 1));
-        }
-    }
-    return null;
-}
-
-function bufferToStream(buffer: Buffer): Readable {
-    const stream = new Readable();
-    stream.push(buffer);
-    stream.push(null);
-    return stream;
 }

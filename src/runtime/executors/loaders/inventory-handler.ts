@@ -10,12 +10,12 @@ import {
 } from '@vendure/core';
 import { StockLevelInput, UpdateProductVariantInput } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { findVariantBySku as findVariantBySkuLookup } from './shared-lookups';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
 
 /**
  * Configuration for the stock adjustment handler
@@ -64,7 +64,7 @@ export class StockAdjustHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0, fail = 0;
 
         // Parse and validate config
@@ -124,7 +124,7 @@ export class StockAdjustHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped: 0 };
     }
 
     private async findVariantBySku(ctx: RequestContext, sku: string): Promise<ProductVariant | undefined> {

@@ -6,7 +6,7 @@
 
 import { RequestContext } from '@vendure/core';
 import { PipelineDefinition, PipelineStepDefinition } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback } from '../../executor-types';
+import { LoaderExecutionResult, RecordObject, OnRecordErrorCallback } from '../../executor-types';
 import {
     StepStrategy,
     StepExecutionContext,
@@ -25,7 +25,7 @@ export type LoadWithThroughputFn = (
     batch: RecordObject[],
     definition: PipelineDefinition,
     onRecordError?: OnRecordErrorCallback,
-) => Promise<{ ok: number; fail: number }>;
+) => Promise<LoaderExecutionResult>;
 
 /**
  * Function type for applying idempotency filtering
@@ -50,23 +50,39 @@ export class LoadStepStrategy implements StepStrategy {
         const afterBeforeHook = await this.runBeforeHook(context, records);
 
         const batch = this.applyIdempotency(afterBeforeHook, definition);
+        const idempotencySkipped = afterBeforeHook.length - batch.length;
         await this.logLoadData(context, adapterCode, batch);
 
-        const { ok, fail } = await this.executeLoad(context, batch);
+        const loadResult = await this.executeLoad(context, batch);
+        const { ok, fail } = loadResult;
+        const skipped = loadResult.skipped + idempotencySkipped;
         const durationMs = Date.now() - t0;
 
         const afterAfterHook = await this.runAfterHook(context, afterBeforeHook);
 
-        await this.logStepComplete(context, adapterCode, batch.length, ok, fail, durationMs, batch[0]);
+        await this.logStepComplete(
+            context,
+            adapterCode,
+            afterBeforeHook.length,
+            ok,
+            fail,
+            skipped,
+            durationMs,
+            batch[0],
+        );
 
         return {
             records: afterAfterHook,
-            processed: 0,
+            processed: ok + fail + skipped,
             succeeded: ok,
             failed: fail,
-            detail: createStepDetail(step, { ok, fail }, durationMs),
-            counters: { loaded: ok, rejected: fail },
-            event: { type: DomainEventType.RECORD_LOADED, data: { stepKey: step.key, ok, fail } },
+            skipped,
+            detail: createStepDetail(step, { ok, fail, skipped, idempotencySkipped }, durationMs),
+            counters: { loaded: ok, rejected: fail, skipped, idempotencySkipped },
+            event: {
+                type: DomainEventType.RECORD_LOADED,
+                data: { stepKey: step.key, ok, fail, skipped },
+            },
         };
     }
 
@@ -90,7 +106,10 @@ export class LoadStepStrategy implements StepStrategy {
         }
     }
 
-    private async executeLoad(context: StepExecutionContext, batch: RecordObject[]): Promise<{ ok: number; fail: number }> {
+    private async executeLoad(
+        context: StepExecutionContext,
+        batch: RecordObject[],
+    ): Promise<LoaderExecutionResult> {
         const { ctx, definition, step, onRecordError } = context;
         return this.loadWithThroughput(ctx, step, batch, definition, onRecordError);
     }
@@ -107,6 +126,7 @@ export class LoadStepStrategy implements StepStrategy {
         batchSize: number,
         ok: number,
         fail: number,
+        skipped: number,
         durationMs: number,
         sampleInput?: RecordObject,
     ): Promise<void> {
@@ -120,6 +140,7 @@ export class LoadStepStrategy implements StepStrategy {
                 recordsOut: ok,
                 succeeded: ok,
                 failed: fail,
+                skipped,
                 durationMs,
                 sampleInput,
             });

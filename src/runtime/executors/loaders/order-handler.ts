@@ -14,14 +14,14 @@ import type { ID } from '@vendure/common/lib/shared-types';
 import type { AddNoteToOrderInput, FulfillOrderInput } from '@vendure/common/lib/generated-types';
 import type { OrderState, FulfillmentState } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getIdValue } from '../../../loaders/shared-helpers';
 import { findShippingMethodByCode } from '../../../loaders/order/helpers';
 import { STATE_RANK } from '../../../loaders/order/types';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
 
 // ============================================================================
 // Config Interfaces
@@ -110,7 +110,7 @@ export class OrderNoteHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0, fail = 0;
         const handlerConfig = getOrderNoteConfig(step.config);
         const orderIdField = handlerConfig.orderIdField ?? 'orderId';
@@ -149,7 +149,7 @@ export class OrderNoteHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped: 0 };
     }
 }
 
@@ -171,7 +171,7 @@ export class ApplyCouponHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0, fail = 0;
         const handlerConfig = getApplyCouponConfig(step.config);
         const orderIdField = handlerConfig.orderIdField ?? 'orderId';
@@ -201,7 +201,7 @@ export class ApplyCouponHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped: 0 };
     }
 
     async simulate(
@@ -250,7 +250,7 @@ export class OrderTransitionHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0, fail = 0;
         const handlerConfig = getOrderTransitionConfig(step.config);
         const orderIdField = handlerConfig.orderIdField ?? 'orderId';
@@ -293,7 +293,7 @@ export class OrderTransitionHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped: 0 };
     }
 
     /**

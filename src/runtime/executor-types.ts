@@ -1,4 +1,5 @@
 import { JsonObject, JsonValue, ErrorHandlingConfig, CheckpointingConfig, ExecutorContext as SharedExecutorContext } from '../types/index';
+import type { ID } from '@vendure/core';
 
 /**
  * Placeholder pipeline ID used when executing operators/adapters in sandbox mode
@@ -40,12 +41,15 @@ export interface CheckpointData {
  * provides the core checkpoint management contract (cpData, cpDirty, markCheckpointDirty).
  */
 export interface ExecutorContext extends SharedExecutorContext {
+    runId?: ID;
     /** Error handling configuration from pipeline context */
     errorHandling?: ErrorHandlingConfig;
     /** Checkpointing configuration from pipeline context */
     checkpointing?: CheckpointingConfig;
     /** Cancellation check callback - returns true when the run has been cancelled */
     onCancelRequested?: () => Promise<boolean>;
+    /** Maximum records materialized by preview and sandbox extraction */
+    recordLimit?: number;
 }
 
 /**
@@ -56,6 +60,13 @@ export interface ExecutionResult {
     fail: number;
     /** Optional error message when the entire execution fails */
     error?: string;
+}
+
+/**
+ * Result from record loaders, which distinguish intentional skips from writes.
+ */
+export interface LoaderExecutionResult extends ExecutionResult {
+    skipped: number;
 }
 
 /**

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CurrencyCode, LanguageCode } from '@vendure/common/lib/generated-types';
 import { ConfigService, RequestContext } from '@vendure/core';
 import { PipelineStepDefinition } from '../../../types';
-import { DataHubLoggerFactory } from '../../../services/logger';
+import { DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { VariantHandler } from './variant-handler';
 
 function createHandler(precision = 2) {
@@ -44,6 +44,7 @@ function createHandler(precision = 2) {
             channelService as never,
             {} as never,
             configService,
+            {} as never,
             loggerFactory,
         ),
         productVariantService,
@@ -85,7 +86,7 @@ describe('VariantHandler prices', () => {
             productSlug: 'product',
         }]);
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(productVariantService.create).toHaveBeenCalledWith(
             expect.anything(),
             [expect.objectContaining({ price: 1234 })],
@@ -106,7 +107,7 @@ describe('VariantHandler prices', () => {
             }],
         );
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(productVariantService.create).toHaveBeenCalledWith(
             expect.anything(),
             [expect.objectContaining({
@@ -142,7 +143,7 @@ describe('VariantHandler prices', () => {
             onRecordError,
         );
 
-        expect(result).toEqual({ ok: 0, fail: 1 });
+        expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
         expect(productVariantService.create).not.toHaveBeenCalled();
         expect(onRecordError).toHaveBeenCalledWith(
             'load-variants',
@@ -168,7 +169,7 @@ describe('VariantHandler prices', () => {
             onRecordError,
         );
 
-        expect(result).toEqual({ ok: 0, fail: 1 });
+        expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
         expect(productVariantService.create).not.toHaveBeenCalled();
         expect(onRecordError).toHaveBeenCalledWith(
             'load-variants',
@@ -196,7 +197,7 @@ describe('VariantHandler prices', () => {
             onRecordError,
         );
 
-        expect(result).toEqual({ ok: 0, fail: 1 });
+        expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
         expect(onRecordError).toHaveBeenCalledWith(
             'load-variants',
             'channel assignment failed',

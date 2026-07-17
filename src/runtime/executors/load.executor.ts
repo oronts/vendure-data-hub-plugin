@@ -11,7 +11,7 @@ import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig, PipelineContex
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS } from '../../constants/index';
 import { AdapterType, ConflictStrategy, ChannelStrategy as ChannelStrategyEnum, LanguageStrategy, ValidationStrictness } from '../../constants/enums';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../executor-types';
 import { LoaderHandler } from './loaders/types';
 import { LOADER_HANDLER_REGISTRY } from './loaders/loader-handler-registry';
 import { DataHubRegistryService } from '../../sdk/registry.service';
@@ -72,7 +72,7 @@ export class LoadExecutor implements OnModuleInit {
         onRecordError?: OnRecordErrorCallback,
         errorHandling?: ErrorHandlingConfig,
         pipelineContext?: PipelineContext,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         const adapterCode = getAdapterCode(step) || undefined;
         const startTime = Date.now();
 
@@ -87,7 +87,14 @@ export class LoadExecutor implements OnModuleInit {
         if (handler) {
             const result = await handler.execute(ctx, step, input, onRecordError, errorHandling);
             const durationMs = Date.now() - startTime;
-            this.logger.logLoaderOperation(adapterCode ?? 'unknown', 'upsert', result.ok, result.fail, durationMs);
+            this.logger.logLoaderOperation(
+                adapterCode ?? 'unknown',
+                'upsert',
+                result.ok,
+                result.fail,
+                result.skipped,
+                durationMs,
+            );
             return result;
         }
 
@@ -97,15 +104,22 @@ export class LoadExecutor implements OnModuleInit {
             if (customLoader && typeof customLoader.load === 'function') {
                 const result = await this.executeCustomLoader(ctx, step, input, customLoader, pipelineContext);
                 const durationMs = Date.now() - startTime;
-                this.logger.logLoaderOperation(adapterCode, 'upsert', result.ok, result.fail, durationMs);
+                this.logger.logLoaderOperation(
+                    adapterCode,
+                    'upsert',
+                    result.ok,
+                    result.fail,
+                    result.skipped,
+                    durationMs,
+                );
                 return result;
             }
         }
 
         this.logger.warn(`Unknown loader adapter`, { adapterCode, stepKey: step.key });
         const durationMs = Date.now() - startTime;
-        this.logger.logLoaderOperation(adapterCode ?? 'unknown', 'upsert', 0, input.length, durationMs);
-        return { ok: 0, fail: input.length };
+        this.logger.logLoaderOperation(adapterCode ?? 'unknown', 'upsert', 0, input.length, 0, durationMs);
+        return { ok: 0, fail: input.length, skipped: 0 };
     }
 
     /**
@@ -117,7 +131,7 @@ export class LoadExecutor implements OnModuleInit {
         input: RecordObject[],
         loader: LoaderAdapter<unknown>,
         pipelineContext?: PipelineContext,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         const cfg = step.config as LoadStepCfg;
 
         // Create load context for the custom loader
@@ -135,6 +149,7 @@ export class LoadExecutor implements OnModuleInit {
             return {
                 ok: result.succeeded,
                 fail: result.failed,
+                skipped: result.skipped ?? 0,
             };
         } catch (error) {
             const errorMessage = getErrorMessage(error);
@@ -143,7 +158,7 @@ export class LoadExecutor implements OnModuleInit {
                 stepKey: step.key,
                 errorMessage,
             });
-            return { ok: 0, fail: input.length, error: errorMessage };
+            return { ok: 0, fail: input.length, skipped: 0, error: errorMessage };
         }
     }
 

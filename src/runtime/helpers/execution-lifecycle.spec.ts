@@ -79,6 +79,7 @@ describe('ExecutionLifecycleManager', () => {
             processed: 2,
             succeeded: 2,
             failed: 0,
+            skipped: 0,
             details: [],
             counters: { extracted: 2 },
         };
@@ -90,5 +91,46 @@ describe('ExecutionLifecycleManager', () => {
         expect(result.details).toEqual([]);
         expect(hookService.run).not.toHaveBeenCalled();
         expect(domainEvents.publish).not.toHaveBeenCalled();
+    });
+
+    it('reports completed execution once when individual records failed', async () => {
+        const checkpointManager = {
+            saveCheckpoint: vi.fn(async () => undefined),
+        };
+        const hookService = {
+            run: vi.fn(async () => undefined),
+        };
+        const domainEvents = {
+            publish: vi.fn(),
+        };
+        const lifecycle = new ExecutionLifecycleManager(
+            {} as never,
+            checkpointManager as never,
+            hookService as never,
+            domainEvents as never,
+            { debug: vi.fn() } as never,
+        );
+        const ctx = {} as RequestContext;
+        const definition: PipelineDefinition = { version: 1, steps: [] };
+
+        await lifecycle.finalizeExecution(ctx, definition, {
+            processed: 2,
+            succeeded: 1,
+            failed: 1,
+            skipped: 0,
+            details: [],
+            counters: { extracted: 2 },
+        }, 7);
+
+        expect(hookService.run).toHaveBeenCalledOnce();
+        expect(hookService.run).toHaveBeenCalledWith(ctx, definition, 'PIPELINE_COMPLETED');
+        expect(domainEvents.publish).toHaveBeenCalledOnce();
+        expect(domainEvents.publish).toHaveBeenCalledWith('PIPELINE_COMPLETED', {
+            pipelineId: 7,
+            processed: 2,
+            succeeded: 1,
+            failed: 1,
+            skipped: 0,
+        });
     });
 });

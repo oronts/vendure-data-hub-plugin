@@ -5,9 +5,17 @@ import { PipelineRun } from '../../entities/pipeline';
 import { HookService } from '../events/hook.service';
 import { DomainEventsService } from '../events/domain-events.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
-import { LOGGER_CONTEXTS, SortOrder, HookStage, PAGINATION } from '../../constants/index';
+import { LOGGER_CONTEXTS, SortOrder, HookStage } from '../../constants/index';
 import type { JsonObject } from '../../types/index';
 import { getErrorMessage } from '../../utils/error.utils';
+import { Equal, LessThan } from 'typeorm';
+import type { FindOptionsWhere } from 'typeorm';
+import {
+    decodeRecordErrorCursor,
+    encodeRecordErrorCursor,
+    parseRecordErrorPageSize,
+} from './record-error-page';
+import type { RecordErrorPage, RecordErrorPageOptions } from './record-error-page';
 
 @Injectable()
 export class RecordErrorService {
@@ -34,7 +42,7 @@ export class RecordErrorService {
         const run = await this.connection.getEntityOrThrow(ctx, PipelineRun, runId);
         const errorEntity = new DataHubRecordError();
         errorEntity.run = run;
-        errorEntity.runId = Number(runId);
+        errorEntity.runId = runId;
         errorEntity.stepKey = stepKey;
         errorEntity.message = message;
         errorEntity.payload = payload;
@@ -51,23 +59,59 @@ export class RecordErrorService {
         return entity;
     }
 
-    listByRun(ctx: RequestContext, runId: ID): Promise<DataHubRecordError[]> {
-        return this.connection.getRepository(ctx, DataHubRecordError).find({
-            where: { runId: Number(runId) },
-            order: { createdAt: SortOrder.ASC },
-        });
+    listByRun(
+        ctx: RequestContext,
+        runId: ID,
+        options: RecordErrorPageOptions = {},
+    ): Promise<RecordErrorPage> {
+        return this.listPage(ctx, { runId }, options);
     }
 
     async getById(ctx: RequestContext, id: ID): Promise<DataHubRecordError | null> {
-        return this.connection.getRepository(ctx, DataHubRecordError).findOne({ where: { id } });
+        return this.connection.getRepository(ctx, DataHubRecordError).findOne({
+            where: { id },
+            relations: { run: { pipeline: true } },
+        });
     }
 
-    async listDeadLetters(ctx: RequestContext): Promise<DataHubRecordError[]> {
-        return this.connection.getRepository(ctx, DataHubRecordError).find({
-            where: { deadLetter: true },
-            order: { createdAt: SortOrder.ASC },
-            take: PAGINATION.MAX_QUERY_LIMIT,
-        });
+    listDeadLetters(
+        ctx: RequestContext,
+        options: RecordErrorPageOptions = {},
+    ): Promise<RecordErrorPage> {
+        return this.listPage(ctx, { deadLetter: true }, options);
+    }
+
+    private async listPage(
+        ctx: RequestContext,
+        baseWhere: FindOptionsWhere<DataHubRecordError>,
+        options: RecordErrorPageOptions,
+    ): Promise<RecordErrorPage> {
+        const repository = this.connection.getRepository(ctx, DataHubRecordError);
+        const pageSize = parseRecordErrorPageSize(options.first);
+        const cursor = decodeRecordErrorCursor(options.after);
+        const where: FindOptionsWhere<DataHubRecordError> | FindOptionsWhere<DataHubRecordError>[] = cursor
+            ? [
+                { ...baseWhere, createdAt: LessThan(cursor.createdAt) },
+                { ...baseWhere, createdAt: Equal(cursor.createdAt), id: LessThan(cursor.id) },
+            ]
+            : baseWhere;
+        const [rows, totalItems] = await Promise.all([
+            repository.find({
+                where,
+                relations: { run: { pipeline: true } },
+                order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
+                take: pageSize + 1,
+            }),
+            repository.count({ where: baseWhere }),
+        ]);
+        const hasNextPage = rows.length > pageSize;
+        const items = hasNextPage ? rows.slice(0, pageSize) : rows;
+        return {
+            items,
+            totalItems,
+            hasNextPage,
+            endCursor: items.length > 0 ? encodeRecordErrorCursor(items[items.length - 1]) : null,
+        };
     }
 
     async markDeadLetter(ctx: RequestContext, id: ID, value: boolean): Promise<boolean> {

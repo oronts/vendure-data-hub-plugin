@@ -6,7 +6,12 @@
  * createVariants=false, idempotency, and error handling.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { ProductService, ProductVariantService } from '@vendure/core';
+import {
+    ChannelService,
+    CurrencyCode,
+    ProductService,
+    ProductVariantService,
+} from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { ProductHandler } from '../../src/runtime/executors/loaders/product-handler';
 import { getSuperadminContext, makeStep, createErrorCollector, LOADER_TEST_INITIAL_DATA } from './loader-test-helpers';
@@ -27,6 +32,12 @@ describe('ProductHandler e2e', () => {
         handler = server.app.get(ProductHandler);
         productService = server.app.get(ProductService);
         variantService = server.app.get(ProductVariantService);
+        ctx = await getSuperadminContext(server.app);
+        const channelService = server.app.get(ChannelService);
+        await channelService.update(ctx, {
+            id: ctx.channelId,
+            availableCurrencyCodes: [CurrencyCode.USD, CurrencyCode.EUR],
+        });
         ctx = await getSuperadminContext(server.app);
     });
 
@@ -84,9 +95,34 @@ describe('ProductHandler e2e', () => {
         expect(product!.name).toBe('Test Widget Updated');
     });
 
+    it('persists all default variant currency prices', async () => {
+        const step = makeStep('test-product-multi-currency', {
+            strategy: 'UPSERT',
+            priceByCurrencyField: 'prices',
+        });
+        const result = await handler.execute(ctx, step, [{
+            name: 'International Widget',
+            slug: 'international-widget',
+            sku: 'INT-W-001',
+            prices: { USD: 29.99, EUR: 27.49 },
+        }]);
+
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
+        const variants = await variantService.findAll(ctx, {
+            filter: { sku: { eq: 'INT-W-001' } },
+        } as never);
+        expect(variants.items).toHaveLength(1);
+        const prices = await variantService.getProductVariantPrices(ctx, variants.items[0].id);
+        expect(prices).toEqual(expect.arrayContaining([
+            expect.objectContaining({ currencyCode: CurrencyCode.USD, price: 2999 }),
+            expect.objectContaining({ currencyCode: CurrencyCode.EUR, price: 2749 }),
+        ]));
+    });
+
     it('skips existing product with CREATE strategy', async () => {
         const step = makeStep('test-product-create-only', {
             strategy: 'CREATE',
+            skipDuplicates: true,
         });
         const input = [{
             name: 'Should Not Update',
@@ -96,7 +132,7 @@ describe('ProductHandler e2e', () => {
         }];
 
         const result = await handler.execute(ctx, step, input);
-        expect(result.ok).toBe(1); // Counted as ok (skip)
+        expect(result).toEqual({ ok: 0, fail: 0, skipped: 1 });
 
         // Name should NOT have changed
         const product = await productService.findOneBySlug(ctx, 'test-widget');

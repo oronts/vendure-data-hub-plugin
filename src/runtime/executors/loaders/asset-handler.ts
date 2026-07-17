@@ -11,8 +11,9 @@ import {
     ID,
     EntityWithAssets,
 } from '@vendure/core';
+import { createChannelRequestContext } from '../../helpers/channel-request-context';
 import { JsonObject, PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 
@@ -48,7 +49,7 @@ export class AssetAttachHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0, fail = 0;
         const cfg = (step.config ?? {}) as AssetAttachConfig;
 
@@ -70,8 +71,11 @@ export class AssetAttachHandler implements LoaderHandler {
                 let opCtx = ctx;
                 const channel = cfg.channel;
                 if (channel) {
-                    const req = await this.requestContextService.create({ apiType: ctx.apiType, channelOrToken: channel });
-                    if (req) opCtx = req;
+                    opCtx = await createChannelRequestContext(
+                        this.requestContextService,
+                        ctx,
+                        channel,
+                    );
                 }
 
                 if (entity === 'product') {
@@ -102,6 +106,6 @@ export class AssetAttachHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped: 0 };
     }
 }

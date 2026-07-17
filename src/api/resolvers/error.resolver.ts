@@ -1,19 +1,27 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Allow, Ctx, ID, RequestContext, Transaction, TransactionalConnection } from '@vendure/core';
+import {
+    Allow,
+    Ctx,
+    ForbiddenError,
+    ID,
+    RequestContext,
+    Transaction,
+    TransactionalConnection,
+} from '@vendure/core';
 import type { JsonObject, PipelineDefinition } from '../../types/index';
 import { LOGGER_CONTEXTS } from '../../constants';
-import { LOADER_ADAPTERS } from '../../runtime/executors/loaders/loader-handler-registry';
 import {
     ReplayDataHubRecordPermission,
     ViewDataHubQuarantinePermission,
     EditDataHubQuarantinePermission,
 } from '../../permissions';
-import { RecordErrorService, RecordRetryAuditService, ErrorReplayService } from '../../services';
-import { PipelineRun, Pipeline } from '../../entities/pipeline';
-import { DataHubRecordRetryAudit, DataHubRecordError } from '../../entities/data';
+import { RecordErrorService, RecordRetryAuditService, RecordRetryService, type RecordRetryResult } from '../../services';
+import { PipelineRun } from '../../entities/pipeline';
+import { DataHubRecordRetryAudit } from '../../entities/data';
 import { deepClone } from '../../utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { getErrorMessage } from '../../utils/error.utils';
+import type { RecordErrorPage } from '../../services/data/record-error-page';
 
 /** Extended pipeline definition that may include security settings */
 interface PipelineDefinitionWithSecurity extends PipelineDefinition {
@@ -28,7 +36,7 @@ export class DataHubErrorAdminResolver {
 
     constructor(
         private recordErrors: RecordErrorService,
-        private errorReplay: ErrorReplayService,
+        private recordRetry: RecordRetryService,
         private connection: TransactionalConnection,
         private retryAudits: RecordRetryAuditService,
         loggerFactory: DataHubLoggerFactory,
@@ -38,24 +46,44 @@ export class DataHubErrorAdminResolver {
 
     @Query()
     @Allow(ViewDataHubQuarantinePermission.Permission)
-    async dataHubRunErrors(@Ctx() ctx: RequestContext, @Args() args: { runId: ID }): Promise<DataHubRecordError[]> {
-        const items = await this.recordErrors.listByRun(ctx, args.runId);
+    async dataHubRunErrors(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { runId: ID; first?: number; after?: string },
+    ): Promise<RecordErrorPage> {
+        const page = await this.recordErrors.listByRun(ctx, args.runId, args);
         const maskFields = await this.getMaskFieldsForRun(ctx, args.runId);
-        if (maskFields.length) {
-            return items.map(it => ({ ...it, payload: this.maskPayload(it.payload, maskFields) }));
+        if (maskFields === null) {
+            return { ...page, items: page.items.map(item => ({ ...item, payload: {} })) };
         }
-        return items;
+        if (maskFields.length) {
+            return {
+                ...page,
+                items: page.items.map(item => ({
+                    ...item,
+                    payload: this.maskPayload(item.payload, maskFields),
+                })),
+            };
+        }
+        return page;
     }
 
-    private async getMaskFieldsForRun(ctx: RequestContext, runId: ID): Promise<string[]> {
+    private async getMaskFieldsForRun(ctx: RequestContext, runId: ID): Promise<string[] | null> {
         try {
             const runRepo = this.connection.getRepository(ctx, PipelineRun);
             const run = await runRepo.findOne({ where: { id: runId }, relations: { pipeline: true } });
-            const definition = run?.pipeline?.definition as PipelineDefinitionWithSecurity | undefined;
+            if (!run?.pipeline) {
+                this.logger.error(`Cannot resolve masking policy for run ${runId}`);
+                return null;
+            }
+            const definition = (run.definitionSnapshot ?? run.pipeline.definition) as
+                PipelineDefinitionWithSecurity | undefined;
             return this.extractMaskFields(definition);
         } catch (error) {
-            this.logger.debug(`Failed to retrieve mask fields for run ${runId}`, { error });
-            return [];
+            this.logger.error(
+                `Failed to retrieve mask fields for run ${runId}`,
+                new Error(getErrorMessage(error)),
+            );
+            return null;
         }
     }
 
@@ -68,13 +96,21 @@ export class DataHubErrorAdminResolver {
     @Allow(ViewDataHubQuarantinePermission.Permission)
     async dataHubRecordRetryAudits(
         @Ctx() ctx: RequestContext,
-        @Args() args: { errorId: ID },
+        @Args() args: { errorId: ID; limit?: number },
     ): Promise<DataHubRecordRetryAudit[]> {
-        const rows = await this.retryAudits.listByError(ctx, args.errorId);
+        const rows = await this.retryAudits.listByError(ctx, args.errorId, args.limit);
         if (rows.length === 0) return rows;
 
         // Pre-load mask fields once for all rows since they share the same error/run/pipeline
         const maskFields = await this.getMaskFieldsForError(ctx, args.errorId);
+        if (maskFields === null) {
+            return rows.map(row => ({
+                ...row,
+                previousPayload: {},
+                patch: {},
+                resultingPayload: {},
+            }));
+        }
         if (maskFields.length) {
             return rows.map(r => ({
                 ...r,
@@ -86,39 +122,56 @@ export class DataHubErrorAdminResolver {
         return rows;
     }
 
-    private async getMaskFieldsForError(ctx: RequestContext, errorId: ID): Promise<string[]> {
+    private async getMaskFieldsForError(ctx: RequestContext, errorId: ID): Promise<string[] | null> {
         try {
             const err = await this.recordErrors.getById(ctx, errorId);
-            if (!err) return [];
-            return this.getMaskFieldsForRun(ctx, err.runId ?? err.run?.id);
+            const runId = err?.runId ?? err?.run?.id;
+            if (!runId) {
+                this.logger.error(`Cannot resolve masking policy for error ${errorId}`);
+                return null;
+            }
+            return this.getMaskFieldsForRun(ctx, runId);
         } catch (error) {
-            this.logger.debug(`Failed to retrieve error record ${errorId} for mask fields lookup`, { error });
-            return [];
+            this.logger.error(
+                `Failed to retrieve error record ${errorId} for mask fields lookup`,
+                new Error(getErrorMessage(error)),
+            );
+            return null;
         }
     }
 
     @Query()
     @Allow(ViewDataHubQuarantinePermission.Permission)
-    async dataHubDeadLetters(@Ctx() ctx: RequestContext): Promise<DataHubRecordError[]> {
-        const items = await this.recordErrors.listDeadLetters(ctx);
-        if (items.length === 0) return items;
+    async dataHubDeadLetters(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { first?: number; after?: string },
+    ): Promise<RecordErrorPage> {
+        const page = await this.recordErrors.listDeadLetters(ctx, args);
+        if (page.items.length === 0) return page;
 
         // Pre-load pipeline settings for all unique pipeline IDs to avoid N+1
-        const uniqueRunIds = [...new Set(items.map(it => it.runId ?? it.run?.id).filter(Boolean))];
+        const uniqueRunIds = [...new Set(page.items.map(it => it.runId ?? it.run?.id).filter(Boolean))];
         const maskFieldsMap = await this.getMaskFieldsMapForRuns(ctx, uniqueRunIds);
 
-        return items.map(it => {
+        const items = page.items.map(it => {
             const runId = it.runId ?? it.run?.id;
-            const maskFields = runId ? maskFieldsMap.get(runId) ?? [] : [];
+            const maskFields = runId ? maskFieldsMap.get(runId) ?? null : null;
+            if (maskFields === null) {
+                return { ...it, payload: {} };
+            }
             if (maskFields.length) {
                 return { ...it, payload: this.maskPayload(it.payload, maskFields) };
             }
             return it;
         });
+        return { ...page, items };
     }
 
-    private async getMaskFieldsMapForRuns(ctx: RequestContext, runIds: ID[]): Promise<Map<ID, string[]>> {
-        const map = new Map<ID, string[]>();
+    private async getMaskFieldsMapForRuns(
+        ctx: RequestContext,
+        runIds: ID[],
+    ): Promise<Map<ID, string[] | null>> {
+        const map = new Map<ID, string[] | null>(runIds.map(id => [id, null]));
         if (runIds.length === 0) return map;
 
         try {
@@ -129,12 +182,16 @@ export class DataHubErrorAdminResolver {
             });
 
             for (const run of runs) {
-                const definition = run?.pipeline?.definition as PipelineDefinitionWithSecurity | undefined;
+                const definition = (run.definitionSnapshot ?? run.pipeline?.definition) as
+                    PipelineDefinitionWithSecurity | undefined;
                 const maskFields = this.extractMaskFields(definition);
                 map.set(run.id, maskFields);
             }
         } catch (error) {
-            this.logger.debug(`Failed to batch-retrieve mask fields for runs`, { error });
+            this.logger.error(
+                'Failed to batch-retrieve mask fields for runs',
+                new Error(getErrorMessage(error)),
+            );
         }
 
         return map;
@@ -146,35 +203,15 @@ export class DataHubErrorAdminResolver {
     async retryDataHubRecord(
         @Ctx() ctx: RequestContext,
         @Args() args: { errorId: ID; patch?: JsonObject },
-    ): Promise<boolean> {
-        const rec = await this.recordErrors.getById(ctx, args.errorId);
-        if (!rec) return false;
-
-        const runRepo = this.connection.getRepository(ctx, PipelineRun);
-        const run = await runRepo.findOne({ where: { id: rec.runId }, relations: { pipeline: true } });
-        if (!run?.pipeline?.id) return false;
-
-        const pipeline = await this.connection.getEntityOrThrow(ctx, Pipeline, run.pipeline.id);
-        const payloadBefore: JsonObject = rec.payload ?? {};
-        const patch: JsonObject = args.patch ?? {};
-
-        // Restrict patch to allowed keys for this loader/step
-        const step = (pipeline.definition?.steps ?? []).find(s => s.key === rec.stepKey);
-        const allowed = this.getAllowedPatchKeysForStep(step ?? {});
-        const cleanPatch: JsonObject = {};
-        const allowAll = allowed.has('*');
-        for (const [k, v] of Object.entries(patch)) {
-            if (allowAll || allowed.has(k)) cleanPatch[k] = v;
+    ): Promise<RecordRetryResult> {
+        const patch = args.patch ?? {};
+        if (
+            Object.keys(patch).length > 0 &&
+            !ctx.userHasPermissions([EditDataHubQuarantinePermission.Permission])
+        ) {
+            throw new ForbiddenError();
         }
-        const payload: JsonObject = { ...payloadBefore, ...cleanPatch };
-
-        await this.errorReplay.replayRecord(ctx, pipeline.definition, rec.stepKey, payload);
-
-        await this.retryAudits.record(ctx, rec, payloadBefore, cleanPatch, payload).catch((err: unknown) => {
-            this.logger.warn(`Failed to record retry audit for record ${args.errorId}`, { error: getErrorMessage(err) });
-        });
-
-        return true;
+        return this.recordRetry.retry(ctx, args.errorId, patch);
     }
 
     @Mutation()
@@ -203,10 +240,4 @@ export class DataHubErrorAdminResolver {
         return clone;
     }
 
-    private getAllowedPatchKeysForStep(step: { adapterCode?: string }): Set<string> {
-        if (!step.adapterCode) return new Set<string>();
-        const adapter = LOADER_ADAPTERS.find(a => a.code === step.adapterCode);
-        if (!adapter?.patchableFields) return new Set<string>();
-        return new Set(adapter.patchableFields);
-    }
 }

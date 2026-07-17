@@ -42,7 +42,7 @@ describe('HookService webhook credentials', () => {
         } as PipelineDefinition;
         const ctx = {} as never;
 
-        await fixture.service.run(ctx, definition, 'ON_ERROR', undefined, undefined, 'run-1');
+        const result = await fixture.service.run(ctx, definition, 'ON_ERROR', undefined, undefined, 'run-1');
 
         expect(fixture.webhookRetryService.sendWebhook).toHaveBeenCalledWith(
             ctx,
@@ -55,6 +55,14 @@ describe('HookService webhook credentials', () => {
             expect.objectContaining({ runId: 'run-1', stage: 'ON_ERROR' }),
             expect.objectContaining({ idempotencyKey: expect.stringContaining('run-1-ON_ERROR') }),
         );
+        expect(result).toEqual({
+            status: 'EXECUTED',
+            configured: 1,
+            executed: 1,
+            skipped: 0,
+            failed: 0,
+            errors: [],
+        });
     });
 
     it('rejects legacy raw webhook secrets without sending', async () => {
@@ -72,12 +80,51 @@ describe('HookService webhook credentials', () => {
             },
         } as unknown as PipelineDefinition;
 
-        await fixture.service.run({} as never, definition, 'ON_ERROR');
+        const result = await fixture.service.run({} as never, definition, 'ON_ERROR');
 
         expect(fixture.webhookRetryService.sendWebhook).not.toHaveBeenCalled();
         expect(fixture.logger.warn).toHaveBeenCalledWith(
             'Hook action failed',
             expect.objectContaining({ error: expect.stringContaining('cannot store raw secrets') }),
         );
+        expect(result).toEqual({
+            status: 'FAILED',
+            configured: 1,
+            executed: 0,
+            skipped: 0,
+            failed: 1,
+            errors: [{
+                action: 'WEBHOOK:1',
+                type: 'WEBHOOK',
+                error: 'Webhook hooks cannot store raw secrets; use secretCode',
+            }],
+        });
+    });
+
+    it('reports unconfigured and interceptor-only stages as skipped', async () => {
+        const fixture = createService();
+        const empty = await fixture.service.run({} as never, { version: 1, steps: [] } as PipelineDefinition, 'ON_ERROR');
+        const interceptor = await fixture.service.run({} as never, {
+            version: 1,
+            steps: [],
+            hooks: { ON_ERROR: [{ type: 'SCRIPT', scriptName: 'notify' }] },
+        } as PipelineDefinition, 'ON_ERROR');
+
+        expect(empty).toEqual({
+            status: 'SKIPPED',
+            configured: 0,
+            executed: 0,
+            skipped: 0,
+            failed: 0,
+            errors: [],
+        });
+        expect(interceptor).toEqual({
+            status: 'SKIPPED',
+            configured: 1,
+            executed: 0,
+            skipped: 1,
+            failed: 0,
+            errors: [],
+        });
     });
 });

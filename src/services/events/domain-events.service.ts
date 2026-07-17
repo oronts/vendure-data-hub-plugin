@@ -110,7 +110,7 @@ export class DomainEventsService implements OnModuleDestroy {
     publishRunCompleted(
         runId: string,
         pipelineCode: string,
-        metrics: { processed: number; succeeded: number; failed: number; durationMs: number },
+        metrics: { processed: number; succeeded: number; failed: number; skipped: number; durationMs: number },
     ): void {
         this.publish('PipelineRunCompleted', {
             runId,
@@ -168,6 +168,14 @@ export class DomainEventsService implements OnModuleDestroy {
             pipelineId,
             pipelineCode,
             archivedAt: new Date(),
+        });
+    }
+
+    publishPipelineReactivated(pipelineId: string, pipelineCode: string): void {
+        this.publish('PipelineReactivated', {
+            pipelineId,
+            pipelineCode,
+            reactivatedAt: new Date(),
         });
     }
 

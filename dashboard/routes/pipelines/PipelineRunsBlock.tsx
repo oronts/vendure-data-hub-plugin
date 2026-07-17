@@ -25,13 +25,14 @@ import {
     DrawerHeader,
     DrawerTitle,
     DrawerDescription,
+    usePermissions,
 } from '@vendure/dashboard';
 import { Link } from '@tanstack/react-router';
 import { ColumnDef, SortingState } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import { Eye, ScrollText, Play, XCircle, ShieldCheck } from 'lucide-react';
 import { ErrorState, LoadingState } from '../../components/shared';
-import { formatDateTime } from '../../utils';
+import { formatDateTime, isTerminalRunStatus } from '../../utils';
 import {
     DATAHUB_PERMISSIONS,
     QUERY_LIMITS,
@@ -51,26 +52,108 @@ import {
 import { useOptionValues } from '../../hooks/api/use-config-options';
 import { RunDetailsPanel } from './RunDetailsPanel';
 import { getErrorMessage } from '../../../shared';
-import type { RunRow } from '../../types';
+import type { IndividualRunMetrics, RunRow, StepMetricsDetail } from '../../types';
 
-/**
- * Terminal run statuses, intentionally hardcoded rather than derived from backend.
- * These are a fundamental system invariant: a run is either still in progress or it has
- * reached one of these four terminal states. Adding `isFinished` metadata to the GraphQL
- * `DataHubOptionValue` type would require schema + codegen changes for no practical benefit,
- * since the set of terminal statuses is fixed by the execution engine contract.
- */
-const FINISHED_STATUSES = [RUN_STATUS.COMPLETED, RUN_STATUS.FAILED, RUN_STATUS.CANCELLED, RUN_STATUS.TIMEOUT] as string[];
+type PipelineRunRow = Omit<RunRow, 'id'> & { id: string };
+
+const RUN_METRIC_FIELDS = new Set([
+    'processed',
+    'succeeded',
+    'failed',
+    'skipped',
+    'sourceRecords',
+    'durationMs',
+    'details',
+]);
+const STEP_METRIC_FIELDS = new Set([
+    'stepKey',
+    'type',
+    'adapterCode',
+    'ok',
+    'fail',
+    'skipped',
+    'durationMs',
+    'counters',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function finiteNumber(value: unknown): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function stringValue(value: unknown): string | undefined {
+    return typeof value === 'string' ? value : undefined;
+}
+
+function normalizeStepMetrics(value: unknown): StepMetricsDetail | undefined {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const normalized: StepMetricsDetail = {};
+    for (const [key, fieldValue] of Object.entries(value)) {
+        if (!STEP_METRIC_FIELDS.has(key)) {
+            normalized[key] = fieldValue;
+        }
+    }
+    normalized.stepKey = stringValue(value.stepKey);
+    normalized.type = stringValue(value.type);
+    normalized.adapterCode = stringValue(value.adapterCode);
+    normalized.ok = finiteNumber(value.ok);
+    normalized.fail = finiteNumber(value.fail);
+    normalized.skipped = finiteNumber(value.skipped);
+    normalized.durationMs = finiteNumber(value.durationMs);
+    if (isRecord(value.counters)) {
+        const counters: Record<string, number> = {};
+        for (const [key, fieldValue] of Object.entries(value.counters)) {
+            const count = finiteNumber(fieldValue);
+            if (count !== undefined) {
+                counters[key] = count;
+            }
+        }
+        normalized.counters = counters;
+    }
+    return normalized;
+}
+
+function normalizeRunMetrics(value: unknown): IndividualRunMetrics | undefined {
+    if (!isRecord(value)) {
+        return undefined;
+    }
+    const normalized: IndividualRunMetrics = {};
+    for (const [key, fieldValue] of Object.entries(value)) {
+        if (!RUN_METRIC_FIELDS.has(key)) {
+            normalized[key] = fieldValue;
+        }
+    }
+    normalized.processed = finiteNumber(value.processed);
+    normalized.succeeded = finiteNumber(value.succeeded);
+    normalized.failed = finiteNumber(value.failed);
+    normalized.skipped = finiteNumber(value.skipped);
+    normalized.sourceRecords = finiteNumber(value.sourceRecords);
+    normalized.durationMs = finiteNumber(value.durationMs);
+    normalized.details = Array.isArray(value.details)
+        ? value.details.flatMap(item => {
+              const detail = normalizeStepMetrics(item);
+              return detail ? [detail] : [];
+          })
+        : undefined;
+    return normalized;
+}
 
 export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
+    const { hasPermissions } = usePermissions();
+    const canViewRuns = hasPermissions([DATAHUB_PERMISSIONS.VIEW_RUNS]);
     const { options: statusOptions } = useOptionValues('runStatuses');
     const [page, setPage] = React.useState(1);
-    const [itemsPerPage, setItemsPerPage] = React.useState(QUERY_LIMITS.PAGINATION_DEFAULT);
+    const [itemsPerPage, setItemsPerPage] = React.useState<number>(QUERY_LIMITS.PAGINATION_DEFAULT);
     const [sorting, setSorting] = React.useState<SortingState>([
         { id: 'startedAt', desc: true },
     ]);
     const [status, setStatus] = React.useState<string>('');
-    const [selectedRun, setSelectedRun] = React.useState<RunRow | null>(null);
+    const [selectedRun, setSelectedRun] = React.useState<PipelineRunRow | null>(null);
     const [cancelConfirmRunId, setCancelConfirmRunId] = React.useState<string | null>(null);
     const [cancellingRunId, setCancellingRunId] = React.useState<string | null>(null);
 
@@ -78,7 +161,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
         ? { [sorting[0].id]: sorting[0].desc ? 'DESC' : 'ASC' }
         : undefined;
 
-    const { data, isLoading, isError, error, refetch } = usePipelineRuns(pipelineId, {
+    const { data, isLoading, isError, error, refetch } = usePipelineRuns(canViewRuns ? pipelineId : undefined, {
         take: itemsPerPage,
         skip: (page - 1) * itemsPerPage,
         sort: sortVar as Record<string, 'ASC' | 'DESC'> | undefined,
@@ -87,11 +170,17 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
 
     const cancelRun = useCancelRun();
     const runPipeline = useRunPipeline();
+    const { mutate: cancelPipelineRun } = cancelRun;
+    const { mutate: startPipelineRun } = runPipeline;
 
-    const runs: RunRow[] = data?.items ?? [];
+    const runs: PipelineRunRow[] = (data?.items ?? []).map(run => ({
+        ...run,
+        id: String(run.id),
+        metrics: normalizeRunMetrics(run.metrics),
+    }));
     const totalItems = data?.totalItems ?? 0;
 
-    const handleSelectRun = React.useCallback((run: RunRow) => {
+    const handleSelectRun = React.useCallback((run: PipelineRunRow) => {
         setSelectedRun(run);
     }, []);
 
@@ -102,13 +191,13 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
     const handleConfirmCancel = React.useCallback(() => {
         if (!cancelConfirmRunId) return;
         setCancellingRunId(cancelConfirmRunId);
-        cancelRun.mutate(cancelConfirmRunId, {
+        cancelPipelineRun(cancelConfirmRunId, {
             onSettled: () => {
                 setCancellingRunId(null);
             },
         });
         setCancelConfirmRunId(null);
-    }, [cancelConfirmRunId, cancelRun.mutate]);
+    }, [cancelConfirmRunId, cancelPipelineRun]);
 
     const handleStatusChange = React.useCallback((v: string) => {
         setPage(1);
@@ -129,13 +218,13 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
     }, []);
 
     const handleRerun = React.useCallback((id: string) => {
-        runPipeline.mutate(id, {
+        startPipelineRun(id, {
             onSuccess: () => toast.success(TOAST_PIPELINE.RUN_STARTED),
             onError: (err) => handleMutationError('start pipeline run', err),
         });
-    }, [runPipeline.mutate]);
+    }, [startPipelineRun]);
 
-    const columns: ColumnDef<RunRow, unknown>[] = React.useMemo(() => [
+    const columns: ColumnDef<PipelineRunRow, unknown>[] = React.useMemo(() => [
         {
             id: 'id',
             header: 'ID',
@@ -193,7 +282,7 @@ export function PipelineRunsBlock({ pipelineId }: { pipelineId?: string }) {
             header: 'Actions',
             cell: ({ row }) => {
                 const st = row.original.status;
-                const isFinished = FINISHED_STATUSES.includes(st);
+                const isFinished = isTerminalRunStatus(st);
                 const canCancel = st === RUN_STATUS.RUNNING || st === RUN_STATUS.PENDING;
                 const isPaused = st === RUN_STATUS.PAUSED;
 

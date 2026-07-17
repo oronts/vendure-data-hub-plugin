@@ -2,10 +2,11 @@ import { RequestContext } from '@vendure/core';
 import { PipelineDefinition, PipelineMetrics, JsonObject } from '../../types/index';
 import { DataHubLogger } from '../../services/logger';
 import { SANDBOX } from '../../constants/index';
-import { RecordObject, OnRecordErrorCallback, ExecutorContext } from '../executor-types';
+import { BranchOutput, RecordObject, OnRecordErrorCallback, ExecutorContext, isBranchOutput } from '../executor-types';
 import { ExtractExecutor, TransformExecutor, LoadExecutor } from '../executors';
 import { getAdapterCode } from '../../types/step-configs';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
+import { executeDryRunGraph } from './dry-run-graph';
 
 /**
  * Dry run simulation for pipeline steps
@@ -28,12 +29,13 @@ export class DryRunSimulator {
     async executeDryRun(
         ctx: RequestContext,
         definition: PipelineDefinition,
+        recordLimit: number = SANDBOX.MAX_RECORDS,
     ): Promise<{
         metrics: PipelineMetrics;
         sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }>;
         errors?: string[];
     }> {
-        const dryRunCtx = this.prepareDryRunContext(definition);
+        const dryRunCtx = this.prepareDryRunContext(definition, recordLimit);
         const { executorCtx, errors } = dryRunCtx;
 
         const simResult = await this.simulateSteps(ctx, definition, executorCtx, dryRunCtx);
@@ -44,7 +46,7 @@ export class DryRunSimulator {
     /**
      * Prepare dry run context with empty checkpoint and error collection
      */
-    private prepareDryRunContext(definition: PipelineDefinition): {
+    private prepareDryRunContext(definition: PipelineDefinition, recordLimit: number): {
         executorCtx: ExecutorContext;
         errors: string[];
         onRecordError: OnRecordErrorCallback;
@@ -56,6 +58,7 @@ export class DryRunSimulator {
             markCheckpointDirty: () => {},
             errorHandling: definition?.context?.errorHandling,
             checkpointing: definition?.context?.checkpointing,
+            recordLimit,
         };
         const onRecordError: OnRecordErrorCallback = async (stepKey: string, message: string) => {
             errors.push(`[${stepKey}] ${message}`);
@@ -76,16 +79,24 @@ export class DryRunSimulator {
         details: JsonObject[];
         sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }>;
     }> {
-        let records: RecordObject[] = [];
         const details: JsonObject[] = [];
+        if ((definition.edges?.length ?? 0) > 0) {
+            const result = await executeDryRunGraph(definition, (step, input) => (
+                this.simulateSingleStep(ctx, step, input, executorCtx, dryRunCtx, details, true)
+            ));
+            return { processed: result.processed, details, sampleRecords: result.samples };
+        }
+
+        let records: RecordObject[] = [];
         const sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }> = [];
         let processed = 0;
-
         for (const step of definition.steps) {
             const stepResult = await this.simulateSingleStep(
-                ctx, step, records, executorCtx, dryRunCtx, details,
+                ctx, step, records, executorCtx, dryRunCtx, details, false,
             );
-            records = stepResult.records;
+            records = isBranchOutput(stepResult.output)
+                ? Object.values(stepResult.output.branches).flat()
+                : stepResult.output;
             processed += stepResult.processedDelta;
             sampleRecords.push(...stepResult.samples);
         }
@@ -112,16 +123,22 @@ export class DryRunSimulator {
         executorCtx: ExecutorContext,
         dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
         details: JsonObject[],
+        graphMode: boolean,
     ): Promise<{
-        records: RecordObject[];
+        output: RecordObject[] | BranchOutput;
         processedDelta: number;
         samples: Array<{ step: string; before: RecordObject; after: RecordObject }>;
     }> {
+        if (step.type === 'ROUTE') {
+            return this.simulateRouteStep(ctx, step, records, details, graphMode);
+        }
         const handler = this.getStepSimulationHandler(step.type);
         if (handler) {
-            return handler.call(this, ctx, step, records, executorCtx, dryRunCtx, details);
+            const result = await handler.call(this, ctx, step, records, executorCtx, dryRunCtx, details);
+            return { ...result, output: result.records };
         }
-        return this.handleUnknownStepType(step, records);
+        const result = this.handleUnknownStepType(step, records);
+        return { ...result, output: result.records };
     }
 
     /** Handler function type for step simulation */
@@ -143,7 +160,6 @@ export class DryRunSimulator {
         VALIDATE: this.handleValidateSimulation.bind(this),
         LOAD: this.handleLoadSimulation.bind(this),
         ENRICH: this.handleNoopSimulation.bind(this),
-        ROUTE: this.handleNoopSimulation.bind(this),
         EXPORT: this.handleNoopSimulation.bind(this),
         FEED: this.handleNoopSimulation.bind(this),
         SINK: this.handleNoopSimulation.bind(this),
@@ -221,15 +237,53 @@ export class DryRunSimulator {
         return this.noopStepResult(records);
     }
 
-    /** Handle steps that don't need simulation (enrich, route, export, feed, sink) */
+    private async simulateRouteStep(
+        ctx: RequestContext,
+        step: PipelineDefinition['steps'][number],
+        records: RecordObject[],
+        details: JsonObject[],
+        graphMode: boolean,
+    ): Promise<{
+        output: RecordObject[] | BranchOutput;
+        processedDelta: number;
+        samples: Array<{ step: string; before: RecordObject; after: RecordObject }>;
+    }> {
+        if (!graphMode) {
+            const output = await this.transformExecutor.executeRoute(ctx, step, records);
+            return { output, processedDelta: 0, samples: [] };
+        }
+
+        const output = await this.transformExecutor.executeRouteBranches(ctx, step, records);
+        const branchCounts = Object.fromEntries(
+            Object.entries(output.branches).map(([branch, branchRecords]) => [branch, branchRecords.length]),
+        );
+        details.push({
+            stepKey: step.key,
+            ...(getAdapterCode(step) ? { adapterCode: getAdapterCode(step) } : {}),
+            recordsIn: records.length,
+            recordsOut: Object.values(branchCounts).reduce((total, count) => total + count, 0),
+            branches: branchCounts,
+        });
+        return { output, processedDelta: 0, samples: [] };
+    }
+
+    /** Handle steps that don't produce dry-run side effects */
     private async handleNoopSimulation(
         _ctx: RequestContext,
-        _step: PipelineDefinition['steps'][number],
+        step: PipelineDefinition['steps'][number],
         records: RecordObject[],
         _executorCtx: ExecutorContext,
         _dryRunCtx: { errors: string[]; onRecordError: OnRecordErrorCallback },
-        _details: JsonObject[],
+        details: JsonObject[],
     ) {
+        details.push({
+            stepKey: step.key,
+            stepType: step.type,
+            recordsIn: records.length,
+            recordsOut: records.length,
+            simulation: 'SKIPPED',
+            warning: `${step.type} side effects are not executed during dry run`,
+        });
         return this.noopStepResult(records);
     }
 
@@ -367,16 +421,25 @@ export class DryRunSimulator {
         sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }>;
         errors?: string[];
     } {
+        const skipped = details.reduce((total, detail) => {
+            const skippedRecords = detail['simulation'] === 'SKIPPED'
+                && typeof detail['recordsIn'] === 'number'
+                ? detail['recordsIn']
+                : 0;
+            return total + skippedRecords;
+        }, 0);
+
         return {
             metrics: {
                 totalRecords: processed,
                 processed,
                 succeeded: Math.max(0, processed - errors.length),
                 failed: Math.min(errors.length, processed),
+                skipped,
                 recordsProcessed: processed,
                 recordsSucceeded: Math.max(0, processed - errors.length),
                 recordsFailed: Math.min(errors.length, processed),
-                recordsSkipped: 0,
+                recordsSkipped: skipped,
                 durationMs: 0,
                 details,
             },

@@ -49,7 +49,8 @@ export interface WebhookHookAction extends HookActionBase {
     type: 'WEBHOOK';
     url: string;
     headers?: Record<string, string>;
-    secret?: string;
+    secretCode?: string;
+    headerSecretCodes?: Record<string, string>;
     signatureHeader?: string;
     retryConfig?: {
         maxAttempts: number;
@@ -64,9 +65,10 @@ interface EmitHookAction extends HookActionBase {
     event: string;
 }
 
-interface TriggerPipelineHookAction extends HookActionBase {
+export interface TriggerPipelineHookAction extends HookActionBase {
     type: 'TRIGGER_PIPELINE';
     pipelineCode: string;
+    triggerKey: string;
 }
 
 export interface LogHookAction extends HookActionBase {
@@ -134,6 +136,23 @@ export interface InterceptorResult {
     records: JsonObject[];
     modified: boolean;
     errors?: Array<{ action: string; error: string }>;
+}
+
+export type HookExecutionStatus = 'EXECUTED' | 'PARTIAL' | 'FAILED' | 'SKIPPED';
+
+export interface HookExecutionFailure {
+    action: string;
+    type: HookActionType;
+    error: string;
+}
+
+export interface HookExecutionResult {
+    status: HookExecutionStatus;
+    configured: number;
+    executed: number;
+    skipped: number;
+    failed: number;
+    errors: HookExecutionFailure[];
 }
 
 export type ScriptFunction = (

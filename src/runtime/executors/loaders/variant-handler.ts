@@ -14,10 +14,11 @@ import {
     ConfigService,
     ProductVariant,
     StockLocationService,
-    ApiType,
     Channel,
     ID,
+    AssetService,
 } from '@vendure/core';
+import { createChannelRequestContext } from '../../helpers/channel-request-context';
 import { Type } from '@vendure/common/lib/shared-types';
 import {
     CreateProductVariantInput,
@@ -27,9 +28,13 @@ import {
     UpdateProductVariantInput,
     UpdateProductVariantPriceInput,
 } from '@vendure/common/lib/generated-types';
-import { PipelineStepDefinition } from '../../../types/index';
+import {
+    PipelineStepDefinition,
+    AssetsMode,
+    FeaturedAssetMode,
+} from '../../../types/index';
 import { LoadStrategy } from '../../../constants/enums';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
 import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import {
@@ -46,8 +51,9 @@ import {
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { majorToMinorUnits, resolveMoneyPrecision } from '../../../utils/money.utils';
 import { getStringValue, getNumberValue, getObjectValue } from '../../../loaders/shared-helpers';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { applyEntityAssetInput } from './entity-asset-input';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import {
     persistVariantCurrencyPrices,
     resolveDefaultCurrencyPrice,
@@ -80,6 +86,10 @@ interface VariantHandlerConfig extends CreateDuplicateHandlingConfig {
     channel?: string;
     /** Load strategy: UPSERT (default), CREATE, or UPDATE */
     strategy?: LoadStrategy;
+    assetsField?: string;
+    assetsMode?: AssetsMode;
+    featuredAssetField?: string;
+    featuredAssetMode?: FeaturedAssetMode;
 }
 
 /**
@@ -180,6 +190,7 @@ export class VariantHandler implements LoaderHandler {
         private channelService: ChannelService,
         private stockLocationService: StockLocationService,
         private configService: ConfigService,
+        private assetService: AssetService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.PRODUCT_VARIANT_LOADER);
@@ -191,8 +202,8 @@ export class VariantHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: unknown,
-    ): Promise<ExecutionResult> {
-        let ok = 0, fail = 0;
+    ): Promise<LoaderExecutionResult> {
+        let ok = 0, fail = 0, skipped = 0;
         const optionCache = createOptionGroupCache();
         const channelCache = new Map<string, ID>();
 
@@ -238,13 +249,11 @@ export class VariantHandler implements LoaderHandler {
                 let opCtx = ctx;
                 const channelCode = config.channel;
                 if (channelCode) {
-                    const apiType: ApiType = ctx.apiType;
-                    const req = await this.requestContextService.create({
-                        apiType,
-                        channelOrToken: channelCode
-                    });
-                    if (!req) throw new Error(`Channel not found: ${channelCode}`);
-                    opCtx = req;
+                    opCtx = await createChannelRequestContext(
+                        this.requestContextService,
+                        ctx,
+                        channelCode,
+                    );
                 }
 
                 const existingVariant = await findVariantBySku(this.productVariantService, opCtx, sku);
@@ -279,7 +288,7 @@ export class VariantHandler implements LoaderHandler {
                     // Skip update if strategy is CREATE-only
                     if (strategy === LoadStrategy.CREATE) {
                         assertCreateDuplicateCanBeSkipped(config, 'variant', sku);
-                        ok++;
+                        skipped++;
                         continue;
                     }
 
@@ -338,6 +347,18 @@ export class VariantHandler implements LoaderHandler {
                     }
                 }
 
+                if (variantId) {
+                    await applyEntityAssetInput({
+                        ctx: opCtx,
+                        record: rec,
+                        config,
+                        entityId: variantId,
+                        assetService: this.assetService,
+                        entityService: this.productVariantService,
+                        logger: this.logger,
+                    });
+                }
+
                 ok++;
             } catch (e: unknown) {
                 if (onRecordError) {
@@ -346,7 +367,7 @@ export class VariantHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     /**

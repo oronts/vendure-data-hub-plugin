@@ -133,9 +133,9 @@ export class ValidateStepStrategy implements StepStrategy {
 
         return {
             records: afterAfterHook,
-            processed: 0,
+            processed: failedCount,
             succeeded: 0,
-            failed: 0,
+            failed: failedCount,
             detail: createStepDetail(step, { out: out.length }, durationMs),
             counters: { validated: out.length },
             event: { type: DomainEventType.RECORD_VALIDATED, data: { stepKey: step.key, count: out.length } },
@@ -379,4 +379,3 @@ export class RouteStepStrategy implements StepStrategy {
         }
     }
 }
-

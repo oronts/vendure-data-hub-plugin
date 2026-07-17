@@ -57,6 +57,8 @@ export interface StepStrategyResult {
     succeeded: number;
     /** Number of records failed */
     failed: number;
+    /** Number of records intentionally skipped */
+    skipped?: number;
     /** Step execution detail for reporting */
     detail: import('../../../types/index').JsonObject;
     /** Counter updates (extracted, transformed, loaded, etc.) */

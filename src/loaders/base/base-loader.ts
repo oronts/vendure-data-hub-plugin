@@ -8,20 +8,22 @@
  */
 
 import { ID, RequestContext } from '@vendure/core';
-import {
+import type {
     EntityLoader,
     LoaderContext,
     EntityLoadResult,
     EntityValidationResult,
     EntityFieldSchema,
     InputRecord,
-    TargetOperation,
-    VendureEntityType,
-} from '../../types/index';
+} from '../../types/loader-interfaces';
+import type { TargetOperation, VendureEntityType } from '../../../shared/types';
 import { TARGET_OPERATION, OUTCOME_TYPE, LoaderOutcomeType } from '../../constants/enums';
-import { DataHubLogger } from '../../services/logger';
-import { isRecoverableError } from '../shared-helpers';
+import type { DataHubLogger } from '../../services/logger/datahub-logger';
+import { isRecoverableError } from '../error-utils';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
+
+const UNSUPPORTED_OPERATION_CODE = 'UNSUPPORTED_OPERATION';
+const MISSING_ENTITY_CODE = 'NOT_FOUND';
 
 /**
  * Metadata configuration for a loader
@@ -103,6 +105,23 @@ export abstract class BaseEntityLoader<
      * This eliminates the duplicate code seen across ProductLoader, CustomerLoader, etc.
      */
     async load(context: LoaderContext, records: TInput[]): Promise<EntityLoadResult> {
+        if (!this.metadata.supportedOperations.includes(context.operation)) {
+            return {
+                succeeded: 0,
+                failed: records.length,
+                created: 0,
+                updated: 0,
+                skipped: 0,
+                errors: records.map(record => ({
+                    record,
+                    message: `Operation ${context.operation} is not supported for ${this.metadata.entityType}`,
+                    code: UNSUPPORTED_OPERATION_CODE,
+                    recoverable: false,
+                })),
+                affectedIds: [],
+            };
+        }
+
         const result: EntityLoadResult = {
             succeeded: 0,
             failed: 0,
@@ -196,8 +215,14 @@ export abstract class BaseEntityLoader<
         result: EntityLoadResult,
     ): Promise<LoaderOutcomeType> {
         if (context.operation === TARGET_OPERATION.UPDATE) {
-            result.skipped++;
-            return OUTCOME_TYPE.SKIP;
+            result.failed++;
+            result.errors.push({
+                record,
+                message: `Cannot update missing ${this.metadata.entityType} entity`,
+                code: MISSING_ENTITY_CODE,
+                recoverable: false,
+            });
+            return OUTCOME_TYPE.ERROR;
         }
 
         // CREATE or UPSERT - create new entity

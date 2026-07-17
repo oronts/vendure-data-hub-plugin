@@ -16,6 +16,7 @@ import {
     WebhookHookAction,
     DataHubPluginOptions,
     LogLevel,
+    HookExecutionResult,
 } from '../../types/index';
 import { DomainEventsService } from './domain-events.service';
 import { ModuleRef } from '@nestjs/core';
@@ -107,25 +108,55 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         payload?: JsonObject | JsonObject[],
         record?: JsonObject,
         runId?: ID,
-    ): Promise<void> {
+    ): Promise<HookExecutionResult> {
         const actions = (def.hooks?.[stage] ?? []) as HookAction[];
         const handlerCtx: ActionHandlerContext = { ctx, stage, payload, record, runId };
-        for (const action of actions) {
+        const errors: HookExecutionResult['errors'] = [];
+        let executed = 0;
+        let skipped = 0;
+
+        for (const [index, action] of actions.entries()) {
+            const actionName = action.name?.trim() || `${action.type}:${index + 1}`;
             try {
                 const handler = this.actionHandlers.get(action.type);
-                // INTERCEPTOR and SCRIPT are handled by runInterceptors(), not here
                 if (handler) {
                     await handler(action, handlerCtx);
+                    executed += 1;
+                } else {
+                    skipped += 1;
                 }
             } catch (error) {
-                // Hooks are best-effort; log but don't block the pipeline
+                const message = getErrorMessage(error);
+                errors.push({ action: actionName, type: action.type, error: message });
                 this.logger.warn('Hook action failed', {
                     stage,
                     actionType: action.type,
-                    error: getErrorMessage(error),
+                    error: message,
                 });
             }
         }
+
+        const failed = errors.length;
+        const status = this.getExecutionStatus(actions.length, executed, failed);
+        return {
+            status,
+            configured: actions.length,
+            executed,
+            skipped,
+            failed,
+            errors,
+        };
+    }
+
+    private getExecutionStatus(
+        configured: number,
+        executed: number,
+        failed: number,
+    ): HookExecutionResult['status'] {
+        if (configured === 0 || (executed === 0 && failed === 0)) return 'SKIPPED';
+        if (failed === 0) return 'EXECUTED';
+        if (executed === 0) return 'FAILED';
+        return 'PARTIAL';
     }
 
     /**
@@ -382,26 +413,18 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
 
     private async handleTriggerPipeline(action: HookAction, handlerCtx: ActionHandlerContext): Promise<void> {
         const triggerAction = action as Extract<HookAction, { type: 'TRIGGER_PIPELINE' }>;
-        try {
-            const pipelineService = this.moduleRef.get(PipelineService, { strict: false });
-            if (pipelineService) {
-                const seedRecords = Array.isArray(handlerCtx.payload)
-                    ? handlerCtx.payload
-                    : (handlerCtx.record ? [handlerCtx.record] : []);
-                await pipelineService.startRunByCode(handlerCtx.ctx, triggerAction.pipelineCode, {
-                    seedRecords,
-                    triggerKey: triggerAction.triggerKey,
-                    triggeredBy: `hook:${triggerAction.triggerKey}`,
-                });
-            }
-        } catch (error) {
-            this.logger.warn('Failed to trigger pipeline from hook', {
-                stage: handlerCtx.stage,
-                pipelineCode: triggerAction.pipelineCode,
-                runId: handlerCtx.runId,
-                error: getErrorMessage(error),
-            });
+        const pipelineService = this.moduleRef.get(PipelineService, { strict: false });
+        if (!pipelineService) {
+            throw new Error('Pipeline service is unavailable');
         }
+        const seedRecords = Array.isArray(handlerCtx.payload)
+            ? handlerCtx.payload
+            : (handlerCtx.record ? [handlerCtx.record] : []);
+        await pipelineService.startRunByCode(handlerCtx.ctx, triggerAction.pipelineCode, {
+            seedRecords,
+            triggerKey: triggerAction.triggerKey,
+            triggeredBy: `hook:${triggerAction.triggerKey}`,
+        });
     }
 
     private static readonly LOG_METHODS: Record<LogLevel, 'debug' | 'info' | 'warn' | 'error'> = {

@@ -16,6 +16,7 @@ export type {
     FilterOperator,
     PipelineDefinition,
     PipelineStepDefinition,
+    PipelineEdge,
     Throughput,
     EnhancedSchemaDefinition,
     EnhancedFieldDefinition,
@@ -32,6 +33,9 @@ export type {
     PipelineNodeData,
     PipelineNode,
     VisualPipelineDefinition,
+    VisualNodeBaseline,
+    VisualEdgeBaseline,
+    VisualPipelineConversionMetadata,
     VisualNodeCategory,
 } from './pipeline';
 
@@ -54,7 +58,6 @@ export type {
     PipelineEditorProps,
     PipelineEntity,
     PipelineStep,
-    PipelineFormControl,
     IndividualRunMetrics,
     StepMetricsDetail,
     RunRow,
@@ -78,10 +81,6 @@ export type {
     TriggersPanelOnChangeProps,
     TemplateCategory,
 } from './ui-types';
-
-export type {
-    FileType,
-} from '../utils';
 
 export type {
     WizardStep,

@@ -199,9 +199,10 @@ export class StepDispatcher {
         return {
             output,
             detail: { stepKey: key, type: step.type, seeded },
-            processed: extracted,
-            succeeded: extracted,
+            processed: 0,
+            succeeded: 0,
             failed: 0,
+            skipped: 0,
             counters: extracted > 0 ? { extracted } : {},
         };
     }
@@ -229,6 +230,7 @@ export class StepDispatcher {
             processed: result.processed,
             succeeded: result.succeeded,
             failed: result.failed,
+            skipped: result.skipped ?? 0,
             counters: result.counters,
             event: result.event,
         };
@@ -247,6 +249,7 @@ export class StepDispatcher {
             processed: 0,
             succeeded: 0,
             failed: 0,
+            skipped: 0,
             counters: {},
         };
     }
@@ -261,6 +264,7 @@ export class StepDispatcher {
             processed: result.processed,
             succeeded: result.succeeded,
             failed: result.failed,
+            skipped: result.skipped ?? 0,
             counters: result.counters,
             event: result.event,
         };

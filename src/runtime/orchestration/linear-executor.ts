@@ -58,6 +58,7 @@ export interface LinearExecutionResult {
     processed: number;
     succeeded: number;
     failed: number;
+    skipped: number;
     details: Array<import('../../types/index').JsonObject>;
     counters: Record<string, number>;
     /** True when pipeline paused at a GATE step awaiting approval */
@@ -147,6 +148,7 @@ interface ExecutionState {
     processed: number;
     succeeded: number;
     failed: number;
+    skipped: number;
     details: Array<import('../../types/index').JsonObject>;
     counters: Record<string, number>;
     cancelled: boolean;
@@ -165,6 +167,7 @@ function createInitialState(): ExecutionState {
         processed: 0,
         succeeded: 0,
         failed: 0,
+        skipped: 0,
         details: [],
         counters: {
             extracted: 0,
@@ -301,6 +304,7 @@ function applyResultToState(state: ExecutionState, result: StepStrategyResult): 
     state.processed += result.processed;
     state.succeeded += result.succeeded;
     state.failed += result.failed;
+    state.skipped += result.skipped ?? 0;
     state.details.push(result.detail);
 
     for (const [key, value] of Object.entries(result.counters)) {
@@ -482,181 +486,11 @@ export async function executeLinear(params: LinearExecutorParams): Promise<Linea
         processed: state.processed,
         succeeded: state.succeeded,
         failed: state.failed,
+        skipped: state.skipped,
         details: state.details,
         counters: state.counters,
         paused: state.paused ? true : undefined,
         pausedAtStep: state.pausedAtStep,
         cancelled: state.cancelled ? true : undefined,
-    };
-}
-
-/**
- * Parameters for seeded execution
- */
-export interface SeededExecutionParams {
-    ctx: RequestContext;
-    definition: PipelineDefinition;
-    seed: RecordObject[];
-    executorCtx: ExecutorContext;
-    transformExecutor: TransformExecutor;
-    loadExecutor: LoadExecutor;
-    exportExecutor: ExportExecutor;
-    feedExecutor: FeedExecutor;
-    sinkExecutor: SinkExecutor;
-    onCancelRequested?: () => Promise<boolean>;
-    onRecordError?: OnRecordErrorCallback;
-}
-
-/**
- * Seeded execution state
- */
-interface SeededExecutionState {
-    records: RecordObject[];
-    processed: number;
-    succeeded: number;
-    failed: number;
-}
-
-/**
- * Step execution result for metrics collection
- */
-interface StepExecutionMetrics {
-    ok: number;
-    fail: number;
-    recordCount: number;
-}
-
-/**
- * Prepare initial state for seeded execution
- */
-function prepareSeededExecution(seed: RecordObject[]): SeededExecutionState {
-    return {
-        records: [...seed],
-        processed: 0,
-        succeeded: 0,
-        failed: 0,
-    };
-}
-
-/**
- * Collect and apply step metrics to execution state
- */
-function collectStepMetrics(
-    state: SeededExecutionState,
-    metrics: StepExecutionMetrics,
-): void {
-    state.succeeded += metrics.ok;
-    state.failed += metrics.fail;
-    state.processed += metrics.recordCount;
-}
-
-/**
- * Execute a transform-type step (TRANSFORM, ENRICH, VALIDATE, ROUTE)
- */
-async function executeTransformStep(
-    params: SeededExecutionParams,
-    step: PipelineStepDefinition,
-    state: SeededExecutionState,
-): Promise<void> {
-    const { ctx, executorCtx, transformExecutor, onRecordError } = params;
-
-    switch (step.type) {
-        case StepType.TRANSFORM:
-            state.records = await transformExecutor.executeOperator(ctx, step, state.records, executorCtx);
-            break;
-        case StepType.ENRICH:
-            state.records = await transformExecutor.executeEnrich(ctx, step, state.records, executorCtx);
-            break;
-        case StepType.VALIDATE:
-            state.records = await transformExecutor.executeValidate(ctx, step, state.records, onRecordError);
-            break;
-        case StepType.ROUTE:
-            state.records = await transformExecutor.executeRoute(ctx, step, state.records, onRecordError);
-            break;
-    }
-}
-
-/**
- * Execute a load-type step (LOAD, EXPORT, FEED, SINK)
- */
-async function executeLoadStep(
-    params: SeededExecutionParams,
-    step: PipelineStepDefinition,
-    state: SeededExecutionState,
-): Promise<void> {
-    const { ctx, loadExecutor, exportExecutor, feedExecutor, sinkExecutor, onRecordError } = params;
-    let result: { ok: number; fail: number };
-
-    switch (step.type) {
-        case StepType.LOAD:
-            result = await loadExecutor.execute(ctx, step, state.records, onRecordError);
-            break;
-        case StepType.EXPORT:
-            result = await exportExecutor.execute(ctx, step, state.records, onRecordError);
-            break;
-        case StepType.FEED:
-            result = await feedExecutor.execute(ctx, step, state.records, onRecordError);
-            break;
-        case StepType.SINK:
-            result = await sinkExecutor.execute(ctx, step, state.records, onRecordError);
-            break;
-        default:
-            return;
-    }
-
-    collectStepMetrics(state, { ok: result.ok, fail: result.fail, recordCount: state.records.length });
-}
-
-/**
- * Execute a single step with error recovery in seeded execution
- */
-async function executeStepWithRecovery(
-    params: SeededExecutionParams,
-    step: PipelineStepDefinition,
-    state: SeededExecutionState,
-): Promise<void> {
-    // Skip trigger, extract, and gate steps - using seed records
-    if (step.type === StepType.TRIGGER || step.type === StepType.EXTRACT || step.type === StepType.GATE) {
-        return;
-    }
-
-    // Handle transform-type steps
-    if ([StepType.TRANSFORM, StepType.ENRICH, StepType.VALIDATE, StepType.ROUTE].includes(step.type as StepType)) {
-        await executeTransformStep(params, step, state);
-        return;
-    }
-
-    // Handle load-type steps
-    if ([StepType.LOAD, StepType.EXPORT, StepType.FEED, StepType.SINK].includes(step.type as StepType)) {
-        await executeLoadStep(params, step, state);
-        return;
-    }
-
-    // Unhandled step type
-    logger.warn(`executeWithSeed: Unhandled step type "${step.type}" for step "${step.key}" - passing through ${state.records.length} records`);
-}
-
-/**
- * Execute pipeline with seed records (skip extract steps)
- */
-export async function executeWithSeed(
-    params: SeededExecutionParams,
-): Promise<{ processed: number; succeeded: number; failed: number }> {
-    const { definition, onCancelRequested } = params;
-
-    const state = prepareSeededExecution(params.seed);
-
-    for (const step of definition.steps) {
-        if (onCancelRequested && (await onCancelRequested())) {
-            break;
-        }
-
-        await executeStepWithRecovery(params, step, state);
-    }
-
-    return {
-        processed: state.processed,
-        succeeded: state.succeeded,
-        failed: state.failed,
     };
 }

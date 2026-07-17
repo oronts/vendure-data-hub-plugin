@@ -36,6 +36,7 @@ export interface StepLogInfo {
     recordsOut: number;
     succeeded: number;
     failed: number;
+    skipped?: number;
     durationMs: number;
     sampleInput?: RecordObject;
     sampleOutput?: RecordObject;
@@ -56,6 +57,7 @@ export interface GraphExecutionResult {
     processed: number;
     succeeded: number;
     failed: number;
+    skipped: number;
     details: Array<import('../../types/index').JsonObject>;
     counters: Record<string, number>;
     paused?: boolean;
@@ -71,6 +73,7 @@ export interface StepExecutionResult {
     processed: number;
     succeeded: number;
     failed: number;
+    skipped: number;
     counters: Record<string, number>;
     event?: { type: string; data: Record<string, unknown> };
 }

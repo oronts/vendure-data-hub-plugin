@@ -51,8 +51,8 @@ export class GateStepStrategy implements StepStrategy {
 
         return {
             records: gateResult.pendingRecords,
-            processed: recordsIn,
-            succeeded: recordsIn,
+            processed: 0,
+            succeeded: 0,
             failed: 0,
             detail: createStepDetail(step, {
                 out: gateResult.pendingRecords.length,

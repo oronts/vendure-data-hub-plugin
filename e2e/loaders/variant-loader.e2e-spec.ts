@@ -10,7 +10,7 @@
  * that need isolated products use separate parent products.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { ProductService, ProductVariantService } from '@vendure/core';
+import { ChannelService, CurrencyCode, ProductVariantService } from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { ProductHandler } from '../../src/runtime/executors/loaders/product-handler';
 import { VariantHandler } from '../../src/runtime/executors/loaders/variant-handler';
@@ -20,7 +20,6 @@ describe('VariantHandler e2e', () => {
     const { server, adminClient } = createDataHubTestEnvironment();
     let productHandler: ProductHandler;
     let variantHandler: VariantHandler;
-    let productService: ProductService;
     let variantService: ProductVariantService;
     let ctx: import('@vendure/core').RequestContext;
 
@@ -32,8 +31,13 @@ describe('VariantHandler e2e', () => {
         await adminClient.asSuperAdmin();
         productHandler = server.app.get(ProductHandler);
         variantHandler = server.app.get(VariantHandler);
-        productService = server.app.get(ProductService);
         variantService = server.app.get(ProductVariantService);
+        const channelService = server.app.get(ChannelService);
+        ctx = await getSuperadminContext(server.app);
+        await channelService.update(ctx, {
+            id: ctx.channelId,
+            availableCurrencyCodes: [CurrencyCode.USD, CurrencyCode.EUR],
+        });
         ctx = await getSuperadminContext(server.app);
 
         // Create separate parent products so each test group has a clean product
@@ -139,6 +143,11 @@ describe('VariantHandler e2e', () => {
             filter: { sku: { eq: 'FIL-001' } },
         } as never);
         expect(variants.items.length).toBe(1);
+        const prices = await variantService.getProductVariantPrices(ctx, variants.items[0].id);
+        expect(prices).toEqual(expect.arrayContaining([
+            expect.objectContaining({ currencyCode: CurrencyCode.EUR, price: 7800 }),
+            expect.objectContaining({ currencyCode: CurrencyCode.USD, price: 8600 }),
+        ]));
     });
 
     it('creates variant with option groups (auto-create)', async () => {
@@ -240,6 +249,7 @@ describe('VariantHandler e2e', () => {
     it('skips existing variant with CREATE strategy', async () => {
         const step = makeStep('test-variant-create-only', {
             strategy: 'CREATE',
+            skipDuplicates: true,
             skuField: 'sku',
             priceField: 'price',
         });
@@ -251,7 +261,7 @@ describe('VariantHandler e2e', () => {
         }];
 
         const result = await variantHandler.execute(ctx, step, input);
-        expect(result.ok).toBe(1); // Counted as ok (skip)
+        expect(result).toEqual({ ok: 0, fail: 0, skipped: 1 });
 
         const variants = await variantService.findAll(ctx, {
             filter: { sku: { eq: 'GLV-S' } },

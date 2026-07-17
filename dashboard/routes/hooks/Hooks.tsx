@@ -14,6 +14,7 @@ import {
     SelectTrigger,
     SelectValue,
     PermissionGuard,
+    usePermissions,
     Card,
     CardContent,
     CardDescription,
@@ -55,11 +56,12 @@ export const hooksPage: DashboardRouteDefinition = {
         id: 'data-hub-hooks',
         url: ROUTES.HOOKS,
         title: 'Hooks & Events',
+        requiresPermission: DATAHUB_PERMISSIONS.READ_PIPELINE,
     },
     path: ROUTES.HOOKS,
     loader: () => ({ breadcrumb: 'Hooks & Events' }),
     component: () => (
-        <PermissionGuard requires={[DATAHUB_PERMISSIONS.UPDATE_PIPELINE]}>
+        <PermissionGuard requires={[DATAHUB_PERMISSIONS.READ_PIPELINE]}>
             <HooksPage />
         </PermissionGuard>
     ),
@@ -95,7 +97,7 @@ function HookStageSection({ categoryInfo, stages: allStages, hooks, selectedStag
                         isLoading={isPending && selectedStage?.key === stage.key}
                         testResult={selectedStage?.key === stage.key ? testResult : null}
                         onTest={() => onTest(stage)}
-                        disabled={disabled}
+                        disabled={disabled || !hooks[stage.key]}
                     />
                 ))}
             </div>
@@ -104,15 +106,21 @@ function HookStageSection({ categoryInfo, stages: allStages, hooks, selectedStag
 }
 
 function HooksPage() {
+    const { hasPermissions } = usePermissions();
+    const canTestHooks = hasPermissions([DATAHUB_PERMISSIONS.RUN_PIPELINE]);
     const [pipelineId, setPipelineId] = React.useState<string>('');
     const [selectedStage, setSelectedStage] = React.useState<HookStage | null>(null);
     const [testResult, setTestResult] = React.useState<'success' | 'error' | null>(null);
+    const [testSummary, setTestSummary] = React.useState<string | null>(null);
     const [eventFilter, setEventFilter] = React.useState('');
 
     const pipelinesQuery = usePipelines({ take: QUERY_LIMITS.ALL_ITEMS });
     const hooksQuery = usePipelineHooks(pipelineId || undefined);
     const eventsQuery = useEvents(UI_DEFAULTS.EVENTS_LIMIT);
     const testMutation = useTestHook();
+    const { refetch: refetchPipelines } = pipelinesQuery;
+    const { refetch: refetchEvents } = eventsQuery;
+    const { mutate: testHook } = testMutation;
     const { hookStages: backendStages } = useHookStages();
     const { categories: backendCategories } = useHookStageCategories();
 
@@ -124,16 +132,16 @@ function HooksPage() {
 
     const hooks = hooksQuery.data ?? {};
     const pipelines = pipelinesQuery.data?.items ?? [];
-    const selectedPipeline = pipelines.find(p => p.id === pipelineId);
+    const selectedPipeline = pipelines.find(p => String(p.id) === pipelineId);
 
     const isLoading = pipelinesQuery.isLoading;
     const hasError = pipelinesQuery.isError || eventsQuery.isError || hooksQuery.isError;
     const errorMessage = pipelinesQuery.error?.message || eventsQuery.error?.message || hooksQuery.error?.message;
 
     const handleRetry = React.useCallback(() => {
-        pipelinesQuery.refetch();
-        eventsQuery.refetch();
-    }, [pipelinesQuery.refetch, eventsQuery.refetch]);
+        void refetchPipelines();
+        void refetchEvents();
+    }, [refetchEvents, refetchPipelines]);
 
     const runTest = React.useCallback((stage: HookStage) => {
         if (!pipelineId) {
@@ -142,17 +150,28 @@ function HooksPage() {
         }
         setSelectedStage(stage);
         setTestResult(null);
-        testMutation.mutate(
+        setTestSummary(null);
+        testHook(
             {
                 pipelineId,
                 stage: stage.key,
                 payload: stage.examplePayload,
             },
             {
-                onSuccess: () => {
-                    setTestResult('success');
-                    toast.success(TOAST_HOOK.TEST_SUCCESS);
-                    eventsQuery.refetch();
+                onSuccess: result => {
+                    const summary = `${result.executed} executed, ${result.skipped} skipped, ${result.failed} failed`;
+                    setTestSummary(summary);
+                    if (result.status === 'FAILED' || result.status === 'PARTIAL') {
+                        setTestResult('error');
+                        toast.error(`Hook test ${result.status.toLowerCase()}: ${summary}`);
+                    } else if (result.status === 'SKIPPED') {
+                        setTestResult('error');
+                        toast.error(`Hook test skipped: ${summary}`);
+                    } else {
+                        setTestResult('success');
+                        toast.success(`${TOAST_HOOK.TEST_SUCCESS}: ${summary}`);
+                    }
+                    void refetchEvents();
                 },
                 onError: (err: unknown) => {
                     setTestResult('error');
@@ -160,7 +179,7 @@ function HooksPage() {
                 },
             }
         );
-    }, [pipelineId, testMutation.mutate, eventsQuery.refetch]);
+    }, [pipelineId, refetchEvents, testHook]);
 
     return (
         <Page pageId="data-hub-hooks">
@@ -201,8 +220,8 @@ function HooksPage() {
                             <CardTitle>Pipeline Hooks</CardTitle>
                         </div>
                         <CardDescription>
-                            Hooks let you run custom code at specific points during pipeline execution.
-                            Select a pipeline below to view its configured hooks and test them with sample data.
+                            This page is for hook observability and testing configured actions. Hook definitions are
+                            managed in the pipeline definition; unconfigured stages cannot be tested here.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -217,7 +236,7 @@ function HooksPage() {
                                     </SelectTrigger>
                                     <SelectContent>
                                         {pipelines.map(p => (
-                                            <SelectItem key={p.id} value={p.id}>
+                                            <SelectItem key={p.id} value={String(p.id)}>
                                                 {p.name}
                                                 <span className="text-muted-foreground ml-2 text-xs">
                                                     ({p.code})
@@ -240,11 +259,17 @@ function HooksPage() {
 
             <PageBlock column="main" blockId="stages">
                 <div className="mb-4">
-                    <h3 className="text-lg font-semibold mb-1">Available Hook Stages</h3>
+                    <h3 className="text-lg font-semibold mb-1">Hook Stages</h3>
                     <p className="text-sm text-muted-foreground">
-                        Click any hook to test it with sample data. Results will appear in the Events section below.
+                        Configured stages can be tested with sample data. Results appear in Recent Events.
                     </p>
                 </div>
+
+                {testSummary && (
+                    <p className="mb-4 text-sm text-muted-foreground" role="status">
+                        Last test: {testSummary}
+                    </p>
+                )}
 
                 {stageCategories.map(cat => (
                     <HookStageSection
@@ -256,7 +281,7 @@ function HooksPage() {
                         isPending={testMutation.isPending}
                         testResult={testResult}
                         onTest={runTest}
-                        disabled={!pipelineId}
+                        disabled={!pipelineId || !canTestHooks}
                     />
                 ))}
             </PageBlock>
@@ -329,7 +354,7 @@ function HooksPage() {
                                 <tr>
                                     <td colSpan={3} className="px-3 py-8 text-center text-muted-foreground">
                                         <Info className="w-5 h-5 mx-auto mb-2 opacity-50" />
-                                        {eventFilter ? 'No matching events.' : 'No events yet. Test a hook to see events appear here.'}
+                                        {eventFilter ? 'No matching events.' : 'No events have been observed yet.'}
                                     </td>
                                 </tr>
                             )}
@@ -385,7 +410,7 @@ const HookStageCard = React.memo(function HookStageCard({
             onKeyDown={handleKeyDown}
             role="button"
             tabIndex={disabled ? -1 : 0}
-            aria-label={`Configure ${stage.label} hook stage`}
+            aria-label={isConfigured ? `Test ${stage.label} hook stage` : `${stage.label} hook stage is not configured`}
             aria-disabled={disabled}
         >
             <div className="flex items-start justify-between mb-2">
@@ -419,6 +444,11 @@ const HookStageCard = React.memo(function HookStageCard({
                         <Play className="w-3 h-3" />
                         Click to test
                     </div>
+                </div>
+            )}
+            {disabled && !isConfigured && (
+                <div className="mt-2 pt-2 border-t text-xs text-muted-foreground">
+                    Not configured in this pipeline
                 </div>
             )}
         </div>

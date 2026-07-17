@@ -14,6 +14,7 @@ import { DomainEventsService } from '../events/domain-events.service';
 import { HookService } from '../events/hook.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 import { getErrorMessage, ensureError } from '../../utils/error.utils';
+import { createPipelineRunContext } from './pipeline-run-channel';
 
 /** Context for pipeline execution passed between helper methods */
 interface ExecutionContext {
@@ -93,7 +94,7 @@ export class PipelineRunnerService {
      * Runs pipeline execution phases: setup, steps, and completion.
      */
     async execute(runId: ID, executionAttempt: PipelineExecutionAttempt): Promise<void> {
-        const prepareResult = await this.prepareExecution(runId);
+        const prepareResult = await this.prepareExecution(runId, executionAttempt);
         if (!prepareResult.proceed) {
             return;
         }
@@ -139,15 +140,28 @@ export class PipelineRunnerService {
      * Prepares execution context: loads run, validates status, acquires lock, and initializes logging.
      * Returns { proceed: false } if execution should be skipped.
      */
-    private async prepareExecution(runId: ID): Promise<PrepareResult> {
-        const ctx = await this.createCtx();
-        const runRepo = this.connection.getRepository(ctx, PipelineRun);
+    private async prepareExecution(
+        runId: ID,
+        executionAttempt: PipelineExecutionAttempt,
+    ): Promise<PrepareResult> {
+        const lookupCtx = await this.createCtx();
+        const lookupRepo = this.connection.getRepository(lookupCtx, PipelineRun);
 
-        const loadResult = await this.loadAndValidateRun(runId, runRepo);
+        const loadResult = await this.loadAndValidateRun(runId, lookupRepo);
         if (!loadResult.valid) {
             return { proceed: false };
         }
         const { run, runLogger } = loadResult;
+        const ctx = await this.restoreRunContext(
+            run,
+            lookupRepo,
+            runLogger,
+            executionAttempt,
+        );
+        if (!ctx) {
+            return { proceed: false };
+        }
+        const runRepo = this.connection.getRepository(ctx, PipelineRun);
 
         // Detect gate resume: run is already RUNNING (set by approveGate)
         const isGateResume = run.status === RunStatus.RUNNING;
@@ -186,6 +200,44 @@ export class PipelineRunnerService {
         }
 
         return { proceed: true, executionContext: execCtx };
+    }
+
+    private async restoreRunContext(
+        run: PipelineRun,
+        lookupRepo: Repository<PipelineRun>,
+        runLogger: DataHubLogger,
+        executionAttempt: PipelineExecutionAttempt,
+    ): Promise<RequestContext | null> {
+        try {
+            return await createPipelineRunContext(this.requestContextService, run);
+        } catch (error) {
+            const cause = ensureError(error);
+            const message = `Cannot restore pipeline execution channel: ${cause.message}`;
+            const willRetry = executionAttempt.attempt < executionAttempt.maxAttempts;
+
+            if (willRetry) {
+                runLogger.warn(message, {
+                    attempt: executionAttempt.attempt,
+                    maxAttempts: executionAttempt.maxAttempts,
+                    channelId: run.channelId ?? undefined,
+                });
+                throw cause;
+            }
+
+            run.status = RunStatus.FAILED;
+            run.finishedAt = new Date();
+            run.error = message;
+            await lookupRepo.save(run, { reload: false });
+            runLogger.error(message, cause, {
+                channelId: run.channelId ?? undefined,
+            });
+            this.domainEvents.publishRunFailed(
+                String(run.id),
+                run.pipeline.code,
+                message,
+            );
+            return null;
+        }
     }
 
     /**
@@ -313,11 +365,18 @@ export class PipelineRunnerService {
         const pipelineSpan = runLogger.logPipelineStart(run.pipeline.code, run.pipeline.id);
         const startTime = Date.now();
 
+        run.queueRequestedAt = null;
+        run.queueDispatchedAt = null;
         if (!isGateResume) {
             run.status = RunStatus.RUNNING;
             run.startedAt = new Date();
-            await runRepo.save(run, { reload: false });
+        }
+        await runRepo.save(run, { reload: false });
 
+        if (isGateResume) {
+            // Gate resume: status is already RUNNING, preserve original startedAt
+            runLogger.info('Resuming pipeline after gate approval', { runId: String(runId) });
+        } else {
             this.domainEvents.publishRunStarted(
                 String(runId),
                 run.pipeline.code,
@@ -328,9 +387,6 @@ export class PipelineRunnerService {
                 pipelineId: run.pipeline.id,
                 runId,
             });
-        } else {
-            // Gate resume: status is already RUNNING, preserve original startedAt
-            runLogger.info('Resuming pipeline after gate approval', { runId: String(runId) });
         }
 
         return { ctx, run, runId, runRepo, runLogger, pipelineSpan, startTime, lockKey, lockToken };
@@ -386,6 +442,7 @@ export class PipelineRunnerService {
                 processed: metrics.totalRecords ?? 0,
                 succeeded: metrics.succeeded ?? 0,
                 failed: metrics.failed ?? 0,
+                skipped: metrics.skipped ?? 0,
                 durationMs: metrics.durationMs ?? 0,
             },
         );
@@ -409,6 +466,7 @@ export class PipelineRunnerService {
         pipelineSpan.setAttribute('records.total', metrics.totalRecords ?? 0);
         pipelineSpan.setAttribute('records.succeeded', metrics.succeeded ?? 0);
         pipelineSpan.setAttribute('records.failed', metrics.failed ?? 0);
+        pipelineSpan.setAttribute('records.skipped', metrics.skipped ?? 0);
         pipelineSpan.end((metrics.failed ?? 0) > 0 ? 'error' : 'ok');
     }
 
@@ -663,18 +721,31 @@ export class PipelineRunnerService {
 
         runLogger.debug('Pipeline processing completed', {
             recordCount: result.processed,
+            sourceRecordCount: result.sourceRecords,
             recordsSucceeded: result.succeeded,
             recordsFailed: result.failed,
+            recordsSkipped: result.skipped,
             durationMs,
             throughput: calculateThroughput(result.processed, durationMs),
         });
 
-        const resultWithDetails = result as { processed: number; succeeded: number; failed: number; details?: JsonObject[]; paused?: boolean; pausedAtStep?: string };
+        const resultWithDetails = result as {
+            processed: number;
+            succeeded: number;
+            failed: number;
+            skipped: number;
+            sourceRecords: number;
+            details?: JsonObject[];
+            paused?: boolean;
+            pausedAtStep?: string;
+        };
         return {
             totalRecords: result.processed,
             processed: result.processed,
             succeeded: result.succeeded,
             failed: result.failed,
+            skipped: result.skipped,
+            sourceRecords: result.sourceRecords,
             durationMs,
             details: resultWithDetails.details,
             paused: resultWithDetails.paused,

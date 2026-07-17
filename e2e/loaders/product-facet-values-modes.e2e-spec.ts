@@ -99,7 +99,7 @@ describe('ProductHandler facet value modes', () => {
             { facetCode: 'product-color', code: 'product-red' },
             'product-blue',
         ], 'REPLACE_ALL');
-        expect(first).toEqual({ ok: 1, fail: 0 });
+        expect(first).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(await getFacetCodes('product-facets-replace')).toEqual([
             'product-blue',
             'product-red',
@@ -126,7 +126,7 @@ describe('ProductHandler facet value modes', () => {
 
         const result = await loadFacetValues('product-facets-clear', [], 'REPLACE_ALL');
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(await getFacetCodes('product-facets-clear')).toEqual([]);
     });
 
@@ -159,7 +159,7 @@ describe('ProductHandler facet value modes', () => {
             'REMOVE',
         );
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(await getFacetCodes('product-facets-remove')).toEqual([
             'product-green',
             'product-red',
@@ -175,7 +175,7 @@ describe('ProductHandler facet value modes', () => {
             'SKIP',
         );
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(await getFacetCodes('product-facets-skip')).toEqual(['product-red']);
     });
 
@@ -194,7 +194,7 @@ describe('ProductHandler facet value modes', () => {
             }],
         );
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(await getFacetCodes('product-facets-default-field')).toEqual(['product-small']);
     });
 
@@ -215,7 +215,7 @@ describe('ProductHandler facet value modes', () => {
             }],
         );
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(await getFacetCodes('product-facets-absent')).toEqual(['product-red']);
     });
 
@@ -236,7 +236,7 @@ describe('ProductHandler facet value modes', () => {
             errors.callback,
         );
 
-        expect(result).toEqual({ ok: 0, fail: 1 });
+        expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
         expect(errors.errors).toHaveLength(1);
         expect(errors.errors[0]?.message).toContain('Invalid product facet value at index 0');
     });

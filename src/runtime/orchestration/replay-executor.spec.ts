@@ -13,7 +13,7 @@ function createDefinition(
 
 describe('replayFromStepLinear', () => {
     it('executes the failed step inclusively with the recorded input', async () => {
-        const load = vi.fn().mockResolvedValue({ ok: 1, fail: 0 });
+        const load = vi.fn().mockResolvedValue({ ok: 1, fail: 0, skipped: 0 });
         const definition = createDefinition([
             {
                 key: 'failed-load',
@@ -42,7 +42,7 @@ describe('replayFromStepLinear', () => {
             SEED,
             undefined,
         );
-        expect(result).toEqual({ processed: 1, succeeded: 1, failed: 0 });
+        expect(result).toEqual({ processed: 1, succeeded: 1, failed: 0, skipped: 0 });
     });
 
     it('rejects an unknown failed step instead of reporting an empty replay', async () => {
@@ -65,7 +65,7 @@ describe('replayFromStepGraph', () => {
     it('executes the failed graph step before its reachable descendants', async () => {
         const transformed = [{ sku: 'SKU-1', normalized: true }];
         const transform = vi.fn().mockResolvedValue(transformed);
-        const load = vi.fn().mockResolvedValue({ ok: 1, fail: 0 });
+        const load = vi.fn().mockResolvedValue({ ok: 1, fail: 0, skipped: 0 });
         const definition = createDefinition(
             [
                 {
@@ -108,7 +108,7 @@ describe('replayFromStepGraph', () => {
             transformed,
             undefined,
         );
-        expect(result).toEqual({ processed: 1, succeeded: 1, failed: 0 });
+        expect(result).toEqual({ processed: 1, succeeded: 1, failed: 0, skipped: 0 });
     });
 
     it('rejects an unknown failed graph step instead of reporting success', async () => {

@@ -14,7 +14,7 @@ export function StepSummaryTable({ metrics }: { metrics: IndividualRunMetrics })
                         <th className="text-left px-2 py-1">Step</th>
                         <th className="text-left px-2 py-1">Type</th>
                         <th className="text-left px-2 py-1">Adapter</th>
-                        <th className="text-left px-2 py-1">OK / Fail</th>
+                        <th className="text-left px-2 py-1">OK / Skipped / Fail</th>
                         <th className="text-left px-2 py-1">Duration</th>
                     </tr>
                 </thead>
@@ -24,7 +24,9 @@ export function StepSummaryTable({ metrics }: { metrics: IndividualRunMetrics })
                             <td className="px-2 py-1 font-mono text-muted-foreground">{s.stepKey}</td>
                             <td className="px-2 py-1">{s.type}</td>
                             <td className="px-2 py-1">{s.adapterCode ?? '—'}</td>
-                            <td className="px-2 py-1">{s.ok ?? 0}{typeof s.fail === 'number' ? ` / ${s.fail}` : ''}</td>
+                            <td className="px-2 py-1">
+                                {s.ok ?? 0} / {s.skipped ?? 0} / {s.fail ?? 0}
+                            </td>
                             <td className="px-2 py-1">{typeof s.durationMs === 'number' ? `${s.durationMs} ms` : '—'}</td>
                         </tr>
                     ))}

@@ -8,17 +8,22 @@ import { toast } from 'sonner';
 import { DATAHUB_PERMISSIONS, TOAST_PIPELINE } from '../../constants';
 import { RetryPatchHelper } from './RetryPatchHelper';
 import { ErrorAuditList } from './ErrorAuditList';
+import { AllPermissionsGuard, LoadMoreButton } from '../../components/shared';
 import type { RunErrorsListProps } from '../../types';
 
 interface ErrorRowProps {
     item: { id: string; stepKey?: string | null; message?: string | null; payload?: unknown };
     onStartEditing: (itemId: string) => void;
+    onRetryUnchanged: (itemId: string) => void;
 }
 
-function ErrorRow({ item, onStartEditing }: ErrorRowProps) {
-    const handleClick = React.useCallback(() => {
+function ErrorRow({ item, onStartEditing, onRetryUnchanged }: ErrorRowProps) {
+    const handlePatchClick = React.useCallback(() => {
         onStartEditing(item.id);
     }, [onStartEditing, item.id]);
+    const handleRetryClick = React.useCallback(() => {
+        onRetryUnchanged(item.id);
+    }, [onRetryUnchanged, item.id]);
 
     return (
         <tr className="border-t align-top">
@@ -29,22 +34,52 @@ function ErrorRow({ item, onStartEditing }: ErrorRowProps) {
                 <ErrorAuditList errorId={item.id} />
             </td>
             <td className="px-2 py-1 align-top">
-                <PermissionGuard requires={[DATAHUB_PERMISSIONS.REPLAY_RECORD]}>
-                    <Button variant="outline" size="sm" onClick={handleClick} data-testid="datahub-error-retry-button">
-                        Retry with patch
-                    </Button>
-                </PermissionGuard>
+                <div className="flex flex-col items-start gap-2">
+                    <PermissionGuard requires={[DATAHUB_PERMISSIONS.REPLAY_RECORD]}>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleRetryClick}
+                            data-testid="datahub-error-retry-button"
+                        >
+                            Retry unchanged
+                        </Button>
+                    </PermissionGuard>
+                    <AllPermissionsGuard requires={[
+                        DATAHUB_PERMISSIONS.REPLAY_RECORD,
+                        DATAHUB_PERMISSIONS.EDIT_QUARANTINE,
+                    ]}>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handlePatchClick}
+                            data-testid="datahub-error-retry-with-patch-button"
+                        >
+                            Retry with patch
+                        </Button>
+                    </AllPermissionsGuard>
+                </div>
             </td>
         </tr>
     );
 }
 
-export function RunErrorsList({ items, onRetry }: RunErrorsListProps) {
+export function RunErrorsList({
+    items,
+    totalItems,
+    hasNextPage,
+    isFetchingNextPage,
+    onLoadMore,
+    onRetry,
+}: RunErrorsListProps) {
     const [editing, setEditing] = React.useState<{ id: string; patch: string } | null>(null);
 
     const handleStartEditing = React.useCallback((itemId: string) => {
         setEditing({ id: itemId, patch: '{}' });
     }, []);
+    const handleRetryUnchanged = React.useCallback((itemId: string) => {
+        void onRetry(itemId, {});
+    }, [onRetry]);
 
     const handlePatchChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setEditing(prev => prev ? { ...prev, patch: e.target.value } : null);
@@ -63,8 +98,10 @@ export function RunErrorsList({ items, onRetry }: RunErrorsListProps) {
             toast.error(TOAST_PIPELINE.INVALID_JSON_PATCH);
             return;
         }
-        await onRetry(editing.id, patch);
-        setEditing(null);
+        const applied = await onRetry(editing.id, patch);
+        if (applied) {
+            setEditing(null);
+        }
     }, [editing, onRetry]);
 
     const handleCancelEditing = React.useCallback(() => {
@@ -92,10 +129,19 @@ export function RunErrorsList({ items, onRetry }: RunErrorsListProps) {
                             key={item.id}
                             item={item}
                             onStartEditing={handleStartEditing}
+                            onRetryUnchanged={handleRetryUnchanged}
                         />
                     ))}
                 </tbody>
             </table>
+            {hasNextPage && (
+                <LoadMoreButton
+                    remaining={Math.max(totalItems - items.length, 0)}
+                    onClick={onLoadMore}
+                    loading={isFetchingNextPage}
+                    data-testid="datahub-run-errors-load-more"
+                />
+            )}
             {editing && (
                 <div className="border rounded p-2 space-y-2">
                     <label htmlFor="retry-patch-json" className="text-sm font-medium">Patch JSON</label>

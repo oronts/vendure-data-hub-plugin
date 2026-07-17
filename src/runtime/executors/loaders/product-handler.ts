@@ -14,9 +14,11 @@ import {
     ProductVariant,
     StockLocationService,
     FacetValueService,
+    AssetService,
     ID,
     LanguageCode,
 } from '@vendure/core';
+import { createChannelRequestContext } from '../../helpers/channel-request-context';
 import {
     StockLevelInput,
     CreateProductInput,
@@ -32,9 +34,10 @@ import {
     PipelineStepDefinition,
     ErrorHandlingConfig,
     FacetValuesMode,
+    AssetsMode,
+    FeaturedAssetMode,
 } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
-import { slugify } from '../../utils';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler, CoercedProductFields } from './types';
 import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import {
@@ -44,16 +47,18 @@ import {
     resolveChannelIds,
     parseTranslationsInput,
 } from './shared-lookups';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { LoadStrategy, ConflictStrategy } from '../../../constants/enums';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { majorToMinorUnits, resolveMoneyPrecision } from '../../../utils/money.utils';
+import { applyEntityAssetInput } from './entity-asset-input';
 import {
     getStringValue,
     getNumberValue,
     getObjectValue,
     handleFacetValues,
+    slugify,
 } from '../../../loaders/shared-helpers';
 import {
     persistVariantCurrencyPrices,
@@ -104,6 +109,10 @@ interface ProductHandlerConfig extends CreateDuplicateHandlingConfig {
     facetValuesField?: string;
     /** How facet values are applied when the configured record field is present */
     facetValuesMode?: FacetValuesMode;
+    assetsField?: string;
+    assetsMode?: AssetsMode;
+    featuredAssetField?: string;
+    featuredAssetMode?: FeaturedAssetMode;
 }
 
 /**
@@ -332,6 +341,7 @@ export class ProductHandler implements LoaderHandler {
         private channelService: ChannelService,
         private stockLocationService: StockLocationService,
         private facetValueService: FacetValueService,
+        private assetService: AssetService,
         private configService: ConfigService,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -344,9 +354,10 @@ export class ProductHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0;
         let fail = 0;
+        let skipped = 0;
         const cfg = getConfig(step.config);
         const channelCache = new Map<string, ID>();
 
@@ -385,13 +396,15 @@ export class ProductHandler implements LoaderHandler {
                     const existingVariant = await findVariantBySku(this.productVariantService, opCtx, fields.sku);
                     if (existingVariant) {
                         assertCreateDuplicateCanBeSkipped(cfg, 'variant', fields.sku);
+                        skipped++;
+                        continue;
                     }
                 }
                 const procCtx: ProductProcessingContext = { ctx, opCtx, step, cfg, fields, rec };
 
                 const productResult = await this.createOrUpdateProduct(procCtx);
                 if (productResult.skipped) {
-                    ok++;
+                    skipped++;
                     continue;
                 }
                 if (!productResult.productId) {
@@ -405,6 +418,15 @@ export class ProductHandler implements LoaderHandler {
                 await this.assignProductToChannel(procCtx, productResult.productId);
                 await this.assignToRecordChannels(opCtx, rec, cfg, productResult.productId, channelCache);
                 await this.handleProductFacetValues(procCtx, productResult.productId);
+                await applyEntityAssetInput({
+                    ctx: opCtx,
+                    record: rec,
+                    config: cfg,
+                    entityId: productResult.productId,
+                    assetService: this.assetService,
+                    entityService: this.productService,
+                    logger: this.logger,
+                });
                 if (cfg.createVariants !== false) {
                     await this.handleProductVariants(procCtx, productResult.productId);
                 }
@@ -417,7 +439,7 @@ export class ProductHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     private async handleProductFacetValues(
@@ -454,7 +476,7 @@ export class ProductHandler implements LoaderHandler {
             return ctx;
         }
 
-        return this.requestContextService.create({ apiType: 'admin', channelOrToken: targetChannel });
+        return createChannelRequestContext(this.requestContextService, ctx, targetChannel);
     }
 
     /**

@@ -53,7 +53,7 @@ describe('Order Lines Mode', () => {
             { name: 'Order Product C', slug: 'order-prod-c', sku: 'ORD-SKU-C', price: 30.00, stockOnHand: 1000 },
             { name: 'Order Product D', slug: 'order-prod-d', sku: 'ORD-SKU-D', price: 40.00, stockOnHand: 1000 },
         ]);
-        expect(productResult).toEqual({ ok: 4, fail: 0 });
+        expect(productResult).toEqual({ ok: 4, fail: 0, skipped: 0 });
 
         // Create customers that orders reference (OrderLoader requires existing customers)
         const customerHandler = server.app.get(CustomerHandler);
@@ -431,8 +431,8 @@ describe('Order Lines Mode', () => {
                 customerEmail: 'order-nolines@test.de',
                 // No lines field - validation requires lines for CREATE
             }], collector.callback);
-            // OrderLoader validation requires at least one line for create
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
+            expect(collector.errors[0]?.message).toContain('At least one order line is required');
         });
 
         it('should handle invalid SKUs', async () => {
@@ -448,9 +448,8 @@ describe('Order Lines Mode', () => {
                 customerEmail: 'order-badsku@test.de',
                 lines: [{ sku: 'NONEXISTENT-SKU-XYZ', quantity: 1 }],
             }], collector.callback);
-            // Order may still be created (handleOrderLines logs warning for missing SKU
-            // but doesn't fail the order creation). Or validation might catch it.
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
+            expect(collector.errors[0]?.message).toContain('NONEXISTENT-SKU-XYZ');
         });
 
         it('should handle zero/negative quantities', async () => {
@@ -466,8 +465,8 @@ describe('Order Lines Mode', () => {
                 customerEmail: 'order-zeroqty@test.de',
                 lines: [{ sku: 'ORD-SKU-A', quantity: 0 }],
             }], collector.callback);
-            // Zero quantity may fail validation (quantity must be at least 1)
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
+            expect(collector.errors[0]?.message).toContain('quantity must be at least 1');
         });
 
         it('should handle missing quantity field', async () => {
@@ -483,8 +482,8 @@ describe('Order Lines Mode', () => {
                 customerEmail: 'order-noqty@test.de',
                 lines: [{ sku: 'ORD-SKU-A' }], // No quantity field
             }], collector.callback);
-            // Missing quantity may fail validation or default handling
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
+            expect(collector.errors[0]?.message).toContain('quantity must be at least 1');
         });
     });
 

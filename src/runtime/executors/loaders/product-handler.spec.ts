@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CurrencyCode, LanguageCode } from '@vendure/common/lib/generated-types';
 import { ConfigService, RequestContext } from '@vendure/core';
 import { PipelineStepDefinition } from '../../../types';
-import { DataHubLoggerFactory } from '../../../services/logger';
+import { DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { ProductHandler } from './product-handler';
 
 function createHandler(precision = 2) {
@@ -51,6 +51,7 @@ function createHandler(precision = 2) {
             channelService as never,
             {} as never,
             facetValueService as never,
+            {} as never,
             configService,
             loggerFactory,
         ),
@@ -94,7 +95,7 @@ describe('ProductHandler prices', () => {
             price: 12.34,
         }]);
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(productVariantService.create).toHaveBeenCalledWith(
             expect.anything(),
             [expect.objectContaining({ price: 1234 })],
@@ -115,7 +116,7 @@ describe('ProductHandler prices', () => {
             }],
         );
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(productVariantService.create).toHaveBeenCalledWith(
             expect.anything(),
             [expect.objectContaining({
@@ -150,7 +151,7 @@ describe('ProductHandler prices', () => {
             onRecordError,
         );
 
-        expect(result).toEqual({ ok: 0, fail: 1 });
+        expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
         expect(productVariantService.create).not.toHaveBeenCalled();
         expect(onRecordError).toHaveBeenCalledWith(
             'load-products',
@@ -172,7 +173,7 @@ describe('ProductHandler prices', () => {
             onRecordError,
         );
 
-        expect(result).toEqual({ ok: 0, fail: 1 });
+        expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
         expect(onRecordError).toHaveBeenCalledWith(
             'load-products',
             'channel assignment failed',
@@ -200,7 +201,7 @@ describe('ProductHandler facet values', () => {
             }],
         );
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(productService.update).toHaveBeenCalledWith(
             expect.anything(),
             { id: 'product-1', facetValueIds: ['facet-red', 'facet-blue'] },
@@ -216,7 +217,7 @@ describe('ProductHandler facet values', () => {
             [{ name: 'Product', slug: 'product', facetValueCodes: [] }],
         );
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(productService.update).toHaveBeenCalledWith(
             expect.anything(),
             { id: 'product-1', facetValueIds: [] },
@@ -232,7 +233,7 @@ describe('ProductHandler facet values', () => {
             [{ name: 'Product', slug: 'product' }],
         );
 
-        expect(result).toEqual({ ok: 1, fail: 0 });
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
         expect(productService.update).not.toHaveBeenCalled();
     });
 
@@ -247,7 +248,7 @@ describe('ProductHandler facet values', () => {
             onRecordError,
         );
 
-        expect(result).toEqual({ ok: 0, fail: 1 });
+        expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
         expect(productService.update).not.toHaveBeenCalled();
         expect(onRecordError).toHaveBeenCalledWith(
             'load-products',

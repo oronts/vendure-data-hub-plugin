@@ -14,19 +14,20 @@ import {
     ID,
 } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
-import { RecordObject, OnRecordErrorCallback, ExecutionResult } from '../../executor-types';
+import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
 import { LoaderHandler } from './types';
+import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getArrayValue, getObjectValue } from '../../../loaders/shared-helpers';
 import { generateChannelToken, parseCurrencyCode, parseLanguageCode } from '../../../loaders/channel/helpers';
-import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger';
-import { LOGGER_CONTEXTS } from '../../../constants/index';
+import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
 
 /**
  * Configuration for the channel handler step (mirrors loader-handler-registry.ts schema)
  */
-interface ChannelHandlerConfig {
+interface ChannelHandlerConfig extends CreateDuplicateHandlingConfig {
     codeField?: string;
     tokenField?: string;
     defaultLanguageCodeField?: string;
@@ -67,9 +68,10 @@ export class ChannelHandler implements LoaderHandler {
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
         _errorHandling?: ErrorHandlingConfig,
-    ): Promise<ExecutionResult> {
+    ): Promise<LoaderExecutionResult> {
         let ok = 0;
         let fail = 0;
+        let skipped = 0;
         const cfg = getConfig(step.config);
         this.zoneCache = new Map<string, ID>();
 
@@ -178,7 +180,8 @@ export class ChannelHandler implements LoaderHandler {
 
                 if (existing) {
                     if (strategy === LoadStrategy.CREATE) {
-                        ok++;
+                        assertCreateDuplicateCanBeSkipped(cfg, 'channel', code);
+                        skipped++;
                         continue;
                     }
                     const updateInput: Record<string, unknown> = {
@@ -237,7 +240,7 @@ export class ChannelHandler implements LoaderHandler {
                 fail++;
             }
         }
-        return { ok, fail };
+        return { ok, fail, skipped };
     }
 
     private findExistingByCode(_ctx: RequestContext, code: string, channelByCode: Map<string, { id: ID; code: string }>): { id: ID } | null {
