@@ -202,6 +202,7 @@ const SCRIPT_DISALLOWED_KEYWORDS = DISALLOWED_KEYWORDS.filter(
 
 const SCRIPT_DISALLOWED_KEYWORDS_PATTERN = new RegExp(
     `\\b(${SCRIPT_DISALLOWED_KEYWORDS.join('|')})\\b`,
+    'g',
 );
 
 /**
@@ -446,11 +447,16 @@ function checkDisallowedKeywords(code: string): void {
  * Checks for disallowed keywords in script blocks (permissive - allows new/class/extends)
  */
 function checkScriptDisallowedKeywords(code: string): void {
-    if (SCRIPT_DISALLOWED_KEYWORDS_PATTERN.test(code)) {
-        const match = code.match(SCRIPT_DISALLOWED_KEYWORDS_PATTERN);
-        throw new Error(
-            `Code contains disallowed keyword: ${match?.[1] ?? 'unknown'}`,
-        );
+    for (const match of code.matchAll(SCRIPT_DISALLOWED_KEYWORDS_PATTERN)) {
+        const keyword = match[1];
+        const matchEnd = (match.index ?? 0) + match[0].length;
+        const remainder = code.slice(matchEnd);
+
+        if (keyword === 'arguments' && /^\s*:/.test(remainder)) {
+            continue;
+        }
+
+        throw new Error(`Code contains disallowed keyword: ${keyword}`);
     }
 }
 
