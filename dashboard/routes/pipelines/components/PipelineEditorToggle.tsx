@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@vendure/dashboard';
 import { PipelineEditor } from '../../../components/pipelines/PipelineEditor';
-import { ReactFlowPipelineEditor } from '../../../components/pipelines/ReactFlowPipelineEditor';
 import type {
     PipelineDefinition,
     PipelineFormControl,
@@ -10,6 +9,13 @@ import type {
 } from '../../../types';
 import { toVisualDefinition, toCanonicalDefinition } from '../utils';
 import { EDITOR_HEIGHTS } from '../../../constants';
+
+const ReactFlowPipelineEditor = React.lazy(async () => {
+    const module = await import(
+        '../../../components/pipelines/ReactFlowPipelineEditor.js'
+    );
+    return { default: module.ReactFlowPipelineEditor };
+});
 
 export type EditorMode = 'simple' | 'visual';
 
