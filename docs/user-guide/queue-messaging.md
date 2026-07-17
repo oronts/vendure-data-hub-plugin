@@ -8,7 +8,7 @@ Queue/messaging integration enables:
 
 - **Event-driven pipelines** - Trigger pipelines from queue messages
 - **Decoupled architecture** - Loose coupling between systems
-- **Reliable processing** - Retry, dead-letter queues, acknowledgments
+- **Broker controls** - Acknowledgment and dead-letter configuration, with the runtime boundaries documented below
 - **Scalability** - Process high-volume events asynchronously
 
 ## Supported Queue Systems
@@ -16,30 +16,27 @@ Queue/messaging integration enables:
 | System | Consume | Produce | Status |
 |--------|---------|---------|--------|
 | RabbitMQ (AMQP) | ✅ | ✅ | **Recommended** - Native AMQP 0-9-1 protocol |
-| RabbitMQ (HTTP) | ✅ | ✅ | HTTP Management API fallback |
+| RabbitMQ (HTTP) | Adapter only | ✅ | Not available to message triggers because consume acknowledges immediately |
 | Amazon SQS | ✅ | ✅ | Full support (requires `@aws-sdk/client-sqs`) |
-| Redis Streams | ✅ | ✅ | Consumer groups, XACK (requires `ioredis`) |
-| Apache Kafka | ⚠️ | ⚠️ | REST Proxy required (not native client) |
+| Redis Streams | ✅ | ✅ | Consumer groups and XACK |
+| Apache Kafka | ❌ | ❌ | No built-in adapter; implement a custom integration |
 | Google Pub/Sub | ❌ | ❌ | Use custom adapter with `@google-cloud/pubsub` |
 
-### Optional Dependencies
+These boundaries follow the [RabbitMQ HTTP API acknowledgment modes](https://www.rabbitmq.com/docs/http-api-reference) and Redis [XREADGROUP](https://redis.io/docs/latest/commands/xreadgroup/) / [XACK](https://redis.io/docs/latest/commands/xack/) consumer-group semantics.
 
-Install the required packages for your queue system:
+### Amazon SQS dependency
+
+RabbitMQ and Redis support use the plugin dependencies. Install the optional SQS client before selecting `SQS`:
 
 ```bash
-# For Amazon SQS
 npm install @aws-sdk/client-sqs
-
-# For Redis Streams
-npm install ioredis
-
-# For RabbitMQ AMQP (recommended)
-npm install amqplib
 ```
 
-> **Note:** If the optional dependency is not installed, the adapter will throw a helpful error message explaining which package to install.
+If it is missing, the SQS adapter reports the required package.
 
 See [Custom Triggers](../developer-guide/extending/custom-triggers.md) for implementation guide.
+
+The connection examples below reference secret codes. Define each code in the plugin `secrets` option (prefer the `ENV` provider) or create it in the dashboard before the connection is used.
 
 ## Architecture
 
@@ -65,13 +62,12 @@ DataHubPlugin.init({
     connections: [
         {
             code: 'rabbitmq-main',
-            type: 'rabbitmq-amqp',  // Use AMQP protocol
-            name: 'RabbitMQ Production',
-            config: {
+            type: 'RABBITMQ',  // Use AMQP protocol
+            settings: {
                 host: 'rabbitmq.example.com',
                 port: 5672,
                 username: 'user',
-                password: 'pass',
+                passwordSecretCode: 'rabbitmq-password',
                 vhost: '/',
                 ssl: false,
             },
@@ -87,13 +83,12 @@ DataHubPlugin.init({
     connections: [
         {
             code: 'rabbitmq-http',
-            type: 'rabbitmq',  // HTTP Management API
-            name: 'RabbitMQ via HTTP',
-            config: {
+            type: 'RABBITMQ',  // HTTP Management API
+            settings: {
                 host: 'rabbitmq.example.com',
                 port: 15672,  // Management API port
                 username: 'user',
-                password: 'pass',
+                passwordSecretCode: 'rabbitmq-password',
                 vhost: '/',
             },
         },
@@ -108,20 +103,22 @@ DataHubPlugin.init({
     connections: [
         {
             code: 'sqs-queue',
-            type: 'sqs',
-            name: 'AWS SQS',
-            config: {
+            type: 'SQS',
+            settings: {
                 region: 'us-east-1',
-                accessKeyId: 'AKIA...',
-                secretAccessKey: 'secret',
-                // Optional: for LocalStack or custom endpoints
-                // endpoint: 'http://localhost:4566',
+                accessKeyIdSecretCode: 'aws-access-key-id',
+                secretAccessKeySecretCode: 'aws-secret-access-key',
                 accountId: '123456789012',
             },
         },
     ],
 });
 ```
+
+`accountId` is required when the adapter constructs the queue URL. To target one
+queue directly, set `queueUrl` instead. For an SQS-compatible service, set
+`endpoint` together with `accountId`. Configure the access-key and secret-key
+Secret Codes together, or omit both to use the AWS SDK credential chain.
 
 ### Redis Streams
 
@@ -130,45 +127,31 @@ DataHubPlugin.init({
     connections: [
         {
             code: 'redis-streams',
-            type: 'redis-streams',
-            name: 'Redis Streams',
-            config: {
+            type: 'REDIS',
+            settings: {
                 host: 'localhost',
                 port: 6379,
-                password: 'your-password',
+                passwordSecretCode: 'redis-password',
                 db: 0,
-                // Consumer group settings
-                consumerGroup: 'datahub-consumers',
-                consumerName: 'consumer-1',
-            },
-        },
-    ],
-});
-```
-
-### Kafka (via REST Proxy)
-
-```typescript
-DataHubPlugin.init({
-    connections: [
-        {
-            code: 'kafka-cluster',
-            type: 'kafka',
-            name: 'Kafka Cluster',
-            config: {
-                brokers: ['kafka1:9092', 'kafka2:9092', 'kafka3:9092'],
-                clientId: 'vendure-datahub',
                 ssl: true,
-                sasl: {
-                    mechanism: 'plain',
-                    username: 'api-key',
-                    password: 'api-secret',
-                },
             },
         },
     ],
 });
 ```
+
+### Kafka and other brokers
+
+Kafka and Google Pub/Sub do not have built-in queue adapters. The built-in
+`MESSAGE` trigger accepts only the queue types listed below, so registering a
+`QueueAdapter` alone does not add another trigger type. Integrate another broker
+through a custom trigger and sink, or through an HTTP bridge whose delivery and
+acknowledgment semantics you control.
+
+The SDK `QueueAdapter` and `queueAdapterRegistry` exports remain available for
+custom runtime integrations. They are the contract used by the built-in queue
+implementations, not a replacement for trigger validation and dashboard
+configuration.
 
 ## Consuming from Queues
 
@@ -183,11 +166,11 @@ const orderProcessor = createPipeline()
     .trigger('order-queue', {
         type: 'MESSAGE',
         message: {
+            queueType: 'RABBITMQ_AMQP',
             connectionCode: 'rabbitmq-main',
-            queue: 'orders.created',
+            queueName: 'orders.created',
             batchSize: 10,
             ackMode: 'MANUAL',
-            maxRetries: 3,
             deadLetterQueue: 'orders.dlq',
         },
     })
@@ -195,19 +178,19 @@ const orderProcessor = createPipeline()
         adapterCode: 'inMemory',
         // Message body is automatically injected
     })
-    .transform('validate', {
-        adapterCode: 'validateRequired',
-        fields: ['orderId', 'customerId', 'items'],
-    })
-    .transform('enrich', {
-        adapterCode: 'map',
-        mapping: {
-            'processedAt': 'new Date().toISOString()',
-            'source': '"queue"',
-        },
+    .transform('prepare-order', {
+        operators: [
+            { op: 'validateRequired', args: { fields: ['orderId', 'customerEmail', 'lines'] } },
+            { op: 'now', args: { target: 'processedAt', format: 'ISO' } },
+            { op: 'set', args: { path: 'source', value: 'queue' } },
+        ],
     })
     .load('upsert-order', {
-        adapterCode: 'orderLoader',
+        adapterCode: 'orderUpsert',
+        strategy: 'UPSERT',
+        codeField: 'orderId',
+        customerEmailField: 'customerEmail',
+        linesField: 'lines',
     })
     .build();
 ```
@@ -216,13 +199,17 @@ const orderProcessor = createPipeline()
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `connectionCode` | string | Reference to queue connection |
-| `queue` | string | Queue or topic name |
-| `batchSize` | number | Messages to process at once |
-| `ackMode` | 'AUTO' \| 'MANUAL' | Acknowledgment mode |
-| `maxRetries` | number | Retries before DLQ |
-| `deadLetterQueue` | string | DLQ for failed messages |
-| `consumerGroup` | string | Consumer group (Kafka) |
+| `queueType` | string | `RABBITMQ_AMQP`, `SQS`, `REDIS_STREAMS`, or `INTERNAL` |
+| `connectionCode` | string | Queue connection reference; omit only for `INTERNAL` |
+| `queueName` | string | Queue or topic name |
+| `batchSize` | number | Messages requested per poll; default 10, range 1-100 |
+| `concurrency` | number | Parallel deliveries; default 1, range 1-32 |
+| `prefetch` | number | Optional broker prefetch window; range 1-1000 |
+| `pollIntervalMs` | number | Delay between polls; default 1000 ms, range 1000-300000 ms |
+| `ackMode` | 'MANUAL' | Acknowledge only after the correlated pipeline run completes successfully |
+| `consumerGroup` | string | Redis Streams consumer group; rejected for other queue types |
+| `maxRetries` | number | Enqueue retries after the initial failure; default 3, range 0-10 |
+| `deadLetterQueue` | string | DLQ for enqueue failures, terminal run failures, and consumer wait expiry |
 
 ## Producing to Queues
 
@@ -234,7 +221,7 @@ const stockUpdatePipeline = createPipeline()
     .description('Send stock updates to queue')
     .trigger('schedule', {
         type: 'SCHEDULE',
-        schedule: { cron: '*/5 * * * *' },
+        cron: '*/5 * * * *',
     })
     .extract('stock-changes', {
         adapterCode: 'vendureQuery',
@@ -242,17 +229,15 @@ const stockUpdatePipeline = createPipeline()
         // Get recently updated variants
     })
     .transform('prepare-message', {
-        adapterCode: 'map',
-        mapping: {
-            'sku': 'sku',
-            'stockOnHand': 'stockOnHand',
-            'timestamp': 'new Date().toISOString()',
-        },
+        operators: [
+            { op: 'now', args: { target: 'timestamp', format: 'ISO' } },
+        ],
     })
     .sink('to-queue', {
-        adapterCode: 'queue-producer',
+        adapterCode: 'queueProducer',
+        queueType: 'RABBITMQ_AMQP',
         connectionCode: 'rabbitmq-main',
-        queue: 'inventory.updates',
+        queueName: 'inventory.updates',
         routingKey: 'stock.updated',
     })
     .build();
@@ -262,10 +247,10 @@ const stockUpdatePipeline = createPipeline()
 
 | Option | Type | Description |
 |--------|------|-------------|
+| `queueType` | string | `RABBITMQ_AMQP`, `RABBITMQ`, `SQS`, or `REDIS_STREAMS` |
 | `connectionCode` | string | Reference to queue connection |
-| `queue` | string | Target queue or topic |
+| `queueName` | string | Target queue or topic |
 | `routingKey` | string | Routing key (RabbitMQ) |
-| `partition` | string | Partition key field (Kafka) |
 | `headers` | object | Message headers |
 | `persistent` | boolean | Persist messages |
 
@@ -280,21 +265,31 @@ const externalOrderSync = createPipeline()
     .trigger('external-orders', {
         type: 'MESSAGE',
         message: {
-            connectionCode: 'kafka-cluster',
-            queue: 'ecommerce.orders',
-            consumerGroup: 'vendure-sync',
+            queueType: 'RABBITMQ_AMQP',
+            connectionCode: 'rabbitmq-main',
+            queueName: 'ecommerce.orders',
         },
     })
     .extract('from-message', { adapterCode: 'inMemory' })
     .transform('map-order', {
-        adapterCode: 'map',
-        mapping: {
-            'code': 'externalOrderId',
-            'customerId': 'customer.email',
-            'lines': 'items',
-        },
+        operators: [{
+            op: 'map',
+            args: {
+                mapping: {
+                    code: 'externalOrderId',
+                    customerEmail: 'customer.email',
+                    lines: 'items',
+                },
+            },
+        }],
     })
-    .load('create-order', { adapterCode: 'orderLoader' })
+    .load('create-order', {
+        adapterCode: 'orderUpsert',
+        strategy: 'UPSERT',
+        codeField: 'code',
+        customerEmailField: 'customerEmail',
+        linesField: 'lines',
+    })
     .build();
 ```
 
@@ -307,8 +302,9 @@ const warehouseStockSync = createPipeline()
     .trigger('warehouse-updates', {
         type: 'MESSAGE',
         message: {
+            queueType: 'RABBITMQ_AMQP',
             connectionCode: 'rabbitmq-main',
-            queue: 'warehouse.stock',
+            queueName: 'warehouse.stock',
         },
     })
     .extract('from-message', { adapterCode: 'inMemory' })
@@ -330,20 +326,17 @@ const erpPriceSync = createPipeline()
     .trigger('erp-prices', {
         type: 'MESSAGE',
         message: {
+            queueType: 'SQS',
             connectionCode: 'sqs-queue',
-            queue: 'erp-price-updates',
+            queueName: 'erp-price-updates',
         },
     })
     .extract('from-message', { adapterCode: 'inMemory' })
-    .transform('convert-price', {
-        adapterCode: 'toCents',
-        source: 'price',
-        target: 'priceInCents',
-    })
     .load('update-variant', {
         adapterCode: 'variantUpsert',
         strategy: 'UPDATE',
-        matchField: 'sku',
+        skuField: 'sku',
+        priceField: 'price',
     })
     .build();
 ```
@@ -360,45 +353,51 @@ const productChangeFanout = createPipeline()
     })
     .extract('from-event', { adapterCode: 'inMemory' })
     .sink('to-search-queue', {
-        adapterCode: 'queue-producer',
+        adapterCode: 'queueProducer',
+        queueType: 'RABBITMQ_AMQP',
         connectionCode: 'rabbitmq-main',
-        queue: 'search.reindex',
+        queueName: 'search.reindex',
     })
     .sink('to-analytics-queue', {
-        adapterCode: 'queue-producer',
+        adapterCode: 'queueProducer',
+        queueType: 'RABBITMQ_AMQP',
         connectionCode: 'rabbitmq-main',
-        queue: 'analytics.product-change',
+        queueName: 'analytics.product-change',
     })
     .sink('to-feed-queue', {
-        adapterCode: 'queue-producer',
+        adapterCode: 'queueProducer',
+        queueType: 'RABBITMQ_AMQP',
         connectionCode: 'rabbitmq-main',
-        queue: 'feeds.regenerate',
+        queueName: 'feeds.regenerate',
     })
     .build();
 ```
 
 ## Error Handling
 
-### Retry Strategy
+### Retry and dead-letter behavior
 
-Messages that fail processing are retried with exponential backoff:
+Message triggers require `MANUAL` acknowledgment. Each delivery creates or reuses an idempotent correlated pipeline run, and the broker delivery is acknowledged only after that run reaches `COMPLETED`. `FAILED`, `TIMEOUT`, and `CANCELLED` runs follow the dead-letter and negative-acknowledgment path. A run that remains non-terminal for four minutes is treated as a bounded consumer processing timeout, keeping the decision within the built-in broker delivery leases.
 
-1. First retry: Immediate
-2. Second retry: After 5 seconds
-3. Third retry: After 30 seconds
-4. After max retries: Sent to dead-letter queue
+`maxRetries` controls immediate retries of pipeline-run creation after the initial enqueue failure. The default is 3 and the accepted range is 0 through 10. Producers should provide stable, unique message IDs and pipeline effects should remain idempotent because an uncertain broker or database response can still lead to redelivery.
+
+After retries are exhausted or the correlated run ends unsuccessfully, a configured `deadLetterQueue` is published first. The original manual delivery is rejected without requeue only when the adapter returns exactly one matching successful publish result. A thrown publish, an empty or mismatched result, or `success: false` causes the original manual delivery to be requeued. Without a DLQ, the failed manual delivery is rejected without requeue.
+
+`AUTO` is rejected for message-triggered pipelines because it acknowledges before the run outcome is known. The RabbitMQ HTTP adapter therefore remains producer/direct-adapter functionality only; use `RABBITMQ_AMQP` for reliable message triggers. A failed manual acknowledgment after a successful run is logged and is never copied to the DLQ, preventing the acknowledgment failure from being misreported as a processing failure.
+
+`consumerGroup` is passed to Redis Streams and rejected for every other built-in queue type.
 
 ### Dead Letter Queue
 
-Configure DLQ for failed messages:
+Configure a DLQ for failures that occur before pipeline-run enqueue completes:
 
 ```typescript
 .trigger('order-queue', {
     type: 'MESSAGE',
     message: {
+        queueType: 'RABBITMQ_AMQP',
         connectionCode: 'rabbitmq-main',
-        queue: 'orders.created',
-        maxRetries: 3,
+        queueName: 'orders.created',
         deadLetterQueue: 'orders.dead-letter',
     },
 })
@@ -414,21 +413,22 @@ const dlqProcessor = createPipeline()
     .trigger('dlq', {
         type: 'MESSAGE',
         message: {
+            queueType: 'RABBITMQ_AMQP',
             connectionCode: 'rabbitmq-main',
-            queue: 'orders.dead-letter',
+            queueName: 'orders.dead-letter',
         },
     })
     .extract('from-message', { adapterCode: 'inMemory' })
     .transform('add-metadata', {
-        adapterCode: 'enrich',
-        set: {
-            '_dlqProcessedAt': 'new Date().toISOString()',
-            '_status': 'manual-review',
-        },
+        operators: [
+            { op: 'now', args: { target: '_dlqProcessedAt', format: 'ISO' } },
+            { op: 'set', args: { path: '_status', value: 'manual-review' } },
+        ],
     })
     .load('save-for-review', {
         adapterCode: 'restPost',
-        url: 'https://api.example.com/dlq-review',
+        endpoint: 'https://api.example.com/dlq-review',
+        method: 'POST',
     })
     .build();
 ```
@@ -437,21 +437,25 @@ const dlqProcessor = createPipeline()
 
 ### Queue Metrics
 
-Monitor queue-based pipelines:
+Query the queue and consumer fields exposed by the Admin API:
 
 ```graphql
 query {
-    dataHubPipelineRuns(
-        filter: { pipelineCode: "order-queue-processor" }
-        take: 100
-    ) {
-        items {
+    dataHubQueueStats {
+        pending
+        running
+        failed
+        completedToday
+        byPipeline {
+            code
+            pending
+            running
+        }
+        recentFailed {
             id
-            status
-            startedAt
-            completedAt
-            metrics
-            triggerPayload
+            code
+            finishedAt
+            error
         }
     }
 }
@@ -492,11 +496,9 @@ Use consistent message format:
     "type": "order.created",
     "timestamp": "2024-01-15T10:30:00Z",
     "source": "external-system",
-    "data": {
-        "orderId": "ORD-001",
-        "customerId": "CUST-123",
-        "items": []
-    },
+    "orderId": "ORD-001",
+    "customerEmail": "customer.com",
+    "lines": [],
     "metadata": {
         "correlationId": "abc-123",
         "version": "1.0"
@@ -510,9 +512,10 @@ Ensure pipeline can handle duplicate messages:
 
 ```typescript
 .transform('check-idempotency', {
-    adapterCode: 'deltaFilter',
-    idPath: 'id',
-    // Only process if record changed
+    operators: [{
+        op: 'deltaFilter',
+        args: { idPath: 'id' },
+    }],
 })
 ```
 
@@ -522,18 +525,20 @@ Process messages in batches for efficiency:
 
 ```typescript
 message: {
-    queue: 'high-volume-events',
+    queueType: 'RABBITMQ_AMQP',
+    connectionCode: 'rabbitmq-main',
+    queueName: 'high-volume-events',
     batchSize: 100,  // Process 100 messages at once
 }
 ```
 
-### Graceful Shutdown
+### Manual acknowledgment
 
-Ensure messages are acknowledged before shutdown:
+For adapters that support individual acknowledgments, select manual mode explicitly. `RABBITMQ` (the HTTP adapter) rejects manual mode; use `RABBITMQ_AMQP` when the broker delivery must remain unsettled until enqueue succeeds:
 
 ```typescript
 message: {
-    ackMode: 'MANUAL',  // Ack only after successful processing
+    ackMode: 'MANUAL',  // Ack after the pipeline run is enqueued
 }
 ```
 
@@ -543,14 +548,14 @@ message: {
 
 1. Check connection configuration
 2. Verify queue exists and has messages
-3. Check consumer group settings (Kafka)
+3. Check the queue or Redis stream name
 4. Review permissions
 
 ### Messages Going to DLQ
 
 1. Check pipeline logs for errors
 2. Verify message format matches expected schema
-3. Check `maxRetries` setting
+3. Verify `MANUAL` acknowledgment and `deadLetterQueue` configuration
 4. Review DLQ messages for patterns
 
 ### High Latency

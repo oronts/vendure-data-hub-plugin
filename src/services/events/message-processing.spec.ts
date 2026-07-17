@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AckMode } from '../../constants';
+import { AckMode, QUEUE, RunStatus } from '../../constants';
 import { queueAdapterRegistry } from '../../sdk/adapters/queue';
 import type { QueueAdapter, QueueConnectionConfig } from '../../sdk/adapters/queue';
 import type { DataHubLogger } from '../logger';
@@ -61,19 +61,23 @@ function createAdapter(overrides: Partial<QueueAdapter> = {}): QueueAdapter {
 }
 
 function createProcessor(
-    startRunByCode: ReturnType<typeof vi.fn>,
+    startIdempotentRunWithSeed: ReturnType<typeof vi.fn>,
     logger = createLogger(),
     publishTriggerFired: () => unknown = vi.fn(),
+    runById: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue({
+        status: RunStatus.COMPLETED,
+        error: null,
+    }),
 ) {
     const processor = new MessageProcessing(
         { create: vi.fn().mockResolvedValue({}) } as never,
-        { startRunByCode } as never,
+        { startIdempotentRunWithSeed, runById } as never,
         {} as never,
         {} as never,
         logger,
         { publishTriggerFired } as never,
     );
-    return { processor, logger };
+    return { processor, logger, runById };
 }
 
 type ProcessingInternals = {
@@ -87,15 +91,18 @@ type ProcessingInternals = {
 };
 
 describe('MessageProcessing reliability', () => {
-    it('honors maxRetries and acknowledges only after a successful enqueue', async () => {
-        const startRunByCode = vi.fn()
+    it('honors enqueue retries and acknowledges only after a successful terminal run', async () => {
+        const startIdempotentRunWithSeed = vi.fn()
             .mockRejectedValueOnce(new Error('first'))
             .mockRejectedValueOnce(new Error('second'))
-            .mockResolvedValue({ pipelineId: 1 });
+            .mockResolvedValue({
+                run: { id: 'run-1', pipelineId: 1 },
+                duplicate: false,
+            });
         const ack = vi.fn().mockResolvedValue(undefined);
         const adapter = createAdapter({ ack });
         const consumer = createConsumer({ maxRetries: 2 });
-        const { processor } = createProcessor(startRunByCode);
+        const { processor, runById } = createProcessor(startIdempotentRunWithSeed);
 
         await (processor as unknown as ProcessingInternals).processDelivery(
             consumer,
@@ -104,15 +111,19 @@ describe('MessageProcessing reliability', () => {
             { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
         );
 
-        expect(startRunByCode).toHaveBeenCalledTimes(3);
+        expect(startIdempotentRunWithSeed).toHaveBeenCalledTimes(3);
+        expect(runById).toHaveBeenCalledWith(expect.anything(), 'run-1');
         expect(ack).toHaveBeenCalledOnce();
-        expect(startRunByCode.mock.invocationCallOrder[2]).toBeLessThan(ack.mock.invocationCallOrder[0]);
+        expect(runById.mock.invocationCallOrder[0]).toBeLessThan(ack.mock.invocationCallOrder[0]);
         expect(consumer.messagesProcessed).toBe(1);
         expect(consumer.messagesFailed).toBe(0);
     });
 
     it('does not retry an enqueued run when trigger event publication fails', async () => {
-        const startRunByCode = vi.fn().mockResolvedValue({ pipelineId: 1 });
+        const startIdempotentRunWithSeed = vi.fn().mockResolvedValue({
+            run: { id: 'run-1', pipelineId: 1 },
+            duplicate: false,
+        });
         const publishTriggerFired = vi.fn(() => {
             throw new Error('event publication failed');
         });
@@ -120,7 +131,7 @@ describe('MessageProcessing reliability', () => {
         const adapter = createAdapter({ ack });
         const consumer = createConsumer();
         const { processor, logger } = createProcessor(
-            startRunByCode,
+            startIdempotentRunWithSeed,
             createLogger(),
             publishTriggerFired,
         );
@@ -132,7 +143,7 @@ describe('MessageProcessing reliability', () => {
             { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
         );
 
-        expect(startRunByCode).toHaveBeenCalledOnce();
+        expect(startIdempotentRunWithSeed).toHaveBeenCalledOnce();
         expect(ack).toHaveBeenCalledOnce();
         expect(logger.warn).toHaveBeenCalledWith(
             'Pipeline run was enqueued but trigger event publication failed',
@@ -141,7 +152,7 @@ describe('MessageProcessing reliability', () => {
     });
 
     it('requeues the original when a resolved DLQ publish result reports failure', async () => {
-        const startRunByCode = vi.fn().mockRejectedValue(new Error('enqueue failed'));
+        const startIdempotentRunWithSeed = vi.fn().mockRejectedValue(new Error('enqueue failed'));
         const publish = vi.fn().mockResolvedValue([{
             success: false,
             messageId: 'message-1',
@@ -150,7 +161,7 @@ describe('MessageProcessing reliability', () => {
         const nack = vi.fn().mockResolvedValue(undefined);
         const adapter = createAdapter({ publish, nack });
         const consumer = createConsumer({ maxRetries: 1, deadLetterQueue: 'orders.dlq' });
-        const { processor, logger } = createProcessor(startRunByCode);
+        const { processor, logger } = createProcessor(startIdempotentRunWithSeed);
 
         await (processor as unknown as ProcessingInternals).processDelivery(
             consumer,
@@ -159,7 +170,7 @@ describe('MessageProcessing reliability', () => {
             { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
         );
 
-        expect(startRunByCode).toHaveBeenCalledTimes(2);
+        expect(startIdempotentRunWithSeed).toHaveBeenCalledTimes(2);
         expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', true);
         expect(logger.info).not.toHaveBeenCalledWith(
             'Routed message to DLQ',
@@ -168,7 +179,7 @@ describe('MessageProcessing reliability', () => {
     });
 
     it('rejects the original without requeue only after confirmed DLQ delivery', async () => {
-        const startRunByCode = vi.fn().mockRejectedValue(new Error('enqueue failed'));
+        const startIdempotentRunWithSeed = vi.fn().mockRejectedValue(new Error('enqueue failed'));
         const publish = vi.fn().mockResolvedValue([{
             success: true,
             messageId: 'message-1',
@@ -176,7 +187,7 @@ describe('MessageProcessing reliability', () => {
         const nack = vi.fn().mockResolvedValue(undefined);
         const adapter = createAdapter({ publish, nack });
         const consumer = createConsumer({ maxRetries: 0, deadLetterQueue: 'orders.dlq' });
-        const { processor } = createProcessor(startRunByCode);
+        const { processor } = createProcessor(startIdempotentRunWithSeed);
 
         await (processor as unknown as ProcessingInternals).processDelivery(
             consumer,
@@ -185,12 +196,15 @@ describe('MessageProcessing reliability', () => {
             { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
         );
 
-        expect(startRunByCode).toHaveBeenCalledOnce();
+        expect(startIdempotentRunWithSeed).toHaveBeenCalledOnce();
         expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', false);
     });
 
     it('does not route an already-enqueued message to the DLQ when acknowledgment fails', async () => {
-        const startRunByCode = vi.fn().mockResolvedValue({ pipelineId: 1 });
+        const startIdempotentRunWithSeed = vi.fn().mockResolvedValue({
+            run: { id: 'run-1', pipelineId: 1 },
+            duplicate: false,
+        });
         const publish = vi.fn();
         const ackError = new Error('ack failed');
         const adapter = createAdapter({
@@ -198,7 +212,7 @@ describe('MessageProcessing reliability', () => {
             publish,
         });
         const consumer = createConsumer({ deadLetterQueue: 'orders.dlq' });
-        const { processor } = createProcessor(startRunByCode);
+        const { processor } = createProcessor(startIdempotentRunWithSeed);
 
         await expect(
             (processor as unknown as ProcessingInternals).processDelivery(
@@ -212,6 +226,71 @@ describe('MessageProcessing reliability', () => {
         expect(publish).not.toHaveBeenCalled();
         expect(consumer.messagesProcessed).toBe(0);
         expect(consumer.messagesFailed).toBe(1);
+    });
+
+    it.each([RunStatus.FAILED, RunStatus.TIMEOUT, RunStatus.CANCELLED])(
+        'dead-letters and rejects a message when its run reaches %s',
+        async status => {
+            const startIdempotentRunWithSeed = vi.fn().mockResolvedValue({
+                run: { id: 'run-1', pipelineId: 1 },
+                duplicate: false,
+            });
+            const runById = vi.fn().mockResolvedValue({ status, error: 'run stopped' });
+            const ack = vi.fn();
+            const nack = vi.fn().mockResolvedValue(undefined);
+            const publish = vi.fn().mockResolvedValue([{
+                success: true,
+                messageId: 'message-1',
+            }]);
+            const adapter = createAdapter({ ack, nack, publish });
+            const consumer = createConsumer({ deadLetterQueue: 'orders.dlq' });
+            const { processor } = createProcessor(
+                startIdempotentRunWithSeed,
+                createLogger(),
+                vi.fn(),
+                runById,
+            );
+
+            await (processor as unknown as ProcessingInternals).processDelivery(
+                consumer,
+                adapter,
+                {} as QueueConnectionConfig,
+                { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+            );
+
+            expect(ack).not.toHaveBeenCalled();
+            expect(startIdempotentRunWithSeed).toHaveBeenCalledOnce();
+            expect(publish).toHaveBeenCalledOnce();
+            expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', false);
+            expect(consumer.messagesProcessed).toBe(0);
+            expect(consumer.messagesFailed).toBe(1);
+        },
+    );
+
+    it('reuses the correlated run on redelivery without publishing a second trigger event', async () => {
+        const startIdempotentRunWithSeed = vi.fn().mockResolvedValue({
+            run: { id: 'run-1', pipelineId: 1 },
+            duplicate: true,
+        });
+        const publishTriggerFired = vi.fn();
+        const ack = vi.fn().mockResolvedValue(undefined);
+        const adapter = createAdapter({ ack });
+        const { processor } = createProcessor(
+            startIdempotentRunWithSeed,
+            createLogger(),
+            publishTriggerFired,
+        );
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            createConsumer(),
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(startIdempotentRunWithSeed).toHaveBeenCalledOnce();
+        expect(publishTriggerFired).not.toHaveBeenCalled();
+        expect(ack).toHaveBeenCalledOnce();
     });
 
     it('passes the configured consumerGroup to Redis Streams', async () => {
@@ -244,6 +323,31 @@ describe('MessageProcessing reliability', () => {
             'orders',
             expect.objectContaining({ ackMode: AckMode.MANUAL }),
         );
+    });
+
+    it('enforces pressure limits when processing an unsafe persisted config', async () => {
+        const consume = vi.fn().mockResolvedValue([]);
+        const adapter = createAdapter({ consume });
+        const registrySpy = vi.spyOn(queueAdapterRegistry, 'get').mockReturnValue(adapter);
+        const { processor } = createProcessor(vi.fn());
+        const consumer = createConsumer({
+            batchSize: 9_999,
+            concurrency: 9_999,
+            prefetch: 9_999,
+        });
+        consumer.inFlightCount = QUEUE.MAX_MESSAGE_CONCURRENCY - 1;
+
+        try {
+            await (processor as unknown as ProcessingInternals).pollMessages(consumer);
+        } finally {
+            registrySpy.mockRestore();
+        }
+
+        expect(consume).toHaveBeenCalledWith({}, 'orders', {
+            count: 1,
+            ackMode: AckMode.MANUAL,
+            prefetch: QUEUE.MAX_MESSAGE_PREFETCH,
+        });
     });
 
     it.each([

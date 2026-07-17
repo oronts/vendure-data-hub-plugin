@@ -1,10 +1,32 @@
 import { TransactionalConnection, RequestContextService, ID } from '@vendure/core';
 import { Pipeline } from '../../entities/pipeline';
-import { PipelineStatus, AckMode, SCHEDULER, QUEUE } from '../../constants/index';
+import { PipelineStatus, AckMode, QUEUE } from '../../constants/index';
 import { TriggerType as TriggerTypeEnum, QueueType } from '../../constants/enums';
 import type { PipelineDefinition } from '../../types/index';
 import { DataHubLogger } from '../logger';
 import { findEnabledTriggersByType, parseTriggerConfig } from '../../utils';
+
+function boundedInteger(
+    value: unknown,
+    fallback: number,
+    min: number,
+    max: number,
+): number {
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed)) return fallback;
+    return Math.min(max, Math.max(min, parsed));
+}
+
+function optionalBoundedInteger(
+    value: unknown,
+    min: number,
+    max: number,
+): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed)) return undefined;
+    return Math.min(max, Math.max(min, parsed));
+}
 
 /**
  * Message consumer configuration extracted from pipeline trigger
@@ -112,19 +134,36 @@ export class ConsumerDiscovery {
                 connectionCode: String(msg.connectionCode ?? ''),
                 queueName: String(msg.queueName ?? ''),
                 consumerGroup: msg.consumerGroup as string | undefined,
-                batchSize: Math.max(1, Number(msg.batchSize) || 10),
-                concurrency: Math.max(1, Number(msg.concurrency) || 1),
-                ackMode: (msg.ackMode as AckMode) || (
-                    String(msg.queueType ?? QueueType.RABBITMQ).toLowerCase() === 'rabbitmq' ? AckMode.AUTO : AckMode.MANUAL
+                batchSize: boundedInteger(
+                    msg.batchSize,
+                    QUEUE.DEFAULT_MESSAGE_BATCH_SIZE,
+                    QUEUE.MIN_MESSAGE_BATCH_SIZE,
+                    QUEUE.MAX_MESSAGE_BATCH_SIZE,
                 ),
+                concurrency: boundedInteger(
+                    msg.concurrency,
+                    QUEUE.DEFAULT_MESSAGE_CONCURRENCY,
+                    QUEUE.MIN_MESSAGE_CONCURRENCY,
+                    QUEUE.MAX_MESSAGE_CONCURRENCY,
+                ),
+                ackMode: (msg.ackMode as AckMode) || AckMode.MANUAL,
                 maxRetries: Math.min(
                     QUEUE.MAX_MESSAGE_RETRIES,
                     Math.max(0, Number(msg.maxRetries ?? QUEUE.DEFAULT_MESSAGE_RETRIES) || 0),
                 ),
                 deadLetterQueue: msg.deadLetterQueue as string | undefined,
-                pollIntervalMs: Math.max(SCHEDULER.MIN_INTERVAL_MS, Number(msg.pollIntervalMs) || SCHEDULER.MIN_INTERVAL_MS),
+                pollIntervalMs: boundedInteger(
+                    msg.pollIntervalMs,
+                    QUEUE.DEFAULT_MESSAGE_POLL_INTERVAL_MS,
+                    QUEUE.DEFAULT_MESSAGE_POLL_INTERVAL_MS,
+                    QUEUE.MAX_MESSAGE_POLL_INTERVAL_MS,
+                ),
                 autoStart: msg.autoStart !== false,
-                prefetch: msg.prefetch ? Number(msg.prefetch) : undefined,
+                prefetch: optionalBoundedInteger(
+                    msg.prefetch,
+                    QUEUE.MIN_MESSAGE_PREFETCH,
+                    QUEUE.MAX_MESSAGE_PREFETCH,
+                ),
             });
         }
 

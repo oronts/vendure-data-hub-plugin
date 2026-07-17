@@ -1,13 +1,17 @@
-import { RequestContextService } from '@vendure/core';
-import { PipelineService } from '../pipeline/pipeline.service';
+import { RequestContextService, type ID, type RequestContext } from '@vendure/core';
+import {
+    PipelineService,
+    type IdempotentSeededRunResult,
+} from '../pipeline/pipeline.service';
 import { ConnectionService } from '../config/connection.service';
 import { SecretService } from '../config/secret.service';
-import { AckMode } from '../../constants/index';
+import { AckMode, QUEUE } from '../../constants/index';
 import { DataHubLogger } from '../logger';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { queueAdapterRegistry, QueueConnectionConfig, QueueAdapter } from '../../sdk/adapters/queue';
 import { ActiveConsumer } from './consumer-lifecycle';
 import { DomainEventsService } from './domain-events.service';
+import { waitForSuccessfulQueueRun } from './message-run-waiter';
 
 type ConsumedMessage = {
     messageId: string;
@@ -15,6 +19,11 @@ type ConsumedMessage = {
     headers?: Record<string, string>;
     deliveryTag?: string;
 };
+
+interface EnqueuedMessageRun {
+    ctx: RequestContext;
+    runId: ID;
+}
 
 const QUEUE_SECRET_FIELDS = [
     ['passwordSecretCode', 'password'],
@@ -81,7 +90,11 @@ export class MessageProcessing {
         const { config } = consumer;
 
         // Respect concurrency limit - skip if already at max
-        const availableSlots = config.concurrency - consumer.inFlightCount;
+        const concurrency = Math.min(
+            QUEUE.MAX_MESSAGE_CONCURRENCY,
+            Math.max(QUEUE.MIN_MESSAGE_CONCURRENCY, config.concurrency),
+        );
+        const availableSlots = concurrency - consumer.inFlightCount;
         if (availableSlots <= 0) {
             this.logger.debug(`Skipping poll - at max concurrency (${config.concurrency})`, {
                 pipelineCode: config.pipelineCode,
@@ -121,13 +134,23 @@ export class MessageProcessing {
             } as QueueConnectionConfig;
         }
 
-        const fetchCount = Math.min(config.batchSize, availableSlots);
+        const batchSize = Math.min(
+            QUEUE.MAX_MESSAGE_BATCH_SIZE,
+            Math.max(QUEUE.MIN_MESSAGE_BATCH_SIZE, config.batchSize),
+        );
+        const fetchCount = Math.min(batchSize, availableSlots);
+        const prefetch = config.prefetch === undefined
+            ? undefined
+            : Math.min(
+                QUEUE.MAX_MESSAGE_PREFETCH,
+                Math.max(QUEUE.MIN_MESSAGE_PREFETCH, config.prefetch),
+            );
 
         try {
             const messages = await adapter.consume(connectionConfig, config.queueName, {
                 count: fetchCount,
                 ackMode: config.ackMode,
-                prefetch: config.prefetch,
+                prefetch,
             });
 
             if (messages.length === 0) {
@@ -173,7 +196,14 @@ export class MessageProcessing {
         }
 
         try {
-            await this.processConsumedMessageWithRetries(consumer, message);
+            const { ctx, runId } = await this.enqueueConsumedMessageWithRetries(
+                consumer,
+                message,
+            );
+            await waitForSuccessfulQueueRun(
+                runId,
+                id => this.pipelineService.runById(ctx, id),
+            );
         } catch (error) {
             await this.handleTerminalProcessingFailure(
                 consumer,
@@ -236,16 +266,15 @@ export class MessageProcessing {
         }
     }
 
-    private async processConsumedMessageWithRetries(
+    private async enqueueConsumedMessageWithRetries(
         consumer: ActiveConsumer,
         message: ConsumedMessage,
-    ): Promise<void> {
+    ): Promise<EnqueuedMessageRun> {
         const { maxRetries, pipelineCode } = consumer.config;
 
         for (let retry = 0; retry <= maxRetries; retry++) {
             try {
-                await this.processConsumedMessage(consumer, message);
-                return;
+                return await this.enqueueConsumedMessage(consumer, message);
             } catch (error) {
                 if (retry === maxRetries) {
                     throw error;
@@ -259,39 +288,54 @@ export class MessageProcessing {
                 });
             }
         }
+        throw new Error('Queue message enqueue retry loop ended unexpectedly');
     }
 
     /**
      * Process a consumed message by triggering the pipeline
      */
-    private async processConsumedMessage(
+    private async enqueueConsumedMessage(
         consumer: ActiveConsumer,
         message: ConsumedMessage,
-    ): Promise<void> {
+    ): Promise<EnqueuedMessageRun> {
         const { config } = consumer;
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
-
-        const seedRecord = {
-            ...message.payload,
-            _messageId: message.messageId,
-            _queue: config.queueName,
-            _receivedAt: new Date().toISOString(),
-            _headers: message.headers ?? {},
-        };
-
         this.logger.info(`Processing message from queue`, {
             pipelineCode: config.pipelineCode,
             messageId: message.messageId,
         });
+        const result = await this.pipelineService.startIdempotentRunWithSeed(
+            ctx,
+            config.pipelineId,
+            [createQueueSeedRecord(config.queueName, message)],
+            {
+                idempotencyKey: message.messageId,
+                idempotencyTtlSeconds: QUEUE.RUN_IDEMPOTENCY_TTL_SECONDS,
+                requestFingerprint: createQueueRunIdentity(config, message),
+                triggerKey: config.triggerKey,
+                skipPermissionCheck: true,
+                triggeredBy: `message:${config.triggerKey}`,
+            },
+        );
+        this.publishMessageTriggerEvent(result, config, message);
+        return { ctx, runId: result.run.id };
+    }
 
-        const run = await this.pipelineService.startRunByCode(ctx, config.pipelineCode, {
-            seedRecords: [seedRecord],
-            triggerKey: config.triggerKey,
-            skipPermissionCheck: true,
-            triggeredBy: `message:${config.triggerKey}`,
-        });
-
+    private publishMessageTriggerEvent(
+        result: IdempotentSeededRunResult,
+        config: ActiveConsumer['config'],
+        message: ConsumedMessage,
+    ): void {
+        const { run } = result;
         const pipelineId = run.pipeline?.id?.toString() ?? run.pipelineId?.toString();
+        if (result.duplicate) {
+            this.logger.info('Reusing correlated pipeline run for queue redelivery', {
+                pipelineCode: config.pipelineCode,
+                messageId: message.messageId,
+                runId: String(run.id),
+            });
+            return;
+        }
         try {
             this.domainEvents.publishTriggerFired(pipelineId, 'MESSAGE_QUEUE', {
                 pipelineCode: config.pipelineCode,
@@ -363,7 +407,7 @@ export class MessageProcessing {
     }
 
     private async resolveConnectionSecrets(
-        ctx: import('@vendure/core').RequestContext,
+        ctx: RequestContext,
         raw: Record<string, unknown>,
     ): Promise<Record<string, unknown>> {
         const resolved = { ...raw };
@@ -393,4 +437,30 @@ export class MessageProcessing {
         }
         return resolved;
     }
+}
+
+function createQueueSeedRecord(
+    queueName: string,
+    message: ConsumedMessage,
+): Record<string, unknown> {
+    return {
+        ...message.payload,
+        _messageId: message.messageId,
+        _queue: queueName,
+        _receivedAt: new Date().toISOString(),
+        _headers: message.headers ?? {},
+    };
+}
+
+function createQueueRunIdentity(
+    config: ActiveConsumer['config'],
+    message: ConsumedMessage,
+): string {
+    return JSON.stringify({
+        queueType: config.queueType,
+        queueName: config.queueName,
+        messageId: message.messageId,
+        payload: message.payload,
+        headers: message.headers ?? {},
+    });
 }

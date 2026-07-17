@@ -140,7 +140,7 @@ export interface EventTriggerConfig {
 /**
  * Queue type values for message triggers
  */
-export type QueueTypeValue = 'RABBITMQ_AMQP' | 'RABBITMQ' | 'SQS' | 'REDIS_STREAMS' | 'INTERNAL';
+export type QueueTypeValue = 'RABBITMQ_AMQP' | 'SQS' | 'REDIS_STREAMS' | 'INTERNAL';
 
 /**
  * Configuration for file watch triggers
@@ -163,7 +163,7 @@ export interface FileWatchTriggerConfig {
 /**
  * Message acknowledgment mode
  */
-export type AckMode = 'AUTO' | 'MANUAL';
+export type AckMode = 'MANUAL';
 
 /**
  * Configuration for message queue triggers
@@ -177,7 +177,7 @@ export interface MessageTriggerConfig {
     queueName: string;
     /** Redis Streams consumer group; rejected for other queue types */
     consumerGroup?: string;
-    /** Number of messages to process at once */
+    /** Number of messages requested per poll (1-100) */
     batchSize?: number;
     /** Message acknowledgment mode */
     ackMode?: AckMode;
@@ -185,13 +185,13 @@ export interface MessageTriggerConfig {
     maxRetries?: number;
     /** Dead-letter queue name */
     deadLetterQueue?: string;
-    /** Polling interval in milliseconds */
+    /** Polling interval in milliseconds (1000-300000) */
     pollIntervalMs?: number;
-    /** Parallel message processing limit */
+    /** Parallel message processing limit (1-32) */
     concurrency?: number;
     /** Start consuming when pipeline is published */
     autoStart?: boolean;
-    /** Number of messages to prefetch */
+    /** Number of messages to prefetch (1-1000) */
     prefetch?: number;
 }
 

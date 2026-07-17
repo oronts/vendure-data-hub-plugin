@@ -48,6 +48,26 @@ export const SPAN_TRACKER = {
 export const QUEUE = {
     /** Default limit for recent failed runs query */
     DEFAULT_RECENT_FAILED_LIMIT: 10,
+    /** Default messages requested per broker poll */
+    DEFAULT_MESSAGE_BATCH_SIZE: 10,
+    /** Minimum messages requested per broker poll */
+    MIN_MESSAGE_BATCH_SIZE: 1,
+    /** Maximum messages requested per broker poll */
+    MAX_MESSAGE_BATCH_SIZE: 100,
+    /** Default number of deliveries processed in parallel */
+    DEFAULT_MESSAGE_CONCURRENCY: 1,
+    /** Minimum number of deliveries processed in parallel */
+    MIN_MESSAGE_CONCURRENCY: 1,
+    /** Maximum number of deliveries processed in parallel */
+    MAX_MESSAGE_CONCURRENCY: 32,
+    /** Minimum broker prefetch window */
+    MIN_MESSAGE_PREFETCH: 1,
+    /** Maximum broker prefetch window */
+    MAX_MESSAGE_PREFETCH: 1_000,
+    /** Default and minimum broker poll interval */
+    DEFAULT_MESSAGE_POLL_INTERVAL_MS: 1_000,
+    /** Maximum broker poll interval */
+    MAX_MESSAGE_POLL_INTERVAL_MS: 5 * 60 * 1_000,
     /** Retry attempts after the initial pipeline enqueue failure */
     DEFAULT_MESSAGE_RETRIES: 3,
     /** Prevent a malformed definition from creating an excessive retry loop */
@@ -131,6 +151,12 @@ export const IMPACT_ANALYSIS = {
     MAX_SAMPLE_FLOWS: 10,
     /** Maximum sample field values to collect */
     MAX_SAMPLE_FIELD_VALUES: 3,
+    /** Maximum object depth exposed in impact-analysis entity snapshots */
+    SNAPSHOT_MAX_DEPTH: 4,
+    /** Maximum array entries exposed in one impact-analysis snapshot */
+    SNAPSHOT_MAX_ARRAY_ITEMS: 50,
+    /** Maximum object keys exposed at each impact-analysis snapshot level */
+    SNAPSHOT_MAX_OBJECT_KEYS: 100,
     /** Minimum runs needed for HIGH confidence */
     HIGH_CONFIDENCE_MIN_RUNS: 3,
     /** Fallback duration multiplier for sampling-based estimates */
