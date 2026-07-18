@@ -43,6 +43,8 @@ export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 interface HookActionBase {
     type: HookActionType;
     name?: string;
+    /** Propagate action failure to the caller instead of reporting a best-effort result. */
+    failOnError?: boolean;
 }
 
 export interface WebhookHookAction extends HookActionBase {
@@ -81,7 +83,6 @@ export interface InterceptorHookAction extends HookActionBase {
     type: 'INTERCEPTOR';
     code: string;
     timeout?: number;
-    failOnError?: boolean;
 }
 
 export interface ScriptHookAction extends HookActionBase {
@@ -89,7 +90,6 @@ export interface ScriptHookAction extends HookActionBase {
     scriptName: string;
     args?: JsonObject;
     timeout?: number;
-    failOnError?: boolean;
 }
 
 export type HookAction =

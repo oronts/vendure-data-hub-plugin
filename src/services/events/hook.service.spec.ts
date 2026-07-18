@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { PipelineDefinition } from '../../types';
+import type { JsonObject, PipelineDefinition } from '../../types';
 import { HookService } from './hook.service';
+import { HookScriptRegistryService } from './hook-script-registry.service';
 
 function createService() {
     const webhookRetryService = {
@@ -13,13 +14,24 @@ function createService() {
         error: vi.fn(),
         log: vi.fn(),
     };
+    const pipelineService = {
+        startRunByCode: vi.fn(async () => ({ id: 'child-run-1' })),
+    };
+    const moduleRef = {
+        get: vi.fn((token: { name?: string }) => (
+            token.name === 'PipelineService'
+                ? pipelineService
+                : webhookRetryService
+        )),
+    };
     const service = new HookService(
-        { get: vi.fn(() => webhookRetryService) } as never,
+        moduleRef as never,
         { publish: vi.fn() } as never,
         {} as never,
+        new HookScriptRegistryService(),
         { createLogger: vi.fn(() => logger) } as never,
     );
-    return { service, webhookRetryService, logger };
+    return { service, webhookRetryService, pipelineService, logger };
 }
 
 describe('HookService webhook credentials', () => {
@@ -126,5 +138,159 @@ describe('HookService webhook credentials', () => {
             failed: 0,
             errors: [],
         });
+    });
+
+    it('executes script and observation actions through the hook test path', async () => {
+        const fixture = createService();
+        const script = vi.fn(async (records: readonly JsonObject[]) => records.map(record => ({
+            ...record,
+            tested: true,
+        })));
+        fixture.service.registerScript('test-script', script);
+        const definition = {
+            version: 1,
+            steps: [],
+            hooks: {
+                BEFORE_TRANSFORM: [
+                    { type: 'SCRIPT', scriptName: 'test-script' },
+                    { type: 'LOG', message: 'tested' },
+                ],
+            },
+        } as PipelineDefinition;
+
+        const result = await fixture.service.runTest(
+            {} as never,
+            definition,
+            'BEFORE_TRANSFORM',
+            { records: [{ sku: 'SKU-1' }] },
+            'pipeline-1',
+        );
+
+        expect(script).toHaveBeenCalledWith(
+            [{ sku: 'SKU-1' }],
+            expect.objectContaining({
+                pipelineId: 'pipeline-1',
+                stage: 'BEFORE_TRANSFORM',
+            }),
+            undefined,
+        );
+        expect(result).toEqual({
+            status: 'EXECUTED',
+            configured: 2,
+            executed: 2,
+            skipped: 0,
+            failed: 0,
+            errors: [],
+        });
+    });
+
+    it('reports malformed script output as a failed hook test', async () => {
+        const fixture = createService();
+        fixture.service.registerScript(
+            'invalid-script',
+            vi.fn(async () => ({ invalid: true })) as never,
+        );
+        const definition = {
+            version: 1,
+            steps: [],
+            hooks: {
+                AFTER_TRANSFORM: [{
+                    type: 'SCRIPT',
+                    scriptName: 'invalid-script',
+                }],
+            },
+        } as PipelineDefinition;
+
+        await expect(fixture.service.runTest(
+            {} as never,
+            definition,
+            'AFTER_TRANSFORM',
+            [{ sku: 'SKU-1' }],
+        )).resolves.toEqual({
+            status: 'FAILED',
+            configured: 1,
+            executed: 0,
+            skipped: 0,
+            failed: 1,
+            errors: [{
+                action: 'SCRIPT',
+                type: 'SCRIPT',
+                error: 'Script must return an array of records or undefined',
+            }],
+        });
+    });
+
+    it('records the child run created by a trigger-pipeline action', async () => {
+        const fixture = createService();
+        const definition = {
+            version: 1,
+            steps: [],
+            hooks: {
+                PIPELINE_COMPLETED: [{
+                    type: 'TRIGGER_PIPELINE',
+                    pipelineCode: 'search-index',
+                    triggerKey: 'hook',
+                }],
+            },
+        } as PipelineDefinition;
+        const payload = [{ sku: 'SKU-1' }];
+
+        const result = await fixture.service.run(
+            {} as never,
+            definition,
+            'PIPELINE_COMPLETED',
+            payload,
+            undefined,
+            'parent-run-1',
+        );
+
+        expect(fixture.pipelineService.startRunByCode).toHaveBeenCalledWith(
+            expect.anything(),
+            'search-index',
+            {
+                seedRecords: payload,
+                triggerKey: 'hook',
+                triggeredBy: 'hook:hook',
+            },
+        );
+        expect(fixture.logger.info).toHaveBeenCalledWith(
+            'Pipeline triggered by hook',
+            expect.objectContaining({
+                childRunId: 'child-run-1',
+                parentRunId: 'parent-run-1',
+            }),
+        );
+        expect(result.status).toBe('EXECUTED');
+    });
+
+    it('propagates action failures only when failOnError is enabled', async () => {
+        const fixture = createService();
+        fixture.pipelineService.startRunByCode.mockRejectedValue(
+            new Error('target cannot run'),
+        );
+        const action = {
+            type: 'TRIGGER_PIPELINE' as const,
+            pipelineCode: 'search-index',
+            triggerKey: 'hook',
+        };
+
+        await expect(fixture.service.run({} as never, {
+            version: 1,
+            steps: [],
+            hooks: { PIPELINE_COMPLETED: [action] },
+        }, 'PIPELINE_COMPLETED')).resolves.toEqual(expect.objectContaining({
+            status: 'FAILED',
+            failed: 1,
+        }));
+
+        await expect(fixture.service.run({} as never, {
+            version: 1,
+            steps: [],
+            hooks: {
+                PIPELINE_COMPLETED: [{ ...action, failOnError: true }],
+            },
+        }, 'PIPELINE_COMPLETED')).rejects.toThrow(
+            'Hook action "TRIGGER_PIPELINE:1" failed: target cannot run',
+        );
     });
 });

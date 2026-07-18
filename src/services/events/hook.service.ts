@@ -29,6 +29,7 @@ import { validateScriptBlock } from '../../utils/code-security.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { validateUrlSafety } from '../../utils/url-security.utils';
 import { assertWebhookHookSecurity } from '../validation/hook-security';
+import { HookScriptRegistryService } from './hook-script-registry.service';
 
 /** Context passed to action handlers during hook execution */
 interface ActionHandlerContext {
@@ -43,7 +44,6 @@ interface ActionHandlerContext {
 export class HookService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private webhookRetryService: WebhookRetryService | null = null;
-    private registeredScripts = new Map<string, ScriptFunction>();
     /** Cache of compiled vm.Script instances keyed by wrapped code string */
     private scriptCache = new Map<string, Script>();
 
@@ -59,6 +59,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         private moduleRef: ModuleRef,
         private domainEvents: DomainEventsService,
         @Inject(DATAHUB_PLUGIN_OPTIONS) private options: DataHubPluginOptions,
+        private scriptRegistry: HookScriptRegistryService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.HOOK_SERVICE);
@@ -68,10 +69,9 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
      * Register a script function for use in script hooks
      */
     registerScript(name: string, fn: ScriptFunction): void {
-        if (this.registeredScripts.has(name)) {
+        if (this.scriptRegistry.register(name, fn)) {
             this.logger.warn(`Script "${name}" is being overwritten`);
         }
-        this.registeredScripts.set(name, fn);
         this.logger.info(`Registered script: ${name}`);
     }
 
@@ -79,7 +79,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
      * Get all registered script names
      */
     getRegisteredScripts(): string[] {
-        return Array.from(this.registeredScripts.keys());
+        return this.scriptRegistry.names();
     }
 
     async onModuleInit() {
@@ -96,7 +96,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
     }
 
     onModuleDestroy() {
-        this.registeredScripts.clear();
+        this.scriptRegistry.clear();
         this.scriptCache.clear();
         this.webhookRetryService = null;
     }
@@ -133,6 +133,9 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
                     actionType: action.type,
                     error: message,
                 });
+                if (action.failOnError === true) {
+                    throw new Error(`Hook action "${actionName}" failed: ${message}`);
+                }
             }
         }
 
@@ -146,6 +149,114 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
             failed,
             errors,
         };
+    }
+
+    async runTest(
+        ctx: RequestContext,
+        def: PipelineDefinition,
+        stage: HookStageValue,
+        payload?: JsonObject | JsonObject[],
+        pipelineId?: ID,
+    ): Promise<HookExecutionResult> {
+        const actions = (def.hooks?.[stage] ?? []) as HookAction[];
+        const interceptorActions = actions.filter(
+            (action): action is InterceptorHookAction | ScriptHookAction =>
+                action.type === HookActionType.INTERCEPTOR
+                || action.type === HookActionType.SCRIPT,
+        );
+        const observerActions = actions.filter(
+            action => action.type !== HookActionType.INTERCEPTOR
+                && action.type !== HookActionType.SCRIPT,
+        );
+        const errors: HookExecutionResult['errors'] = [];
+        let executed = 0;
+        let skipped = 0;
+
+        if (interceptorActions.length > 0) {
+            const interceptorDefinition = this.withStageActions(
+                def,
+                stage,
+                interceptorActions,
+            );
+            const interceptorResult = await this.runInterceptors(
+                ctx,
+                interceptorDefinition,
+                stage,
+                this.getTestRecords(payload),
+                undefined,
+                pipelineId,
+            );
+            const interceptorErrors = interceptorResult.errors ?? [];
+
+            executed += interceptorActions.length - interceptorErrors.length;
+            errors.push(...interceptorErrors.map((failure, index) => {
+                const action = interceptorActions.find(candidate =>
+                    (candidate.name || candidate.type) === failure.action,
+                ) ?? interceptorActions[index];
+                return {
+                    action: failure.action,
+                    type: action?.type ?? HookActionType.SCRIPT,
+                    error: failure.error,
+                };
+            }));
+        }
+
+        if (observerActions.length > 0) {
+            const observerDefinition = this.withStageActions(
+                def,
+                stage,
+                observerActions,
+            );
+            const observerResult = await this.run(
+                ctx,
+                observerDefinition,
+                stage,
+                Array.isArray(payload) ? payload : undefined,
+                Array.isArray(payload) ? undefined : payload,
+            );
+            executed += observerResult.executed;
+            skipped += observerResult.skipped;
+            errors.push(...observerResult.errors);
+        }
+
+        const failed = errors.length;
+        return {
+            status: this.getExecutionStatus(actions.length, executed, failed),
+            configured: actions.length,
+            executed,
+            skipped,
+            failed,
+            errors,
+        };
+    }
+
+    private withStageActions(
+        definition: PipelineDefinition,
+        stage: HookStageValue,
+        actions: HookAction[],
+    ): PipelineDefinition {
+        return {
+            ...definition,
+            hooks: {
+                ...definition.hooks,
+                [stage]: actions,
+            },
+        };
+    }
+
+    private getTestRecords(payload?: JsonObject | JsonObject[]): JsonObject[] {
+        if (Array.isArray(payload)) {
+            return payload;
+        }
+        if (payload && Array.isArray(payload.records)) {
+            return payload.records.filter(
+                (record): record is JsonObject =>
+                    record != null
+                    && typeof record === 'object'
+                    && !Array.isArray(record),
+            );
+        }
+        return payload ? [payload] : [];
     }
 
     private getExecutionStatus(
@@ -364,7 +475,7 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         records: JsonObject[],
         context: HookContext,
     ): Promise<JsonObject[] | undefined> {
-        const scriptFn = this.registeredScripts.get(action.scriptName);
+        const scriptFn = this.scriptRegistry.get(action.scriptName);
         if (!scriptFn) {
             throw new Error(`Script "${action.scriptName}" is not registered`);
         }
@@ -381,6 +492,9 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
                 Promise.resolve(scriptFn(records, context, action.args)),
                 timeoutPromise,
             ]);
+            if (result !== undefined && !Array.isArray(result)) {
+                throw new Error('Script must return an array of records or undefined');
+            }
             return result;
         } finally {
             if (timerId !== undefined) {
@@ -420,10 +534,17 @@ export class HookService implements OnModuleInit, OnModuleDestroy {
         const seedRecords = Array.isArray(handlerCtx.payload)
             ? handlerCtx.payload
             : (handlerCtx.record ? [handlerCtx.record] : []);
-        await pipelineService.startRunByCode(handlerCtx.ctx, triggerAction.pipelineCode, {
+        const run = await pipelineService.startRunByCode(handlerCtx.ctx, triggerAction.pipelineCode, {
             seedRecords,
             triggerKey: triggerAction.triggerKey,
             triggeredBy: `hook:${triggerAction.triggerKey}`,
+        });
+        this.logger.info('Pipeline triggered by hook', {
+            pipelineCode: triggerAction.pipelineCode,
+            childRunId: run.id,
+            triggerKey: triggerAction.triggerKey,
+            parentRunId: handlerCtx.runId,
+            stage: handlerCtx.stage,
         });
     }
 
