@@ -82,11 +82,12 @@ export const QUEUE = {
     MAX_MESSAGE_RETRIES: 10,
     /** Poll interval while a queue delivery waits for its correlated run */
     RUN_STATUS_POLL_INTERVAL_MS: 5_000,
-    /**
-     * Keep the wait below broker delivery leases and pending-entry cleanup windows.
-     * A non-terminal run after this limit is treated as a processing timeout.
-     */
+    /** Observation window before logging that a correlated run remains active */
     RUN_STATUS_WAIT_TIMEOUT_MS: 4 * 60 * 1_000,
+    /** Maximum time to retain consumer ownership while in-flight deliveries stop */
+    CONSUMER_DRAIN_TIMEOUT_MS: 30_000,
+    /** Poll interval while waiting for in-flight deliveries to stop */
+    CONSUMER_DRAIN_POLL_INTERVAL_MS: 50,
     /** Redeliveries reuse their correlated run for this duration */
     RUN_IDEMPOTENCY_TTL_SECONDS: 7 * 24 * 60 * 60,
 } as const;

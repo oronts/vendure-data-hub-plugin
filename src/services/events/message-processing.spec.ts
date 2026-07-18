@@ -6,6 +6,7 @@ import type { DataHubLogger } from '../logger';
 import type { MessageConsumerConfig } from './consumer-discovery';
 import type { ActiveConsumer } from './consumer-lifecycle';
 import { MessageProcessing } from './message-processing';
+import { QueueRunWaitTimeoutError } from './message-run-waiter';
 
 function createConfig(overrides: Partial<MessageConsumerConfig> = {}): MessageConsumerConfig {
     return {
@@ -68,6 +69,7 @@ function createProcessor(
         status: RunStatus.COMPLETED,
         error: null,
     }),
+    queueRunWaiter?: ConstructorParameters<typeof MessageProcessing>[6],
 ) {
     const processor = new MessageProcessing(
         { create: vi.fn().mockResolvedValue({}) } as never,
@@ -76,6 +78,7 @@ function createProcessor(
         {} as never,
         logger,
         { publishTriggerFired } as never,
+        queueRunWaiter,
     );
     return { processor, logger, runById };
 }
@@ -149,6 +152,144 @@ describe('MessageProcessing reliability', () => {
             'Pipeline run was enqueued but trigger event publication failed',
             expect.objectContaining({ messageId: 'message-1' }),
         );
+    });
+
+    it('renews a built-in delivery lease and keeps observing the same active run', async () => {
+        const startIdempotentRunWithSeed = vi.fn().mockResolvedValue({
+            run: { id: 'run-1', pipelineId: 1 },
+            duplicate: false,
+        });
+        const queueRunWaiter = vi.fn()
+            .mockRejectedValueOnce(new QueueRunWaitTimeoutError('run-1', 10))
+            .mockResolvedValueOnce(undefined);
+        const renewLease = vi.fn().mockResolvedValue(undefined);
+        const ack = vi.fn().mockResolvedValue(undefined);
+        const nack = vi.fn();
+        const adapter = createAdapter({ renewLease, ack, nack });
+        const { processor, logger } = createProcessor(
+            startIdempotentRunWithSeed,
+            createLogger(),
+            vi.fn(),
+            vi.fn(),
+            queueRunWaiter,
+        );
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            createConsumer(),
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(queueRunWaiter).toHaveBeenCalledTimes(2);
+        expect(renewLease).toHaveBeenCalledTimes(3);
+        expect(renewLease).toHaveBeenCalledWith(expect.anything(), 'delivery-1');
+        expect(renewLease.mock.invocationCallOrder[0])
+            .toBeLessThan(startIdempotentRunWithSeed.mock.invocationCallOrder[0]);
+        expect(startIdempotentRunWithSeed.mock.invocationCallOrder[0])
+            .toBeLessThan(renewLease.mock.invocationCallOrder[1]);
+        expect(nack).not.toHaveBeenCalled();
+        expect(ack).toHaveBeenCalledOnce();
+        expect(logger.debug).toHaveBeenCalledWith(
+            'Renewed active queue delivery lease',
+            expect.objectContaining({ runId: 'run-1' }),
+        );
+    });
+
+    it('requeues an active run when the adapter cannot renew its delivery lease', async () => {
+        const startIdempotentRunWithSeed = vi.fn().mockResolvedValue({
+            run: { id: 'run-1', pipelineId: 1 },
+            duplicate: false,
+        });
+        const queueRunWaiter = vi.fn()
+            .mockRejectedValueOnce(new QueueRunWaitTimeoutError('run-1', 10));
+        const ack = vi.fn().mockResolvedValue(undefined);
+        const nack = vi.fn();
+        const publish = vi.fn();
+        const adapter = createAdapter({ ack, nack, publish });
+        const { processor, logger } = createProcessor(
+            startIdempotentRunWithSeed,
+            createLogger(),
+            vi.fn(),
+            vi.fn(),
+            queueRunWaiter,
+        );
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            createConsumer(),
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(queueRunWaiter).toHaveBeenCalledOnce();
+        expect(publish).not.toHaveBeenCalled();
+        expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', true);
+        expect(ack).not.toHaveBeenCalled();
+        expect(logger.warn).toHaveBeenCalledWith(
+            'Queue-triggered pipeline run remains active; delivery was requeued',
+            expect.objectContaining({ runId: 'run-1' }),
+        );
+    });
+
+    it('requeues an active run when delivery lease renewal fails', async () => {
+        const startIdempotentRunWithSeed = vi.fn().mockResolvedValue({
+            run: { id: 'run-1', pipelineId: 1 },
+            duplicate: false,
+        });
+        const queueRunWaiter = vi.fn()
+            .mockRejectedValueOnce(new QueueRunWaitTimeoutError('run-1', 10));
+        const renewalError = new Error('lease unavailable');
+        const renewLease = vi.fn()
+            .mockResolvedValueOnce(undefined)
+            .mockResolvedValueOnce(undefined)
+            .mockRejectedValueOnce(renewalError);
+        const nack = vi.fn().mockResolvedValue(undefined);
+        const publish = vi.fn();
+        const adapter = createAdapter({ renewLease, nack, publish });
+        const { processor, logger } = createProcessor(
+            startIdempotentRunWithSeed,
+            createLogger(),
+            vi.fn(),
+            vi.fn(),
+            queueRunWaiter,
+        );
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            createConsumer(),
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(publish).not.toHaveBeenCalled();
+        expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', true);
+        expect(logger.error).toHaveBeenCalledWith(
+            'Failed to renew active queue delivery lease',
+            renewalError,
+            expect.objectContaining({ runId: 'run-1' }),
+        );
+    });
+
+    it('releases the delivery when ownership is lost during renewal failure', async () => {
+        const consumer = createConsumer();
+        const renewalError = new Error('lease unavailable');
+        const renewLease = vi.fn().mockImplementation(async () => {
+            consumer.running = false;
+            throw renewalError;
+        });
+        const nack = vi.fn().mockResolvedValue(undefined);
+        const adapter = createAdapter({ renewLease, nack });
+        const { processor } = createProcessor(vi.fn());
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            consumer,
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', true);
     });
 
     it('requeues the original when a resolved DLQ publish result reports failure', async () => {
@@ -291,6 +432,134 @@ describe('MessageProcessing reliability', () => {
         expect(startIdempotentRunWithSeed).toHaveBeenCalledOnce();
         expect(publishTriggerFired).not.toHaveBeenCalled();
         expect(ack).toHaveBeenCalledOnce();
+    });
+
+    it('releases a completed delivery for redelivery after the consumer lease is lost', async () => {
+        const startIdempotentRunWithSeed = vi.fn().mockResolvedValue({
+            run: { id: 'run-1', pipelineId: 1 },
+            duplicate: false,
+        });
+        const consumer = createConsumer();
+        const runById = vi.fn().mockImplementation(async () => {
+            consumer.running = false;
+            return { status: RunStatus.COMPLETED, error: null };
+        });
+        const ack = vi.fn();
+        const nack = vi.fn();
+        const publish = vi.fn();
+        const adapter = createAdapter({ ack, nack, publish });
+        const { processor, logger } = createProcessor(
+            startIdempotentRunWithSeed,
+            createLogger(),
+            vi.fn(),
+            runById,
+        );
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            consumer,
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(ack).not.toHaveBeenCalled();
+        expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', true);
+        expect(publish).not.toHaveBeenCalled();
+        expect(consumer.messagesProcessed).toBe(0);
+        expect(consumer.messagesFailed).toBe(0);
+        expect(logger.warn).toHaveBeenCalledWith(
+            expect.stringContaining('lease'),
+            expect.objectContaining({ messageId: 'message-1' }),
+        );
+    });
+
+    it('fences dead-letter publication and releases the delivery after lease loss', async () => {
+        const startIdempotentRunWithSeed = vi.fn().mockResolvedValue({
+            run: { id: 'run-1', pipelineId: 1 },
+            duplicate: false,
+        });
+        const consumer = createConsumer({ deadLetterQueue: 'orders.dlq' });
+        const runById = vi.fn().mockImplementation(async () => {
+            consumer.running = false;
+            return { status: RunStatus.FAILED, error: 'run stopped' };
+        });
+        const adapter = createAdapter({
+            ack: vi.fn(),
+            nack: vi.fn(),
+            publish: vi.fn(),
+        });
+        const { processor } = createProcessor(
+            startIdempotentRunWithSeed,
+            createLogger(),
+            vi.fn(),
+            runById,
+        );
+
+        await (processor as unknown as ProcessingInternals).processDelivery(
+            consumer,
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+
+        expect(adapter.publish).not.toHaveBeenCalled();
+        expect(adapter.nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', true);
+        expect(consumer.messagesFailed).toBe(0);
+    });
+
+    it('fences acknowledgment and metrics when the lease is lost during DLQ publication', async () => {
+        const startIdempotentRunWithSeed = vi.fn().mockRejectedValue(new Error('enqueue failed'));
+        let finishPublish: ((results: Array<{ success: boolean; messageId: string }>) => void) | undefined;
+        const publish = vi.fn(() => new Promise<Array<{ success: boolean; messageId: string }>>(resolve => {
+            finishPublish = resolve;
+        }));
+        const nack = vi.fn();
+        const adapter = createAdapter({ publish, nack });
+        const consumer = createConsumer({ maxRetries: 0, deadLetterQueue: 'orders.dlq' });
+        const { processor, logger } = createProcessor(startIdempotentRunWithSeed);
+
+        const processing = (processor as unknown as ProcessingInternals).processDelivery(
+            consumer,
+            adapter,
+            {} as QueueConnectionConfig,
+            { messageId: 'message-1', payload: {}, deliveryTag: 'delivery-1' },
+        );
+        await vi.waitFor(() => expect(publish).toHaveBeenCalledOnce());
+        consumer.running = false;
+        finishPublish?.([{ success: true, messageId: 'message-1' }]);
+        await processing;
+
+        expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', true);
+        expect(consumer.messagesFailed).toBe(0);
+        expect(logger.info).not.toHaveBeenCalledWith(
+            'Routed message to DLQ',
+            expect.anything(),
+        );
+    });
+
+    it('releases deliveries fetched after consumer ownership is lost', async () => {
+        const consumer = createConsumer();
+        const nack = vi.fn().mockResolvedValue(undefined);
+        const consume = vi.fn().mockImplementation(async () => {
+            consumer.running = false;
+            return [{
+                messageId: 'message-1',
+                payload: {},
+                deliveryTag: 'delivery-1',
+            }];
+        });
+        const adapter = createAdapter({ consume, nack });
+        const registrySpy = vi.spyOn(queueAdapterRegistry, 'get').mockReturnValue(adapter);
+        const { processor } = createProcessor(vi.fn());
+
+        try {
+            await (processor as unknown as ProcessingInternals).pollMessages(consumer);
+        } finally {
+            registrySpy.mockRestore();
+        }
+
+        expect(nack).toHaveBeenCalledWith(expect.anything(), 'delivery-1', true);
+        expect(consumer.inFlightCount).toBe(0);
     });
 
     it('passes the configured consumerGroup to Redis Streams', async () => {

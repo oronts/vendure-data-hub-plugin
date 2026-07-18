@@ -4,13 +4,19 @@ import { PipelineService } from '../pipeline/pipeline.service';
 import { ConnectionService } from '../config/connection.service';
 import { SecretService } from '../config/secret.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
-import { LOGGER_CONTEXTS, SCHEDULER } from '../../constants/index';
+import { LOGGER_CONTEXTS, QUEUE, SCHEDULER } from '../../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../logger';
 import { getErrorMessage, toErrorOrUndefined, ensureError } from '../../utils/error.utils';
-import { ConsumerDiscovery, MessageConsumerConfig, getConsumerKey } from './consumer-discovery';
+import {
+    ConsumerDiscovery,
+    getConsumerConfigFingerprint,
+    MessageConsumerConfig,
+    getConsumerKey,
+} from './consumer-discovery';
 import { ConsumerLifecycle, ActiveConsumer } from './consumer-lifecycle';
 import { MessageProcessing } from './message-processing';
 import { DomainEventsService } from './domain-events.service';
+import { queueAdapterRegistry } from '../../sdk/adapters/queue';
 
 /**
  * Message Consumer Service
@@ -31,14 +37,14 @@ import { DomainEventsService } from './domain-events.service';
  * - MessageProcessing: Handles message polling and pipeline triggering
  */
 /** Maximum number of concurrent consumers to prevent unbounded growth */
-const MAX_CONSUMERS = 500;
-
 @Injectable()
 export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private readonly consumers = new Map<string, ActiveConsumer>();
     private isDestroying = false;
     private refreshTimer?: NodeJS.Timeout;
+    private refreshInProgress = false;
+    private refreshCompletion?: Promise<void>;
 
     private readonly discovery: ConsumerDiscovery;
     private readonly lifecycle: ConsumerLifecycle;
@@ -110,8 +116,30 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
             this.refreshTimer = undefined;
         }
 
-        await this.lifecycle.stopAllConsumers(this.consumers);
+        await this.refreshCompletion;
+
+        try {
+            await this.lifecycle.stopAllConsumers(this.consumers);
+        } finally {
+            await this.destroyQueueAdapters();
+        }
         this.logger.info('Message consumer service cleanup complete');
+    }
+
+    private async destroyQueueAdapters(): Promise<void> {
+        const adapters = queueAdapterRegistry.getAll();
+        const results = await Promise.allSettled(
+            adapters.map(adapter => adapter.destroy()),
+        );
+        results.forEach((result, index) => {
+            if (result.status === 'rejected') {
+                this.logger.error(
+                    'Failed to destroy queue adapter',
+                    toErrorOrUndefined(result.reason),
+                    { adapterCode: adapters[index].code },
+                );
+            }
+        });
     }
 
     /**
@@ -119,6 +147,7 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
      */
     private async discoverAndStartConsumers(): Promise<void> {
         const activeConfigs = await this.discovery.discoverActiveConfigs();
+        if (this.isDestroying) return;
         let startedCount = 0;
 
         for (const [, config] of activeConfigs) {
@@ -143,34 +172,59 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
      * Refresh consumers - stop removed, start new, update changed
      */
     private async refreshConsumers(): Promise<void> {
-        if (this.isDestroying) return;
+        if (this.isDestroying || this.refreshInProgress) return;
+        this.refreshInProgress = true;
+        let finishRefresh: (() => void) | undefined;
+        const completion = new Promise<void>(resolve => {
+            finishRefresh = resolve;
+        });
+        this.refreshCompletion = completion;
 
-        const activeConfigs = await this.discovery.discoverActiveConfigs();
+        try {
+            const activeConfigs = await this.discovery.discoverActiveConfigs();
+            if (this.isDestroying) return;
 
-        // Stop consumers for removed/disabled pipelines
-        for (const [key, consumer] of this.consumers.entries()) {
-            if (!activeConfigs.has(key)) {
-                this.logger.info(`Stopping consumer for removed/disabled pipeline`, {
-                    compositeKey: key,
-                    pipelineCode: consumer.config.pipelineCode,
-                    triggerKey: consumer.config.triggerKey,
-                });
-                await this.stopConsumer(key);
-            }
-        }
-
-        // Start consumers for new pipelines
-        for (const [key, config] of activeConfigs.entries()) {
-            if (!this.consumers.has(key)) {
-                try {
-                    await this.startConsumer(config);
-                } catch (error) {
-                    this.logger.error(`Failed to start consumer for pipeline ${config.pipelineCode}`,
-                        toErrorOrUndefined(error), {
-                            pipelineCode: config.pipelineCode,
-                            triggerKey: config.triggerKey,
-                        });
+            // Stop consumers for removed, disabled, or reconfigured triggers.
+            for (const [key, consumer] of this.consumers.entries()) {
+                const nextConfig = activeConfigs.get(key);
+                const configChanged = nextConfig !== undefined
+                    && getConsumerConfigFingerprint(nextConfig)
+                        !== getConsumerConfigFingerprint(consumer.config);
+                if (!nextConfig || configChanged) {
+                    this.logger.info(
+                        configChanged
+                            ? 'Restarting reconfigured message consumer'
+                            : 'Stopping consumer for removed/disabled pipeline',
+                        {
+                            compositeKey: key,
+                            pipelineCode: consumer.config.pipelineCode,
+                            triggerKey: consumer.config.triggerKey,
+                        },
+                    );
+                    await this.stopConsumer(key);
+                    if (this.isDestroying) return;
                 }
+            }
+
+            // Start consumers for new or reconfigured pipelines.
+            for (const [key, config] of activeConfigs.entries()) {
+                if (!this.consumers.has(key)) {
+                    try {
+                        await this.startConsumer(config);
+                    } catch (error) {
+                        this.logger.error(`Failed to start consumer for pipeline ${config.pipelineCode}`,
+                            toErrorOrUndefined(error), {
+                                pipelineCode: config.pipelineCode,
+                                triggerKey: config.triggerKey,
+                            });
+                    }
+                }
+            }
+        } finally {
+            this.refreshInProgress = false;
+            finishRefresh?.();
+            if (this.refreshCompletion === completion) {
+                this.refreshCompletion = undefined;
             }
         }
     }
@@ -181,8 +235,9 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
      * runs the consumer for a given pipeline+trigger combination
      */
     async startConsumer(config: MessageConsumerConfig): Promise<void> {
-        if (this.consumers.size >= MAX_CONSUMERS) {
-            this.logger.warn(`Consumer limit reached (max ${MAX_CONSUMERS}), cannot start consumer for ${config.pipelineCode}`);
+        if (this.isDestroying) return;
+        if (this.consumers.size >= QUEUE.MAX_CONSUMERS) {
+            this.logger.warn(`Consumer limit reached (max ${QUEUE.MAX_CONSUMERS}), cannot start consumer for ${config.pipelineCode}`);
             return;
         }
         const consumer = await this.lifecycle.createConsumer(
@@ -193,7 +248,11 @@ export class MessageConsumerService implements OnModuleInit, OnModuleDestroy {
 
         if (consumer) {
             const key = getConsumerKey(config.pipelineCode, config.triggerKey);
-            this.processing.startPolling(key, consumer, () => this.isDestroying);
+            if (this.isDestroying) {
+                await this.lifecycle.stopConsumer(key, this.consumers);
+            } else {
+                this.processing.startPolling(key, consumer, () => this.isDestroying);
+            }
         }
     }
 

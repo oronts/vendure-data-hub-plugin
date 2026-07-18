@@ -11,7 +11,10 @@ import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { queueAdapterRegistry, QueueConnectionConfig, QueueAdapter } from '../../sdk/adapters/queue';
 import { ActiveConsumer } from './consumer-lifecycle';
 import { DomainEventsService } from './domain-events.service';
-import { waitForSuccessfulQueueRun } from './message-run-waiter';
+import {
+    QueueRunWaitTimeoutError,
+    waitForSuccessfulQueueRun,
+} from './message-run-waiter';
 
 type ConsumedMessage = {
     messageId: string;
@@ -23,6 +26,28 @@ type ConsumedMessage = {
 interface EnqueuedMessageRun {
     ctx: RequestContext;
     runId: ID;
+}
+
+type QueueRunWaiter = typeof waitForSuccessfulQueueRun;
+
+export class ConsumerLeaseLostError extends Error {
+    constructor(pipelineCode: string, phase: string) {
+        super(`Message consumer lease for pipeline "${pipelineCode}" was lost before ${phase}`);
+        this.name = 'ConsumerLeaseLostError';
+    }
+}
+
+class DeliveryLeaseRenewalError extends Error {
+    constructor() {
+        super('Queue delivery lease renewal failed');
+        this.name = 'DeliveryLeaseRenewalError';
+    }
+}
+
+function assertConsumerLease(consumer: ActiveConsumer, phase: string): void {
+    if (!consumer.running) {
+        throw new ConsumerLeaseLostError(consumer.config.pipelineCode, phase);
+    }
 }
 
 const QUEUE_SECRET_FIELDS = [
@@ -47,6 +72,7 @@ export class MessageProcessing {
         private secretService: SecretService,
         private logger: DataHubLogger,
         private domainEvents: DomainEventsService,
+        private queueRunWaiter: QueueRunWaiter = waitForSuccessfulQueueRun,
     ) {}
 
     /**
@@ -61,6 +87,7 @@ export class MessageProcessing {
         const poll = async () => {
             if (!consumer.running || isDestroying() || polling) return;
             polling = true;
+            consumer.activePollCount = (consumer.activePollCount ?? 0) + 1;
 
             try {
                 await this.pollMessages(consumer);
@@ -68,6 +95,10 @@ export class MessageProcessing {
                 this.logger.error(`Poll error for ${key}`,
                     toErrorOrUndefined(error), { pipelineCode: key });
             } finally {
+                consumer.activePollCount = Math.max(
+                    0,
+                    (consumer.activePollCount ?? 1) - 1,
+                );
                 polling = false;
             }
         };
@@ -156,6 +187,16 @@ export class MessageProcessing {
             if (messages.length === 0) {
                 return;
             }
+            if (!consumer.running) {
+                await Promise.all(messages.map(message => this.releaseDeliveryAfterLeaseLoss(
+                    consumer,
+                    adapter,
+                    connectionConfig,
+                    message,
+                    'Consumer lease was lost while polling',
+                )));
+                return;
+            }
 
             this.logger.debug(`Received ${messages.length} messages`, {
                 pipelineCode: config.pipelineCode,
@@ -191,20 +232,77 @@ export class MessageProcessing {
         message: ConsumedMessage,
     ): Promise<void> {
         const { config } = consumer;
+        assertConsumerLease(consumer, 'pipeline enqueue');
         if (config.ackMode === AckMode.MANUAL && !message.deliveryTag) {
             throw new Error('Queue adapter returned a MANUAL delivery without a delivery tag');
         }
 
+        let runId: ID | undefined;
         try {
-            const { ctx, runId } = await this.enqueueConsumedMessageWithRetries(
+            await this.renewActiveDeliveryLease(
+                consumer,
+                adapter,
+                connectionConfig,
+                message,
+            );
+            const enqueued = await this.enqueueConsumedMessageWithRetries(
                 consumer,
                 message,
             );
-            await waitForSuccessfulQueueRun(
+            runId = enqueued.runId;
+            await this.renewActiveDeliveryLease(
+                consumer,
+                adapter,
+                connectionConfig,
+                message,
                 runId,
-                id => this.pipelineService.runById(ctx, id),
             );
+            await this.waitForTerminalRun(
+                consumer,
+                adapter,
+                connectionConfig,
+                message,
+                enqueued.ctx,
+                runId,
+            );
+            assertConsumerLease(consumer, 'message acknowledgment');
         } catch (error) {
+            if (!consumer.running) {
+                const reason = error instanceof ConsumerLeaseLostError
+                    ? error.message
+                    : 'Consumer lease was lost while processing the delivery';
+                await this.releaseDeliveryAfterLeaseLoss(
+                    consumer,
+                    adapter,
+                    connectionConfig,
+                    message,
+                    reason,
+                );
+                return;
+            }
+            if (error instanceof ConsumerLeaseLostError) {
+                await this.releaseDeliveryAfterLeaseLoss(
+                    consumer,
+                    adapter,
+                    connectionConfig,
+                    message,
+                    error.message,
+                );
+                return;
+            }
+            if (
+                error instanceof QueueRunWaitTimeoutError ||
+                error instanceof DeliveryLeaseRenewalError
+            ) {
+                await this.requeueActiveRunDelivery(
+                    consumer,
+                    adapter,
+                    connectionConfig,
+                    message,
+                    runId,
+                );
+                return;
+            }
             await this.handleTerminalProcessingFailure(
                 consumer,
                 adapter,
@@ -236,6 +334,130 @@ export class MessageProcessing {
         consumer.lastMessageAt = new Date();
     }
 
+    private async waitForTerminalRun(
+        consumer: ActiveConsumer,
+        adapter: QueueAdapter,
+        connectionConfig: QueueConnectionConfig,
+        message: ConsumedMessage,
+        ctx: RequestContext,
+        runId: ID,
+    ): Promise<void> {
+        for (;;) {
+            try {
+                await this.queueRunWaiter(
+                    runId,
+                    id => this.pipelineService.runById(ctx, id),
+                    {
+                        beforePoll: () => assertConsumerLease(
+                            consumer,
+                            'pipeline completion observation',
+                        ),
+                    },
+                );
+                return;
+            } catch (error) {
+                if (!(error instanceof QueueRunWaitTimeoutError)) {
+                    throw error;
+                }
+                const renewed = await this.renewActiveDeliveryLease(
+                    consumer,
+                    adapter,
+                    connectionConfig,
+                    message,
+                    runId,
+                );
+                if (!renewed) {
+                    throw error;
+                }
+            }
+        }
+    }
+
+    private async renewActiveDeliveryLease(
+        consumer: ActiveConsumer,
+        adapter: QueueAdapter,
+        connectionConfig: QueueConnectionConfig,
+        message: ConsumedMessage,
+        runId?: ID,
+    ): Promise<boolean> {
+        const renewLease = adapter.renewLease?.bind(adapter);
+        if (
+            consumer.config.ackMode !== AckMode.MANUAL ||
+            !message.deliveryTag ||
+            !renewLease
+        ) {
+            return false;
+        }
+
+        assertConsumerLease(consumer, 'delivery lease renewal');
+        try {
+            await renewLease(connectionConfig, message.deliveryTag);
+        } catch (error) {
+            this.logger.error(
+                'Failed to renew active queue delivery lease',
+                toErrorOrUndefined(error),
+                {
+                    pipelineCode: consumer.config.pipelineCode,
+                    messageId: message.messageId,
+                    runId: runId === undefined ? undefined : String(runId),
+                },
+            );
+            throw new DeliveryLeaseRenewalError();
+        }
+        this.logger.debug('Renewed active queue delivery lease', {
+            pipelineCode: consumer.config.pipelineCode,
+            messageId: message.messageId,
+            runId: runId === undefined ? undefined : String(runId),
+        });
+        return true;
+    }
+
+    private async releaseDeliveryAfterLeaseLoss(
+        consumer: ActiveConsumer,
+        adapter: QueueAdapter,
+        connectionConfig: QueueConnectionConfig,
+        message: ConsumedMessage,
+        reason: string,
+    ): Promise<void> {
+        this.logger.warn(reason, {
+            pipelineCode: consumer.config.pipelineCode,
+            messageId: message.messageId,
+        });
+        if (consumer.config.ackMode !== AckMode.MANUAL || !message.deliveryTag) {
+            return;
+        }
+        try {
+            await adapter.nack(connectionConfig, message.deliveryTag, true);
+        } catch (error) {
+            this.logger.error(
+                'Failed to release queue delivery after consumer lease loss',
+                toErrorOrUndefined(error),
+                {
+                    pipelineCode: consumer.config.pipelineCode,
+                    messageId: message.messageId,
+                },
+            );
+        }
+    }
+
+    private async requeueActiveRunDelivery(
+        consumer: ActiveConsumer,
+        adapter: QueueAdapter,
+        connectionConfig: QueueConnectionConfig,
+        message: ConsumedMessage,
+        runId?: ID,
+    ): Promise<void> {
+        assertConsumerLease(consumer, 'active pipeline run requeue');
+        if (consumer.config.ackMode === AckMode.MANUAL && message.deliveryTag) {
+            await adapter.nack(connectionConfig, message.deliveryTag, true);
+        }
+        this.logger.warn('Queue-triggered pipeline run remains active; delivery was requeued', {
+            pipelineCode: consumer.config.pipelineCode,
+            messageId: message.messageId,
+            runId: runId === undefined ? undefined : String(runId),
+        });
+    }
+
     private async handleTerminalProcessingFailure(
         consumer: ActiveConsumer,
         adapter: QueueAdapter,
@@ -244,7 +466,16 @@ export class MessageProcessing {
         error: unknown,
     ): Promise<void> {
         const { config } = consumer;
-        consumer.messagesFailed++;
+        if (!consumer.running) {
+            await this.releaseDeliveryAfterLeaseLoss(
+                consumer,
+                adapter,
+                connectionConfig,
+                message,
+                'Consumer lease was lost before terminal delivery handling',
+            );
+            return;
+        }
         this.logger.error('Failed to process message', toErrorOrUndefined(error), {
             pipelineCode: config.pipelineCode,
             messageId: message.messageId,
@@ -261,8 +492,22 @@ export class MessageProcessing {
         }
 
         if (config.ackMode === AckMode.MANUAL && message.deliveryTag) {
+            if (!consumer.running) {
+                await this.releaseDeliveryAfterLeaseLoss(
+                    consumer,
+                    adapter,
+                    connectionConfig,
+                    message,
+                    'Consumer lease was lost before negative acknowledgment',
+                );
+                return;
+            }
             const requeue = Boolean(config.deadLetterQueue) && !dlqPublished;
             await adapter.nack(connectionConfig, message.deliveryTag, requeue);
+        }
+
+        if (consumer.running) {
+            consumer.messagesFailed++;
         }
     }
 
@@ -273,6 +518,7 @@ export class MessageProcessing {
         const { maxRetries, pipelineCode } = consumer.config;
 
         for (let retry = 0; retry <= maxRetries; retry++) {
+            assertConsumerLease(consumer, 'pipeline enqueue');
             try {
                 return await this.enqueueConsumedMessage(consumer, message);
             } catch (error) {
@@ -363,6 +609,7 @@ export class MessageProcessing {
         error: unknown,
     ): Promise<void> {
         const { config } = consumer;
+        assertConsumerLease(consumer, 'dead-letter publication');
         if (!config.deadLetterQueue) return;
 
         try {
@@ -390,6 +637,8 @@ export class MessageProcessing {
             ) {
                 throw new Error(result?.error ?? 'Queue adapter did not confirm dead-letter delivery');
             }
+
+            assertConsumerLease(consumer, 'dead-letter delivery confirmation');
 
             this.logger.info(`Routed message to DLQ`, {
                 pipelineCode: config.pipelineCode,

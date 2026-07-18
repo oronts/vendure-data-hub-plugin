@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Pipeline } from '../../entities/pipeline';
-import { AckMode, QUEUE } from '../../constants';
-import { ConsumerDiscovery } from './consumer-discovery';
+import { AckMode, PipelineStatus, QUEUE } from '../../constants';
+import { ConsumerDiscovery, getConsumerConfigFingerprint } from './consumer-discovery';
 
 function createPipeline(message: Record<string, unknown> = {}): Pipeline {
     const pipeline = new Pipeline();
@@ -74,5 +74,52 @@ describe('ConsumerDiscovery retry configuration', () => {
             prefetch: QUEUE.MIN_MESSAGE_PREFETCH,
             pollIntervalMs: QUEUE.DEFAULT_MESSAGE_POLL_INTERVAL_MS,
         });
+    });
+
+    it('changes consumer identity when any runtime setting changes', () => {
+        const [config] = discovery.extractMessageConfigs(createPipeline());
+        const baseline = getConsumerConfigFingerprint(config);
+
+        for (const change of [
+            { queueName: 'priority-orders' },
+            { connectionCode: 'rabbitmq-secondary' },
+            { concurrency: config.concurrency + 1 },
+            { pollIntervalMs: config.pollIntervalMs + 1_000 },
+            { deadLetterQueue: 'orders.dlq' },
+        ]) {
+            expect(getConsumerConfigFingerprint({ ...config, ...change }))
+                .not.toBe(baseline);
+        }
+    });
+
+    it('only discovers an enabled published pipeline for manual startup', async () => {
+        const pipeline = createPipeline();
+        const findOne = vi.fn().mockResolvedValue(pipeline);
+        const guardedDiscovery = new ConsumerDiscovery(
+            { getRepository: vi.fn(() => ({ findOne })) } as never,
+            { create: vi.fn().mockResolvedValue({}) } as never,
+            {} as never,
+        );
+
+        await expect(guardedDiscovery.getConfigsByPipelineCode('orders'))
+            .resolves.toHaveLength(1);
+        expect(findOne).toHaveBeenCalledWith({
+            where: {
+                code: 'orders',
+                status: PipelineStatus.PUBLISHED,
+                enabled: true,
+            },
+        });
+    });
+
+    it('rejects manual startup when no enabled published pipeline is found', async () => {
+        const guardedDiscovery = new ConsumerDiscovery(
+            { getRepository: vi.fn(() => ({ findOne: vi.fn().mockResolvedValue(null) })) } as never,
+            { create: vi.fn().mockResolvedValue({}) } as never,
+            {} as never,
+        );
+
+        await expect(guardedDiscovery.getConfigsByPipelineCode('orders'))
+            .rejects.toThrow('Enabled published pipeline not found: orders');
     });
 });

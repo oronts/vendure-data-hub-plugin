@@ -36,16 +36,16 @@ describe('assertConsumerRuntimeConfig', () => {
         }))).toThrow('supported only for REDIS_STREAMS');
     });
 
-    it('rejects manual acknowledgment for RabbitMQ HTTP', () => {
+    it('rejects RabbitMQ HTTP because it cannot defer acknowledgment', () => {
         expect(() => assertConsumerRuntimeConfig(createConfig({
             queueType: 'rabbitmq',
             ackMode: AckMode.MANUAL,
-        }))).toThrow('support AUTO acknowledgment only');
+        }))).toThrow('use RABBITMQ_AMQP');
     });
 
     it('rejects malformed persisted acknowledgment modes', () => {
         expect(() => assertConsumerRuntimeConfig(createConfig({
             ackMode: 'DEFERRED' as AckMode,
-        }))).toThrow('Unsupported message acknowledgment mode');
+        }))).toThrow('require MANUAL acknowledgment');
     });
 });

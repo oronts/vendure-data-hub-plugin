@@ -95,10 +95,16 @@ export class ConsumerDiscovery {
     async getConfigsByPipelineCode(pipelineCode: string): Promise<MessageConsumerConfig[]> {
         const ctx = await this.requestContextService.create({ apiType: 'admin' });
         const repo = this.connection.getRepository(ctx, Pipeline);
-        const pipeline = await repo.findOne({ where: { code: pipelineCode } });
+        const pipeline = await repo.findOne({
+            where: {
+                code: pipelineCode,
+                status: PipelineStatus.PUBLISHED,
+                enabled: true,
+            },
+        });
 
         if (!pipeline) {
-            throw new Error(`Pipeline not found: ${pipelineCode}`);
+            throw new Error(`Enabled published pipeline not found: ${pipelineCode}`);
         }
 
         const configs = this.extractMessageConfigs(pipeline);
@@ -176,4 +182,24 @@ export class ConsumerDiscovery {
  */
 export function getConsumerKey(pipelineCode: string, triggerKey: string): string {
     return `${pipelineCode}:${triggerKey}`;
+}
+
+export function getConsumerConfigFingerprint(config: MessageConsumerConfig): string {
+    return JSON.stringify({
+        pipelineId: String(config.pipelineId),
+        pipelineCode: config.pipelineCode,
+        triggerKey: config.triggerKey,
+        queueType: config.queueType,
+        connectionCode: config.connectionCode,
+        queueName: config.queueName,
+        consumerGroup: config.consumerGroup ?? null,
+        batchSize: config.batchSize,
+        concurrency: config.concurrency,
+        ackMode: config.ackMode,
+        maxRetries: config.maxRetries,
+        deadLetterQueue: config.deadLetterQueue ?? null,
+        pollIntervalMs: config.pollIntervalMs,
+        autoStart: config.autoStart,
+        prefetch: config.prefetch ?? null,
+    });
 }
