@@ -25,14 +25,11 @@ export function getDefaultPort(databaseType: DatabaseType): number {
 
 /**
  * Normalize a hostname extracted from a DSN connection string.
- * Strips quotes, protocol prefixes, instance names, ports, and IPv6 brackets.
+ * Strips quotes, ports, and IPv6 brackets.
  */
 function normalizeDsnHostname(raw: string): string {
     let h = raw;
     h = h.replace(/^['"]|['"]$/g, '');     // Strip quotes: 'host' or "host"
-    h = h.replace(/^tcp:/i, '');            // MSSQL tcp: prefix
-    h = h.replace(/\\.*/g, '');             // MSSQL instance: host\INSTANCE -> host
-    h = h.replace(/,\d+$/, '');             // MSSQL comma-port: host,1433 -> host
     // Strip IPv6 brackets but preserve the address
     if (h.startsWith('[') && h.includes(']')) {
         h = h.slice(1, h.indexOf(']'));
@@ -65,8 +62,7 @@ function validateConnectionStringSsrf(connectionString: string): void {
     const patterns = [
         /\bhost\s*=\s*([^\s;,]+)/i,        // PostgreSQL: host=X
         /\bhostaddr\s*=\s*([^\s;,]+)/i,    // PostgreSQL: hostaddr=X (IP-only form)
-        /\bServer\s*=\s*([^\s;,]+)/i,      // MSSQL: Server=X
-        /\bData\s+Source\s*=\s*([^\s;,]+)/i, // Oracle/generic: Data Source=X
+        /\bServer\s*=\s*([^\s;,]+)/i,      // MySQL Server=X alias
     ];
     for (const pattern of patterns) {
         const match = connectionString.match(pattern);
@@ -253,6 +249,65 @@ async function createMysqlClient(
     };
 }
 
+interface SqliteStatement {
+    all(...parameters: unknown[]): Record<string, unknown>[];
+    columns(): Array<{ name: string; type: string | null }>;
+}
+
+interface SqliteDatabase {
+    prepare(sql: string): SqliteStatement;
+    close(): void;
+}
+
+interface SqliteDatabaseConstructor {
+    new (
+        filename: string,
+        options: { readonly: boolean; fileMustExist: boolean },
+    ): SqliteDatabase;
+}
+
+async function createSqliteClient(
+    context: ExtractorContext,
+    config: DatabaseExtractorConfig,
+): Promise<DatabaseClient> {
+    let filename = config.connectionString ?? config.database;
+    if (config.connectionStringSecretCode) {
+        filename = await context.secrets.get(config.connectionStringSecretCode);
+        if (!filename) {
+            throw new Error(`Secret "${config.connectionStringSecretCode}" not found - create it in DataHub > Secrets`);
+        }
+    }
+    if (!filename) {
+        throw new Error('SQLite database path is required');
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const BetterSqlite3 = require('better-sqlite3') as SqliteDatabaseConstructor;
+    const isMemoryDatabase = filename === ':memory:';
+    const database = new BetterSqlite3(filename, {
+        readonly: !isMemoryDatabase,
+        fileMustExist: !isMemoryDatabase,
+    });
+
+    return {
+        async query(sql: string, parameters: unknown[] = []): Promise<DatabaseQueryResult> {
+            const statement = database.prepare(sql);
+            const rows = statement.all(...parameters);
+            return {
+                rows,
+                rowCount: rows.length,
+                fields: statement.columns().map(column => ({
+                    name: column.name,
+                    type: column.type ?? 'unknown',
+                })),
+            };
+        },
+        async close(): Promise<void> {
+            database.close();
+        },
+    };
+}
+
 export async function createDatabaseClient(
     context: ExtractorContext,
     config: DatabaseExtractorConfig,
@@ -265,22 +320,7 @@ export async function createDatabaseClient(
             return createMysqlClient(context, config);
 
         case DatabaseType.SQLITE:
-            throw new Error(
-                'SQLite extraction requires the better-sqlite3 package. ' +
-                    'Install it with: npm install better-sqlite3',
-            );
-
-        case DatabaseType.MSSQL:
-            throw new Error(
-                'SQL Server extraction requires the mssql package. ' +
-                    'Install it with: npm install mssql',
-            );
-
-        case DatabaseType.ORACLE:
-            throw new Error(
-                'Oracle extraction requires the oracledb package. ' +
-                    'Install it with: npm install oracledb',
-            );
+            return createSqliteClient(context, config);
 
         default:
             throw new Error(`Unsupported database type: ${config.databaseType}`);

@@ -47,10 +47,31 @@ export function validateTableName(table: string | undefined): void {
     }
 }
 
+type SqlIdentifierQuote = '"' | '`';
+
+function quoteSqlIdentifier(identifier: string, quote: SqlIdentifierQuote): string {
+    return `${quote}${identifier.split(quote).join(quote + quote)}${quote}`;
+}
+
 /** IMPORTANT: Prefer parameterized queries. Use only when identifiers must be interpolated. */
-export function escapeSqlIdentifier(identifier: string): string {
+export function escapeSqlIdentifier(
+    identifier: string,
+    quote: SqlIdentifierQuote = '"',
+): string {
     validateColumnName(identifier);
-    return `"${identifier.replace(/"/g, '""')}"`;
+    return quoteSqlIdentifier(identifier, quote);
+}
+
+/** IMPORTANT: Prefer parameterized queries. Use only when table identifiers must be interpolated. */
+export function escapeSqlTableIdentifier(
+    table: string,
+    quote: SqlIdentifierQuote = '"',
+): string {
+    validateTableName(table);
+    return table
+        .split('.')
+        .map(segment => quoteSqlIdentifier(segment, quote))
+        .join('.');
 }
 
 export function validateLimitOffset(

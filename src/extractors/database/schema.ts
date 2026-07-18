@@ -3,7 +3,7 @@ import { PAGINATION } from '../../constants/defaults/ui-defaults';
 import { HTTP } from '../../constants/defaults/http-defaults';
 import { CONNECTION_POOL } from '../../constants/defaults/reliability-defaults';
 import { DatabasePaginationType } from '../../constants/enums';
-import { DATABASE_TYPE_OPTIONS, DATABASE_PAGINATION_TYPE_OPTIONS, INCREMENTAL_COLUMN_TYPE_OPTIONS } from '../../constants/adapter-schema-options';
+import { DATABASE_TYPE_OPTIONS, DATABASE_PAGINATION_TYPE_OPTIONS } from '../../constants/adapter-schema-options';
 
 export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
     groups: [
@@ -108,14 +108,6 @@ export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
             placeholder: '["2024-01-01"]',
             group: 'query',
         },
-        {
-            key: 'schema',
-            label: 'Schema',
-            description: 'Database schema/namespace',
-            type: 'string',
-            placeholder: 'public',
-            group: 'query',
-        },
         // Pagination
         {
             key: 'pagination.enabled',
@@ -146,7 +138,16 @@ export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
         {
             key: 'pagination.cursorColumn',
             label: 'Cursor Column',
-            description: 'Column to use for cursor-based pagination (usually primary key)',
+            description: 'Primary sort column for cursor pagination; repeated values are ordered by the tie-breaker',
+            type: 'string',
+            placeholder: 'updated_at',
+            group: 'pagination',
+            dependsOn: { field: 'pagination.type', value: DatabasePaginationType.CURSOR },
+        },
+        {
+            key: 'pagination.cursorTieBreakerColumn',
+            label: 'Cursor Tie-Breaker Column',
+            description: 'Required unique and stable column used to order rows with the same cursor value',
             type: 'string',
             placeholder: 'id',
             group: 'pagination',
@@ -179,15 +180,6 @@ export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
             group: 'incremental',
             dependsOn: { field: 'incremental.enabled', value: true },
         },
-        {
-            key: 'incremental.type',
-            label: 'Column Type',
-            type: 'select',
-            options: INCREMENTAL_COLUMN_TYPE_OPTIONS,
-            defaultValue: 'timestamp',
-            group: 'incremental',
-            dependsOn: { field: 'incremental.enabled', value: true },
-        },
         // Advanced
         {
             key: 'queryTimeoutMs',
@@ -198,27 +190,11 @@ export const DATABASE_EXTRACTOR_SCHEMA: StepConfigSchema = {
             group: 'advanced',
         },
         {
-            key: 'pool.min',
-            label: 'Min Pool Size',
-            description: 'Minimum connections in pool',
-            type: 'number',
-            defaultValue: 1,
-            group: 'advanced',
-        },
-        {
             key: 'pool.max',
             label: 'Max Pool Size',
             description: 'Maximum connections in pool',
             type: 'number',
             defaultValue: CONNECTION_POOL.MAX,
-            group: 'advanced',
-        },
-        {
-            key: 'includeQueryMetadata',
-            label: 'Include Metadata',
-            description: 'Include query metadata (column types, row count) in results',
-            type: 'boolean',
-            defaultValue: false,
             group: 'advanced',
         },
     ],

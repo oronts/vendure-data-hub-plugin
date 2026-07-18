@@ -1,9 +1,14 @@
 import { JsonValue } from '../../types/index';
-import { DatabaseExtractorConfig, DatabasePaginationConfig, PaginationState } from './types';
-import { DatabasePaginationType, PAGINATION } from '../../constants/index';
+import {
+    DatabaseCursorValue,
+    DatabaseExtractorConfig,
+    DatabasePaginationConfig,
+    PaginationState,
+} from './types';
+import { DatabasePaginationType, DatabaseType, PAGINATION } from '../../constants/index';
 import { validateColumnName, escapeSqlIdentifier, validateLimitOffset, containsSqlInjection } from '../../utils/sql-security.utils';
 
-export function formatSqlValue(value: JsonValue): string {
+export function formatSqlValue(value: JsonValue | Date): string {
     if (value === null) return 'NULL';
     if (typeof value === 'number') return String(value);
     if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
@@ -46,10 +51,25 @@ function validateColumnNameSafe(column: string | undefined): void {
     validateColumnName(column);
 }
 
+function escapeDatabaseIdentifier(identifier: string, databaseType: DatabaseType): string {
+    return escapeSqlIdentifier(
+        identifier,
+        databaseType === DatabaseType.MYSQL ? '`' : '"',
+    );
+}
+
+function formatCursorValue(value: DatabaseCursorValue | undefined, column: string): string {
+    if (value === undefined) {
+        throw new Error(`Cursor column "${column}" must contain a non-null scalar value`);
+    }
+    return formatSqlValue(value);
+}
+
 export function buildPaginatedQuery(
     query: string,
     pagination: DatabasePaginationConfig | undefined,
     state: PaginationState,
+    databaseType: DatabaseType,
 ): string {
     if (!query) {
         throw new Error('Query is required');
@@ -77,17 +97,36 @@ export function buildPaginatedQuery(
         if (!pagination.cursorColumn) {
             throw new Error('cursorColumn is required for cursor-based pagination');
         }
-
-        validateColumnNameSafe(pagination.cursorColumn);
-        const col = escapeSqlIdentifier(pagination.cursorColumn);
-
-        if (state.cursor !== undefined) {
-            const cursorValue = formatSqlValue(state.cursor);
-            const cursorFilter = `${col} > ${cursorValue}`;
-            return `${baseQuery} WHERE ${cursorFilter} ORDER BY ${col} LIMIT ${pageSize}`;
+        if (!pagination.cursorTieBreakerColumn) {
+            throw new Error('cursorTieBreakerColumn is required for cursor-based pagination');
+        }
+        if (pagination.cursorColumn === pagination.cursorTieBreakerColumn) {
+            throw new Error('cursorColumn and cursorTieBreakerColumn must be different');
         }
 
-        return `${baseQuery} ORDER BY ${col} LIMIT ${pageSize}`;
+        const cursorColumn = escapeDatabaseIdentifier(pagination.cursorColumn, databaseType);
+        const tieBreakerColumn = escapeDatabaseIdentifier(
+            pagination.cursorTieBreakerColumn,
+            databaseType,
+        );
+        const hasCursor = state.cursor !== undefined;
+        const hasTieBreaker = state.cursorTieBreaker !== undefined;
+
+        if (hasCursor !== hasTieBreaker) {
+            throw new Error('Cursor pagination state must include both cursor values');
+        }
+
+        if (hasCursor && hasTieBreaker) {
+            const cursorValue = formatCursorValue(state.cursor, pagination.cursorColumn);
+            const tieBreakerValue = formatCursorValue(
+                state.cursorTieBreaker,
+                pagination.cursorTieBreakerColumn,
+            );
+            const cursorFilter = `(${cursorColumn} > ${cursorValue} OR (${cursorColumn} = ${cursorValue} AND ${tieBreakerColumn} > ${tieBreakerValue}))`;
+            return `${baseQuery} WHERE ${cursorFilter} ORDER BY ${cursorColumn}, ${tieBreakerColumn} LIMIT ${pageSize}`;
+        }
+
+        return `${baseQuery} ORDER BY ${cursorColumn}, ${tieBreakerColumn} LIMIT ${pageSize}`;
     }
 
     return `${baseQuery} LIMIT ${pageSize}`;
@@ -116,7 +155,7 @@ export function appendIncrementalFilter(
 
     const operator = '>';
     const value = formatSqlValue(lastValue);
-    const filter = `${escapeSqlIdentifier(column)} ${operator} ${value}`;
+    const filter = `${escapeDatabaseIdentifier(column, config.databaseType)} ${operator} ${value}`;
 
     if (/WHERE/i.test(query)) {
         const insertionPoint = findClauseInsertionPoint(query);
