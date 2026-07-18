@@ -8,8 +8,6 @@ export interface UrlConnectionConfig {
         headerName?: string;
         username?: string;
         usernameSecretCode?: string;
-        token?: string;
-        password?: string;
     };
 }
 
@@ -21,17 +19,36 @@ export function buildUrlWithConnection(
         return url;
     }
 
-    // If URL is a relative path starting with '/', combine with baseUrl
+    const baseUrl = connection.baseUrl.trim();
+    let parsedBaseUrl: URL;
+    try {
+        parsedBaseUrl = new URL(baseUrl);
+    } catch {
+        throw new Error(`Connection baseUrl is invalid: ${connection.baseUrl}`);
+    }
+    if (parsedBaseUrl.protocol !== 'http:' && parsedBaseUrl.protocol !== 'https:') {
+        throw new Error('Connection baseUrl must use http or https');
+    }
+
     if (url.startsWith('/')) {
-        return `${connection.baseUrl.replace(/\/$/, '')}${url}`;
+        return `${baseUrl.replace(/\/$/, '')}${url}`;
     }
 
-    // If URL is empty, use baseUrl directly
     if (!url) {
-        return connection.baseUrl;
+        return baseUrl;
     }
 
-    // URL is absolute, return as-is
+    let parsedUrl: URL;
+    try {
+        parsedUrl = new URL(url);
+    } catch {
+        return url;
+    }
+    if (parsedUrl.origin !== parsedBaseUrl.origin) {
+        throw new Error(
+            `Connection URL origin ${parsedBaseUrl.origin} cannot authorize request origin ${parsedUrl.origin}`,
+        );
+    }
     return url;
 }
 
@@ -51,4 +68,3 @@ export function isValidGraphQLUrl(url: string, hasConnection: boolean): boolean 
         return false;
     }
 }
-

@@ -5,9 +5,11 @@
  * the HTTP API extractor and GraphQL extractor, eliminating duplication.
  */
 
-import { ExtractorContext } from '../../types/index';
+import type { ExtractorContext } from '../../types/index';
+import { ConnectionAuthType } from '../../constants/enums';
 import { HTTP_HEADERS, CONTENT_TYPES } from '../../constants/services';
 import { assertUrlSafe, UrlSecurityConfig } from '../../utils/url-security.utils';
+import type { SecureFetchPolicy } from '../../utils/secure-fetch.utils';
 import { applyAuthentication, AuthConfig, createSecretResolver } from '../../utils/auth-helpers';
 import { buildUrlWithConnection } from '../../utils/url-helpers';
 
@@ -33,6 +35,22 @@ interface HeaderBuildConfig {
     connectionCode?: string;
     headers?: Record<string, string>;
     auth?: unknown;
+}
+
+type HttpRequestContext = Pick<ExtractorContext, 'connections' | 'secrets'>;
+type RuntimeConnection = Awaited<
+    ReturnType<HttpRequestContext['connections']['getRequired']>
+>;
+
+export interface PrepareExtractorRequestOptions extends BuildHeadersOptions {
+    readonly supportedConnectionTypes?: readonly RuntimeConnection['type'][];
+    readonly urlSecurity?: UrlSecurityConfig;
+}
+
+export interface PreparedExtractorRequest {
+    readonly url: string;
+    readonly headers: Record<string, string>;
+    readonly fetchPolicy: SecureFetchPolicy;
 }
 
 export interface BuildHeadersOptions {
@@ -110,15 +128,15 @@ function getConnectionAuth(value: unknown): AuthConfig | undefined {
  * @throws Error if URL fails SSRF validation
  */
 export async function buildExtractorUrl(
-    context: ExtractorContext,
+    context: HttpRequestContext,
     config: UrlBuildConfig,
     ssrfConfig?: UrlSecurityConfig,
 ): Promise<string> {
     let url = config.url;
 
     if (config.connectionCode) {
-        const connection = await context.connections.get(config.connectionCode);
-        url = buildUrlWithConnection(config.url, connection?.config);
+        const connection = await context.connections.getRequired(config.connectionCode);
+        url = buildUrlWithConnection(config.url, connection.config);
     }
 
     // Validate URL against SSRF attacks
@@ -145,7 +163,7 @@ export async function buildExtractorUrl(
  * @param options - Optional settings like default headers override
  */
 export async function buildExtractorHeaders(
-    context: ExtractorContext,
+    context: HttpRequestContext,
     config: HeaderBuildConfig,
     options?: BuildHeadersOptions,
 ): Promise<Record<string, string>> {
@@ -154,28 +172,100 @@ export async function buildExtractorHeaders(
     };
 
     const secretResolver = createSecretResolver(context.secrets);
+    const configAuth = getConnectionAuth(config.auth);
+    let connectionConfig: Record<string, unknown> | undefined;
+    let connectionAuth: AuthConfig | undefined;
 
-    // Apply connection headers and auth
     if (config.connectionCode) {
-        const connection = await context.connections.get(config.connectionCode);
-        const connectionConfig = connection?.config;
-        Object.assign(headers, getStaticHeaders(connectionConfig?.headers, 'HTTP connection'));
-        await applyAuthentication(
-            headers,
-            getConnectionAuth(connectionConfig?.auth),
-            secretResolver,
-        );
+        const connection = await context.connections.getRequired(config.connectionCode);
+        connectionConfig = connection.config;
+        connectionAuth = getConnectionAuth(connectionConfig.auth);
+        Object.assign(headers, getStaticHeaders(connectionConfig.headers, 'HTTP connection'));
     }
 
-    // Config headers override connection headers
     if (config.headers) {
         Object.assign(headers, getStaticHeaders(config.headers, 'Extractor'));
     }
 
-    // Config auth overrides connection auth
-    if (config.auth) {
-        await applyAuthentication(headers, config.auth as unknown as AuthConfig, secretResolver);
+    const effectiveAuth = configAuth ?? connectionAuth;
+    if (effectiveAuth && effectiveAuth.type !== ConnectionAuthType.NONE) {
+        if (!config.connectionCode) {
+            throw new Error(
+                'Extractor Secret Code authentication requires a saved connection to bind credentials to an origin',
+            );
+        }
+        if (
+            typeof connectionConfig?.baseUrl !== 'string'
+            || connectionConfig.baseUrl.trim() === ''
+        ) {
+            throw new Error(
+                `Connection "${config.connectionCode}" must define baseUrl before its authentication can be used`,
+            );
+        }
+    }
+    await applyAuthentication(headers, effectiveAuth, secretResolver);
+
+    return headers;
+}
+
+export async function prepareConnectionBackedExtractorRequest(
+    context: HttpRequestContext,
+    config: UrlBuildConfig & HeaderBuildConfig,
+    options: PrepareExtractorRequestOptions = {},
+): Promise<PreparedExtractorRequest> {
+    const connectionCode = config.connectionCode?.trim();
+    if (!connectionCode || connectionCode !== config.connectionCode) {
+        throw new Error(
+            'Connection-backed extractor connectionCode must be a non-empty string without surrounding whitespace',
+        );
     }
 
+    const connection = await context.connections.getRequired(connectionCode);
+    const supportedTypes = options.supportedConnectionTypes;
+    if (supportedTypes?.length && !supportedTypes.includes(connection.type)) {
+        throw new Error(
+            `Connection "${connectionCode}" has type ${connection.type}; expected ${supportedTypes.join(' or ')}`,
+        );
+    }
+
+    const baseUrl = connection.config.baseUrl;
+    if (typeof baseUrl !== 'string' || baseUrl.trim() === '') {
+        throw new Error(`Connection "${connectionCode}" must define baseUrl`);
+    }
+
+    const url = buildUrlWithConnection(config.url, connection.config);
+    await assertUrlSafe(url, options.urlSecurity);
+    const headers = await buildHeadersWithConnection(context, config, options, connection);
+
+    return {
+        url,
+        headers,
+        fetchPolicy: { allowedOrigins: [new URL(url).origin] },
+    };
+}
+
+export function createExtractorFetchPolicy(
+    url: string,
+    config: HeaderBuildConfig,
+): SecureFetchPolicy | undefined {
+    return config.connectionCode
+        ? { allowedOrigins: [new URL(url).origin] }
+        : undefined;
+}
+
+async function buildHeadersWithConnection(
+    context: HttpRequestContext,
+    config: HeaderBuildConfig,
+    options: BuildHeadersOptions,
+    connection: RuntimeConnection,
+): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+        ...(options.defaultHeaders ?? DEFAULT_HEADERS),
+        ...getStaticHeaders(connection.config.headers, 'HTTP connection'),
+        ...getStaticHeaders(config.headers, 'Extractor'),
+    };
+    const auth = getConnectionAuth(config.auth)
+        ?? getConnectionAuth(connection.config.auth);
+    await applyAuthentication(headers, auth, createSecretResolver(context.secrets));
     return headers;
 }

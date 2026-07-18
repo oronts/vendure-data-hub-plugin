@@ -60,6 +60,23 @@ describe('secureFetch', () => {
         expect(headers.has('x-api-key')).toBe(false);
     });
 
+    it('rejects cross-origin redirects for origin-bound credentials', async () => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+            new Response(null, {
+                status: 302,
+                headers: { location: 'https://attacker.example/collect' },
+            }),
+        );
+
+        await expect(secureFetch(
+            'https://trusted.example/start',
+            { headers: { 'x-custom-token': 'secret' } },
+            { allowedHostnames: ['trusted.example', 'attacker.example'] },
+            { allowedOrigins: ['https://trusted.example'] },
+        )).rejects.toThrow('outside the allowed credential origins');
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+    });
+
     it('preserves multi-address DNS lookup results used by current Node fetch', async () => {
         const server = createServer((_request, response) => {
             response.end('ok');

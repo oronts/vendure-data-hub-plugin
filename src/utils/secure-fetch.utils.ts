@@ -18,6 +18,10 @@ const SENSITIVE_REDIRECT_HEADERS = [
 ] as const;
 const ENTITY_HEADERS = ['content-length', 'content-type'] as const;
 
+export interface SecureFetchPolicy {
+    readonly allowedOrigins?: readonly string[];
+}
+
 const configuredDispatchers = new WeakMap<UrlSecurityConfig, Agent>();
 let defaultDispatcher: Agent | undefined;
 
@@ -95,10 +99,21 @@ function prepareRedirect(
     return { method: 'GET', body: undefined, headers };
 }
 
+function assertOriginAllowed(url: URL, policy?: SecureFetchPolicy): void {
+    if (!policy?.allowedOrigins || policy.allowedOrigins.length === 0) {
+        return;
+    }
+    const allowedOrigins = policy.allowedOrigins.map(origin => new URL(origin).origin);
+    if (!allowedOrigins.includes(url.origin)) {
+        throw new Error(`HTTP request origin ${url.origin} is outside the allowed credential origins`);
+    }
+}
+
 export async function secureFetch(
     input: string | URL,
     init: RequestInit = {},
     config?: UrlSecurityConfig,
+    policy?: SecureFetchPolicy,
 ): Promise<Response> {
     let currentUrl = new URL(input);
     let method = init.method ?? 'GET';
@@ -106,6 +121,7 @@ export async function secureFetch(
     let headers = new Headers(init.headers);
 
     for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount++) {
+        assertOriginAllowed(currentUrl, policy);
         await assertUrlSafe(currentUrl.href, config);
 
         const response = await globalThis.fetch(currentUrl, {
@@ -127,6 +143,7 @@ export async function secureFetch(
         }
 
         const nextUrl = new URL(location, currentUrl);
+        assertOriginAllowed(nextUrl, policy);
         await assertUrlSafe(nextUrl.href, config);
         await response.body?.cancel();
         ({ method, body, headers } = prepareRedirect(

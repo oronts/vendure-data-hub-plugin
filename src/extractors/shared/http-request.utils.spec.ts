@@ -3,13 +3,15 @@ import type { ExtractorContext } from '../../types';
 import { buildExtractorHeaders, buildExtractorUrl } from './http-request.utils';
 
 function createContext(config: Record<string, unknown>): ExtractorContext {
+    const connection = {
+        code: 'erp',
+        type: 'HTTP',
+        config,
+    };
     return {
         connections: {
-            get: vi.fn().mockResolvedValue({
-                code: 'erp',
-                type: 'HTTP',
-                config,
-            }),
+            get: vi.fn().mockResolvedValue(connection),
+            getRequired: vi.fn().mockResolvedValue(connection),
         },
         secrets: {
             get: vi.fn().mockResolvedValue('runtime-token'),
@@ -42,6 +44,55 @@ describe('HTTP extractor connection resolution', () => {
 
         await expect(buildExtractorHeaders(context, { connectionCode: 'erp' }))
             .rejects.toThrow('must contain only string values');
+    });
+
+    it('rejects an absolute URL outside the saved connection origin', async () => {
+        const context = createContext({
+            baseUrl: 'https://trusted.example.com/api',
+            auth: { type: 'BEARER', secretCode: 'erp-token' },
+        });
+
+        await expect(buildExtractorUrl(
+            context,
+            { url: 'https://attacker.example/collect', connectionCode: 'erp' },
+            { disableSsrfProtection: true },
+        )).rejects.toThrow('cannot authorize request origin');
+    });
+
+    it('allows an absolute URL on the saved connection origin', async () => {
+        const context = createContext({
+            baseUrl: 'https://trusted.example.com/api',
+        });
+
+        await expect(buildExtractorUrl(
+            context,
+            { url: 'https://trusted.example.com/products', connectionCode: 'erp' },
+            { disableSsrfProtection: true },
+        )).resolves.toBe('https://trusted.example.com/products');
+    });
+
+    it('requires authenticated extractors to bind credentials to a saved origin', async () => {
+        const context = createContext({
+            auth: { type: 'BEARER', secretCode: 'erp-token' },
+        });
+
+        await expect(buildExtractorHeaders(context, { connectionCode: 'erp' }))
+            .rejects.toThrow('must define baseUrl');
+        await expect(buildExtractorHeaders(context, {
+            auth: { type: 'BEARER', secretCode: 'erp-token' },
+        })).rejects.toThrow('requires a saved connection');
+    });
+
+    it('treats explicit NONE authentication as an override', async () => {
+        const context = createContext({
+            baseUrl: 'https://trusted.example.com',
+            auth: { type: 'BEARER', secretCode: 'erp-token' },
+        });
+
+        await expect(buildExtractorHeaders(context, {
+            connectionCode: 'erp',
+            auth: { type: 'NONE' },
+        })).resolves.not.toHaveProperty('Authorization');
     });
 
     it.each(['Authorization', 'Cookie', 'X-Api-Key', 'X-Signature', 'Host'])(
