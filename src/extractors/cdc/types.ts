@@ -22,8 +22,6 @@ export interface CdcExtractorConfig extends ExtractorConfig {
     primaryKey: string;
     /** Specific columns to select (omit for all columns) */
     columns?: string[];
-    /** Polling interval in milliseconds (runtime concern, stored for config completeness) */
-    pollIntervalMs?: number;
     /** Maximum rows per extraction batch */
     batchSize?: number;
     /** Whether to track soft-deletes */
@@ -33,6 +31,5 @@ export interface CdcExtractorConfig extends ExtractorConfig {
 }
 
 export const CDC_DEFAULTS = {
-    pollIntervalMs: 5000,
     batchSize: 1000,
 } as const;
