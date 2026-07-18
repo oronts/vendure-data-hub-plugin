@@ -1,7 +1,7 @@
 /**
  * Data Hub Plugin Dev Server Configuration
  *
- * 37 example pipelines + 4 custom adapter demos + 5 hook demos + 3 Pimcore connector pipelines = 49 total
+ * 37 example pipelines + 4 custom adapter demos + 5 hook demos, plus 3 optional Pimcore connector pipelines
  */
 import { DefaultJobQueuePlugin, DefaultSchedulerPlugin, DefaultSearchPlugin, dummyPaymentHandler, VendureConfig } from '@vendure/core';
 import { AssetServerPlugin } from '@vendure/asset-server-plugin';
@@ -14,6 +14,12 @@ import {
     DEFAULT_DEV_MASTER_KEY,
     DEFAULT_DEV_PIMCORE_API_KEY,
 } from './dev-server/dev-credentials';
+import {
+    PIMCORE_API_CONNECTION_CODE,
+    PIMCORE_API_URL,
+    PIMCORE_GRAPHQL_CONNECTION_CODE,
+    PIMCORE_GRAPHQL_URL,
+} from './dev-server/pimcore-api';
 import {
     allCustomAdapters,
     allCustomFeedGenerators,
@@ -85,10 +91,7 @@ export const DEV_DATABASE_PATH = path.resolve(
 // PIMCORE CONNECTOR
 // =============================================================================
 const pimcoreConfig: PimcoreConnectorConfig = {
-    connection: {
-        endpoint: process.env.PIMCORE_ENDPOINT || 'https://pimcore.example.com/pimcore-graphql-webservices/shop',
-        apiKeySecretCode: 'pimcore-api-key',
-    },
+    connectionCode: PIMCORE_GRAPHQL_CONNECTION_CODE,
     vendureChannel: '__default_channel__',
     defaultLanguage: 'en',
     sync: {
@@ -99,13 +102,28 @@ const pimcoreConfig: PimcoreConnectorConfig = {
         includeVariants: true,
     },
     pipelines: {
-        productSync: { enabled: true, schedule: '0 */4 * * *' },
-        categorySync: { enabled: true, schedule: '0 2 * * *' },
-        assetSync: { enabled: true, schedule: '0 3 * * *' },
+        productSync: { enabled: Boolean(PIMCORE_GRAPHQL_URL), schedule: '0 */4 * * *' },
+        categorySync: { enabled: Boolean(PIMCORE_GRAPHQL_URL), schedule: '0 2 * * *' },
+        assetSync: { enabled: Boolean(PIMCORE_GRAPHQL_URL), schedule: '0 3 * * *' },
     },
 };
 
-const [productSync, categorySync, assetSync] = pimcoreConnectorDefinition.createPipelines(pimcoreConfig);
+const pimcorePipelineRegistrations = pimcoreConnectorDefinition
+    .createPipelines(pimcoreConfig)
+    .map((definition, index) => ({
+        code: [
+            'pimcore-product-sync',
+            'pimcore-category-sync',
+            'pimcore-asset-sync',
+        ][index],
+        name: [
+            'Pimcore Product Sync',
+            'Pimcore Category Sync',
+            'Pimcore Asset Sync',
+        ][index],
+        definition,
+        enabled: true,
+    }));
 
 export const config: VendureConfig = {
     apiOptions: {
@@ -248,9 +266,7 @@ export const config: VendureConfig = {
                 // =================================================================
                 // PIMCORE CONNECTOR PIPELINES (3)
                 // =================================================================
-                { code: 'pimcore-product-sync', name: 'Pimcore Product Sync', definition: productSync, enabled: true },
-                { code: 'pimcore-category-sync', name: 'Pimcore Category Sync', definition: categorySync, enabled: true },
-                { code: 'pimcore-asset-sync', name: 'Pimcore Asset Sync', definition: assetSync, enabled: true },
+                ...pimcorePipelineRegistrations,
             ],
 
             secrets: [
@@ -272,6 +288,32 @@ export const config: VendureConfig = {
             ],
 
             connections: [
+                ...(PIMCORE_GRAPHQL_URL
+                    ? [{
+                        code: PIMCORE_GRAPHQL_CONNECTION_CODE,
+                        type: 'GRAPHQL' as const,
+                        settings: {
+                            baseUrl: PIMCORE_GRAPHQL_URL,
+                            auth: {
+                                type: 'API_KEY',
+                                secretCode: 'pimcore-api-key',
+                                headerName: 'apikey',
+                            },
+                        },
+                    }]
+                    : []),
+                {
+                    code: PIMCORE_API_CONNECTION_CODE,
+                    type: 'HTTP',
+                    settings: {
+                        baseUrl: PIMCORE_API_URL,
+                        auth: {
+                            type: 'API_KEY',
+                            secretCode: 'pimcore-api-key',
+                            headerName: 'apiKey',
+                        },
+                    },
+                },
                 {
                     code: 'demo-postgres',
                     type: 'POSTGRES',

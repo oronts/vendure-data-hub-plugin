@@ -7,30 +7,24 @@ import {
     createProductSyncPipeline,
     createCategorySyncPipeline,
     createAssetSyncPipeline,
-    createFacetSyncPipeline,
 } from './pipelines';
-import { validateEndpointUrl } from './utils/security.utils';
 import { DEFAULT_CHANNEL_CODE } from '../../shared/constants';
+import { PIMCORE_EXTRACTOR_LIMITS } from './constants';
+import { validateGraphQLFieldName } from './extractors/query-builder';
 
 export * from './types';
 export * from './extractors';
 export * from './transforms';
 export * from './pipelines';
-
-/** Default secret code for the Pimcore DataHub API key */
-export const PIMCORE_API_KEY_SECRET = 'pimcore-api-key';
-/** Default secret code for the Pimcore webhook authentication key */
-export const PIMCORE_WEBHOOK_KEY_SECRET = 'pimcore-webhook-key';
-/** Webhook signature algorithm used by Pimcore webhooks */
-export const PIMCORE_WEBHOOK_SIGNATURE = 'hmac-sha256';
+export * from './constants';
 
 export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorConfig> = {
     code: 'pimcore',
     name: 'Pimcore PIM/DAM',
-    description: 'Sync products, categories, assets, and facets from Pimcore DataHub',
+    description: 'Sync products, categories, and assets from Pimcore DataHub',
     version: '1.0.0',
     author: 'Oronts',
-    docsUrl: 'https://oronts.com/data-hub/connectors/pimcore',
+    docsUrl: 'https://github.com/oronts/vendure-data-hub-plugin/blob/main/connectors/pimcore/README.md',
     icon: 'pimcore',
 
     extractors: [pimcoreGraphQLExtractor],
@@ -40,11 +34,11 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
         {
             id: 'pimcore-product-sync',
             name: 'Pimcore Product Sync',
-            description: 'Sync products from Pimcore PIM via GraphQL DataHub API. Maps Pimcore product objects to Vendure products with variants, pricing, and assets.',
+            description: 'Sync products from Pimcore PIM via GraphQL DataHub API. Maps Pimcore product objects and variants to Vendure catalog records.',
             category: 'products',
             icon: 'database',
             requiredFields: ['name', 'sku', 'price'],
-            optionalFields: ['description', 'slug', 'images', 'categories', 'variants', 'enabled'],
+            optionalFields: ['description', 'slug', 'variants', 'enabled'],
             featured: true,
             tags: ['pimcore', 'pim', 'sync', 'api'],
             formats: ['API'],
@@ -65,7 +59,7 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
         {
             id: 'pimcore-category-sync',
             name: 'Pimcore Category Sync',
-            description: 'Sync categories from Pimcore to Vendure collections. Preserves parent-child hierarchy and supports multi-language.',
+            description: 'Sync categories from Pimcore to Vendure collections while preserving parent-child hierarchy.',
             category: 'catalog',
             icon: 'folder-tree',
             requiredFields: ['name'],
@@ -87,11 +81,11 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
         {
             id: 'pimcore-asset-sync',
             name: 'Pimcore Asset Sync',
-            description: 'Sync digital assets from Pimcore DAM to Vendure. Imports images, documents, and media files with metadata.',
+            description: 'Sync digital assets from Pimcore DAM to Vendure from configured folders and MIME types.',
             category: 'catalog',
             icon: 'image',
-            requiredFields: ['filename', 'fullPath'],
-            optionalFields: ['mimetype', 'filesize', 'metadata'],
+            requiredFields: ['filename', 'fullpath'],
+            optionalFields: ['mimetype'],
             tags: ['pimcore', 'dam', 'assets', 'media'],
             formats: ['API'],
             definition: {
@@ -101,28 +95,7 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
                 lookupFields: ['filename'],
                 fieldMappings: [
                     { sourceField: 'filename', targetField: 'filename' },
-                    { sourceField: 'fullPath', targetField: 'source' },
-                ],
-            },
-        },
-        {
-            id: 'pimcore-facet-sync',
-            name: 'Pimcore Facet/Attribute Sync',
-            description: 'Sync product attributes and classification data from Pimcore to Vendure facets. Handles attribute groups and select options.',
-            category: 'catalog',
-            icon: 'tag',
-            requiredFields: ['key'],
-            optionalFields: ['title', 'options'],
-            tags: ['pimcore', 'pim', 'attributes', 'facets'],
-            formats: ['API'],
-            definition: {
-                sourceType: 'API',
-                targetEntity: 'Facet',
-                existingRecords: 'UPDATE',
-                lookupFields: ['key'],
-                fieldMappings: [
-                    { sourceField: 'key', targetField: 'code' },
-                    { sourceField: 'title', targetField: 'name' },
+                    { sourceField: 'fullpath', targetField: 'source' },
                 ],
             },
         },
@@ -144,10 +117,8 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
     ],
 
     defaultConfig: {
-        enabled: true,
         vendureChannel: DEFAULT_CHANNEL_CODE,
         defaultLanguage: 'en',
-        languages: ['en'],
         sync: {
             deltaSync: true,
             batchSize: 100,
@@ -159,32 +130,138 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
             productSync: { enabled: true },
             categorySync: { enabled: true },
             assetSync: { enabled: true },
-            facetSync: { enabled: true },
         },
     },
 
     validateConfig(config: PimcoreConnectorConfig): { valid: boolean; errors: string[] } {
         const errors: string[] = [];
 
-        if (!config.connection?.endpoint) {
-            errors.push('Pimcore endpoint is required');
-        }
-
-        if (!config.connection?.apiKey && !config.connection?.apiKeySecretCode) {
-            errors.push('API key or apiKeySecretCode is required');
-        }
-
-        if (config.connection?.endpoint) {
-            const isProd = process.env.NODE_ENV === 'production';
-            const urlValidation = validateEndpointUrl(config.connection.endpoint, {
-                requireHttps: isProd,
-                allowLocalhost: !isProd,
-                allowPrivateIp: !isProd,
-            });
-            if (!urlValidation.valid) {
-                errors.push(...urlValidation.errors);
+        const untypedConfig = config as PimcoreConnectorConfig & {
+            instanceId?: unknown;
+            enabled?: unknown;
+            tags?: unknown;
+        };
+        validateKnownFields(errors, 'config', config, [
+            'connectionCode',
+            'timeoutMs',
+            'sync',
+            'mapping',
+            'pipelines',
+            'vendureChannel',
+            'defaultLanguage',
+            'instanceId',
+            'enabled',
+            'tags',
+        ]);
+        for (const field of ['instanceId', 'enabled', 'tags'] as const) {
+            if (untypedConfig[field] !== undefined) {
+                errors.push(`Pimcore connector field "${field}" is not supported`);
             }
         }
+
+        validateKnownFields(errors, 'sync', config.sync, [
+            'deltaSync',
+            'batchSize',
+            'maxPages',
+            'includeUnpublished',
+            'includeVariants',
+            'pathFilter',
+        ]);
+        validateKnownFields(errors, 'mapping', config.mapping, ['product', 'category', 'asset']);
+        validateKnownFields(errors, 'mapping.product', config.mapping?.product, [
+            'skuField',
+            'nameField',
+            'slugField',
+            'descriptionField',
+            'variantsField',
+            'enabledField',
+        ]);
+        validateKnownFields(errors, 'mapping.category', config.mapping?.category, [
+            'nameField',
+            'slugField',
+            'descriptionField',
+            'parentField',
+            'positionField',
+        ]);
+        validateKnownFields(errors, 'mapping.asset', config.mapping?.asset, ['urlField', 'filenameField']);
+        validateKnownFields(errors, 'pipelines', config.pipelines, ['productSync', 'categorySync', 'assetSync']);
+        validateKnownFields(errors, 'pipelines.productSync', config.pipelines?.productSync, [
+            'enabled',
+            'name',
+            'schedule',
+            'syncVariants',
+        ]);
+        validateKnownFields(errors, 'pipelines.categorySync', config.pipelines?.categorySync, [
+            'enabled',
+            'name',
+            'schedule',
+            'rootPath',
+        ]);
+        validateKnownFields(errors, 'pipelines.assetSync', config.pipelines?.assetSync, [
+            'enabled',
+            'name',
+            'schedule',
+            'folderPath',
+            'mimeTypes',
+        ]);
+
+        if (
+            typeof config.connectionCode !== 'string'
+            || config.connectionCode.trim() === ''
+            || config.connectionCode !== config.connectionCode.trim()
+        ) {
+            errors.push('Pimcore connectionCode must be a non-empty string without surrounding whitespace');
+        }
+
+        validateOptionalInteger(
+            errors,
+            'timeoutMs',
+            config.timeoutMs,
+            1,
+            PIMCORE_EXTRACTOR_LIMITS.MAX_TIMEOUT_MS,
+        );
+        validateOptionalInteger(
+            errors,
+            'sync.batchSize',
+            config.sync?.batchSize,
+            1,
+            PIMCORE_EXTRACTOR_LIMITS.MAX_PAGE_SIZE,
+        );
+        validateOptionalInteger(
+            errors,
+            'sync.maxPages',
+            config.sync?.maxPages,
+            1,
+            PIMCORE_EXTRACTOR_LIMITS.MAX_PAGES,
+        );
+
+        if (config.defaultLanguage !== undefined && (
+            typeof config.defaultLanguage !== 'string' || !config.defaultLanguage.trim()
+        )) {
+            errors.push('defaultLanguage must not be empty');
+        }
+
+        validateOptionalNonEmptyString(errors, 'vendureChannel', config.vendureChannel);
+        validateOptionalNonEmptyString(errors, 'sync.pathFilter', config.sync?.pathFilter);
+        validateOptionalNonEmptyString(errors, 'pipelines.productSync.name', config.pipelines?.productSync?.name);
+        validateOptionalNonEmptyString(errors, 'pipelines.productSync.schedule', config.pipelines?.productSync?.schedule);
+        validateOptionalNonEmptyString(errors, 'pipelines.categorySync.name', config.pipelines?.categorySync?.name);
+        validateOptionalNonEmptyString(errors, 'pipelines.categorySync.schedule', config.pipelines?.categorySync?.schedule);
+        validateOptionalNonEmptyString(errors, 'pipelines.categorySync.rootPath', config.pipelines?.categorySync?.rootPath);
+        validateOptionalNonEmptyString(errors, 'pipelines.assetSync.name', config.pipelines?.assetSync?.name);
+        validateOptionalNonEmptyString(errors, 'pipelines.assetSync.schedule', config.pipelines?.assetSync?.schedule);
+        validateOptionalNonEmptyString(errors, 'pipelines.assetSync.folderPath', config.pipelines?.assetSync?.folderPath);
+
+        validateMappingFieldNames(errors, config.mapping);
+        validateMimeTypes(errors, config.pipelines?.assetSync?.mimeTypes);
+
+        validateOptionalBoolean(errors, 'sync.deltaSync', config.sync?.deltaSync);
+        validateOptionalBoolean(errors, 'sync.includeUnpublished', config.sync?.includeUnpublished);
+        validateOptionalBoolean(errors, 'sync.includeVariants', config.sync?.includeVariants);
+        validateOptionalBoolean(errors, 'pipelines.productSync.enabled', config.pipelines?.productSync?.enabled);
+        validateOptionalBoolean(errors, 'pipelines.productSync.syncVariants', config.pipelines?.productSync?.syncVariants);
+        validateOptionalBoolean(errors, 'pipelines.categorySync.enabled', config.pipelines?.categorySync?.enabled);
+        validateOptionalBoolean(errors, 'pipelines.assetSync.enabled', config.pipelines?.assetSync?.enabled);
 
         return { valid: errors.length === 0, errors };
     },
@@ -201,12 +278,87 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
         if (config.pipelines?.assetSync?.enabled !== false) {
             pipelines.push(createAssetSyncPipeline(config));
         }
-        if (config.pipelines?.facetSync?.enabled !== false) {
-            pipelines.push(createFacetSyncPipeline(config));
-        }
-
         return pipelines;
     },
 };
 
 export const PimcoreConnector = defineConnector(pimcoreConnectorDefinition);
+
+function validateOptionalInteger(
+    errors: string[],
+    field: string,
+    value: number | undefined,
+    min: number,
+    max: number,
+): void {
+    if (value === undefined) return;
+    if (!Number.isInteger(value) || value < min || value > max) {
+        errors.push(`${field} must be an integer between ${min} and ${max}`);
+    }
+}
+
+function validateOptionalBoolean(errors: string[], field: string, value: boolean | undefined): void {
+    if (value !== undefined && typeof value !== 'boolean') {
+        errors.push(`${field} must be a boolean`);
+    }
+}
+
+function validateOptionalNonEmptyString(errors: string[], field: string, value: string | undefined): void {
+    if (value !== undefined && (typeof value !== 'string' || !value.trim())) {
+        errors.push(`${field} must be a non-empty string`);
+    }
+}
+
+function validateMappingFieldNames(errors: string[], mapping: PimcoreConnectorConfig['mapping']): void {
+    const groups = [
+        ['mapping.product', mapping?.product],
+        ['mapping.category', mapping?.category],
+        ['mapping.asset', mapping?.asset],
+    ] as const;
+
+    for (const [path, fields] of groups) {
+        if (!fields || typeof fields !== 'object' || Array.isArray(fields)) continue;
+        for (const [field, value] of Object.entries(fields)) {
+            if (typeof value !== 'string') {
+                errors.push(`${path}.${field} must be a GraphQL field name`);
+                continue;
+            }
+            try {
+                validateGraphQLFieldName(value, `${path}.${field}`);
+            } catch (error) {
+                errors.push(error instanceof Error ? error.message : `${path}.${field} must be a GraphQL field name`);
+            }
+        }
+    }
+}
+
+function validateMimeTypes(errors: string[], mimeTypes: string[] | undefined): void {
+    if (mimeTypes === undefined) return;
+    if (!Array.isArray(mimeTypes) || mimeTypes.length === 0) {
+        errors.push('pipelines.assetSync.mimeTypes must be a non-empty array');
+        return;
+    }
+    if (mimeTypes.some(value => typeof value !== 'string' || !/^[a-z]+\/[a-z0-9*+.-]+$/i.test(value))) {
+        errors.push('pipelines.assetSync.mimeTypes must contain valid MIME type strings');
+    }
+}
+
+function validateKnownFields(
+    errors: string[],
+    path: string,
+    value: unknown,
+    allowedFields: readonly string[],
+): void {
+    if (value === undefined) return;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        errors.push(`${path} must be an object`);
+        return;
+    }
+
+    const allowed = new Set(allowedFields);
+    for (const field of Object.keys(value)) {
+        if (!allowed.has(field)) {
+            errors.push(`Unknown Pimcore connector field "${path}.${field}"`);
+        }
+    }
+}
