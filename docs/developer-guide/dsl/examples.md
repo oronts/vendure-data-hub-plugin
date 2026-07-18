@@ -18,12 +18,16 @@ export const productApiImport = createPipeline()
 
     .extract('fetch-products', {
         adapterCode: 'httpApi',
-        url: 'https://api.supplier.com/v2/products',
+        connectionCode: 'supplier-api',
+        url: '/v2/products',
         method: 'GET',
         headers: {
             'Accept': 'application/json',
         },
-        bearerTokenSecretCode: 'supplier-api-key',
+        auth: {
+            type: 'BEARER',
+            secretCode: 'supplier-api-key',
+        },
         dataPath: 'data.products',
         pagination: {
             type: 'PAGE',
@@ -56,7 +60,7 @@ export const productApiImport = createPipeline()
     .load('create-products', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
     })
 
     .edge('start', 'fetch-products')
@@ -79,9 +83,8 @@ export const csvProductImport = createPipeline()
     .trigger('start', { type: 'MANUAL' })
 
     .extract('parse-csv', {
-        adapterCode: 'file',
-        path: '/uploads/products.csv',
-        format: 'CSV',
+        adapterCode: 'csv',
+        fileId: 'products-upload-id',
         delimiter: ',',
         hasHeader: true,
     })
@@ -92,14 +95,13 @@ export const csvProductImport = createPipeline()
             { op: 'trim', args: { path: 'sku' } },
             { op: 'slugify', args: { source: 'sku', target: 'slug' } },
             { op: 'toNumber', args: { source: 'price' } },
-            { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100', target: 'price' } },
         ],
     })
 
     .load('import', {
         adapterCode: 'variantUpsert',
         strategy: 'UPDATE',
-        matchField: 'sku',
+        skuField: 'sku',
     })
 
     .edge('start', 'parse-csv')
@@ -148,7 +150,7 @@ export const deltaDatabaseSync = createPipeline()
     .load('upsert', {
         adapterCode: 'variantUpsert',
         strategy: 'UPDATE',
-        matchField: 'sku',
+        skuField: 'sku',
     })
 
     .edge('schedule', 'query-changes')
@@ -173,10 +175,12 @@ export const ftpInventorySync = createPipeline()
     })
 
     .extract('download-file', {
-        adapterCode: 'file',
-        path: '/exports/inventory.csv',
+        adapterCode: 'ftp',
+        connectionCode: 'inventory-sftp',
+        remotePath: '/exports',
+        filePattern: 'inventory.csv',
         format: 'CSV',
-        hasHeader: true,
+        csv: { header: true },
     })
 
     .transform('map-inventory', {
@@ -191,7 +195,7 @@ export const ftpInventorySync = createPipeline()
     .load('update-stock', {
         adapterCode: 'stockAdjust',
         strategy: 'UPDATE',
-        matchField: 'sku',
+        skuField: 'sku',
     })
 
     .edge('schedule', 'download-file')
@@ -214,8 +218,12 @@ export const customerImport = createPipeline()
 
     .extract('fetch-customers', {
         adapterCode: 'httpApi',
-        url: 'https://crm.example.com/api/customers',
-        bearerTokenSecretCode: 'crm-api-key',
+        connectionCode: 'crm-api',
+        url: '/api/customers',
+        auth: {
+            type: 'BEARER',
+            secretCode: 'crm-api-key',
+        },
         dataPath: 'customers',
     })
 
@@ -241,7 +249,7 @@ export const customerImport = createPipeline()
     .load('create-customers', {
         adapterCode: 'customerUpsert',
         strategy: 'UPSERT',
-        matchField: 'emailAddress',
+        emailField: 'emailAddress',
     })
 
     .edge('start', 'fetch-customers')
@@ -269,7 +277,7 @@ export const googleFeedPipeline = createPipeline()
     .extract('get-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants,featuredAsset,collections,translations',
+        relations: ['variants', 'featuredAsset', 'collections', 'translations'],
         languageCode: 'en',
         batchSize: 500,
     })
@@ -308,7 +316,7 @@ export const googleFeedPipeline = createPipeline()
         adapterCode: 'googleMerchant',
         feedType: 'GOOGLE_SHOPPING',
         format: 'XML',
-        outputPath: '/feeds/google-shopping.xml',
+        outputPath: 'feeds/google-shopping.xml',
         targetCountry: 'US',
         contentLanguage: 'en',
         currency: 'USD',
@@ -338,7 +346,7 @@ export const elasticsearchIndex = createPipeline()
     .extract('get-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants,featuredAsset,facetValues,facetValues.facet,collections,translations',
+        relations: ['variants', 'featuredAsset', 'facetValues', 'facetValues.facet', 'collections', 'translations'],
         languageCode: 'en',
         batchSize: 500,
     })
@@ -359,13 +367,10 @@ export const elasticsearchIndex = createPipeline()
 
     .sink('index-to-es', {
         adapterCode: 'elasticsearch',
-        sinkType: 'ELASTICSEARCH',
-        host: 'localhost',
-        port: 9200,
+        node: 'http://localhost:9200',
         indexName: 'products',
         idField: 'id',
-        bulkSize: 500,
-        upsert: true,
+        batchSize: 500,
     })
 
     .edge('schedule', 'get-products')
@@ -426,7 +431,7 @@ export const categorizedProcessing = createPipeline()
     .load('import-all', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
     })
 
     .edge('start', 'fetch-products')
@@ -452,9 +457,11 @@ export const orderWebhookSync = createPipeline()
 
     .trigger('webhook', {
         type: 'WEBHOOK',
-        webhookPath: '/order-sync',
         authentication: 'HMAC',
         secretCode: 'order-webhook-secret',
+        hmacAlgorithm: 'SHA256',
+        requireIdempotencyKey: true,
+        idempotencyKeyHeader: 'X-Idempotency-Key',
     })
 
     .transform('map-order', {
@@ -505,7 +512,7 @@ export const productExport = createPipeline()
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants,featuredAsset,facetValues',
+        relations: ['variants', 'featuredAsset', 'facetValues'],
         batchSize: 100,
     })
 
@@ -545,7 +552,7 @@ export const customerExport = createPipeline()
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'CUSTOMER',
-        relations: 'addresses,groups',
+        relations: ['addresses', 'groups'],
         batchSize: 50,
     })
 
@@ -590,7 +597,7 @@ export const orderExport = createPipeline()
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'ORDER',
-        relations: 'lines,customer,shippingLines',
+        relations: ['lines', 'customer', 'shippingLines'],
         batchSize: 20,
     })
 
@@ -679,7 +686,7 @@ export const validatedProductImport = createPipeline()
     .load('import-products', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'sku',
+        skuField: 'sku',
     })
 
     .edge('start', 'fetch-products')
@@ -732,7 +739,7 @@ export const enrichedProductImport = createPipeline()
     .load('import-products', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'sku',
+        skuField: 'sku',
     })
 
     .edge('start', 'fetch-products')
@@ -754,7 +761,11 @@ export const fullDataQualityPipeline = createPipeline()
 
     .trigger('webhook', {
         type: 'WEBHOOK',
-        webhookPath: '/customer-import',
+        authentication: 'HMAC',
+        secretCode: 'customer-import-webhook-secret',
+        hmacAlgorithm: 'SHA256',
+        requireIdempotencyKey: true,
+        idempotencyKeyHeader: 'X-Idempotency-Key',
     })
 
     // Step 1: Validate required fields and format
@@ -807,7 +818,7 @@ export const fullDataQualityPipeline = createPipeline()
     .load('create-customer', {
         adapterCode: 'customerUpsert',
         strategy: 'UPSERT',
-        matchField: 'emailAddress',
+        emailField: 'emailAddress',
     })
 
     .edge('webhook', 'validate-input')
@@ -837,7 +848,7 @@ export const seoEnrichmentPipeline = createPipeline()
     .extract('query-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants,featuredAsset,facetValues',
+        relations: ['variants', 'featuredAsset', 'facetValues'],
         batchSize: 100,
     })
 
@@ -872,7 +883,7 @@ export const seoEnrichmentPipeline = createPipeline()
     .load('update-products', {
         adapterCode: 'productUpsert',
         strategy: 'UPDATE',
-        matchField: 'id',
+        slugField: 'slug',
     })
 
     .edge('schedule', 'query-products')
@@ -901,7 +912,7 @@ export const parallelPipeline = createPipeline()
 
     .trigger('start', { type: 'MANUAL' })
 
-    .extract('data', { adapterCode: 'file', path: '/data/products.csv', format: 'CSV' })
+    .extract('data', { adapterCode: 'csv', fileId: 'products-upload-id' })
 
     .transform('process', {
         operators: [
@@ -910,7 +921,7 @@ export const parallelPipeline = createPipeline()
         ],
     })
 
-    .load('save', { adapterCode: 'productUpsert', strategy: 'UPSERT', matchField: 'slug' })
+    .load('save', { adapterCode: 'productUpsert', strategy: 'UPSERT', slugField: 'slug' })
 
     .edge('start', 'data')
     .edge('data', 'process')
@@ -919,14 +930,16 @@ export const parallelPipeline = createPipeline()
     .build();
 ```
 
-### Multi-Source Join
+### Inline Reference Join
 
-Merge records from two extract steps using the `multiJoin` operator:
+Merge extracted records with a static reference dataset using the `multiJoin`
+operator. The right-side records must be supplied inline through `rightData`;
+the operator does not read another step's output.
 
 ```typescript
 export const joinPipeline = createPipeline()
     .name('Product Price Join')
-    .description('Join products with pricing data from a second source')
+    .description('Join products with an inline pricing table')
 
     .trigger('start', { type: 'MANUAL' })
 
@@ -936,20 +949,18 @@ export const joinPipeline = createPipeline()
         dataPath: 'data',
     })
 
-    .extract('prices', {
-        adapterCode: 'httpApi',
-        url: 'https://api.example.com/prices',
-        dataPath: 'data',
-    })
-
     .transform('merge', {
         operators: [
             operators.multiJoin({
-                leftKey: 'productId',
-                rightKey: 'id',
-                rightDataPath: '$.steps.prices.output',
+                leftKey: 'id',
+                rightKey: 'productId',
+                rightData: [
+                    { productId: 'p1', amount: 1999, currencyCode: 'EUR' },
+                    { productId: 'p2', amount: 2499, currencyCode: 'EUR' },
+                ],
                 type: 'LEFT',
-                prefix: 'price_',
+                prefix: 'price',
+                maxOutputRecords: 10000,
             }),
         ],
     })
@@ -957,17 +968,21 @@ export const joinPipeline = createPipeline()
     .load('save', {
         adapterCode: 'variantUpsert',
         strategy: 'UPDATE',
-        matchField: 'sku',
+        skuField: 'sku',
     })
 
     .edge('start', 'products')
-    .edge('start', 'prices')
     .edge('products', 'merge')
-    .edge('prices', 'merge')
     .edge('merge', 'save')
 
     .build();
 ```
+
+The right dataset is limited to 10,000 objects. The join emits at most 10,000
+records by default and accepts an explicit ceiling up to 100,000. Keys match
+only when they are finite scalar values of the same type; null or missing keys
+remain unmatched. The operator fails rather than truncating output when a
+one-to-many join reaches its ceiling.
 
 ### Per-Record Retry
 
@@ -1004,7 +1019,7 @@ export const resilientPipeline = createPipeline()
     .load('save', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
     })
 
     .edge('start', 'fetch')
@@ -1047,7 +1062,7 @@ export const gatedImport = createPipeline()
     .load('import', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
     })
 
     .edge('start', 'fetch')
@@ -1105,7 +1120,7 @@ export const imageProcessingPipeline = createPipeline()
     .load('save', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
     })
 
     .edge('start', 'fetch')
@@ -1117,7 +1132,10 @@ export const imageProcessingPipeline = createPipeline()
 
 ### PDF Generation
 
-Generate PDF documents from record data using HTML templates:
+Generate multi-page plain-text PDF documents from record data. The operator
+replaces nested-path `{{field.path}}` placeholders, converts common block and
+line-break tags to newlines, strips remaining HTML-like tags, and does not
+render HTML or CSS. It uses the direct runtime dependency `pdf-lib`.
 
 ```typescript
 export const invoicePipeline = createPipeline()
@@ -1132,14 +1150,14 @@ export const invoicePipeline = createPipeline()
     .extract('get-orders', {
         adapterCode: 'vendureQuery',
         entity: 'ORDER',
-        relations: 'lines,customer',
+        relations: ['lines', 'customer'],
         batchSize: 50,
     })
 
     .transform('generate-pdfs', {
         operators: [
             operators.pdfGenerate({
-                template: '<h1>Invoice #{{code}}</h1><p>Customer: {{customer.firstName}} {{customer.lastName}}</p><p>Total: {{total}}</p>',
+                template: 'Invoice #{{code}}\nTotal: {{total}}',
                 targetField: 'invoice_pdf',
             }),
         ],

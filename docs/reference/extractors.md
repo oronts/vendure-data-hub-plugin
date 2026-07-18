@@ -5,15 +5,15 @@ Complete reference for all data extractors.
 ## Table of Contents
 
 - [HTTP API Extractor](#http-api-extractor) - Fetch data from REST APIs with pagination and authentication
-- [File Extractor](#file-extractor) - Parse files in multiple formats (CSV, JSON, XML, XLSX, NDJSON, TSV)
+- [Uploaded and Inline File Extractors](#uploaded-and-inline-file-extractors) - Parse uploaded CSV, JSON, XML, and XLSX files or safe inline data
 - [GraphQL Extractor](#graphql-extractor) - Query external GraphQL endpoints with pagination
 - [Vendure Query Extractor](#vendure-query-extractor) - Extract data directly from Vendure entities
 - [S3 Extractor](#s3-extractor) - Fetch and parse files from S3-compatible storage
 - [FTP/SFTP Extractor](#ftpsftp-extractor) - Fetch and parse files from FTP or SFTP servers
 - [Database Extractor](#database-extractor) - Query SQL databases with pagination
-- [Webhook Extractor](#webhook-extractor) - Receive data from webhook payloads
 - [CDC (Change Data Capture) Extractor](#cdc-change-data-capture-extractor) - Poll database tables for changes
 - [In-Memory Extractor](#in-memory-extractor) - Inline data for testing and seed data
+- [Generator Extractor](#generator-extractor) - Generate synthetic records for pipeline tests
 - [Quick Reference](#quick-reference) - Summary table of all extractors
 
 ---
@@ -30,9 +30,10 @@ Fetch data from REST APIs with automatic pagination, authentication, and retry s
 |-------|------|----------|-------------|
 | `url` | string | Yes | API endpoint URL (or path if using connection) |
 | `method` | select | No | HTTP method: GET, POST, PUT, PATCH (default: GET) |
-| `headers` | json | No | Request headers (JSON object) |
+| `headers` | json | No | Non-sensitive static request headers |
 | `body` | json | No | Request body for POST/PUT/PATCH (JSON) |
-| `connectionCode` | string | No | HTTP connection to use (optional) |
+| `connectionCode` | string | Conditional | Saved HTTP-like connection; required for secret-backed authentication |
+| `auth` | object | No | Secret-backed `NONE`, `BASIC`, `BEARER`, or `API_KEY` authentication override |
 | `dataPath` | string | No | JSON path to records array (e.g., "data.items") |
 | `pagination.type` | select | No | Pagination type: NONE, OFFSET, CURSOR, PAGE, LINK_HEADER |
 | `pagination.limit` | number | No | Page size (records per page) |
@@ -60,6 +61,14 @@ Fetch data from REST APIs with automatic pagination, authentication, and retry s
     },
 })
 ```
+
+Static `headers` cannot contain credentials, cookies, signatures, host
+routing, or hop-by-hop headers. Put credentials in a saved HTTP connection or
+the nested `auth` object and reference Secret Codes. Extractor-level
+`headers` and `auth` override their saved-connection counterparts. The saved
+connection must define a base URL when authentication is used. Relative paths
+resolve against that URL; absolute URLs and redirects must retain its exact
+origin.
 
 ### Pagination Modes
 
@@ -96,65 +105,85 @@ Fetch data from REST APIs with automatic pagination, authentication, and retry s
 
 ---
 
-## File Extractor
+## Uploaded and Inline File Extractors
 
-Code: `file`
+Codes: `csv`, `json`, `xml`, `xlsx`
 
-Parse files in multiple formats (CSV, JSON, XML, XLSX, NDJSON, TSV). PARQUET is supported as an export format but not for extraction parsing.
+These format-specific extractors read files managed by Data Hub storage. Upload a file in the import wizard or with `POST /data-hub/upload`, then use the returned `file.id` as `fileId`. They do not accept server filesystem paths or glob patterns.
 
-### Configuration
+CSV, JSON, and XML also accept explicitly configured inline content. XLSX requires an uploaded file.
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `path` | string | Yes | File path or glob pattern (e.g., /data/*.csv) |
-| `format` | select | No | File format: CSV, JSON, XML, XLSX, NDJSON, TSV (auto-detected if not specified) |
-| `delimiter` | string | No | Field delimiter for CSV/TSV. Default: `,` for CSV, `\t` for TSV |
-| `hasHeader` | boolean | No | Whether first row is header (CSV/TSV). Default: `true` |
-| `encoding` | string | No | File encoding. Default: `utf-8` |
-| `dataPath` | string | No | JSON path to records array (for JSON/XML) |
-| `sheet` | string | No | Sheet name or index for XLSX |
+### Shared configuration
 
-### Example - CSV File
+| Field | Applies to | Description |
+|-------|------------|-------------|
+| `fileId` | CSV, JSON, XML, XLSX | ID returned by Data Hub file upload |
+| `resetCheckpoint` | CSV, JSON, XML, XLSX | Start from the beginning instead of the saved record offset |
+| `delimiter` | CSV | Field delimiter. Default: `,` |
+| `hasHeader` | CSV, XLSX | Treat the first row as column names. Default: `true` |
+| `csvText` | CSV | Raw inline CSV string instead of `fileId` |
+| `rows` | CSV | Inline array of objects, or an array of rows with a header row |
+| `jsonText` | JSON | Raw inline JSON string instead of `fileId` |
+| `itemsPath` | JSON | Dot path to the records array, such as `data.products` |
+| `xmlText` | XML | Raw inline XML string instead of `fileId` |
+| `recordPath` | XML | Dot path to record elements, such as `catalog.product` |
+| `attributePrefix` | XML | Prefix used for parsed XML attributes. Default: `@` |
+| `sheetName` | XLSX | Sheet name or zero-based sheet index |
+
+Provide one source per extractor. For CSV, use one of `fileId`, `rows`, or `csvText`; for JSON and XML, use either `fileId` or the corresponding inline text field.
+
+### CSV upload
 
 ```typescript
 .extract('parse-csv', {
-    adapterCode: 'file',
-    path: '/uploads/products.csv',
-    format: 'CSV',
+    adapterCode: 'csv',
+    fileId: 'uploaded-file-id',
     delimiter: ',',
     hasHeader: true,
 })
 ```
 
-### Example - JSON File
+For small code-defined inputs, use `rows` without creating a server file:
+
+```typescript
+.extract('seed-products', {
+    adapterCode: 'csv',
+    rows: [
+        { sku: 'SKU-1', name: 'First product' },
+        { sku: 'SKU-2', name: 'Second product' },
+    ],
+})
+```
+
+### JSON upload
 
 ```typescript
 .extract('parse-json', {
-    adapterCode: 'file',
-    path: '/data/products.json',
-    format: 'JSON',
-    dataPath: 'data.products',
+    adapterCode: 'json',
+    fileId: 'uploaded-file-id',
+    itemsPath: 'data.products',
 })
 ```
 
-### Example - Excel File
+### XML upload
 
 ```typescript
-.extract('parse-excel', {
-    adapterCode: 'file',
-    path: '/uploads/inventory.xlsx',
-    format: 'XLSX',
-    sheet: 'Products',
+.extract('parse-xml', {
+    adapterCode: 'xml',
+    fileId: 'uploaded-file-id',
+    recordPath: 'catalog.product',
+    attributePrefix: '@',
 })
 ```
 
-### Example - Glob Pattern
+### XLSX upload
 
 ```typescript
-.extract('parse-all-csv', {
-    adapterCode: 'file',
-    path: '/imports/*.csv',
-    format: 'CSV',
+.extract('parse-xlsx', {
+    adapterCode: 'xlsx',
+    fileId: 'uploaded-file-id',
+    sheetName: 'Products',
+    hasHeader: true,
 })
 ```
 
@@ -170,19 +199,23 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `endpoint` | string | Yes | GraphQL endpoint URL |
+| `url` | string | Yes | GraphQL endpoint URL, or path when using a connection |
 | `query` | string | Yes | GraphQL query |
 | `connectionCode` | string | No | HTTP connection to use (optional) |
-| `headers` | json | No | Request headers (JSON object) |
+| `headers` | json | No | Non-sensitive static request headers |
+| `auth` | object | No | Secret-backed `NONE`, `BASIC`, `BEARER`, or `API_KEY` authentication override |
 | `variables` | json | No | Query variables (JSON object) |
-| `itemsField` | string | No | Field name containing items in response |
-| `edgesField` | string | No | Field name for Relay-style edges |
-| `nodeField` | string | No | Field name for node within each edge |
-| `cursorVar` | string | No | Variable name for cursor pagination |
-| `nextCursorField` | string | No | Field name for next cursor in response |
-| `pageInfoField` | string | No | Field name for pageInfo object |
-| `hasNextPageField` | string | No | Field name for hasNextPage boolean |
-| `endCursorField` | string | No | Field name for endCursor in pageInfo |
+| `operationName` | string | No | Operation name when the document contains multiple operations |
+| `dataPath` | string | No | Full response path to records, for example `data.products.items` |
+| `pagination.type` | string | No | `NONE`, `OFFSET`, `CURSOR`, or `RELAY` |
+| `pagination.limit` | number | No | Records requested per page |
+| `pagination.offsetVariable` | string | No | Offset variable name |
+| `pagination.limitVariable` | string | No | Page-size variable name |
+| `pagination.cursorVariable` | string | No | Cursor variable name |
+| `pagination.totalCountPath` | string | No | Full response path to total count |
+| `pagination.pageInfoPath` | string | No | Full response path to Relay pageInfo |
+| `pagination.maxPages` | number | No | Maximum pages per run |
+| `retry.maxAttempts` | number | No | Maximum request attempts |
 | `timeoutMs` | number | No | Request timeout in milliseconds |
 
 ### Example - Basic Query
@@ -190,7 +223,7 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
 ```typescript
 .extract('query-graphql', {
     adapterCode: 'graphql',
-    endpoint: 'https://api.example.com/graphql',
+    url: 'https://api.example.com/graphql',
     query: `
         query GetProducts($limit: Int) {
             products(limit: $limit) {
@@ -201,16 +234,21 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
         }
     `,
     variables: { limit: 100 },
-    itemsField: 'products',
+    dataPath: 'data.products',
 })
 ```
+
+GraphQL uses the same saved HTTP connection, Secret Code, static-header, SSRF,
+response-size, timeout, and retry boundaries as `httpApi`. A GraphQL response
+can contain both `data` and `errors`; the extractor logs those GraphQL errors
+and still emits records found at `dataPath`.
 
 ### Example - Offset Pagination
 
 ```typescript
 .extract('query-with-offset', {
     adapterCode: 'graphql',
-    endpoint: 'https://api.example.com/graphql',
+    url: 'https://api.example.com/graphql',
     query: `
         query GetProducts($skip: Int, $take: Int) {
             products(skip: $skip, take: $take) {
@@ -219,7 +257,15 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
             }
         }
     `,
-    itemsField: 'products.items',
+    dataPath: 'data.products.items',
+    pagination: {
+        type: 'OFFSET',
+        limit: 100,
+        offsetVariable: 'skip',
+        limitVariable: 'take',
+        totalCountPath: 'data.products.totalItems',
+        maxPages: 50,
+    },
 })
 ```
 
@@ -228,7 +274,7 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
 ```typescript
 .extract('query-with-cursor', {
     adapterCode: 'graphql',
-    endpoint: 'https://api.example.com/graphql',
+    url: 'https://api.example.com/graphql',
     query: `
         query GetProducts($cursor: String) {
             products(first: 100, after: $cursor) {
@@ -245,11 +291,15 @@ Query external GraphQL endpoints with cursor/offset/Relay pagination support.
             }
         }
     `,
-    edgesField: 'products.edges',
-    pageInfoField: 'products.pageInfo',
-    hasNextPageField: 'hasNextPage',
-    endCursorField: 'endCursor',
-    cursorVar: 'cursor',
+    dataPath: 'data.products',
+    pagination: {
+        type: 'RELAY',
+        limit: 100,
+        cursorVariable: 'cursor',
+        limitVariable: 'first',
+        pageInfoPath: 'data.products.pageInfo',
+        maxPages: 50,
+    },
 })
 ```
 
@@ -266,9 +316,12 @@ Extract data directly from Vendure entities with automatic pagination and transl
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `entity` | string | Yes | Entity type to query |
-| `relations` | string | No | Comma-separated relations to include |
-| `languageCode` | string | No | Language code for translations (e.g., `en`, `de`) |
-| `flattenTranslations` | boolean | No | Merge translation fields to root level |
+| `relations` | array | No | JSON array of TypeORM relation paths to join |
+| `filters` | array | No | Filters from the DSL or export wizard with `field`, `operator`, and `value`; operators: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `like`, `contains` |
+| `includeFields` | array | No | Only emit these root entity fields |
+| `excludeFields` | array | No | Omit these root entity fields |
+| `languageCode` | string | No | Preferred language code for translations (e.g., `en`, `de`); falls back to the first translation |
+| `flattenTranslations` | boolean | No | Merge translation fields to root level and remove the translations array; default: `true` |
 | `batchSize` | number | No | Number of records per batch |
 | `sortBy` | string | No | Field to sort by |
 | `sortOrder` | string | No | Sort order: `ASC` or `DESC` |
@@ -291,7 +344,7 @@ Extract data directly from Vendure entities with automatic pagination and transl
 .extract('query-products', {
     adapterCode: 'vendureQuery',
     entity: 'PRODUCT',
-    relations: 'variants,featuredAsset,translations',
+    relations: ['variants', 'featuredAsset', 'translations'],
     languageCode: 'en',
     flattenTranslations: true,
     batchSize: 500,
@@ -306,7 +359,7 @@ Extract data directly from Vendure entities with automatic pagination and transl
 .extract('query-customers', {
     adapterCode: 'vendureQuery',
     entity: 'CUSTOMER',
-    relations: 'addresses',
+    relations: ['addresses'],
     batchSize: 1000,
 })
 ```
@@ -317,7 +370,7 @@ Extract data directly from Vendure entities with automatic pagination and transl
 .extract('query-orders', {
     adapterCode: 'vendureQuery',
     entity: 'ORDER',
-    relations: 'lines,customer',
+    relations: ['lines', 'customer'],
     sortBy: 'orderPlacedAt',
     sortOrder: 'DESC',
 })
@@ -335,12 +388,28 @@ Fetch and parse files from S3-compatible storage (AWS S3, MinIO, DigitalOcean Sp
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `connectionCode` | string | Yes | S3 connection code |
-| `bucket` | string | Yes | S3 bucket name |
-| `key` | string | No | Object key (file path) |
-| `prefix` | string | No | Key prefix to list objects |
-| `format` | select | No | File format: CSV, JSON, XML, XLSX, NDJSON, TSV |
-| `dataPath` | string | No | JSON path to records (for JSON files) |
+| `connectionCode` | string | No | Saved `S3` connection. Step fields override saved connection fields |
+| `bucket` | string | Yes | S3 bucket name; it may come from the saved connection |
+| `region` | string | No | AWS region; default: `us-east-1` |
+| `endpoint` | string | No | HTTP(S) endpoint for an S3-compatible service; SSRF checks apply |
+| `accessKeyIdSecretCode` | string | No | Secret Code for an access key ID |
+| `secretAccessKeySecretCode` | string | No | Secret Code for the matching secret key |
+| `forcePathStyle` | boolean | No | Enable path-style addressing; default: `false` |
+| `prefix` | string | No | Object-key prefix to list; must not begin with `/` |
+| `suffix` | string | No | Object-key suffix filter, such as `.csv` |
+| `format` | select | No | `CSV`, `JSON`, `XML`, or `XLSX`; otherwise detected from the object key |
+| `csv.delimiter` | string | No | CSV delimiter: `,`, `;`, tab, or `|` |
+| `csv.header` | boolean | No | Treat the first CSV row as headers |
+| `json.path` | string | No | Dot path to the JSON records array |
+| `xml.recordPath` | string | No | Dot path to XML record elements |
+| `xlsx.sheet` | string/number | No | Spreadsheet sheet name or index |
+| `modifiedAfter` | string | No | Process objects modified on or after this ISO date |
+| `maxObjects` | number | No | Maximum objects per run; default: 100 |
+| `includeObjectMetadata` | boolean | No | Add bucket/key/size/etag/last-modified data under `_s3` |
+| `continueOnError` | boolean | No | Continue after an object parse/processing failure; default: `true` |
+| `deleteAfterProcess` | boolean | No | Delete each successfully processed source object |
+| `moveAfterProcess.enabled` | boolean | No | Copy successfully processed objects to another prefix, then delete the source |
+| `moveAfterProcess.destinationPrefix` | string | Conditional | Required when move-after-process is enabled |
 
 ### Example
 
@@ -348,11 +417,22 @@ Fetch and parse files from S3-compatible storage (AWS S3, MinIO, DigitalOcean Sp
 .extract('s3-products', {
     adapterCode: 's3',
     connectionCode: 'aws-s3',
-    bucket: 'product-feeds',
-    key: 'imports/products.csv',
+    prefix: 'imports/',
+    suffix: '.csv',
     format: 'CSV',
+    csv: {
+        delimiter: ',',
+        header: true,
+    },
+    maxObjects: 100,
+    includeObjectMetadata: true,
 })
 ```
+
+Provide both static credential Secret Codes or neither. When neither is set,
+the AWS SDK credential chain is used. The extractor lists objects under
+`prefix`; it does not accept a single-object `key` field. Use a narrow
+`prefix` plus `suffix`, or a file-watch trigger, to select source objects.
 
 ---
 
@@ -366,18 +446,28 @@ Fetch and parse files from FTP or SFTP servers.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `connectionCode` | string | No | FTP/SFTP connection code |
-| `protocol` | select | Yes | Protocol: `ftp` or `sftp` |
-| `host` | string | Yes | FTP/SFTP server hostname or IP |
+| `connectionCode` | string | No | Saved `FTP` or `SFTP` connection. Step fields override saved connection fields |
+| `protocol` | select | Conditional | `ftp` or `sftp`; inferred from the saved connection when present |
+| `host` | string | Conditional | Server hostname; required when it is not supplied by a saved connection |
 | `port` | number | No | Server port (FTP: 21, SFTP: 22) |
 | `username` | string | No | FTP/SFTP username |
 | `passwordSecretCode` | string | No | Secret code for password |
+| `privateKeySecretCode` | string | No | Secret code for an SFTP private key |
+| `passphraseSecretCode` | string | No | Secret code for the private-key passphrase |
+| `hostKeyFingerprintSecretCode` | string | Production SFTP | Secret code containing the trusted OpenSSH `SHA256:<base64>` host-key fingerprint |
 | `remotePath` | string | Yes | Remote directory path |
 | `filePattern` | string | No | File name pattern (e.g., `*.csv`, `products-*.json`) |
 | `format` | select | No | File format: CSV, JSON, XML, XLSX (auto-detected if not specified) |
 | `deleteAfterProcess` | boolean | No | Delete files after processing |
+| `moveAfterProcess.enabled` | boolean | No | Move successfully processed files to another directory |
+| `moveAfterProcess.destinationPath` | string | Conditional | Required when move-after-process is enabled |
 | `modifiedAfter` | string | No | Only process files modified after this date |
-| `maxFiles` | number | No | Maximum number of files to process |
+| `maxFiles` | number | No | Maximum files per run; default: 50 |
+| `includeFileMetadata` | boolean | No | Add protocol/host/path/size/modified data under `_ftp` |
+| `continueOnError` | boolean | No | Continue after a file parse/processing failure; default: `true` |
+| `secure` | boolean | No | Use FTPS when `protocol` is `ftp` |
+| `passiveMode` | boolean | No | Use passive FTP; default: `true` |
+| `timeoutMs` | number | No | Connection timeout; default: 30000 ms |
 
 ### Example
 
@@ -388,6 +478,7 @@ Fetch and parse files from FTP or SFTP servers.
     host: 'ftp.supplier.com',
     username: 'ftpuser',
     passwordSecretCode: 'supplier-ftp-pass',
+    hostKeyFingerprintSecretCode: 'supplier-sftp-host-key',
     remotePath: '/exports',
     filePattern: 'inventory-*.csv',
     format: 'CSV',
@@ -407,21 +498,40 @@ Fetch and parse files from FTP or SFTP servers.
 
 ---
 
+SFTP connections in production require `hostKeyFingerprintSecretCode`. The referenced secret must contain the trusted server host-key fingerprint in OpenSSH `SHA256:<base64>` format; a missing value or mismatch rejects the SSH handshake.
+
 ## Database Extractor
 
 Code: `database`
 
-Query SQL databases (PostgreSQL, MySQL, SQLite, MSSQL, Oracle) with pagination support.
+Run read-only `SELECT` queries against PostgreSQL, MySQL/MariaDB, or SQLite
+with optional pagination and checkpoint-based incremental filtering. These are
+the complete supported database-type values.
 
 ### Configuration
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `connectionCode` | string | Yes | Database connection code |
-| `query` | string | Yes | SQL query to execute |
-| `pagination.type` | select | No | Pagination type: NONE, OFFSET, KEYSET |
-| `pagination.limit` | number | No | Page size |
-| `incrementalColumn` | string | No | Column for incremental extraction |
+| `connectionCode` | string | No | Saved `POSTGRES` or `MYSQL` connection. Step fields override saved connection fields; SQLite is code-first only |
+| `databaseType` | select | Yes | `POSTGRESQL`, `MYSQL`, or `SQLITE`; inferred for `POSTGRES` and `MYSQL` saved connections |
+| `host` | string | Conditional | Database host; not used for SQLite |
+| `port` | number | No | Port from 1 to 65535 |
+| `database` | string | Conditional | Database name, or a SQLite file path/`:memory:` |
+| `username` | string | No | Database username |
+| `passwordSecretCode` | string | No | Secret Code for the password |
+| `connectionStringSecretCode` | string | No | Secret Code for a connection string instead of host fields |
+| `ssl.enabled` | boolean | No | Enable TLS for PostgreSQL/MySQL |
+| `ssl.rejectUnauthorized` | boolean | No | Verify the server certificate; default: `true` |
+| `query` | string | Yes | Query must begin with `SELECT`; dangerous patterns and SQL comments are rejected |
+| `parameters` | array | No | Positional query parameters (`$1` for PostgreSQL, `?` for MySQL/SQLite) |
+| `pagination.enabled` | boolean | No | Enable runtime query wrapping and pagination |
+| `pagination.type` | select | No | `OFFSET` or `CURSOR` |
+| `pagination.pageSize` | number | Conditional | Rows per page when pagination is enabled |
+| `pagination.cursorColumn` | string | Conditional | Required for `CURSOR`; primary sort column and may contain repeated values |
+| `pagination.cursorTieBreakerColumn` | string | Conditional | Required for `CURSOR`; different, unique, stable column used to order equal cursor values |
+| `pagination.maxPages` | number | No | Safety limit for pages per run |
+| `incremental.enabled` | boolean | No | Append a greater-than filter using the saved checkpoint |
+| `incremental.column` | string | Conditional | Required when incremental extraction is enabled |
 
 ### Example
 
@@ -429,37 +539,27 @@ Query SQL databases (PostgreSQL, MySQL, SQLite, MSSQL, Oracle) with pagination s
 .extract('query-products', {
     adapterCode: 'database',
     connectionCode: 'supplier-db',
-    query: 'SELECT * FROM products WHERE updated_at > :lastRun',
+    databaseType: 'POSTGRESQL',
+    query: 'SELECT id, sku, name, updated_at FROM products WHERE active = $1',
+    parameters: [true],
     pagination: {
+        enabled: true,
         type: 'OFFSET',
-        limit: 1000,
+        pageSize: 1000,
+        maxPages: 100,
     },
-    incrementalColumn: 'updated_at',
+    incremental: {
+        enabled: true,
+        column: 'updated_at',
+    },
 })
 ```
 
----
-
-## Webhook Extractor
-
-Code: `webhook`
-
-Receive data from webhook payloads. Used when pipelines are triggered via webhooks.
-
-### Configuration
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `dataPath` | string | No | JSON path to records in webhook payload |
-
-### Example
-
-```typescript
-.extract('webhook-data', {
-    adapterCode: 'webhook',
-    dataPath: 'data.items',
-})
-```
+Cursor pagination uses a composite keyset and requires both columns. For
+example, use `updated_at` as `cursorColumn` and the primary key `id` as
+`cursorTieBreakerColumn`. Both boundary values must be non-null. The extractor
+orders by both fields and resumes after the exact pair, so records sharing the
+same timestamp are not skipped between pages.
 
 ---
 
@@ -467,7 +567,10 @@ Receive data from webhook payloads. Used when pipelines are triggered via webhoo
 
 Code: `cdc`
 
-Poll a database table for changes using a timestamp or version column. Tracks INSERT, UPDATE, and DELETE operations with checkpointing for incremental extraction.
+Read one bounded batch of rows changed since the prior checkpoint. The first
+run marks emitted records as `UPSERT`; later runs mark them as `UPDATE`.
+Optional delete tracking reads a soft-delete timestamp column and marks those
+records as `DELETE`. It does not observe physical deletes.
 
 ### Configuration
 
@@ -475,13 +578,12 @@ Poll a database table for changes using a timestamp or version column. Tracks IN
 |-------|------|----------|-------------|
 | `connectionCode` | string | Yes | Database connection code |
 | `table` | string | Yes | Table name to monitor for changes |
-| `trackingColumn` | string | Yes | Timestamp or version column used to detect changes (e.g., `updated_at`, `version`) |
-| `trackingType` | select | No | Column type: `TIMESTAMP` or `VERSION` (default: `TIMESTAMP`) |
-| `primaryKey` | string | Yes | Primary key column name |
+| `trackingColumn` | string | Yes | Non-null, monotonically increasing timestamp or version column used to detect changes (e.g., `updated_at`, `version`) |
+| `trackingType` | select | Yes | Column type: `TIMESTAMP` or `VERSION` |
+| `primaryKey` | string | Yes | Non-null, unique, immutable primary key used to order rows that share a tracking value |
 | `databaseType` | select | Yes | Database type: `POSTGRESQL` or `MYSQL` |
 | `columns` | array | No | Specific columns to select (omit for all columns) |
 | `batchSize` | number | No | Number of records per batch (default: 1000) |
-| `pollIntervalMs` | number | No | Polling interval in milliseconds (default: 5000) |
 | `includeDeletes` | boolean | No | Whether to track soft-deletes |
 | `deleteColumn` | string | No | Column that indicates deletion timestamp (required when `includeDeletes` is true) |
 
@@ -534,10 +636,21 @@ Poll a database table for changes using a timestamp or version column. Tracks IN
 
 ### How It Works
 
-1. On first run, the extractor reads all rows from the table
-2. It stores a checkpoint with the highest value of the tracking column
-3. On subsequent runs, it queries only rows where the tracking column exceeds the checkpoint
-4. DELETE tracking requires `includeDeletes: true` and a `deleteColumn` that indicates when a row was soft-deleted
+1. On first run, the extractor reads up to `batchSize` rows ordered by the tracking column and primary key
+2. It stores both values as a composite checkpoint
+3. On subsequent runs, it resumes after that exact pair, so a batch boundary cannot drop rows that share the same tracking value
+4. Rows with a null tracking value or primary key cannot form a safe checkpoint and are rejected
+5. DELETE tracking uses the same composite cursor and requires `includeDeletes: true` plus a non-null `deleteColumn` timestamp
+
+The extractor performs one poll per pipeline run, limited by `batchSize`.
+Use a scheduled trigger to run it repeatedly.
+The ordered pair must never move backwards after commit. For concurrent writers,
+prefer a database-assigned monotonic version with sufficient precision; a late
+write that sorts before an already committed checkpoint cannot be recovered by
+keyset polling alone.
+When upgrading a pipeline with an existing CDC checkpoint, follow the
+[CDC composite checkpoint upgrade](../deployment/migrations.md#cdc-composite-checkpoint-upgrade)
+before its next run.
 
 ---
 
@@ -545,7 +658,8 @@ Poll a database table for changes using a timestamp or version column. Tracks IN
 
 Code: `inMemory`
 
-Reads records directly from inline data provided in the step configuration. Useful for testing, seed data, and webhook-triggered pipelines where data is passed at runtime.
+Reads records directly from inline data provided in the step configuration.
+Useful for small code-defined datasets and tests.
 
 **Note:** The inMemory extractor reads records from the `data` field (not `records`). The `data` field accepts an array of objects or a single object (which will be wrapped in an array).
 
@@ -553,7 +667,7 @@ Reads records directly from inline data provided in the step configuration. Usef
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `data` | array/object | Yes | Inline records to extract. An array of objects, or a single object. |
+| `data` | array/object | No | Inline records to extract. A single object is wrapped in an array; an omitted value produces no records |
 
 ### Example
 
@@ -567,6 +681,47 @@ Reads records directly from inline data provided in the step configuration. Usef
 })
 ```
 
+Record-seeded runs behave differently: webhook, Vendure-event, message, hook,
+and explicit seeded executions pass their records through each reachable
+`EXTRACT` step without invoking its adapter. Do not add an incoming-webhook
+extractor; there is no registered `webhook` extractor. File-watch seeds use
+source-reference mode and still invoke the matching S3 or FTP/SFTP extractor.
+
+---
+
+## Generator Extractor
+
+Code: `generator`
+
+Generate deterministic-shape test records without an external source. Every
+record includes a zero-based `_index` field.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `count` | number | No | Number of records; defaults to 10 when omitted or zero |
+| `template` | object | No | Field template. Non-string values are copied literally |
+
+String template values support `uuid`, `timestamp`, `isoDate`, `index`,
+`random:N`, `seq:N`, and interpolation of `{{index}}`, `{{count}}`, or
+`{{total}}`. Both count placeholders contain the total number of records.
+
+```typescript
+.extract('generated-products', {
+    adapterCode: 'generator',
+    count: 3,
+    template: {
+        id: 'uuid',
+        sku: 'SKU-{{index}}',
+        sequence: 'seq:1000',
+        sample: 'random:100',
+        createdAt: 'isoDate',
+    },
+})
+```
+
+When `template` is omitted, generated records contain `id`, `name`,
+`value`, and `createdAt` in addition to `_index`.
+
 ---
 
 ## Quick Reference
@@ -576,17 +731,47 @@ Reads records directly from inline data provided in the step configuration. Usef
 | `httpApi` | REST API | External APIs with pagination, authentication, and retry support |
 | `graphql` | GraphQL API | External GraphQL services with cursor/offset/Relay pagination |
 | `vendureQuery` | Vendure | Internal data extraction for feeds, exports, and transformations |
-| `file` | Files | Parse CSV, JSON, XML, XLSX, NDJSON, TSV files |
+| `csv` | Uploaded/Inline CSV | Parse a managed CSV upload, raw CSV text, or inline rows |
+| `json` | Uploaded/Inline JSON | Parse a managed JSON upload or raw JSON text |
+| `xml` | Uploaded/Inline XML | Parse a managed XML upload or raw XML text |
+| `xlsx` | Uploaded XLSX | Parse a managed spreadsheet upload |
 | `s3` | S3 Storage | Fetch and parse files from S3-compatible storage |
 | `ftp` | FTP/SFTP | Fetch files from FTP or SFTP servers |
-| `database` | SQL Database | Query PostgreSQL, MySQL, SQLite, MSSQL, Oracle databases |
+| `database` | SQL Database | Query PostgreSQL, MySQL/MariaDB, or SQLite |
 | `cdc` | CDC | Poll database tables for changes using timestamp or version tracking |
-| `webhook` | Webhook | Receive data from webhook payloads |
-| `inMemory` | In-Memory | Inline data for testing, seed data, and webhook payloads |
+| `inMemory` | In-Memory | Read an inline object or array from the step config |
+| `generator` | Generated | Generate configurable records for pipeline tests |
 
 ### Authentication Options
 
-HTTP-based extractors (`httpApi`, `graphql`) support connection-based authentication via `connectionCode` which provides:
-- **Bearer Token**: Bearer token authentication
-- **Basic Auth**: HTTP Basic authentication
-- **API Key**: API key in header
+HTTP-based extractors (`httpApi`, `graphql`) accept a saved HTTP-like
+`connectionCode` and a canonical nested `auth` override:
+
+```typescript
+auth: {
+    type: 'BEARER',
+    secretCode: 'supplier-api-token',
+}
+
+auth: {
+    type: 'BASIC',
+    usernameSecretCode: 'supplier-api-username',
+    secretCode: 'supplier-api-password',
+}
+
+auth: {
+    type: 'API_KEY',
+    headerName: 'X-API-Key',
+    secretCode: 'supplier-api-key',
+}
+```
+
+Basic auth may use a literal `username` instead of
+`usernameSecretCode`; passwords, bearer tokens, and API keys always resolve
+through `secretCode`. Missing or empty secrets fail closed. Static
+`headers` cannot contain credentials, cookies, signatures, host routing, or
+hop-by-hop headers. Secret-backed authentication requires a saved connection
+whose base URL binds the initial request and redirects to one exact origin.
+`httpApi` supports
+`rateLimit.requestsPerSecond`; `graphql` rejects `rateLimit`
+configuration.

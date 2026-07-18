@@ -73,8 +73,12 @@ Bearer token:
 ```typescript
 .extract('api-call', {
     adapterCode: 'httpApi',
-    url: 'https://api.example.com/products',
-    bearerTokenSecretCode: 'api-key',
+    connectionCode: 'supplier-api',
+    url: '/products',
+    auth: {
+        type: 'BEARER',
+        secretCode: 'api-key',
+    },
 })
 ```
 
@@ -82,8 +86,13 @@ Basic auth:
 ```typescript
 .extract('api-call', {
     adapterCode: 'httpApi',
-    url: 'https://api.example.com/products',
-    basicAuthSecretCode: 'api-credentials',  // Format: username:password
+    connectionCode: 'supplier-api',
+    url: '/products',
+    auth: {
+        type: 'BASIC',
+        usernameSecretCode: 'api-username',
+        secretCode: 'api-password',
+    },
 })
 ```
 
@@ -91,11 +100,20 @@ API key header:
 ```typescript
 .extract('api-call', {
     adapterCode: 'httpApi',
-    url: 'https://api.example.com/products',
-    apiKeySecretCode: 'api-key',
-    apiKeyHeader: 'X-API-Key',
+    connectionCode: 'supplier-api',
+    url: '/products',
+    auth: {
+        type: 'API_KEY',
+        secretCode: 'api-key',
+        headerName: 'X-API-Key',
+    },
 })
 ```
+
+All secret-backed HTTP authentication requires `connectionCode`, and the saved
+connection must define a base URL. A relative `url` resolves against that base
+URL. An absolute `url` must use its exact origin, and credentials are not
+forwarded across cross-origin redirects.
 
 ### Database Passwords
 
@@ -180,7 +198,11 @@ The current value is never returned to the browser. The form only knows whether 
 2. Select **Delete**
 3. Confirm deletion
 
-Deleting an active database secret breaks consumers that reference it. For a row marked **Code-first active**, deletion removes only the inactive database fallback; the in-memory code-first secret remains active. Removing the code-first definition later can reactivate a same-code database row if that row was not deleted.
+Deletion is blocked when the secret is referenced by a published pipeline, a
+saved connection, or a managed destination. The mutation returns `NOT_DELETED`
+with the blocking reference in its message. For a row marked **Code-first
+active**, deleting an unreferenced row removes only the inactive database
+fallback; the in-memory definition remains active.
 
 ## Secret Rotation
 

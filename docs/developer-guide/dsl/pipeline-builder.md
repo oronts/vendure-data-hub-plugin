@@ -76,7 +76,10 @@ createPipeline()
 .dependsOn('other-pipeline-code', 'another-pipeline')
 ```
 
-Pipelines that must complete before this one can run.
+`.dependsOn()` declares pipeline-code references used by dependency queries,
+publish-time existence and cycle validation, and rename/delete protection. It
+does not start, order, or wait for those pipelines. Use schedules, explicit
+orchestration, or `TRIGGER_PIPELINE` hooks for runtime sequencing.
 
 ### Hooks
 
@@ -236,7 +239,8 @@ Pull data from external sources:
 ```typescript
 .extract('fetch-api', {
     adapterCode: 'httpApi',
-    url: 'https://api.example.com/products',
+    connectionCode: 'catalog-api',
+    url: '/products',
     method: 'GET',
     headers: { 'Accept': 'application/json' },
     dataPath: 'data.items',
@@ -245,9 +249,17 @@ Pull data from external sources:
         limit: 100,
         maxPages: 10,
     },
-    bearerTokenSecretCode: 'api-key',
+    auth: {
+        type: 'BEARER',
+        secretCode: 'api-key',
+    },
 })
 ```
+
+Authenticated HTTP extractors require a saved connection with a base URL. The
+extractor accepts paths relative to that URL or absolute URLs on the same exact
+origin; cross-origin requests and redirects are rejected before credentials
+can be forwarded.
 
 **GraphQL:**
 ```typescript
@@ -365,8 +377,9 @@ Add data from external lookups or static enrichment:
     set?: Record<string, JsonValue>,        // Always overwrite these fields
     computed?: Record<string, string>,      // Template expressions: '${field1} ${field2}'
     sourceType?: 'STATIC' | 'HTTP' | 'VENDURE',
-    endpoint?: string,             // HTTP endpoint URL (for HTTP source type)
-    matchField?: string,           // Field to match for lookups
+    url?: string,                  // HTTP endpoint URL (for HTTP source type)
+    keyField?: string,             // Record field used in cache identity
+    target?: string,               // Field receiving the response
     entity?: string,               // Vendure entity type (for VENDURE source type)
     config?: JsonObject,           // Additional adapter config
 })
@@ -420,7 +433,6 @@ Create or update Vendure entities:
     channel?: string,
     channelStrategy?: 'EXPLICIT' | 'INHERIT' | 'MULTI',
     validationMode?: ValidationMode,
-    matchField?: string,
     nameField?: string,
     slugField?: string,
     descriptionField?: string,
@@ -448,7 +460,7 @@ Create or update Vendure entities:
 .load('import-products', {
     adapterCode: 'productUpsert',
     strategy: 'UPSERT',
-    matchField: 'slug',
+    slugField: 'slug',
     conflictStrategy: 'SOURCE_WINS',
 })
 ```
@@ -458,7 +470,7 @@ Create or update Vendure entities:
 .load('import-variants', {
     adapterCode: 'variantUpsert',
     strategy: 'UPDATE',
-    matchField: 'sku',
+    skuField: 'sku',
 })
 ```
 
@@ -713,7 +725,7 @@ const productSync = createPipeline()
     .load('upsert-products', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'slug',
+        slugField: 'slug',
         conflictStrategy: 'SOURCE_WINS',
         throughput: { batchSize: 50, concurrency: 2 },
     })

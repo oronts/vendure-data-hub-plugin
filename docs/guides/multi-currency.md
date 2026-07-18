@@ -225,7 +225,8 @@ Premium Hoodie,HDI-001,"{""USD"": 59.99, ""EUR"": 49.99, ""GBP"": 44.99}"
 **Pipeline configuration:**
 ```typescript
 .extract('csv-file', {
-    filePath: '/data/products.csv'
+    adapterCode: 'csv',
+    fileId: 'products-upload-id'
 })
 .transform('parse-json-fields', {
     fields: 'prices'  // Parse JSON string to object
@@ -337,7 +338,7 @@ Use TRANSFORM operators to calculate prices from a base currency:
 **Real-time conversion with ENRICH step:**
 
 ```typescript
-.extract('csv-file', { filePath: '/data/products.csv' })
+.extract('csv-file', { adapterCode: 'csv', fileId: 'products-upload-id' })
 .enrich('http-lookup', {
     url: 'https://api.exchangerate.host/latest?base=USD',
     responseField: 'rates',
@@ -375,7 +376,7 @@ Use `UPDATE` strategy with price fields only:
 
 ```typescript
 // Pipeline that ONLY updates prices (doesn't modify name, description, etc.)
-.extract('csv-file', { filePath: '/data/price-updates.csv' })
+.extract('csv-file', { adapterCode: 'csv', fileId: 'price-updates-upload-id' })
 .load('update-prices', {
     adapterCode: 'productUpsert',
     strategy: 'UPDATE',  // ← Only update existing products
@@ -488,8 +489,15 @@ const pipeline = {
 ```typescript
 // Import products from PIM with international pricing
 .extract('rest-api', {
-    url: 'https://pim.example.com/api/products',
-    auth: { type: 'API_KEY', apiKey: 'secret' }
+    adapterCode: 'httpApi',
+    connectionCode: 'pim-api',
+    url: '/api/products',
+    auth: {
+        type: 'API_KEY',
+        secretCode: 'pim-api-key',
+        headerName: 'X-API-Key',
+    },
+    dataPath: 'products',
 })
 .transform('map-fields', {
     mappings: {
@@ -529,18 +537,19 @@ const pipeline = {
 ### Example 2: ERP Price Sync
 
 ```typescript
-// Daily price sync from ERP system
+// Daily price sync from a saved PostgreSQL ERP connection
 .extract('database', {
-    type: 'MSSQL',
+    adapterCode: 'database',
+    connectionCode: 'erp-postgres',
     query: `
         SELECT
-            ProductSKU,
-            USDPrice,
-            EURPrice,
-            GBPPrice,
-            LastModified
-        FROM PricingMaster
-        WHERE LastModified >= DATEADD(day, -1, GETDATE())
+            product_sku AS "ProductSKU",
+            usd_price AS "USDPrice",
+            eur_price AS "EURPrice",
+            gbp_price AS "GBPPrice",
+            last_modified AS "LastModified"
+        FROM pricing_master
+        WHERE last_modified >= CURRENT_TIMESTAMP - INTERVAL '1 day'
     `
 })
 .transform('calculate-fields', {
@@ -564,7 +573,7 @@ const pipeline = {
 
 ```typescript
 // Import with both multi-currency AND multi-channel support
-.extract('csv-file', { filePath: '/data/products.csv' })
+.extract('csv-file', { adapterCode: 'csv', fileId: 'products-upload-id' })
 .load('import-products', {
     adapterCode: 'productUpsert',
     nameField: 'name',
@@ -573,8 +582,8 @@ const pipeline = {
     translationsField: 'translations' // ← Multi-language
 })
 
-// Input data:
-{
+// Example input record:
+const inputRecord = {
     name: 'Global Product',
     prices: {
         USD: 99.99,
@@ -851,7 +860,8 @@ skuField: 'variant_sku'
 ```typescript
 // Complete multi-currency pipeline
 .extract('csv-file', {
-    filePath: '/data/international-products.csv'
+    adapterCode: 'csv',
+    fileId: 'international-products-upload-id'
 })
 .transform('parse-json-fields', {
     fields: 'prices'  // Parse JSON string to object
