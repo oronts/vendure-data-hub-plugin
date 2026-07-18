@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AckMode } from '../../../constants';
+import { AckMode, QUEUE } from '../../../constants';
 import type { QueueConnectionConfig } from './queue-adapter.interface';
 import { RedisStreamsAdapter } from './redis-streams.adapter';
 
@@ -16,12 +16,21 @@ function createRedisModule(entries: Array<[string, string[]]> = []) {
         }
 
         xadd(): Promise<string> { return Promise.resolve('1-0'); }
-        xreadgroup(): Promise<Array<[string, Array<[string, string[]]>]>> {
-            return Promise.resolve([['stream:orders', entries]]);
-        }
+        readonly xreadgroup = vi.fn(async () => [['stream:orders', entries]] as Array<[
+            string,
+            Array<[string, string[]]>,
+        ]>);
         xgroup(): Promise<string> { return Promise.resolve('OK'); }
-        xclaim(): Promise<Array<[string, string[]]>> { return Promise.resolve([]); }
-        xpending(): Promise<Array<[string, string, number, number]>> { return Promise.resolve([]); }
+        readonly xclaim = vi.fn(async () => [] as Array<[string, string[]]>);
+        readonly xautoclaim = vi.fn(async (
+            _key: string,
+            _group: string,
+            _consumer: string,
+            _minIdleTime: number,
+            _start: string,
+            _countLabel: string,
+            _count: number,
+        ) => ['0-0', []] as [string, Array<[string, string[]]>]);
         xlen(): Promise<number> { return Promise.resolve(0); }
         xtrim(): Promise<number> { return Promise.resolve(0); }
         ping(): Promise<string> { return Promise.resolve('PONG'); }
@@ -104,6 +113,169 @@ describe('RedisStreamsAdapter connection security', () => {
                 'workers',
                 '1-0',
             );
+        } finally {
+            await adapter.destroy();
+        }
+    });
+
+    it('refreshes Redis pending ownership while a pipeline run remains active', async () => {
+        const fake = createRedisModule([['1-0', [
+            'payload', '{"orderId":"order-1"}',
+            'messageId', 'message-1',
+        ]]]);
+        const adapter = new RedisStreamsAdapter(async () => fake.module as never);
+        const connectionConfig = {
+            host: 'redis.example.com',
+            port: 6379,
+            consumerGroup: 'workers',
+            consumerName: 'worker-1',
+        } as QueueConnectionConfig;
+
+        try {
+            const [message] = await adapter.consume(connectionConfig, 'orders', {
+                count: 1,
+                ackMode: AckMode.MANUAL,
+            });
+            fake.clients[0]?.xclaim.mockResolvedValueOnce([['1-0', []]]);
+
+            await expect(adapter.renewLease(connectionConfig, message?.deliveryTag ?? ''))
+                .resolves.toBeUndefined();
+            expect(fake.clients[0]?.xclaim).toHaveBeenCalledWith(
+                'stream:orders',
+                'workers',
+                'worker-1',
+                0,
+                '1-0',
+            );
+        } finally {
+            await adapter.destroy();
+        }
+    });
+
+    it('retains the existing settlement when a later delivery exceeds capacity', async () => {
+        const entries: Array<[string, string[]]> = [['1-0', [
+            'payload', '{}',
+            'messageId', 'message-1',
+        ]]];
+        const fake = createRedisModule(entries);
+        const adapter = new RedisStreamsAdapter(async () => fake.module as never);
+        const connectionConfig = {
+            host: 'redis.example.com',
+            port: 6379,
+            consumerGroup: 'workers',
+            consumerName: 'worker-1',
+        } as QueueConnectionConfig;
+        const originalLimit = QUEUE.MAX_PENDING_MESSAGES;
+        Object.assign(QUEUE, { MAX_PENDING_MESSAGES: 1 });
+
+        try {
+            const [first] = await adapter.consume(connectionConfig, 'orders', {
+                count: 1,
+                ackMode: AckMode.MANUAL,
+            });
+            fake.clients[0]?.xautoclaim.mockClear();
+            entries.splice(0, 1, ['2-0', [
+                'payload', '{}',
+                'messageId', 'message-2',
+            ]]);
+            await expect(adapter.consume(connectionConfig, 'orders', {
+                count: 1,
+                ackMode: AckMode.MANUAL,
+            })).resolves.toEqual([]);
+            await expect(adapter.claimStaleMessages(
+                connectionConfig,
+                'orders',
+                0,
+                10,
+            )).resolves.toEqual([]);
+            expect(fake.clients[0]?.xautoclaim).not.toHaveBeenCalled();
+            await expect(adapter.ack(connectionConfig, first?.deliveryTag ?? ''))
+                .resolves.toBeUndefined();
+            expect(fake.clients[0]?.xack).toHaveBeenCalledWith(
+                'stream:orders',
+                'workers',
+                '1-0',
+            );
+        } finally {
+            Object.assign(QUEUE, { MAX_PENDING_MESSAGES: originalLimit });
+            await adapter.destroy();
+        }
+    });
+
+    it('claims stale entries without being blocked by a newer active prefix', async () => {
+        const fake = createRedisModule([['new-entry', [
+            'payload', '{}',
+            'messageId', 'new-message',
+        ]]]);
+        const adapter = new RedisStreamsAdapter(async () => fake.module as never);
+        const connectionConfig = {
+            host: 'redis.example.com',
+            port: 6379,
+            consumerGroup: 'workers',
+            consumerName: 'worker-1',
+        } as QueueConnectionConfig;
+        try {
+            await adapter.testConnection(connectionConfig);
+            fake.clients[0]?.xautoclaim.mockResolvedValueOnce([
+                '0-0',
+                [['stale-entry', [
+                    'payload', '{"orderId":"order-1"}',
+                    'messageId', 'stale-message',
+                ]]],
+            ]);
+
+            await expect(adapter.consume(connectionConfig, 'orders', {
+                count: 1,
+                ackMode: AckMode.MANUAL,
+            })).resolves.toEqual([expect.objectContaining({
+                messageId: 'stale-message',
+                redelivered: true,
+            })]);
+            expect(fake.clients[0]?.xreadgroup).not.toHaveBeenCalled();
+        } finally {
+            await adapter.destroy();
+        }
+    });
+
+    it('continues XAUTOCLAIM scans from the returned cursor', async () => {
+        const fake = createRedisModule();
+        const adapter = new RedisStreamsAdapter(async () => fake.module as never);
+        const connectionConfig = {
+            host: 'redis.example.com',
+            port: 6379,
+            consumerGroup: 'workers',
+            consumerName: 'worker-1',
+        } as QueueConnectionConfig;
+
+        try {
+            await adapter.testConnection(connectionConfig);
+            fake.clients[0]?.xautoclaim
+                .mockResolvedValueOnce(['5-0', []])
+                .mockResolvedValueOnce([
+                    '0-0',
+                    [['stale-entry', [
+                        'payload', '{}',
+                        'messageId', 'stale-message',
+                    ]]],
+                ]);
+
+            await expect(adapter.claimStaleMessages(
+                connectionConfig,
+                'orders',
+                10_000,
+                1,
+            )).resolves.toEqual([]);
+            await expect(adapter.claimStaleMessages(
+                connectionConfig,
+                'orders',
+                10_000,
+                1,
+            )).resolves.toEqual([expect.objectContaining({
+                messageId: 'stale-message',
+            })]);
+
+            expect(fake.clients[0]?.xautoclaim.mock.calls[0]?.[4]).toBe('0-0');
+            expect(fake.clients[0]?.xautoclaim.mock.calls[1]?.[4]).toBe('5-0');
         } finally {
             await adapter.destroy();
         }

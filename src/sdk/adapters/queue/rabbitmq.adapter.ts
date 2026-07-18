@@ -9,14 +9,8 @@ import {
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
 import { AckMode } from '../../../constants/enums';
-import {
-    HTTP_HEADERS,
-    CONTENT_TYPES,
-    AUTH_SCHEMES,
-    HTTP_STATUS,
-    HTTP,
-    OUTBOUND_RESPONSE_LIMITS,
-} from '../../../constants/index';
+import { AUTH_SCHEMES, CONTENT_TYPES, HTTP_HEADERS } from '../../../constants/services';
+import { HTTP, HTTP_STATUS, OUTBOUND_RESPONSE_LIMITS } from '../../../constants/defaults/http-defaults';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 import { secureFetch } from '../../../utils/secure-fetch.utils';
 import { readResponseJson, readResponseText } from '../../../utils/secure-response-body.utils';

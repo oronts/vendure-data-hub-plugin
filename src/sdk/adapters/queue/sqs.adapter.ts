@@ -19,7 +19,10 @@ import {
     ConsumeResult,
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
-import { AckMode, INTERNAL_TIMINGS, TIME } from '../../../constants';
+import { AckMode } from '../../../constants/enums';
+import { INTERNAL_TIMINGS } from '../../../constants/defaults/core-defaults';
+import { QUEUE } from '../../../constants/defaults/runtime-defaults';
+import { TIME } from '../../../constants/time';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 import { createQueueConnectionIdentity } from './connection-identity';
@@ -29,6 +32,8 @@ const SQS_TEST_CONNECTION_QUEUE = 'data-hub-test-connection';
 
 /** Error message when SQS module fails to load (type narrowing guard) */
 const SQS_MODULE_NOT_LOADED = 'SQS module not loaded';
+
+const SQS_VISIBILITY_TIMEOUT_SECONDS = 300;
 
 /**
  * SQS-specific connection configuration
@@ -442,13 +447,20 @@ export class SqsAdapter implements QueueAdapter {
         // AUTO uses one delivery so a later delete failure cannot discard an acknowledged batch.
         const maxMessages = options.ackMode === AckMode.AUTO
             ? 1
-            : Math.min(10, options.count);
+            : Math.min(
+                10,
+                options.count,
+                Math.max(0, QUEUE.MAX_PENDING_MESSAGES - pendingReceipts.size),
+            );
+        if (maxMessages === 0) {
+            return [];
+        }
 
         const response = await client.send(new ReceiveCmd({
             QueueUrl: queueUrl,
             MaxNumberOfMessages: maxMessages,
             WaitTimeSeconds: 20, // Long polling
-            VisibilityTimeout: 300, // 5 minutes
+            VisibilityTimeout: SQS_VISIBILITY_TIMEOUT_SECONDS,
             MessageAttributeNames: ['All'],
             AttributeNames: ['All'],
         })) as { Messages?: Array<{
@@ -479,20 +491,8 @@ export class SqsAdapter implements QueueAdapter {
                     ReceiptHandle: receiptHandle,
                 }));
             } else {
-                // Evict oldest pending receipt if at capacity
-                const maxPending = INTERNAL_TIMINGS.MAX_PENDING_MESSAGES ?? 10_000;
-                if (pendingReceipts.size >= maxPending) {
-                    let oldestKey: string | null = null;
-                    let oldestTime = Infinity;
-                    for (const [key, entry] of pendingReceipts.entries()) {
-                        if (entry.createdAt < oldestTime) {
-                            oldestTime = entry.createdAt;
-                            oldestKey = key;
-                        }
-                    }
-                    if (oldestKey) {
-                        pendingReceipts.delete(oldestKey);
-                    }
+                if (pendingReceipts.size >= QUEUE.MAX_PENDING_MESSAGES) {
+                    continue;
                 }
 
                 // Manual ack: store receipt handle
@@ -590,6 +590,31 @@ export class SqsAdapter implements QueueAdapter {
         }
 
         pendingReceipts.delete(deliveryTag);
+    }
+
+    async renewLease(
+        connectionConfig: QueueConnectionConfig,
+        deliveryTag: string,
+    ): Promise<void> {
+        const pending = pendingReceipts.get(deliveryTag);
+        if (!pending) {
+            throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
+        }
+
+        const config = connectionConfig as SqsConnectionConfig;
+        if (pending.connectionIdentity !== getCacheKey(config)) {
+            throw new Error('SQS delivery tag belongs to a different connection');
+        }
+        const client = await getClient(config, this.moduleLoader);
+        const sqs = await this.moduleLoader();
+        if (!sqs) throw new Error(SQS_MODULE_NOT_LOADED);
+
+        await client.send(new sqs.ChangeMessageVisibilityCommand({
+            QueueUrl: pending.queueUrl,
+            ReceiptHandle: pending.receiptHandle,
+            VisibilityTimeout: SQS_VISIBILITY_TIMEOUT_SECONDS,
+        }));
+        pending.createdAt = Date.now();
     }
 
     async testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean> {

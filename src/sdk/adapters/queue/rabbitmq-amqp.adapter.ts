@@ -18,8 +18,12 @@ import {
     ConsumeResult,
 } from './queue-adapter.interface';
 import { JsonObject } from '../../../types/index';
-import { AckMode, INTERNAL_TIMINGS, LOGGER_CONTEXTS, CONTENT_TYPES } from '../../../constants';
-import { DataHubLoggerFactory } from '../../../services/logger';
+import { AckMode } from '../../../constants/enums';
+import { INTERNAL_TIMINGS } from '../../../constants/defaults/core-defaults';
+import { QUEUE } from '../../../constants/defaults/runtime-defaults';
+import { LOGGER_CONTEXTS } from '../../../constants/core';
+import { CONTENT_TYPES } from '../../../constants/services';
+import { DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { isBlockedHostname } from '../../../utils/url-security.utils';
 import { getErrorMessage } from '../../../utils/error.utils';
 import { createQueueConnectionIdentity } from './connection-identity';
@@ -124,20 +128,27 @@ async function getConnection(config: QueueConnectionConfig): Promise<{
             const amqplib = await import('amqplib');
             const url = buildAmqpUrl(config);
             const connection = await amqplib.connect(url) as unknown as AmqpConnection;
-
-            connection.on('error', () => {
-                connectionPool.delete(key);
-            });
-
-            connection.on('close', () => {
-                connectionPool.delete(key);
-            });
-
             const channel = await connection.createConfirmChannel();
+
+            const cleanupConnection = () => {
+                const current = connectionPool.get(key);
+                if (current?.connection === connection) {
+                    connectionPool.delete(key);
+                }
+                removePendingMessagesForChannel(channel);
+            };
+
+            connection.on('error', cleanupConnection);
+            connection.on('close', cleanupConnection);
+
             await channel.prefetch(10);
 
             channel.on('error', () => {
-                connectionPool.delete(key);
+                const current = connectionPool.get(key);
+                if (current?.channel === channel) {
+                    connectionPool.delete(key);
+                }
+                removePendingMessagesForChannel(channel);
             });
 
             const entry: ConnectionEntry = {
@@ -151,19 +162,28 @@ async function getConnection(config: QueueConnectionConfig): Promise<{
                 let oldestKey: string | null = null;
                 let oldestTime = Infinity;
                 for (const [k, e] of connectionPool.entries()) {
-                    if (e.lastUsed < oldestTime) {
+                    if (
+                        !hasPendingMessagesForConnection(k) &&
+                        e.lastUsed < oldestTime
+                    ) {
                         oldestTime = e.lastUsed;
                         oldestKey = k;
                     }
                 }
-                if (oldestKey) {
-                    const stale = connectionPool.get(oldestKey);
-                    if (stale) {
-                        stale.channel.close().catch(() => { /* ignore */ });
-                        stale.connection.close().catch(() => { /* ignore */ });
-                    }
-                    connectionPool.delete(oldestKey);
+                if (!oldestKey) {
+                    await channel.close().catch(() => undefined);
+                    await connection.close().catch(() => undefined);
+                    throw new Error(
+                        'RabbitMQ connection pool is at capacity with active deliveries',
+                    );
                 }
+                const stale = connectionPool.get(oldestKey);
+                if (stale) {
+                    stale.channel.close().catch(() => undefined);
+                    stale.connection.close().catch(() => undefined);
+                    removePendingMessagesForChannel(stale.channel);
+                }
+                connectionPool.delete(oldestKey);
             }
 
             connectionPool.set(key, entry);
@@ -191,21 +211,34 @@ async function closeConnection(config: QueueConnectionConfig): Promise<void> {
         } catch {
             // Ignore close errors
         }
+        removePendingMessagesForChannel(entry.channel);
         connectionPool.delete(key);
     }
 }
 
 /**
- * Pending acks/nacks storage (for manual acknowledgment)
- * Includes timestamp for cleanup of stale entries
+ * Pending acks/nacks storage for manual acknowledgment.
  */
 interface PendingMessage {
     channel: AmqpChannel;
     deliveryTag: number;
     connectionIdentity: string;
-    createdAt: number;
 }
 const pendingMessages = new Map<string, PendingMessage>();
+
+function hasPendingMessagesForConnection(connectionIdentity: string): boolean {
+    return [...pendingMessages.values()].some(
+        pending => pending.connectionIdentity === connectionIdentity,
+    );
+}
+
+function removePendingMessagesForChannel(channel: AmqpChannel): void {
+    for (const [deliveryTag, pending] of pendingMessages.entries()) {
+        if (pending.channel === channel) {
+            pendingMessages.delete(deliveryTag);
+        }
+    }
+}
 
 export class RabbitMQAmqpAdapter implements QueueAdapter {
     readonly code = 'rabbitmq-amqp';
@@ -213,7 +246,6 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
     readonly description = 'RabbitMQ message broker using native AMQP 0-9-1 protocol';
 
     private connectionCleanupHandle?: ReturnType<typeof setInterval>;
-    private pendingMessagesCleanupHandle?: ReturnType<typeof setInterval>;
 
     /**
      * Start the periodic cleanup intervals for idle connections and stale pending messages.
@@ -223,8 +255,14 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
         if (!this.connectionCleanupHandle) {
             this.connectionCleanupHandle = setInterval(() => {
                 const now = Date.now();
+                const activeConnections = new Set(
+                    [...pendingMessages.values()].map(entry => entry.connectionIdentity),
+                );
                 for (const [key, entry] of connectionPool.entries()) {
-                    if (now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS) {
+                    if (
+                        !activeConnections.has(key) &&
+                        now - entry.lastUsed > INTERNAL_TIMINGS.CONNECTION_MAX_IDLE_MS
+                    ) {
                         entry.channel.close().catch((err) => {
                             logger.warn('RabbitMQ: Failed to close channel during cleanup', { error: err?.message ?? err });
                         });
@@ -241,26 +279,6 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             }
         }
 
-        if (!this.pendingMessagesCleanupHandle) {
-            const maxAgeMs = INTERNAL_TIMINGS.PENDING_MESSAGES_MAX_AGE_MS;
-            this.pendingMessagesCleanupHandle = setInterval(() => {
-                const now = Date.now();
-                let cleanedCount = 0;
-                for (const [key, entry] of pendingMessages.entries()) {
-                    if (now - entry.createdAt > maxAgeMs) {
-                        pendingMessages.delete(key);
-                        cleanedCount++;
-                    }
-                }
-                if (cleanedCount > 0) {
-                    logger.debug('RabbitMQ: Cleaned up stale pending messages', { cleanedCount });
-                }
-            }, INTERNAL_TIMINGS.PENDING_MESSAGES_CLEANUP_INTERVAL_MS ?? 60_000);
-
-            if (typeof this.pendingMessagesCleanupHandle.unref === 'function') {
-                this.pendingMessagesCleanupHandle.unref();
-            }
-        }
     }
 
     /**
@@ -272,11 +290,6 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
             clearInterval(this.connectionCleanupHandle);
             this.connectionCleanupHandle = undefined;
         }
-        if (this.pendingMessagesCleanupHandle) {
-            clearInterval(this.pendingMessagesCleanupHandle);
-            this.pendingMessagesCleanupHandle = undefined;
-        }
-
         for (const [key, entry] of connectionPool.entries()) {
             try {
                 await entry.channel.close();
@@ -394,44 +407,23 @@ export class RabbitMQAmqpAdapter implements QueueAdapter {
 
             // Store for manual ack/nack with timestamp for cleanup
             if (options.ackMode === AckMode.MANUAL) {
-                const maxPending = INTERNAL_TIMINGS.MAX_PENDING_MESSAGES ?? 10_000;
-                if (pendingMessages.size >= maxPending) {
-                    // Evict oldest pending message by createdAt and auto-nack it
-                    let oldestKey: string | null = null;
-                    let oldestTime = Infinity;
-                    for (const [key, entry] of pendingMessages.entries()) {
-                        if (entry.createdAt < oldestTime) {
-                            oldestTime = entry.createdAt;
-                            oldestKey = key;
-                        }
-                    }
-                    if (oldestKey) {
-                        const stale = pendingMessages.get(oldestKey);
-                        if (stale) {
-                            try {
-                                stale.channel.nack(
-                                    { fields: { deliveryTag: stale.deliveryTag } },
-                                    false,
-                                    true, // requeue
-                                );
-                            } catch {
-                                // Channel may be closed; ignore nack error
-                            }
-                            pendingMessages.delete(oldestKey);
-                        }
-                        logger.warn('Pending messages map at capacity; evicted oldest entry', {
-                            evictedKey: oldestKey,
-                            maxPending,
-                            currentSize: pendingMessages.size,
-                        });
-                    }
+                if (pendingMessages.size >= QUEUE.MAX_PENDING_MESSAGES) {
+                    channel.nack(
+                        { fields: { deliveryTag: msg.fields.deliveryTag } },
+                        false,
+                        true,
+                    );
+                    logger.warn('Pending message capacity reached; delivery was requeued', {
+                        maxPending: QUEUE.MAX_PENDING_MESSAGES,
+                        currentSize: pendingMessages.size,
+                    });
+                    continue;
                 }
 
                 pendingMessages.set(deliveryTag, {
                     channel,
                     deliveryTag: msg.fields.deliveryTag,
                     connectionIdentity: getConnectionKey(connectionConfig),
-                    createdAt: Date.now(),
                 });
             }
 

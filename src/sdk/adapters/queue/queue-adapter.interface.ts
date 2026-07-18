@@ -61,6 +61,15 @@ export interface QueueAdapter {
 
     nack(connectionConfig: QueueConnectionConfig, deliveryTag: string, requeue: boolean): Promise<void>;
 
+    /**
+     * Extend delivery ownership beyond the next run-observation window.
+     * The adapter must retain settlement state, and redelivery must preserve messageId.
+     */
+    renewLease?(
+        connectionConfig: QueueConnectionConfig,
+        deliveryTag: string,
+    ): Promise<void>;
+
     testConnection(connectionConfig: QueueConnectionConfig): Promise<boolean>;
 
     destroy(): Promise<void>;

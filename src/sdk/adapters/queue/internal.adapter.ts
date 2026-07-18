@@ -94,6 +94,15 @@ class InternalQueueAdapter implements QueueAdapter {
         }
     }
 
+    async renewLease(
+        _connectionConfig: QueueConnectionConfig,
+        deliveryTag: string,
+    ): Promise<void> {
+        if (!pendingMessages.has(deliveryTag)) {
+            throw new Error(`No pending message found for delivery tag: ${deliveryTag}`);
+        }
+    }
+
     async testConnection(_connectionConfig: QueueConnectionConfig): Promise<boolean> {
         return true;
     }

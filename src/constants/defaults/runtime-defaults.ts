@@ -45,7 +45,12 @@ export const SPAN_TRACKER = {
 /**
  * Queue/admin query defaults
  */
+const MAX_QUEUE_CONSUMERS = 500;
+const MAX_QUEUE_MESSAGE_CONCURRENCY = 32;
+
 export const QUEUE = {
+    /** Maximum number of concurrently configured message consumers */
+    MAX_CONSUMERS: MAX_QUEUE_CONSUMERS,
     /** Default limit for recent failed runs query */
     DEFAULT_RECENT_FAILED_LIMIT: 10,
     /** Default messages requested per broker poll */
@@ -59,7 +64,10 @@ export const QUEUE = {
     /** Minimum number of deliveries processed in parallel */
     MIN_MESSAGE_CONCURRENCY: 1,
     /** Maximum number of deliveries processed in parallel */
-    MAX_MESSAGE_CONCURRENCY: 32,
+    MAX_MESSAGE_CONCURRENCY: MAX_QUEUE_MESSAGE_CONCURRENCY,
+    /** Retain settlement handles for every supported in-flight delivery */
+    MAX_PENDING_MESSAGES:
+        MAX_QUEUE_CONSUMERS * MAX_QUEUE_MESSAGE_CONCURRENCY,
     /** Minimum broker prefetch window */
     MIN_MESSAGE_PREFETCH: 1,
     /** Maximum broker prefetch window */

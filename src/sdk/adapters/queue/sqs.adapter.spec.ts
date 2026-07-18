@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AckMode } from '../../../constants';
+import { AckMode, QUEUE } from '../../../constants';
 import type { QueueConnectionConfig } from './queue-adapter.interface';
 import { SqsAdapter } from './sqs.adapter';
 
@@ -208,5 +208,115 @@ describe('SqsAdapter AUTO acknowledgment', () => {
         } finally {
             await adapter.destroy();
         }
+    });
+
+    it('extends SQS visibility while a manually acknowledged run remains active', async () => {
+        const commands: unknown[] = [];
+        const send = vi.fn(async (command: unknown) => {
+            commands.push(command);
+            if (command instanceof ReceiveMessageCommand) {
+                return {
+                    Messages: [{
+                        MessageId: 'message-1',
+                        Body: '{"orderId":"order-1"}',
+                        ReceiptHandle: 'receipt-1',
+                    }],
+                };
+            }
+            return {};
+        });
+        class FakeSqsClient {
+            readonly send = send;
+            destroy(): void {}
+        }
+        const module = {
+            SQSClient: FakeSqsClient,
+            ReceiveMessageCommand,
+            DeleteMessageCommand,
+            SendMessageBatchCommand,
+            ChangeMessageVisibilityCommand: OtherCommand,
+            GetQueueUrlCommand: OtherCommand,
+        };
+        const adapter = new SqsAdapter(async () => module as never);
+        const connectionConfig = {
+            host: 'sqs.eu-central-1.amazonaws.com',
+            port: 443,
+            region: 'eu-central-1',
+            queueUrl: 'https://sqs.eu-central-1.amazonaws.com/123456789012/orders',
+        } as QueueConnectionConfig;
+
+        try {
+            const [message] = await adapter.consume(connectionConfig, 'orders', {
+                count: 1,
+                ackMode: AckMode.MANUAL,
+            });
+            await expect(adapter.renewLease(connectionConfig, message?.deliveryTag ?? ''))
+                .resolves.toBeUndefined();
+        } finally {
+            await adapter.destroy();
+        }
+
+        const renewal = commands.find(command =>
+            command instanceof OtherCommand &&
+            command.input.VisibilityTimeout !== undefined,
+        ) as OtherCommand;
+        expect(renewal.input).toEqual({
+            QueueUrl: connectionConfig.queueUrl,
+            ReceiptHandle: 'receipt-1',
+            VisibilityTimeout: 300,
+        });
+    });
+
+    it('stops receiving instead of evicting a live settlement at capacity', async () => {
+        const send = vi.fn(async (command: unknown) => (
+            command instanceof ReceiveMessageCommand
+                ? {
+                    Messages: [{
+                        MessageId: 'message-1',
+                        Body: '{}',
+                        ReceiptHandle: 'receipt-1',
+                    }],
+                }
+                : {}
+        ));
+        class FakeSqsClient {
+            readonly send = send;
+            destroy(): void {}
+        }
+        const adapter = new SqsAdapter(async () => ({
+            SQSClient: FakeSqsClient,
+            ReceiveMessageCommand,
+            DeleteMessageCommand,
+            SendMessageBatchCommand,
+            ChangeMessageVisibilityCommand: OtherCommand,
+            GetQueueUrlCommand: OtherCommand,
+        }) as never);
+        const connectionConfig = {
+            host: 'sqs.eu-central-1.amazonaws.com',
+            port: 443,
+            region: 'eu-central-1',
+            queueUrl: 'https://sqs.eu-central-1.amazonaws.com/123456789012/orders',
+        } as QueueConnectionConfig;
+        const originalLimit = QUEUE.MAX_PENDING_MESSAGES;
+        Object.assign(QUEUE, { MAX_PENDING_MESSAGES: 1 });
+
+        try {
+            const [message] = await adapter.consume(connectionConfig, 'orders', {
+                count: 1,
+                ackMode: AckMode.MANUAL,
+            });
+            await expect(adapter.consume(connectionConfig, 'orders', {
+                count: 1,
+                ackMode: AckMode.MANUAL,
+            })).resolves.toEqual([]);
+            await expect(adapter.ack(connectionConfig, message?.deliveryTag ?? ''))
+                .resolves.toBeUndefined();
+        } finally {
+            Object.assign(QUEUE, { MAX_PENDING_MESSAGES: originalLimit });
+            await adapter.destroy();
+        }
+
+        expect(send.mock.calls.filter(([command]) =>
+            command instanceof ReceiveMessageCommand)).toHaveLength(1);
     });
 });
