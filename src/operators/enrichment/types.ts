@@ -17,9 +17,11 @@ export interface LookupOperatorConfig extends BaseOperatorConfig {
 export interface HttpLookupOperatorConfig extends BaseOperatorConfig {
     /** HTTP endpoint URL. Supports {{field}} placeholders for dynamic URLs */
     readonly url: string;
+    /** Saved HTTP connection that binds credentials and redirects to one origin */
+    readonly connectionCode?: string;
     /** HTTP method (GET or POST) */
     readonly method?: 'GET' | 'POST';
-    /** Field path to use as lookup key for caching */
+    /** Optional record value included in the opaque full-request cache identity */
     readonly keyField?: string;
     /** Target field to store the response data */
     readonly target: string;
@@ -31,7 +33,7 @@ export interface HttpLookupOperatorConfig extends BaseOperatorConfig {
     readonly timeoutMs?: number;
     /** Cache TTL in seconds (default: 300). Set to 0 to disable caching */
     readonly cacheTtlSec?: number;
-    /** HTTP headers to send (static) */
+    /** Non-sensitive static headers. Authentication and credential headers must use Secret Codes. */
     readonly headers?: Record<string, string>;
     /** Secret code for Bearer token authentication */
     readonly bearerTokenSecretCode?: string;

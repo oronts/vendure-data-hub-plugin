@@ -3,17 +3,25 @@ import { getNestedValue, setNestedValue, hasNestedValue, deepClone } from '../he
 import { HttpLookupOperatorConfig } from './types';
 // Import directly from individual modules to avoid circular dependency with constants/index.ts
 // which imports ../operators (this module's parent)
-import { INTERNAL_TIMINGS, SAFE_EVALUATOR, CIRCUIT_BREAKER, SINK, HTTP_LOOKUP, HTTP_STATUS } from '../../constants/defaults';
+import { INTERNAL_TIMINGS, SAFE_EVALUATOR, CIRCUIT_BREAKER, SINK, HTTP_LOOKUP, HTTP_STATUS, OUTBOUND_RESPONSE_LIMITS } from '../../constants/defaults';
 import { TIME_UNITS } from '../../../shared/constants';
-import { HTTP_HEADERS, AUTH_SCHEMES, CONTENT_TYPES } from '../../constants/services';
+import { CONTENT_TYPES } from '../../constants/services';
 import { CircuitState, HttpMethod } from '../../constants/enums';
 import { validateUrlSafety } from '../../utils/url-security.utils';
+import { secureFetch } from '../../utils/secure-fetch.utils';
+import { readResponseJson, readResponseText } from '../../utils/secure-response-body.utils';
 import { sleep, calculateSimpleBackoff } from '../../utils/retry.utils';
 import { ensureError } from '../../utils/error.utils';
+import {
+    createHttpLookupCacheKey,
+    HttpLookupRuntimeContext,
+    PreparedHttpLookupSecurity,
+    prepareHttpLookupSecurity,
+} from './http-lookup-security';
 
 /**
  * In-memory cache for HTTP lookup responses
- * Key: cache key (URL or keyField value)
+ * Key: opaque HMAC of the complete request, execution namespace, and credentials
  * Value: { data, expiresAt }
  */
 interface CacheEntry {
@@ -304,15 +312,12 @@ function buildUrl(urlTemplate: string, record: JsonObject): string {
  * - Automatic retries with exponential backoff
  * - Configurable 404 handling
  */
-export async function applyHttpLookup(
+async function applyPreparedHttpLookup(
     record: JsonObject,
     config: HttpLookupOperatorConfig,
-    secretResolver?: {
-        get: (code: string) => Promise<string | undefined>;
-    },
+    requestSecurity: PreparedHttpLookupSecurity,
 ): Promise<{ record: JsonObject; error?: string; skipped?: boolean }> {
     const {
-        url: urlTemplate,
         method = 'GET',
         keyField,
         target,
@@ -320,11 +325,6 @@ export async function applyHttpLookup(
         default: defaultValue,
         timeoutMs = SAFE_EVALUATOR.DEFAULT_TIMEOUT_MS,
         cacheTtlSec = HTTP_LOOKUP.DEFAULT_CACHE_TTL_SEC,
-        headers: staticHeaders = {},
-        bearerTokenSecretCode,
-        apiKeySecretCode,
-        apiKeyHeader = HTTP_LOOKUP.DEFAULT_API_KEY_HEADER,
-        basicAuthSecretCode,
         bodyField,
         body: staticBody,
         skipOn404 = false,
@@ -334,9 +334,17 @@ export async function applyHttpLookup(
     } = config;
 
     const result = deepClone(record);
+    let requestBody: string | undefined;
+    if (method === HttpMethod.POST) {
+        if (bodyField) {
+            requestBody = JSON.stringify(getNestedValue(record, bodyField));
+        } else if (staticBody !== undefined) {
+            requestBody = JSON.stringify(staticBody);
+        }
+    }
 
     // Build URL with placeholders
-    const url = buildUrl(urlTemplate, record);
+    const url = buildUrl(requestSecurity.urlTemplate, record);
     if (!url) {
         if (failOnError) {
             return { record: result, error: 'Failed to build URL from template' };
@@ -374,10 +382,17 @@ export async function applyHttpLookup(
         return { record: result };
     }
 
-    // Generate cache key
-    const cacheKey = keyField
-        ? `${urlTemplate}:${String(getNestedValue(record, keyField) ?? '')}`
-        : url;
+    const cacheKey = createHttpLookupCacheKey({
+        body: requestBody,
+        cacheNamespace: requestSecurity.cacheNamespace,
+        headers: requestSecurity.headers,
+        keyFieldValue: keyField
+            ? String(getNestedValue(record, keyField) ?? '')
+            : undefined,
+        method,
+        responsePath,
+        url,
+    });
 
     // Check cache
     if (cacheTtlSec > 0) {
@@ -395,56 +410,16 @@ export async function applyHttpLookup(
         // If rate limit check fails (e.g., invalid URL), continue without rate limiting
     }
 
-    // Build headers
-    const headers: Record<string, string> = {
-        [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON,
-        ...staticHeaders,
-    };
-
-    // Add authentication
-    if (bearerTokenSecretCode && secretResolver) {
-        const token = await secretResolver.get(bearerTokenSecretCode);
-        if (token) {
-            headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BEARER} ${token}`;
-        }
-    } else if (apiKeySecretCode && secretResolver) {
-        const apiKey = await secretResolver.get(apiKeySecretCode);
-        if (apiKey) {
-            headers[apiKeyHeader] = apiKey;
-        }
-    } else if (basicAuthSecretCode && secretResolver) {
-        const credentials = await secretResolver.get(basicAuthSecretCode);
-        if (credentials) {
-            headers[HTTP_HEADERS.AUTHORIZATION] = `${AUTH_SCHEMES.BASIC} ${Buffer.from(credentials).toString('base64')}`;
-        }
-    }
-
-    // Build request body for POST
-    let requestBody: string | undefined;
-    if (method === HttpMethod.POST) {
-        if (bodyField) {
-            const bodyValue = getNestedValue(record, bodyField);
-            requestBody = JSON.stringify(bodyValue);
-        } else if (staticBody !== undefined) {
-            requestBody = JSON.stringify(staticBody);
-        }
-    }
-
     // Execute request with retries
     let lastError: Error | undefined;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-            const response = await fetch(url, {
+            const response = await secureFetch(url, {
                 method,
-                headers,
+                headers: requestSecurity.headers,
                 body: requestBody,
-                signal: controller.signal,
-            });
-
-            clearTimeout(timeoutId);
+                signal: AbortSignal.timeout(timeoutMs),
+            }, undefined, requestSecurity.fetchPolicy);
 
             // Handle 404 (not a failure for circuit breaker)
             if (response.status === HTTP_STATUS.NOT_FOUND) {
@@ -465,9 +440,15 @@ export async function applyHttpLookup(
             let responseData: JsonValue;
             const contentType = response.headers.get('content-type') ?? '';
             if (contentType.includes(CONTENT_TYPES.JSON)) {
-                responseData = await response.json() as JsonValue;
+                responseData = await readResponseJson<JsonValue>(response, {
+                    maxBytes: OUTBOUND_RESPONSE_LIMITS.CONNECTOR_EXTRACT_BYTES,
+                    context: 'HTTP lookup JSON response',
+                });
             } else {
-                responseData = await response.text();
+                responseData = await readResponseText(response, {
+                    maxBytes: OUTBOUND_RESPONSE_LIMITS.CONNECTOR_EXTRACT_BYTES,
+                    context: 'HTTP lookup text response',
+                });
             }
 
             // Extract from response path if specified
@@ -502,8 +483,11 @@ export async function applyHttpLookup(
         } catch (error) {
             lastError = ensureError(error);
 
-            // Don't retry on abort (timeout) or non-retryable errors
-            if (error instanceof Error && error.name === 'AbortError') {
+            // AbortSignal.timeout uses TimeoutError; explicit abort controllers use AbortError.
+            if (
+                error instanceof Error &&
+                (error.name === 'AbortError' || error.name === 'TimeoutError')
+            ) {
                 lastError = new Error(`Request timeout after ${timeoutMs}ms`);
                 recordCircuitFailure(endpointBase);
                 break;
@@ -530,16 +514,24 @@ export async function applyHttpLookup(
     return { record: result };
 }
 
+export async function applyHttpLookup(
+    record: JsonObject,
+    config: HttpLookupOperatorConfig,
+    runtime: HttpLookupRuntimeContext = {},
+): Promise<{ record: JsonObject; error?: string; skipped?: boolean }> {
+    const requestSecurity = await prepareHttpLookupSecurity(config, runtime);
+    return applyPreparedHttpLookup(record, config, requestSecurity);
+}
+
 /**
  * Batch HTTP lookup for multiple records (when endpoint supports batch)
  */
 export async function applyHttpLookupBatch(
     records: readonly JsonObject[],
     config: HttpLookupOperatorConfig,
-    secretResolver?: {
-        get: (code: string) => Promise<string | undefined>;
-    },
+    runtime: HttpLookupRuntimeContext = {},
 ): Promise<{ records: JsonObject[]; errors: Array<{ record: JsonObject; message: string }> }> {
+    const requestSecurity = await prepareHttpLookupSecurity(config, runtime);
     const results: JsonObject[] = [];
     const errors: Array<{ record: JsonObject; message: string }> = [];
 
@@ -547,14 +539,18 @@ export async function applyHttpLookupBatch(
     const batchSize = config.batchSize ?? HTTP_LOOKUP.DEFAULT_BATCH_SIZE;
     for (let i = 0; i < records.length; i += batchSize) {
         const batch = records.slice(i, i + batchSize);
-        const promises = batch.map(record => applyHttpLookup(record, config, secretResolver));
+        const promises = batch.map(
+            record => applyPreparedHttpLookup(record, config, requestSecurity),
+        );
         const batchResults = await Promise.all(promises);
 
-        for (const { record, error } of batchResults) {
+        for (const { record, error, skipped } of batchResults) {
             if (error) {
                 errors.push({ record, message: error });
             }
-            results.push(record);
+            if (!skipped) {
+                results.push(record);
+            }
         }
     }
 
@@ -571,11 +567,8 @@ export function clearHttpLookupCache(): void {
 /**
  * Get cache statistics (useful for monitoring)
  */
-export function getHttpLookupCacheStats(): { size: number; keys: string[] } {
-    return {
-        size: httpLookupCache.size,
-        keys: Array.from(httpLookupCache.keys()),
-    };
+export function getHttpLookupCacheStats(): { size: number } {
+    return { size: httpLookupCache.size };
 }
 
 export function applyLookup(

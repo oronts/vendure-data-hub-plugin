@@ -4,6 +4,7 @@
 
 import { JsonValue, JsonObject } from '../../types/index';
 import { OperatorContext } from './adapter-types';
+import type { ConnectionResolver } from './connection-types';
 
 export {
     FilterCondition,
@@ -83,6 +84,7 @@ export interface OperatorSecretResolver {
 export interface AdapterOperatorHelpers {
     readonly ctx: OperatorContext;
     readonly secrets?: OperatorSecretResolver;
+    readonly connections?: ConnectionResolver;
     /** Persisted state scoped to the current pipeline step and operator. */
     readonly checkpoint?: JsonObject;
     /** Replace the persisted state for the current pipeline step and operator. */

@@ -18,7 +18,9 @@ import { OperatorAdapter, SingleRecordOperator, AdapterOperatorHelpers, Operator
 import { getOperatorRuntime, getCustomOperatorRuntime } from '../../operators/operator-runtime-registry';
 import { OperatorSecretResolver } from '../../sdk/types/transform-types';
 import { SecretService } from '../../services/config/secret.service';
+import { ConnectionService } from '../../services/config/connection.service';
 import { LoaderRegistryService } from '../../loaders/registry';
+import { createConnectionsAdapter } from './context-adapters';
 import { applyHttpLookupBatch } from '../../operators/enrichment/helpers';
 import type { HttpLookupOperatorConfig } from '../../operators/enrichment/types';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
@@ -62,6 +64,7 @@ export class TransformExecutor {
         @Optional() private registry?: DataHubRegistryService,
         @Optional() private secretService?: SecretService,
         @Optional() private loaderRegistry?: LoaderRegistryService,
+        @Optional() private connectionService?: ConnectionService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.TRANSFORM_EXECUTOR);
     }
@@ -351,6 +354,9 @@ export class TransformExecutor {
         return {
             ctx: operatorCtx,
             secrets: this.createSecretResolver(ctx),
+            ...(this.connectionService
+                ? { connections: createConnectionsAdapter(this.connectionService, ctx) }
+                : {}),
             checkpoint: asJsonObject(operatorCheckpoints[operatorStateKey]),
             setCheckpoint: checkpoint => {
                 if (!executorCtx.cpData) return;
@@ -679,6 +685,7 @@ export class TransformExecutor {
 
         const httpConfig: HttpLookupOperatorConfig = {
             url,
+            connectionCode: cfg.connectionCode as string | undefined,
             method: (cfg.method as 'GET' | 'POST') ?? 'GET',
             keyField: cfg.keyField as string | undefined,
             target: (cfg.target as string) ?? 'enrichment',
@@ -705,7 +712,12 @@ export class TransformExecutor {
         const { records, errors } = await applyHttpLookupBatch(
             input,
             httpConfig,
-            secretResolver,
+            {
+                secrets: secretResolver,
+                connections: this.connectionService
+                    ? createConnectionsAdapter(this.connectionService, ctx)
+                    : undefined,
+            },
         );
 
         if (errors.length > 0) {

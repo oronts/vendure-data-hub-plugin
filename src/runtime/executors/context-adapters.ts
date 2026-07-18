@@ -24,21 +24,21 @@ export function createSecretsAdapter(secretService: SecretService, ctx: RequestC
 export function createConnectionsAdapter(connectionService: ConnectionService, ctx: RequestContext): ConnectionResolver {
     return {
         get: async (code: string) => {
-            const conn = await connectionService.getByCode(ctx, code);
+            const conn = await connectionService.getRuntimeByCode(ctx, code);
             if (!conn) return undefined;
             return {
                 code: conn.code,
                 type: conn.type as ConnectionType,
-                ...conn.config,
+                config: conn.config,
             } as ConnectionConfig;
         },
         getRequired: async (code: string) => {
-            const conn = await connectionService.getByCode(ctx, code);
+            const conn = await connectionService.getRuntimeByCode(ctx, code);
             if (!conn) throw new Error(`Connection not found: ${code}`);
             return {
                 code: conn.code,
                 type: conn.type as ConnectionType,
-                ...conn.config,
+                config: conn.config,
             } as ConnectionConfig;
         },
     };
