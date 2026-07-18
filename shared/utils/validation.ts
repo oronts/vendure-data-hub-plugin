@@ -33,6 +33,7 @@ export const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const URL_PATTERN = /^https?:\/\/[^\s/$.?#].[^\s]*$/i;
 export const CODE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 export const PIPELINE_CODE_PATTERN = /^[a-z0-9-]+$/;
+export const ENV_VARIABLE_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 
 function isNil(value: unknown): value is null | undefined {
     return value === null || value === undefined;

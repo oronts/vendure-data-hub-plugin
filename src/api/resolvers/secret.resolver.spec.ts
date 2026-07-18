@@ -7,6 +7,7 @@ import {
 import { SecretProvider } from '../../constants/enums';
 import { DataHubSecret } from '../../entities/config';
 import { SecretService } from '../../services/config/secret.service';
+import { ResourceInUseError } from '../../services/config/resource-reference.service';
 import { DataHubLoggerFactory } from '../../services/logger';
 import { DataHubSecretAdminResolver } from './secret.resolver';
 
@@ -41,10 +42,14 @@ function createFixture() {
     const loggerFactory = {
         createLogger: vi.fn(() => logger),
     };
+    const resourceReferences = {
+        assertSecretMutable: vi.fn(),
+    };
     const resolver = new DataHubSecretAdminResolver(
         connection as unknown as TransactionalConnection,
         {} as ListQueryBuilder,
         secretService as unknown as SecretService,
+        resourceReferences as never,
         loggerFactory as unknown as DataHubLoggerFactory,
     );
 
@@ -53,6 +58,8 @@ function createFixture() {
         secret,
         repository,
         secretService,
+        resourceReferences,
+        logger,
     };
 }
 
@@ -245,5 +252,73 @@ describe('DataHubSecretAdminResolver updates', () => {
         })).rejects.toThrow(/cannot be updated in the database/);
 
         expect(fixture.repository.save).not.toHaveBeenCalled();
+    });
+
+    it('blocks renaming a secret that has persisted references', async () => {
+        const fixture = createFixture();
+        fixture.resourceReferences.assertSecretMutable.mockRejectedValue(
+            new ResourceInUseError('Secret is used by pipeline supplier-import'),
+        );
+
+        await expect(fixture.resolver.updateDataHubSecret(ctx, {
+            input: {
+                id: fixture.secret.id,
+                code: 'renamed-token',
+            },
+        })).rejects.toThrow('Secret is used by pipeline supplier-import');
+
+        expect(fixture.repository.save).not.toHaveBeenCalled();
+    });
+
+    it('blocks deleting a secret that has persisted references', async () => {
+        const fixture = createFixture();
+        fixture.resourceReferences.assertSecretMutable.mockRejectedValue(
+            new ResourceInUseError('Secret is used by pipeline supplier-import'),
+        );
+
+        const result = await fixture.resolver.deleteDataHubSecret(ctx, {
+            id: fixture.secret.id,
+        });
+
+        expect(result).toEqual({
+            result: 'NOT_DELETED',
+            message: 'Secret is used by pipeline supplier-import',
+        });
+        expect(fixture.logger.error).not.toHaveBeenCalled();
+        expect(fixture.repository.remove).not.toHaveBeenCalled();
+    });
+
+    it('hides internal deletion errors and records the failure', async () => {
+        const fixture = createFixture();
+        fixture.resourceReferences.assertSecretMutable.mockRejectedValue(
+            new Error('database unavailable'),
+        );
+
+        const result = await fixture.resolver.deleteDataHubSecret(ctx, {
+            id: fixture.secret.id,
+        });
+
+        expect(result).toEqual({
+            result: 'NOT_DELETED',
+            message: 'Failed to delete secret due to an internal error',
+        });
+        expect(fixture.logger.error).toHaveBeenCalledWith(
+            'Failed to delete secret: database unavailable',
+        );
+        expect(fixture.repository.remove).not.toHaveBeenCalled();
+    });
+
+    it('returns an actionable deletion response when the secret does not exist', async () => {
+        const fixture = createFixture();
+        fixture.repository.findOne.mockResolvedValueOnce(null as never);
+
+        const result = await fixture.resolver.deleteDataHubSecret(ctx, { id: 999 });
+
+        expect(result).toEqual({
+            result: 'NOT_DELETED',
+            message: 'Secret not found',
+        });
+        expect(fixture.resourceReferences.assertSecretMutable).not.toHaveBeenCalled();
+        expect(fixture.repository.remove).not.toHaveBeenCalled();
     });
 });

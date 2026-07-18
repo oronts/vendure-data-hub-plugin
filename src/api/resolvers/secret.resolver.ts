@@ -24,6 +24,10 @@ import { getErrorMessage } from '../../utils/error.utils';
 import { isEncrypted } from '../../utils/encryption.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { SecretService } from '../../services/config/secret.service';
+import {
+    ResourceInUseError,
+    ResourceReferenceService,
+} from '../../services/config/resource-reference.service';
 
 const SUPPORTED_SECRET_PROVIDERS = [
     SecretProvider.INLINE,
@@ -112,6 +116,7 @@ export class DataHubSecretAdminResolver {
         private connection: TransactionalConnection,
         private listQueryBuilder: ListQueryBuilder,
         private secretService: SecretService,
+        private resourceReferences: ResourceReferenceService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.SECRET_RESOLVER);
@@ -211,6 +216,9 @@ export class DataHubSecretAdminResolver {
         );
         const nextCode = args.input.code ?? entity.code;
         assertValidSecretCode(nextCode);
+        if (nextCode !== entity.code) {
+            await this.resourceReferences.assertSecretMutable(ctx, entity.code);
+        }
         if (this.secretService.isConfigSecret(nextCode)) {
             throw new Error(
                 `Secret code "${nextCode}" is managed by code-first configuration and cannot be updated in the database`,
@@ -273,21 +281,30 @@ export class DataHubSecretAdminResolver {
         @Args() args: { id: ID },
     ): Promise<DeletionResponse> {
         const repo = this.connection.getRepository(ctx, DataHubSecret);
-        const entity = await this.connection.getEntityOrThrow(
-            ctx,
-            DataHubSecret,
-            args.id,
-        );
+        const entity = await repo.findOne({ where: { id: args.id } });
+        if (!entity) {
+            return {
+                result: DeletionResult.NOT_DELETED,
+                message: RESOLVER_ERROR_MESSAGES.SECRET_NOT_FOUND,
+            };
+        }
         try {
+            await this.resourceReferences.assertSecretMutable(ctx, entity.code);
             await repo.remove(entity);
             return { result: DeletionResult.DELETED };
         } catch (error) {
+            if (error instanceof ResourceInUseError) {
+                return {
+                    result: DeletionResult.NOT_DELETED,
+                    message: error.message,
+                };
+            }
             this.logger.error(
                 `Failed to delete secret: ${getErrorMessage(error)}`,
             );
             return {
                 result: DeletionResult.NOT_DELETED,
-                message: 'Failed to delete secret due to an internal error',
+                message: RESOLVER_ERROR_MESSAGES.SECRET_DELETE_FAILED,
             };
         }
     }
