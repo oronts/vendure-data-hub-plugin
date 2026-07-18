@@ -101,6 +101,37 @@ function validateStringConstraints(
     }
 }
 
+function validateArrayConstraints(
+    stepKey: string,
+    field: StepConfigSchemaField,
+    value: readonly JsonValue[],
+    issues: PipelineDefinitionIssue[],
+): void {
+    const validation = field.validation;
+    if (!validation) {
+        return;
+    }
+
+    if (validation.minLength !== undefined && value.length < validation.minLength) {
+        addConstraintIssue(
+            issues,
+            stepKey,
+            field,
+            'field-too-short',
+            `Step "${stepKey}": field "${field.key}" must contain at least ${validation.minLength} items`,
+        );
+    }
+    if (validation.maxLength !== undefined && value.length > validation.maxLength) {
+        addConstraintIssue(
+            issues,
+            stepKey,
+            field,
+            'field-too-long',
+            `Step "${stepKey}": field "${field.key}" must contain at most ${validation.maxLength} items`,
+        );
+    }
+}
+
 export function validateFieldConstraints(
     stepKey: string,
     field: StepConfigSchemaField,
@@ -113,5 +144,9 @@ export function validateFieldConstraints(
     }
     if (typeof value === 'string') {
         validateStringConstraints(stepKey, field, value, issues);
+        return;
+    }
+    if (Array.isArray(value)) {
+        validateArrayConstraints(stepKey, field, value, issues);
     }
 }

@@ -3,7 +3,7 @@ import type { PipelineDefinition, WebhookHookAction } from '../../types';
 import {
     assertWebhookHookSecurity,
     sanitizePipelineDefinitionForOutput,
-    validateWebhookHooks,
+    validateHooks,
 } from './hook-security';
 
 const SAFE_ACTION: WebhookHookAction = {
@@ -46,7 +46,7 @@ describe('webhook hook security', () => {
         } as PipelineDefinition;
         const issues: Array<{ message: string; errorCode?: string }> = [];
 
-        validateWebhookHooks(definition, issues);
+        validateHooks(definition, issues);
 
         expect(issues).toEqual([
             expect.objectContaining({
@@ -54,6 +54,85 @@ describe('webhook hook security', () => {
                 message: expect.stringContaining('headerSecretCodes'),
             }),
         ]);
+    });
+
+    it('rejects malformed trigger-pipeline and script references', () => {
+        const definition = {
+            version: 1,
+            steps: [],
+            hooks: {
+                AFTER_LOAD: [
+                    {
+                        type: 'TRIGGER_PIPELINE',
+                        pipelineCode: ' invalid ',
+                        triggerKey: '',
+                    },
+                    {
+                        type: 'SCRIPT',
+                        scriptName: '../unsafe',
+                    },
+                ],
+            },
+        } as PipelineDefinition;
+        const issues: Array<{ message: string; errorCode?: string }> = [];
+
+        validateHooks(definition, issues);
+
+        expect(issues).toHaveLength(2);
+        expect(issues.every(issue => issue.errorCode === 'hook-action-invalid')).toBe(true);
+    });
+
+    it('accepts complete valid action shapes at supported stages', () => {
+        const definition = {
+            version: 1,
+            steps: [],
+            hooks: {
+                AFTER_LOAD: [
+                    { type: 'EMIT', event: 'catalog.loaded', failOnError: true },
+                    { type: 'LOG', level: 'INFO', message: 'Catalog loaded' },
+                    { type: 'INTERCEPTOR', code: 'return records;', timeout: 1000 },
+                    { type: 'SCRIPT', scriptName: 'normalize', args: { currency: 'EUR' } },
+                ],
+            },
+        } as PipelineDefinition;
+        const issues: Array<{ message: string; errorCode?: string }> = [];
+
+        validateHooks(definition, issues);
+
+        expect(issues).toEqual([]);
+    });
+
+    it('rejects unknown stages, malformed actions, and ignored lifecycle interceptors', () => {
+        const definition = {
+            version: 1,
+            steps: [],
+            hooks: {
+                AFTER_LODA: [{ type: 'LOG' }],
+                AFTER_LOAD: [
+                    null,
+                    { type: 'UNKNOWN' },
+                    { type: 'LOG', level: 'TRACE' },
+                    { type: 'EMIT', event: '' },
+                    { type: 'SCRIPT', scriptName: 'normalize', failOnError: 'yes' },
+                    { type: 'INTERCEPTOR', code: '' },
+                ],
+                PIPELINE_COMPLETED: [{ type: 'INTERCEPTOR', code: 'return records;' }],
+            },
+        } as unknown as PipelineDefinition;
+        const issues: Array<{ message: string; errorCode?: string }> = [];
+
+        expect(() => validateHooks(definition, issues)).not.toThrow();
+        expect(issues).toHaveLength(8);
+        expect(issues).toEqual(expect.arrayContaining([
+            expect.objectContaining({ errorCode: 'hook-stage-invalid' }),
+            expect.objectContaining({ message: expect.stringContaining('must be an object') }),
+            expect.objectContaining({ message: expect.stringContaining('Unsupported hook action type') }),
+            expect.objectContaining({ message: expect.stringContaining('LOG level') }),
+            expect.objectContaining({ message: expect.stringContaining('EMIT event') }),
+            expect.objectContaining({ message: expect.stringContaining('failOnError') }),
+            expect.objectContaining({ message: expect.stringContaining('code must be a non-empty string') }),
+            expect.objectContaining({ message: expect.stringContaining('only at data processing stages') }),
+        ]));
     });
 
     it('removes legacy replay credentials from definitions returned by the API', () => {

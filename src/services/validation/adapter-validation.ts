@@ -20,6 +20,22 @@ import { getErrorMessage } from '../../utils/error.utils';
 
 export type { AdapterType } from '../../../shared/types';
 
+export function addAdapterDeprecationWarning(
+    stepKey: string,
+    adapter: AdapterDefinition,
+    warnings: PipelineDefinitionIssue[],
+    usage = 'adapter',
+): void {
+    if (adapter.deprecated !== true) {
+        return;
+    }
+    warnings.push({
+        message: `Step "${stepKey}": ${usage} "${adapter.code}" is deprecated: ${adapter.deprecatedMessage}`,
+        stepKey,
+        errorCode: 'deprecated-adapter',
+    });
+}
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -112,6 +128,8 @@ export function validateAdapterFields(
         return;
     }
 
+    validateBuiltInAdapterFields(stepKey, cfg, adapter, issues);
+
     for (const field of adapter.schema.fields) {
         const fieldValue = getNestedValue(cfg, field.key) as JsonValue | undefined;
         validateRequiredFields(stepKey, field, fieldValue, issues);
@@ -122,6 +140,69 @@ export function validateAdapterFields(
                 validateFieldConstraints(stepKey, field, fieldValue, issues);
             }
         }
+    }
+
+    if (adapter.code === 'httpLookup') {
+        validateHttpLookupConnectionContract(stepKey, cfg, issues);
+    }
+}
+
+export function validateHttpLookupConnectionContract(
+    stepKey: string,
+    cfg: AdapterStepConfig,
+    issues: PipelineDefinitionIssue[],
+): void {
+    const authenticationFields = [
+        'bearerTokenSecretCode',
+        'apiKeySecretCode',
+        'basicAuthSecretCode',
+    ] as const;
+    const usesSecretAuthentication = authenticationFields.some(
+        field => cfg[field] !== undefined,
+    );
+    if (!usesSecretAuthentication) return;
+    if (
+        typeof cfg.connectionCode === 'string'
+        && cfg.connectionCode.trim().length > 0
+        && cfg.connectionCode === cfg.connectionCode.trim()
+    ) {
+        return;
+    }
+
+    issues.push({
+        message: `Step "${stepKey}": authenticated HTTP lookup requires connectionCode to bind credentials to an origin`,
+        stepKey,
+        field: 'connectionCode',
+        errorCode: 'missing-http-lookup-connection',
+    });
+}
+
+function validateBuiltInAdapterFields(
+    stepKey: string,
+    cfg: AdapterStepConfig,
+    adapter: AdapterDefinition & { schema: StepConfigSchema },
+    issues: PipelineDefinitionIssue[],
+): void {
+    if (
+        adapter.builtIn !== true
+        || (adapter.type !== AdapterTypeEnum.LOADER && adapter.type !== AdapterTypeEnum.OPERATOR)
+    ) {
+        return;
+    }
+
+    const allowedFields = new Set<string>(['adapterCode']);
+    for (const field of adapter.schema.fields) {
+        allowedFields.add(field.key.split('.')[0]);
+    }
+
+    for (const field of Object.keys(cfg)) {
+        if (allowedFields.has(field)) continue;
+        issues.push({
+            message: `Step "${stepKey}": field "${field}" is not supported by built-in ${adapter.type.toLowerCase()} "${adapter.code}"`,
+            stepKey,
+            field,
+            errorCode: 'unknown-adapter-field',
+        });
     }
 }
 
@@ -198,6 +279,26 @@ export function validateSinkConfigContract(
     }
 }
 
+export function validateLoaderConfigContract(
+    stepKey: string,
+    adapterCode: string,
+    cfg: AdapterStepConfig,
+    issues: PipelineDefinitionIssue[],
+): void {
+    if (adapterCode !== 'orderTransition') return;
+
+    const hasStaticState = typeof cfg.state === 'string' && cfg.state.trim().length > 0;
+    const hasStateField = typeof cfg.stateField === 'string' && cfg.stateField.trim().length > 0;
+    if (hasStaticState || hasStateField) return;
+
+    issues.push({
+        message: `Step "${stepKey}": orderTransition requires "state" or "stateField"`,
+        stepKey,
+        field: 'state',
+        errorCode: 'missing-order-transition-state',
+    });
+}
+
 /**
  * Validates that required fields are present.
  */
@@ -207,7 +308,8 @@ export function validateRequiredFields(
     value: JsonValue | undefined,
     issues: PipelineDefinitionIssue[],
 ): void {
-    if (field.required && (value === undefined || value === null || value === '')) {
+    const emptyStringIsValid = value === '' && field.defaultValue === '';
+    if (field.required && !emptyStringIsValid && (value === undefined || value === null || value === '')) {
         issues.push({
             message: `Step "${stepKey}": missing required field "${field.key}"`,
             stepKey,
@@ -231,7 +333,7 @@ export function validateFieldTypes(
         string: () => typeof value === 'string',
         number: () => typeof value === 'number' && Number.isFinite(value),
         boolean: () => typeof value === 'boolean',
-        json: () => typeof value === 'object' && value !== null,
+        json: () => isJsonValue(value),
     };
 
     const validator = typeValidators[fieldType];
@@ -244,6 +346,51 @@ export function validateFieldTypes(
         });
         return false;
     }
+    return true;
+}
+
+function isJsonValue(root: unknown): boolean {
+    const pending: Array<{ value: unknown; exiting: boolean }> = [{
+        value: root,
+        exiting: false,
+    }];
+    const activePath = new Set<object>();
+
+    while (pending.length > 0) {
+        const frame = pending.pop();
+        if (!frame) continue;
+        const { value } = frame;
+        if (frame.exiting) {
+            activePath.delete(value as object);
+            continue;
+        }
+        if (
+            value === null
+            || typeof value === 'string'
+            || typeof value === 'boolean'
+        ) {
+            continue;
+        }
+        if (typeof value === 'number') {
+            if (!Number.isFinite(value)) return false;
+            continue;
+        }
+        if (typeof value !== 'object' || activePath.has(value)) {
+            return false;
+        }
+
+        const prototype = Object.getPrototypeOf(value);
+        if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+            return false;
+        }
+        activePath.add(value);
+        pending.push({ value, exiting: true });
+        const children = Object.values(value);
+        for (let index = children.length - 1; index >= 0; index--) {
+            pending.push({ value: children[index], exiting: false });
+        }
+    }
+
     return true;
 }
 

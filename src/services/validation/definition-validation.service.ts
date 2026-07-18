@@ -7,9 +7,14 @@ import { Injectable } from '@nestjs/common';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { In } from 'typeorm';
 import { PipelineDefinition, StepType } from '../../types/index';
-import { AdapterType as AdapterTypeEnum, StepType as StepTypeEnum } from '../../constants/enums';
+import {
+    AdapterType as AdapterTypeEnum,
+    PipelineStatus,
+    RevisionType,
+    StepType as StepTypeEnum,
+} from '../../constants/enums';
 import { LOGGER_CONTEXTS, STEP_TYPE_TO_ADAPTER_TYPE } from '../../constants/index';
-import { Pipeline } from '../../entities/pipeline';
+import { Pipeline, PipelineRevision } from '../../entities/pipeline';
 import { DataHubRegistryService } from '../../sdk/registry.service';
 import { validatePipelineDefinition } from '../../validation/pipeline-definition.validator';
 import { PipelineDefinitionError, PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
@@ -23,15 +28,20 @@ import {
     validateAdapterConfig,
     validateAdapterFields,
     validateExtractorConfigContract,
+    validateLoaderConfigContract,
     validateSinkConfigContract,
     validateGraphQLExtractor,
+    validateHttpLookupConnectionContract,
+    addAdapterDeprecationWarning,
     isUsingBuiltInEnrichment,
     isGraphQLExtractor,
 } from './adapter-validation';
 import { validateTransformOperators, TransformStepConfig } from './step-validation';
 import { validateCapabilities, validateContext } from './context-validation';
-import { validateWebhookHooks } from './hook-security';
+import { validateHooks } from './hook-security';
 import { parseInlineExportDestination } from '../destinations/inline-export-destination';
+import { ResourceReferenceService } from '../config/resource-reference.service';
+import { HookScriptRegistryService } from '../events/hook-script-registry.service';
 
 // ============================================================================
 // Type Definitions
@@ -70,6 +80,8 @@ export class DefinitionValidationService {
     constructor(
         private registry: DataHubRegistryService,
         private connection: TransactionalConnection,
+        private resourceReferences: ResourceReferenceService,
+        private hookScripts: HookScriptRegistryService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.DEFINITION_VALIDATION_SERVICE);
@@ -105,7 +117,7 @@ export class DefinitionValidationService {
         this.validateAdapters(definition, issues, warnings);
         validateCapabilities(definition, issues);
         validateContext(definition, issues);
-        validateWebhookHooks(definition, issues);
+        validateHooks(definition, issues);
 
         return { isValid: issues.length === 0, issues, warnings, level };
     }
@@ -122,6 +134,8 @@ export class DefinitionValidationService {
         }
 
         await this.validateDependsOnAsync(definition, result, ctx);
+        await this.validateResourceReferencesAsync(definition, result, ctx);
+        await this.validateHookReferencesAsync(definition, result, ctx);
 
         return {
             isValid: result.issues.length === 0,
@@ -204,10 +218,175 @@ export class DefinitionValidationService {
         }
     }
 
+    private async validateResourceReferencesAsync(
+        definition: PipelineDefinition,
+        result: DefinitionValidationResult,
+        ctx?: RequestContext,
+    ): Promise<void> {
+        try {
+            const missing = await this.resourceReferences
+                .findMissingDefinitionReferences(ctx, definition);
+            for (const code of missing.connections) {
+                result.issues.push({
+                    message: `Pipeline references unknown connection code "${code}"`,
+                    errorCode: 'connection-unknown-code',
+                });
+            }
+            for (const code of missing.secrets) {
+                result.issues.push({
+                    message: `Pipeline references unknown secret code "${code}"`,
+                    errorCode: 'secret-unknown-code',
+                });
+            }
+        } catch (error: unknown) {
+            this.logger.warn('Failed to validate pipeline resource references', {
+                error: getErrorMessage(error),
+            });
+            result.warnings.push({
+                message: 'Could not verify pipeline resource references',
+                errorCode: 'resource-reference-check-failed',
+            });
+        }
+    }
+
+    private async validateHookReferencesAsync(
+        definition: PipelineDefinition,
+        result: DefinitionValidationResult,
+        ctx?: RequestContext,
+    ): Promise<void> {
+        const triggerTargets = new Map<string, Set<string>>();
+        const scriptNames = new Set<string>();
+        for (const actions of Object.values(definition.hooks ?? {})) {
+            if (!Array.isArray(actions)) continue;
+            for (const action of actions) {
+                if (action.type === 'TRIGGER_PIPELINE') {
+                    if (
+                        typeof action.pipelineCode === 'string'
+                        && typeof action.triggerKey === 'string'
+                    ) {
+                        const triggerKeys = triggerTargets.get(action.pipelineCode) ?? new Set<string>();
+                        triggerKeys.add(action.triggerKey);
+                        triggerTargets.set(action.pipelineCode, triggerKeys);
+                    }
+                } else if (action.type === 'SCRIPT') {
+                    if (typeof action.scriptName === 'string') {
+                        scriptNames.add(action.scriptName);
+                    }
+                }
+            }
+        }
+
+        for (const scriptName of scriptNames) {
+            if (!this.hookScripts.has(scriptName)) {
+                result.issues.push({
+                    message: `Hook references unregistered script "${scriptName}"`,
+                    errorCode: 'hook-script-unknown',
+                });
+            }
+        }
+        if (triggerTargets.size === 0) {
+            return;
+        }
+
+        try {
+            const repository = ctx
+                ? this.connection.getRepository(ctx, Pipeline)
+                : this.connection.rawConnection.getRepository(Pipeline);
+            const targets = await repository.find({
+                where: { code: In([...triggerTargets.keys()]) },
+                select: {
+                    id: true,
+                    code: true,
+                    currentRevisionId: true,
+                    enabled: true,
+                    status: true,
+                },
+            });
+            const targetsByCode = new Map(targets.map(target => [target.code, target]));
+            const activeRevisionIds = targets
+                .map(target => target.currentRevisionId)
+                .filter((id): id is NonNullable<typeof id> => id != null);
+            const revisions = activeRevisionIds.length === 0
+                ? []
+                : await (ctx
+                    ? this.connection.getRepository(ctx, PipelineRevision)
+                    : this.connection.rawConnection.getRepository(PipelineRevision)
+                ).find({
+                    where: {
+                        id: In(activeRevisionIds),
+                        type: RevisionType.PUBLISHED,
+                    },
+                    select: { id: true, definition: true },
+                });
+            const revisionsById = new Map(
+                revisions.map(revision => [String(revision.id), revision.definition]),
+            );
+
+            for (const [code, triggerKeys] of triggerTargets) {
+                const target = targetsByCode.get(code);
+                if (!target) {
+                    result.issues.push({
+                        message: `TRIGGER_PIPELINE hook references unknown pipeline code "${code}"`,
+                        errorCode: 'hook-pipeline-unknown',
+                    });
+                    continue;
+                } else if (
+                    target.status !== PipelineStatus.PUBLISHED
+                    || !target.enabled
+                    || target.currentRevisionId == null
+                ) {
+                    result.issues.push({
+                        message: `TRIGGER_PIPELINE hook target "${code}" is not an enabled published pipeline`,
+                        errorCode: 'hook-pipeline-not-runnable',
+                    });
+                    continue;
+                }
+
+                const targetDefinition = revisionsById.get(String(target.currentRevisionId));
+                if (!targetDefinition) {
+                    result.issues.push({
+                        message: `TRIGGER_PIPELINE hook target "${code}" has no active published revision`,
+                        errorCode: 'hook-pipeline-revision-missing',
+                    });
+                    continue;
+                }
+
+                for (const triggerKey of triggerKeys) {
+                    const triggerStep = targetDefinition.steps.find(step => step.key === triggerKey);
+                    if (
+                        !triggerStep
+                        || triggerStep.type !== StepTypeEnum.TRIGGER
+                        || triggerStep.disabled === true
+                    ) {
+                        result.issues.push({
+                            message: `TRIGGER_PIPELINE hook target "${code}" has no enabled trigger step "${triggerKey}"`,
+                            errorCode: 'hook-trigger-not-runnable',
+                        });
+                        continue;
+                    }
+                    if (!(targetDefinition.edges ?? []).some(edge => edge.from === triggerKey)) {
+                        result.issues.push({
+                            message: `TRIGGER_PIPELINE hook target "${code}" trigger "${triggerKey}" has no outgoing route`,
+                            errorCode: 'hook-trigger-no-route',
+                        });
+                    }
+                }
+            }
+        } catch (error: unknown) {
+            this.logger.warn('Failed to validate hook pipeline targets', {
+                error: getErrorMessage(error),
+            });
+            result.warnings.push({
+                message: 'Could not verify hook pipeline targets',
+                errorCode: 'hook-reference-check-failed',
+            });
+        }
+    }
+
     private validateAdapters(
         definition: PipelineDefinition,
         issues: PipelineDefinitionIssue[],
-        _warnings: PipelineDefinitionIssue[],
+        warnings: PipelineDefinitionIssue[],
     ): void {
         // Only validate adapter config for step types that use adapter-based dispatch.
         // Step types like TRIGGER, VALIDATE, ROUTE, and GATE use inline config
@@ -224,7 +403,7 @@ export class DefinitionValidationService {
         for (const step of definition.steps) {
             const type = step.type as StepType;
             const rawConfig = (step.config ?? {}) as AdapterStepConfig;
-            const cfg = step.adapterCode && !rawConfig.adapterCode
+            const cfg = step.adapterCode
                 ? { ...rawConfig, adapterCode: step.adapterCode }
                 : rawConfig;
             const adapterType = adapterTypeFor(type);
@@ -235,12 +414,21 @@ export class DefinitionValidationService {
 
             // Handle TRANSFORM steps with operators (special validation path)
             if (type === StepTypeEnum.TRANSFORM) {
-                validateTransformOperators(step.key, cfg as TransformStepConfig, this.registry, issues);
+                validateTransformOperators(
+                    step.key,
+                    cfg as TransformStepConfig,
+                    this.registry,
+                    issues,
+                    warnings,
+                );
                 continue;
             }
 
             // ENRICH steps can use built-in config without an adapter
             if (isUsingBuiltInEnrichment(type, cfg)) {
+                if (cfg.sourceType === 'HTTP') {
+                    validateHttpLookupConnectionContract(step.key, cfg, issues);
+                }
                 continue;
             }
 
@@ -256,9 +444,13 @@ export class DefinitionValidationService {
             }
 
             const { adapter, adapterCode } = adapterResult;
+            addAdapterDeprecationWarning(step.key, adapter, warnings);
             validateAdapterFields(step.key, cfg, adapter, issues);
             if (adapterType === AdapterTypeEnum.EXTRACTOR) {
                 validateExtractorConfigContract(step.key, adapterCode, cfg, issues);
+            }
+            if (adapterType === AdapterTypeEnum.LOADER) {
+                validateLoaderConfigContract(step.key, adapterCode, cfg, issues);
             }
             if (adapterType === AdapterTypeEnum.SINK) {
                 validateSinkConfigContract(step.key, adapterCode, cfg, issues);

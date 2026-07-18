@@ -4,8 +4,38 @@ import type { PipelineDefinitionIssue } from '../../validation/pipeline-definiti
 import {
     validateAdapterFields,
     validateExtractorConfigContract,
+    validateHttpLookupConnectionContract,
+    validateLoaderConfigContract,
     validateSinkConfigContract,
 } from './adapter-validation';
+
+describe('validateHttpLookupConnectionContract', () => {
+    it('allows public lookups without a saved connection', () => {
+        const issues: PipelineDefinitionIssue[] = [];
+
+        validateHttpLookupConnectionContract('public-lookup', {
+            url: 'https://catalog.example/products',
+        }, issues);
+
+        expect(issues).toEqual([]);
+    });
+
+    it('requires a trimmed connection code for Secret-backed authentication', () => {
+        const missing: PipelineDefinitionIssue[] = [];
+        const configured: PipelineDefinitionIssue[] = [];
+
+        validateHttpLookupConnectionContract('secured-lookup', {
+            bearerTokenSecretCode: 'catalog-token',
+        }, missing);
+        validateHttpLookupConnectionContract('secured-lookup', {
+            connectionCode: 'catalog-api',
+            bearerTokenSecretCode: 'catalog-token',
+        }, configured);
+
+        expect(errorCodes(missing)).toEqual(['missing-http-lookup-connection']);
+        expect(configured).toEqual([]);
+    });
+});
 
 function validate(
     fields: readonly StepConfigSchemaField[],
@@ -47,6 +77,50 @@ describe('validateAdapterFields constraints', () => {
 
         expect(errorCodes(belowAndShort)).toEqual(['field-below-minimum', 'field-too-short']);
         expect(errorCodes(aboveAndLong)).toEqual(['field-above-maximum', 'field-too-long']);
+    });
+
+    it('applies inclusive length constraints to JSON arrays', () => {
+        const field: StepConfigSchemaField = {
+            key: 'records',
+            type: 'json',
+            validation: { minLength: 1, maxLength: 2 },
+        };
+
+        expect(validate([field], { records: [{ id: 1 }, { id: 2 }] })).toEqual([]);
+        expect(errorCodes(validate([field], { records: [] }))).toEqual(['field-too-short']);
+        expect(errorCodes(validate([field], {
+            records: [{ id: 1 }, { id: 2 }, { id: 3 }],
+        }))).toEqual(['field-too-long']);
+    });
+
+    it('accepts every valid JSON value and rejects non-JSON values', () => {
+        const field: StepConfigSchemaField = { key: 'value', type: 'json' };
+        const shared = { code: 'shared' };
+
+        for (const value of [
+            '',
+            0,
+            false,
+            ['item'],
+            { nested: true },
+            { first: shared, second: shared },
+        ]) {
+            expect(validate([field], { value })).toEqual([]);
+        }
+        const circular: Record<string, unknown> = {};
+        circular.self = circular;
+        expect(errorCodes(validate([field], { value: Number.NaN }))).toEqual([
+            'invalid-field-type',
+        ]);
+        expect(errorCodes(validate([field], { value: new Date() }))).toEqual([
+            'invalid-field-type',
+        ]);
+        expect(errorCodes(validate([field], {
+            value: { invalid: () => undefined },
+        }))).toEqual(['invalid-field-type']);
+        expect(errorCodes(validate([field], { value: circular }))).toEqual([
+            'invalid-field-type',
+        ]);
     });
 
     it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
@@ -107,6 +181,18 @@ describe('validateAdapterFields constraints', () => {
         expect(errorCodes(validate([field], { mode: 'slow' }))).toEqual(['invalid-select-option']);
     });
 
+    it('accepts an explicit empty required value only when the schema defines it as the default', () => {
+        const field: StepConfigSchemaField = {
+            key: 'replacement',
+            type: 'string',
+            required: true,
+            defaultValue: '',
+        };
+
+        expect(validate([field], { replacement: '' })).toEqual([]);
+        expect(errorCodes(validate([field], {}))).toEqual(['missing-required-field']);
+    });
+
     it('resolves dotted schema fields from nested configuration', () => {
         const fields: readonly StepConfigSchemaField[] = [
             {
@@ -124,6 +210,46 @@ describe('validateAdapterFields constraints', () => {
         expect(errorCodes(validate(fields, { 'pagination.limit': 50 }))).toEqual([
             'missing-required-field',
         ]);
+    });
+
+    it('rejects unknown built-in loader and operator fields', () => {
+        for (const type of ['LOADER', 'OPERATOR'] as const) {
+            const adapter: AdapterDefinition = {
+                type,
+                code: 'strict-adapter',
+                builtIn: true,
+                schema: { fields: [{ key: 'nested.value', type: 'string' }] },
+            };
+            const issues: PipelineDefinitionIssue[] = [];
+
+            validateAdapterFields('strict-step', {
+                adapterCode: 'strict-adapter',
+                nested: { value: 'valid' },
+                staleField: true,
+            }, adapter, issues);
+
+            expect(issues).toEqual([expect.objectContaining({
+                field: 'staleField',
+                errorCode: 'unknown-adapter-field',
+            })]);
+        }
+    });
+
+    it('keeps custom adapters extensible', () => {
+        const adapter: AdapterDefinition = {
+            type: 'LOADER',
+            code: 'custom-loader',
+            builtIn: false,
+            schema: { fields: [] },
+        };
+        const issues: PipelineDefinitionIssue[] = [];
+
+        validateAdapterFields('custom-step', {
+            adapterCode: 'custom-loader',
+            customField: true,
+        }, adapter, issues);
+
+        expect(issues).toEqual([]);
     });
 });
 
@@ -207,4 +333,30 @@ describe('validateSinkConfigContract', () => {
         expect(queueIssues).toEqual([]);
         expect(customIssues).toEqual([]);
     });
+});
+
+describe('validateLoaderConfigContract', () => {
+    it.each([
+        { state: 'Shipped' },
+        { stateField: 'targetState' },
+    ])('accepts orderTransition state source %#', config => {
+        const issues: PipelineDefinitionIssue[] = [];
+
+        validateLoaderConfigContract('transition', 'orderTransition', config, issues);
+
+        expect(issues).toEqual([]);
+    });
+
+    it.each([{}, { state: '' }, { stateField: '  ' }])(
+        'rejects orderTransition without a usable state source %#',
+        config => {
+            const issues: PipelineDefinitionIssue[] = [];
+
+            validateLoaderConfigContract('transition', 'orderTransition', config, issues);
+
+            expect(issues).toEqual([expect.objectContaining({
+                errorCode: 'missing-order-transition-state',
+            })]);
+        },
+    );
 });
