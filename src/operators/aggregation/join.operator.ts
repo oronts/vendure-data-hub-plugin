@@ -4,14 +4,13 @@
  * Merges records from two datasets by matching on key fields.
  * Supports INNER, LEFT, RIGHT, and FULL OUTER join types.
  *
- * The right-side dataset can be provided either:
- * - Inline via `rightData` (static array of records)
- * - From pipeline context via `rightDataPath` (dot-path to an array in the helpers context)
+ * The right-side dataset is provided inline via `rightData`.
  */
 
 import { AdapterDefinition, JsonObject, AdapterOperatorHelpers, OperatorResult } from '../types';
 import { getNestedValue, deepClone } from '../helpers';
 import { MultiJoinOperatorConfig } from './types';
+import { OPERATOR_LIMITS } from '../../constants/defaults/runtime-defaults';
 
 export const MULTI_JOIN_OPERATOR_DEFINITION: AdapterDefinition = {
     type: 'OPERATOR',
@@ -27,7 +26,7 @@ export const MULTI_JOIN_OPERATOR_DEFINITION: AdapterDefinition = {
             { key: 'leftKey', label: 'Left key field', type: 'string', required: true, description: 'Field path in left (primary) records to join on' },
             { key: 'rightKey', label: 'Right key field', type: 'string', required: true, description: 'Field path in right records to join on' },
             {
-                key: 'type', label: 'Join type', type: 'select', required: true,
+                key: 'type', label: 'Join type', type: 'select', defaultValue: 'LEFT',
                 options: [
                     { value: 'INNER', label: 'Inner (only matches)' },
                     { value: 'LEFT', label: 'Left (all left, match right)' },
@@ -35,10 +34,29 @@ export const MULTI_JOIN_OPERATOR_DEFINITION: AdapterDefinition = {
                     { value: 'FULL', label: 'Full outer (all from both)' },
                 ],
             },
-            { key: 'rightData', label: 'Right dataset (inline)', type: 'json', description: 'Static array of right-side records' },
-            { key: 'rightDataPath', label: 'Right dataset path', type: 'string', description: 'Dot-path to right-side data in pipeline context' },
+            {
+                key: 'rightData',
+                label: 'Right dataset',
+                type: 'json',
+                required: true,
+                description: `Static array of right-side records (maximum ${OPERATOR_LIMITS.MAX_MULTI_JOIN_RIGHT_RECORDS.toLocaleString()})`,
+                validation: {
+                    maxLength: OPERATOR_LIMITS.MAX_MULTI_JOIN_RIGHT_RECORDS,
+                },
+            },
             { key: 'prefix', label: 'Right field prefix', type: 'string', description: 'Prefix for right-side field names to avoid collisions' },
             { key: 'select', label: 'Select right fields', type: 'json', description: 'Array of right-side field names to include (default: all)' },
+            {
+                key: 'maxOutputRecords',
+                label: 'Maximum output records',
+                type: 'number',
+                defaultValue: OPERATOR_LIMITS.DEFAULT_MULTI_JOIN_OUTPUT_RECORDS,
+                description: 'Fail the join before its output exceeds this record count',
+                validation: {
+                    min: 1,
+                    max: OPERATOR_LIMITS.MAX_MULTI_JOIN_OUTPUT_RECORDS,
+                },
+            },
         ],
     },
 };
@@ -48,44 +66,151 @@ export const MULTI_JOIN_OPERATOR_DEFINITION: AdapterDefinition = {
  */
 function resolveRightData(
     config: MultiJoinOperatorConfig,
-    helpers: AdapterOperatorHelpers,
 ): JsonObject[] {
-    if (config.rightData && Array.isArray(config.rightData) && config.rightData.length > 0) {
-        return config.rightData;
+    const rightData: unknown = config.rightData;
+
+    if (!Array.isArray(rightData)) {
+        throw new Error('multiJoin rightData must be an array');
+    }
+    if (rightData.length > OPERATOR_LIMITS.MAX_MULTI_JOIN_RIGHT_RECORDS) {
+        throw new Error(
+            `multiJoin rightData exceeds the maximum of ${OPERATOR_LIMITS.MAX_MULTI_JOIN_RIGHT_RECORDS} records`,
+        );
     }
 
-    if (config.rightDataPath) {
-        const ctx = helpers.ctx as unknown as JsonObject | undefined;
-        if (ctx) {
-            const resolved = getNestedValue(ctx, config.rightDataPath);
-            if (Array.isArray(resolved)) {
-                return resolved as JsonObject[];
-            }
+    for (const [index, record] of rightData.entries()) {
+        if (record === null || typeof record !== 'object' || Array.isArray(record)) {
+            throw new Error(`multiJoin rightData[${index}] must be an object`);
         }
     }
 
-    return [];
+    return rightData as JsonObject[];
+}
+
+function resolveOutputLimit(value: unknown): number {
+    const limit = value ?? OPERATOR_LIMITS.DEFAULT_MULTI_JOIN_OUTPUT_RECORDS;
+    if (
+        typeof limit !== 'number'
+        || !Number.isInteger(limit)
+        || limit < 1
+        || limit > OPERATOR_LIMITS.MAX_MULTI_JOIN_OUTPUT_RECORDS
+    ) {
+        throw new Error(
+            `multiJoin maxOutputRecords must be an integer between 1 and ${OPERATOR_LIMITS.MAX_MULTI_JOIN_OUTPUT_RECORDS}`,
+        );
+    }
+    return limit;
+}
+
+type ResolvedJoinType = NonNullable<MultiJoinOperatorConfig['type']>;
+
+function resolveJoinType(value: unknown): ResolvedJoinType {
+    const joinType = value ?? 'LEFT';
+    if (
+        joinType !== 'INNER'
+        && joinType !== 'LEFT'
+        && joinType !== 'RIGHT'
+        && joinType !== 'FULL'
+    ) {
+        throw new Error('multiJoin type must be INNER, LEFT, RIGHT, or FULL');
+    }
+    return joinType;
+}
+
+function requireKeyPath(value: unknown, name: 'leftKey' | 'rightKey'): string {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new Error(`multiJoin ${name} must be a non-empty string`);
+    }
+    return value;
+}
+
+function resolveSelect(value: unknown): string[] | undefined {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (!Array.isArray(value) || value.some(field => typeof field !== 'string')) {
+        throw new Error('multiJoin select must be an array of field names');
+    }
+    return value;
+}
+
+function getRightFieldPrefix(prefix: string | undefined): string {
+    if (!prefix) return '';
+    return prefix.endsWith('_') ? prefix : `${prefix}_`;
 }
 
 /**
  * Build an index of right-side records keyed by the join key value.
  * Multiple records can share the same key (one-to-many).
  */
-function buildIndex(records: JsonObject[], keyPath: string): Map<string, JsonObject[]> {
-    const index = new Map<string, JsonObject[]>();
+function normalizeJoinKey(value: unknown): string | undefined {
+    if (typeof value === 'string') {
+        return `string:${value}`;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return `number:${value}`;
+    }
+    if (typeof value === 'boolean') {
+        return `boolean:${value}`;
+    }
+    return undefined;
+}
 
-    for (const record of records) {
-        const keyValue = getNestedValue(record, keyPath);
-        const key = keyValue == null ? '' : String(keyValue);
-        const existing = index.get(key);
+interface RightRecordIndex {
+    readonly recordsByKey: Map<string, IndexedRightRecord[]>;
+}
+
+interface IndexedRightRecord {
+    readonly index: number;
+    readonly record: JsonObject;
+}
+
+function buildIndex(records: JsonObject[], keyPath: string): RightRecordIndex {
+    const recordsByKey = new Map<string, IndexedRightRecord[]>();
+
+    for (const [index, record] of records.entries()) {
+        const key = normalizeJoinKey(getNestedValue(record, keyPath));
+        if (key === undefined) {
+            continue;
+        }
+        const existing = recordsByKey.get(key);
         if (existing) {
-            existing.push(record);
+            existing.push({ index, record });
         } else {
-            index.set(key, [record]);
+            recordsByKey.set(key, [{ index, record }]);
         }
     }
 
-    return index;
+    return { recordsByKey };
+}
+
+function collectFieldNames(
+    records: readonly JsonObject[],
+    select?: readonly string[],
+): string[] {
+    if (select && select.length > 0) {
+        return [...new Set(select)];
+    }
+    const fields = new Set<string>();
+    for (const record of records) {
+        for (const field of Object.keys(record)) {
+            fields.add(field);
+        }
+    }
+    return [...fields];
+}
+
+function appendResult(
+    results: JsonObject[],
+    record: JsonObject,
+    maxOutputRecords: number,
+): void {
+    if (results.length >= maxOutputRecords) {
+        throw new Error(
+            `multiJoin output exceeds maxOutputRecords (${maxOutputRecords})`,
+        );
+    }
+    results.push(record);
 }
 
 /**
@@ -94,27 +219,19 @@ function buildIndex(records: JsonObject[], keyPath: string): Map<string, JsonObj
  */
 function mergeRecords(
     left: JsonObject,
-    right: JsonObject | null,
+    right: JsonObject,
     prefix: string | undefined,
-    select: string[] | undefined,
+    rightFieldNames: readonly string[],
 ): JsonObject {
     const result = deepClone(left);
-
-    if (!right) {
-        return result;
-    }
-
     const rightClone = deepClone(right);
-    const fieldPrefix = prefix ? `${prefix}_` : '';
-    const entries = Object.entries(rightClone);
+    const fieldPrefix = getRightFieldPrefix(prefix);
 
-    for (const [key, value] of entries) {
-        // If select is specified, skip fields not in the list
-        if (select && select.length > 0 && !select.includes(key)) {
-            continue;
-        }
+    for (const key of rightFieldNames) {
         const targetKey = `${fieldPrefix}${key}`;
-        (result as Record<string, unknown>)[targetKey] = value;
+        (result as Record<string, unknown>)[targetKey] = key in rightClone
+            ? rightClone[key]
+            : null;
     }
 
     return result;
@@ -126,23 +243,13 @@ function mergeRecords(
  */
 function mergeWithNullRight(
     left: JsonObject,
-    rightSample: JsonObject | undefined,
     prefix: string | undefined,
-    select: string[] | undefined,
+    rightFieldNames: readonly string[],
 ): JsonObject {
     const result = deepClone(left);
+    const fieldPrefix = getRightFieldPrefix(prefix);
 
-    if (!rightSample) {
-        return result;
-    }
-
-    const fieldPrefix = prefix ? `${prefix}_` : '';
-    const keys = Object.keys(rightSample);
-
-    for (const key of keys) {
-        if (select && select.length > 0 && !select.includes(key)) {
-            continue;
-        }
+    for (const key of rightFieldNames) {
         const targetKey = `${fieldPrefix}${key}`;
         (result as Record<string, unknown>)[targetKey] = null;
     }
@@ -155,30 +262,25 @@ function mergeWithNullRight(
  * Used when a right record has no match in RIGHT or FULL joins.
  */
 function mergeWithNullLeft(
-    leftSample: JsonObject | undefined,
     right: JsonObject,
     prefix: string | undefined,
-    select: string[] | undefined,
+    leftFieldNames: readonly string[],
+    rightFieldNames: readonly string[],
 ): JsonObject {
     const result: JsonObject = {};
 
-    // Fill left-side fields with null
-    if (leftSample) {
-        for (const key of Object.keys(leftSample)) {
-            (result as Record<string, unknown>)[key] = null;
-        }
+    for (const key of leftFieldNames) {
+        (result as Record<string, unknown>)[key] = null;
     }
 
-    // Merge right-side fields
     const rightClone = deepClone(right);
-    const fieldPrefix = prefix ? `${prefix}_` : '';
+    const fieldPrefix = getRightFieldPrefix(prefix);
 
-    for (const [key, value] of Object.entries(rightClone)) {
-        if (select && select.length > 0 && !select.includes(key)) {
-            continue;
-        }
+    for (const key of rightFieldNames) {
         const targetKey = `${fieldPrefix}${key}`;
-        (result as Record<string, unknown>)[targetKey] = value;
+        (result as Record<string, unknown>)[targetKey] = key in rightClone
+            ? rightClone[key]
+            : null;
     }
 
     return result;
@@ -187,14 +289,14 @@ function mergeWithNullLeft(
 export function multiJoinOperator(
     records: readonly JsonObject[],
     config: MultiJoinOperatorConfig,
-    helpers: AdapterOperatorHelpers,
+    _helpers: AdapterOperatorHelpers,
 ): OperatorResult {
-    if (!config.leftKey || !config.rightKey) {
-        return { records: [...records] };
-    }
-
-    const joinType = config.type ?? 'LEFT';
-    const rightData = resolveRightData(config, helpers);
+    const leftKeyPath = requireKeyPath(config.leftKey, 'leftKey');
+    const rightKeyPath = requireKeyPath(config.rightKey, 'rightKey');
+    const joinType = resolveJoinType(config.type);
+    const select = resolveSelect(config.select);
+    const rightData = resolveRightData(config);
+    const maxOutputRecords = resolveOutputLimit(config.maxOutputRecords);
 
     if (rightData.length === 0 && (joinType === 'INNER' || joinType === 'RIGHT')) {
         // INNER with no right data => no results; RIGHT with no right data => no results
@@ -203,37 +305,44 @@ export function multiJoinOperator(
 
     if (rightData.length === 0) {
         // LEFT or FULL with no right data => return left records as-is
+        if (records.length > maxOutputRecords) {
+            throw new Error(
+                `multiJoin output exceeds maxOutputRecords (${maxOutputRecords})`,
+            );
+        }
         return { records: [...records] };
     }
 
-    const rightIndex = buildIndex(rightData, config.rightKey);
+    const { recordsByKey } = buildIndex(rightData, rightKeyPath);
     const results: JsonObject[] = [];
 
-    // Track which right keys have been matched (for RIGHT and FULL joins)
-    const matchedRightKeys = new Set<string>();
-
-    // Get a sample right record for null-filling
-    const rightSample = rightData.length > 0 ? rightData[0] : undefined;
-    const leftSample = records.length > 0 ? records[0] : undefined;
+    const matchedRightIndexes = new Set<number>();
+    const rightFieldNames = collectFieldNames(rightData, select);
+    const leftFieldNames = collectFieldNames(records);
 
     // Process left records
     for (const leftRecord of records) {
-        const leftKeyValue = getNestedValue(leftRecord, config.leftKey);
-        const leftKey = leftKeyValue == null ? '' : String(leftKeyValue);
-        const matchingRight = rightIndex.get(leftKey);
+        const leftKey = normalizeJoinKey(getNestedValue(leftRecord, leftKeyPath));
+        const matchingRight = leftKey === undefined
+            ? undefined
+            : recordsByKey.get(leftKey);
 
         if (matchingRight && matchingRight.length > 0) {
-            matchedRightKeys.add(leftKey);
             // Emit one result per matching right record
-            for (const rightRecord of matchingRight) {
-                results.push(
-                    mergeRecords(leftRecord, rightRecord, config.prefix, config.select),
+            for (const { index, record: rightRecord } of matchingRight) {
+                matchedRightIndexes.add(index);
+                appendResult(
+                    results,
+                    mergeRecords(leftRecord, rightRecord, config.prefix, rightFieldNames),
+                    maxOutputRecords,
                 );
             }
         } else if (joinType === 'LEFT' || joinType === 'FULL') {
             // No match - include left with null right fields
-            results.push(
-                mergeWithNullRight(leftRecord, rightSample, config.prefix, config.select),
+            appendResult(
+                results,
+                mergeWithNullRight(leftRecord, config.prefix, rightFieldNames),
+                maxOutputRecords,
             );
         }
         // INNER and RIGHT: skip unmatched left records
@@ -241,14 +350,20 @@ export function multiJoinOperator(
 
     // For RIGHT and FULL joins, include unmatched right records
     if (joinType === 'RIGHT' || joinType === 'FULL') {
-        for (const [rightKey, rightRecords] of rightIndex) {
-            if (!matchedRightKeys.has(rightKey)) {
-                for (const rightRecord of rightRecords) {
-                    results.push(
-                        mergeWithNullLeft(leftSample, rightRecord, config.prefix, config.select),
-                    );
-                }
+        for (const [index, rightRecord] of rightData.entries()) {
+            if (matchedRightIndexes.has(index)) {
+                continue;
             }
+            appendResult(
+                results,
+                mergeWithNullLeft(
+                    rightRecord,
+                    config.prefix,
+                    leftFieldNames,
+                    rightFieldNames,
+                ),
+                maxOutputRecords,
+            );
         }
     }
 

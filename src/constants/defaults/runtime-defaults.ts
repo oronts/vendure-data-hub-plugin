@@ -20,12 +20,26 @@ export const PARALLEL_EXECUTION = {
     ERROR_POLICIES: ['FAIL_FAST', 'CONTINUE', 'BEST_EFFORT'],
 } as const;
 
+export const OPERATOR_LIMITS = {
+    DEFAULT_MULTI_JOIN_OUTPUT_RECORDS: 10_000,
+    MAX_MULTI_JOIN_OUTPUT_RECORDS: 100_000,
+    MAX_MULTI_JOIN_RIGHT_RECORDS: 10_000,
+} as const;
+
 /**
  * Hook execution defaults
  */
 export const HOOK = {
     /** Default timeout for interceptor/script hooks */
     INTERCEPTOR_TIMEOUT_MS: 5_000,
+    /** Minimum configured interceptor/script timeout */
+    MIN_TIMEOUT_MS: 1,
+    /** Prevent hook actions from retaining a pipeline indefinitely */
+    MAX_TIMEOUT_MS: 300_000,
+    /** Maximum configured event name length */
+    MAX_EVENT_NAME_LENGTH: 255,
+    /** Maximum configured log message length */
+    MAX_LOG_MESSAGE_LENGTH: 4_096,
     /** Maximum compiled Script entries to cache (prevents unbounded memory growth) */
     MAX_SCRIPT_CACHE: 100,
 } as const;
