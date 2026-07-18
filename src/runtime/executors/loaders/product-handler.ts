@@ -38,7 +38,7 @@ import {
     FeaturedAssetMode,
 } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
-import { LoaderHandler, CoercedProductFields } from './types';
+import { LoaderHandler, CoercedProductFields, LoaderSimulationResult } from './types';
 import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import {
     findVariantBySku,
@@ -64,6 +64,10 @@ import {
     persistVariantCurrencyPrices,
     resolveDefaultCurrencyPrice,
 } from './variant-price-persistence';
+import {
+    createUpsertSimulationDetail,
+    summarizeSimulationDetails,
+} from './loader-simulation';
 
 /**
  * Configuration for product handler step
@@ -125,6 +129,13 @@ interface ProductProcessingContext {
     cfg: ProductHandlerConfig;
     fields: CoercedProductFields;
     rec: RecordObject;
+    existingProduct?: Product;
+    existingVariant?: ProductVariant;
+}
+
+interface ProductIdentity {
+    existingProduct?: Product;
+    existingVariant?: ProductVariant;
 }
 
 interface ProductUpsertResult {
@@ -364,23 +375,7 @@ export class ProductHandler implements LoaderHandler {
         for (const rec of input) {
             try {
                 const fields = this.coerceProductFields(rec, cfg);
-
-                // When translationsField is configured, extract name/slug from the first translation
-                // if they're missing from the top-level record (multi-language input pattern)
-                if ((!fields.name || !fields.slug) && cfg.translationsField) {
-                    const raw = rec[cfg.translationsField];
-                    if (raw) {
-                        const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0) {
-                            const first = parsed[0];
-                            const firstName = first.name != null ? String(first.name) : undefined;
-                            if (!fields.name && firstName) fields.name = firstName;
-                            if (!fields.slug && firstName) {
-                                fields.slug = first.slug != null ? String(first.slug) : slugify(firstName);
-                            }
-                        }
-                    }
-                }
+                this.applyTranslationIdentityFallback(rec, cfg, fields);
 
                 if (!fields.slug || !fields.name) {
                     if (onRecordError) {
@@ -392,15 +387,16 @@ export class ProductHandler implements LoaderHandler {
                 }
 
                 const opCtx = await this.resolveRequestContext(ctx, cfg);
-                if (cfg.strategy === LoadStrategy.CREATE && cfg.createVariants !== false && fields.sku) {
-                    const existingVariant = await findVariantBySku(this.productVariantService, opCtx, fields.sku);
-                    if (existingVariant) {
-                        assertCreateDuplicateCanBeSkipped(cfg, 'variant', fields.sku);
-                        skipped++;
-                        continue;
-                    }
-                }
-                const procCtx: ProductProcessingContext = { ctx, opCtx, step, cfg, fields, rec };
+                const identity = await this.resolveProductIdentity(opCtx, cfg, fields);
+                const procCtx: ProductProcessingContext = {
+                    ctx,
+                    opCtx,
+                    step,
+                    cfg,
+                    fields,
+                    rec,
+                    ...identity,
+                };
 
                 const productResult = await this.createOrUpdateProduct(procCtx);
                 if (productResult.skipped) {
@@ -486,12 +482,12 @@ export class ProductHandler implements LoaderHandler {
     private async createOrUpdateProduct(
         procCtx: ProductProcessingContext,
     ): Promise<ProductUpsertResult> {
-        const { ctx, opCtx, cfg, fields, rec } = procCtx;
+        const { ctx, opCtx, cfg, fields, rec, existingProduct } = procCtx;
         const { slug, customFields, enabled } = fields;
         const strategy = cfg.strategy ?? LoadStrategy.UPSERT;
         const conflictResolution = cfg.conflictStrategy ?? ConflictStrategy.SOURCE_WINS;
 
-        const existing = await this.productService.findOneBySlug(opCtx, slug!);
+        const existing = existingProduct;
 
         // Build translations: multi-language from record field, or single-language default
         const translations = this.buildProductTranslations(ctx, rec, cfg, fields);
@@ -638,7 +634,7 @@ export class ProductHandler implements LoaderHandler {
         const conflictResolution = cfg.conflictStrategy ?? ConflictStrategy.SOURCE_WINS;
         const targetChannel = cfg.channel;
 
-        const existingVariant = await findVariantBySku(this.productVariantService, opCtx, sku);
+        const existingVariant = procCtx.existingVariant;
         if (existingVariant && strategy === LoadStrategy.CREATE) {
             assertCreateDuplicateCanBeSkipped(cfg, 'variant', sku);
             return;
@@ -872,20 +868,99 @@ export class ProductHandler implements LoaderHandler {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, unknown>> {
-        let wouldCreate = 0, wouldUpdate = 0;
+    ): Promise<LoaderSimulationResult> {
         const cfg = getConfig(step.config);
-        for (const rec of input) {
-            const { slug } = this.coerceProductFields(rec, cfg);
-            if (!slug) continue;
-            const existing = await this.productService.findOneBySlug(ctx, slug);
-            if (existing) {
-                wouldUpdate++;
-            } else {
-                wouldCreate++;
+        const recordDetails = [];
+        for (let index = 0; index < input.length; index++) {
+            const record = input[index];
+            const fields = this.coerceProductFields(record, cfg);
+            this.applyTranslationIdentityFallback(record, cfg, fields);
+            const opCtx = await this.resolveRequestContext(ctx, cfg);
+            const missingField = !fields.name ? 'name' : !fields.slug ? 'slug' : undefined;
+            let identity: ProductIdentity = {};
+            let identityError: string | undefined;
+            if (!missingField) {
+                try {
+                    identity = await this.resolveProductIdentity(opCtx, cfg, fields);
+                } catch (error) {
+                    identityError = getErrorMessage(error);
+                }
             }
+            recordDetails.push(createUpsertSimulationDetail({
+                record,
+                index,
+                entityType: 'Product',
+                existing: identity.existingProduct,
+                strategy: cfg.strategy,
+                skipDuplicates: cfg.skipDuplicates,
+                identifier: fields.slug,
+                missingIdentifier: identityError ?? (missingField
+                    ? `Missing required field "${missingField}" for productUpsert`
+                    : undefined),
+            }));
         }
-        return { wouldCreate, wouldUpdate };
+        return {
+            supported: true,
+            recordsIn: input.length,
+            recordDetails,
+            ...summarizeSimulationDetails(recordDetails),
+        };
+    }
+
+    private async resolveProductIdentity(
+        opCtx: RequestContext,
+        cfg: ProductHandlerConfig,
+        fields: CoercedProductFields,
+    ): Promise<ProductIdentity> {
+        const existingBySlug = fields.slug
+            ? await this.productService.findOneBySlug(opCtx, fields.slug)
+            : undefined;
+        if (cfg.createVariants === false || !fields.sku) {
+            return { existingProduct: existingBySlug };
+        }
+
+        const existingVariant = await findVariantBySku(
+            this.productVariantService,
+            opCtx,
+            fields.sku,
+        );
+        if (!existingVariant) {
+            return { existingProduct: existingBySlug };
+        }
+
+        const parentId = existingVariant.productId;
+        if (parentId == null) {
+            throw new Error(`Product variant with SKU "${fields.sku}" has no parent product`);
+        }
+        if (existingBySlug && String(existingBySlug.id) !== String(parentId)) {
+            throw new Error(
+                `Product identity conflict: slug "${fields.slug}" and SKU "${fields.sku}" resolve to different products`,
+            );
+        }
+
+        const existingProduct = existingBySlug
+            ?? await this.productService.findOne(opCtx, parentId);
+        if (!existingProduct) {
+            throw new Error(`Parent product for SKU "${fields.sku}" was not found`);
+        }
+        return { existingProduct, existingVariant };
+    }
+
+    private applyTranslationIdentityFallback(
+        record: RecordObject,
+        config: ProductHandlerConfig,
+        fields: CoercedProductFields,
+    ): void {
+        if ((fields.name && fields.slug) || !config.translationsField) return;
+        const raw = record[config.translationsField];
+        if (!raw) return;
+        const first = parseTranslationsInput(raw)[0];
+        if (!first) return;
+        const firstName = first.name != null ? String(first.name) : undefined;
+        if (!fields.name && firstName) fields.name = firstName;
+        if (!fields.slug && firstName) {
+            fields.slug = first.slug != null ? String(first.slug) : slugify(firstName);
+        }
     }
 
     coerceProductFields(rec: RecordObject, cfg?: ProductHandlerConfig): CoercedProductFields {

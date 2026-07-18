@@ -2,8 +2,32 @@
  * Shared types for loader handlers
  */
 import { RequestContext } from '@vendure/core';
-import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
+import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
+
+export type LoaderSimulationOperation =
+    | 'CREATE'
+    | 'UPDATE'
+    | 'DELETE'
+    | 'SKIP'
+    | 'ERROR';
+
+export interface LoaderSimulationRecordDetail extends JsonObject {
+    recordId: string;
+    entityType: string;
+    operation: LoaderSimulationOperation;
+    currentState: JsonObject | null;
+    proposedState: JsonObject;
+    validationErrors: string[];
+    warnings: string[];
+}
+
+export interface LoaderSimulationResult extends Record<string, unknown> {
+    supported: boolean;
+    recordsIn: number;
+    recordDetails: LoaderSimulationRecordDetail[];
+    warning?: string;
+}
 
 /**
  * Base interface for all loader handlers
@@ -27,7 +51,7 @@ export interface LoaderHandler {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, unknown>>;
+    ): Promise<LoaderSimulationResult>;
 }
 
 /**

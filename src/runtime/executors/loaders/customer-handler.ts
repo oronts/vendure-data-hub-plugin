@@ -29,10 +29,14 @@ import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
-import { LoaderHandler } from './types';
+import { LoaderHandler, LoaderSimulationResult } from './types';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getArrayValue, getObjectValue } from '../../../loaders/shared-helpers';
+import {
+    createUpsertSimulationDetail,
+    summarizeSimulationDetails,
+} from './loader-simulation';
 
 /**
  * Configuration extracted from step.config for customer upsert operations.
@@ -248,28 +252,39 @@ export class CustomerHandler implements LoaderHandler {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, unknown>> {
-        let exists = 0, missing = 0;
-
+    ): Promise<LoaderSimulationResult> {
         const config = this.extractConfig(step.config);
+        const recordDetails = [];
 
-        for (const rec of input) {
-            const email = getStringValue(rec, config.emailField ?? 'email');
-            if (!email) continue;
-
-            const listOptions: ListQueryOptions<Customer> = {
-                filter: { emailAddress: { eq: email } },
-                take: 1,
-            };
-
-            const list = await this.customerService.findAll(ctx, listOptions);
-            if (list.items[0]) {
-                exists++;
-            } else {
-                missing++;
-            }
+        for (let index = 0; index < input.length; index++) {
+            const record = input[index];
+            const email = getStringValue(record, config.emailField ?? 'email');
+            const existing = email
+                ? (await this.customerService.findAll(ctx, {
+                    filter: { emailAddress: { eq: email } },
+                    take: 1,
+                })).items[0]
+                : undefined;
+            recordDetails.push(createUpsertSimulationDetail({
+                record,
+                index,
+                entityType: 'Customer',
+                existing,
+                strategy: config.strategy,
+                skipDuplicates: config.skipDuplicates,
+                identifier: email,
+                missingIdentifier: email
+                    ? undefined
+                    : `Missing required email field "${config.emailField ?? 'email'}"`,
+            }));
         }
-        return { exists, missing };
+
+        return {
+            supported: true,
+            recordsIn: input.length,
+            recordDetails,
+            ...summarizeSimulationDetails(recordDetails),
+        };
     }
 
     /**

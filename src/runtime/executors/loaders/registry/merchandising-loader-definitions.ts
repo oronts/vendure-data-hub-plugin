@@ -83,7 +83,8 @@ export const MERCHANDISING_LOADER_DEFINITIONS: LoaderDefinitionEntry[] = [
                 fields: [
                     { key: 'orderIdField', label: 'Order id field', type: 'string' },
                     { key: 'orderCodeField', label: 'Order code field', type: 'string' },
-                    { key: 'state', label: 'Target state', type: 'string', required: true },
+                    { key: 'state', label: 'Target state', type: 'string', description: 'Static target state; required when State field is not configured' },
+                    { key: 'stateField', label: 'State field', type: 'string', description: 'Record field containing the target state; required when Target state is not configured' },
                 ],
             },
         },

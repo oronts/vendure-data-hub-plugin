@@ -183,6 +183,137 @@ describe('ProductHandler prices', () => {
     });
 });
 
+describe('ProductHandler identity', () => {
+    it('updates the existing SKU parent instead of creating an orphan product', async () => {
+        const { handler, productService, productVariantService } = createHandler();
+        productVariantService.findAll.mockResolvedValue({
+            items: [{ id: 'variant-a', productId: 'product-a' }],
+            totalItems: 1,
+        });
+        productService.findOne.mockResolvedValue({ id: 'product-a', facetValues: [] });
+        productService.update.mockResolvedValue({ id: 'product-a' });
+
+        const result = await handler.execute(createContext(), createStep(), [{
+            name: 'Renamed Product',
+            slug: 'renamed-product',
+            sku: 'SKU-A',
+        }]);
+
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
+        expect(productService.create).not.toHaveBeenCalled();
+        expect(productService.update).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ id: 'product-a' }),
+        );
+        expect(productVariantService.update).toHaveBeenCalledWith(
+            expect.anything(),
+            [expect.objectContaining({ id: 'variant-a' })],
+        );
+    });
+
+    it('fails before mutation when slug and SKU resolve to different products', async () => {
+        const { handler, productService, productVariantService, channelService } = createHandler();
+        productService.findOneBySlug.mockResolvedValue({ id: 'product-b' });
+        productVariantService.findAll.mockResolvedValue({
+            items: [{ id: 'variant-a', productId: 'product-a' }],
+            totalItems: 1,
+        });
+        const onRecordError = vi.fn().mockResolvedValue(undefined);
+
+        const result = await handler.execute(createContext(), createStep(), [{
+            name: 'Conflicting Product',
+            slug: 'product-b',
+            sku: 'SKU-A',
+        }], onRecordError);
+
+        expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
+        expect(onRecordError).toHaveBeenCalledWith(
+            'load-products',
+            expect.stringContaining('resolve to different products'),
+            expect.anything(),
+            expect.any(String),
+        );
+        expect(productService.create).not.toHaveBeenCalled();
+        expect(productService.update).not.toHaveBeenCalled();
+        expect(productVariantService.create).not.toHaveBeenCalled();
+        expect(productVariantService.update).not.toHaveBeenCalled();
+        expect(channelService.assignToChannels).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the SKU is ambiguous', async () => {
+        const { handler, productService, productVariantService } = createHandler();
+        productVariantService.findAll.mockResolvedValue({
+            items: [
+                { id: 'variant-a', productId: 'product-a' },
+                { id: 'variant-b', productId: 'product-b' },
+            ],
+            totalItems: 2,
+        });
+
+        const result = await handler.execute(createContext(), createStep(), [{
+            name: 'Product',
+            slug: 'product',
+            sku: 'DUPLICATE-SKU',
+        }]);
+
+        expect(result).toEqual({ ok: 0, fail: 1, skipped: 0 });
+        expect(productService.create).not.toHaveBeenCalled();
+    });
+
+    it('does not resolve SKU identity when variant management is disabled', async () => {
+        const { handler, productVariantService } = createHandler();
+
+        const result = await handler.execute(
+            createContext(),
+            createStep({ createVariants: false }),
+            [{ name: 'Product', slug: 'product', sku: 'SKU-A' }],
+        );
+
+        expect(result).toEqual({ ok: 1, fail: 0, skipped: 0 });
+        expect(productVariantService.findAll).not.toHaveBeenCalled();
+    });
+
+    it('simulates an existing SKU parent as an update', async () => {
+        const { handler, productService, productVariantService } = createHandler();
+        productVariantService.findAll.mockResolvedValue({
+            items: [{ id: 'variant-a', productId: 'product-a' }],
+            totalItems: 1,
+        });
+        productService.findOne.mockResolvedValue({ id: 'product-a' });
+
+        const result = await handler.simulate(createContext(), createStep(), [{
+            name: 'Renamed Product',
+            slug: 'renamed-product',
+            sku: 'SKU-A',
+        }]);
+
+        expect(result.recordDetails[0]).toEqual(expect.objectContaining({
+            operation: 'UPDATE',
+            recordId: 'renamed-product',
+        }));
+    });
+
+    it('simulates cross-product identity conflicts as record errors', async () => {
+        const { handler, productService, productVariantService } = createHandler();
+        productService.findOneBySlug.mockResolvedValue({ id: 'product-b' });
+        productVariantService.findAll.mockResolvedValue({
+            items: [{ id: 'variant-a', productId: 'product-a' }],
+            totalItems: 1,
+        });
+
+        const result = await handler.simulate(createContext(), createStep(), [{
+            name: 'Conflicting Product',
+            slug: 'product-b',
+            sku: 'SKU-A',
+        }]);
+
+        expect(result.recordDetails[0]).toEqual(expect.objectContaining({
+            operation: 'ERROR',
+            validationErrors: [expect.stringContaining('resolve to different products')],
+        }));
+    });
+});
+
 describe('ProductHandler facet values', () => {
     it('resolves configured facet value objects and replaces assignments', async () => {
         const { handler, productService } = createHandler();

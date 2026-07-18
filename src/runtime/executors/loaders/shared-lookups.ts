@@ -33,7 +33,11 @@ export async function findVariantBySku(
 ): Promise<ProductVariant | undefined> {
     const result = await productVariantService.findAll(ctx, {
         filter: { sku: { eq: sku } },
+        take: 2,
     } as ListQueryOptions<ProductVariant>);
+    if (result.items.length > 1) {
+        throw new Error(`Multiple product variants use SKU "${sku}"`);
+    }
     return result.items[0];
 }
 

@@ -35,7 +35,7 @@ import {
 } from '../../../types/index';
 import { LoadStrategy } from '../../../constants/enums';
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
-import { LoaderHandler } from './types';
+import { LoaderHandler, LoaderSimulationResult } from './types';
 import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import {
     findVariantBySku,
@@ -58,6 +58,10 @@ import {
     persistVariantCurrencyPrices,
     resolveDefaultCurrencyPrice,
 } from './variant-price-persistence';
+import {
+    createUpsertSimulationDetail,
+    summarizeSimulationDetails,
+} from './loader-simulation';
 
 /**
  * Configuration for VariantHandler step
@@ -226,16 +230,7 @@ export class VariantHandler implements LoaderHandler {
         for (const rec of input) {
             try {
                 const sku = getStringValue(rec, skuKey);
-                let name = getStringValue(rec, nameKey);
-
-                // When translationsField is set and name is missing, extract from first translation
-                if (!name && config.translationsField) {
-                    const raw = rec[config.translationsField];
-                    if (raw) {
-                        const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0 && parsed[0].name) name = String(parsed[0].name);
-                    }
-                }
+                const name = this.getVariantName(rec, config, nameKey);
 
                 if (!sku || !name) {
                     if (onRecordError) {
@@ -602,16 +597,70 @@ export class VariantHandler implements LoaderHandler {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, number>> {
-        let exists = 0, missing = 0;
+    ): Promise<LoaderSimulationResult> {
         const config = getStepConfig(step);
         const skuKey = config.skuField ?? 'sku';
-        for (const rec of input) {
-            const sku = getStringValue(rec, skuKey);
-            if (!sku) continue;
-            const variant = await findVariantBySku(this.productVariantService, ctx, sku);
-            if (variant) exists++; else missing++;
+        const nameKey = config.nameField ?? 'name';
+        const recordDetails = [];
+
+        for (let index = 0; index < input.length; index++) {
+            const record = input[index];
+            const sku = getStringValue(record, skuKey);
+            const name = this.getVariantName(record, config, nameKey);
+            let opCtx = ctx;
+            if (config.channel) {
+                opCtx = await createChannelRequestContext(
+                    this.requestContextService,
+                    ctx,
+                    config.channel,
+                );
+            }
+            const existing = sku
+                ? await findVariantBySku(this.productVariantService, opCtx, sku)
+                : undefined;
+            let missingIdentifier = !sku
+                ? 'Missing required field "sku" for variantUpsert'
+                : !name
+                    ? 'Missing required field "name" for variantUpsert'
+                    : undefined;
+            if (
+                !missingIdentifier
+                && !existing
+                && config.strategy !== LoadStrategy.UPDATE
+                && !(await this.resolveProductId(opCtx, record))
+            ) {
+                missingIdentifier = `Cannot create variant "${sku}" without a parent product`;
+            }
+            recordDetails.push(createUpsertSimulationDetail({
+                record,
+                index,
+                entityType: 'ProductVariant',
+                existing,
+                strategy: config.strategy,
+                skipDuplicates: config.skipDuplicates,
+                identifier: sku,
+                missingIdentifier,
+            }));
         }
-        return { exists, missing };
+
+        return {
+            supported: true,
+            recordsIn: input.length,
+            recordDetails,
+            ...summarizeSimulationDetails(recordDetails),
+        };
+    }
+
+    private getVariantName(
+        record: RecordObject,
+        config: VariantHandlerConfig,
+        nameField: string,
+    ): string | undefined {
+        const name = getStringValue(record, nameField);
+        if (name || !config.translationsField) return name;
+        const raw = record[config.translationsField];
+        if (!raw) return undefined;
+        const first = parseTranslationsInput(raw)[0];
+        return first?.name ? String(first.name) : undefined;
     }
 }

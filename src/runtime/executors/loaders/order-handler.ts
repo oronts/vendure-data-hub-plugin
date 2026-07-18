@@ -15,13 +15,19 @@ import type { AddNoteToOrderInput, FulfillOrderInput } from '@vendure/common/lib
 import type { OrderState, FulfillmentState } from '@vendure/core';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
-import { LoaderHandler } from './types';
+import { LoaderHandler, LoaderSimulationResult } from './types';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
 import { getStringValue, getIdValue } from '../../../loaders/shared-helpers';
 import { findShippingMethodByCode } from '../../../loaders/order/helpers';
 import { STATE_RANK } from '../../../loaders/order/types';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
+import {
+    createSimulationDetail,
+    getSimulationRecordId,
+    summarizeSimulationDetails,
+    toSimulationObject,
+} from './loader-simulation';
 
 // ============================================================================
 // Config Interfaces
@@ -208,26 +214,49 @@ export class ApplyCouponHandler implements LoaderHandler {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, unknown>> {
-        let ordersFound = 0;
+    ): Promise<LoaderSimulationResult> {
         const handlerConfig = getApplyCouponConfig(step.config);
         const orderIdField = handlerConfig.orderIdField ?? 'orderId';
         const orderCodeField = handlerConfig.orderCodeField ?? 'orderCode';
+        const couponField = handlerConfig.couponField ?? 'coupon';
+        const recordDetails = [];
 
-        for (const rec of input) {
-            const orderId = getIdValue(rec, orderIdField);
-            const orderCode = getStringValue(rec, orderCodeField);
-            if (orderId) { ordersFound++; continue; }
-            if (orderCode) {
-                try {
-                    const found = await this.connection.getRepository(ctx, Order).findOne({ where: { code: orderCode } });
-                    if (found) ordersFound++;
-                } catch (error) {
-                    this.logger.warn(`Failed to lookup order by code '${orderCode}': ${getErrorMessage(error)}`);
-                }
+        for (let index = 0; index < input.length; index++) {
+            const record = input[index];
+            const orderId = getIdValue(record, orderIdField);
+            const orderCode = getStringValue(record, orderCodeField);
+            const coupon = getStringValue(record, couponField);
+            let existing: Order | null = null;
+            if (orderId) {
+                existing = await this.connection.getRepository(ctx, Order).findOne({
+                    where: { id: orderId },
+                });
+            } else if (orderCode) {
+                existing = await this.connection.getRepository(ctx, Order).findOne({
+                    where: { code: orderCode },
+                });
             }
+            const recordId = String(orderId ?? orderCode ?? getSimulationRecordId(record) ?? `order-${index + 1}`);
+            const validationErrors = [];
+            if (!orderId && !orderCode) validationErrors.push('Order ID or code is required');
+            if (!coupon) validationErrors.push(`Missing required coupon field "${couponField}"`);
+            if ((orderId || orderCode) && !existing) validationErrors.push(`Order ${recordId} was not found`);
+            recordDetails.push(createSimulationDetail({
+                recordId,
+                entityType: 'Order',
+                operation: validationErrors.length > 0 ? 'ERROR' : 'UPDATE',
+                currentState: toSimulationObject(existing),
+                proposedState: toSimulationObject(record) ?? {},
+                validationErrors,
+            }));
         }
-        return { ordersFound };
+
+        return {
+            supported: true,
+            recordsIn: input.length,
+            recordDetails,
+            ...summarizeSimulationDetails(recordDetails),
+        };
     }
 }
 

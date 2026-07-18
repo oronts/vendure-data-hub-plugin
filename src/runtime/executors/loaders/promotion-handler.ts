@@ -20,7 +20,7 @@ import {
 } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig, JsonObject } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
-import { LoaderHandler } from './types';
+import { LoaderHandler, LoaderSimulationResult } from './types';
 import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
@@ -32,6 +32,10 @@ import {
     parsePromotionOperations,
     requirePromotionActions,
 } from './promotion-operation-input';
+import {
+    createUpsertSimulationDetail,
+    summarizeSimulationDetails,
+} from './loader-simulation';
 
 /**
  * Configuration interface for the promotion handler step
@@ -451,31 +455,70 @@ export class PromotionHandler implements LoaderHandler {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, unknown>> {
-        let exists = 0,
-            missing = 0;
+    ): Promise<LoaderSimulationResult> {
         const config = getConfig(step.config);
-
         const codeFieldName = config.codeField ?? 'code';
-        for (const rec of input) {
-            const codeValue = getRecordField(rec, codeFieldName);
+        const recordDetails = [];
+
+        for (let index = 0; index < input.length; index++) {
+            const record = input[index];
+            const codeValue = getRecordField(record, codeFieldName);
             const code = codeValue ? String(codeValue) : '';
-
-            if (!code) {
-                continue;
+            let validationError = code ? undefined : 'Missing required field: code';
+            let actionsInput;
+            if (!validationError) {
+                try {
+                    parsePromotionOperations(
+                        record,
+                        config.conditionsField,
+                        'conditions',
+                    );
+                    actionsInput = parsePromotionOperations(
+                        record,
+                        config.actionsField,
+                        'actions',
+                    );
+                } catch (error) {
+                    validationError = getErrorMessage(error);
+                }
             }
-
-            const list = await this.promotionService.findAll(ctx, {
-                filter: { couponCode: { eq: code } },
-                take: 1,
-            });
-
-            if (list.items[0]) {
-                exists++;
-            } else {
-                missing++;
+            const existing = !validationError
+                ? (await this.promotionService.findAll(ctx, {
+                    filter: { couponCode: { eq: code } },
+                    take: 1,
+                })).items[0]
+                : undefined;
+            if (
+                !validationError
+                && actionsInput
+                && (
+                    (!existing && config.strategy !== LoadStrategy.UPDATE)
+                    || (existing && actionsInput?.present)
+                )
+            ) {
+                try {
+                    requirePromotionActions(actionsInput);
+                } catch (error) {
+                    validationError = getErrorMessage(error);
+                }
             }
+            recordDetails.push(createUpsertSimulationDetail({
+                record,
+                index,
+                entityType: 'Promotion',
+                existing,
+                strategy: config.strategy,
+                skipDuplicates: config.skipDuplicates,
+                identifier: code || undefined,
+                missingIdentifier: validationError,
+            }));
         }
-        return { exists, missing };
+
+        return {
+            supported: true,
+            recordsIn: input.length,
+            recordDetails,
+            ...summarizeSimulationDetails(recordDetails),
+        };
     }
 }

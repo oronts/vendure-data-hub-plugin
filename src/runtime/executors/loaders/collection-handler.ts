@@ -19,7 +19,7 @@ import {
 } from '@vendure/common/lib/generated-types';
 import { PipelineStepDefinition, ErrorHandlingConfig } from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, LoaderExecutionResult } from '../../executor-types';
-import { LoaderHandler } from './types';
+import { LoaderHandler, LoaderSimulationResult } from './types';
 import { assertCreateDuplicateCanBeSkipped, CreateDuplicateHandlingConfig } from './duplicate-handling';
 import { LoadStrategy } from '../../../constants/enums';
 import { getErrorMessage, getErrorStack } from '../../../utils/error.utils';
@@ -27,6 +27,10 @@ import { getStringValue, getObjectValue, slugify } from '../../../loaders/shared
 import { parseTranslationsInput, resolveChannelIds } from './shared-lookups';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { DataHubLogger, DataHubLoggerFactory } from '../../../services/logger/datahub-logger';
+import {
+    createUpsertSimulationDetail,
+    summarizeSimulationDetails,
+} from './loader-simulation';
 
 /**
  * Configuration for collection handler step
@@ -95,6 +99,23 @@ function coerceCollectionFields(rec: RecordObject, cfg: CollectionHandlerConfig)
     };
 }
 
+function applyCollectionTranslationIdentityFallback(
+    record: RecordObject,
+    config: CollectionHandlerConfig,
+    fields: CoercedCollectionFields,
+): void {
+    if ((fields.name && fields.slug) || !config.translationsField) return;
+    const raw = record[config.translationsField];
+    if (!raw) return;
+    const first = parseTranslationsInput(raw)[0];
+    if (!first) return;
+    const firstName = first.name != null ? String(first.name) : undefined;
+    if (!fields.name && firstName) fields.name = firstName;
+    if (!fields.slug && firstName) {
+        fields.slug = first.slug != null ? String(first.slug) : slugify(firstName);
+    }
+}
+
 @Injectable()
 export class CollectionHandler implements LoaderHandler {
     private readonly logger: DataHubLogger;
@@ -125,22 +146,10 @@ export class CollectionHandler implements LoaderHandler {
         for (const rec of input) {
             try {
                 const fields = coerceCollectionFields(rec, cfg);
-                let { slug, name } = fields;
+                applyCollectionTranslationIdentityFallback(rec, cfg, fields);
+                const { slug, name } = fields;
                 const { description } = fields;
                 const { parentSlug } = fields;
-
-                // Multi-language: extract name/slug from first translation if missing
-                if ((!name || !slug) && cfg.translationsField) {
-                    const raw = rec[cfg.translationsField];
-                    if (raw) {
-                        const parsed = parseTranslationsInput(raw);
-                        if (parsed.length > 0) {
-                            const first = parsed[0];
-                            if (!name) name = String(first.name ?? '');
-                            if (!slug) slug = first.slug != null ? String(first.slug) : slugify(String(first.name ?? ''));
-                        }
-                    }
-                }
 
                 if (!slug || !name) {
                     if (onRecordError) {
@@ -365,23 +374,38 @@ export class CollectionHandler implements LoaderHandler {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-    ): Promise<Record<string, unknown>> {
-        let exists = 0;
-        let missing = 0;
+    ): Promise<LoaderSimulationResult> {
         const cfg = getConfig(step.config);
+        const recordDetails = [];
 
-        for (const rec of input) {
-            const fields = coerceCollectionFields(rec, cfg);
-            const { slug } = fields;
-            if (!slug) continue;
-
-            const collection = await this.collectionService.findOneBySlug(ctx, slug);
-            if (collection) {
-                exists++;
-            } else {
-                missing++;
-            }
+        for (let index = 0; index < input.length; index++) {
+            const record = input[index];
+            const fields = coerceCollectionFields(record, cfg);
+            applyCollectionTranslationIdentityFallback(record, cfg, fields);
+            const opCtx = await this.resolveRequestContext(ctx, cfg);
+            const existing = fields.slug
+                ? await this.collectionService.findOneBySlug(opCtx, fields.slug)
+                : undefined;
+            const missingField = !fields.name ? 'name' : !fields.slug ? 'slug' : undefined;
+            recordDetails.push(createUpsertSimulationDetail({
+                record,
+                index,
+                entityType: 'Collection',
+                existing,
+                strategy: cfg.strategy,
+                skipDuplicates: cfg.skipDuplicates,
+                identifier: fields.slug,
+                missingIdentifier: missingField
+                    ? `Missing required field "${missingField}" for collectionUpsert`
+                    : undefined,
+            }));
         }
-        return { exists, missing };
+
+        return {
+            supported: true,
+            recordsIn: input.length,
+            recordDetails,
+            ...summarizeSimulationDetails(recordDetails),
+        };
     }
 }
