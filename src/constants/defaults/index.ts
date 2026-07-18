@@ -28,6 +28,9 @@ export * from './reliability-defaults';
 // Runtime execution
 export * from './runtime-defaults';
 
+// Definition validation
+export * from './validation-defaults';
+
 // Parsers and formats
 export * from './parsers-defaults';
 
