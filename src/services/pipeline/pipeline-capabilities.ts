@@ -4,6 +4,11 @@ import { SHARED_STEP_TYPE_CONFIGS } from '../../../shared/constants/step-type-co
 import type { AdapterDefinition } from '../../sdk/types';
 import type { PipelineDefinition, PipelineStepDefinition } from '../../types';
 import { getAdapterCode } from '../../types/step-configs';
+import {
+    UseDataHubConnectionPermission,
+    UseDataHubSecretPermission,
+} from '../../permissions';
+import { collectResourceReferences } from '../config/resource-references';
 import { clonePipelineDefinition } from './pipeline-policy';
 
 export interface AdapterDefinitionRegistry {
@@ -67,6 +72,16 @@ export function getRequiredPipelinePermissions(
         for (const operatorCode of getOperatorCodes(step)) {
             addAdapterPermissions(required, registry, AdapterType.OPERATOR, operatorCode);
         }
+    }
+
+    const references = collectResourceReferences(definition);
+    if (references.connections.size > 0) {
+        required.add(UseDataHubConnectionPermission.Permission);
+        // Connection configuration may contain indirect Secret Codes that are not present in the definition.
+        required.add(UseDataHubSecretPermission.Permission);
+    }
+    if (references.secrets.size > 0) {
+        required.add(UseDataHubSecretPermission.Permission);
     }
 
     return [...required].sort();

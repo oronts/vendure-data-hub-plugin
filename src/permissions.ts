@@ -6,6 +6,8 @@ export const RunDataHubPipelinePermission = new PermissionDefinition({ name: 'Ru
 export const ViewDataHubRunsPermission = new PermissionDefinition({ name: 'ViewDataHubRuns' });
 export const ManageDataHubAdaptersPermission = new PermissionDefinition({ name: 'ManageDataHubAdapters' });
 export const ManageDataHubConnectionsPermission = new PermissionDefinition({ name: 'ManageDataHubConnections' });
+export const UseDataHubConnectionPermission = new PermissionDefinition({ name: 'UseDataHubConnection' });
+export const UseDataHubSecretPermission = new PermissionDefinition({ name: 'UseDataHubSecret' });
 export const ViewDataHubQuarantinePermission = new PermissionDefinition({ name: 'ViewDataHubQuarantine' });
 export const EditDataHubQuarantinePermission = new PermissionDefinition({ name: 'EditDataHubQuarantine' });
 export const ReplayDataHubRecordPermission = new PermissionDefinition({ name: 'ReplayDataHubRecord' });
@@ -26,6 +28,8 @@ export const DATAHUB_PERMISSION_DEFINITIONS = [
     ViewDataHubRunsPermission,
     ManageDataHubAdaptersPermission,
     ManageDataHubConnectionsPermission,
+    UseDataHubConnectionPermission,
+    UseDataHubSecretPermission,
     ViewDataHubQuarantinePermission,
     EditDataHubQuarantinePermission,
     ReplayDataHubRecordPermission,

@@ -10,6 +10,8 @@ export {
     ViewDataHubRunsPermission,
     ManageDataHubAdaptersPermission,
     ManageDataHubConnectionsPermission,
+    UseDataHubConnectionPermission,
+    UseDataHubSecretPermission,
     ViewDataHubQuarantinePermission,
     EditDataHubQuarantinePermission,
     ReplayDataHubRecordPermission,

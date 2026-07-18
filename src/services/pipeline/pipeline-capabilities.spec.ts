@@ -65,6 +65,45 @@ describe('pipeline capabilities', () => {
         expect(getRequiredPipelinePermissions(registry, definition)).toEqual(['UpdateSettings']);
     });
 
+    it('derives permissions for direct and connection-backed secret resolution', () => {
+        const definition: PipelineDefinition = {
+            version: 1,
+            steps: [{
+                key: 'remote-source',
+                type: StepType.EXTRACT,
+                config: {
+                    adapterCode: 'httpApi',
+                    connectionCode: 'erp',
+                    auth: { type: 'BEARER', secretCode: 'override-token' },
+                },
+            }],
+        };
+
+        expect(getRequiredPipelinePermissions(registry, definition)).toEqual([
+            'UseDataHubConnection',
+            'UseDataHubSecret',
+        ]);
+    });
+
+    it('requires secret-use permission for connection references with indirect credentials', () => {
+        const definition: PipelineDefinition = {
+            version: 1,
+            steps: [{
+                key: 'remote-source',
+                type: StepType.EXTRACT,
+                config: { adapterCode: 'httpApi', connectionCode: 'erp' },
+            }],
+        };
+        const ctx: PermissionContext = {
+            userHasPermissions: permissions => permissions.includes(
+                'UseDataHubConnection' as Permission,
+            ),
+        };
+
+        expect(getMissingPipelinePermissions(registry, ctx, definition))
+            .toEqual(['UseDataHubSecret']);
+    });
+
     it('writes effective permissions without mutating the definition', () => {
         const result = withEffectivePipelineCapabilities(registry, loaderDefinition);
 

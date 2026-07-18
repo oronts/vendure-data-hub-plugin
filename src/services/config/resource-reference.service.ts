@@ -9,11 +9,9 @@ import {
 import type { PipelineDefinition } from '../../types';
 import { loadActivePipelineDefinitions } from '../pipeline/active-pipeline-definitions';
 import { SecretService } from './secret.service';
+import { collectResourceReferences } from './resource-references';
 
-export interface ResourceReferences {
-    readonly connections: ReadonlySet<string>;
-    readonly secrets: ReadonlySet<string>;
-}
+export { collectResourceReferences } from './resource-references';
 
 export interface SecretReferenceUsage {
     readonly publishedPipelines: readonly string[];
@@ -24,76 +22,6 @@ export interface SecretReferenceUsage {
 export interface MissingResourceReferences {
     readonly connections: readonly string[];
     readonly secrets: readonly string[];
-}
-
-const CONNECTION_CODE_KEY = /connectionCode$/i;
-const SECRET_CODE_KEY = /secretCode$/i;
-const SECRET_CODES_KEY = /secretCodes$/i;
-
-function addStringReference(value: unknown, target: Set<string>): void {
-    if (typeof value !== 'string') {
-        return;
-    }
-    const code = value.trim();
-    if (code) {
-        target.add(code);
-    }
-}
-
-function addStringReferences(value: unknown, target: Set<string>): void {
-    if (typeof value === 'string') {
-        addStringReference(value, target);
-        return;
-    }
-    if (Array.isArray(value)) {
-        for (const item of value) {
-            addStringReferences(item, target);
-        }
-        return;
-    }
-    if (value && typeof value === 'object') {
-        for (const item of Object.values(value)) {
-            addStringReferences(item, target);
-        }
-    }
-}
-
-export function collectResourceReferences(value: unknown): ResourceReferences {
-    const connections = new Set<string>();
-    const secrets = new Set<string>();
-    const visited = new WeakSet<object>();
-
-    const visit = (candidate: unknown): void => {
-        if (!candidate || typeof candidate !== 'object') {
-            return;
-        }
-        if (visited.has(candidate)) {
-            return;
-        }
-        visited.add(candidate);
-
-        if (Array.isArray(candidate)) {
-            for (const item of candidate) {
-                visit(item);
-            }
-            return;
-        }
-
-        for (const [key, item] of Object.entries(candidate)) {
-            if (CONNECTION_CODE_KEY.test(key)) {
-                addStringReference(item, connections);
-            }
-            if (SECRET_CODE_KEY.test(key)) {
-                addStringReference(item, secrets);
-            } else if (SECRET_CODES_KEY.test(key)) {
-                addStringReferences(item, secrets);
-            }
-            visit(item);
-        }
-    };
-
-    visit(value);
-    return { connections, secrets };
 }
 
 export class ResourceInUseError extends Error {
