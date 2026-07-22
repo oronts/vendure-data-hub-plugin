@@ -7,8 +7,6 @@
  * logic across generators.
  */
 
-import { RequestContext } from '@vendure/core';
-import { TransactionalConnection } from '@vendure/core';
 import {
     FeedConfig,
     VariantWithCustomFields,
@@ -78,29 +76,28 @@ export interface BaseFeedItem {
  * @param condition - Product condition string (e.g., 'new')
  */
 export async function buildBaseFeedItem(
-    ctx: RequestContext,
     variant: VariantWithCustomFields,
     config: FeedConfig,
-    connection: TransactionalConnection,
     getAvailability: (variant: VariantWithCustomFields) => string,
     condition: string,
+    moneyPrecision: number,
 ): Promise<BaseFeedItem | null> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
+    const currency = String(variant.currencyCode ?? config.options?.currency ?? FEED_DEFAULTS.CURRENCY);
     const product = variant.product as ProductWithCustomFields | undefined;
     const customFields = variant.customFields || {};
     const productCustomFields = product?.customFields || {};
     const sku = variant.sku || variant.id.toString();
 
     // Price is required for all feed formats
-    const price = formatPrice(variant.priceWithTax, currency);
+    const price = formatPrice(variant.priceWithTax, currency, moneyPrecision);
     if (price === null) {
         return null;
     }
 
     // Sale price from custom fields
     const salePrice = customFields.salePrice
-        ? formatPrice(customFields.salePrice as number, currency) ?? undefined
+        ? formatPrice(customFields.salePrice as number, currency, moneyPrecision) ?? undefined
         : undefined;
 
     // Brand from facets or custom fields
@@ -113,7 +110,7 @@ export async function buildBaseFeedItem(
     const mpn = toStringOrUndefined(customFields.mpn) || variant.sku || undefined;
 
     // Product type from collections
-    const productType = await getProductType(ctx, product, connection);
+    const productType = getProductType(product);
 
     // Google product category from custom fields
     const googleProductCategory = toStringOrUndefined(productCustomFields.googleProductCategory);
@@ -126,7 +123,12 @@ export async function buildBaseFeedItem(
     const size = getOptionValue(variant, 'size');
 
     // Additional images from product assets
-    const additionalImages = getAdditionalImages(variant, product, baseUrl);
+    const additionalImages = getAdditionalImages(
+        variant,
+        product,
+        baseUrl,
+        config.options?.imageSize,
+    );
 
     // Custom labels (0-4) from product custom fields
     const customLabels = extractCustomLabels(productCustomFields);
@@ -141,7 +143,7 @@ export async function buildBaseFeedItem(
         description: truncate(stripHtml(product?.description || ''), TRUNCATION.FEED_DESCRIPTION_MAX_LENGTH),
         price,
         link: buildProductUrl(baseUrl, variant, config.options?.utmParams),
-        imageUrl: getImageUrl(variant, product, baseUrl),
+        imageUrl: getImageUrl(variant, product, baseUrl, config.options?.imageSize),
         availability: getAvailability(variant),
         condition,
         brand,

@@ -1,6 +1,11 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
-import { Ctx, RequestContext, Allow, Transaction } from '@vendure/core';
-import { FeedGeneratorService, FeedConfig } from '../../feeds/feed-generator.service';
+import { Ctx, RequestContext, Allow, ID, UserInputError } from '@vendure/core';
+import { DeletionResponse, DeletionResult } from '@vendure/common/lib/generated-types';
+import {
+    FeedGeneratorService,
+    FeedConfig,
+    RegisteredFeedConfig,
+} from '../../feeds/feed-generator.service';
 import { ManageDataHubFeedsPermission } from '../../permissions';
 import { PAGINATION, FEED_FORMATS, LOGGER_CONTEXTS } from '../../constants/index';
 import type { FeedFormatInfo } from '../../constants/index';
@@ -37,8 +42,17 @@ export class DataHubFeedAdminResolver {
 
     @Query()
     @Allow(ManageDataHubFeedsPermission.Permission)
-    async dataHubFeeds(): Promise<FeedConfig[]> {
-        return this.feedGenerator.getRegisteredFeeds();
+    async dataHubFeeds(@Ctx() ctx: RequestContext): Promise<FeedConfig[]> {
+        return this.feedGenerator.getRegisteredFeeds(ctx);
+    }
+
+    @Query()
+    @Allow(ManageDataHubFeedsPermission.Permission)
+    async dataHubFeed(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+    ): Promise<RegisteredFeedConfig | null> {
+        return (await this.feedGenerator.getFeedById(ctx, id)) ?? null;
     }
 
     @Query()
@@ -48,29 +62,62 @@ export class DataHubFeedAdminResolver {
     }
 
     @Mutation()
-    @Transaction()
     @Allow(ManageDataHubFeedsPermission.Permission)
     async createDataHubFeed(
+        @Ctx() ctx: RequestContext,
         @Args('input') input: FeedConfig,
     ): Promise<FeedConfig> {
-        this.feedGenerator.registerFeed(input);
-        return input;
+        return this.feedGenerator.createFeed(ctx, input);
     }
 
     @Mutation()
-    @Transaction()
+    @Allow(ManageDataHubFeedsPermission.Permission)
+    async updateDataHubFeed(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+        @Args('input') input: FeedConfig,
+    ): Promise<RegisteredFeedConfig> {
+        const updated = await this.feedGenerator.updateFeed(ctx, id, input);
+        if (!updated) throw new UserInputError(`Feed not found: ${String(id)}`);
+        return updated;
+    }
+
+    @Mutation()
+    @Allow(ManageDataHubFeedsPermission.Permission)
+    async deleteDataHubFeed(
+        @Ctx() ctx: RequestContext,
+        @Args('id') id: ID,
+    ): Promise<DeletionResponse> {
+        try {
+            const deleted = await this.feedGenerator.deleteFeed(ctx, id);
+            return {
+                result: deleted ? DeletionResult.DELETED : DeletionResult.NOT_DELETED,
+            };
+        } catch (error) {
+            this.logger.error('Failed to delete feed', error instanceof Error ? error : undefined, {
+                feedId: String(id),
+                error: getErrorMessage(error),
+            });
+            return {
+                result: DeletionResult.NOT_DELETED,
+                message: 'Failed to delete feed due to an internal error',
+            };
+        }
+    }
+
+    @Mutation()
     @Allow(ManageDataHubFeedsPermission.Permission)
     async generateDataHubFeed(
         @Ctx() ctx: RequestContext,
         @Args('feedCode') feedCode: string,
     ): Promise<FeedGenerationResult> {
         try {
-            const result = await this.feedGenerator.generateFeed(ctx, feedCode);
+            const result = await this.feedGenerator.generateFeedArtifact(ctx, feedCode);
             return {
                 success: true,
                 itemCount: result.itemCount,
                 generatedAt: result.generatedAt,
-                downloadUrl: `/data-hub/feeds/${feedCode}/download`,
+                downloadUrl: result.downloadUrl,
                 errors: result.errors,
                 warnings: result.warnings,
             };
@@ -87,24 +134,20 @@ export class DataHubFeedAdminResolver {
     }
 
     @Mutation()
-    @Transaction()
     @Allow(ManageDataHubFeedsPermission.Permission)
     async previewDataHubFeed(
         @Ctx() ctx: RequestContext,
         @Args('feedCode') feedCode: string,
         @Args('limit') limit: number = PAGINATION.FEED_PREVIEW_LIMIT,
     ): Promise<FeedPreviewResult> {
-        const validatedLimit = Math.min(Math.max(limit || PAGINATION.FEED_PREVIEW_LIMIT, 1), PAGINATION.FEED_PREVIEW_LIMIT * 100);
-        const result = await this.feedGenerator.generateFeed(ctx, feedCode);
-        let previewContent = typeof result.content === 'string'
+        const result = await this.feedGenerator.generateFeedPreview(
+            ctx,
+            feedCode,
+            limit ?? PAGINATION.FEED_PREVIEW_LIMIT,
+        );
+        const previewContent = typeof result.content === 'string'
             ? result.content
             : result.content.toString('utf-8');
-
-        const lines = previewContent.split('\n');
-        const previewLineLimit = validatedLimit + 10;
-        if (lines.length > previewLineLimit) {
-            previewContent = lines.slice(0, previewLineLimit).join('\n') + '\n...(truncated)';
-        }
 
         return {
             content: previewContent,

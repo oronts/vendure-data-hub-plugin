@@ -63,13 +63,14 @@ export async function generateFacebookCatalogFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
 ): Promise<string> {
     const rows: string[][] = [FACEBOOK_CATALOG_HEADERS];
 
     for (const variant of products) {
         try {
             const sku = variant.sku || variant.id.toString();
-            const item = await buildBaseFeedItem(ctx, variant, config, connection, getFacebookAvailability, PRODUCT_CONDITIONS.NEW);
+            const item = await buildBaseFeedItem(variant, config, getFacebookAvailability, PRODUCT_CONDITIONS.NEW, moneyPrecision);
             if (!item) {
                 feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${config.options?.currency || ''}")`);
                 continue;
@@ -120,6 +121,7 @@ export async function generateFacebookCatalogXMLFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
 ): Promise<string> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
 
@@ -128,7 +130,7 @@ export async function generateFacebookCatalogXMLFeed(
     for (const variant of products) {
         try {
             const sku = variant.sku || variant.id.toString();
-            const item = await buildBaseFeedItem(ctx, variant, config, connection, getFacebookAvailability, PRODUCT_CONDITIONS.NEW);
+            const item = await buildBaseFeedItem(variant, config, getFacebookAvailability, PRODUCT_CONDITIONS.NEW, moneyPrecision);
             if (!item) {
                 feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${config.options?.currency || ''}")`);
                 continue;

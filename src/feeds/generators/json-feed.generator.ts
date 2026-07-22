@@ -6,7 +6,7 @@
 
 import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
-import { SERVICE_DEFAULTS, TRANSFORM_LIMITS } from '../../constants/index';
+import { SERVICE_DEFAULTS } from '../../constants/index';
 import {
     FeedConfig,
     FeedFieldMapping,
@@ -21,13 +21,14 @@ import {
     getAdditionalImages,
     extractFacetValue,
     getProductType,
-    getStockOnHand,
+    getFeedStockQuantity,
     getGenericAvailability,
     stripHtml,
 } from './feed-helpers';
 import { FIELD_PREFIX, FEED_LIMITS, FEED_DEFAULTS, GenericAvailabilityStatus } from './feed-constants';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
+import { minorToMajorUnits } from '../../utils/money.utils';
 
 const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
@@ -42,7 +43,7 @@ export interface JSONFeedItem {
     price: number;
     currency: string;
     availability: GenericAvailabilityStatus;
-    stockQuantity: number;
+    stockQuantity: number | null;
     url: string;
     imageUrl: string;
     additionalImages?: string[];
@@ -98,36 +99,42 @@ async function transformVariantToItem(
     variant: VariantWithCustomFields,
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
     options: JSONGeneratorOptions,
 ): Promise<JSONFeedItem> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
+    const currency = String(variant.currencyCode ?? config.options?.currency ?? FEED_DEFAULTS.CURRENCY);
     const product = variant.product as ProductWithCustomFields | undefined;
-    const stockOnHand = getStockOnHand(variant);
+    const stockOnHand = getFeedStockQuantity(variant);
 
     const item: JSONFeedItem = {
         id: variant.id.toString(),
         sku: variant.sku || null,
         name: variant.name || product?.name || '',
         description: stripHtml(product?.description || ''),
-        price: variant.priceWithTax / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER,
+        price: minorToMajorUnits(variant.priceWithTax, moneyPrecision),
         currency,
         availability: getGenericAvailability(variant),
         stockQuantity: stockOnHand,
         url: buildProductUrl(baseUrl, variant, config.options?.utmParams),
-        imageUrl: getImageUrl(variant, product, baseUrl),
+        imageUrl: getImageUrl(variant, product, baseUrl, config.options?.imageSize),
     };
 
     // Additional images
     if (options.includeAdditionalImages !== false) {
-        const additionalImages = getAdditionalImages(variant, product, baseUrl);
+        const additionalImages = getAdditionalImages(
+            variant,
+            product,
+            baseUrl,
+            config.options?.imageSize,
+        );
         if (additionalImages.length > 0) {
             item.additionalImages = additionalImages;
         }
     }
 
     // Category from collections
-    const category = await getProductType(ctx, product, connection);
+    const category = getProductType(product);
     if (category) {
         item.category = category;
     }
@@ -236,6 +243,7 @@ export async function generateJSONFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
     options?: JSONGeneratorOptions,
 ): Promise<string> {
     const opts: JSONGeneratorOptions = {
@@ -253,7 +261,7 @@ export async function generateJSONFeed(
 
     for (const variant of products) {
         try {
-            const item = await transformVariantToItem(ctx, variant, config, connection, opts);
+            const item = await transformVariantToItem(ctx, variant, config, connection, moneyPrecision, opts);
             items.push(item);
         } catch (error) {
             feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
@@ -292,8 +300,9 @@ export async function generateMinimalJSONFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
 ): Promise<string> {
-    return generateJSONFeed(ctx, products, config, connection, {
+    return generateJSONFeed(ctx, products, config, connection, moneyPrecision, {
         includeAdditionalImages: false,
         includeCustomFields: false,
         includeOptions: false,
@@ -310,8 +319,9 @@ export async function generateFullJSONFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
 ): Promise<string> {
-    return generateJSONFeed(ctx, products, config, connection, {
+    return generateJSONFeed(ctx, products, config, connection, moneyPrecision, {
         includeAdditionalImages: true,
         includeCustomFields: true,
         includeOptions: true,

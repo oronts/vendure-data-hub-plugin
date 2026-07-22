@@ -22,6 +22,7 @@ interface FeedGeneratorContext {
     connection: TransactionalConnection;
     config: FeedConfig;
     products: VariantWithCustomFields[];
+    moneyPrecision: number;
 }
 
 interface CustomFeedResult {
@@ -43,7 +44,7 @@ interface FeedConfig {
 
 interface FeedOptions {
     includeVariants?: boolean;
-    imageSize?: 'thumbnail' | 'preview' | 'detail' | 'original';
+    imageSize?: 'preview' | 'original';
     currency?: string;
     language?: string;
     baseUrl?: string;
@@ -54,7 +55,7 @@ interface FeedOptions {
 ## Basic Example
 
 ```typescript
-import { CustomFeedGenerator, FeedGeneratorContext, CustomFeedResult } from '@oronts/vendure-data-hub-plugin';
+import { CustomFeedGenerator, FeedGeneratorContext, CustomFeedResult, minorToMajorUnits } from '@oronts/vendure-data-hub-plugin';
 
 export const myMarketplaceFeed: CustomFeedGenerator = {
     code: 'my-marketplace',
@@ -62,13 +63,13 @@ export const myMarketplaceFeed: CustomFeedGenerator = {
     description: 'Generate product feed for My Marketplace',
 
     async generate(context: FeedGeneratorContext): Promise<CustomFeedResult> {
-        const { products, config } = context;
+        const { products, config, moneyPrecision } = context;
         const baseUrl = config.options?.baseUrl || 'https://example.com';
 
         const items = products.map(variant => ({
             sku: variant.sku,
             name: variant.name,
-            price: (variant.priceWithTax / 100).toFixed(2),
+            price: minorToMajorUnits(variant.priceWithTax, moneyPrecision).toFixed(moneyPrecision),
             currency: config.options?.currency || 'USD',
             url: `${baseUrl}/products/${variant.product.slug}`,
             image: variant.featuredAsset?.preview || '',
@@ -93,6 +94,7 @@ import {
     FeedGeneratorContext,
     CustomFeedResult,
     VariantWithCustomFields,
+    minorToMajorUnits,
 } from '@oronts/vendure-data-hub-plugin';
 
 interface AmazonItem {
@@ -125,6 +127,7 @@ interface AmazonItem {
 function mapVariantToAmazon(
     variant: VariantWithCustomFields,
     config: FeedGeneratorContext['config'],
+    moneyPrecision: number,
 ): AmazonItem {
     const customFields = variant.customFields || {};
     const productCustomFields = variant.product?.customFields || {};
@@ -147,7 +150,7 @@ function mapVariantToAmazon(
         brand_name: productCustomFields.brand || '',
         manufacturer: productCustomFields.manufacturer || productCustomFields.brand || '',
         item_type: productCustomFields.amazonCategory || 'Generic',
-        standard_price: (variant.priceWithTax / 100).toFixed(2),
+        standard_price: minorToMajorUnits(variant.priceWithTax, moneyPrecision).toFixed(moneyPrecision),
         currency: config.options?.currency || 'USD',
         quantity: variant.stockOnHand || 0,
         main_image_url: images[0] || '',
@@ -202,7 +205,7 @@ export const amazonMarketplaceFeed: CustomFeedGenerator = {
     description: 'Generate TSV feed for Amazon Seller Central flat file upload',
 
     async generate(context: FeedGeneratorContext): Promise<CustomFeedResult> {
-        const { products, config } = context;
+        const { products, config, moneyPrecision } = context;
 
         // Filter products that have required Amazon fields
         const validProducts = products.filter(variant => {
@@ -211,7 +214,7 @@ export const amazonMarketplaceFeed: CustomFeedGenerator = {
             return customFields.ean || customFields.upc || customFields.gtin;
         });
 
-        const items = validProducts.map(variant => mapVariantToAmazon(variant, config));
+        const items = validProducts.map(variant => mapVariantToAmazon(variant, config, moneyPrecision));
 
         return {
             content: generateTSV(items),
@@ -230,6 +233,7 @@ import {
     FeedGeneratorContext,
     CustomFeedResult,
     VariantWithCustomFields,
+    minorToMajorUnits,
 } from '@oronts/vendure-data-hub-plugin';
 
 interface PinterestItem {
@@ -261,7 +265,7 @@ export const pinterestFeed: CustomFeedGenerator = {
     description: 'Generate product feed for Pinterest Shopping',
 
     async generate(context: FeedGeneratorContext): Promise<CustomFeedResult> {
-        const { products, config } = context;
+        const { products, config, moneyPrecision } = context;
         const baseUrl = config.options?.baseUrl || '';
         const currency = config.options?.currency || 'USD';
 
@@ -289,7 +293,7 @@ export const pinterestFeed: CustomFeedGenerator = {
                 description: variant.product?.description || '',
                 link: `${baseUrl}/products/${variant.product?.slug}?variant=${variant.id}`,
                 image_link: variant.featuredAsset?.preview || '',
-                price: `${(variant.priceWithTax / 100).toFixed(2)} ${currency}`,
+                price: `${minorToMajorUnits(variant.priceWithTax, moneyPrecision).toFixed(moneyPrecision)} ${currency}`,
                 availability,
                 brand: productCustomFields.brand,
                 gtin: customFields.ean || customFields.gtin,
@@ -379,7 +383,8 @@ export const config: VendureConfig = {
 ### Programmatically
 
 ```typescript
-import { VendurePlugin, OnModuleInit } from '@vendure/core';
+import { OnModuleInit } from '@nestjs/common';
+import { RequestContextService, VendurePlugin } from '@vendure/core';
 import { DataHubPlugin, FeedGeneratorService } from '@oronts/vendure-data-hub-plugin';
 import { amazonMarketplaceFeed } from './amazon-feed';
 
@@ -387,10 +392,31 @@ import { amazonMarketplaceFeed } from './amazon-feed';
     imports: [DataHubPlugin],
 })
 export class MyFeedsPlugin implements OnModuleInit {
-    constructor(private feedService: FeedGeneratorService) {}
+    constructor(
+        private feedService: FeedGeneratorService,
+        private requestContextService: RequestContextService,
+    ) {}
 
-    onModuleInit() {
+    async onModuleInit() {
         this.feedService.registerCustomGenerator(amazonMarketplaceFeed);
+        const ctx = await this.requestContextService.create({
+            apiType: 'admin',
+            channelOrToken: 'us-channel',
+        });
+        const definition = {
+            code: 'amazon-us',
+            name: 'Amazon US Feed',
+            format: 'CUSTOM',
+            customGeneratorCode: 'amazon-marketplace',
+            filters: { enabled: true, inStock: true },
+            options: { currency: 'USD', baseUrl: 'https://mystore.com' },
+        } as const;
+        const existing = await this.feedService.getFeed(ctx, definition.code);
+        if (existing) {
+            await this.feedService.updateFeed(ctx, existing.id, definition);
+        } else {
+            await this.feedService.createFeed(ctx, definition);
+        }
     }
 }
 ```
@@ -399,45 +425,43 @@ export class MyFeedsPlugin implements OnModuleInit {
 
 ### Register Feed Configuration
 
-```typescript
-// In plugin initialization
-feedService.registerFeed({
-    code: 'amazon-us',
-    name: 'Amazon US Feed',
-    format: 'CUSTOM',
-    customGeneratorCode: 'amazon-marketplace',
-    channelToken: 'us-channel',
-    filters: {
-        enabled: true,
-        inStock: true,
-    },
-    options: {
-        currency: 'USD',
-        baseUrl: 'https://mystore.com',
-    },
-});
+```graphql
+mutation CreateFeed($input: DataHubFeedInput!) {
+  createDataHubFeed(input: $input) {
+    id
+    code
+    customGeneratorCode
+  }
+}
 ```
+
+Pass `format: CUSTOM` and the registered generator's code in
+`customGeneratorCode`. The feed is persisted for the active Vendure channel.
+`createDataHubFeed` rejects duplicate codes; use `updateDataHubFeed(id:, input:)`
+for an explicit full-definition replacement and `deleteDataHubFeed(id:)` to
+remove the definition and its current generated artifact. All lifecycle
+operations require `ManageDataHubFeeds` and resolve IDs only inside the active
+channel.
 
 ### Generate via GraphQL
 
 ```graphql
-query {
-    generateFeed(feedCode: "amazon-us") {
-        content
-        contentType
-        filename
-        itemCount
-        errors
-        warnings
-    }
+mutation {
+  generateDataHubFeed(feedCode: "amazon-us") {
+    success
+    itemCount
+    generatedAt
+    downloadUrl
+    errors
+    warnings
+  }
 }
 ```
 
-### Generate via REST
-
-```
-GET /data-hub/feeds/amazon-us/generate
-```
+Generation stores the artifact through the configured Data Hub storage backend.
+The returned URL uses the existing file download controller and requires
+`ReadDataHubFiles`; feed lifecycle operations and generation require
+`ManageDataHubFeeds`.
 
 ### Use in Pipeline
 
@@ -449,7 +473,7 @@ const amazonFeedPipeline = createPipeline()
     .extract('products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',  // UPPERCASE entity names
-        relations: 'product,product.customFields,featuredAsset,assets,options,options.group',
+        relations: ['product', 'product.customFields', 'featuredAsset', 'assets', 'options', 'options.group'],
     })
     .transform('filter-amazon', {
         adapterCode: 'when',
@@ -459,7 +483,7 @@ const amazonFeedPipeline = createPipeline()
     .feed('generate-feed', {
         adapterCode: 'customFeed',
         generatorCode: 'amazon-marketplace',
-        outputPath: '/feeds/amazon-${date}.txt',
+        outputPath: 'feeds/amazon-${date}.txt',
         connectionCode: 's3-feeds', // Upload to S3
     })
     .trigger('schedule', {
@@ -468,6 +492,8 @@ const amazonFeedPipeline = createPipeline()
     })
     .build();
 ```
+
+`outputPath` names the generated server-local file and must be relative to `DATA_HUB_EXPORT_ROOT`, for example `feeds/amazon-${date}.txt`. A configured remote connection does not make `outputPath` a URL or an absolute remote path; remote location fields belong to that destination's configuration.
 
 ## Feed Filters
 
@@ -483,14 +509,18 @@ const config: FeedConfig = {
         enabled: true,           // Only enabled products
         inStock: true,           // Only in-stock items
         hasPrice: true,          // Only items with price
-        minPrice: 100,           // Minimum price in cents
-        maxPrice: 100000,        // Maximum price in cents
-        categories: ['electronics', 'accessories'], // Include categories
-        excludeCategories: ['clearance'],           // Exclude categories
-        customFilter: 'variant.customFields.exportable === true', // JS expression
+        minPrice: 10,            // Minimum price in major currency units
+        maxPrice: 1000,          // Maximum price in major currency units
+        categories: ['electronics', 'accessories'], // Include collection slugs
+        excludeCategories: ['clearance'],           // Exclude collection slugs
     },
 };
 ```
+
+Feed filters are declarative. Arbitrary JavaScript expressions are not accepted.
+Prices and saleable stock are resolved through Vendure for the active channel,
+currency, language, stock-location strategy, and out-of-stock thresholds before
+these filters are applied.
 
 ## Field Mappings
 
@@ -499,28 +529,18 @@ Map Vendure fields to feed fields:
 ```typescript
 const config: FeedConfig = {
     code: 'mapped-feed',
-    format: 'CUSTOM',
+    name: 'Mapped Feed',
+    format: 'custom',
     customGeneratorCode: 'my-feed',
     fieldMappings: {
-        // Simple mapping
-        'sku': 'variant.sku',
-        'name': 'variant.name',
-
-        // With transformation
-        'price': {
+        sku: 'variant.sku',
+        name: 'variant.name',
+        price: {
             source: 'variant.priceWithTax',
-            transform: 'value / 100',
             default: 0,
         },
-
-        // Nested path
-        'brand': 'product.customFields.brand',
-
-        // Custom expression
-        'url': {
-            source: 'product.slug',
-            transform: '`https://store.com/products/${value}`',
-        },
+        brand: 'product.customFields.brand',
+        url: 'product.slug',
     },
 };
 ```
@@ -531,7 +551,7 @@ The generator context provides access to:
 
 ```typescript
 async generate(context: FeedGeneratorContext): Promise<CustomFeedResult> {
-    const { ctx, connection, config, products } = context;
+    const { ctx, connection, config, products, moneyPrecision } = context;
 
     // Access database for additional queries
     const collections = await connection

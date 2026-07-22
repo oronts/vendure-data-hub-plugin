@@ -24,6 +24,7 @@ import {
 import { FEED_DEFAULTS, GenericAvailabilityStatus } from './feed-constants';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
+import { minorToMajorUnits } from '../../utils/money.utils';
 
 const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
@@ -100,10 +101,11 @@ async function transformVariantToXMLItem(
     variant: VariantWithCustomFields,
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
     options: XMLGeneratorOptions,
 ): Promise<XMLFeedItem> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
+    const currency = String(variant.currencyCode ?? config.options?.currency ?? FEED_DEFAULTS.CURRENCY);
     const product = variant.product as ProductWithCustomFields | undefined;
 
     const item: XMLFeedItem = {
@@ -112,11 +114,11 @@ async function transformVariantToXMLItem(
         description: stripHtml(product?.description || ''),
         price: {
             '@_currency': currency,
-            '#text': (variant.priceWithTax / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER).toFixed(TRANSFORM_LIMITS.CURRENCY_DECIMAL_PLACES),
+            '#text': minorToMajorUnits(variant.priceWithTax, moneyPrecision).toFixed(moneyPrecision),
         },
         availability: getGenericAvailability(variant),
         url: buildProductUrl(baseUrl, variant, config.options?.utmParams),
-        image_url: getImageUrl(variant, product, baseUrl),
+        image_url: getImageUrl(variant, product, baseUrl, config.options?.imageSize),
     };
 
     // SKU
@@ -125,7 +127,7 @@ async function transformVariantToXMLItem(
     }
 
     // Category from collections
-    const category = await getProductType(ctx, product, connection);
+    const category = getProductType(product);
     if (category) {
         item.category = category;
     }
@@ -157,6 +159,7 @@ export async function generateXMLFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
     options?: XMLGeneratorOptions,
 ): Promise<string> {
     const opts: XMLGeneratorOptions = {
@@ -174,7 +177,7 @@ export async function generateXMLFeed(
 
     for (const variant of products) {
         try {
-            const item = await transformVariantToXMLItem(ctx, variant, config, connection, opts);
+            const item = await transformVariantToXMLItem(ctx, variant, config, connection, moneyPrecision, opts);
             items.push(item);
         } catch (error) {
             feedLogger.warn(`Failed to process variant ${variant.id}: ${error}`);
@@ -225,6 +228,7 @@ export async function generateAtomFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     _connection: TransactionalConnection,
+    moneyPrecision: number,
 ): Promise<string> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
     const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
@@ -250,14 +254,14 @@ export async function generateAtomFeed(
                             '@_xmlns': XML_NAMESPACES.XHTML,
                             p: stripHtml(product?.description || ''),
                             img: {
-                                '@_src': getImageUrl(variant, product, baseUrl),
+                                '@_src': getImageUrl(variant, product, baseUrl, config.options?.imageSize),
                                 '@_alt': variant.name || product?.name || '',
                             },
                         },
                     },
                     'price:amount': {
                         '@_currency': currency,
-                        '#text': (variant.priceWithTax / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER).toFixed(TRANSFORM_LIMITS.CURRENCY_DECIMAL_PLACES),
+                        '#text': minorToMajorUnits(variant.priceWithTax, moneyPrecision).toFixed(moneyPrecision),
                     },
                     'stock:availability': availability,
                 };
@@ -317,7 +321,7 @@ export async function generateRSSFeed(
                     },
                     pubDate: new Date().toUTCString(),
                     enclosure: {
-                        '@_url': getImageUrl(variant, product, baseUrl),
+                        '@_url': getImageUrl(variant, product, baseUrl, config.options?.imageSize),
                         '@_type': 'image/jpeg',
                     },
                 };

@@ -30,6 +30,7 @@ export async function generateGoogleShoppingFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
 ): Promise<string> {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
 
@@ -38,16 +39,12 @@ export async function generateGoogleShoppingFeed(
     for (const variant of products) {
         try {
             const sku = variant.sku || variant.id.toString();
-            const item = await buildBaseFeedItem(ctx, variant, config, connection, getGoogleAvailability, PRODUCT_CONDITIONS.NEW);
+            const item = await buildBaseFeedItem(variant, config, getGoogleAvailability, PRODUCT_CONDITIONS.NEW, moneyPrecision);
             if (!item) {
                 feedLogger.warn(`Skipping variant ${sku}: invalid price (${variant.priceWithTax}) or currency ("${config.options?.currency || ''}")`);
                 continue;
             }
 
-            // Validate price format matches Google's requirement: number + space + 3-letter currency code
-            if (!/^\d+\.\d{2}\s[A-Z]{3}$/.test(item.price)) {
-                feedLogger.warn(`Invalid price format for SKU ${item.id}: "${item.price}"`);
-            }
 
             const googleItem: GoogleShoppingItem = {
                 'g:id': item.id,

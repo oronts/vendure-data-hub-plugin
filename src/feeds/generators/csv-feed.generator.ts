@@ -6,7 +6,7 @@
 
 import { RequestContext } from '@vendure/core';
 import { TransactionalConnection } from '@vendure/core';
-import { SERVICE_DEFAULTS, TRANSFORM_LIMITS } from '../../constants/index';
+import { SERVICE_DEFAULTS } from '../../constants/index';
 import {
     FeedConfig,
     FeedFieldMapping,
@@ -21,12 +21,14 @@ import {
     extractFacetValue,
     getProductType,
     getOptionValue,
-    getStockOnHand,
+    getFeedStockQuantity,
+    getSaleableStockLevel,
     stripHtml,
 } from './feed-helpers';
 import { FIELD_PREFIX, FEED_DEFAULTS, GENERIC_AVAILABILITY } from './feed-constants';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
+import { minorToMajorUnits } from '../../utils/money.utils';
 
 const feedLogger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.FEED_GENERATOR);
 
@@ -81,10 +83,11 @@ function getFieldValue(
     _ctx: RequestContext,
     config: FeedConfig,
     _connection: TransactionalConnection,
+    moneyPrecision: number,
     productType?: string,
 ): string {
     const baseUrl = config.options?.baseUrl || SERVICE_DEFAULTS.EXAMPLE_BASE_URL;
-    const currency = config.options?.currency || FEED_DEFAULTS.CURRENCY;
+    const currency = String(variant.currencyCode ?? config.options?.currency ?? FEED_DEFAULTS.CURRENCY);
 
     switch (source) {
         case 'id':
@@ -96,19 +99,19 @@ function getFieldValue(
         case 'description':
             return stripHtml(product?.description || '');
         case 'price':
-            return (variant.priceWithTax / TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER).toFixed(TRANSFORM_LIMITS.CURRENCY_DECIMAL_PLACES);
+            return minorToMajorUnits(variant.priceWithTax, moneyPrecision).toFixed(moneyPrecision);
         case 'price_formatted':
-            return formatPrice(variant.priceWithTax, currency) ?? '';
+            return formatPrice(variant.priceWithTax, currency, moneyPrecision) ?? '';
         case 'currency':
             return currency;
         case 'availability':
-            return getStockOnHand(variant) > 0 ? GENERIC_AVAILABILITY.IN_STOCK : GENERIC_AVAILABILITY.OUT_OF_STOCK;
+            return getSaleableStockLevel(variant) > 0 ? GENERIC_AVAILABILITY.IN_STOCK : GENERIC_AVAILABILITY.OUT_OF_STOCK;
         case 'stock':
-            return getStockOnHand(variant).toString();
+            return getFeedStockQuantity(variant)?.toString() ?? '';
         case 'url':
             return buildProductUrl(baseUrl, variant, config.options?.utmParams);
         case 'image_url':
-            return getImageUrl(variant, product, baseUrl);
+            return getImageUrl(variant, product, baseUrl, config.options?.imageSize);
         case 'category':
             return productType || '';
         case 'brand':
@@ -173,6 +176,7 @@ export async function generateCSVFeed(
     products: VariantWithCustomFields[],
     config: FeedConfig,
     connection: TransactionalConnection,
+    moneyPrecision: number,
     options?: CSVGeneratorOptions,
 ): Promise<string> {
     const delimiter = options?.delimiter ?? ',';
@@ -210,7 +214,7 @@ export async function generateCSVFeed(
                 if (productTypeCache.has(cacheKey)) {
                     productType = productTypeCache.get(cacheKey);
                 } else {
-                    productType = await getProductType(ctx, product, connection);
+                    productType = getProductType(product);
                     productTypeCache.set(cacheKey, productType);
                 }
             }
@@ -218,12 +222,12 @@ export async function generateCSVFeed(
             const row = fields.map(field => {
                 if (field.transform) {
                     return field.transform(
-                        getFieldValue(field.source, variant, product, ctx, config, connection, productType),
+                        getFieldValue(field.source, variant, product, ctx, config, connection, moneyPrecision, productType),
                         variant,
                         product,
                     );
                 }
-                return getFieldValue(field.source, variant, product, ctx, config, connection, productType);
+                return getFieldValue(field.source, variant, product, ctx, config, connection, moneyPrecision, productType);
             });
 
             rows.push(row);
@@ -256,9 +260,10 @@ export async function generateCustomCSVFeed(
     config: FeedConfig,
     connection: TransactionalConnection,
     customFields: CSVFieldConfig[],
+    moneyPrecision: number,
     options?: Omit<CSVGeneratorOptions, 'fields'>,
 ): Promise<string> {
-    return generateCSVFeed(ctx, products, config, connection, {
+    return generateCSVFeed(ctx, products, config, connection, moneyPrecision, {
         ...options,
         fields: customFields,
     });

@@ -7,42 +7,45 @@
 
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import {
-    TransactionalConnection,
-    ProductVariant,
+    CurrencyCode,
+    LanguageCode,
+    SortOrder,
+} from '@vendure/common/lib/generated-types';
+import {
+    CollectionService,
+    ConfigService,
+    ID,
+    ProductService,
+    ProductVariantService,
     RequestContext,
+    RequestContextService,
+    TransactionalConnection,
+    UserInputError,
 } from '@vendure/core';
-import { LOGGER_CONTEXTS, CONTENT_TYPES, FEED_FORMAT_MAP, FIELD_LIMITS, VALIDATION_PATTERNS, TRANSFORM_LIMITS } from '../constants/index';
-import { isValidCron } from '../../shared/utils/validation';
+import { CONTENT_TYPES, DISTRIBUTED_LOCK, FEED_FORMAT_MAP, LOGGER_CONTEXTS, PAGINATION } from '../constants/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../services/logger';
+import { DistributedLockService } from '../services/runtime/distributed-lock.service';
+import { createChannelRequestContext } from '../runtime/helpers/channel-request-context';
+import { majorToMinorUnits, resolveMoneyPrecision } from '../utils/money.utils';
+import { validateFeedConfig } from './feed-config.validation';
+import { FeedPersistenceService } from './feed-persistence.service';
 
 import {
     FeedFormat,
     FeedConfig,
     FeedFilters,
     GeneratedFeed,
+    GeneratedFeedArtifact,
+    RegisteredFeedConfig,
     VariantWithCustomFields,
     CustomFeedGenerator,
     FeedGeneratorContext,
-    BuiltInFeedFormat,
 } from './generators/feed-types';
 
-/**
- * Valid built-in feed formats
- */
-const VALID_BUILT_IN_FORMATS: readonly BuiltInFeedFormat[] = ['google_shopping', 'facebook_catalog', 'csv', 'json', 'xml'];
+export { FeedConfigValidationError } from './feed-config.validation';
 
-/**
- * Validation error for feed configuration
- */
-export class FeedConfigValidationError extends Error {
-    constructor(
-        message: string,
-        public readonly field: string,
-        public readonly value?: unknown,
-    ) {
-        super(message);
-        this.name = 'FeedConfigValidationError';
-    }
+interface FeedGenerationOptions {
+    maxItems?: number;
 }
 
 import { generateGoogleShoppingFeed } from './generators/google-shopping.generator';
@@ -58,6 +61,8 @@ export {
     FeedFieldMapping,
     FeedOptions,
     GeneratedFeed,
+    GeneratedFeedArtifact,
+    RegisteredFeedConfig,
     VariantWithCustomFields,
     ProductWithCustomFields,
     GoogleShoppingItem,
@@ -70,11 +75,17 @@ export {
 @Injectable()
 export class FeedGeneratorService implements OnModuleInit {
     private readonly logger: DataHubLogger;
-    private feedConfigs: Map<string, FeedConfig> = new Map();
     private customGenerators: Map<string, CustomFeedGenerator> = new Map();
 
     constructor(
         private connection: TransactionalConnection,
+        private configService: ConfigService,
+        private productVariantService: ProductVariantService,
+        private productService: ProductService,
+        private collectionService: CollectionService,
+        private requestContextService: RequestContextService,
+        private persistence: FeedPersistenceService,
+        private distributedLock: DistributedLockService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.FEED_GENERATOR_SERVICE);
@@ -120,186 +131,127 @@ export class FeedGeneratorService implements OnModuleInit {
         return this.customGenerators.has(code);
     }
 
-    /**
-     * Validate a feed configuration
-     * @throws FeedConfigValidationError if validation fails
-     */
-    private validateFeedConfig(config: FeedConfig): void {
-        // Validate required code field
-        if (!config.code || typeof config.code !== 'string') {
-            throw new FeedConfigValidationError('Feed code is required and must be a string', 'code', config.code);
-        }
-
-        // Validate code format (alphanumeric with underscores/hyphens)
-        if (!VALIDATION_PATTERNS.SLUG.test(config.code)) {
-            throw new FeedConfigValidationError(
-                'Feed code must contain only alphanumeric characters, underscores, and hyphens',
-                'code',
-                config.code,
-            );
-        }
-
-        // Validate code length
-        if (config.code.length > FIELD_LIMITS.CODE_MAX) {
-            throw new FeedConfigValidationError(
-                `Feed code must not exceed ${FIELD_LIMITS.CODE_MAX} characters`,
-                'code',
-                config.code,
-            );
-        }
-
-        // Validate required name field
-        if (!config.name || typeof config.name !== 'string') {
-            throw new FeedConfigValidationError('Feed name is required and must be a string', 'name', config.name);
-        }
-
-        // Validate name length
-        if (config.name.length > FIELD_LIMITS.NAME_MAX) {
-            throw new FeedConfigValidationError(
-                `Feed name must not exceed ${FIELD_LIMITS.NAME_MAX} characters`,
-                'name',
-                config.name,
-            );
-        }
-
-        // Validate format
-        if (!config.format || typeof config.format !== 'string') {
-            throw new FeedConfigValidationError('Feed format is required and must be a string', 'format', config.format);
-        }
-
-        // Validate custom format has customGeneratorCode
-        if (config.format === 'custom') {
-            if (!config.customGeneratorCode) {
-                throw new FeedConfigValidationError(
-                    'customGeneratorCode is required when format is "custom"',
-                    'customGeneratorCode',
-                    config.customGeneratorCode,
-                );
-            }
-            if (!this.customGenerators.has(config.customGeneratorCode)) {
-                throw new FeedConfigValidationError(
-                    `Custom generator "${config.customGeneratorCode}" is not registered. Available: ${Array.from(this.customGenerators.keys()).join(', ') || 'none'}`,
-                    'customGeneratorCode',
-                    config.customGeneratorCode,
-                );
-            }
-        } else if (!VALID_BUILT_IN_FORMATS.includes((config.format || '').toLowerCase() as BuiltInFeedFormat)) {
-            // Unknown format that's not 'custom' - warn but allow (for future extensibility)
-            this.logger.warn('Unknown feed format registered', {
-                feedCode: config.code,
-                format: config.format,
-                validFormats: VALID_BUILT_IN_FORMATS,
-            });
-        }
-
-        // Validate baseUrl if provided
-        if (config.options?.baseUrl) {
-            if (!VALIDATION_PATTERNS.URL.test(config.options.baseUrl)) {
-                throw new FeedConfigValidationError(
-                    'baseUrl must be a valid URL',
-                    'options.baseUrl',
-                    config.options.baseUrl,
-                );
-            }
-        }
-
-        // Validate price filters
-        if (config.filters?.minPrice !== undefined && config.filters.minPrice < 0) {
-            throw new FeedConfigValidationError(
-                'minPrice must be a non-negative number',
-                'filters.minPrice',
-                config.filters.minPrice,
-            );
-        }
-        if (config.filters?.maxPrice !== undefined && config.filters.maxPrice < 0) {
-            throw new FeedConfigValidationError(
-                'maxPrice must be a non-negative number',
-                'filters.maxPrice',
-                config.filters.maxPrice,
-            );
-        }
-        if (
-            config.filters?.minPrice !== undefined &&
-            config.filters?.maxPrice !== undefined &&
-            config.filters.minPrice > config.filters.maxPrice
-        ) {
-            throw new FeedConfigValidationError(
-                'minPrice cannot be greater than maxPrice',
-                'filters.minPrice',
-                { minPrice: config.filters.minPrice, maxPrice: config.filters.maxPrice },
-            );
-        }
-
-        // Validate schedule cron expression if provided
-        if (config.schedule?.enabled && config.schedule.cron) {
-            if (!isValidCron(config.schedule.cron)) {
-                throw new FeedConfigValidationError(
-                    'Invalid cron expression: must be a valid 5-field cron (minute hour day month weekday)',
-                    'schedule.cron',
-                    config.schedule.cron,
-                );
-            }
-        }
+    async createFeed(
+        ctx: RequestContext,
+        config: FeedConfig,
+    ): Promise<RegisteredFeedConfig> {
+        validateFeedConfig(config, this.customGenerators);
+        return this.persistence.create(ctx, config);
     }
 
-    /**
-     * Register a feed configuration
-     * @throws FeedConfigValidationError if configuration is invalid
-     */
-    registerFeed(config: FeedConfig): void {
-        this.validateFeedConfig(config);
-        this.feedConfigs.set(config.code, config);
-        this.logger.info('Registered feed configuration', {
-            feedCode: config.code,
-            format: config.format,
-        });
+    async updateFeed(
+        ctx: RequestContext,
+        id: ID,
+        config: FeedConfig,
+    ): Promise<RegisteredFeedConfig | undefined> {
+        validateFeedConfig(config, this.customGenerators);
+        const entity = await this.persistence.getEntityById(ctx, id);
+        if (!entity) return undefined;
+        return this.withLifecycleLocks(entity.channelId, entity.id, () => (
+            this.persistence.update(ctx, id, config)
+        ));
     }
 
-    /**
-     * Unregister a feed configuration
-     */
-    unregisterFeed(feedCode: string): boolean {
-        const deleted = this.feedConfigs.delete(feedCode);
-        if (deleted) {
-            this.logger.info('Unregistered feed configuration', { feedCode });
-        }
-        return deleted;
+    async deleteFeed(ctx: RequestContext, id: ID): Promise<boolean> {
+        const entity = await this.persistence.getEntityById(ctx, id);
+        if (!entity) return false;
+        return this.withLifecycleLocks(entity.channelId, entity.id, () => (
+            this.persistence.delete(ctx, id)
+        ));
     }
 
     /**
      * Get a feed configuration by code
      */
-    getFeed(feedCode: string): FeedConfig | undefined {
-        return this.feedConfigs.get(feedCode);
+    async getFeed(
+        ctx: RequestContext,
+        feedCode: string,
+    ): Promise<RegisteredFeedConfig | undefined> {
+        return this.persistence.get(ctx, feedCode);
+    }
+
+    async getFeedById(
+        ctx: RequestContext,
+        id: ID,
+    ): Promise<RegisteredFeedConfig | undefined> {
+        return this.persistence.getById(ctx, id);
     }
 
     /**
      * Get all registered feeds
      */
-    getRegisteredFeeds(): FeedConfig[] {
-        return Array.from(this.feedConfigs.values());
+    async getRegisteredFeeds(ctx: RequestContext): Promise<RegisteredFeedConfig[]> {
+        return this.persistence.list(ctx);
     }
 
     /**
      * Check if a feed exists
      */
-    hasFeed(feedCode: string): boolean {
-        return this.feedConfigs.has(feedCode);
+    async hasFeed(ctx: RequestContext, feedCode: string): Promise<boolean> {
+        return (await this.persistence.getEntity(ctx, feedCode)) !== null;
     }
 
     /**
      * Generate a feed
      */
-    async generateFeed(ctx: RequestContext, feedCode: string): Promise<GeneratedFeed> {
-        const config = this.feedConfigs.get(feedCode);
+    async generateFeed(
+        ctx: RequestContext,
+        feedCode: string,
+    ): Promise<GeneratedFeed> {
+        return this.generateFeedWithOptions(ctx, feedCode);
+    }
+
+    async generateFeedPreview(
+        ctx: RequestContext,
+        feedCode: string,
+        maxItems: number,
+    ): Promise<GeneratedFeed> {
+        if (
+            !Number.isInteger(maxItems) ||
+            maxItems < 1 ||
+            maxItems > PAGINATION.FEED_PREVIEW_MAX_LIMIT
+        ) {
+            throw new UserInputError(
+                `limit must be an integer between 1 and ${PAGINATION.FEED_PREVIEW_MAX_LIMIT}`,
+            );
+        }
+
+        const result = await this.generateFeedWithOptions(ctx, feedCode, { maxItems });
+        const byteLength = typeof result.content === 'string'
+            ? Buffer.byteLength(result.content, 'utf8')
+            : result.content.byteLength;
+        if (byteLength > PAGINATION.FEED_PREVIEW_MAX_BYTES) {
+            throw new UserInputError(
+                `Feed preview exceeds the ${PAGINATION.FEED_PREVIEW_MAX_BYTES}-byte limit; request fewer items`,
+            );
+        }
+        return result;
+    }
+
+    private async generateFeedWithOptions(
+        ctx: RequestContext,
+        feedCode: string,
+        options: FeedGenerationOptions = {},
+    ): Promise<GeneratedFeed> {
+        const config = await this.getFeed(ctx, feedCode);
         if (!config) {
             this.logger.warn('Feed not found', { feedCode });
             throw new Error(`Feed not found: ${feedCode}`);
         }
+        validateFeedConfig(config, this.customGenerators);
+        const feedContext = await this.createFeedContext(ctx, config);
+        const runtimeConfig: FeedConfig = {
+            ...config,
+            options: {
+                ...config.options,
+                currency: String(feedContext.currencyCode),
+                language: String(feedContext.languageCode),
+            },
+        };
 
         this.logger.info('Starting feed generation', {
             feedCode,
-            format: config.format,
+            format: runtimeConfig.format,
         });
 
         const startTime = Date.now();
@@ -307,7 +259,14 @@ export class FeedGeneratorService implements OnModuleInit {
         const warnings: string[] = [];
 
         try {
-            const products = await this.getFilteredProducts(ctx, config.filters);
+            const moneyPrecision = resolveMoneyPrecision(this.configService);
+            const products = await this.getFilteredProducts(
+                feedContext,
+                runtimeConfig.filters,
+                moneyPrecision,
+                runtimeConfig.options?.includeVariants,
+                options.maxItems,
+            );
             this.logger.debug('Products retrieved for feed', {
                 feedCode,
                 productCount: products.length,
@@ -317,42 +276,42 @@ export class FeedGeneratorService implements OnModuleInit {
             let contentType: string;
             let filename: string;
 
-            const formatLower = (config.format || '').toLowerCase();
+            const formatLower = runtimeConfig.format.toLowerCase();
             switch (formatLower) {
                 case 'google_shopping':
-                    content = await generateGoogleShoppingFeed(ctx, products, config, this.connection);
+                    content = await generateGoogleShoppingFeed(feedContext, products, runtimeConfig, this.connection, moneyPrecision);
                     contentType = CONTENT_TYPES.XML;
                     filename = `${feedCode}.xml`;
                     break;
 
                 case 'facebook_catalog':
                 case 'meta_catalog':
-                    content = await generateFacebookCatalogFeed(ctx, products, config, this.connection);
+                    content = await generateFacebookCatalogFeed(feedContext, products, runtimeConfig, this.connection, moneyPrecision);
                     contentType = CONTENT_TYPES.CSV;
                     filename = `${feedCode}.csv`;
                     break;
 
                 case 'csv':
-                    content = await generateCSVFeed(ctx, products, config, this.connection);
+                    content = await generateCSVFeed(feedContext, products, runtimeConfig, this.connection, moneyPrecision);
                     contentType = CONTENT_TYPES.CSV;
                     filename = `${feedCode}.csv`;
                     break;
 
                 case 'json':
-                    content = await generateJSONFeed(ctx, products, config, this.connection);
+                    content = await generateJSONFeed(feedContext, products, runtimeConfig, this.connection, moneyPrecision);
                     contentType = CONTENT_TYPES.JSON;
                     filename = `${feedCode}.json`;
                     break;
 
                 case 'xml':
-                    content = await generateXMLFeed(ctx, products, config, this.connection);
+                    content = await generateXMLFeed(feedContext, products, runtimeConfig, this.connection, moneyPrecision);
                     contentType = CONTENT_TYPES.XML;
                     filename = `${feedCode}.xml`;
                     break;
 
                 case 'custom':
                 default: {
-                    const generatorCode = config.customGeneratorCode;
+                    const generatorCode = runtimeConfig.customGeneratorCode;
                     if (!generatorCode) {
                         throw new Error(`Custom feed format requires customGeneratorCode to be specified`);
                     }
@@ -361,10 +320,11 @@ export class FeedGeneratorService implements OnModuleInit {
                         throw new Error(`Custom feed generator not found: ${generatorCode}. Available: ${Array.from(this.customGenerators.keys()).join(', ') || 'none'}`);
                     }
                     const generatorContext: FeedGeneratorContext = {
-                        ctx,
+                        ctx: feedContext,
                         connection: this.connection,
-                        config,
+                        config: runtimeConfig,
                         products,
+                        moneyPrecision,
                     };
                     const result = await customGenerator.generate(generatorContext);
                     content = result.content;
@@ -377,7 +337,7 @@ export class FeedGeneratorService implements OnModuleInit {
             const durationMs = Date.now() - startTime;
             this.logger.info('Feed generation completed', {
                 feedCode,
-                format: config.format,
+                format: runtimeConfig.format,
                 itemCount: products.length,
                 durationMs,
                 contentLength: typeof content === 'string' ? content.length : 0,
@@ -396,7 +356,7 @@ export class FeedGeneratorService implements OnModuleInit {
             const durationMs = Date.now() - startTime;
             this.logger.error('Feed generation failed', error instanceof Error ? error : new Error(String(error)), {
                 feedCode,
-                format: config.format,
+                format: runtimeConfig.format,
                 durationMs,
             });
             throw error;
@@ -414,57 +374,208 @@ export class FeedGeneratorService implements OnModuleInit {
         return result;
     }
 
+    async generateFeedArtifact(
+        ctx: RequestContext,
+        feedCode: string,
+    ): Promise<GeneratedFeedArtifact> {
+        const entity = await this.persistence.getEntity(ctx, feedCode);
+        if (!entity) throw new Error(`Feed not found: ${feedCode}`);
+        return this.withArtifactLock(
+            entity.channelId,
+            entity.id,
+            () => this.generateAndStoreArtifact(ctx, feedCode),
+        );
+    }
+
+    private withArtifactLock<T>(
+        channelId: string,
+        feedId: ID,
+        operation: () => Promise<T>,
+    ): Promise<T> {
+        return this.distributedLock.withLock(
+            `feed-artifact:${channelId}:${feedId}`,
+            operation,
+            {
+                ttlMs: DISTRIBUTED_LOCK.PIPELINE_LOCK_TTL_MS,
+                waitForLock: false,
+            },
+        );
+    }
+
+    private withLifecycleLocks<T>(
+        channelId: string,
+        feedId: ID,
+        operation: () => Promise<T>,
+    ): Promise<T> {
+        return this.distributedLock.withLock(
+            `feed-schedule:${feedId}`,
+            () => this.withArtifactLock(channelId, feedId, operation),
+            {
+                ttlMs: DISTRIBUTED_LOCK.SCHEDULER_LOCK_TTL_MS,
+                waitForLock: false,
+            },
+        );
+    }
+
+    private async generateAndStoreArtifact(
+        ctx: RequestContext,
+        feedCode: string,
+    ): Promise<GeneratedFeedArtifact> {
+        const entity = await this.persistence.getEntity(ctx, feedCode);
+        if (!entity) throw new Error(`Feed not found: ${feedCode}`);
+        const generated = await this.generateFeedAsBuffer(ctx, feedCode);
+        return this.persistence.storeArtifact(ctx, entity, generated);
+    }
+
     /**
      * Get filtered products for feed generation
      */
     private async getFilteredProducts(
         ctx: RequestContext,
-        filters?: FeedFilters,
+        filters: FeedFilters | undefined,
+        moneyPrecision: number,
+        includeVariants: boolean | undefined,
+        maxItems?: number,
     ): Promise<VariantWithCustomFields[]> {
-        const queryBuilder = this.connection
-            .getRepository(ctx, ProductVariant)
-            .createQueryBuilder('variant')
-            .leftJoinAndSelect('variant.product', 'product')
-            .leftJoinAndSelect('variant.options', 'options')
-            .leftJoinAndSelect('options.group', 'optionGroup')
-            .leftJoinAndSelect('variant.featuredAsset', 'featuredAsset')
-            .leftJoinAndSelect('product.featuredAsset', 'productFeaturedAsset')
-            .leftJoinAndSelect('product.facetValues', 'facetValues')
-            .leftJoinAndSelect('facetValues.facet', 'facet')
-            .leftJoinAndSelect('variant.stockLevels', 'stockLevels')
-            .innerJoin('product.channels', 'channel')
-            .where('variant.deletedAt IS NULL')
-            .andWhere('product.deletedAt IS NULL')
-            .andWhere('channel.id = :channelId', { channelId: ctx.channelId });
+        const result: VariantWithCustomFields[] = [];
+        const seenProductIds = new Set<string>();
+        let skip = 0;
 
-        if (filters?.enabled !== false) {
-            queryBuilder.andWhere('variant.enabled = true');
-            queryBuilder.andWhere('product.enabled = true');
-        }
-
-        if (filters?.inStock) {
-            queryBuilder.andWhere('variant.stockOnHand > 0');
-        }
-
-        if (filters?.hasPrice) {
-            queryBuilder.andWhere('variant.priceWithTax > 0');
-        }
-
-        if (filters?.minPrice) {
-            queryBuilder.andWhere('variant.priceWithTax >= :minPrice', {
-                minPrice: filters.minPrice * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER,
+        while (maxItems === undefined || result.length < maxItems) {
+            const take = Math.min(
+                PAGINATION.FEED_QUERY_PAGE_SIZE,
+                maxItems === undefined ? PAGINATION.FEED_QUERY_PAGE_SIZE : maxItems - result.length,
+            );
+            const page = await this.productVariantService.findAll(ctx, {
+                skip,
+                take,
+                filter: filters?.enabled === false
+                    ? undefined
+                    : { enabled: { eq: true } },
+                sort: { id: SortOrder.ASC },
             });
+            if (page.items.length === 0) break;
+
+            const variants = await this.hydrateFeedVariants(ctx, page.items);
+            for (const variant of variants) {
+                if (!this.matchesFeedFilters(variant, filters, moneyPrecision)) continue;
+                const productId = String(variant.productId);
+                if (includeVariants === false && seenProductIds.has(productId)) continue;
+                seenProductIds.add(productId);
+                result.push(variant);
+                if (maxItems !== undefined && result.length >= maxItems) break;
+            }
+
+            skip += page.items.length;
+            if (skip >= page.totalItems) break;
         }
 
-        if (filters?.maxPrice) {
-            queryBuilder.andWhere('variant.priceWithTax <= :maxPrice', {
-                maxPrice: filters.maxPrice * TRANSFORM_LIMITS.CURRENCY_MINOR_UNITS_MULTIPLIER,
+        return result;
+    }
+
+    private async createFeedContext(
+        ctx: RequestContext,
+        config: FeedConfig,
+    ): Promise<RequestContext> {
+        const languageCode = config.options?.language as LanguageCode | undefined;
+        const currencyCode = config.options?.currency as CurrencyCode | undefined;
+        if (languageCode === undefined && currencyCode === undefined) return ctx;
+        return createChannelRequestContext(
+            this.requestContextService,
+            ctx,
+            ctx.channel,
+            languageCode,
+            currencyCode,
+        );
+    }
+
+    private async hydrateFeedVariants(
+        ctx: RequestContext,
+        variants: ReadonlyArray<{ id: ID }>,
+    ): Promise<VariantWithCustomFields[]> {
+        const hydrated = await this.productVariantService.findByIds(
+            ctx,
+            variants.map(variant => variant.id),
+        );
+        const productIds = Array.from(new Set(hydrated.map(variant => String(variant.productId))));
+        const products = await this.productService.findByIds(ctx, productIds, [
+            'featuredAsset',
+            'assets',
+            'assets.asset',
+            'facetValues',
+            'facetValues.facet',
+        ]);
+        const productsById = new Map(await this.mapWithConcurrency(products, async product => {
+            const collections = await this.collectionService.getCollectionsByProductId(
+                ctx,
+                product.id,
+                true,
+            );
+            const enrichedProduct = Object.assign(product, {
+                feedCollections: collections.map(collection => ({
+                    name: collection.name,
+                    slug: collection.slug,
+                })),
             });
-        }
+            return [String(product.id), enrichedProduct] as const;
+        }));
 
-        // TypeORM returns ProductVariant[] but the entities already have the
-        // customFields and stockLevels properties loaded via joins
-        return queryBuilder.getMany() as Promise<VariantWithCustomFields[]>;
+        return this.mapWithConcurrency(hydrated, async variant => Object.assign(variant, {
+            product: productsById.get(String(variant.productId)),
+            saleableStockLevel: await this.productVariantService.getSaleableStockLevel(ctx, variant),
+        }) as unknown as VariantWithCustomFields);
+    }
+
+    private async mapWithConcurrency<T, R>(
+        items: readonly T[],
+        operation: (item: T) => Promise<R>,
+    ): Promise<R[]> {
+        const results = new Array<R>(items.length);
+        let nextIndex = 0;
+        const workers = Array.from({
+            length: Math.min(PAGINATION.FEED_HYDRATION_CONCURRENCY, items.length),
+        }, async () => {
+            while (nextIndex < items.length) {
+                const index = nextIndex++;
+                results[index] = await operation(items[index]);
+            }
+        });
+        await Promise.all(workers);
+        return results;
+    }
+
+    private matchesFeedFilters(
+        variant: VariantWithCustomFields,
+        filters: FeedFilters | undefined,
+        moneyPrecision: number,
+    ): boolean {
+        if (filters?.enabled !== false && (!variant.enabled || !variant.product?.enabled)) {
+            return false;
+        }
+        if (filters?.inStock && (variant.saleableStockLevel ?? 0) <= 0) return false;
+        if (filters?.hasPrice && variant.priceWithTax <= 0) return false;
+        if (
+            filters?.minPrice !== undefined
+            && variant.priceWithTax < majorToMinorUnits(filters.minPrice, moneyPrecision)
+        ) return false;
+        if (
+            filters?.maxPrice !== undefined
+            && variant.priceWithTax > majorToMinorUnits(filters.maxPrice, moneyPrecision)
+        ) return false;
+
+        const productCollections = new Set(
+            (variant.product as VariantWithCustomFields['product'] & {
+                feedCollections?: Array<{ slug: string }>;
+            } | undefined)?.feedCollections?.map(collection => collection.slug.toLowerCase()) ?? [],
+        );
+        const included = filters?.categories?.map(slug => slug.trim().toLowerCase()).filter(Boolean);
+        if (included && included.length > 0 && !included.some(slug => productCollections.has(slug))) {
+            return false;
+        }
+        const excluded = filters?.excludeCategories
+            ?.map(slug => slug.trim().toLowerCase())
+            .filter(Boolean);
+        return !excluded?.some(slug => productCollections.has(slug));
     }
 
     getContentType(format: FeedFormat): string {
