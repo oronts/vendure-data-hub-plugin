@@ -19,9 +19,9 @@
  */
 
 import express from 'express';
-import { MOCK_PORTS } from '../ports';
+import { MOCK_PORTS, MOCK_ROUTES } from '../ports';
 
-const app = express();
+export const app = express();
 app.use(express.json());
 
 const PORT = MOCK_PORTS.EDGE_CASE;
@@ -31,6 +31,7 @@ const requestAttempts = new Map<string, number>();
 
 // Track rate limiting
 const rateLimitCounters = new Map<string, { count: number; resetTime: number }>();
+let alertSequence = 0;
 
 /**
  * Simulates random API failure based on failure rate
@@ -107,7 +108,14 @@ app.get('/api/products', async (req, res) => {
     }
 
     // Generate product data
-    const products = [
+    const products: Array<{
+        sku: string;
+        name: string;
+        price: number;
+        description: string;
+        enabled: boolean;
+        _error?: string;
+    }> = [
         {
             sku: 'TEST-001',
             name: 'Test Product 1',
@@ -133,7 +141,7 @@ app.get('/api/products', async (req, res) => {
 
     // Simulate partial failures (inject errors into some records)
     if (partialFail > 0) {
-        products.forEach((product: any) => {
+        products.forEach(product => {
             if (shouldFail(partialFail)) {
                 product._error = 'Simulated record-level error';
                 product.price = -1; // Invalid price
@@ -350,10 +358,42 @@ app.post('/api/products/create', (req, res) => {
     });
 });
 
+app.post(MOCK_ROUTES.EDGE_WEBHOOK, (req, res) => {
+    res.json({
+        received: true,
+        payload: req.body,
+        timestamp: new Date().toISOString(),
+    });
+});
+
+app.post(MOCK_ROUTES.EDGE_GRAPHQL, (req, res) => {
+    const query = typeof req.body?.query === 'string' ? req.body.query : '';
+    const input = req.body?.variables?.input;
+
+    if (!query.includes('createAlert')) {
+        return res.json({
+            errors: [{ message: 'Only the createAlert mutation is supported' }],
+        });
+    }
+
+    if (!input || typeof input !== 'object') {
+        return res.json({
+            errors: [{ message: 'variables.input is required' }],
+        });
+    }
+
+    alertSequence += 1;
+    res.json({
+        data: {
+            createAlert: { id: `alert-${alertSequence}` },
+        },
+    });
+});
+
 /**
  * Health check endpoint
  */
-app.get('/health', (req, res) => {
+app.get(MOCK_ROUTES.HEALTH, (_req, res) => {
     res.json({
         status: 'healthy',
         timestamp: new Date().toISOString(),
@@ -373,6 +413,7 @@ app.get('/health', (req, res) => {
 app.post('/reset', (req, res) => {
     requestAttempts.clear();
     rateLimitCounters.clear();
+    alertSequence = 0;
     res.json({ message: 'Counters reset successfully' });
 });
 
@@ -389,17 +430,18 @@ app.use((req, res) => {
 /**
  * Error handler
  */
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error('Error:', err);
     res.status(500).json({
         error: 'Internal Server Error',
-        message: err.message,
+        message: err instanceof Error ? err.message : String(err),
     });
 });
 
 /**
  * Start server
  */
+if (require.main === module) {
 app.listen(PORT, () => {
     console.log('');
     console.log('═══════════════════════════════════════════════════════════');
@@ -430,5 +472,6 @@ app.listen(PORT, () => {
     console.log('═══════════════════════════════════════════════════════════');
     console.log('');
 });
+}
 
 export default app;

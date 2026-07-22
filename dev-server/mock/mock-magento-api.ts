@@ -19,35 +19,36 @@
  * - Tier pricing and special prices
  * - Related products, upsells, cross-sells
  * - Category hierarchy with position
- * - 500 products, 100 categories
+ * - 500 products, 26 categories
  *
  * Run:  npx ts-node dev-server/mock/mock-magento-api.ts
  */
 import express from 'express';
 import crypto from 'crypto';
-import { MOCK_PORTS } from '../ports';
+import { MOCK_PORTS, MOCK_ROUTES, mockUrl } from '../ports';
+import { paginateWithSearchCriteria } from './magento-search';
 
-const app = express();
+export const app = express();
 app.use(express.json());
+app.set('query parser', 'extended');
 
 // ── Configuration ────────────────────────────────────────────────────────────
 const PORT = MOCK_PORTS.MAGENTO;
 const BASE_PATH = '/rest/V1';
 const ADMIN_USERNAME = 'admin';
 const ADMIN_PASSWORD = 'admin123';
-const PAGE_SIZE = 20;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface CustomAttribute {
   attribute_code: string;
-  value: any;
+  value: unknown;
 }
 
 interface TierPrice {
   customer_group_id: number;
   qty: number;
   value: number;
-  extension_attributes?: any;
+  extension_attributes?: Record<string, unknown>;
 }
 
 interface ProductLink {
@@ -114,10 +115,10 @@ interface MagentoProduct {
     };
     configurable_product_options?: ConfigurableOption[];
     configurable_product_links?: number[];
-    bundle_product_options?: any[];
+    bundle_product_options?: unknown[];
   };
   product_links?: ProductLink[];
-  options?: any[];
+  options?: unknown[];
   media_gallery_entries?: Array<{
     id: number;
     media_type: string;
@@ -226,10 +227,10 @@ interface MagentoOrder {
     row_total: number;
     base_row_total: number;
   }>;
-  billing_address: any;
-  payment: any;
-  status_histories: any[];
-  extension_attributes?: any;
+  billing_address: Record<string, unknown>;
+  payment: Record<string, unknown>;
+  status_histories: Array<Record<string, unknown>>;
+  extension_attributes?: Record<string, unknown>;
 }
 
 // ── Authentication ───────────────────────────────────────────────────────────
@@ -351,7 +352,6 @@ for (const rootName of rootCategories) {
 const productTypes = ['simple', 'configurable', 'bundle', 'grouped'] as const;
 const brands = ['BrandA', 'BrandB', 'BrandC', 'BrandD', 'BrandE'];
 const colors = ['Red', 'Blue', 'Green', 'Black', 'White', 'Yellow'];
-const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 
 for (let i = 1; i <= 500; i++) {
   const typeId = productTypes[i % productTypes.length];
@@ -549,7 +549,7 @@ for (let i = 1; i <= 100; i++) {
 for (let i = 1; i <= 150; i++) {
   const customer = customers[i % customers.length];
   const itemCount = 1 + Math.floor(Math.random() * 4);
-  const orderItems: any[] = [];
+  const orderItems: MagentoOrder['items'] = [];
   let subtotal = 0;
 
   for (let j = 0; j < itemCount; j++) {
@@ -626,23 +626,20 @@ for (let i = 1; i <= 150; i++) {
   });
 }
 
-// ── Pagination & Search Helpers ─────────────────────────────────────────────
-function paginateWithSearchCriteria(items: any[], searchCriteria: any): any {
-  const pageSize = searchCriteria.pageSize || PAGE_SIZE;
-  const currentPage = searchCriteria.currentPage || 1;
-  const offset = (currentPage - 1) * pageSize;
-
-  const filteredItems = items; // TODO: apply filters
-  const paginatedItems = filteredItems.slice(offset, offset + pageSize);
-
-  return {
-    items: paginatedItems,
-    search_criteria: searchCriteria,
-    total_count: filteredItems.length,
-  };
-}
-
 // ── API Endpoints ────────────────────────────────────────────────────────────
+
+app.get(MOCK_ROUTES.HEALTH, (_req, res) => {
+  res.json({
+    status: 'ok',
+    service: 'magento',
+    counts: {
+      products: products.length,
+      categories: categories.length,
+      customers: customers.length,
+      orders: orders.length,
+    },
+  });
+});
 
 // Store configs
 app.get(`${BASE_PATH}/store/storeConfigs`, (req, res) => {
@@ -656,11 +653,11 @@ app.get(`${BASE_PATH}/store/storeConfigs`, (req, res) => {
       default_display_currency_code: 'USD',
       timezone: 'America/New_York',
       weight_unit: 'lbs',
-      base_url: 'http://localhost:3337/',
-      base_link_url: 'http://localhost:3337/',
-      base_static_url: 'http://localhost:3337/static/',
-      base_media_url: 'http://localhost:3337/media/',
-      secure_base_url: 'https://localhost:3337/',
+      base_url: `${mockUrl(PORT)}/`,
+      base_link_url: `${mockUrl(PORT)}/`,
+      base_static_url: `${mockUrl(PORT)}/static/`,
+      base_media_url: `${mockUrl(PORT)}/media/`,
+      secure_base_url: `https://localhost:${PORT}/`,
     },
   ]);
 });
@@ -737,6 +734,7 @@ app.get(`${BASE_PATH}/stockItems/:productId`, (req, res) => {
 });
 
 // ── Server Start ─────────────────────────────────────────────────────────────
+if (require.main === module) {
 app.listen(PORT, () => {
   console.log(`\n✓ Mock Magento API listening on http://localhost:${PORT}`);
   console.log(`  API Base:      ${BASE_PATH}`);
@@ -766,3 +764,6 @@ app.listen(PORT, () => {
   console.log(`  curl -H "Authorization: Bearer $TOKEN" \\`);
   console.log(`    http://localhost:${PORT}${BASE_PATH}/products/PROD-00001\n`);
 });
+}
+
+export default app;
