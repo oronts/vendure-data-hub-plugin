@@ -4,12 +4,26 @@
  * Provides helpers for idempotency testing, duplicate prevention,
  * and mode-specific behavior verification.
  */
-import { INestApplication } from '@nestjs/common';
 import { RequestContext } from '@vendure/core';
 import { PipelineStepDefinition } from '../../shared/types';
 
 export interface RecordObject {
     [key: string]: unknown;
+}
+
+type RecordErrorCallback = (
+    stepKey: string,
+    message: string,
+    record: RecordObject,
+) => Promise<void>;
+
+interface LoaderTestHandler {
+    execute(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        records: RecordObject[],
+        onRecordError?: RecordErrorCallback,
+    ): Promise<{ fail: number }>;
 }
 
 /**
@@ -24,7 +38,7 @@ export interface RecordObject {
  * @param iterations - Number of times to run (default: 10)
  * @returns The final entity count
  */
-export async function testIdempotency<THandler extends { execute: Function }>(
+export async function testIdempotency<THandler extends LoaderTestHandler>(
     handler: THandler,
     ctx: RequestContext,
     step: PipelineStepDefinition,
@@ -62,7 +76,7 @@ export async function testIdempotency<THandler extends { execute: Function }>(
  * @param expectedCount - Expected final entity count
  * @param getEntityCount - Function to count entities
  */
-export async function testModePreventsDuplicates<THandler extends { execute: Function }>(
+export async function testModePreventsDuplicates<THandler extends LoaderTestHandler>(
     handler: THandler,
     ctx: RequestContext,
     step: PipelineStepDefinition,
@@ -95,7 +109,7 @@ export async function testModePreventsDuplicates<THandler extends { execute: Fun
  * @param replacementData - New data to replace with
  * @param getEntityIds - Function to get entity IDs
  */
-export async function testReplaceAllMode<THandler extends { execute: Function }>(
+export async function testReplaceAllMode<THandler extends LoaderTestHandler>(
     handler: THandler,
     ctx: RequestContext,
     step: PipelineStepDefinition,
@@ -132,7 +146,7 @@ export async function testReplaceAllMode<THandler extends { execute: Function }>
  * @param expectedTotalCount - Expected total count after merge
  * @param getEntityCount - Function to count entities
  */
-export async function testMergeMode<THandler extends { execute: Function }>(
+export async function testMergeMode<THandler extends LoaderTestHandler>(
     handler: THandler,
     ctx: RequestContext,
     step: PipelineStepDefinition,
@@ -168,7 +182,7 @@ export async function testMergeMode<THandler extends { execute: Function }>(
  * @param updateData - Data to attempt update with (should be skipped)
  * @param getEntitySnapshot - Function to get snapshot of entity state
  */
-export async function testSkipMode<THandler extends { execute: Function }>(
+export async function testSkipMode<THandler extends LoaderTestHandler>(
     handler: THandler,
     ctx: RequestContext,
     step: PipelineStepDefinition,
@@ -203,7 +217,7 @@ export async function testSkipMode<THandler extends { execute: Function }>(
  * @param getEntityCount - Function to count entities
  * @param iterations - Number of times to run (default: 3)
  */
-export async function testAppendOnlyMode<THandler extends { execute: Function }>(
+export async function testAppendOnlyMode<THandler extends LoaderTestHandler>(
     handler: THandler,
     ctx: RequestContext,
     step: PipelineStepDefinition,
@@ -242,7 +256,7 @@ export async function testAppendOnlyMode<THandler extends { execute: Function }>
  * @param recordCount - Number of records to process
  * @param maxDurationMs - Maximum acceptable duration (default: 5000ms)
  */
-export async function testPerformance<THandler extends { execute: Function }>(
+export async function testPerformance<THandler extends LoaderTestHandler>(
     handler: THandler,
     ctx: RequestContext,
     step: PipelineStepDefinition,
@@ -269,7 +283,7 @@ export async function testPerformance<THandler extends { execute: Function }>(
 /**
  * Test edge case: empty array input
  */
-export async function testEmptyArrayHandling<THandler extends { execute: Function }>(
+export async function testEmptyArrayHandling<THandler extends LoaderTestHandler>(
     handler: THandler,
     ctx: RequestContext,
     step: PipelineStepDefinition,
@@ -291,7 +305,7 @@ export async function testEmptyArrayHandling<THandler extends { execute: Functio
 /**
  * Test edge case: missing required fields
  */
-export async function testMissingFieldsHandling<THandler extends { execute: Function }>(
+export async function testMissingFieldsHandling<THandler extends LoaderTestHandler>(
     handler: THandler,
     ctx: RequestContext,
     step: PipelineStepDefinition,
