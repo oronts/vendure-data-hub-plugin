@@ -77,7 +77,7 @@ describe('SqsAdapter AUTO acknowledgment', () => {
         expect(send).toHaveBeenCalledTimes(2);
     });
 
-    it('uses a direct queueUrl without requiring accountId', async () => {
+    it('uses a direct queueUrl when its final path segment matches the requested queue', async () => {
         const commands: unknown[] = [];
         const send = vi.fn(async (command: unknown) => {
             commands.push(command);
@@ -106,7 +106,7 @@ describe('SqsAdapter AUTO acknowledgment', () => {
                 port: 443,
                 region: 'eu-central-1',
                 queueUrl,
-            } as QueueConnectionConfig, 'ignored-name', [{
+            } as QueueConnectionConfig, 'orders', [{
                 id: 'message-1',
                 payload: { orderId: 'order-1' },
             }])).resolves.toEqual([{ success: true, messageId: 'message-1' }]);
@@ -118,6 +118,87 @@ describe('SqsAdapter AUTO acknowledgment', () => {
             command => command instanceof SendMessageBatchCommand,
         ) as SendMessageBatchCommand;
         expect(publish.input.QueueUrl).toBe(queueUrl);
+    });
+
+    it('rejects a direct queueUrl mismatch when accountId is unavailable', async () => {
+        const send = vi.fn(async () => ({
+            Successful: [{ Id: 'message-1', MessageId: 'aws-message-1' }],
+        }));
+        class FakeSqsClient {
+            readonly send = send;
+            destroy(): void {}
+        }
+        const module = {
+            SQSClient: FakeSqsClient,
+            ReceiveMessageCommand,
+            DeleteMessageCommand,
+            SendMessageBatchCommand,
+            ChangeMessageVisibilityCommand: OtherCommand,
+            GetQueueUrlCommand: OtherCommand,
+        };
+        const adapter = new SqsAdapter(async () => module as never);
+
+        try {
+            await expect(adapter.publish({
+                host: 'sqs.eu-central-1.amazonaws.com',
+                port: 443,
+                region: 'eu-central-1',
+                queueUrl: 'https://sqs.eu-central-1.amazonaws.com/123456789012/orders',
+            } as QueueConnectionConfig, 'orders.dlq', [{
+                id: 'message-1',
+                payload: { orderId: 'order-1' },
+            }])).rejects.toThrow(
+                "SQS queueUrl does not target requested queue 'orders.dlq'; " +
+                'accountId is required to construct a distinct queue URL.',
+            );
+        } finally {
+            await adapter.destroy();
+        }
+
+        expect(send).not.toHaveBeenCalled();
+    });
+
+    it('routes a distinct dead-letter queue by accountId instead of reusing queueUrl', async () => {
+        const commands: unknown[] = [];
+        const send = vi.fn(async (command: unknown) => {
+            commands.push(command);
+            return { Successful: [{ Id: 'message-1', MessageId: 'aws-message-1' }] };
+        });
+        class FakeSqsClient {
+            readonly send = send;
+            destroy(): void {}
+        }
+        const module = {
+            SQSClient: FakeSqsClient,
+            ReceiveMessageCommand,
+            DeleteMessageCommand,
+            SendMessageBatchCommand,
+            ChangeMessageVisibilityCommand: OtherCommand,
+            GetQueueUrlCommand: OtherCommand,
+        };
+        const adapter = new SqsAdapter(async () => module as never);
+
+        try {
+            await expect(adapter.publish({
+                host: 'sqs.eu-central-1.amazonaws.com',
+                port: 443,
+                region: 'eu-central-1',
+                accountId: '123456789012',
+                queueUrl: 'https://sqs.eu-central-1.amazonaws.com/123456789012/orders',
+            } as QueueConnectionConfig, 'orders.dlq', [{
+                id: 'message-1',
+                payload: { orderId: 'order-1' },
+            }])).resolves.toEqual([{ success: true, messageId: 'message-1' }]);
+        } finally {
+            await adapter.destroy();
+        }
+
+        const publish = commands.find(
+            command => command instanceof SendMessageBatchCommand,
+        ) as SendMessageBatchCommand;
+        expect(publish.input.QueueUrl).toBe(
+            'https://sqs.eu-central-1.amazonaws.com/123456789012/orders.dlq',
+        );
     });
 
     it('constructs queue URLs from a custom endpoint only when accountId is available', async () => {

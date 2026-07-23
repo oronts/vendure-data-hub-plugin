@@ -47,9 +47,9 @@ interface SqsConnectionConfig extends QueueConnectionConfig {
     secretAccessKey?: string;
     /** Optional endpoint URL for LocalStack or custom endpoints */
     endpoint?: string;
-    /** Account ID for queue URL construction */
+    /** Account ID for constructing URLs for queues not targeted by queueUrl */
     accountId?: string;
-    /** Direct queue URL; bypasses account-based URL construction */
+    /** Direct URL for the queue named by the final URL path segment */
     queueUrl?: string;
 }
 
@@ -136,13 +136,30 @@ function getCacheKey(config: SqsConnectionConfig): string {
  */
 function buildQueueUrl(config: SqsConnectionConfig, queueName: string): string {
     if (config.queueUrl?.trim()) {
-        return validateSqsUrl(config.queueUrl.trim(), 'queueUrl');
+        const directQueueUrl = validateSqsUrl(config.queueUrl.trim(), 'queueUrl');
+        const pathSegments = new URL(directQueueUrl).pathname.split('/');
+        const encodedDirectQueueName = pathSegments[pathSegments.length - 1] ?? '';
+        let directQueueName: string;
+        try {
+            directQueueName = decodeURIComponent(encodedDirectQueueName);
+        } catch {
+            throw new Error('Invalid SQS queueUrl queue-name encoding');
+        }
+
+        if (directQueueName === queueName) {
+            return directQueueUrl;
+        }
     }
+
     const accountId = config.accountId?.trim();
     if (!accountId) {
-        throw new Error(
-            'SQS accountId is required when queueUrl is not configured.',
-        );
+        if (config.queueUrl?.trim()) {
+            throw new Error(
+                `SQS queueUrl does not target requested queue '${queueName}'; ` +
+                'accountId is required to construct a distinct queue URL.',
+            );
+        }
+        throw new Error('SQS accountId is required when queueUrl is not configured.');
     }
 
     if (config.endpoint) {
