@@ -4,9 +4,11 @@ import {
     Button,
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogHeader,
     DialogTitle,
 } from '@vendure/dashboard';
+import { Trans } from '@lingui/react/macro';
 import { Maximize2, Minimize2, WandSparkles } from 'lucide-react';
 
 /**
@@ -22,7 +24,7 @@ function formatJavaScript(code: string): string {
     const result: string[] = [];
 
     for (const rawLine of lines) {
-        let line = rawLine.trim();
+        const line = rawLine.trim();
         if (!line) {
             // Preserve blank lines (max 1 consecutive)
             if (result.length > 0 && result[result.length - 1] !== '') {
@@ -41,7 +43,7 @@ function formatJavaScript(code: string): string {
 
         // Increase indent for opening braces/brackets (not in strings/comments)
         const stripped = line.replace(/\/\/.*$/, '').replace(/'[^']*'|"[^"]*"|`[^`]*`/g, '""');
-        const opens = (stripped.match(/[{(\[]/g) || []).length;
+        const opens = (stripped.match(/[({[]/g) || []).length;
         const closes = (stripped.match(/[})\]]/g) || []).length;
         indent = Math.max(0, indent + opens - closes);
     }
@@ -122,7 +124,7 @@ export function CodeEditor({
 
                 // Add extra indent if line ends with { or (
                 const trimmed = currentLine.trimEnd();
-                const extraIndent = /[{(\[]$/.test(trimmed) ? '  ' : '';
+                const extraIndent = /[({[]$/.test(trimmed) ? '  ' : '';
 
                 e.preventDefault();
                 const newValue = value.substring(0, start) + '\n' + currentIndent + extraIndent + value.substring(ta.selectionEnd);
@@ -162,7 +164,7 @@ export function CodeEditor({
                         disabled={disabled}
                     >
                         <WandSparkles className="h-3 w-3" />
-                        Format
+                        <Trans>Format</Trans>
                     </Button>
                 </div>
             )}
@@ -235,7 +237,7 @@ export function CodeEditorWithExpand({
                     type="button"
                 >
                     <Maximize2 className="h-3 w-3" />
-                    Expand
+                    <Trans>Expand</Trans>
                 </Button>
             </div>
 
@@ -259,6 +261,9 @@ export function CodeEditorWithExpand({
                         <DialogTitle className="font-mono text-sm">
                             {label}
                         </DialogTitle>
+                        <DialogDescription className="sr-only">
+                            <Trans>Expanded code editor for {label}</Trans>
+                        </DialogDescription>
                         <Button
                             variant="ghost"
                             size="sm"
@@ -267,7 +272,7 @@ export function CodeEditorWithExpand({
                             type="button"
                         >
                             <Minimize2 className="h-3 w-3" />
-                            Collapse
+                            <Trans>Collapse</Trans>
                         </Button>
                     </DialogHeader>
                     <div className="flex-1 min-h-0">
