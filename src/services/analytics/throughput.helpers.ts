@@ -15,7 +15,7 @@ import { calculateThroughputTimeSeries } from './time-series.helpers';
 interface ThroughputDataResult {
     totalRecords: number;
     peakThroughput: number;
-    peakThroughputAt: Date;
+    peakThroughputAt: Date | null;
     throughputPoints: ThroughputDataPoint[];
 }
 
@@ -27,7 +27,7 @@ export function calculateThroughputData(
 ): ThroughputDataResult {
     let totalRecords = 0;
     let peakThroughput = 0;
-    let peakThroughputAt = new Date();
+    let peakThroughputAt: Date | null = null;
     const throughputPoints: ThroughputDataPoint[] = [];
 
     for (const run of runs) {

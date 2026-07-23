@@ -4,7 +4,7 @@ export const analyticsSchema = `
     """
     type DataHubAnalyticsOverview {
         totalPipelines: Int!
-        activePipelines: Int!
+        enabledPipelines: Int!
         runsToday: Int!
         runsThisWeek: Int!
         successRateToday: Float!
@@ -67,7 +67,7 @@ export const analyticsSchema = `
         recordsPerMinute: Float!
         recordsPerHour: Float!
         peakThroughput: Float!
-        peakThroughputAt: DateTime!
+        peakThroughputAt: DateTime
         throughputTrend: [DataHubTimeSeries!]!
     }
 

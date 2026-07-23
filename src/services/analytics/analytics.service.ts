@@ -33,6 +33,7 @@ import {
     aggregateRunStats,
     calculateSuccessRates,
     buildOverviewMetrics,
+    getStartOfCalendarWeek,
 } from './overview.helpers';
 import {
     aggregatePipelineMetrics,
@@ -44,6 +45,8 @@ import {
 } from './throughput.helpers';
 
 export type { TimeRange, TimeSeriesPoint, AnalyticsOverview, PipelinePerformance, ErrorAnalytics, ThroughputMetrics };
+
+const ANALYTICS_PAGE_SIZE = PAGINATION.MAX_QUERY_LIMIT;
 
 @Injectable()
 export class AnalyticsService implements OnModuleInit {
@@ -60,6 +63,20 @@ export class AnalyticsService implements OnModuleInit {
         this.logger.info('AnalyticsService initialized');
     }
 
+    private async loadAllPages<T>(
+        loadPage: (skip: number, take: number) => Promise<T[]>,
+    ): Promise<T[]> {
+        const rows: T[] = [];
+        let skip = 0;
+        let page: T[];
+        do {
+            page = await loadPage(skip, ANALYTICS_PAGE_SIZE);
+            rows.push(...page);
+            skip += page.length;
+        } while (page.length === ANALYTICS_PAGE_SIZE);
+        return rows;
+    }
+
     /** Fetch all overview data from the database in parallel */
     private async fetchOverviewData(ctx: RequestContext, startOfDay: Date, startOfWeek: Date) {
         return Promise.all([
@@ -67,14 +84,22 @@ export class AnalyticsService implements OnModuleInit {
             this.connection.getRepository(ctx, Pipeline).count({ where: { enabled: true } }),
             this.connection.getRepository(ctx, PipelineRun).count({ where: { createdAt: MoreThan(startOfDay) } }),
             this.connection.getRepository(ctx, PipelineRun).count({ where: { createdAt: MoreThan(startOfWeek) } }),
-            this.connection.getRepository(ctx, PipelineRun).find({
-                where: { createdAt: MoreThan(startOfDay) },
-                select: ['status', 'metrics'],
-            }),
-            this.connection.getRepository(ctx, PipelineRun).find({
-                where: { createdAt: MoreThan(startOfWeek) },
-                select: ['status'],
-            }),
+            this.loadAllPages((skip, take) =>
+                this.connection.getRepository(ctx, PipelineRun).find({
+                    where: { createdAt: MoreThan(startOfDay) },
+                    select: ['id', 'status', 'metrics'],
+                    order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
+                    skip,
+                    take,
+                })),
+            this.loadAllPages((skip, take) =>
+                this.connection.getRepository(ctx, PipelineRun).find({
+                    where: { createdAt: MoreThan(startOfWeek) },
+                    select: ['id', 'status'],
+                    order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
+                    skip,
+                    take,
+                })),
         ]);
     }
 
@@ -83,27 +108,25 @@ export class AnalyticsService implements OnModuleInit {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
 
-        const startOfWeek = new Date();
-        startOfWeek.setDate(startOfWeek.getDate() - 7);
-        startOfWeek.setHours(0, 0, 0, 0);
+        const startOfWeek = getStartOfCalendarWeek();
 
         // Fetch all data in parallel
-        const [totalPipelines, activePipelines, runsToday, runsThisWeek, todayRuns, weekRuns] =
+        const [totalPipelines, enabledPipelines, runsToday, runsThisWeek, todayRuns, weekRuns] =
             await this.fetchOverviewData(ctx, startOfDay, startOfWeek);
 
         // Aggregate run statistics and calculate success rates
         const runStats = aggregateRunStats(todayRuns, weekRuns);
         const successRates = calculateSuccessRates(
             runStats.successfulRunsToday,
-            todayRuns.length,
+            runStats.outcomeRunsToday,
             runStats.successfulRunsWeek,
-            weekRuns.length,
+            runStats.outcomeRunsWeek,
         );
 
         // Build and return the overview metrics
         return buildOverviewMetrics({
             totalPipelines,
-            activePipelines,
+            enabledPipelines,
             runsToday,
             runsThisWeek,
             recordsProcessedToday: runStats.recordsProcessedToday,
@@ -115,16 +138,24 @@ export class AnalyticsService implements OnModuleInit {
     }
 
     /** Fetch pipelines based on optional ID filter */
-    private async fetchPipelines(ctx: RequestContext, pipelineId?: string, limit?: number): Promise<Pipeline[]> {
+    private async fetchPipelines(ctx: RequestContext, pipelineId?: ID, limit?: number): Promise<Pipeline[]> {
         if (pipelineId) {
             const pipeline = await this.connection.getRepository(ctx, Pipeline).findOne({
-                where: { id: pipelineId as ID },
+                where: { id: pipelineId },
             });
             return pipeline ? [pipeline] : [];
         }
         return this.connection.getRepository(ctx, Pipeline).find({
-            take: limit || PAGINATION.LIST_PAGE_SIZE,
+            take: this.normalizeLimit(limit),
         });
+    }
+
+    private normalizeLimit(limit?: number): number {
+        if (limit === undefined) return PAGINATION.LIST_PAGE_SIZE;
+        if (!Number.isInteger(limit) || limit <= 0) {
+            throw new Error('Analytics limit must be a positive integer');
+        }
+        return Math.min(limit, PAGINATION.MAX_QUERY_LIMIT);
     }
 
     /** Load all runs for given pipelines and group by pipeline ID */
@@ -134,14 +165,24 @@ export class AnalyticsService implements OnModuleInit {
         startDate: Date,
     ): Promise<Map<string | number, PipelineRun[]>> {
         const pipelineIds = pipelines.map(p => p.id);
-        const allRuns = await this.connection.getRepository(ctx, PipelineRun).find({
+        const repository = this.connection.getRepository(ctx, PipelineRun);
+        const allRuns = await this.loadAllPages((skip, take) => repository.find({
             where: {
                 pipeline: { id: In(pipelineIds) },
                 createdAt: MoreThan(startDate),
             },
             relations: ['pipeline'],
-            order: { createdAt: SortOrder.DESC },
-        });
+            select: {
+                id: true,
+                status: true,
+                metrics: true,
+                createdAt: true,
+                pipeline: { id: true, code: true, name: true },
+            },
+            order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
+            skip,
+            take,
+        }));
 
         const runsByPipelineId = new Map<string | number, PipelineRun[]>();
         for (const run of allRuns) {
@@ -159,7 +200,7 @@ export class AnalyticsService implements OnModuleInit {
     async getPipelinePerformance(
         ctx: RequestContext,
         options?: {
-            pipelineId?: string;
+            pipelineId?: ID;
             timeRange?: TimeRange;
             limit?: number;
         },
@@ -187,16 +228,20 @@ export class AnalyticsService implements OnModuleInit {
     }
 
     /** Build where clause for error analytics query */
-    private buildErrorWhereClause(startDate: Date, pipelineId?: string): FindOptionsWhere<DataHubRecordError> {
+    private buildErrorWhereClause(startDate: Date, pipelineId?: ID): FindOptionsWhere<DataHubRecordError> {
         const whereClause: FindOptionsWhere<DataHubRecordError> = { createdAt: MoreThan(startDate) };
         if (pipelineId) {
-            whereClause.run = { pipeline: { id: pipelineId as ID } };
+            whereClause.run = { pipeline: { id: pipelineId } };
         }
         return whereClause;
     }
 
     /** Group errors and build analytics result */
-    private buildErrorAnalyticsResult(errors: DataHubRecordError[], timeRange: TimeRange): ErrorAnalytics {
+    private buildErrorAnalyticsResult(
+        errors: DataHubRecordError[],
+        timeRange: TimeRange,
+        totalErrors: number,
+    ): ErrorAnalytics {
         // Group errors by step
         const errorsByStepMap = groupErrorsByKey(errors, error => error.stepKey);
         const errorsByStep = Object.entries(errorsByStepMap).map(([stepKey, count]) => ({
@@ -221,14 +266,14 @@ export class AnalyticsService implements OnModuleInit {
         );
         const errorTrend = calculateTimeSeries(errors.map(e => e.createdAt), timeRange);
 
-        return { totalErrors: errors.length, errorsByStep, errorsByPipeline, topErrors, errorTrend };
+        return { totalErrors, errorsByStep, errorsByPipeline, topErrors, errorTrend };
     }
 
     /** Get error analytics */
     async getErrorAnalytics(
         ctx: RequestContext,
         options?: {
-            pipelineId?: string;
+            pipelineId?: ID;
             timeRange?: TimeRange;
         },
     ): Promise<ErrorAnalytics> {
@@ -236,20 +281,36 @@ export class AnalyticsService implements OnModuleInit {
         const startDate = getStartDate(timeRange);
         const whereClause = this.buildErrorWhereClause(startDate, options?.pipelineId);
 
-        const errors = await this.connection.getRepository(ctx, DataHubRecordError).find({
-            where: whereClause,
-            relations: ['run', 'run.pipeline'],
-            order: { createdAt: SortOrder.DESC },
-        });
+        const repository = this.connection.getRepository(ctx, DataHubRecordError);
+        const [totalErrors, errors] = await Promise.all([
+            repository.count({ where: whereClause }),
+            this.loadAllPages((skip, take) => repository.find({
+                where: whereClause,
+                relations: ['run', 'run.pipeline'],
+                select: {
+                    id: true,
+                    stepKey: true,
+                    message: true,
+                    createdAt: true,
+                    run: {
+                        id: true,
+                        pipeline: { id: true, code: true },
+                    },
+                },
+                order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
+                skip,
+                take,
+            })),
+        ]);
 
-        return this.buildErrorAnalyticsResult(errors, timeRange);
+        return this.buildErrorAnalyticsResult(errors, timeRange, totalErrors);
     }
 
     /** Get throughput metrics */
     async getThroughputMetrics(
         ctx: RequestContext,
         options?: {
-            pipelineId?: string;
+            pipelineId?: ID;
             timeRange?: TimeRange;
         },
     ): Promise<ThroughputMetrics> {
@@ -259,13 +320,17 @@ export class AnalyticsService implements OnModuleInit {
 
         const whereClause: FindOptionsWhere<PipelineRun> = { createdAt: MoreThan(startDate) };
         if (options?.pipelineId) {
-            whereClause.pipeline = { id: options.pipelineId as ID };
+            whereClause.pipeline = { id: options.pipelineId };
         }
 
-        const runs = await this.connection.getRepository(ctx, PipelineRun).find({
+        const repository = this.connection.getRepository(ctx, PipelineRun);
+        const runs = await this.loadAllPages((skip, take) => repository.find({
             where: whereClause,
-            select: ['metrics', 'createdAt', 'finishedAt'],
-        });
+            select: ['id', 'metrics', 'createdAt', 'finishedAt'],
+            order: { createdAt: SortOrder.DESC, id: SortOrder.DESC },
+            skip,
+            take,
+        }));
 
         const throughputData = calculateThroughputData(runs);
         return buildThroughputResult(throughputData, durationHours, timeRange);
@@ -273,13 +338,13 @@ export class AnalyticsService implements OnModuleInit {
 
     /** Build where clause for run history query */
     private buildRunHistoryWhereClause(options?: {
-        pipelineId?: string;
+        pipelineId?: ID;
         status?: string;
         timeRange?: TimeRange;
     }): FindOptionsWhere<PipelineRun> {
         const whereClause: FindOptionsWhere<PipelineRun> = {};
         if (options?.pipelineId) {
-            whereClause.pipeline = { id: options.pipelineId as ID };
+            whereClause.pipeline = { id: options.pipelineId };
         }
         if (options?.status) {
             whereClause.status = options.status as RunStatus;
@@ -312,7 +377,7 @@ export class AnalyticsService implements OnModuleInit {
     async getRunHistory(
         ctx: RequestContext,
         options?: {
-            pipelineId?: string;
+            pipelineId?: ID;
             status?: string;
             timeRange?: TimeRange;
             limit?: number;
@@ -325,8 +390,8 @@ export class AnalyticsService implements OnModuleInit {
             where: whereClause,
             relations: ['pipeline'],
             order: { createdAt: SortOrder.DESC },
-            take: options?.limit || PAGINATION.LIST_PAGE_SIZE,
-            skip: options?.offset || 0,
+            take: this.normalizeLimit(options?.limit),
+            skip: Math.max(0, options?.offset ?? 0),
         });
 
         return {
@@ -350,10 +415,14 @@ export class AnalyticsService implements OnModuleInit {
             this.connection.getRepository(ctx, DataHubRecordError).count({
                 where: { createdAt: MoreThan(fiveMinutesAgo) },
             }),
-            this.connection.getRepository(ctx, PipelineRun).find({
-                where: { finishedAt: MoreThan(oneMinuteAgo) },
-                select: ['metrics'],
-            }),
+            this.loadAllPages((skip, take) =>
+                this.connection.getRepository(ctx, PipelineRun).find({
+                    where: { finishedAt: MoreThan(oneMinuteAgo) },
+                    select: ['id', 'metrics'],
+                    order: { finishedAt: SortOrder.DESC, id: SortOrder.DESC },
+                    skip,
+                    take,
+                })),
         ]);
 
         let recordsLastMinute = 0;

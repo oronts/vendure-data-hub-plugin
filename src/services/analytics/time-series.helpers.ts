@@ -24,7 +24,7 @@ export function getStartDate(timeRange: TimeRange): Date {
         case '90d':
             return new Date(now.getTime() - TIME.NINETY_DAYS_MS);
         default:
-            return new Date(now.getTime() - TIME.SEVEN_DAYS_MS);
+            throw new Error(`Unsupported analytics time range: ${String(timeRange)}`);
     }
 }
 

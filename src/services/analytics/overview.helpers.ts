@@ -10,6 +10,8 @@ import {
     calculateSuccessRate,
     calculateAverage,
     extractRunMetrics,
+    isOutcomeRunStatus,
+    isSuccessfulRunStatus,
 } from './metrics.helpers';
 
 /**
@@ -20,6 +22,8 @@ interface RunStatsResult {
     recordsFailedToday: number;
     successfulRunsToday: number;
     successfulRunsWeek: number;
+    outcomeRunsToday: number;
+    outcomeRunsWeek: number;
     durations: number[];
 }
 
@@ -36,7 +40,7 @@ interface SuccessRatesResult {
  */
 interface OverviewMetricsParams {
     totalPipelines: number;
-    activePipelines: number;
+    enabledPipelines: number;
     runsToday: number;
     runsThisWeek: number;
     recordsProcessedToday: number;
@@ -44,6 +48,14 @@ interface OverviewMetricsParams {
     successRateToday: number;
     successRateWeek: number;
     durations: number[];
+}
+
+export function getStartOfCalendarWeek(date: Date = new Date()): Date {
+    const startOfWeek = new Date(date);
+    const daysSinceMonday = (startOfWeek.getDay() + 6) % 7;
+    startOfWeek.setDate(startOfWeek.getDate() - daysSinceMonday);
+    startOfWeek.setHours(0, 0, 0, 0);
+    return startOfWeek;
 }
 
 /**
@@ -57,6 +69,8 @@ export function aggregateRunStats(
     let recordsFailedToday = 0;
     let successfulRunsToday = 0;
     let successfulRunsWeek = 0;
+    let outcomeRunsToday = 0;
+    let outcomeRunsWeek = 0;
     const durations: number[] = [];
 
     for (const run of todayRuns) {
@@ -66,14 +80,20 @@ export function aggregateRunStats(
         if (metrics.durationMs) {
             durations.push(metrics.durationMs);
         }
-        if (run.status === RunStatus.COMPLETED) {
+        if (isSuccessfulRunStatus(run.status)) {
             successfulRunsToday++;
+        }
+        if (isOutcomeRunStatus(run.status)) {
+            outcomeRunsToday++;
         }
     }
 
     for (const run of weekRuns) {
-        if (run.status === RunStatus.COMPLETED) {
+        if (isSuccessfulRunStatus(run.status)) {
             successfulRunsWeek++;
+        }
+        if (isOutcomeRunStatus(run.status)) {
+            outcomeRunsWeek++;
         }
     }
 
@@ -82,6 +102,8 @@ export function aggregateRunStats(
         recordsFailedToday,
         successfulRunsToday,
         successfulRunsWeek,
+        outcomeRunsToday,
+        outcomeRunsWeek,
         durations,
     };
 }
@@ -107,7 +129,7 @@ export function calculateSuccessRates(
 export function buildOverviewMetrics(params: OverviewMetricsParams): AnalyticsOverview {
     return {
         totalPipelines: params.totalPipelines,
-        activePipelines: params.activePipelines,
+        enabledPipelines: params.enabledPipelines,
         runsToday: params.runsToday,
         runsThisWeek: params.runsThisWeek,
         successRateToday: params.successRateToday,
