@@ -236,3 +236,14 @@ export interface ComputedField {
     expression: string;     // e.g., "price * quantity"
     dependencies: string[]; // Fields this depends on
 }
+
+// ============================================================================
+// REGISTRY TYPES
+// ============================================================================
+
+export type SchemaCompatibility = 'STRICT' | 'BACKWARD' | 'PERMISSIVE';
+
+export interface SchemaReference {
+    schemaId: string;
+    version: string;
+}

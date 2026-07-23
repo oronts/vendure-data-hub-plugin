@@ -64,6 +64,7 @@ export {
     DOMAIN_EVENTS,
     RISK_THRESHOLDS,
     IMPACT_ANALYSIS,
+    SCHEMA_REGISTRY,
 
     // Parsers
     XML_PARSER,

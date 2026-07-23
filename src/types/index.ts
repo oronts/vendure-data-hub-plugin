@@ -61,6 +61,8 @@ export type {
     SchemaIndex,
     SchemaValidationRule,
     ComputedField,
+    SchemaCompatibility,
+    SchemaReference,
 } from '../../shared/types';
 
 export * from './loader-interfaces';

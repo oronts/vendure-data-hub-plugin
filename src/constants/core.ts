@@ -42,6 +42,7 @@ export const LOGGER_CONTEXTS = {
     PIPELINE_SERVICE: 'PipelineService',
     PIPELINE_RUNNER: 'PipelineRunner',
     CONNECTION_SERVICE: 'ConnectionService',
+    SCHEMA_REGISTRY_SERVICE: 'SchemaRegistryService',
     SECRET_SERVICE: 'SecretService',
     HOOK_SERVICE: 'HookService',
     ANALYTICS_SERVICE: 'AnalyticsService',
@@ -121,4 +122,5 @@ export const LOGGER_CONTEXTS = {
     ADAPTER_REGISTRY: 'DataHub:AdapterRegistry',
     SECRET_RESOLVER: 'SecretResolver',
     CONNECTION_RESOLVER: 'ConnectionResolver',
+    SCHEMA_RESOLVER: 'SchemaResolver',
 } as const;

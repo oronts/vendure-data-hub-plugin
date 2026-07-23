@@ -30,6 +30,7 @@ export * from './runtime-defaults';
 
 // Definition validation
 export * from './validation-defaults';
+export * from './schema-defaults';
 
 // Parsers and formats
 export * from './parsers-defaults';

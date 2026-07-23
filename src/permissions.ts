@@ -2,6 +2,7 @@ import { CrudPermissionDefinition, PermissionDefinition } from '@vendure/core';
 
 export const DataHubPipelinePermission = new CrudPermissionDefinition('DataHubPipeline');
 export const DataHubSecretPermission = new CrudPermissionDefinition('DataHubSecret');
+export const DataHubSchemaPermission = new CrudPermissionDefinition('DataHubSchema');
 export const RunDataHubPipelinePermission = new PermissionDefinition({ name: 'RunDataHubPipeline' });
 export const ViewDataHubRunsPermission = new PermissionDefinition({ name: 'ViewDataHubRuns' });
 export const ManageDataHubAdaptersPermission = new PermissionDefinition({ name: 'ManageDataHubAdapters' });
@@ -24,6 +25,7 @@ export const ReadDataHubFilesPermission = new PermissionDefinition({ name: 'Read
 export const DATAHUB_PERMISSION_DEFINITIONS = [
     DataHubPipelinePermission,
     DataHubSecretPermission,
+    DataHubSchemaPermission,
     RunDataHubPipelinePermission,
     ViewDataHubRunsPermission,
     ManageDataHubAdaptersPermission,

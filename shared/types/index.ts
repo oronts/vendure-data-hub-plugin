@@ -22,6 +22,8 @@ export type {
     SchemaIndex,
     SchemaValidationRule,
     ComputedField,
+    SchemaCompatibility,
+    SchemaReference,
 } from './schema.types';
 
 export type {

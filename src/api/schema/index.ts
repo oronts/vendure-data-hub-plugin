@@ -20,6 +20,7 @@ import { sandboxSchema, sandboxQueries, sandboxMutations } from './sandbox.schem
 import { gateSchema, gateQueries, gateMutations } from './gate.schema';
 import { templateSchema, templateQueries } from './template.schema';
 import { configOptionsSchema, configOptionsQueries } from './config-options.schema';
+import { schemaRegistrySchema, schemaRegistryQueries, schemaRegistryMutations } from './schema-registry.schema';
 
 export const adminApiExtensions = gql`
     ${pipelineSchema}
@@ -42,6 +43,7 @@ export const adminApiExtensions = gql`
     ${gateSchema}
     ${templateSchema}
     ${configOptionsSchema}
+    ${schemaRegistrySchema}
 
     ${pipelineQueries}
     ${testQueries}
@@ -62,6 +64,7 @@ export const adminApiExtensions = gql`
     ${gateQueries}
     ${templateQueries}
     ${configOptionsQueries}
+    ${schemaRegistryQueries}
 
     ${pipelineMutations}
     ${testMutations}
@@ -75,6 +78,7 @@ export const adminApiExtensions = gql`
     ${versioningMutations}
     ${sandboxMutations}
     ${gateMutations}
+    ${schemaRegistryMutations}
 `;
 
 export * from './pipeline.schema';
@@ -96,3 +100,4 @@ export * from './sandbox.schema';
 export * from './gate.schema';
 export * from './template.schema';
 export * from './config-options.schema';
+export * from './schema-registry.schema';

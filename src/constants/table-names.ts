@@ -6,6 +6,7 @@ export const TABLE_NAMES = {
     SECRET: `${TABLE_PREFIX}secret`,
     SETTINGS: `${TABLE_PREFIX}settings`,
     LOCK: `${TABLE_PREFIX}lock`,
+    SCHEMA: `${TABLE_PREFIX}schema`,
 
     // Pipeline entities
     PIPELINE: `${TABLE_PREFIX}pipeline`,

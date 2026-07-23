@@ -7,7 +7,7 @@ import { DataHubEventTriggerOutbox, DataHubWebhookDelivery, Pipeline, PipelineRu
 // Data entities
 import { DataHubCheckpoint, DataHubRecordError, DataHubRecordRetryAudit } from './entities/data';
 // Config entities
-import { DataHubConnection, DataHubExportDestination, DataHubFeed, DataHubSecret, DataHubSettings, DataHubLock } from './entities/config';
+import { DataHubConnection, DataHubExportDestination, DataHubFeed, DataHubSchema, DataHubSecret, DataHubSettings, DataHubLock } from './entities/config';
 import { adminApiExtensions } from './api/api-extensions';
 import { DataHubPipelineAdminResolver } from './api/resolvers/pipeline.resolver';
 import { DataHubAdapterAdminResolver } from './api/resolvers/adapter.resolver';
@@ -46,6 +46,7 @@ import {
     RateLimitService,
     MessageConsumerService,
     StepTestService,
+    SchemaRegistryService,
     TemplateRegistryService,
     FileWatchService,
 } from './services';
@@ -83,6 +84,7 @@ import { DataHubSandboxResolver } from './api/resolvers/sandbox.resolver';
 import { DataHubGateAdminResolver } from './api/resolvers/gate.resolver';
 import { DataHubTemplateAdminResolver } from './api/resolvers/template.resolver';
 import { DataHubConfigOptionsAdminResolver } from './api/resolvers/config-options.resolver';
+import { DataHubSchemaAdminResolver } from './api/resolvers/schema-registry.resolver';
 // Versioning Services
 import { DiffService, RevisionService, ImpactAnalysisService, RiskAssessmentService, SandboxService } from './services/versioning';
 // Runtime Services
@@ -119,7 +121,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
  */
 @VendurePlugin({
     imports: [PluginCommonModule],
-    entities: [Pipeline, PipelineRun, DataHubEventTriggerOutbox, DataHubWebhookDelivery, DataHubRecordError, DataHubCheckpoint, DataHubRecordRetryAudit, DataHubSecret, PipelineRevision, DataHubConnection, DataHubSettings, PipelineLog, DataHubLock, DataHubExportDestination, DataHubFeed],
+    entities: [Pipeline, PipelineRun, DataHubEventTriggerOutbox, DataHubWebhookDelivery, DataHubRecordError, DataHubCheckpoint, DataHubRecordRetryAudit, DataHubSecret, PipelineRevision, DataHubConnection, DataHubSettings, PipelineLog, DataHubLock, DataHubExportDestination, DataHubFeed, DataHubSchema],
     providers: [
         // Runtime Configuration Services
         RuntimeConfigService,
@@ -152,6 +154,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         DomainEventsService,
         DataHubSettingsService,
         PipelineLogService,
+        SchemaRegistryService,
         // File & Mapping Services
         FileParserService,
         FieldMapperService,
@@ -225,6 +228,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         TemplateRegistryService,
         DataHubTemplateAdminResolver,
         DataHubConfigOptionsAdminResolver,
+        DataHubSchemaAdminResolver,
         {
             provide: DATAHUB_PLUGIN_OPTIONS,
             useFactory: () => DataHubPlugin.options,
@@ -254,6 +258,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
             DataHubGateAdminResolver,
             DataHubTemplateAdminResolver,
             DataHubConfigOptionsAdminResolver,
+            DataHubSchemaAdminResolver,
         ],
     },
     controllers: [DataHubWebhookController, DataHubFileUploadController],

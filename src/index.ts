@@ -6,6 +6,7 @@ export {
     DATAHUB_PERMISSION_DEFINITIONS,
     DataHubPipelinePermission,
     DataHubSecretPermission,
+    DataHubSchemaPermission,
     RunDataHubPipelinePermission,
     ViewDataHubRunsPermission,
     ManageDataHubAdaptersPermission,
@@ -91,6 +92,7 @@ export {
     PipelineRevision,
     DataHubConnection,
     DataHubSettings,
+    DataHubSchema,
     PipelineLog,
 } from './entities';
 
@@ -100,6 +102,7 @@ export {
     PipelineFormatService,
     SecretService,
     ConnectionService,
+    SchemaRegistryService,
     DataHubSettingsService,
     AnalyticsService,
     DataHubLoggerFactory,

@@ -6,6 +6,7 @@
  */
 
 import { JsonObject, JsonValue } from './json.types';
+import type { SchemaReference } from './schema.types';
 
 /**
  * Type of pipeline step.
@@ -147,6 +148,8 @@ export interface PipelineStepDefinition {
     description?: string;
     /** Configuration for the adapter */
     config: JsonObject;
+    /** Named, versioned record schema enforced for extract and validate steps */
+    schemaRef?: SchemaReference;
     /** Execution order (for sequential steps) */
     order?: number;
     /** Whether the step is disabled */
