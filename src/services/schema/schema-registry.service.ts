@@ -22,7 +22,11 @@ import {
     validateSchemaRecord,
 } from './schema-definition';
 import { assertCompatibleSchemaEvolution } from './schema-compatibility';
-import { assertSchemaId, assertSchemaVersion } from './schema-reference';
+import {
+    assertSchemaId,
+    assertSchemaVersion,
+    schemaReferenceKey,
+} from './schema-reference';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 
 const SCHEMA_COMPATIBILITIES = [
@@ -395,10 +399,6 @@ function schemaReferencesMatch(
     version: string,
 ): boolean {
     return reference?.schemaId === schemaId && reference.version === version;
-}
-
-function schemaReferenceKey(reference: SchemaReference): string {
-    return `${reference.schemaId}\u0000${reference.version}`;
 }
 
 function formatUsage(usage: readonly DataHubSchemaUsage[]): string {

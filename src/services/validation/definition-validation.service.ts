@@ -3,12 +3,13 @@
  * Delegates to specialized validation modules for different aspects of validation.
  */
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { RequestContext, TransactionalConnection } from '@vendure/core';
 import { In } from 'typeorm';
 import { PipelineDefinition, StepType } from '../../types/index';
 import {
     AdapterType as AdapterTypeEnum,
+    PIPELINE_VALIDATION_ERROR,
     PipelineStatus,
     RevisionType,
     StepType as StepTypeEnum,
@@ -42,6 +43,8 @@ import { validateHooks } from './hook-security';
 import { parseInlineExportDestination } from '../destinations/inline-export-destination';
 import { ResourceReferenceService } from '../config/resource-reference.service';
 import { HookScriptRegistryService } from '../events/hook-script-registry.service';
+import { SchemaRegistryService } from '../schema/schema-registry.service';
+import { schemaReferenceKey } from '../schema/schema-reference';
 
 // ============================================================================
 // Type Definitions
@@ -83,6 +86,7 @@ export class DefinitionValidationService {
         private resourceReferences: ResourceReferenceService,
         private hookScripts: HookScriptRegistryService,
         loggerFactory: DataHubLoggerFactory,
+        @Optional() private schemaRegistry?: SchemaRegistryService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.DEFINITION_VALIDATION_SERVICE);
     }
@@ -129,13 +133,16 @@ export class DefinitionValidationService {
         const level = options.level ?? ValidationLevel.FULL;
         const result = this.validateSync(definition, { ...options, level: ValidationLevel.SEMANTIC });
 
-        if (level !== ValidationLevel.FULL || options.skipDependencyCheck) {
+        if (level !== ValidationLevel.FULL) {
             return { ...result, level };
         }
 
-        await this.validateDependsOnAsync(definition, result, ctx);
-        await this.validateResourceReferencesAsync(definition, result, ctx);
-        await this.validateHookReferencesAsync(definition, result, ctx);
+        if (!options.skipDependencyCheck) {
+            await this.validateDependsOnAsync(definition, result, ctx);
+            await this.validateResourceReferencesAsync(definition, result, ctx);
+            await this.validateHookReferencesAsync(definition, result, ctx);
+        }
+        await this.validateSchemaReferencesAsync(definition, result, ctx);
 
         return {
             isValid: result.issues.length === 0,
@@ -174,6 +181,37 @@ export class DefinitionValidationService {
                 issues.push({ message: `dependsOn contains duplicate code "${code}"`, errorCode: 'depends-on-duplicate-code' });
             }
             seen.add(code);
+        }
+    }
+
+    private async validateSchemaReferencesAsync(
+        definition: PipelineDefinition,
+        result: DefinitionValidationResult,
+        ctx?: RequestContext,
+    ): Promise<void> {
+        const referencedSteps = definition.steps.filter(
+            step => step.schemaRef !== undefined,
+        );
+        if (referencedSteps.length === 0) return;
+        if (!this.schemaRegistry || !ctx) {
+            result.issues.push({
+                message: 'Schema references could not be verified',
+                errorCode: PIPELINE_VALIDATION_ERROR.SCHEMA_REFERENCE_CHECK_UNAVAILABLE,
+            });
+            return;
+        }
+
+        const references = referencedSteps.flatMap(step => step.schemaRef ? [step.schemaRef] : []);
+        const schemas = await this.schemaRegistry.getByReferences(ctx, references);
+        for (const step of referencedSteps) {
+            const reference = step.schemaRef;
+            if (!reference || schemas.has(schemaReferenceKey(reference))) continue;
+            result.issues.push({
+                message: `Schema "${reference.schemaId}" version "${reference.version}" does not exist`,
+                stepKey: step.key,
+                field: 'schemaRef',
+                errorCode: PIPELINE_VALIDATION_ERROR.SCHEMA_REFERENCE_NOT_FOUND,
+            });
         }
     }
 

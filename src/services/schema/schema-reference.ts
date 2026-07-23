@@ -1,4 +1,5 @@
 import { SCHEMA_REGISTRY } from '../../constants';
+import type { SchemaReference } from '../../types';
 
 const SCHEMA_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
 const SCHEMA_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
@@ -31,4 +32,10 @@ export function assertSchemaVersion(version: string): void {
             'Schema versions must contain only letters, numbers, dots, hyphens, underscores, and plus signs',
         );
     }
+}
+
+export function schemaReferenceKey(
+    reference: Pick<SchemaReference, 'schemaId' | 'version'>,
+): string {
+    return `${reference.schemaId}\u0000${reference.version}`;
 }
