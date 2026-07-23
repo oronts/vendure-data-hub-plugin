@@ -1584,8 +1584,8 @@ export type DataHubAdapterCodeMapping = {
 /** Analytics API - Stats and metrics */
 export type DataHubAnalyticsOverview = {
   __typename?: 'DataHubAnalyticsOverview';
-  activePipelines: Scalars['Int']['output'];
   avgDurationMsToday: Scalars['Float']['output'];
+  enabledPipelines: Scalars['Int']['output'];
   recordsFailedToday: Scalars['Int']['output'];
   recordsProcessedToday: Scalars['Int']['output'];
   runsThisWeek: Scalars['Int']['output'];
@@ -3676,7 +3676,7 @@ export type DataHubTemplateCategory = {
 export type DataHubThroughputMetrics = {
   __typename?: 'DataHubThroughputMetrics';
   peakThroughput: Scalars['Float']['output'];
-  peakThroughputAt: Scalars['DateTime']['output'];
+  peakThroughputAt?: Maybe<Scalars['DateTime']['output']>;
   recordsPerHour: Scalars['Float']['output'];
   recordsPerMinute: Scalars['Float']['output'];
   recordsPerSecond: Scalars['Float']['output'];
