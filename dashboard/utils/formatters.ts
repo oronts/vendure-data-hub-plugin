@@ -1,6 +1,4 @@
-import type { JsonValue } from '../../shared/types';
-
-export function formatValue(value: JsonValue, maxLength = 50): string {
+export function formatValue(value: unknown, maxLength = 50): string {
     if (value === null || value === undefined) {
         return '\u2014';
     }
@@ -15,7 +13,7 @@ export function formatValue(value: JsonValue, maxLength = 50): string {
     return str.length > maxLength ? str.substring(0, maxLength) + '...' : str;
 }
 
-export function formatCellValue(value: JsonValue): string {
+export function formatCellValue(value: unknown): string {
     return formatValue(value, 50);
 }
 
@@ -29,7 +27,11 @@ export function formatKey(key: string): string {
         .replace(/^./, s => s.toUpperCase());
 }
 
-export function formatDateTime(date: Date | string | number | null | undefined, options?: Intl.DateTimeFormatOptions): string {
+export function formatDateTime(
+    date: Date | string | number | null | undefined,
+    options?: Intl.DateTimeFormatOptions,
+    locale?: string,
+): string {
     if (date == null || date === '') return '\u2014';
     const dateObj = date instanceof Date ? date : new Date(date);
     if (isNaN(dateObj.getTime()) || dateObj.getFullYear() < 2000) return '\u2014';
@@ -42,10 +44,13 @@ export function formatDateTime(date: Date | string | number | null | undefined, 
         minute: '2-digit',
     };
 
-    return dateObj.toLocaleString(undefined, options || defaultOptions);
+    return dateObj.toLocaleString(locale, options || defaultOptions);
 }
 
-export function formatSmartDateTime(date: Date | string | number | null | undefined): string {
+export function formatSmartDateTime(
+    date: Date | string | number | null | undefined,
+    locale?: string,
+): string {
     if (date == null || date === '') return '\u2014';
     const dateObj = date instanceof Date ? date : new Date(date);
     if (isNaN(dateObj.getTime()) || dateObj.getFullYear() < 2000) return '\u2014';
@@ -54,9 +59,9 @@ export function formatSmartDateTime(date: Date | string | number | null | undefi
     const isToday = dateObj.toDateString() === now.toDateString();
 
     if (isToday) {
-        return dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        return dateObj.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
     }
-    return dateObj.toLocaleString(undefined, {
+    return dateObj.toLocaleString(locale, {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
@@ -83,4 +88,3 @@ export function formatFileSize(bytes: number): string {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-
