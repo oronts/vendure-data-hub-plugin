@@ -6,3 +6,4 @@ export { queuesPage } from './queues';
 export { hooksPage } from './hooks';
 export { settingsPage } from './settings';
 export { logsPage } from './logs';
+export { schemasList, schemaDetail } from './schemas';

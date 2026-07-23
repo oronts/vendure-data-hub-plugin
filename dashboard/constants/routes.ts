@@ -9,4 +9,10 @@ export const ROUTES = {
     QUEUES: `${DATAHUB_API_BASE}/queues`,
     SECRETS: `${DATAHUB_API_BASE}/secrets`,
     CONNECTIONS: `${DATAHUB_API_BASE}/connections`,
+    SCHEMAS: `${DATAHUB_API_BASE}/schemas`,
+} as const;
+
+export const DETAIL_ROUTES = {
+    PIPELINE: `${ROUTES.PIPELINES}/$id`,
+    SCHEMA: `${ROUTES.SCHEMAS}/$id`,
 } as const;

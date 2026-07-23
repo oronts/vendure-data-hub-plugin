@@ -33,6 +33,10 @@ export const DATAHUB_PERMISSIONS = {
     MANAGE_DESTINATIONS: 'ManageDataHubDestinations',
     MANAGE_FEEDS: 'ManageDataHubFeeds',
     VIEW_ENTITY_SCHEMAS: 'ViewDataHubEntitySchemas',
+    CREATE_SCHEMA: 'CreateDataHubSchema',
+    READ_SCHEMA: 'ReadDataHubSchema',
+    UPDATE_SCHEMA: 'UpdateDataHubSchema',
+    DELETE_SCHEMA: 'DeleteDataHubSchema',
 
     // File management permissions
     MANAGE_FILES: 'ManageDataHubFiles',

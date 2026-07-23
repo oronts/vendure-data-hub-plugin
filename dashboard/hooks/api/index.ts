@@ -56,6 +56,18 @@ export {
 } from './use-entity-field-schemas';
 
 export {
+    schemasListDocument,
+    schemaDetailDocument,
+    schemaVersionsDocument,
+    createSchemaDocument,
+    updateSchemaDocument,
+    deleteSchemaDocument,
+    useSchemas,
+    useSchemaVersions,
+    useInfiniteSchemaReferences,
+} from './use-schemas';
+
+export {
     useLogs,
     useLogStats,
     useRecentLogs,

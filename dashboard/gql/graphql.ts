@@ -849,6 +849,14 @@ export type CreateDataHubPipelineInput = {
   version?: InputMaybe<Scalars['Int']['input']>;
 };
 
+export type CreateDataHubSchemaInput = {
+  compatibility?: InputMaybe<DataHubSchemaCompatibility>;
+  definition: Scalars['JSON']['input'];
+  metadata?: InputMaybe<Scalars['JSON']['input']>;
+  schemaId: Scalars['String']['input'];
+  version: Scalars['String']['input'];
+};
+
 export type CreateDataHubSecretInput = {
   code: Scalars['String']['input'];
   metadata?: InputMaybe<Scalars['JSON']['input']>;
@@ -3542,6 +3550,77 @@ export type DataHubSaveDraftInput = {
   pipelineId: Scalars['ID']['input'];
 };
 
+export type DataHubSchema = Node & {
+  __typename?: 'DataHubSchema';
+  compatibility: DataHubSchemaCompatibility;
+  createdAt: Scalars['DateTime']['output'];
+  definition: Scalars['JSON']['output'];
+  id: Scalars['ID']['output'];
+  metadata?: Maybe<Scalars['JSON']['output']>;
+  schemaId: Scalars['String']['output'];
+  updatedAt: Scalars['DateTime']['output'];
+  usedBy: Array<DataHubSchemaUsage>;
+  version: Scalars['String']['output'];
+};
+
+export enum DataHubSchemaCompatibility {
+  BACKWARD = 'BACKWARD',
+  PERMISSIVE = 'PERMISSIVE',
+  STRICT = 'STRICT'
+}
+
+export type DataHubSchemaFilterParameter = {
+  _and?: InputMaybe<Array<DataHubSchemaFilterParameter>>;
+  _or?: InputMaybe<Array<DataHubSchemaFilterParameter>>;
+  compatibility?: InputMaybe<StringOperators>;
+  createdAt?: InputMaybe<DateOperators>;
+  id?: InputMaybe<IdOperators>;
+  schemaId?: InputMaybe<StringOperators>;
+  updatedAt?: InputMaybe<DateOperators>;
+  version?: InputMaybe<StringOperators>;
+};
+
+export type DataHubSchemaList = PaginatedList & {
+  __typename?: 'DataHubSchemaList';
+  items: Array<DataHubSchema>;
+  totalItems: Scalars['Int']['output'];
+};
+
+export type DataHubSchemaListOptions = {
+  /** Allows the results to be filtered */
+  filter?: InputMaybe<DataHubSchemaFilterParameter>;
+  /** Specifies whether multiple top-level "filter" fields should be combined with a logical AND or OR operation. Defaults to AND. */
+  filterOperator?: InputMaybe<LogicalOperator>;
+  /** Skips the first n results, for use in pagination */
+  skip?: InputMaybe<Scalars['Int']['input']>;
+  /** Specifies which properties to sort the results by */
+  sort?: InputMaybe<DataHubSchemaSortParameter>;
+  /** Takes n results, for use in pagination */
+  take?: InputMaybe<Scalars['Int']['input']>;
+};
+
+export type DataHubSchemaSortParameter = {
+  createdAt?: InputMaybe<SortOrder>;
+  id?: InputMaybe<SortOrder>;
+  schemaId?: InputMaybe<SortOrder>;
+  updatedAt?: InputMaybe<SortOrder>;
+  version?: InputMaybe<SortOrder>;
+};
+
+export type DataHubSchemaUsage = {
+  __typename?: 'DataHubSchemaUsage';
+  pipelineCode: Scalars['String']['output'];
+  pipelineId: Scalars['ID']['output'];
+  pipelineName: Scalars['String']['output'];
+  pipelineStatus: Scalars['String']['output'];
+  revisionId?: Maybe<Scalars['ID']['output']>;
+  revisionType: Scalars['String']['output'];
+  runId?: Maybe<Scalars['ID']['output']>;
+  runStatus?: Maybe<Scalars['String']['output']>;
+  stepKey: Scalars['String']['output'];
+  stepType: Scalars['String']['output'];
+};
+
 /** Secrets API */
 export type DataHubSecret = Node & {
   __typename?: 'DataHubSecret';
@@ -5224,6 +5303,7 @@ export type Mutation = {
   createDataHubConnection: DataHubConnection;
   createDataHubFeed: DataHubFeed;
   createDataHubPipeline: DataHubPipeline;
+  createDataHubSchema: DataHubSchema;
   createDataHubSecret: DataHubSecret;
   /** Creates a draft Order */
   createDraftOrder: Order;
@@ -5315,6 +5395,7 @@ export type Mutation = {
   deleteDataHubConnection: DeletionResponse;
   deleteDataHubFeed: DeletionResponse;
   deleteDataHubPipeline: DeletionResponse;
+  deleteDataHubSchema: DeletionResponse;
   deleteDataHubSecret: DeletionResponse;
   /** Deletes a draft Order */
   deleteDraftOrder: DeletionResponse;
@@ -5511,6 +5592,7 @@ export type Mutation = {
   updateDataHubConnection: DataHubConnection;
   updateDataHubFeed: DataHubFeed;
   updateDataHubPipeline: DataHubPipeline;
+  updateDataHubSchema: DataHubSchema;
   updateDataHubSecret: DataHubSecret;
   updateDataHubSettings: DataHubSettings;
   /** Update an existing Facet */
@@ -5760,6 +5842,11 @@ export type MutationCreateDataHubFeedArgs = {
 
 export type MutationCreateDataHubPipelineArgs = {
   input: CreateDataHubPipelineInput;
+};
+
+
+export type MutationCreateDataHubSchemaArgs = {
+  input: CreateDataHubSchemaInput;
 };
 
 
@@ -6022,6 +6109,11 @@ export type MutationDeleteDataHubFeedArgs = {
 
 
 export type MutationDeleteDataHubPipelineArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationDeleteDataHubSchemaArgs = {
   id: Scalars['ID']['input'];
 };
 
@@ -6581,6 +6673,11 @@ export type MutationUpdateDataHubFeedArgs = {
 
 export type MutationUpdateDataHubPipelineArgs = {
   input: UpdateDataHubPipelineInput;
+};
+
+
+export type MutationUpdateDataHubSchemaArgs = {
+  input: UpdateDataHubSchemaInput;
 };
 
 
@@ -7269,6 +7366,8 @@ export enum Permission {
   CreateCustomerGroup = 'CreateCustomerGroup',
   /** Grants permission to create DataHubPipeline */
   CreateDataHubPipeline = 'CreateDataHubPipeline',
+  /** Grants permission to create DataHubSchema */
+  CreateDataHubSchema = 'CreateDataHubSchema',
   /** Grants permission to create DataHubSecret */
   CreateDataHubSecret = 'CreateDataHubSecret',
   /** Grants permission to create Facet */
@@ -7317,6 +7416,8 @@ export enum Permission {
   DeleteCustomerGroup = 'DeleteCustomerGroup',
   /** Grants permission to delete DataHubPipeline */
   DeleteDataHubPipeline = 'DeleteDataHubPipeline',
+  /** Grants permission to delete DataHubSchema */
+  DeleteDataHubSchema = 'DeleteDataHubSchema',
   /** Grants permission to delete DataHubSecret */
   DeleteDataHubSecret = 'DeleteDataHubSecret',
   /** Grants permission to delete Facet */
@@ -7387,6 +7488,8 @@ export enum Permission {
   ReadDataHubFiles = 'ReadDataHubFiles',
   /** Grants permission to read DataHubPipeline */
   ReadDataHubPipeline = 'ReadDataHubPipeline',
+  /** Grants permission to read DataHubSchema */
+  ReadDataHubSchema = 'ReadDataHubSchema',
   /** Grants permission to read DataHubSecret */
   ReadDataHubSecret = 'ReadDataHubSecret',
   /** Grants permission to read Facet */
@@ -7443,6 +7546,8 @@ export enum Permission {
   UpdateCustomerGroup = 'UpdateCustomerGroup',
   /** Grants permission to update DataHubPipeline */
   UpdateDataHubPipeline = 'UpdateDataHubPipeline',
+  /** Grants permission to update DataHubSchema */
+  UpdateDataHubSchema = 'UpdateDataHubSchema',
   /** Grants permission to update DataHubSecret */
   UpdateDataHubSecret = 'UpdateDataHubSecret',
   /** Grants permissions on UpdateDataHubSettings operations */
@@ -8104,6 +8209,9 @@ export type Query = {
   dataHubSandbox: DataHubSandboxResult;
   /** Execute sandbox with a custom definition (for testing unpublished changes) */
   dataHubSandboxWithDefinition: DataHubSandboxResult;
+  dataHubSchema?: Maybe<DataHubSchema>;
+  dataHubSchemaVersions: Array<DataHubSchema>;
+  dataHubSchemas: DataHubSchemaList;
   dataHubSecret?: Maybe<DataHubSecret>;
   dataHubSecretReferences: DataHubSecretReferenceList;
   dataHubSecretSecurity: DataHubSecretSecurity;
@@ -8479,6 +8587,21 @@ export type QueryDataHubSandboxArgs = {
 
 export type QueryDataHubSandboxWithDefinitionArgs = {
   input: DataHubSandboxWithDefinitionInput;
+};
+
+
+export type QueryDataHubSchemaArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type QueryDataHubSchemaVersionsArgs = {
+  schemaId: Scalars['String']['input'];
+};
+
+
+export type QueryDataHubSchemasArgs = {
+  options?: InputMaybe<DataHubSchemaListOptions>;
 };
 
 
@@ -9898,6 +10021,11 @@ export type UpdateDataHubPipelineInput = {
   version?: InputMaybe<Scalars['Int']['input']>;
 };
 
+export type UpdateDataHubSchemaInput = {
+  id: Scalars['ID']['input'];
+  metadata?: InputMaybe<Scalars['JSON']['input']>;
+};
+
 export type UpdateDataHubSecretInput = {
   clearValue?: Scalars['Boolean']['input'];
   code?: InputMaybe<Scalars['String']['input']>;
@@ -10597,6 +10725,48 @@ export type MarkDataHubDeadLetterApiMutationVariables = Exact<{
 
 export type MarkDataHubDeadLetterApiMutation = { __typename?: 'Mutation', markDataHubDeadLetter: boolean };
 
+export type DataHubSchemasForListQueryVariables = Exact<{
+  options?: InputMaybe<DataHubSchemaListOptions>;
+}>;
+
+
+export type DataHubSchemasForListQuery = { __typename?: 'Query', dataHubSchemas: { __typename?: 'DataHubSchemaList', totalItems: number, items: Array<{ __typename?: 'DataHubSchema', id: string | number, schemaId: string, version: string, compatibility: DataHubSchemaCompatibility, updatedAt: string }> } };
+
+export type DataHubSchemaDetailApiQueryVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type DataHubSchemaDetailApiQuery = { __typename?: 'Query', dataHubSchema?: { __typename?: 'DataHubSchema', id: string | number, schemaId: string, version: string, compatibility: DataHubSchemaCompatibility, definition: Record<string, unknown>, metadata?: Record<string, unknown> | null, usedBy: Array<{ __typename?: 'DataHubSchemaUsage', pipelineId: string | number, pipelineCode: string, pipelineName: string, pipelineStatus: string, stepKey: string, stepType: string, revisionId?: string | number | null, revisionType: string, runId?: string | number | null, runStatus?: string | null }> } | null };
+
+export type DataHubSchemaVersionsApiQueryVariables = Exact<{
+  schemaId: Scalars['String']['input'];
+}>;
+
+
+export type DataHubSchemaVersionsApiQuery = { __typename?: 'Query', dataHubSchemaVersions: Array<{ __typename?: 'DataHubSchema', id: string | number, createdAt: string, schemaId: string, version: string, compatibility: DataHubSchemaCompatibility, definition: Record<string, unknown> }> };
+
+export type CreateDataHubSchemaApiMutationVariables = Exact<{
+  input: CreateDataHubSchemaInput;
+}>;
+
+
+export type CreateDataHubSchemaApiMutation = { __typename?: 'Mutation', createDataHubSchema: { __typename?: 'DataHubSchema', id: string | number, schemaId: string, version: string } };
+
+export type UpdateDataHubSchemaApiMutationVariables = Exact<{
+  input: UpdateDataHubSchemaInput;
+}>;
+
+
+export type UpdateDataHubSchemaApiMutation = { __typename?: 'Mutation', updateDataHubSchema: { __typename?: 'DataHubSchema', id: string | number, metadata?: Record<string, unknown> | null } };
+
+export type DeleteDataHubSchemaApiMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type DeleteDataHubSchemaApiMutation = { __typename?: 'Mutation', deleteDataHubSchema: { __typename?: 'DeletionResponse', result: DeletionResult, message?: string | null } };
+
 export type DataHubSecretsForListQueryVariables = Exact<{
   options?: InputMaybe<DataHubSecretListOptions>;
 }>;
@@ -10767,6 +10937,12 @@ export const DataHubConsumersApiDocument = {"kind":"Document","definitions":[{"k
 export const StartDataHubConsumerApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"StartDataHubConsumerApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"triggerKey"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"startDataHubConsumer"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineCode"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}}},{"kind":"Argument","name":{"kind":"Name","value":"triggerKey"},"value":{"kind":"Variable","name":{"kind":"Name","value":"triggerKey"}}}]}]}}]} as unknown as DocumentNode<StartDataHubConsumerApiMutation, StartDataHubConsumerApiMutationVariables>;
 export const StopDataHubConsumerApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"StopDataHubConsumerApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"triggerKey"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"stopDataHubConsumer"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"pipelineCode"},"value":{"kind":"Variable","name":{"kind":"Name","value":"pipelineCode"}}},{"kind":"Argument","name":{"kind":"Name","value":"triggerKey"},"value":{"kind":"Variable","name":{"kind":"Name","value":"triggerKey"}}}]}]}}]} as unknown as DocumentNode<StopDataHubConsumerApiMutation, StopDataHubConsumerApiMutationVariables>;
 export const MarkDataHubDeadLetterApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"MarkDataHubDeadLetterApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"deadLetter"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"Boolean"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"markDataHubDeadLetter"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}},{"kind":"Argument","name":{"kind":"Name","value":"deadLetter"},"value":{"kind":"Variable","name":{"kind":"Name","value":"deadLetter"}}}]}]}}]} as unknown as DocumentNode<MarkDataHubDeadLetterApiMutation, MarkDataHubDeadLetterApiMutationVariables>;
+export const DataHubSchemasForListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSchemasForList"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"options"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubSchemaListOptions"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSchemas"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"options"},"value":{"kind":"Variable","name":{"kind":"Name","value":"options"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"schemaId"}},{"kind":"Field","name":{"kind":"Name","value":"version"}},{"kind":"Field","name":{"kind":"Name","value":"compatibility"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}}]}}]}}]} as unknown as DocumentNode<DataHubSchemasForListQuery, DataHubSchemasForListQueryVariables>;
+export const DataHubSchemaDetailApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSchemaDetailApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSchema"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"schemaId"}},{"kind":"Field","name":{"kind":"Name","value":"version"}},{"kind":"Field","name":{"kind":"Name","value":"compatibility"}},{"kind":"Field","name":{"kind":"Name","value":"definition"}},{"kind":"Field","name":{"kind":"Name","value":"metadata"}},{"kind":"Field","name":{"kind":"Name","value":"usedBy"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"pipelineId"}},{"kind":"Field","name":{"kind":"Name","value":"pipelineCode"}},{"kind":"Field","name":{"kind":"Name","value":"pipelineName"}},{"kind":"Field","name":{"kind":"Name","value":"pipelineStatus"}},{"kind":"Field","name":{"kind":"Name","value":"stepKey"}},{"kind":"Field","name":{"kind":"Name","value":"stepType"}},{"kind":"Field","name":{"kind":"Name","value":"revisionId"}},{"kind":"Field","name":{"kind":"Name","value":"revisionType"}},{"kind":"Field","name":{"kind":"Name","value":"runId"}},{"kind":"Field","name":{"kind":"Name","value":"runStatus"}}]}}]}}]}}]} as unknown as DocumentNode<DataHubSchemaDetailApiQuery, DataHubSchemaDetailApiQueryVariables>;
+export const DataHubSchemaVersionsApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSchemaVersionsApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"schemaId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSchemaVersions"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"schemaId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"schemaId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"schemaId"}},{"kind":"Field","name":{"kind":"Name","value":"version"}},{"kind":"Field","name":{"kind":"Name","value":"compatibility"}},{"kind":"Field","name":{"kind":"Name","value":"definition"}}]}}]}}]} as unknown as DocumentNode<DataHubSchemaVersionsApiQuery, DataHubSchemaVersionsApiQueryVariables>;
+export const CreateDataHubSchemaApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateDataHubSchemaApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"CreateDataHubSchemaInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createDataHubSchema"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"schemaId"}},{"kind":"Field","name":{"kind":"Name","value":"version"}}]}}]}}]} as unknown as DocumentNode<CreateDataHubSchemaApiMutation, CreateDataHubSchemaApiMutationVariables>;
+export const UpdateDataHubSchemaApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateDataHubSchemaApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UpdateDataHubSchemaInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateDataHubSchema"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"metadata"}}]}}]}}]} as unknown as DocumentNode<UpdateDataHubSchemaApiMutation, UpdateDataHubSchemaApiMutationVariables>;
+export const DeleteDataHubSchemaApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeleteDataHubSchemaApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deleteDataHubSchema"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"result"}},{"kind":"Field","name":{"kind":"Name","value":"message"}}]}}]}}]} as unknown as DocumentNode<DeleteDataHubSchemaApiMutation, DeleteDataHubSchemaApiMutationVariables>;
 export const DataHubSecretsForListDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSecretsForList"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"options"}},"type":{"kind":"NamedType","name":{"kind":"Name","value":"DataHubSecretListOptions"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSecrets"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"options"},"value":{"kind":"Variable","name":{"kind":"Name","value":"options"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"provider"}},{"kind":"Field","name":{"kind":"Name","value":"valueStatus"}},{"kind":"Field","name":{"kind":"Name","value":"isOverridden"}}]}},{"kind":"Field","name":{"kind":"Name","value":"totalItems"}}]}}]}}]} as unknown as DocumentNode<DataHubSecretsForListQuery, DataHubSecretsForListQueryVariables>;
 export const DataHubSecretDetailApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSecretDetailApi"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"ID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSecret"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"code"}},{"kind":"Field","name":{"kind":"Name","value":"provider"}},{"kind":"Field","name":{"kind":"Name","value":"hasValue"}},{"kind":"Field","name":{"kind":"Name","value":"valueStatus"}},{"kind":"Field","name":{"kind":"Name","value":"isOverridden"}},{"kind":"Field","name":{"kind":"Name","value":"metadata"}}]}}]}}]} as unknown as DocumentNode<DataHubSecretDetailApiQuery, DataHubSecretDetailApiQueryVariables>;
 export const DataHubSecretSecurityApiDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"DataHubSecretSecurityApi"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"dataHubSecretSecurity"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"mode"}},{"kind":"Field","name":{"kind":"Name","value":"inlineStorageAvailable"}},{"kind":"Field","name":{"kind":"Name","value":"codeFirstInlineAllowed"}}]}}]}}]} as unknown as DocumentNode<DataHubSecretSecurityApiQuery, DataHubSecretSecurityApiQueryVariables>;

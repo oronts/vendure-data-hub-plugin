@@ -44,3 +44,4 @@ export { ErrorBoundary } from './error-boundary';
 
 export { LoadMoreButton } from './LoadMoreButton';
 export { AllPermissionsGuard } from './AllPermissionsGuard';
+export { DetailRouteButton } from './DetailRouteButton';

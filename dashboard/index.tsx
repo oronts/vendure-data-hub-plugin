@@ -1,6 +1,6 @@
 import { defineDashboardExtension, DashboardRouteDefinition } from '@vendure/dashboard';
 import { Boxes } from 'lucide-react';
-import { DATAHUB_NAV_SECTION } from './constants';
+import { DATAHUB_NAV_LABELS, DATAHUB_NAV_SECTION } from './constants';
 import {
     pipelinesList,
     pipelineDetail,
@@ -15,6 +15,8 @@ import {
     queuesPage,
     settingsPage,
     logsPage,
+    schemasList,
+    schemaDetail,
 } from './routes';
 import { ErrorBoundary } from './components/shared';
 
@@ -31,7 +33,7 @@ function wrapWithErrorBoundary(route: DashboardRouteDefinition): DashboardRouteD
     };
 }
 
-const routes: DashboardRouteDefinition[] = [
+export const dataHubRoutes: DashboardRouteDefinition[] = [
     pipelinesList,
     importWizardPage,
     exportWizardPage,
@@ -45,11 +47,13 @@ const routes: DashboardRouteDefinition[] = [
     queuesPage,
     settingsPage,
     logsPage,
+    schemasList,
+    schemaDetail,
 ].map(wrapWithErrorBoundary);
 
-export default defineDashboardExtension({
+defineDashboardExtension({
     navSections: [
-        { id: DATAHUB_NAV_SECTION, title: 'Data Hub', icon: Boxes, placement: 'bottom', order: 999 },
+        { id: DATAHUB_NAV_SECTION, title: DATAHUB_NAV_LABELS.DATA_HUB, icon: Boxes, placement: 'bottom', order: 999 },
     ],
-    routes,
+    routes: dataHubRoutes,
 });

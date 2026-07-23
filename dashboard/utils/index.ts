@@ -19,7 +19,7 @@ export {
     filterAndGroupAdaptersByCategory,
 } from './adapter-grouping';
 
-export { normalizeString } from './string-helpers';
+export { getEntityLabel, normalizeString } from './string-helpers';
 
 export {
     prepareDynamicFields,

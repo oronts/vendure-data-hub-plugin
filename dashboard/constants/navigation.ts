@@ -12,6 +12,19 @@ export const DATAHUB_NAV_SECTION = 'data-hub';
 /** Navigation item ID for pipelines */
 export const DATAHUB_NAV_ID = 'data-hub-pipelines';
 
+export const DATAHUB_NAV_LABELS = {
+    DATA_HUB: /* i18n */ 'Data Hub',
+    SCHEMAS: /* i18n */ 'Schemas',
+} as const;
+
+export const DATAHUB_FIELD_TRANSLATION_IDS = {
+    VERSION: /* i18n */ 'fieldName.version',
+} as const;
+
+export const DATAHUB_PAGE_LABELS = {
+    NEW_SCHEMA: /* i18n */ 'New schema version',
+} as const;
+
 /** Base route for pipeline pages */
 export const DATAHUB_ROUTE_BASE = '/data-hub/pipelines';
 
