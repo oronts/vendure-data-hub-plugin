@@ -1,35 +1,145 @@
-import { icons, type LucideIcon } from 'lucide-react';
+import {
+    AlertTriangle,
+    ArrowRight,
+    Ban,
+    BarChart,
+    Box,
+    CheckCircle,
+    CheckCircle2,
+    ClipboardList,
+    Clock,
+    Cloud,
+    Code,
+    Cog,
+    Currency,
+    Database,
+    DollarSign,
+    Download,
+    File,
+    FileCode,
+    FileJson,
+    FileOutput,
+    FileSpreadsheet,
+    FileText,
+    Filter,
+    Folder,
+    FolderOpen,
+    FolderTree,
+    GitBranch,
+    Globe,
+    HardDrive,
+    Image,
+    Layers,
+    Mail,
+    MapPin,
+    MessageSquare,
+    Package,
+    Pause,
+    Percent,
+    Play,
+    Receipt,
+    RefreshCw,
+    Rss,
+    Search,
+    Send,
+    Server,
+    Settings,
+    Sheet,
+    Shield,
+    ShieldCheck,
+    ShoppingBag,
+    ShoppingCart,
+    Sparkles,
+    Store,
+    Tag,
+    TimerOff,
+    Trash2,
+    Upload,
+    Users,
+    Warehouse,
+    Webhook,
+    X,
+    XCircle,
+    Zap,
+    type LucideIcon,
+} from 'lucide-react';
 
-/**
- * Convert a kebab-case icon name to PascalCase for lucide-react lookup.
- * e.g. 'arrow-down' → 'ArrowDown', 'file-text' → 'FileText'
- */
-function kebabToPascal(name: string): string {
+const ICONS = {
+    'alert-triangle': AlertTriangle,
+    'arrow-right': ArrowRight,
+    ban: Ban,
+    'bar-chart': BarChart,
+    box: Box,
+    'check-circle': CheckCircle,
+    'check-circle-2': CheckCircle2,
+    'clipboard-list': ClipboardList,
+    clock: Clock,
+    cloud: Cloud,
+    code: Code,
+    cog: Cog,
+    'currency-exchange': Currency,
+    database: Database,
+    'dollar-sign': DollarSign,
+    download: Download,
+    file: File,
+    'file-code': FileCode,
+    'file-json': FileJson,
+    'file-output': FileOutput,
+    'file-spreadsheet': FileSpreadsheet,
+    'file-text': FileText,
+    filter: Filter,
+    folder: Folder,
+    'folder-open': FolderOpen,
+    'folder-tree': FolderTree,
+    'git-branch': GitBranch,
+    globe: Globe,
+    'hard-drive': HardDrive,
+    image: Image,
+    layers: Layers,
+    mail: Mail,
+    'map-pin': MapPin,
+    memory: Database,
+    'message-square': MessageSquare,
+    package: Package,
+    pause: Pause,
+    percent: Percent,
+    play: Play,
+    receipt: Receipt,
+    refresh: RefreshCw,
+    'refresh-cw': RefreshCw,
+    rss: Rss,
+    search: Search,
+    send: Send,
+    server: Server,
+    settings: Settings,
+    sheet: Sheet,
+    shield: Shield,
+    'shield-check': ShieldCheck,
+    'shopping-bag': ShoppingBag,
+    'shopping-cart': ShoppingCart,
+    sparkles: Sparkles,
+    store: Store,
+    tag: Tag,
+    'timer-off': TimerOff,
+    'trash-2': Trash2,
+    upload: Upload,
+    users: Users,
+    warehouse: Warehouse,
+    webhook: Webhook,
+    x: X,
+    'x-circle': XCircle,
+    zap: Zap,
+} as const satisfies Readonly<Record<string, LucideIcon>>;
+
+function normalizeIconName(name: string): string {
     return name
-        .split('-')
-        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-        .join('');
+        .trim()
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .replace(/([a-zA-Z])([0-9])/g, '$1-$2')
+        .toLowerCase();
 }
 
-/**
- * Resolve a backend icon name string (e.g. 'code', 'globe', 'file-text')
- * to a LucideIcon component. Accepts both kebab-case and PascalCase input.
- * Returns undefined if the name is not recognized, allowing callers to provide a fallback.
- *
- * Uses lucide-react's `icons` export for fully dynamic resolution.
- * No manual map needed when new icons are used.
- */
 export function resolveIconName(name: string | undefined | null): LucideIcon | undefined {
     if (!name) return undefined;
-
-    // If already PascalCase (no hyphens), try direct lookup first
-    if (!name.includes('-')) {
-        const pascalName = name.charAt(0).toUpperCase() + name.slice(1);
-        const direct = icons[pascalName as keyof typeof icons];
-        if (direct) return direct;
-    }
-
-    // Convert kebab-case to PascalCase and look up
-    const pascalCase = kebabToPascal(name);
-    return icons[pascalCase as keyof typeof icons];
+    return ICONS[normalizeIconName(name) as keyof typeof ICONS];
 }
