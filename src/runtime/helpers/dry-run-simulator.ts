@@ -315,7 +315,20 @@ export class DryRunSimulator {
         const samples: Array<{ step: string; before: RecordObject; after: RecordObject }> = [];
 
         try {
-            const out = await this.extractExecutor.execute(ctx, step, executorCtx, dryRunCtx.onRecordError);
+            const extracted = await this.extractExecutor.execute(
+                ctx,
+                step,
+                executorCtx,
+                dryRunCtx.onRecordError,
+            );
+            const out = step.schemaRef
+                ? await this.extractExecutor.validateExtractedRecords(
+                    ctx,
+                    step,
+                    extracted,
+                    dryRunCtx.onRecordError,
+                )
+                : extracted;
             for (let i = 0; i < Math.min(out.length, this.sampleLimit); i++) {
                 samples.push({ step: step.key || step.name || 'extract', before: {}, after: out[i] });
             }

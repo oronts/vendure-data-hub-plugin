@@ -22,10 +22,9 @@ import {
     validateSchemaRecord,
 } from './schema-definition';
 import { assertCompatibleSchemaEvolution } from './schema-compatibility';
+import { assertSchemaId, assertSchemaVersion } from './schema-reference';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 
-const SCHEMA_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._-]*$/;
-const SCHEMA_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._+-]*$/;
 const SCHEMA_COMPATIBILITIES = [
     'STRICT',
     'BACKWARD',
@@ -374,30 +373,6 @@ export class SchemaRegistryService {
         if (usage.length === 0) return;
         throw new SchemaInUseError(
             `Schema "${schemaId}" version "${version}" is used by: ${formatUsage(usage)}. Remove or replace those references before deleting it.`,
-        );
-    }
-}
-
-function assertSchemaId(schemaId: string): void {
-    if (
-        schemaId.trim() !== schemaId
-        || schemaId.length > SCHEMA_REGISTRY.MAX_SCHEMA_ID_LENGTH
-        || !SCHEMA_ID_PATTERN.test(schemaId)
-    ) {
-        throw new Error(
-            'Schema IDs must start with a letter and contain only letters, numbers, dots, hyphens, and underscores',
-        );
-    }
-}
-
-function assertSchemaVersion(version: string): void {
-    if (
-        version.trim() !== version
-        || version.length > SCHEMA_REGISTRY.MAX_VERSION_LENGTH
-        || !SCHEMA_VERSION_PATTERN.test(version)
-    ) {
-        throw new Error(
-            'Schema versions must contain only letters, numbers, dots, hyphens, underscores, and plus signs',
         );
     }
 }

@@ -28,6 +28,8 @@ import { FileExtractHandler } from './extractors/file-extract.handler';
 import { MemoryExtractHandler } from './extractors/memory-extract.handler';
 import { getAdapterCode } from '../../types/step-configs';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
+import { SchemaRegistryService } from '../../services/schema/schema-registry.service';
+import { formatSchemaValidationIssues } from '../../services/schema/schema-definition';
 
 @Injectable()
 export class ExtractExecutor {
@@ -42,6 +44,7 @@ export class ExtractExecutor {
         loggerFactory: DataHubLoggerFactory,
         @Optional() private registry?: DataHubRegistryService,
         @Optional() private extractorRegistry?: ExtractorRegistryService,
+        @Optional() private schemaRegistry?: SchemaRegistryService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.EXTRACT_EXECUTOR);
 
@@ -159,6 +162,53 @@ export class ExtractExecutor {
     private logOperationResult(adapterCode: string, recordCount: number, startTime: number, stepKey: string): void {
         const durationMs = Date.now() - startTime;
         this.logger.logExtractorOperation(adapterCode, recordCount, durationMs, { stepKey });
+    }
+
+    async validateExtractedRecords(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        records: RecordObject[],
+        onRecordError?: OnRecordErrorCallback,
+    ): Promise<RecordObject[]> {
+        if (!step.schemaRef) return records;
+        if (!this.schemaRegistry) {
+            throw new Error('Schema registry is unavailable for extract step');
+        }
+        const validation = await this.schemaRegistry.validateRecords(
+            ctx,
+            step.schemaRef,
+            records,
+        );
+        const invalid = validation.records.filter(item => item.issues.length > 0);
+        if (validation.schema.compatibility === 'PERMISSIVE') {
+            if (invalid.length > 0) {
+                this.logger.warn('Permissive schema validation accepted mismatched records', {
+                    stepKey: step.key,
+                    schemaId: validation.schema.schemaId,
+                    schemaVersion: validation.schema.version,
+                    recordCount: invalid.length,
+                });
+            }
+            return records;
+        }
+        if (invalid.length > 0 && !onRecordError) {
+            throw new Error(
+                `Schema ${validation.schema.schemaId}@${validation.schema.version}: ${formatSchemaValidationIssues(invalid[0].issues)}`,
+            );
+        }
+        const accepted: RecordObject[] = [];
+        for (const item of validation.records) {
+            if (item.issues.length === 0) {
+                accepted.push(item.record);
+                continue;
+            }
+            await onRecordError?.(
+                step.key,
+                `Schema ${validation.schema.schemaId}@${validation.schema.version}: ${formatSchemaValidationIssues(item.issues)}`,
+                item.record,
+            );
+        }
+        return accepted;
     }
 
     private async executeCustomExtractor(

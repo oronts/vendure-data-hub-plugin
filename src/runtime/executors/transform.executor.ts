@@ -19,6 +19,8 @@ import { getOperatorRuntime, getCustomOperatorRuntime } from '../../operators/op
 import { OperatorSecretResolver } from '../../sdk/types/transform-types';
 import { SecretService } from '../../services/config/secret.service';
 import { ConnectionService } from '../../services/config/connection.service';
+import { SchemaRegistryService } from '../../services/schema/schema-registry.service';
+import { formatSchemaValidationIssues } from '../../services/schema/schema-definition';
 import { LoaderRegistryService } from '../../loaders/registry';
 import { createConnectionsAdapter } from './context-adapters';
 import { applyHttpLookupBatch } from '../../operators/enrichment/helpers';
@@ -65,6 +67,7 @@ export class TransformExecutor {
         @Optional() private secretService?: SecretService,
         @Optional() private loaderRegistry?: LoaderRegistryService,
         @Optional() private connectionService?: ConnectionService,
+        @Optional() private schemaRegistry?: SchemaRegistryService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.TRANSFORM_EXECUTOR);
     }
@@ -524,7 +527,7 @@ export class TransformExecutor {
      * - rules: [{ type, spec: { field, required, ... } }] - rule-based format from UI
      */
     async executeValidate(
-        _ctx: RequestContext,
+        ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
@@ -536,6 +539,41 @@ export class TransformExecutor {
         };
 
         // Convert rules to fields format if rules are provided
+        const mode = (cfg.errorHandlingMode as string | undefined) ?? ValidationMode.FAIL_FAST;
+        let validatedInput = input;
+        if (step.schemaRef) {
+            if (!this.schemaRegistry) {
+                throw new Error('Schema registry is unavailable for validate step');
+            }
+            const validation = await this.schemaRegistry.validateRecords(
+                ctx,
+                step.schemaRef,
+                input,
+            );
+            const invalid = validation.records.filter(item => item.issues.length > 0);
+            if (validation.schema.compatibility === 'PERMISSIVE') {
+                if (invalid.length > 0) {
+                    this.logger.warn('Permissive schema validation accepted mismatched records', {
+                        stepKey: step.key,
+                        schemaId: validation.schema.schemaId,
+                        schemaVersion: validation.schema.version,
+                        recordCount: invalid.length,
+                    });
+                }
+            } else {
+                validatedInput = [];
+                for (const item of validation.records) {
+                    if (item.issues.length === 0) {
+                        validatedInput.push(item.record);
+                        continue;
+                    }
+                    const message = `Schema ${validation.schema.schemaId}@${validation.schema.version}: ${formatSchemaValidationIssues(item.issues)}`;
+                    if (onRecordError) await onRecordError(step.key, message, item.record);
+                    if (mode === ValidationMode.FAIL_FAST) return [];
+                }
+            }
+        }
+
         let fields: Record<string, import('../utils').FieldSpec> = {};
 
         if (cfg.rules && Array.isArray(cfg.rules)) {
@@ -567,21 +605,19 @@ export class TransformExecutor {
             fields = cfg.fields as Record<string, import('../utils').FieldSpec>;
         }
 
-        const mode = (cfg.errorHandlingMode as string | undefined) ?? ValidationMode.FAIL_FAST;
-
         // If no fields defined, pass through all records
-        if (Object.keys(fields).length === 0) return input;
+        if (Object.keys(fields).length === 0) return validatedInput;
 
         const out: RecordObject[] = [];
 
-        for (const rec of input) {
+        for (const rec of validatedInput) {
             const errs = validateAgainstSimpleSpec(rec, fields);
             if (errs.length === 0) {
                 out.push(rec);
             } else {
                 if (onRecordError) await onRecordError(step.key, errs.join('; '), rec);
                 // In FAIL_FAST mode, stop after the first validation error
-                if (mode === ValidationMode.FAIL_FAST) break;
+                if (mode === ValidationMode.FAIL_FAST) return [];
             }
         }
         return out;

@@ -32,18 +32,38 @@ export class ExtractStepStrategy implements StepStrategy {
         const durationMs = Date.now() - t0;
 
         const afterAfterHook = await this.runAfterHook(context, out);
+        const validated = step.schemaRef
+            ? await this.extractExecutor.validateExtractedRecords(
+                context.ctx,
+                step,
+                afterAfterHook,
+                context.onRecordError,
+            )
+            : afterAfterHook;
+        const failedCount = afterAfterHook.length - validated.length;
 
-        await this.logExtractData(context, adapterCode, out);
-        await this.logStepComplete(context, adapterCode, out.length, durationMs, out);
+        await this.logExtractData(context, adapterCode, validated);
+        await this.logStepComplete(
+            context,
+            adapterCode,
+            validated.length,
+            failedCount,
+            durationMs,
+            validated,
+        );
 
         return {
-            records: afterAfterHook,
-            processed: 0,
+            records: validated,
+            processed: failedCount,
             succeeded: 0,
-            failed: 0,
-            detail: createStepDetail(step, { out: out.length }, durationMs),
-            counters: { extracted: out.length },
-            event: { type: DomainEventType.RECORD_EXTRACTED, data: { stepKey: step.key, count: out.length } },
+            failed: failedCount,
+            detail: createStepDetail(
+                step,
+                { out: validated.length, failed: failedCount },
+                durationMs,
+            ),
+            counters: { extracted: validated.length },
+            event: { type: DomainEventType.RECORD_EXTRACTED, data: { stepKey: step.key, count: validated.length } },
         };
     }
 
@@ -91,6 +111,7 @@ export class ExtractStepStrategy implements StepStrategy {
         context: StepExecutionContext,
         adapterCode: string,
         count: number,
+        failed: number,
         durationMs: number,
         extractedRecords: RecordObject[],
     ): Promise<void> {
@@ -103,7 +124,7 @@ export class ExtractStepStrategy implements StepStrategy {
                 recordsIn: 0,
                 recordsOut: count,
                 succeeded: count,
-                failed: 0,
+                failed,
                 durationMs,
                 sampleOutput: extractedRecords[0] as RecordObject | undefined,
             });

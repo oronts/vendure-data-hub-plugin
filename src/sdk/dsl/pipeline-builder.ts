@@ -216,8 +216,13 @@ export function createPipeline(): PipelineBuilder {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
             validateNonEmptyString(config.adapterCode, 'Adapter code');
-            const { throughput, async: asyncFlag, adapterCode, ...rest } = config;
-            state.steps.push(createStep(key, STEP_TYPE.EXTRACT, rest as unknown as JsonObject, { throughput, async: asyncFlag, adapterCode }));
+            const { throughput, async: asyncFlag, adapterCode, schemaRef, ...rest } = config;
+            state.steps.push(createStep(key, STEP_TYPE.EXTRACT, rest as unknown as JsonObject, {
+                throughput,
+                async: asyncFlag,
+                adapterCode,
+                schemaRef,
+            }));
             return this;
         },
         transform(key: string, config: TransformStepConfig) {
@@ -233,8 +238,11 @@ export function createPipeline(): PipelineBuilder {
         validate(key: string, config: ValidateStepConfig) {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
-            const { throughput, ...rest } = config;
-            state.steps.push(createStep(key, STEP_TYPE.VALIDATE, rest as unknown as JsonObject, { throughput }));
+            const { throughput, schemaRef, ...rest } = config;
+            state.steps.push(createStep(key, STEP_TYPE.VALIDATE, rest as unknown as JsonObject, {
+                throughput,
+                schemaRef,
+            }));
             return this;
         },
         enrich(key: string, config: EnrichStepConfig) {

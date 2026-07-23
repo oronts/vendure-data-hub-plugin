@@ -2,6 +2,10 @@ import { PipelineDefinition, PipelineStepDefinition, PipelineEdge, StepType, Jso
 import { PipelineDefinitionError, PipelineDefinitionIssue } from './pipeline-definition-error';
 import { PIPELINE_VALIDATION_ERROR } from '../constants/enums';
 import { PIPELINE_DEFINITION_LIMITS } from '../constants/defaults/validation-defaults';
+import {
+    isValidSchemaId,
+    isValidSchemaVersion,
+} from '../services/schema/schema-reference';
 
 function createIssue(
     message: string,
@@ -228,11 +232,60 @@ function validateStep(
         ]);
     }
 
+    validateSchemaReference(step, index);
+
     if (step.concurrency !== undefined && step.concurrency < 1) {
         throw new PipelineDefinitionError([
             createIssue(`Step ${step.key} has invalid concurrency`, PIPELINE_VALIDATION_ERROR.INVALID_CONCURRENCY, step.key, `steps[${index}].concurrency`),
         ]);
     }
+}
+
+function validateSchemaReference(
+    step: PipelineStepDefinition,
+    index: number,
+): void {
+    if (step.schemaRef === undefined) return;
+    if (step.type !== StepType.EXTRACT && step.type !== StepType.VALIDATE) {
+        throw new PipelineDefinitionError([
+            createIssue(
+                `Step ${step.key} can only use schemaRef with EXTRACT or VALIDATE`,
+                PIPELINE_VALIDATION_ERROR.INVALID_SCHEMA_REFERENCE,
+                step.key,
+                `steps[${index}].schemaRef`,
+            ),
+        ]);
+    }
+    const reference: unknown = step.schemaRef;
+    if (
+        reference === null
+        || typeof reference !== 'object'
+        || Array.isArray(reference)
+    ) {
+        throwInvalidSchemaReference(step, index);
+    }
+    const schemaId = Reflect.get(reference, 'schemaId');
+    const version = Reflect.get(reference, 'version');
+    if (
+        !isValidSchemaId(schemaId)
+        || !isValidSchemaVersion(version)
+    ) {
+        throwInvalidSchemaReference(step, index);
+    }
+}
+
+function throwInvalidSchemaReference(
+    step: PipelineStepDefinition,
+    index: number,
+): never {
+    throw new PipelineDefinitionError([
+        createIssue(
+            `Step ${step.key} schemaRef requires a valid schemaId and version`,
+            PIPELINE_VALIDATION_ERROR.INVALID_SCHEMA_REFERENCE,
+            step.key,
+            `steps[${index}].schemaRef`,
+        ),
+    ]);
 }
 
 // DAG TOPOLOGY VALIDATION
