@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createDataHubTestEnvironment } from './test-config';
+import { publishPipeline } from './pipeline-lifecycle';
 import gql from 'graphql-tag';
 import { StepType } from '../src/constants/enums';
 
@@ -52,6 +53,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             pipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, pipelineId);
         });
 
         afterAll(async () => {
@@ -144,6 +146,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             pipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, pipelineId);
         });
 
         afterAll(async () => {
@@ -161,14 +164,14 @@ describe('DataHub Pipeline Execution', () => {
                 mutation RunDryPipeline($id: ID!) {
                     startDataHubPipelineDryRun(pipelineId: $id) {
                         metrics
-                        notes
+                        messages { level code detail stepKey values }
                     }
                 }
             `, { id: pipelineId });
 
             expect(startDataHubPipelineDryRun).toMatchObject({
                 metrics: expect.any(Object),
-                notes: expect.any(Array),
+                messages: expect.any(Array),
             });
         });
     });
@@ -213,6 +216,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             pipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, pipelineId);
         });
 
         afterAll(async () => {
@@ -265,10 +269,20 @@ describe('DataHub Pipeline Execution', () => {
                 input: {
                     code: 'disabled-pipeline',
                     name: 'Disabled Pipeline',
-                    definition: { version: 1, steps: [], edges: [] },
+                    definition: {
+                        version: 1,
+                        steps: [{
+                            key: 'extract',
+                            type: StepType.EXTRACT,
+                            config: { adapterCode: 'vendureQuery', entity: 'Product' },
+                        }],
+                        edges: [],
+                    },
                     enabled: false,
                 },
             });
+
+            await publishPipeline(adminClient, createDataHubPipeline.id);
 
             // Running a disabled pipeline should throw an error
             let error: Error | undefined;
@@ -324,6 +338,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             pipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, pipelineId);
         });
 
         afterAll(async () => {
@@ -380,6 +395,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             pipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, pipelineId);
         });
 
         afterAll(async () => {
@@ -424,13 +440,14 @@ describe('DataHub Pipeline Execution', () => {
                 query {
                     dataHubAnalyticsOverview {
                         totalPipelines
-                        activePipelines
+                        enabledPipelines
                         runsToday
                     }
                 }
             `);
 
             expect(dataHubAnalyticsOverview.totalPipelines).toBeGreaterThanOrEqual(0);
+            expect(dataHubAnalyticsOverview.enabledPipelines).toBeGreaterThanOrEqual(0);
         });
 
         it('queries real-time stats', async () => {
@@ -477,6 +494,7 @@ describe('DataHub Pipeline Execution', () => {
                 },
             });
             errorTestPipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, errorTestPipelineId);
 
             const { startDataHubPipelineRun } = await adminClient.query(gql`
                 mutation RunPipeline($id: ID!) {
@@ -502,15 +520,23 @@ describe('DataHub Pipeline Execution', () => {
             const { dataHubRunErrors } = await adminClient.query(gql`
                 query RunErrors($runId: ID!) {
                     dataHubRunErrors(runId: $runId) {
-                        id
-                        message
-                        stepKey
+                        items {
+                            id
+                            message
+                            stepKey
+                        }
+                        totalItems
+                        hasNextPage
+                        endCursor
                     }
                 }
             `, { runId: errorTestRunId });
 
             expect(dataHubRunErrors).toBeDefined();
-            expect(Array.isArray(dataHubRunErrors)).toBe(true);
+            expect(Array.isArray(dataHubRunErrors.items)).toBe(true);
+            expect(dataHubRunErrors.totalItems).toBeGreaterThanOrEqual(
+                dataHubRunErrors.items.length,
+            );
         });
 
         it('queries error analytics', async () => {
