@@ -363,6 +363,20 @@ Check current migration status:
 npm run migration:show
 ```
 
+### Schema Registry Upgrade
+
+A build that introduces `data_hub_schema` requires a generated host migration
+before the schema registry API or Dashboard route is used. Review that the
+migration creates the table with `schemaId`, `version`, `compatibility`,
+`definition`, and nullable `metadata` columns, plus a unique composite index on
+`(schemaId, version)`.
+
+Schema definitions and compatibility modes are immutable after creation.
+Metadata can be updated, but a contract change requires a new version. The
+plugin intentionally does not rewrite existing pipeline JSON during migration;
+add `schemaRef` bindings through the Dashboard or SDK after the referenced
+versions exist.
+
 ## Pipeline Migrations
 
 ### Automated Pipeline Migration

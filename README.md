@@ -50,6 +50,7 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
 - **Bi-directional Queue Support** - Consume from and produce to RabbitMQ (AMQP), Amazon SQS, Redis Streams, and internal queue adapter
 - **Horizontal Scaling** - Distributed locks via Redis or PostgreSQL for multi-instance deployments
 - **Checkpoint Recovery** - Resume failed pipelines from last successful record
+- **Versioned Schema Registry** - Immutable Data Hub record contracts with compatibility checks, exact Extract/Validate bindings, version diffs, and reference impact analysis
 - **File Upload** - Drag-and-drop CSV, JSON, XML, and XLSX uploads with preview and managed processing
 - **Operational Monitoring** - Polling logs, run details, queue statistics, and dead letter records
 - **Nested Entity Modes** - Configurable behavior for all nested entities (addresses, facet values, order lines, assets, etc.) to prevent duplicates and provide full control over data management
@@ -921,6 +922,12 @@ The plugin includes a full-featured admin dashboard:
 - View recent events
 - Hook configuration viewer
 
+### Schema Registry
+- Create immutable versions of Data Hub record contracts
+- Enforce exact schema versions in Extract and Validate steps
+- Compare versions and inspect pipeline, revision, and run-snapshot usage
+- Block incompatible evolution and deletion of referenced versions
+
 ---
 
 ## Secrets & Connections
@@ -1197,6 +1204,7 @@ Failed records automatically capture JavaScript stack traces when errors origina
 
 - [Getting Started](./docs/getting-started/README.md)
 - [User Guide](./docs/user-guide/README.md)
+- [Schema Registry](./docs/user-guide/schemas.md)
 - [Developer Guide](./docs/developer-guide/README.md)
 - [API Reference](./docs/reference/README.md)
 - [Deployment](./docs/deployment/README.md)

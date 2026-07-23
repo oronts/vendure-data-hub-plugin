@@ -20,6 +20,7 @@ This guide covers using the Data Hub Admin UI to create and manage data pipeline
 8. [Product Feeds](./feeds.md) - Generate feeds for Google, Meta, and more
 9. [Queue & Messaging](./queue-messaging.md) - Consume from and produce to message queues
 10. [External Integrations](./external-integrations.md) - Search engines, webhooks, and external APIs
+11. [Schema Registry](./schemas.md) - Version and bind input/validation contracts
 
 ## Accessing Data Hub
 
@@ -41,6 +42,7 @@ page. Operational information is distributed across pipeline details,
 | Connections | Manage external system connections |
 | Secrets | Store sensitive credentials |
 | Adapters | Inspect registered runtime capabilities and schemas |
+| Schemas | Manage immutable, versioned record contracts and inspect pipeline impact |
 | Queues | View queue aggregates, dead letters, recent failures, and message consumers |
 | Hooks | Inspect hooks and the process-local recent-event buffer |
 | Logs & Analytics | Search persisted logs, view log statistics, and follow the polling log feed |
@@ -61,6 +63,10 @@ To use Data Hub, your admin role needs these permissions:
 | View run history | `ViewDataHubRuns` |
 | Manage connections | `ManageDataHubConnections` |
 | Manage secrets | `CreateDataHubSecret`, `ReadDataHubSecret` |
+| View schema versions | `ReadDataHubSchema` |
+| Create schema versions | `CreateDataHubSchema` |
+| Edit schema metadata | `UpdateDataHubSchema` |
+| Delete unused schema versions | `DeleteDataHubSchema` |
 | View/retry quarantined records unchanged | `ViewDataHubQuarantine`, `ReplayDataHubRecord` |
 | Retry quarantined records with a payload patch | `ViewDataHubQuarantine`, `ReplayDataHubRecord`, `EditDataHubQuarantine` |
 | Configure settings | `UpdateDataHubSettings` |
