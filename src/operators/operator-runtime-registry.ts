@@ -221,21 +221,9 @@ function createOperatorAdapter(entry: OperatorRegistryEntry): OperatorAdapter {
     const { definition, fn } = entry;
 
     return {
+        ...definition,
         type: 'OPERATOR',
-        code: definition.code,
-        name: definition.name,
-        description: definition.description,
-        category: definition.category,
-        schema: definition.schema,
         pure: definition.pure ?? true,
-        async: definition.async,
-        batchable: definition.batchable,
-        requires: definition.requires,
-        icon: definition.icon,
-        color: definition.color,
-        version: definition.version,
-        deprecated: definition.deprecated,
-        deprecatedMessage: definition.deprecatedMessage,
 
         async apply(
             records: readonly JsonObject[],

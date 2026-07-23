@@ -19,7 +19,10 @@ import type { OptionValue } from '../constants/enum-metadata';
 
 /** Auto-derived from OPERATOR_REGISTRY, no manual maintenance needed. */
 export const ALL_OPERATOR_DEFINITIONS: AdapterDefinition[] = Object.values(OPERATOR_REGISTRY).map(
-    entry => entry.definition,
+    entry => ({
+        ...entry.definition,
+        pure: entry.definition.pure ?? true,
+    }),
 );
 
 /** Auto-derived from OPERATOR_REGISTRY: operators flagged as field transforms for the export wizard. */
