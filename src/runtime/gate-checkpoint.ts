@@ -1,11 +1,8 @@
 import type { ID } from '@vendure/core';
 
-export const GATE_TIMEOUT_PREFIX = '__gateTimeout:';
-
 export interface GateCheckpointKeys {
     pending: string;
     approved: string;
-    timeout: string;
 }
 
 export function getGateCheckpointKeys(
@@ -16,6 +13,5 @@ export function getGateCheckpointKeys(
     return {
         pending: `__gate:${scope}:${stepKey}`,
         approved: `__gateApproved:${scope}:${stepKey}`,
-        timeout: `${GATE_TIMEOUT_PREFIX}${scope}:${stepKey}`,
     };
 }

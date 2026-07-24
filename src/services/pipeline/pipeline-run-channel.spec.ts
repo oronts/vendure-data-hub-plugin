@@ -3,10 +3,21 @@ import type { RequestContext, RequestContextService } from '@vendure/core';
 import { PipelineRun } from '../../entities/pipeline';
 import {
     createPipelineRunContext,
+    getActivePipelineRunChannelId,
     getPipelineRunChannel,
 } from './pipeline-run-channel';
 
 describe('pipeline run channel context', () => {
+    it('normalizes the active channel ID for read and mutation scopes', () => {
+        expect(getActivePipelineRunChannelId({ channelId: 17 } as RequestContext))
+            .toBe('17');
+    });
+
+    it('fails closed when a run access has no active channel', () => {
+        expect(() => getActivePipelineRunChannelId({} as RequestContext))
+            .toThrow('Data Hub run access requires an active Vendure channel');
+    });
+
     it('captures the initiating channel ID and token', () => {
         const ctx = {
             channelId: 17,

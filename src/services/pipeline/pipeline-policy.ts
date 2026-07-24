@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import type { ID } from '@vendure/core';
 import { PipelineStatus } from '../../constants/enums';
 import { FIELD_LIMITS } from '../../constants/validation';
 import { PipelineDefinition } from '../../types';
@@ -9,6 +10,32 @@ const MIN_PIPELINE_VERSION = 1;
 export interface RunnablePipeline {
     enabled: boolean;
     status: PipelineStatus;
+    currentRevisionId: ID | null;
+}
+
+export class PipelineRevisionMismatchError extends Error {
+    constructor(expectedRevisionId: ID, actualRevisionId: ID | null) {
+        super(
+            `Pipeline published revision changed from ${String(expectedRevisionId)} to ${actualRevisionId == null ? 'none' : String(actualRevisionId)}`,
+        );
+        this.name = 'PipelineRevisionMismatchError';
+    }
+}
+
+export class PublishedPipelineRevisionUnavailableError extends Error {
+    constructor(pipelineCode: string, revisionId: ID | null) {
+        super(
+            `Published revision ${revisionId == null ? 'none' : String(revisionId)} is unavailable for pipeline "${pipelineCode}"`,
+        );
+        this.name = 'PublishedPipelineRevisionUnavailableError';
+    }
+}
+
+export class PipelineNotRunnableError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'PipelineNotRunnableError';
+    }
 }
 
 export function assertValidPipelineCode(code: string): void {
@@ -54,7 +81,11 @@ export function statusAfterExecutableUpdate(
     currentStatus: PipelineStatus,
     executableChanged: boolean,
 ): PipelineStatus {
-    if (!executableChanged || currentStatus === PipelineStatus.DRAFT) {
+    if (
+        !executableChanged
+        || currentStatus === PipelineStatus.DRAFT
+        || currentStatus === PipelineStatus.ARCHIVED
+    ) {
         return currentStatus;
     }
     return PipelineStatus.DRAFT;
@@ -74,12 +105,13 @@ export function assertPipelineStatus(
 }
 
 export function assertPipelineRunnable(pipeline: RunnablePipeline): void {
-    assertPipelineStatus(
-        pipeline.status,
-        [PipelineStatus.PUBLISHED],
-        'run',
-    );
+    if (pipeline.status === PipelineStatus.ARCHIVED) {
+        throw new PipelineNotRunnableError('Archived pipeline cannot run');
+    }
     if (!pipeline.enabled) {
-        throw new Error('Pipeline is disabled');
+        throw new PipelineNotRunnableError('Pipeline is disabled');
+    }
+    if (pipeline.currentRevisionId == null) {
+        throw new PipelineNotRunnableError('Pipeline has no active published revision');
     }
 }

@@ -52,9 +52,14 @@ describe('pipeline policy', () => {
     it.each([
         PipelineStatus.REVIEW,
         PipelineStatus.PUBLISHED,
-        PipelineStatus.ARCHIVED,
     ])('moves %s to draft when executable content changes', status => {
         expect(statusAfterExecutableUpdate(status, true)).toBe(PipelineStatus.DRAFT);
+    });
+
+    it('keeps archived status when executable content changes defensively', () => {
+        expect(statusAfterExecutableUpdate(PipelineStatus.ARCHIVED, true)).toBe(
+            PipelineStatus.ARCHIVED,
+        );
     });
 
     it('keeps status when executable content is unchanged', () => {
@@ -63,19 +68,37 @@ describe('pipeline policy', () => {
         );
     });
 
-    it('allows only an enabled published pipeline to run', () => {
+    it('allows enabled pipelines with an active published revision to run', () => {
         expect(() => assertPipelineRunnable({
             enabled: true,
             status: PipelineStatus.PUBLISHED,
+            currentRevisionId: 1,
         })).not.toThrow();
         expect(() => assertPipelineRunnable({
             enabled: true,
             status: PipelineStatus.DRAFT,
-        })).toThrow(/Cannot run/);
+            currentRevisionId: 1,
+        })).not.toThrow();
+        expect(() => assertPipelineRunnable({
+            enabled: true,
+            status: PipelineStatus.REVIEW,
+            currentRevisionId: 1,
+        })).not.toThrow();
+        expect(() => assertPipelineRunnable({
+            enabled: true,
+            status: PipelineStatus.DRAFT,
+            currentRevisionId: null,
+        })).toThrow(/no active published revision/);
         expect(() => assertPipelineRunnable({
             enabled: false,
             status: PipelineStatus.PUBLISHED,
+            currentRevisionId: 1,
         })).toThrow(/disabled/);
+        expect(() => assertPipelineRunnable({
+            enabled: true,
+            status: PipelineStatus.ARCHIVED,
+            currentRevisionId: 1,
+        })).toThrow(/Archived/);
     });
 
     it('enforces explicit lifecycle transitions', () => {

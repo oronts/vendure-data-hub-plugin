@@ -6,7 +6,6 @@ describe('getGateCheckpointKeys', () => {
         expect(getGateCheckpointKeys('run-1', 'approval')).toEqual({
             pending: '__gate:run-1:approval',
             approved: '__gateApproved:run-1:approval',
-            timeout: '__gateTimeout:run-1:approval',
         });
         expect(getGateCheckpointKeys('run-2', 'approval')).not.toEqual(
             getGateCheckpointKeys('run-1', 'approval'),

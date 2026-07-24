@@ -11,10 +11,13 @@ import {
     PipelineRevision,
     PipelineRun,
 } from '../../entities/pipeline';
-import { PipelineStatus, RevisionType } from '../../constants/enums';
+import {
+    ConfigurationSource,
+    PipelineStatus,
+    RevisionType,
+} from '../../constants/enums';
 import type { PipelineDefinition } from '../../types';
 import { AdapterRuntimeService } from '../../runtime/adapter-runtime.service';
-import { DataHubRegistryService } from '../../sdk/registry.service';
 import { CheckpointService } from '../data/checkpoint.service';
 import { DomainEventsService } from '../events/domain-events.service';
 import { RevisionService } from '../versioning/revision.service';
@@ -22,10 +25,19 @@ import { DataHubLoggerFactory } from '../logger';
 import { DefinitionValidationService } from '../validation/definition-validation.service';
 import type { PipelineDefinitionIssue } from '../../validation/pipeline-definition-error';
 import { PipelineService } from './pipeline.service';
+import { PipelineExecutionPermissionService } from './pipeline-execution-permission.service';
 
 export const publishedDefinition: PipelineDefinition = {
     version: 1,
-    steps: [{ key: 'published', type: 'TRANSFORM', config: {} }],
+    steps: [
+        {
+            key: 'orders-webhook',
+            type: 'TRIGGER',
+            config: { type: 'WEBHOOK' },
+        },
+        { key: 'published', type: 'TRANSFORM', config: {} },
+    ],
+    edges: [{ from: 'orders-webhook', to: 'published' }],
 };
 
 export const draftDefinition: PipelineDefinition = {
@@ -53,12 +65,14 @@ export function createPipelineServiceFixture(
     pipeline.code = 'catalog-sync';
     pipeline.name = 'Catalog sync';
     pipeline.enabled = true;
+    pipeline.configurationSource = ConfigurationSource.DATABASE;
     pipeline.version = 1;
     pipeline.definition = draftDefinition;
     pipeline.status = PipelineStatus.PUBLISHED;
     pipeline.currentRevisionId = ids.revision;
     pipeline.draftRevisionId = null;
     pipeline.publishedVersionCount = 1;
+    pipeline.rowVersion = 1;
 
     const revision = new PipelineRevision();
     revision.id = ids.revision;
@@ -70,24 +84,48 @@ export function createPipelineServiceFixture(
 
     let savedRun: PipelineRun | null = null;
     let checkpointData: Record<string, unknown> = {};
-    let dependentPipelines: Pipeline[] = [];
+    let dependentRevisions: PipelineRevision[] = [];
     let repositoryPipelines: Pipeline[] = [pipeline];
     const dependentQueryBuilder = {
         where: vi.fn().mockReturnThis(),
-        getMany: vi.fn(async () => dependentPipelines),
+        getMany: vi.fn(async () => repositoryPipelines),
     };
     const pipelineRepository = {
         findOne: vi.fn(async () => pipeline),
-        find: vi.fn(async () => repositoryPipelines),
+        find: vi.fn(async (options?: { where?: Record<string, unknown> }) => {
+            if (options?.where && 'currentRevisionId' in options.where) {
+                return repositoryPipelines.filter(item => item.currentRevisionId != null);
+            }
+            return repositoryPipelines;
+        }),
         save: vi.fn(async (entity: Pipeline) => entity),
+        update: vi.fn(async () => ({ affected: 1 })),
         remove: vi.fn(async (entity: Pipeline) => entity),
         createQueryBuilder: vi.fn(() => dependentQueryBuilder),
     };
     const revisionRepository = {
         findOne: vi.fn(async (): Promise<PipelineRevision | null> => revision),
+        find: vi.fn(async () => [revision, ...dependentRevisions]),
     };
     const runRepository = {
-        findOne: vi.fn(async () => savedRun),
+        count: vi.fn().mockResolvedValue(0),
+        findOne: vi.fn(async (options?: { where?: Record<string, unknown> }) => {
+            if (!savedRun) return null;
+            const where = options?.where;
+            if (
+                where?.id !== undefined
+                && String(where.id) !== String(savedRun.id)
+            ) {
+                return null;
+            }
+            if (
+                where?.channelId !== undefined
+                && where.channelId !== savedRun.channelId
+            ) {
+                return null;
+            }
+            return savedRun;
+        }),
         save: vi.fn(async (run: PipelineRun) => {
             run.id = ids.run;
             run.pipelineId = ids.pipeline;
@@ -95,13 +133,17 @@ export function createPipelineServiceFixture(
             return run;
         }),
         update: vi.fn(async (
-            criteria: { id: ID; status: string },
+            criteria: { id: ID; status: string; channelId?: string },
             updates: Partial<PipelineRun>,
         ) => {
             if (
                 !savedRun
                 || String(savedRun.id) !== String(criteria.id)
                 || savedRun.status !== criteria.status
+                || (
+                    criteria.channelId !== undefined
+                    && savedRun.channelId !== criteria.channelId
+                )
             ) {
                 return { affected: 0 };
             }
@@ -109,8 +151,18 @@ export function createPipelineServiceFixture(
             return { affected: 1 };
         }),
     };
+    const runListQuery = {
+        alias: 'pipelineRun',
+        leftJoinAndSelect: vi.fn().mockReturnThis(),
+        andWhere: vi.fn().mockReturnThis(),
+        getManyAndCount: vi.fn(async () => [savedRun ? [savedRun] : [], savedRun ? 1 : 0]),
+    };
+    const listQueryBuilder = {
+        build: vi.fn(() => runListQuery),
+    };
     const connection = {
         getEntityOrThrow: vi.fn(async () => pipeline),
+        findOneInChannel: vi.fn(async () => pipeline),
         getRepository: vi.fn((_ctx: RequestContext, entity: unknown) => {
             if (entity === PipelineRevision) return revisionRepository;
             if (entity === PipelineRun) return runRepository;
@@ -138,6 +190,7 @@ export function createPipelineServiceFixture(
         publishPipelineDeleted: vi.fn(),
         publishGateApproved: vi.fn(),
         publishGateRejected: vi.fn(),
+        publishRunCancelled: vi.fn(),
     };
     const revisionService = {
         publishVersion: vi.fn(async () => {
@@ -155,26 +208,37 @@ export function createPipelineServiceFixture(
         getByPipeline: vi.fn(async () => ({
             data: checkpointData,
         })),
-        setForPipeline: vi.fn(async (
+        updateForPipeline: vi.fn(async (
             _ctx: RequestContext,
             _pipelineId: ID,
-            data: Record<string, unknown>,
+            updater: (current: Record<string, unknown>) => Record<string, unknown>,
         ) => {
-            checkpointData = data;
-            return { data };
+            checkpointData = updater(structuredClone(checkpointData));
+            return { data: checkpointData };
         }),
+    };
+    const executionPermissions = {
+        assertAllowed: vi.fn(async () => undefined),
     };
 
     const service = new PipelineService(
         connection as unknown as TransactionalConnection,
-        {} as ListQueryBuilder,
+        listQueryBuilder as unknown as ListQueryBuilder,
         eventBus as unknown as EventBus,
         definitionValidator as unknown as DefinitionValidationService,
         {} as AdapterRuntimeService,
-        { find: vi.fn() } as unknown as DataHubRegistryService,
+        executionPermissions as unknown as PipelineExecutionPermissionService,
         checkpointService as unknown as CheckpointService,
         domainEvents as unknown as DomainEventsService,
         revisionService as unknown as RevisionService,
+        {
+            assignToCurrentChannel: vi.fn(async (_ctx, value) => value),
+            prepareDelete: vi.fn(async () => ({
+                entity: pipeline,
+                physicallyDelete: true,
+            })),
+            removeFromActiveChannel: vi.fn(),
+        } as never,
         loggerFactory as unknown as DataHubLoggerFactory,
     );
 
@@ -186,11 +250,14 @@ export function createPipelineServiceFixture(
         pipelineRepository,
         revisionRepository,
         runRepository,
+        runListQuery,
+        listQueryBuilder,
         eventBus,
         domainEvents,
         revisionService,
         checkpointService,
         definitionValidator,
+        executionPermissions,
         setCheckpointData(data: Record<string, unknown>): void {
             checkpointData = data;
         },
@@ -201,7 +268,10 @@ export function createPipelineServiceFixture(
             savedRun = run;
         },
         setDependentPipelines(pipelines: Pipeline[]): void {
-            dependentPipelines = pipelines;
+            repositoryPipelines = [pipeline, ...pipelines];
+        },
+        setDependentRevisions(revisions: PipelineRevision[]): void {
+            dependentRevisions = revisions;
         },
         setRepositoryPipelines(pipelines: Pipeline[]): void {
             repositoryPipelines = pipelines;

@@ -9,21 +9,30 @@ export interface PipelineRunChannel {
     channelToken: string;
 }
 
-export function getPipelineRunChannel(ctx: RequestContext): PipelineRunChannel {
+export function getActivePipelineRunChannelId(ctx: RequestContext): string {
     const channelId = ctx.channelId;
-    const channelToken = ctx.channel?.token;
-
     if (
         (typeof channelId !== 'string' && typeof channelId !== 'number')
         || String(channelId).trim().length === 0
-        || typeof channelToken !== 'string'
+    ) {
+        throw new Error('Data Hub run access requires an active Vendure channel');
+    }
+    return String(channelId);
+}
+
+export function getPipelineRunChannel(ctx: RequestContext): PipelineRunChannel {
+    const channelId = getActivePipelineRunChannelId(ctx);
+    const channelToken = ctx.channel?.token;
+
+    if (
+        typeof channelToken !== 'string'
         || channelToken.trim().length === 0
     ) {
         throw new Error('Pipeline execution requires an active Vendure channel');
     }
 
     return {
-        channelId: String(channelId),
+        channelId,
         channelToken,
     };
 }
