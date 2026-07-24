@@ -14,6 +14,14 @@ export const RATE_LIMIT = {
     PAUSE_CHECK_INTERVAL_MS: 100,
     /** Maximum number of rate limit entries to prevent unbounded memory growth */
     MAX_ENTRIES: 1000,
+    /** Maximum time to establish the Redis rate-limit connection */
+    REDIS_CONNECT_TIMEOUT_MS: 3_000,
+    /** Maximum duration of one Redis rate-limit command */
+    REDIS_COMMAND_TIMEOUT_MS: 2_000,
+    /** Base delay between bounded Redis reconnect attempts */
+    REDIS_RETRY_DELAY_MS: 100,
+    /** Minimum delay before an unavailable Redis backend is retried */
+    REDIS_RECONNECT_DELAY_MS: 5_000,
 } as const;
 
 /**
@@ -56,6 +64,22 @@ export const CIRCUIT_BREAKER = {
  * Distributed lock defaults
  */
 export const DISTRIBUTED_LOCK = {
+    /** Namespace for checkpoint mutation locks. */
+    CHECKPOINT_LOCK_PREFIX: 'data-hub:checkpoint:',
+    /** Maximum lease for one checkpoint read-modify-write cycle. */
+    CHECKPOINT_LOCK_TTL_MS: 30_000,
+    /** Maximum time a checkpoint writer waits for another writer. */
+    CHECKPOINT_LOCK_WAIT_TIMEOUT_MS: 30_000,
+    /** Global lock key used to serialize database-backed code-first sync. */
+    CONFIG_SYNC_LOCK_KEY: 'data-hub:config-sync',
+    /** Maximum lease for one bounded configuration sync pass. */
+    CONFIG_SYNC_LOCK_TTL_MS: 30 * 60 * 1000,
+    /** Maximum time another server waits for the active sync pass. */
+    CONFIG_SYNC_LOCK_WAIT_TIMEOUT_MS: 30 * 60 * 1000,
+    /** Maximum time a worker waits for server-owned configuration persistence. */
+    CONFIG_SYNC_READINESS_TIMEOUT_MS: 60_000,
+    /** Worker polling interval while waiting for persisted configuration. */
+    CONFIG_SYNC_READINESS_POLL_INTERVAL_MS: 1_000,
     /** Default Redis URL for auto-detection */
     DEFAULT_REDIS_URL: 'redis://localhost:6379',
     /** Maximum retries per Redis request */
@@ -92,8 +116,12 @@ export const DISTRIBUTED_LOCK = {
  * Metrics defaults
  */
 export const METRICS = {
+    /** Maximum distinct metric names retained in one registry */
+    MAX_METRICS: 500,
     /** Maximum samples to keep in memory */
     MAX_SAMPLES: 1000,
+    /** Maximum distinct label series retained per metric */
+    MAX_SERIES: 1000,
     /** Percentile precision */
     PERCENTILE_PRECISION: 100,
 } as const;

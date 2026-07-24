@@ -1,12 +1,12 @@
 import { TransactionalConnection } from '@vendure/core';
 import { LockBackendType } from '../../../constants/enums';
-import { DISTRIBUTED_LOCK } from '../../../constants/index';
 import { DataHubLogger } from '../../logger';
 import { LockBackend, MemoryLockEntry } from './lock-backend.interface';
 import { MemoryLockBackend } from './memory-lock.backend';
 import { RedisLockBackend } from './redis-lock.backend';
 import { PostgresLockBackend } from './postgres-lock.backend';
-import { getErrorMessage } from '../../../utils/error.utils';
+import { resolveLockBackendPlan } from './lock-backend-plan';
+import { getConfiguredRedisUrl } from '../redis-configuration';
 
 export interface BackendFactoryDependencies {
     connection: TransactionalConnection;
@@ -30,33 +30,22 @@ export class LockBackendFactory {
      * Create the appropriate lock backend based on environment configuration
      */
     async create(): Promise<LockBackend> {
-        const forcedBackend = process.env.DATAHUB_LOCK_BACKEND as LockBackendType | undefined;
-        const redisUrl = process.env.DATAHUB_REDIS_URL;
+        const plan = resolveLockBackendPlan({
+            forcedBackend: process.env.DATAHUB_LOCK_BACKEND,
+            redisUrl: getConfiguredRedisUrl(),
+            databaseType: String(this.deps.connection.rawConnection.options.type),
+        });
 
-        // Handle forced backend selection
-        if (forcedBackend === LockBackendType.MEMORY) {
+        if (plan.type === LockBackendType.MEMORY) {
+            this.deps.logger.warn(
+                'Using process-local locking; this mode is safe only for a single application process',
+            );
             return this.createMemoryBackend();
         }
-
-        if (forcedBackend === LockBackendType.POSTGRES) {
+        if (plan.type === LockBackendType.POSTGRES) {
             return this.createPostgresBackend();
         }
-
-        // Try Redis if URL provided or forced
-        if (redisUrl || forcedBackend === LockBackendType.REDIS) {
-            const redis = await this.tryCreateRedisBackend(redisUrl);
-            if (redis) return redis;
-        }
-
-        // Only try Redis auto-detection if a Redis URL env var is set
-        // (avoids connection errors when Redis is not installed)
-        if (!forcedBackend && process.env.REDIS_URL) {
-            const redis = await this.tryCreateRedisBackend(process.env.REDIS_URL);
-            if (redis) return redis;
-        }
-
-        // Fall back to PostgreSQL
-        return this.createPostgresBackend();
+        return RedisLockBackend.create(plan.redisUrl, this.deps.logger);
     }
 
     private createMemoryBackend(): LockBackend {
@@ -69,16 +58,5 @@ export class LockBackendFactory {
             this.deps.memoryLocks,
             this.deps.logger,
         );
-    }
-
-    private async tryCreateRedisBackend(url?: string): Promise<RedisLockBackend | null> {
-        try {
-            return await RedisLockBackend.create(url ?? DISTRIBUTED_LOCK.DEFAULT_REDIS_URL, this.deps.logger);
-        } catch (error) {
-            this.deps.logger.warn('Redis backend initialization failed, falling back', {
-                error: getErrorMessage(error),
-            });
-            return null;
-        }
     }
 }

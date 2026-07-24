@@ -52,7 +52,8 @@ export interface LockResult {
 @Injectable()
 export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
     private readonly logger: DataHubLogger;
-    private backend!: LockBackend;
+    private backend: LockBackend | undefined;
+    private initialization: Promise<void> | undefined;
     private readonly instanceId: string;
     private cleanupInterval?: NodeJS.Timeout;
     private isShuttingDown = false;
@@ -67,6 +68,10 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
     }
 
     async onModuleInit(): Promise<void> {
+        await this.ensureInitialized();
+    }
+
+    private async initialize(): Promise<void> {
         const factory = new LockBackendFactory({
             connection: this.connection,
             memoryLocks: this.memoryLocks,
@@ -84,11 +89,13 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
     async onModuleDestroy(): Promise<void> {
         this.isShuttingDown = true;
         if (this.cleanupInterval) clearInterval(this.cleanupInterval);
-        if (this.backend.close) await this.backend.close();
+        await this.initialization?.catch(() => undefined);
+        if (this.backend?.close) await this.backend.close();
     }
 
     /** Acquire a distributed lock */
     async acquire(key: string, options: LockOptions = {}): Promise<LockResult> {
+        await this.ensureInitialized();
         const {
             ttlMs = DISTRIBUTED_LOCK.DEFAULT_TTL_MS,
             waitForLock = false,
@@ -121,7 +128,7 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
         }
 
         while (shouldContinue) {
-            if (await this.backend.acquire(key, token, ttlMs)) {
+            if (await this.backend!.acquire(key, token, ttlMs)) {
                 this.logger.debug('Lock acquired', { key, token, ttlMs });
                 return { acquired: true, token, expiresAt: new Date(Date.now() + ttlMs).toISOString() };
             }
@@ -138,21 +145,24 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
 
     /** Release a distributed lock */
     async release(key: string, token: string): Promise<boolean> {
-        const released = await this.backend.release(key, token);
+        await this.ensureInitialized();
+        const released = await this.backend!.release(key, token);
         this.logger.debug(released ? 'Lock released' : 'Lock release failed', { key, token });
         return released;
     }
 
     /** Extend a lock's TTL */
     async extend(key: string, token: string, ttlMs: number = DISTRIBUTED_LOCK.DEFAULT_TTL_MS): Promise<boolean> {
-        const extended = await this.backend.extend(key, token, ttlMs);
+        await this.ensureInitialized();
+        const extended = await this.backend!.extend(key, token, ttlMs);
         if (extended) this.logger.debug('Lock extended', { key, token, ttlMs });
         return extended;
     }
 
     /** Check if a key is locked */
     async isLocked(key: string): Promise<{ locked: boolean; owner?: string; expiresAt?: string }> {
-        return this.backend.isLocked(key);
+        await this.ensureInitialized();
+        return this.backend!.isLocked(key);
     }
 
     /** Execute a function with a lock */
@@ -168,8 +178,9 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
     }
 
     /** Clean up expired locks */
-    cleanup(): Promise<number> {
-        return this.backend.cleanup();
+    async cleanup(): Promise<number> {
+        await this.ensureInitialized();
+        return this.backend!.cleanup();
     }
 
     private startCleanupInterval(): void {
@@ -186,8 +197,16 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
     }
 
     private async createFailedResult(key: string): Promise<LockResult> {
-        const lockInfo = await this.backend.isLocked(key);
+        const lockInfo = await this.backend!.isLocked(key);
         return { acquired: false, currentOwner: lockInfo.owner, expiresAt: lockInfo.expiresAt };
+    }
+
+    private ensureInitialized(): Promise<void> {
+        if (this.isShuttingDown && !this.initialization) {
+            return Promise.reject(new Error('Distributed lock service is shutting down'));
+        }
+        this.initialization ??= this.initialize();
+        return this.initialization;
     }
 }
 
