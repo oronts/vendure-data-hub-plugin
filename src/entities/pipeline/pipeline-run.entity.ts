@@ -7,9 +7,15 @@ import { TABLE_NAMES } from '../../constants/table-names';
 
 @Entity(TABLE_NAMES.PIPELINE_RUN)
 @Index(['pipelineId', 'createdAt'])
+@Index(['pipelineId', 'revisionId', 'createdAt'])
 @Index(['status', 'createdAt'])
 @Index(['pipelineId', 'status']) // Composite for pipeline-specific status queries
 @Index(['startedAt']) // For sorting by execution time
+@Index(['status', 'startedAt'])
+@Index(['finishedAt'])
+@Index(['status', 'queueRequestedAt'])
+@Index(['status', 'gateTimeoutAt'])
+@Index(['status', 'gateTimeoutLeaseExpiresAt'])
 @Index(
     ['idempotencyChannelId', 'pipelineId', 'idempotencyTriggerKeyHash', 'idempotencyKeyHash'],
     { unique: true },
@@ -25,6 +31,10 @@ export class PipelineRun extends VendureEntity {
     @Index()
     @EntityId()
     pipelineId!: ID;
+
+    @Index()
+    @EntityId({ nullable: true })
+    revisionId!: ID | null;
 
     @Column({ type: 'varchar', length: 20 })
     status!: RunStatus;
@@ -54,6 +64,29 @@ export class PipelineRun extends VendureEntity {
     @Column({ type: 'varchar', length: 255, nullable: true })
     triggeredBy!: string | null;
 
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    channelId!: string | null;
+
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    channelToken!: string | null;
+
+    @Column({ type: Date, nullable: true })
+    queueRequestedAt!: Date | null;
+
+    @Column({ type: Date, nullable: true })
+    queueDispatchedAt!: Date | null;
+
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    gateStepKey!: string | null;
+
+    @Column({ type: Date, nullable: true })
+    gateTimeoutAt!: Date | null;
+
+    @Column({ type: 'varchar', length: 64, nullable: true })
+    gateTimeoutLeaseToken!: string | null;
+
+    @Column({ type: Date, nullable: true })
+    gateTimeoutLeaseExpiresAt!: Date | null;
 
     @Column({ type: 'varchar', length: 255, nullable: true })
     idempotencyChannelId!: string | null;

@@ -20,7 +20,9 @@ import { DataHubWebhookController } from './api/controllers/webhook.controller';
 import { dataHubJsonBodyParser } from './api/controllers/webhook-body.middleware';
 import {
     PipelineService,
+    PipelineExecutionPermissionService,
     PipelineRunnerService,
+    GateTimeoutService,
     DefinitionValidationService,
     PipelineFormatService,
     RecordErrorService,
@@ -35,6 +37,7 @@ import {
     EventTriggerOutboxService,
     DataHubRetentionService,
     ConnectionService,
+    ManagedResourceChannelService,
     ResourceReferenceService,
     DataHubSettingsService,
     DomainEventsService,
@@ -55,6 +58,7 @@ import { DATAHUB_PERMISSION_DEFINITIONS } from './permissions';
 import { DataHubRunQueueHandler, DataHubScheduleHandler } from './jobs';
 import { DataHubRegistryService } from './sdk/registry.service';
 import { AdapterBootstrapService, ConfigSyncService } from './bootstrap';
+import { AdapterUpgradeGuardService } from './services/pipeline/adapter-upgrade-guard.service';
 import { AdapterRuntimeService } from './runtime/adapter-runtime.service';
 import { DataHubConnectionAdminResolver } from './api/resolvers/connection.resolver';
 import { DataHubSettingsAdminResolver } from './api/resolvers/settings.resolver';
@@ -64,6 +68,7 @@ import { DataHubTestAdminResolver } from './api/resolvers/test.resolver';
 import { FileParserService } from './parsers/file-parser.service';
 import { FieldMapperService, AutoMapperService } from './mappers';
 import { FeedGeneratorService } from './feeds/feed-generator.service';
+import { FeedCatalogService } from './feeds/feed-catalog.service';
 import { FeedPersistenceService } from './feeds/feed-persistence.service';
 import { FeedScheduleService } from './feeds/feed-schedule.service';
 import { DataHubFeedAdminResolver } from './api/resolvers/feed.resolver';
@@ -73,7 +78,11 @@ import { DataHubFileUploadController } from './api/controllers/file-upload.contr
 import { ENTITY_LOADER_PROVIDERS } from './loaders/entity-loader-registry';
 import { LoaderRegistryService } from './loaders/registry';
 // Logger Service
-import { DataHubLoggerFactory, ExecutionLogger } from './services/logger';
+import {
+    DataHubLoggerFactory,
+    ExecutionLogger,
+    OtlpExporterService,
+} from './services/logger';
 // Extractor Services (auto-discovered via EXTRACTOR_HANDLER_REGISTRY)
 import { ExtractorRegistryService } from './extractors/extractor-registry.service';
 import { EXTRACTOR_PROVIDERS } from './extractors/extractor-handler-registry';
@@ -115,7 +124,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
  * - Transform operators for data manipulation
  * - Feed generators (Google, Meta, Amazon, Custom)
  * - Search sinks (Elasticsearch, MeiliSearch, Algolia, Typesense)
- * - Scheduling, checkpointing, and real-time monitoring
+ * - Scheduling, adapter checkpoint persistence, and real-time monitoring
  *
  * @category Plugin
  */
@@ -128,10 +137,13 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         CircuitBreakerService,
         DistributedLockService,
         // Core Services
+        PipelineExecutionPermissionService,
         PipelineService,
         PipelineRunnerService,
+        GateTimeoutService,
         AdapterRuntimeService,
         DataHubRegistryService,
+        AdapterUpgradeGuardService,
         AdapterBootstrapService,
         ConfigSyncService,
         DataHubRunQueueHandler,
@@ -150,6 +162,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         FileWatchService,
         DataHubRetentionService,
         ConnectionService,
+        ManagedResourceChannelService,
         ResourceReferenceService,
         DomainEventsService,
         DataHubSettingsService,
@@ -176,6 +189,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         // Loader Registry
         LoaderRegistryService,
         // Logger Factory and Execution Logger
+        OtlpExporterService,
         DataHubLoggerFactory,
         ExecutionLogger,
         // Rate Limiting Service
@@ -190,6 +204,7 @@ import { LOADER_HANDLER_PROVIDERS } from './runtime/executors/loaders';
         ExportDestinationService,
         AnalyticsService,
         FeedPersistenceService,
+        FeedCatalogService,
         FeedGeneratorService,
         FeedScheduleService,
         // Resolvers
