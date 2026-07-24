@@ -5,7 +5,8 @@ import {
     DataHubExportDestination,
     DataHubSecret,
 } from '../../entities/config';
-import { Pipeline, PipelineRevision } from '../../entities/pipeline';
+import { Pipeline, PipelineRevision, PipelineRun } from '../../entities/pipeline';
+import { RunStatus } from '../../constants/enums';
 import {
     collectResourceReferences,
     ResourceReferenceService,
@@ -14,6 +15,7 @@ import {
 interface FixtureData {
     readonly pipelines?: readonly object[];
     readonly revisions?: readonly object[];
+    readonly runs?: readonly object[];
     readonly connections?: readonly object[];
     readonly destinations?: readonly object[];
     readonly secrets?: readonly object[];
@@ -24,6 +26,7 @@ function createService(data: FixtureData = {}): ResourceReferenceService {
     const repositories = new Map<unknown, unknown>([
         [Pipeline, { find: vi.fn(async () => data.pipelines ?? []) }],
         [PipelineRevision, { find: vi.fn(async () => data.revisions ?? []) }],
+        [PipelineRun, { find: vi.fn(async () => data.runs ?? []) }],
         [DataHubConnection, { find: vi.fn(async () => data.connections ?? []) }],
         [DataHubExportDestination, { find: vi.fn(async () => data.destinations ?? []) }],
         [DataHubSecret, { find: vi.fn(async () => data.secrets ?? []) }],
@@ -33,6 +36,11 @@ function createService(data: FixtureData = {}): ResourceReferenceService {
     } as unknown as TransactionalConnection;
     const secretService = {
         isConfigSecret: vi.fn((code: string) => data.configSecretCodes?.includes(code) ?? false),
+        exists: vi.fn(async (_ctx: RequestContext, code: string) => (
+            data.configSecretCodes?.includes(code)
+            || data.secrets?.some(secret => Reflect.get(secret, 'code') === code)
+            || false
+        )),
     };
     return new ResourceReferenceService(connection, secretService as never);
 }
@@ -104,6 +112,19 @@ describe('ResourceReferenceService', () => {
             .resolves.toBeUndefined();
     });
 
+    it('blocks connection changes while a pinned run snapshot still references it', async () => {
+        const service = createService({
+            runs: [{
+                id: 91,
+                status: RunStatus.PAUSED,
+                definitionSnapshot: publishedDefinition,
+            }],
+        });
+
+        await expect(service.assertConnectionMutable(ctx, 'primary-api'))
+            .rejects.toThrow(/nonterminal pipeline runs: 91/);
+    });
+
     it('reports direct and transitive secret references', async () => {
         const service = createService({
             pipelines: [{ code: 'catalog-sync', currentRevisionId: 7 }],
@@ -124,6 +145,46 @@ describe('ResourceReferenceService', () => {
             );
     });
 
+    it('blocks secret changes while a pinned run snapshot still references it', async () => {
+        const service = createService({
+            runs: [{
+                id: 'run-42',
+                status: RunStatus.CANCEL_REQUESTED,
+                definitionSnapshot: publishedDefinition,
+            }],
+        });
+
+        await expect(service.assertSecretMutable(ctx, 'pipeline-token'))
+            .rejects.toThrow(/nonterminal pipeline runs: run-42/);
+    });
+
+    it('blocks active-channel secret removal while a destination consumes it', async () => {
+        const service = createService({
+            destinations: [{
+                destinationId: 'warehouse-export',
+                config: { secretCode: 'pipeline-token' },
+            }],
+        });
+
+        await expect(service.assertSecretUnassignable(ctx, 'pipeline-token'))
+            .rejects.toThrow('still used in the active channel');
+    });
+
+    it('fails closed when a nonterminal run has no definition snapshot', async () => {
+        const service = createService({
+            runs: [{
+                id: 93,
+                status: RunStatus.RUNNING,
+                definitionSnapshot: null,
+            }],
+        });
+
+        await expect(service.assertConnectionMutable(ctx, 'unused'))
+            .rejects.toThrow(
+                'Definition snapshot is unavailable for nonterminal pipeline run "93"',
+            );
+    });
+
     it('fails closed when an active published revision is missing', async () => {
         const service = createService({
             pipelines: [{ code: 'catalog-sync', currentRevisionId: 7 }],
@@ -131,7 +192,9 @@ describe('ResourceReferenceService', () => {
         });
 
         await expect(service.assertConnectionMutable(ctx, 'primary-api'))
-            .rejects.toThrow(/published revision.*catalog-sync.*missing/);
+            .rejects.toThrow(
+                'Published revision 7 is unavailable for pipeline "catalog-sync"',
+            );
     });
 
     it('reports missing direct and connection-transitive resources', async () => {

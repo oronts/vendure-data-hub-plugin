@@ -2,9 +2,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SECRET_SECURITY } from '../../constants';
 import { SecretProvider } from '../../constants/enums';
 import { SecretService } from './secret.service';
+import { DEFAULT_CHANNEL_CODE } from '../../../shared/constants';
+
+const defaultContext = {
+    channel: { code: DEFAULT_CHANNEL_CODE },
+    channelId: 1,
+} as never;
+const retailContext = {
+    channel: { code: 'retail' },
+    channelId: 2,
+} as never;
 
 function createFixture(
-    secrets: Array<{ code: string; provider: 'INLINE' | 'ENV'; value: string }> = [],
+    secrets: Array<{
+        code: string;
+        provider: 'INLINE' | 'ENV';
+        value: string;
+        channelCodes?: string[];
+    }> = [],
     databaseSecret: {
         code: string;
         provider: SecretProvider;
@@ -106,7 +121,7 @@ describe('SecretService security modes', () => {
         ]);
         service.onModuleInit();
 
-        await expect(service.resolve({} as never, 'api-key')).resolves.toBe(
+        await expect(service.resolve(defaultContext, 'api-key')).resolves.toBe(
             'runtime-secret',
         );
     });
@@ -119,7 +134,7 @@ describe('SecretService security modes', () => {
         });
         service.onModuleInit();
 
-        await expect(service.resolve({} as never, 'legacy-key')).rejects.toThrow(
+        await expect(service.resolve(defaultContext, 'legacy-key')).rejects.toThrow(
             'Cannot resolve unencrypted INLINE secret',
         );
     });
@@ -143,7 +158,7 @@ describe('SecretService security modes', () => {
         ).toThrow(
             'ENV secret "invalid-key" must reference one environment variable name',
         );
-        await expect(service.resolve({} as never, 'valid-key')).resolves.toBe(
+        await expect(service.resolve(defaultContext, 'valid-key')).resolves.toBe(
             'stable-value',
         );
     });
@@ -161,8 +176,74 @@ describe('SecretService security modes', () => {
             { code: 'first-key', provider: 'ENV', value: 'FIRST_KEY' },
         ]);
 
-        await expect(service.resolve({} as never, 'first-key')).resolves.toBe('first');
-        await expect(service.resolve({} as never, 'second-key')).resolves.toBeNull();
+        await expect(service.resolve(defaultContext, 'first-key')).resolves.toBe('first');
+        await expect(service.resolve(defaultContext, 'second-key')).resolves.toBeNull();
+    });
+
+    it('lists sorted code-first references without exposing values', () => {
+        const { service } = createFixture();
+        service.replaceConfigSecrets([
+            { code: 'zeta-token', provider: 'ENV', value: 'ZETA_TOKEN' },
+            { code: 'pimcore-api-key', provider: 'ENV', value: 'PIMCORE_API_KEY' },
+            { code: 'alpha-token', provider: 'ENV', value: 'ALPHA_TOKEN' },
+        ]);
+
+        expect(service.listConfigReferences(defaultContext)).toEqual([
+            { code: 'alpha-token', provider: 'ENV', source: 'config' },
+            { code: 'pimcore-api-key', provider: 'ENV', source: 'config' },
+            { code: 'zeta-token', provider: 'ENV', source: 'config' },
+        ]);
+        expect(service.listConfigReferences(defaultContext, ' PIMCORE ')).toEqual([
+            { code: 'pimcore-api-key', provider: 'ENV', source: 'config' },
+        ]);
+        expect(service.listConfigReferences(defaultContext)).not.toEqual(
+            expect.arrayContaining([expect.objectContaining({ value: expect.anything() })]),
+        );
+    });
+
+    it('keeps code-first secrets default-channel scoped unless explicitly shared', async () => {
+        vi.stubEnv('DEFAULT_ONLY_KEY', 'default-value');
+        vi.stubEnv('SHARED_KEY', 'shared-value');
+        const { service } = createFixture([
+            { code: 'default-only', provider: 'ENV', value: 'DEFAULT_ONLY_KEY' },
+            {
+                code: 'shared',
+                provider: 'ENV',
+                value: 'SHARED_KEY',
+                channelCodes: ['retail'],
+            },
+        ]);
+        service.onModuleInit();
+
+        await expect(service.resolve(defaultContext, 'default-only')).resolves.toBe(
+            'default-value',
+        );
+        await expect(service.resolve(retailContext, 'default-only')).resolves.toBeNull();
+        await expect(service.exists(retailContext, 'default-only')).resolves.toBe(false);
+        await expect(service.resolve(retailContext, 'shared')).resolves.toBe(
+            'shared-value',
+        );
+        await expect(service.exists(retailContext, 'shared')).resolves.toBe(true);
+        expect(service.listConfigReferences(retailContext)).toEqual([
+            { code: 'shared', provider: 'ENV', source: 'config' },
+        ]);
+    });
+
+    it('rejects duplicate and malformed code-first secret channel codes', () => {
+        const { service } = createFixture();
+
+        expect(() => service.replaceConfigSecrets([{
+            code: 'api-key',
+            provider: 'ENV',
+            value: 'API_KEY',
+            channelCodes: ['retail', 'retail'],
+        }])).toThrow('duplicate channel code "retail"');
+        expect(() => service.replaceConfigSecrets([{
+            code: 'api-key',
+            provider: 'ENV',
+            value: 'API_KEY',
+            channelCodes: [' retail '],
+        }])).toThrow('contains an invalid channel code');
     });
 
     it('copies registered definitions instead of retaining caller-owned objects', async () => {
@@ -182,7 +263,7 @@ describe('SecretService security modes', () => {
         service.replaceConfigSecrets([definition]);
         definition.value = 'CHANGED_KEY';
 
-        await expect(service.resolve({} as never, 'api-key')).resolves.toBe('original');
+        await expect(service.resolve(defaultContext, 'api-key')).resolves.toBe('original');
     });
 
     it('rejects duplicate codes in a replacement snapshot', () => {

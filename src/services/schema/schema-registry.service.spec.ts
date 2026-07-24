@@ -48,6 +48,7 @@ function createFixture(options: {
         find: vi.fn(async () => options.runs ?? []),
     };
     const connection = {
+        findOneInChannel: vi.fn(async () => schema),
         getRepository: vi.fn((_ctx, entity) => {
             if (entity === DataHubSchema) return schemaRepository;
             if (entity === Pipeline) return pipelineRepository;
@@ -65,6 +66,14 @@ function createFixture(options: {
                 warn: vi.fn(),
                 error: vi.fn(),
             })),
+        } as never,
+        {
+            assignToCurrentChannel: vi.fn(async (_ctx, value) => value),
+            prepareDelete: vi.fn(async () => ({
+                entity: schema,
+                physicallyDelete: true,
+            })),
+            removeFromActiveChannel: vi.fn(),
         } as never,
     );
     return { service, schemaRepository };

@@ -15,10 +15,19 @@ import {
 import { ensureError } from '../../utils/error.utils';
 import { CODE_PATTERN, ENV_VARIABLE_NAME_PATTERN } from '../../../shared';
 import { cloneValue } from '../../../shared/utils/lossless-conversion';
+import { DEFAULT_CHANNEL_CODE } from '../../../shared/constants';
 import { loadDataHubConfigFile } from '../../utils/config-file.utils';
 export type SecretSecurityMode =
     | 'ENCRYPTED'
     | 'STRICT_DISABLED';
+
+export interface SecretCodeReference {
+    code: string;
+    provider: string;
+    source: 'config' | 'database';
+}
+
+const MAX_CODE_FIRST_SECRET_CHANNELS = 100;
 
 
 /**
@@ -104,6 +113,9 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
             const normalized = Object.freeze({
                 ...secret,
                 value: secret.provider === 'ENV' ? secret.value.trim() : secret.value,
+                channelCodes: secret.channelCodes === undefined
+                    ? undefined
+                    : Object.freeze([...secret.channelCodes]),
                 metadata: secret.metadata === undefined
                     ? undefined
                     : cloneValue(secret.metadata),
@@ -178,18 +190,26 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
     }
 
     async getByCode(ctx: RequestContext, code: string): Promise<DataHubSecret | null> {
-        return this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { code } });
+        return this.connection.getRepository(ctx, DataHubSecret).findOne({
+            where: { code, channels: { id: ctx.channelId } },
+        });
     }
 
     async getById(ctx: RequestContext, id: string): Promise<DataHubSecret | null> {
-        return this.connection.getRepository(ctx, DataHubSecret).findOne({ where: { id } });
+        return this.connection.findOneInChannel(
+            ctx,
+            DataHubSecret,
+            id,
+            ctx.channelId,
+            { relations: ['channels'] },
+        ).then(entity => entity ?? null);
     }
 
     /** Resolution order: 1. Config secrets, 2. Database secrets */
     async resolve(ctx: RequestContext, code: string): Promise<string | null> {
         // 1. Check config secrets first (highest priority)
         const configSecret = this.configSecrets.get(code);
-        if (configSecret) {
+        if (configSecret && this.isConfigSecretVisible(ctx, configSecret)) {
             return this.resolveConfigSecret(configSecret);
         }
 
@@ -217,40 +237,38 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
     }
 
     async exists(ctx: RequestContext, code: string): Promise<boolean> {
-        if (this.configSecrets.has(code)) {
+        const configSecret = this.configSecrets.get(code);
+        if (configSecret && this.isConfigSecretVisible(ctx, configSecret)) {
             return true;
         }
         const dbSecret = await this.getByCode(ctx, code);
         return dbSecret !== null;
     }
 
-    /** List all available secret codes (does NOT expose values) */
-    async listCodes(ctx: RequestContext): Promise<Array<{ code: string; provider: string; source: 'config' | 'database' }>> {
-        const result: Array<{ code: string; provider: string; source: 'config' | 'database' }> = [];
-
-        // Config secrets
-        for (const [code, def] of this.configSecrets) {
-            result.push({
+    listConfigReferences(
+        ctx: RequestContext,
+        searchTerm = '',
+    ): SecretCodeReference[] {
+        const search = searchTerm.trim().toLowerCase();
+        return [...this.configSecrets.entries()]
+            .filter(([code, definition]) => (
+                this.isConfigSecretVisible(ctx, definition)
+                && (!search || code.toLowerCase().includes(search))
+            ))
+            .map(([code, definition]) => ({
                 code,
-                provider: def.provider,
-                source: 'config',
-            });
-        }
+                provider: definition.provider,
+                source: 'config' as const,
+            }))
+            .sort((left, right) => left.code < right.code ? -1 : left.code > right.code ? 1 : 0);
+    }
 
-        // Database secrets
-        const dbSecrets = await this.connection.getRepository(ctx, DataHubSecret).find();
-        for (const s of dbSecrets) {
-            // Don't duplicate if already in config
-            if (!this.configSecrets.has(s.code)) {
-                result.push({
-                    code: s.code,
-                    provider: s.provider,
-                    source: 'database',
-                });
-            }
-        }
-
-        return result;
+    private isConfigSecretVisible(
+        ctx: RequestContext,
+        definition: Readonly<CodeFirstSecret>,
+    ): boolean {
+        return ctx.channel.code === DEFAULT_CHANNEL_CODE
+            || definition.channelCodes?.includes(ctx.channel.code) === true;
     }
 
     async validateSecrets(
@@ -281,6 +299,34 @@ export class SecretService implements OnModuleInit, OnModuleDestroy {
             throw new Error(
                 'Secret codes must start with a letter and contain only letters, numbers, hyphens, and underscores',
             );
+        }
+        if ((def.channelCodes?.length ?? 0) > MAX_CODE_FIRST_SECRET_CHANNELS) {
+            throw new Error(
+                `Secret "${def.code}" cannot target more than ${MAX_CODE_FIRST_SECRET_CHANNELS} channels`,
+            );
+        }
+        const channelCodes = new Set<string>();
+        for (const channelCode of def.channelCodes ?? []) {
+            if (
+                typeof channelCode !== 'string'
+                || channelCode.trim() !== channelCode
+                || !CODE_PATTERN.test(channelCode)
+            ) {
+                throw new Error(
+                    `Secret "${def.code}" contains an invalid channel code`,
+                );
+            }
+            if (channelCode === DEFAULT_CHANNEL_CODE) {
+                throw new Error(
+                    `Secret "${def.code}" does not need to declare the default channel`,
+                );
+            }
+            if (channelCodes.has(channelCode)) {
+                throw new Error(
+                    `Secret "${def.code}" contains duplicate channel code "${channelCode}"`,
+                );
+            }
+            channelCodes.add(channelCode);
         }
 
         switch (def.provider) {

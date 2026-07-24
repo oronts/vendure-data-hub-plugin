@@ -28,6 +28,7 @@ import {
     schemaReferenceKey,
 } from './schema-reference';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
+import { ManagedResourceChannelService } from '../config/managed-resource-channel.service';
 
 const SCHEMA_COMPATIBILITIES = [
     'STRICT',
@@ -84,6 +85,7 @@ export class SchemaRegistryService {
     constructor(
         private readonly connection: TransactionalConnection,
         loggerFactory: DataHubLoggerFactory,
+        private readonly managedResourceChannels: ManagedResourceChannelService,
         @Optional()
         private readonly locks?: DistributedLockService,
     ) {
@@ -96,9 +98,13 @@ export class SchemaRegistryService {
         ctx: RequestContext,
         id: ID,
     ): Promise<DataHubSchema | null> {
-        return this.connection.getRepository(ctx, DataHubSchema).findOne({
-            where: { id },
-        });
+        return this.connection.findOneInChannel(
+            ctx,
+            DataHubSchema,
+            id,
+            ctx.channelId,
+            { relations: ['channels'] },
+        ).then(entity => entity ?? null);
     }
 
     async getByReference(
@@ -109,6 +115,7 @@ export class SchemaRegistryService {
             where: {
                 schemaId: reference.schemaId,
                 version: reference.version,
+                channels: { id: ctx.channelId },
             },
         });
     }
@@ -126,6 +133,7 @@ export class SchemaRegistryService {
             where: [...unique.values()].map(reference => ({
                 schemaId: reference.schemaId,
                 version: reference.version,
+                channels: { id: ctx.channelId },
             })),
         });
         return new Map(schemas.map(schema => [schemaReferenceKey(schema), schema]));
@@ -137,7 +145,7 @@ export class SchemaRegistryService {
     ): Promise<DataHubSchema[]> {
         assertSchemaId(schemaId);
         const versions = await this.connection.getRepository(ctx, DataHubSchema).find({
-            where: { schemaId },
+            where: { schemaId, channels: { id: ctx.channelId } },
             order: { createdAt: 'DESC', id: 'DESC' },
             take: SCHEMA_REGISTRY.MAX_VERSIONS_PER_SCHEMA + 1,
         });
@@ -201,6 +209,7 @@ export class SchemaRegistryService {
         entity.compatibility = compatibility;
         entity.definition = input.definition;
         entity.metadata = input.metadata ?? null;
+        await this.managedResourceChannels.assignToCurrentChannel(ctx, entity);
         try {
             const saved = await repository.save(entity);
             this.logger.info('Schema version created', {
@@ -224,7 +233,12 @@ export class SchemaRegistryService {
         input: UpdateDataHubSchemaInput,
     ): Promise<DataHubSchema | null> {
         const repository = this.connection.getRepository(ctx, DataHubSchema);
-        const entity = await repository.findOne({ where: { id } });
+        const entity = await this.connection.findOneInChannel(
+            ctx,
+            DataHubSchema,
+            id,
+            ctx.channelId,
+        );
         if (!entity) return null;
 
         assertSchemaMetadata(input.metadata);
@@ -239,13 +253,29 @@ export class SchemaRegistryService {
 
     async delete(ctx: RequestContext, id: ID): Promise<boolean> {
         const repository = this.connection.getRepository(ctx, DataHubSchema);
-        const entity = await repository.findOne({ where: { id } });
-        if (!entity) return false;
-        await this.assertUnused(ctx, entity.schemaId, entity.version);
-        await repository.remove(entity);
+        const plan = await this.managedResourceChannels.prepareDelete(
+            ctx,
+            DataHubSchema,
+            id,
+        );
+        await this.assertUnused(
+            ctx,
+            plan.entity.schemaId,
+            plan.entity.version,
+            plan.physicallyDelete,
+        );
+        if (plan.physicallyDelete) {
+            await repository.remove(plan.entity);
+        } else {
+            await this.managedResourceChannels.removeFromActiveChannel(
+                ctx,
+                DataHubSchema,
+                id,
+            );
+        }
         this.logger.info('Schema version deleted', {
-            schemaId: entity.schemaId,
-            schemaVersion: entity.version,
+            schemaId: plan.entity.schemaId,
+            schemaVersion: plan.entity.version,
         });
         return true;
     }
@@ -254,8 +284,10 @@ export class SchemaRegistryService {
         ctx: RequestContext,
         schemaId: string,
         version: string,
+        acrossChannels = false,
     ): Promise<DataHubSchemaUsage[]> {
         const pipelines = await this.connection.getRepository(ctx, Pipeline).find({
+            where: acrossChannels ? {} : { channels: { id: ctx.channelId } },
             take: SCHEMA_REGISTRY.MAX_PIPELINE_DISCOVERY + 1,
         });
         if (pipelines.length > SCHEMA_REGISTRY.MAX_PIPELINE_DISCOVERY) {
@@ -372,8 +404,9 @@ export class SchemaRegistryService {
         ctx: RequestContext,
         schemaId: string,
         version: string,
+        acrossChannels: boolean,
     ): Promise<void> {
-        const usage = await this.findUsage(ctx, schemaId, version);
+        const usage = await this.findUsage(ctx, schemaId, version, acrossChannels);
         if (usage.length === 0) return;
         throw new SchemaInUseError(
             `Schema "${schemaId}" version "${version}" is used by: ${formatUsage(usage)}. Remove or replace those references before deleting it.`,

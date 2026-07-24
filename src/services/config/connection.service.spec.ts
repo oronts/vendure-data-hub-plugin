@@ -1,22 +1,47 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ConnectionType } from '../../constants/enums';
+import {
+    ConfigurationSource,
+    ConnectionType,
+} from '../../constants/enums';
 import type { JsonObject } from '../../types';
 import { ConnectionService } from './connection.service';
 
-function createService(config: JsonObject | null, type = ConnectionType.CUSTOM) {
-    const entity = config === null ? null : { id: '1', code: 'erp', type, config };
+function createService(
+    config: JsonObject | null,
+    type = ConnectionType.CUSTOM,
+    configurationSource = ConfigurationSource.DATABASE,
+) {
+    const entity = config === null
+        ? null
+        : { id: '1', code: 'erp', type, config, configurationSource };
     const repository = {
         findOne: vi.fn().mockResolvedValue(entity),
+        find: vi.fn().mockResolvedValue(entity ? [entity] : []),
         save: vi.fn(async value => ({ id: '1', ...value })),
+        update: vi.fn().mockResolvedValue({ affected: 1 }),
         remove: vi.fn(),
     };
     const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const resourceReferences = {
         assertConnectionMutable: vi.fn(),
+        assertConnectionUnassignable: vi.fn(),
+    };
+    const connection = {
+        getRepository: vi.fn(() => repository),
+        findOneInChannel: vi.fn(async () => entity),
+    };
+    const managedResourceChannels = {
+        assignToCurrentChannel: vi.fn(async (_ctx, value) => value),
+        prepareDelete: vi.fn(async () => ({
+            entity,
+            physicallyDelete: true,
+        })),
+        removeFromActiveChannel: vi.fn(),
     };
     const service = new ConnectionService(
-        { getRepository: vi.fn(() => repository) } as never,
+        connection as never,
         resourceReferences as never,
+        managedResourceChannels as never,
         { createLogger: vi.fn(() => logger) } as never,
     );
     return { service, entity, repository, resourceReferences };
@@ -134,6 +159,39 @@ describe('ConnectionService', () => {
         expect(repository.save).not.toHaveBeenCalled();
     });
 
+    it('blocks changing the type of a referenced connection', async () => {
+        const { service, repository, resourceReferences } = createService(
+            { baseUrl: 'https://erp.example.com' },
+            ConnectionType.HTTP,
+        );
+        resourceReferences.assertConnectionMutable.mockRejectedValue(
+            new Error('connection is in use'),
+        );
+
+        await expect(service.update({} as never, '1', {
+            type: ConnectionType.CUSTOM,
+            config: { config: { endpoint: 'https://erp.example.com' } },
+        })).rejects.toThrow('connection is in use');
+
+        expect(resourceReferences.assertConnectionMutable)
+            .toHaveBeenCalledWith(expect.anything(), 'erp');
+        expect(repository.save).not.toHaveBeenCalled();
+    });
+
+    it('allows rotating config without changing a referenced connection type', async () => {
+        const { service, repository, resourceReferences } = createService(
+            { baseUrl: 'https://erp.example.com' },
+            ConnectionType.HTTP,
+        );
+
+        await service.update({} as never, '1', {
+            config: { baseUrl: 'https://new-erp.example.com' },
+        });
+
+        expect(resourceReferences.assertConnectionMutable).not.toHaveBeenCalled();
+        expect(repository.save).toHaveBeenCalledOnce();
+    });
+
     it('blocks deleting a connection referenced by a published pipeline', async () => {
         const { service, repository, resourceReferences } = createService({});
         resourceReferences.assertConnectionMutable.mockRejectedValue(
@@ -143,6 +201,60 @@ describe('ConnectionService', () => {
         await expect(service.delete({} as never, '1'))
             .rejects.toThrow('connection is in use');
 
+        expect(repository.remove).not.toHaveBeenCalled();
+    });
+
+    it('blocks manual mutation while code-first configuration owns the connection', async () => {
+        const { service, repository } = createService(
+            { baseUrl: 'https://erp.example.com' },
+            ConnectionType.HTTP,
+            ConfigurationSource.CODE_FIRST,
+        );
+
+        await expect(service.update({} as never, '1', {
+            config: { baseUrl: 'https://changed.example.com' },
+        })).rejects.toThrow(/managed by code-first configuration/);
+        await expect(service.delete({} as never, '1')).rejects.toThrow(
+            /managed by code-first configuration/,
+        );
+
+        expect(repository.save).not.toHaveBeenCalled();
+        expect(repository.remove).not.toHaveBeenCalled();
+    });
+
+    it('allows synchronization to update and retain code-first ownership', async () => {
+        const { service, entity, repository } = createService(
+            { baseUrl: 'https://old.example.com' },
+            ConnectionType.HTTP,
+            ConfigurationSource.CODE_FIRST,
+        );
+
+        await service.update({} as never, '1', {
+            config: { baseUrl: 'https://new.example.com' },
+        }, {
+            configurationSource: ConfigurationSource.CODE_FIRST,
+            allowCodeFirstManaged: true,
+        });
+
+        expect(entity?.configurationSource).toBe(ConfigurationSource.CODE_FIRST);
+        expect(repository.save).toHaveBeenCalledOnce();
+    });
+
+    it('releases stale code-first ownership without deleting the connection', async () => {
+        const { service, repository } = createService(
+            { baseUrl: 'https://erp.example.com' },
+            ConnectionType.HTTP,
+            ConfigurationSource.CODE_FIRST,
+        );
+
+        await expect(
+            service.releaseCodeFirstOwnership({} as never, new Set()),
+        ).resolves.toBe(1);
+
+        expect(repository.update).toHaveBeenCalledWith(
+            { id: '1' },
+            { configurationSource: ConfigurationSource.DATABASE },
+        );
         expect(repository.remove).not.toHaveBeenCalled();
     });
 });
