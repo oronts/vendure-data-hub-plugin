@@ -3,6 +3,7 @@ import type { Repository } from 'typeorm';
 import { DISTRIBUTED_LOCK } from '../../constants';
 import { RunStatus } from '../../constants/enums';
 import type { PipelineRun } from '../../entities/pipeline';
+import type { PipelineMetrics } from '../../types';
 import type { DataHubLogger, SpanContext } from '../logger';
 import { PipelineRunnerService } from './pipeline-runner.service';
 
@@ -20,6 +21,7 @@ function createFixture() {
         save: vi.fn(async (entity: PipelineRun) => entity),
     } as unknown as Repository<PipelineRun>;
     const runLogger = {
+        info: vi.fn(),
         warn: vi.fn(),
         error: vi.fn(),
         logPipelineFailed: vi.fn(),
@@ -121,6 +123,7 @@ describe('PipelineRunnerService queue attempts', () => {
 
         expect(fixture.run.status).toBe(RunStatus.FAILED);
         expect(fixture.run.finishedAt).toBeInstanceOf(Date);
+        expect(fixture.run.metrics?.durationMs).toBeGreaterThanOrEqual(0);
         expect(fixture.domainEvents.publishRunFailed).toHaveBeenCalledWith(
             '42',
             'catalog-sync',
@@ -152,6 +155,126 @@ describe('PipelineRunnerService queue attempts', () => {
         expect(fixture.run.status).toBe(RunStatus.PENDING);
         expect(fixture.run.error).toBe(lockLossError.message);
         expect(fixture.releaseLock).toHaveBeenCalledOnce();
+    });
+});
+
+describe('PipelineRunnerService published adapter contract', () => {
+    it('validates immutable bindings before invoking the adapter runtime', async () => {
+        const validationError = new Error('Published pipeline definition is missing adapter bindings');
+        const definitionValidator = {
+            validate: vi.fn(() => {
+                throw validationError;
+            }),
+        };
+        const adapterRuntime = { executePipeline: vi.fn() };
+        const runner = new PipelineRunnerService(
+            {} as never,
+            {} as never,
+            definitionValidator as never,
+            adapterRuntime as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            { createLogger: vi.fn(() => ({})) } as never,
+            {} as never,
+        );
+        const definitionSnapshot = {
+            version: 1,
+            steps: [{
+                key: 'load',
+                type: 'LOAD',
+                config: { adapterCode: 'productUpsert' },
+            }],
+        };
+        const executionContext = {
+            ctx: {},
+            run: {
+                id: 42,
+                pipeline: { id: 7, code: 'catalog-sync' },
+                definitionSnapshot,
+            },
+            runId: 42,
+            runLogger: {},
+            pipelineSpan: { addEvent: vi.fn() },
+        };
+        const internals = runner as unknown as {
+            executeSteps(context: typeof executionContext): Promise<PipelineMetrics>;
+        };
+
+        await expect(internals.executeSteps(executionContext)).rejects.toBe(validationError);
+
+        expect(definitionValidator.validate).toHaveBeenCalledWith(
+            definitionSnapshot,
+            { requireAdapterBindings: true },
+        );
+        expect(adapterRuntime.executePipeline).not.toHaveBeenCalled();
+    });
+});
+
+describe('PipelineRunnerService paused gate persistence', () => {
+    it('persists the selected gate and timeout from the immutable definition', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-07-22T10:00:00.000Z'));
+        try {
+            const fixture = createFixture();
+            fixture.run.definitionSnapshot = {
+                version: 1,
+                steps: [{
+                    key: 'approval',
+                    type: 'GATE',
+                    config: { approvalType: 'TIMEOUT', timeoutSeconds: 45 },
+                }],
+            };
+            fixture.run.gateTimeoutLeaseToken = 'stale-token';
+            fixture.run.gateTimeoutLeaseExpiresAt = new Date();
+            const metrics = {
+                paused: true,
+                pausedAtStep: 'approval',
+            } as PipelineMetrics;
+            const internals = fixture.runner as unknown as {
+                handlePaused(
+                    executionContext: typeof fixture.executionContext,
+                    runMetrics: PipelineMetrics,
+                ): Promise<void>;
+            };
+
+            await internals.handlePaused(fixture.executionContext, metrics);
+
+            expect(fixture.run.status).toBe(RunStatus.PAUSED);
+            expect(fixture.run.gateStepKey).toBe('approval');
+            expect(fixture.run.gateTimeoutAt?.toISOString()).toBe(
+                '2026-07-22T10:00:45.000Z',
+            );
+            expect(fixture.run.gateTimeoutLeaseToken).toBeNull();
+            expect(fixture.run.gateTimeoutLeaseExpiresAt).toBeNull();
+            expect(fixture.runRepo.save).toHaveBeenCalledWith(
+                fixture.run,
+                { reload: false },
+            );
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('refuses to persist an unactionable paused run', async () => {
+        const fixture = createFixture();
+        const metrics = {
+            paused: true,
+            pausedAtStep: 'missing-gate',
+        } as PipelineMetrics;
+        const internals = fixture.runner as unknown as {
+            handlePaused(
+                executionContext: typeof fixture.executionContext,
+                runMetrics: PipelineMetrics,
+            ): Promise<void>;
+        };
+
+        await expect(
+            internals.handlePaused(fixture.executionContext, metrics),
+        ).rejects.toThrow('without an actionable GATE step');
+
+        expect(fixture.run.status).toBe(RunStatus.RUNNING);
+        expect(fixture.runRepo.save).not.toHaveBeenCalled();
     });
 });
 

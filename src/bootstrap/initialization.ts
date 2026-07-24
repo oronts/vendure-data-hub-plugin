@@ -17,9 +17,12 @@ import { getBuiltinOperatorRuntimes } from '../operators/operator-runtime-regist
 import { configureScriptOperators } from '../operators/script';
 import { configureGlobalSsrfProtection } from '../utils/url-security.utils';
 import { BUILT_IN_ENRICHERS } from '../enrichers';
-import { getAllAdapters as getModuleLevelAdapters, getModuleLevelTransforms, getModuleLevelScripts } from '../adapters/registry';
-import { TransformExecutor } from '../transforms/transform-executor';
+import {
+    getAllAdapters as getModuleLevelAdapters,
+    getModuleLevelScripts,
+} from '../adapters/registry';
 import { HookService } from '../services/events/hook.service';
+import { AdapterUpgradeGuardService } from '../services/pipeline/adapter-upgrade-guard.service';
 
 function isDataHubAdapter(value: unknown): value is DataHubAdapter {
     if (value == null || typeof value !== 'object') {
@@ -70,8 +73,8 @@ export class AdapterBootstrapService implements OnModuleInit {
         @Inject(DATAHUB_PLUGIN_OPTIONS) private options: DataHubPluginOptions,
         private registry: DataHubRegistryService,
         private feedGeneratorService: FeedGeneratorService,
-        private transformExecutor: TransformExecutor,
         private hookService: HookService,
+        private adapterUpgradeGuard: AdapterUpgradeGuardService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.BOOTSTRAP);
@@ -85,7 +88,6 @@ export class AdapterBootstrapService implements OnModuleInit {
         let feedGeneratorsRegistered = 0;
         let sdkBridgedAdapters = 0;
         let connectorBridgedAdapters = 0;
-        let sdkBridgedTransforms = 0;
         let sdkBridgedScripts = 0;
 
         try {
@@ -175,8 +177,6 @@ export class AdapterBootstrapService implements OnModuleInit {
             // Bridge connector registries: extractors and loaders from registered connectors
             connectorBridgedAdapters = this.bridgeConnectorAdapters();
 
-            // Bridge SDK module-level transforms: transforms registered via registerTransform()
-            sdkBridgedTransforms = this.bridgeSdkTransforms();
 
             // Bridge SDK module-level scripts: hook scripts registered via registerScript()
             sdkBridgedScripts = this.bridgeSdkScripts();
@@ -198,6 +198,8 @@ export class AdapterBootstrapService implements OnModuleInit {
                 }
             }
 
+            await this.adapterUpgradeGuard.assertNonterminalRunsCompatible();
+
             const durationMs = Date.now() - startTime;
             this.logger.info('DataHub plugin bootstrap completed', {
                 builtinAdaptersRegistered,
@@ -205,7 +207,6 @@ export class AdapterBootstrapService implements OnModuleInit {
                 customAdaptersRegistered,
                 sdkBridgedAdapters,
                 connectorBridgedAdapters,
-                sdkBridgedTransforms,
                 sdkBridgedScripts,
                 feedGeneratorsRegistered,
                 durationMs,
@@ -218,7 +219,6 @@ export class AdapterBootstrapService implements OnModuleInit {
                 customAdaptersRegistered,
                 sdkBridgedAdapters,
                 connectorBridgedAdapters,
-                sdkBridgedTransforms,
                 sdkBridgedScripts,
                 feedGeneratorsRegistered,
                 durationMs,
@@ -248,7 +248,12 @@ export class AdapterBootstrapService implements OnModuleInit {
         for (const adapter of sdkAdapters) {
             try {
                 if (!this.registry.find(adapter.type, adapter.code)) {
-                    this.registry.register(adapter, { builtIn: false });
+                    const value = adapter as unknown as Record<string, unknown>;
+                    if (hasRuntimeMethod(value)) {
+                        this.registry.registerRuntime(adapter as unknown as DataHubAdapter, { builtIn: false });
+                    } else {
+                        this.registry.register(adapter, { builtIn: false });
+                    }
                     bridged++;
                 }
             } catch (err) {
@@ -360,41 +365,6 @@ export class AdapterBootstrapService implements OnModuleInit {
         return bridged;
     }
 
-    /**
-     * Bridge custom transforms from the SDK module-level registry (registered via
-     * registerTransform()) into the TransformExecutor so they can be used in
-     * TransformConfig chains.
-     */
-    private bridgeSdkTransforms(): number {
-        let bridged = 0;
-        const sdkTransforms = getModuleLevelTransforms();
-
-        if (sdkTransforms.length === 0) {
-            return 0;
-        }
-
-        this.logger.debug('Bridging SDK module-level transforms', {
-            transformCount: sdkTransforms.length,
-        });
-
-        for (const transform of sdkTransforms) {
-            try {
-                this.transformExecutor.registerCustomTransform(transform);
-                bridged++;
-            } catch (err) {
-                this.logger.warn('Failed to bridge custom transform', {
-                    transformType: transform.type,
-                    error: getErrorMessage(err),
-                });
-            }
-        }
-
-        if (bridged > 0) {
-            this.logger.info('Bridged SDK custom transforms', { bridged });
-        }
-
-        return bridged;
-    }
 
     /**
      * Bridge hook scripts from the SDK module-level registry (registered via

@@ -14,12 +14,28 @@ import { executeLinear } from './orchestration';
 import { AdapterRuntimeService } from './adapter-runtime.service';
 
 function createFixture() {
+    const checkpointData = new Map<string, Record<string, unknown>>();
     const checkpointService = {
         clearForPipeline: vi.fn(async () => undefined),
-        getByPipeline: vi.fn(async (_ctx: RequestContext, pipelineId: ID) => ({
-            data: { source: { pipelineId: String(pipelineId) } },
-        })),
-        setForPipeline: vi.fn(async () => undefined),
+        getByPipeline: vi.fn(async (_ctx: RequestContext, pipelineId: ID) => {
+            const key = String(pipelineId);
+            const data = checkpointData.get(key) ?? {
+                source: { pipelineId: key },
+            };
+            checkpointData.set(key, data);
+            return { data };
+        }),
+        updateForPipeline: vi.fn(async (
+            _ctx: RequestContext,
+            pipelineId: ID,
+            updater: (
+                current: Record<string, unknown>,
+            ) => Record<string, unknown> | Promise<Record<string, unknown>>,
+        ) => {
+            const key = String(pipelineId);
+            const current = checkpointData.get(key) ?? {};
+            checkpointData.set(key, await updater(structuredClone(current)));
+        }),
     };
     const hookService = {
         run: vi.fn(async () => undefined),
@@ -51,7 +67,7 @@ function createFixture() {
         loggerFactory as never,
     );
 
-    return { runtime, checkpointService };
+    return { runtime, checkpointData, checkpointService };
 }
 
 describe('AdapterRuntimeService checkpoint isolation', () => {
@@ -60,7 +76,7 @@ describe('AdapterRuntimeService checkpoint isolation', () => {
     });
 
     it('persists independent checkpoint state for concurrent pipeline runs', async () => {
-        const { runtime, checkpointService } = createFixture();
+        const { runtime, checkpointData, checkpointService } = createFixture();
         const ctx = {} as RequestContext;
         const definition: PipelineDefinition = { version: 1, steps: [] };
         const executeLinearMock = vi.mocked(executeLinear);
@@ -101,12 +117,12 @@ describe('AdapterRuntimeService checkpoint isolation', () => {
         releaseExecutions();
         await Promise.all([firstRun, secondRun]);
 
-        expect(checkpointService.setForPipeline).toHaveBeenCalledTimes(2);
-        expect(checkpointService.setForPipeline).toHaveBeenCalledWith(ctx, 1, {
+        expect(checkpointService.updateForPipeline).toHaveBeenCalledTimes(2);
+        expect(checkpointData.get('1')).toEqual({
             source: { pipelineId: '1' },
             'step-1': { cursor: '1' },
         });
-        expect(checkpointService.setForPipeline).toHaveBeenCalledWith(ctx, 2, {
+        expect(checkpointData.get('2')).toEqual({
             source: { pipelineId: '2' },
             'step-2': { cursor: '2' },
         });
@@ -128,6 +144,6 @@ describe('AdapterRuntimeService checkpoint isolation', () => {
             runtime.executePipeline(ctx, definition, undefined, undefined, 7),
         ).rejects.toBe(failure);
 
-        expect(checkpointService.setForPipeline).not.toHaveBeenCalled();
+        expect(checkpointService.updateForPipeline).not.toHaveBeenCalled();
     });
 });

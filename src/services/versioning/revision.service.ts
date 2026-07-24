@@ -3,6 +3,7 @@ import {
     ID,
     RequestContext,
     TransactionalConnection,
+    UserInputError,
 } from '@vendure/core';
 import { In } from 'typeorm';
 import {
@@ -16,7 +17,13 @@ import {
     SaveDraftOptions,
     TimelineEntry,
 } from '../../types/index';
-import { PipelineStatus, RevisionType, RunOutcome, SortOrder } from '../../constants/enums';
+import {
+    ConfigurationSource,
+    PipelineStatus,
+    RevisionType,
+    RunOutcome,
+    SortOrder,
+} from '../../constants/enums';
 import { LOGGER_CONTEXTS, PAGINATION } from '../../constants/index';
 import { Pipeline, PipelineRevision, PipelineRun } from '../../entities/pipeline';
 import { DiffService } from './diff.service';
@@ -26,6 +33,7 @@ import {
     ValidationLevel,
 } from '../validation/definition-validation.service';
 import { DataHubRegistryService } from '../../sdk/registry.service';
+import { PublishDataHubPipelinePermission } from '../../permissions';
 import { DomainEventsService } from '../events/domain-events.service';
 import {
     assertPipelineStatus,
@@ -34,12 +42,19 @@ import {
     statusAfterExecutableUpdate,
 } from '../pipeline/pipeline-policy';
 import {
-    getMissingPipelinePermissions,
     withEffectivePipelineCapabilities,
 } from '../pipeline/pipeline-capabilities';
+import { PipelineExecutionPermissionService } from '../pipeline/pipeline-execution-permission.service';
 import { sanitizePipelineDefinitionForOutput } from '../validation/hook-security';
 import { PipelineDefinitionError } from '../../validation/pipeline-definition-error';
 import { findReachableDependencyCycle } from '../pipeline/pipeline-dependency-graph';
+import { loadActivePipelineDefinitions } from '../pipeline/active-pipeline-definitions';
+import {
+    advancePipelineRowVersion,
+    createPipelineWriteGuard,
+} from '../pipeline/pipeline-write-guard';
+import { assertDatabaseConfiguration } from '../config/configuration-ownership';
+import { withResolvedAdapterBindings } from '../../sdk/adapter-bindings';
 
 const COMMIT_MESSAGE_MAX_LENGTH = 500;
 const MAX_DRAFT_THROTTLE_ENTRIES = 1000;
@@ -48,6 +63,17 @@ interface PublicationMetadata {
     commitMessage?: string;
     authorUserId?: string;
     authorName?: string;
+    skipPermissionCheck?: boolean;
+}
+
+interface RevisionRunStats {
+    runCount: number;
+    lastRun: Pick<PipelineRun, 'status' | 'startedAt' | 'finishedAt' | 'metrics'> | null;
+}
+
+interface RevisionRunCountRow {
+    revisionId: ID;
+    runCount: string | number;
 }
 
 @Injectable()
@@ -61,6 +87,7 @@ export class RevisionService {
         private diffService: DiffService,
         private definitionValidator: DefinitionValidationService,
         private registry: DataHubRegistryService,
+        private executionPermissions: PipelineExecutionPermissionService,
         private domainEvents: DomainEventsService,
         loggerFactory: DataHubLoggerFactory,
     ) {
@@ -81,15 +108,7 @@ export class RevisionService {
         );
         this.definitionValidator.validate(definition);
 
-        const lastSave = this.lastSaveTimestamps.get(options.pipelineId);
         const now = Date.now();
-        if (lastSave && now - lastSave < this.autoSaveConfig.throttleMs) {
-            this.logger.debug('Draft save throttled', {
-                pipelineId: options.pipelineId,
-                msSinceLastSave: now - lastSave,
-            });
-            return null;
-        }
 
         const result = await this.connection.withTransaction(ctx, async transactionCtx => {
             const pipelineRepo = this.connection.getRepository(transactionCtx, Pipeline);
@@ -100,6 +119,24 @@ export class RevisionService {
             if (!pipeline) {
                 throw new Error(`Pipeline ${options.pipelineId} not found`);
             }
+            assertDatabaseConfiguration(
+                pipeline.configurationSource,
+                'Pipeline',
+                pipeline.code,
+                'changed through draft editing',
+            );
+            if (pipeline.status === PipelineStatus.ARCHIVED) {
+                throw new Error('Cannot save a draft for an archived pipeline; reactivate it first');
+            }
+            const lastSave = this.lastSaveTimestamps.get(options.pipelineId);
+            if (lastSave && now - lastSave < this.autoSaveConfig.throttleMs) {
+                this.logger.debug('Draft save throttled', {
+                    pipelineId: options.pipelineId,
+                    msSinceLastSave: now - lastSave,
+                });
+                return { revision: null, created: false };
+            }
+            const writeGuard = createPipelineWriteGuard(pipeline);
 
             const definitionHash = this.diffService.computeDefinitionHash(definition);
             const latestDraft = await this.getLatestDraft(
@@ -148,13 +185,27 @@ export class RevisionService {
                 pipeline.definition,
                 definition,
             );
-            pipeline.draftRevisionId = saved.id;
-            pipeline.definition = definition;
-            pipeline.status = statusAfterExecutableUpdate(
+            const nextStatus = statusAfterExecutableUpdate(
                 pipeline.status,
                 executableChanged,
             );
-            await pipelineRepo.save(pipeline, { reload: false });
+            const pipelineUpdate = await pipelineRepo.update(
+                writeGuard,
+                {
+                    draftRevisionId: saved.id,
+                    definition: definition as never,
+                    status: nextStatus,
+                },
+            );
+            if (pipelineUpdate.affected !== 1) {
+                throw new Error(
+                    `Pipeline "${pipeline.code}" changed concurrently; reload before saving the draft`,
+                );
+            }
+            pipeline.draftRevisionId = saved.id;
+            pipeline.definition = definition;
+            pipeline.status = nextStatus;
+            advancePipelineRowVersion(pipeline);
             await this.pruneDrafts(transactionCtx, options.pipelineId);
 
             this.logger.debug('Draft saved', {
@@ -214,6 +265,44 @@ export class RevisionService {
         });
     }
 
+    async refreshCodeFirstPublishedDefinition(
+        ctx: RequestContext,
+        pipelineId: ID,
+        definition: PipelineDefinition,
+    ): Promise<PipelineRevision> {
+        return this.connection.withTransaction(ctx, async transactionCtx => {
+            const pipeline = await this.connection
+                .getRepository(transactionCtx, Pipeline)
+                .findOne({ where: { id: pipelineId } });
+            if (!pipeline) {
+                throw new Error(`Pipeline ${pipelineId} not found`);
+            }
+            if (pipeline.configurationSource !== ConfigurationSource.CODE_FIRST) {
+                throw new Error(
+                    `Pipeline "${pipeline.code}" is not managed by code-first configuration`,
+                );
+            }
+            if (
+                pipeline.status !== PipelineStatus.PUBLISHED
+                || pipeline.currentRevisionId == null
+            ) {
+                throw new Error(
+                    `Pipeline "${pipeline.code}" has no published revision to refresh`,
+                );
+            }
+            return this.commitPublishedRevision(
+                transactionCtx,
+                pipeline,
+                definition,
+                {
+                    commitMessage: 'Refresh adapter contracts',
+                    authorName: 'Data Hub config sync',
+                    skipPermissionCheck: true,
+                },
+            );
+        });
+    }
+
     async revertToRevision(
         ctx: RequestContext,
         options: RevertOptions,
@@ -237,6 +326,12 @@ export class RevisionService {
             if (!pipeline) {
                 throw new Error(`Pipeline for revision ${options.revisionId} not found`);
             }
+            assertDatabaseConfiguration(
+                pipeline.configurationSource,
+                'Pipeline',
+                pipeline.code,
+                'reverted',
+            );
             assertPipelineStatus(
                 pipeline.status,
                 [PipelineStatus.PUBLISHED],
@@ -264,12 +359,21 @@ export class RevisionService {
         candidateDefinition: PipelineDefinition,
         metadata: PublicationMetadata,
     ): Promise<PipelineRevision> {
-        const definition = withEffectivePipelineCapabilities(
+        const definition = withResolvedAdapterBindings(
             this.registry,
-            normalizePipelineDefinition(candidateDefinition, candidateDefinition.version),
+            withEffectivePipelineCapabilities(
+                this.registry,
+                normalizePipelineDefinition(candidateDefinition, candidateDefinition.version),
+            ),
         );
         await this.assertPublicationDefinition(ctx, pipeline, definition);
-        this.assertCapabilitiesAllowed(ctx, definition);
+        if (metadata.skipPermissionCheck !== true) {
+            await this.executionPermissions.assertAllowed(
+                ctx,
+                definition,
+                PublishDataHubPipelinePermission.Permission,
+            );
+        }
 
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
         const pipelineRepo = this.connection.getRepository(ctx, Pipeline);
@@ -296,10 +400,7 @@ export class RevisionService {
 
         const newVersion = (pipeline.publishedVersionCount ?? 0) + 1;
         const allocation = await pipelineRepo.update(
-            {
-                id: pipeline.id,
-                publishedVersionCount: pipeline.publishedVersionCount ?? 0,
-            },
+            createPipelineWriteGuard(pipeline),
             { publishedVersionCount: newVersion },
         );
         if (allocation.affected !== 1) {
@@ -326,15 +427,38 @@ export class RevisionService {
 
         const saved = await revisionRepo.save(revision);
 
+        const publishedAt = new Date();
+        const publicationCriteria = createPipelineWriteGuard(pipeline, {
+            publishedVersionCount: newVersion,
+            rowVersion: pipeline.rowVersion + 1,
+        });
+        // Casting the final values avoids TypeORM recursively expanding PipelineDefinition.
+        const publication = await pipelineRepo.update(
+            publicationCriteria,
+            {
+                definition,
+                version: newVersion,
+                currentRevisionId: saved.id,
+                draftRevisionId: null,
+                status: PipelineStatus.PUBLISHED,
+                publishedAt,
+                publishedByUserId: revision.authorUserId,
+            } as never,
+        );
+        if (publication.affected !== 1) {
+            throw new Error(
+                `Pipeline "${pipeline.code}" changed concurrently; reload before publishing`,
+            );
+        }
         pipeline.version = newVersion;
         pipeline.publishedVersionCount = newVersion;
         pipeline.currentRevisionId = saved.id;
         pipeline.draftRevisionId = null;
         pipeline.definition = definition;
         pipeline.status = PipelineStatus.PUBLISHED;
-        pipeline.publishedAt = new Date();
+        pipeline.publishedAt = publishedAt;
         pipeline.publishedByUserId = revision.authorUserId;
-        await pipelineRepo.save(pipeline, { reload: false });
+        advancePipelineRowVersion(pipeline, 2);
 
         if (this.autoSaveConfig.pruneOnPublish) {
             await this.pruneDrafts(ctx, pipeline.id, true);
@@ -362,20 +486,23 @@ export class RevisionService {
     ): Promise<void> {
         const validation = await this.definitionValidator.validateAsync(
             definition,
-            { level: ValidationLevel.FULL },
+            {
+                level: ValidationLevel.FULL,
+                requireAdapterBindings: true,
+            },
             ctx,
         );
         const dependencyCheckFailures = validation.warnings.filter(
-            warning => warning.errorCode === 'depends-on-check-failed',
+            warning => warning.errorCode === 'depends-on-check-failed'
+                || warning.errorCode === 'resource-reference-check-failed'
+                || warning.errorCode === 'hook-reference-check-failed',
         );
         const publicationIssues = [...validation.issues, ...dependencyCheckFailures];
         if (publicationIssues.length > 0) {
             throw new PipelineDefinitionError(publicationIssues);
         }
 
-        const candidates = await this.connection.getRepository(ctx, Pipeline).find({
-            select: { code: true, definition: true },
-        });
+        const candidates = await loadActivePipelineDefinitions(this.connection, ctx);
         const cycle = findReachableDependencyCycle(
             pipeline.code,
             definition,
@@ -386,56 +513,41 @@ export class RevisionService {
         }
     }
 
-    private assertCapabilitiesAllowed(
+    async getTimeline(
         ctx: RequestContext,
-        definition: PipelineDefinition,
-    ): void {
-        const missing = getMissingPipelinePermissions(this.registry, ctx, definition);
-        if (!missing.length) {
-            return;
+        pipelineId: ID,
+        limit: number = PAGINATION.EVENTS_LIMIT,
+    ): Promise<TimelineEntry[]> {
+        if (!Number.isInteger(limit) || limit < 1 || limit > PAGINATION.MAX_QUERY_LIMIT) {
+            throw new UserInputError(`limit must be an integer between 1 and ${PAGINATION.MAX_QUERY_LIMIT}`);
         }
-
-        this.logger.warn('Pipeline requires permissions not held by user', {
-            userId: ctx.activeUserId,
-            missing,
-        });
-        throw new Error(`Missing required permissions for this pipeline: ${missing.join(', ')}`);
-    }
-
-    async getTimeline(ctx: RequestContext, pipelineId: ID, limit: number = PAGINATION.EVENTS_LIMIT): Promise<TimelineEntry[]> {
         const revisionRepo = this.connection.getRepository(ctx, PipelineRevision);
-        const runRepo = this.connection.getRepository(ctx, PipelineRun);
 
         const revisions = await revisionRepo.find({
             where: { pipelineId },
+            select: [
+                'id',
+                'createdAt',
+                'version',
+                'type',
+                'commitMessage',
+                'authorName',
+                'changesSummary',
+            ],
             order: { createdAt: SortOrder.DESC },
             take: limit,
         });
 
         const pipeline = await this.connection.getRepository(ctx, Pipeline).findOne({
             where: { id: pipelineId },
+            select: ['id', 'draftRevisionId', 'currentRevisionId'],
         });
+        const runStats = await this.getRevisionRunStats(ctx, pipelineId, revisions);
 
-        // New runs pin the exact published revision they execute. Historical
-        // rows without revisionId cannot be attributed safely and are omitted.
-        const allRuns = await runRepo.find({
-            where: { pipelineId },
-            order: { createdAt: SortOrder.DESC },
-        });
-
-        const timeline: TimelineEntry[] = [];
-
-        for (const revision of revisions) {
-            const revisionRuns = revision.type === RevisionType.PUBLISHED
-                ? allRuns.filter(run => (
-                    run.revisionId != null
-                    && String(run.revisionId) === String(revision.id)
-                ))
-                : [];
-
-            const lastRun = revisionRuns[0];
-
-            timeline.push({
+        return revisions.map(revision => {
+            const stats = runStats.get(String(revision.id));
+            const lastRun = stats?.lastRun;
+            return {
                 revision: {
                     id: revision.id,
                     createdAt: revision.createdAt,
@@ -447,15 +559,89 @@ export class RevisionService {
                     isLatest: revision.id === pipeline?.draftRevisionId || revision.id === pipeline?.currentRevisionId,
                     isCurrent: revision.id === pipeline?.currentRevisionId,
                 },
-                runCount: revisionRuns.length,
+                runCount: stats?.runCount ?? 0,
                 lastRunAt: lastRun?.finishedAt || lastRun?.startedAt || null,
-                lastRunStatus: lastRun?.status === RunStatus.COMPLETED ? RunOutcome.SUCCESS
-                    : lastRun?.status === RunStatus.FAILED ? RunOutcome.FAILED
-                    : null,
-            });
-        }
+                lastRunStatus: this.getRunOutcome(lastRun ?? null),
+            };
+        });
+    }
 
-        return timeline;
+    private getRunOutcome(
+        run: RevisionRunStats['lastRun'],
+    ): RunOutcome | null {
+        if (!run) return null;
+        if (run.status === RunStatus.FAILED || run.status === RunStatus.TIMEOUT) {
+            return RunOutcome.FAILED;
+        }
+        if (run.status !== RunStatus.COMPLETED) {
+            return null;
+        }
+        return typeof run.metrics?.failed === 'number' && run.metrics.failed > 0
+            ? RunOutcome.PARTIAL
+            : RunOutcome.SUCCESS;
+    }
+
+    private async getRevisionRunStats(
+        ctx: RequestContext,
+        pipelineId: ID,
+        revisions: readonly PipelineRevision[],
+    ): Promise<Map<string, RevisionRunStats>> {
+        const revisionIds = revisions
+            .filter(revision => revision.type === RevisionType.PUBLISHED)
+            .map(revision => revision.id);
+        const stats = new Map<string, RevisionRunStats>();
+        if (revisionIds.length === 0) return stats;
+
+        const runRepo = this.connection.getRepository(ctx, PipelineRun);
+        const countRows = await runRepo.createQueryBuilder('run')
+            .select('run.revisionId', 'revisionId')
+            .addSelect('COUNT(run.id)', 'runCount')
+            .where('run.pipelineId = :pipelineId', { pipelineId })
+            .andWhere('run.revisionId IN (:...revisionIds)', { revisionIds })
+            .groupBy('run.revisionId')
+            .getRawMany<RevisionRunCountRow>();
+        const counts = new Map(countRows.map(row => [
+            String(row.revisionId),
+            Number(row.runCount),
+        ]));
+        const latestRuns = await runRepo.createQueryBuilder('run')
+            .select([
+                'run.id',
+                'run.revisionId',
+                'run.status',
+                'run.startedAt',
+                'run.finishedAt',
+                'run.createdAt',
+                'run.metrics',
+            ])
+            .where('run.pipelineId = :pipelineId', { pipelineId })
+            .andWhere('run.revisionId IN (:...revisionIds)', { revisionIds })
+            .andWhere(query => {
+                const newerRun = query.subQuery()
+                    .select('1')
+                    .from(PipelineRun, 'newer')
+                    .where('newer.pipelineId = run.pipelineId')
+                    .andWhere('newer.revisionId = run.revisionId')
+                    .andWhere(
+                        '(newer.createdAt > run.createdAt OR '
+                        + '(newer.createdAt = run.createdAt AND newer.id > run.id))',
+                    )
+                    .getQuery();
+                return `NOT EXISTS ${newerRun}`;
+            })
+            .getMany();
+        const latestRunsByRevision = new Map(latestRuns.map(run => [
+            String(run.revisionId),
+            run,
+        ]));
+        revisionIds.forEach(revisionId => {
+            stats.set(String(revisionId), {
+                runCount: counts.get(String(revisionId)) ?? 0,
+                lastRun: latestRunsByRevision.get(String(revisionId)) ?? null,
+            });
+        });
+
+        return stats;
     }
 
     async getDiff(ctx: RequestContext, fromRevisionId: ID, toRevisionId: ID): Promise<RevisionDiff> {
@@ -602,6 +788,16 @@ export class RevisionService {
             if (!pipeline) {
                 throw new Error(`Pipeline for revision ${revisionId} not found`);
             }
+            assertDatabaseConfiguration(
+                pipeline.configurationSource,
+                'Pipeline',
+                pipeline.code,
+                'changed through draft restore',
+            );
+            if (pipeline.status === PipelineStatus.ARCHIVED) {
+                throw new Error('Cannot restore a draft for an archived pipeline; reactivate it first');
+            }
+            const writeGuard = createPipelineWriteGuard(pipeline);
 
             const definition = normalizePipelineDefinition(
                 revision.definition,
@@ -612,13 +808,27 @@ export class RevisionService {
                 pipeline.definition,
                 definition,
             );
-            pipeline.definition = definition;
-            pipeline.draftRevisionId = revision.id;
-            pipeline.status = statusAfterExecutableUpdate(
+            const nextStatus = statusAfterExecutableUpdate(
                 pipeline.status,
                 executableChanged,
             );
-            await pipelineRepo.save(pipeline, { reload: false });
+            const pipelineUpdate = await pipelineRepo.update(
+                writeGuard,
+                {
+                    definition: definition as never,
+                    draftRevisionId: revision.id,
+                    status: nextStatus,
+                },
+            );
+            if (pipelineUpdate.affected !== 1) {
+                throw new Error(
+                    `Pipeline "${pipeline.code}" changed concurrently; reload before restoring the draft`,
+                );
+            }
+            pipeline.definition = definition;
+            pipeline.draftRevisionId = revision.id;
+            pipeline.status = nextStatus;
+            advancePipelineRowVersion(pipeline);
             return pipeline;
         });
     }

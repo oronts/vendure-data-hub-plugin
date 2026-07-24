@@ -8,6 +8,7 @@ import { FieldMapping } from './mapping.types';
 import { FilterCondition } from './filter.types';
 import { PipelineHooksConfig, PipelineHooks } from './hook.types';
 import { TriggerConfig, WebhookAuthType, VendureEventType } from './trigger.types';
+import { AdapterType } from './adapter.types';
 
 // PIPELINE TYPE ENUMS
 
@@ -19,6 +20,14 @@ export type TargetOperation = 'CREATE' | 'UPDATE' | 'UPSERT' | 'MERGE' | 'DELETE
 
 /** Strategy for handling errors during pipeline execution */
 export type ErrorStrategy = 'SKIP' | 'ABORT' | 'QUARANTINE' | 'RETRY';
+
+export interface AdapterBinding {
+    location: string;
+    type: AdapterType;
+    code: string;
+    version: string;
+    apiVersion: number;
+}
 
 /** Vendure entity types that can be imported/exported */
 export type VendureEntityType =
@@ -90,39 +99,11 @@ export interface ErrorHandlingConfig {
     maxRetryDelayMs?: number;
     /** Multiplier for exponential backoff */
     backoffMultiplier?: number;
-    /** Whether to use a dead letter queue for failed records */
-    deadLetterQueue?: boolean;
-    /** Whether to send alerts when records go to dead letter queue */
-    alertOnDeadLetter?: boolean;
-    /** Error percentage threshold that triggers alerts/pauses */
-    errorThresholdPercent?: number;
-}
-
-/** Strategy for creating checkpoints */
-export type CheckpointStrategy = 'COUNT' | 'TIMESTAMP' | 'INTERVAL';
-
-/**
- * Configuration for pipeline checkpointing (resumable execution)
- */
-export interface CheckpointingConfig {
-    /** Whether checkpointing is enabled */
-    enabled?: boolean;
-    /** Strategy for creating checkpoints */
-    strategy?: CheckpointStrategy;
-    /** Create checkpoint every N records (for COUNT strategy) */
-    intervalRecords?: number;
-    /** Create checkpoint every N milliseconds (for INTERVAL strategy) */
-    intervalMs?: number;
-    /** Field to use for TIMESTAMP strategy */
-    field?: string;
 }
 
 /**
  * These types match the enum values in src/constants/enums.ts
  */
-
-/** Execution mode for the pipeline */
-export type RunModeValue = 'SYNC' | 'ASYNC' | 'BATCH';
 
 /** Strategy for handling multilingual content */
 export type LanguageStrategyValue = 'SPECIFIC' | 'FALLBACK' | 'MULTI';
@@ -151,7 +132,7 @@ export interface ParallelExecutionConfig {
  * Execution context for a pipeline run
  */
 export interface PipelineContext {
-    /** Default channel code */
+    /** Default Vendure channel token */
     channel?: string;
     /** Default language code for content */
     contentLanguage?: string;
@@ -163,14 +144,10 @@ export interface PipelineContext {
     validationMode?: ValidationModeType;
     /** Field to use as idempotency key */
     idempotencyKeyField?: string;
-    /** Execution mode */
-    runMode?: RunModeValue;
     /** Throughput/rate limiting configuration */
     throughput?: Throughput;
     /** Error handling configuration */
     errorHandling?: ErrorHandlingConfig;
-    /** Checkpointing configuration */
-    checkpointing?: CheckpointingConfig;
     /**
      * Parallel execution configuration for graph-based pipelines
      * When enabled, independent steps run concurrently
@@ -235,17 +212,6 @@ export interface PipelineOptions {
         recordsPerSecond?: number;
         /** Maximum concurrent operations */
         maxConcurrent?: number;
-    };
-    /** Notification configuration */
-    notifications?: {
-        /** Send notification on completion */
-        onComplete?: boolean;
-        /** Send notification on error */
-        onError?: boolean;
-        /** Webhook URL for notifications */
-        webhookUrl?: string;
-        /** Email addresses for notifications */
-        emailTo?: string[];
     };
 }
 
@@ -445,8 +411,6 @@ export interface UnifiedPipelineDefinition {
     triggers?: TriggerConfig[];
     /** Hook configurations */
     hooks?: PipelineHooksConfig;
-    /** Schema code for validation */
-    schemaCode?: string;
 }
 
 /**
@@ -461,6 +425,8 @@ export interface PipelineDefinition {
     description?: string;
     /** Pipeline steps */
     steps: PipelineStepDefinition[];
+    /** Server-resolved exact adapter contracts for this published revision */
+    adapterBindings?: AdapterBinding[];
     /** Pipeline codes this depends on */
     dependsOn?: string[];
     /** Pipeline capabilities declaration */

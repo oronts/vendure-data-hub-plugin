@@ -1,7 +1,10 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { ID, RequestContext, RequestContextService, TransactionalConnection } from '@vendure/core';
 import { Repository } from 'typeorm';
-import { PipelineRun } from '../../entities/pipeline';
+import {
+    clearPipelineRunGateState,
+    PipelineRun,
+} from '../../entities/pipeline';
 import { RunStatus, HookStage } from '../../constants/enums';
 import { JsonObject, PipelineDefinition, PipelineMetrics } from '../../types/index';
 import { DefinitionValidationService } from '../validation/definition-validation.service';
@@ -15,6 +18,7 @@ import { HookService } from '../events/hook.service';
 import { DistributedLockService } from '../runtime/distributed-lock.service';
 import { getErrorMessage, ensureError } from '../../utils/error.utils';
 import { createPipelineRunContext } from './pipeline-run-channel';
+import { getPausedGateMetadata } from './pipeline-run-gate';
 
 /** Context for pipeline execution passed between helper methods */
 interface ExecutionContext {
@@ -178,6 +182,7 @@ export class PipelineRunnerService {
                 run.status = RunStatus.FAILED;
                 run.finishedAt = new Date();
                 run.error = 'Cannot start: another run of this pipeline is already active';
+                clearPipelineRunGateState(run);
                 await runRepo.save(run, { reload: false });
                 return { proceed: false };
             }
@@ -227,6 +232,7 @@ export class PipelineRunnerService {
             run.status = RunStatus.FAILED;
             run.finishedAt = new Date();
             run.error = message;
+            clearPipelineRunGateState(run);
             await lookupRepo.save(run, { reload: false });
             runLogger.error(message, cause, {
                 channelId: run.channelId ?? undefined,
@@ -264,6 +270,21 @@ export class PipelineRunnerService {
         // Accept PENDING (normal start) or RUNNING (gate resume) status
         if (run.status !== RunStatus.PENDING && run.status !== RunStatus.RUNNING) {
             runLogger.debug('Skipping run - not in PENDING or RUNNING status', { currentStatus: run.status });
+            return { valid: false };
+        }
+        if (run.revisionId == null || run.definitionSnapshot == null) {
+            const message = 'Pipeline run is missing its immutable published revision snapshot';
+            run.status = RunStatus.FAILED;
+            run.finishedAt = new Date();
+            run.error = message;
+            clearPipelineRunGateState(run);
+            await runRepo.save(run, { reload: false });
+            runLogger.error(message);
+            this.domainEvents.publishRunFailed(
+                String(run.id),
+                run.pipeline.code,
+                message,
+            );
             return { valid: false };
         }
 
@@ -405,7 +426,9 @@ export class PipelineRunnerService {
         }
 
         pipelineSpan.addEvent('definition.validate.start');
-        this.definitionValidator.validate(definition);
+        this.definitionValidator.validate(definition, {
+            requireAdapterBindings: true,
+        });
         pipelineSpan.addEvent('definition.validate.complete');
 
         pipelineSpan.addEvent('processing.start', {
@@ -433,6 +456,7 @@ export class PipelineRunnerService {
         run.status = RunStatus.COMPLETED;
         run.finishedAt = new Date();
         run.metrics = metrics;
+        clearPipelineRunGateState(run);
         await runRepo.save(run, { reload: false });
 
         this.domainEvents.publishRunCompleted(
@@ -478,9 +502,20 @@ export class PipelineRunnerService {
         const { run, runRepo, runLogger, pipelineSpan } = execCtx;
 
         const pausedAtStep = typeof metrics.pausedAtStep === 'string' ? metrics.pausedAtStep : 'unknown';
+        const gate = run.definitionSnapshot
+            ? getPausedGateMetadata(metrics, run.definitionSnapshot)
+            : null;
+        if (!gate) {
+            throw new Error(
+                `Pipeline reported a pause without an actionable GATE step: ${pausedAtStep}`,
+            );
+        }
 
         run.status = RunStatus.PAUSED;
         run.metrics = metrics;
+        clearPipelineRunGateState(run);
+        run.gateStepKey = gate.stepKey;
+        run.gateTimeoutAt = gate.timeoutAt;
         await runRepo.save(run, { reload: false });
 
         runLogger.info('Pipeline paused at GATE step, awaiting approval', {
@@ -488,6 +523,7 @@ export class PipelineRunnerService {
             totalRecords: metrics.totalRecords ?? 0,
             succeeded: metrics.succeeded ?? 0,
             failed: metrics.failed ?? 0,
+            gateTimeoutAt: run.gateTimeoutAt?.toISOString(),
         });
 
         pipelineSpan.addEvent('pipeline.paused', { stepKey: pausedAtStep });
@@ -533,6 +569,7 @@ export class PipelineRunnerService {
         run.status = RunStatus.PENDING;
         run.finishedAt = null;
         run.error = error.message;
+        clearPipelineRunGateState(run);
         await runRepo.save(run, { reload: false });
 
         runLogger.warn('Pipeline execution attempt failed; queued job will retry', {
@@ -558,6 +595,11 @@ export class PipelineRunnerService {
         run.status = RunStatus.FAILED;
         run.finishedAt = new Date();
         run.error = error.message;
+        run.metrics = {
+            ...(run.metrics ?? {}),
+            durationMs,
+        };
+        clearPipelineRunGateState(run);
         await runRepo.save(run, { reload: false });
 
         this.domainEvents.publishRunFailed(
@@ -665,6 +707,7 @@ export class PipelineRunnerService {
                 runLogger.info('Pipeline cancellation requested', { durationMs: Date.now() - start });
                 current.status = RunStatus.CANCELLED;
                 current.finishedAt = new Date();
+                clearPipelineRunGateState(current);
                 await runRepo.save(current, { reload: false });
                 this.domainEvents.publishRunCancelled(
                     pipelineId?.toString(),

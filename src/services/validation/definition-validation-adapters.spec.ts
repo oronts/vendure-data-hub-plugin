@@ -220,3 +220,78 @@ describe('DefinitionValidationService operator arguments', () => {
         expect(result.issues).toEqual([]);
     });
 });
+
+describe('DefinitionValidationService built-in enrichment', () => {
+    function definition(config: JsonObject): PipelineDefinition {
+        return {
+            version: 1,
+            steps: [
+                {
+                    key: 'extract',
+                    type: StepType.EXTRACT,
+                    config: { adapterCode: 'source' },
+                },
+                {
+                    key: 'enrich',
+                    type: StepType.ENRICH,
+                    config,
+                },
+            ],
+            edges: [{ from: 'extract', to: 'enrich' }],
+        };
+    }
+
+    function registry(): DataHubRegistryService {
+        const registry = new DataHubRegistryService();
+        registry.register({
+            type: AdapterType.EXTRACTOR,
+            code: 'source',
+            name: 'Source',
+            schema: { fields: [] },
+        });
+        return registry;
+    }
+
+    it('rejects unsupported built-in source types', () => {
+        const result = createService(registry()).validateSync(definition({
+            sourceType: 'API',
+        }));
+
+        expect(result.issues).toContainEqual(expect.objectContaining({
+            stepKey: 'enrich',
+            field: 'sourceType',
+            errorCode: 'invalid-enrichment-source-type',
+        }));
+    });
+
+    it('retains the authenticated HTTP connection contract', () => {
+        const result = createService(registry()).validateSync(definition({
+            sourceType: 'HTTP',
+            url: 'https://api.example.com/{{id}}',
+            bearerTokenSecretCode: 'catalog-api-token',
+        }));
+
+        expect(result.issues).toContainEqual(expect.objectContaining({
+            stepKey: 'enrich',
+            field: 'connectionCode',
+            errorCode: 'missing-http-lookup-connection',
+        }));
+    });
+
+    it('does not apply built-in validation to a custom enricher', () => {
+        const adapters = registry();
+        adapters.register({
+            type: AdapterType.ENRICHER,
+            code: 'custom-enricher',
+            name: 'Custom enricher',
+            schema: { fields: [] },
+        });
+
+        const result = createService(adapters).validateSync(definition({
+            adapterCode: 'custom-enricher',
+            sourceType: 'CUSTOM',
+        }));
+
+        expect(result.issues).toEqual([]);
+    });
+});

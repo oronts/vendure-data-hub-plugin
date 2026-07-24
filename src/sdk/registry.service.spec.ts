@@ -12,6 +12,8 @@ function createStreamingExtractor(code: string): ExtractorAdapter<unknown> {
     return {
         type: 'EXTRACTOR',
         code,
+        version: '1.0.0',
+        apiVersion: 1,
         schema: { fields: [] },
         async *extract() {
             yield { data: { id: 'stream-record' } };
@@ -23,14 +25,31 @@ function createBatchExtractor(code: string): BatchExtractorAdapter<unknown> {
     return {
         type: 'EXTRACTOR',
         code,
+        version: '1.0.0',
+        apiVersion: 1,
         schema: { fields: [] },
         async extractAll() {
+            return { records: [{ data: { id: 'batch-record' } }] };
+        },
+        async preview() {
             return { records: [{ data: { id: 'batch-record' } }] };
         },
     };
 }
 
 describe('DataHubRegistryService runtime extractors', () => {
+    it('rejects invalid lifecycle metadata without registering a definition', () => {
+        const registry = new DataHubRegistryService();
+
+        expect(() => registry.register({
+            type: AdapterType.OPERATOR,
+            code: 'old-operator',
+            schema: { fields: [] },
+            deprecated: true,
+        })).toThrow(/requires deprecatedMessage/);
+        expect(registry.find(AdapterType.OPERATOR, 'old-operator')).toBeUndefined();
+    });
+
     it('registers and narrows a streaming extractor', () => {
         const registry = new DataHubRegistryService();
         const extractor = createStreamingExtractor('custom-stream');
@@ -54,6 +73,8 @@ describe('DataHubRegistryService runtime extractors', () => {
         const invalid = {
             type: AdapterType.EXTRACTOR,
             code: 'missing-runtime',
+            version: '1.0.0',
+            apiVersion: 1,
             schema: { fields: [] },
         } as unknown as DataHubAdapter;
 
@@ -62,6 +83,25 @@ describe('DataHubRegistryService runtime extractors', () => {
         );
         expect(registry.getRuntime(AdapterType.EXTRACTOR, 'missing-runtime'))
             .toBeUndefined();
+    });
+
+    it('rejects a batch extractor without bounded preview', () => {
+        const registry = new DataHubRegistryService();
+        const invalid = {
+            type: AdapterType.EXTRACTOR,
+            code: 'unbounded-batch',
+            version: '1.0.0',
+            apiVersion: 1,
+            schema: { fields: [] },
+            async extractAll() {
+                return { records: [] };
+            },
+        } as unknown as DataHubAdapter;
+
+        expect(() => registry.registerRuntime(invalid)).toThrow(
+            /must implement preview/,
+        );
+        expect(registry.getExtractorRuntime('unbounded-batch')).toBeUndefined();
     });
 
     it('does not partially register runtime state when definition capacity is exhausted', () => {
@@ -94,6 +134,8 @@ describe('DataHubRegistryService runtime extractors', () => {
         const invalid = {
             type,
             code: 'missing-runtime',
+            version: '1.0.0',
+            apiVersion: 1,
             schema: { fields: [] },
         } as unknown as DataHubAdapter;
 
@@ -129,6 +171,50 @@ describe('DataHubRegistryService runtime extractors', () => {
         )).toThrow('Custom runtime cannot override built-in adapter');
         expect(registry.getRuntime(AdapterType.EXTRACTOR, 'reserved-extractor'))
             .toBeUndefined();
+    });
+
+    it('rejects catalog and runtime metadata drift atomically', () => {
+        const registry = new DataHubRegistryService();
+        registry.register({
+            type: AdapterType.EXTRACTOR,
+            code: 'versioned-extractor',
+            version: '1.0.0',
+            apiVersion: 1,
+            schema: { fields: [] },
+        }, { builtIn: false });
+        const runtime = {
+            ...createStreamingExtractor('versioned-extractor'),
+            version: '2.0.0',
+        };
+
+        expect(() => registry.registerRuntime(runtime, { builtIn: false }))
+            .toThrow(/metadata does not match.*version/);
+        expect(registry.getRuntime(AdapterType.EXTRACTOR, runtime.code))
+            .toBeUndefined();
+        expect(registry.find(AdapterType.EXTRACTOR, runtime.code)?.version)
+            .toBe('1.0.0');
+    });
+
+    it('attaches a runtime when its catalog metadata matches exactly', () => {
+        const registry = new DataHubRegistryService();
+        const runtime = {
+            ...createStreamingExtractor('matching-extractor'),
+            name: 'Matching extractor',
+            version: '1.0.0',
+        };
+        registry.register({
+            type: runtime.type,
+            code: runtime.code,
+            name: runtime.name,
+            version: runtime.version,
+            apiVersion: runtime.apiVersion,
+            schema: runtime.schema,
+        }, { builtIn: false });
+
+        registry.registerRuntime(runtime, { builtIn: false });
+
+        expect(registry.getRuntime(AdapterType.EXTRACTOR, runtime.code))
+            .toBe(runtime);
     });
 });
 

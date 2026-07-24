@@ -34,15 +34,16 @@ import {
     validateGraphQLExtractor,
     validateHttpLookupConnectionContract,
     addAdapterDeprecationWarning,
-    isUsingBuiltInEnrichment,
     isGraphQLExtractor,
 } from './adapter-validation';
+import { validateEnrichmentConfig } from '../../validation/enrichment-config.validator';
 import { validateTransformOperators, TransformStepConfig } from './step-validation';
 import { validateCapabilities, validateContext } from './context-validation';
 import { validateHooks } from './hook-security';
 import { parseInlineExportDestination } from '../destinations/inline-export-destination';
 import { ResourceReferenceService } from '../config/resource-reference.service';
 import { HookScriptRegistryService } from '../events/hook-script-registry.service';
+import { validateAdapterBindings } from '../../sdk/adapter-bindings';
 import { SchemaRegistryService } from '../schema/schema-registry.service';
 import { schemaReferenceKey } from '../schema/schema-reference';
 
@@ -59,6 +60,7 @@ export enum ValidationLevel {
 interface ValidationOptions {
     level?: ValidationLevel;
     skipDependencyCheck?: boolean;
+    requireAdapterBindings?: boolean;
 }
 
 interface DefinitionValidationResult {
@@ -119,6 +121,18 @@ export class DefinitionValidationService {
         this.validateDependsOn(definition, issues);
         validateTrigger(definition, issues, warnings);
         this.validateAdapters(definition, issues, warnings);
+        if (options.requireAdapterBindings === true) {
+            issues.push(...validateAdapterBindings(
+                this.registry,
+                definition,
+                true,
+            ).map(issue => ({
+                message: issue.message,
+                stepKey: issue.stepKey,
+                field: issue.location,
+                errorCode: issue.errorCode,
+            })));
+        }
         validateCapabilities(definition, issues);
         validateContext(definition, issues);
         validateHooks(definition, issues);
@@ -155,8 +169,8 @@ export class DefinitionValidationService {
     /**
      * Validates and throws if invalid.
      */
-    validate(definition: PipelineDefinition): void {
-        const result = this.validateSync(definition);
+    validate(definition: PipelineDefinition, options: ValidationOptions = {}): void {
+        const result = this.validateSync(definition, options);
         if (!result.isValid) {
             throw new PipelineDefinitionError(result.issues);
         }
@@ -369,12 +383,12 @@ export class DefinitionValidationService {
                     });
                     continue;
                 } else if (
-                    target.status !== PipelineStatus.PUBLISHED
+                    target.status === PipelineStatus.ARCHIVED
                     || !target.enabled
                     || target.currentRevisionId == null
                 ) {
                     result.issues.push({
-                        message: `TRIGGER_PIPELINE hook target "${code}" is not an enabled published pipeline`,
+                        message: `TRIGGER_PIPELINE hook target "${code}" has no runnable published revision`,
                         errorCode: 'hook-pipeline-not-runnable',
                     });
                     continue;
@@ -462,9 +476,14 @@ export class DefinitionValidationService {
                 continue;
             }
 
-            // ENRICH steps can use built-in config without an adapter
-            if (isUsingBuiltInEnrichment(type, cfg)) {
-                if (cfg.sourceType === 'HTTP') {
+            if (type === StepTypeEnum.ENRICH && !cfg.adapterCode) {
+                const result = validateEnrichmentConfig(cfg);
+                issues.push(...result.issues.map(issue => ({
+                    ...issue,
+                    stepKey: step.key,
+                    message: `Step "${step.key}": ${issue.message}`,
+                })));
+                if (result.sourceType === 'HTTP') {
                     validateHttpLookupConnectionContract(step.key, cfg, issues);
                 }
                 continue;

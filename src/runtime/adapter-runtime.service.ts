@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { RequestContext, RequestContextService, ID } from '@vendure/core';
-import { PipelineDefinition, PipelineMetrics, JsonObject } from '../types/index';
+import {
+    DryRunRecordError,
+    PipelineDefinition,
+    PipelineMetrics,
+    JsonObject,
+} from '../types/index';
 import { CheckpointService } from '../services/data/checkpoint.service';
 import { HookService } from '../services/events/hook.service';
 import { DomainEventsService } from '../services/events/domain-events.service';
@@ -28,6 +33,7 @@ import {
     replayFromStepLinear,
     replayFromStepGraph,
     executeLoadWithThroughput,
+    resolveEffectiveStepContext,
 } from './orchestration';
 import {
     CheckpointManager,
@@ -87,7 +93,6 @@ export class AdapterRuntimeService {
             cpDirty: checkpointManager.isCheckpointDirty(),
             markCheckpointDirty: () => checkpointManager.markCheckpointDirty(),
             errorHandling: definition?.context?.errorHandling,
-            checkpointing: definition?.context?.checkpointing,
             onCancelRequested,
         };
     }
@@ -215,13 +220,14 @@ export class AdapterRuntimeService {
         onCancelRequested?: () => Promise<boolean>,
         onRecordError?: OnRecordErrorCallback,
     ): Promise<{ processed: number; succeeded: number; failed: number; skipped: number }> {
-        const { checkpointManager } = this.createExecutionScope();
+        const { checkpointManager, executionLifecycle } = this.createExecutionScope();
         const executorCtx = this.createExecutorContext(checkpointManager, definition);
+        const pipelineCtx = await executionLifecycle.resolvePipelineContext(ctx, definition);
 
         // Use graph replay if edges are defined
         if (Array.isArray(definition.edges) && definition.edges.length > 0) {
             return replayFromStepGraph({
-                ctx,
+                ctx: pipelineCtx,
                 definition,
                 startStepKey,
                 seed,
@@ -237,7 +243,7 @@ export class AdapterRuntimeService {
         }
 
         return replayFromStepLinear({
-            ctx,
+            ctx: pipelineCtx,
             definition,
             startStepKey,
             seed,
@@ -263,7 +269,7 @@ export class AdapterRuntimeService {
     ): Promise<{
         metrics: PipelineMetrics;
         sampleRecords: Array<{ step: string; before: RecordObject; after: RecordObject }>;
-        errors?: string[];
+        errors?: DryRunRecordError[];
     }> {
         return this.dryRunSimulator.executeDryRun(ctx, definition, recordLimit);
     }
@@ -311,6 +317,7 @@ export class AdapterRuntimeService {
             batch: RecordObject[],
             definition: PipelineDefinition,
             onRecordError?: OnRecordErrorCallback,
+            pipelineContext?: import('../types/index').PipelineContext,
         ) => executeLoadWithThroughput({
             ctx,
             step,
@@ -318,6 +325,11 @@ export class AdapterRuntimeService {
             definition,
             loadExecutor: this.loadExecutor,
             onRecordError,
+            pipelineContext: pipelineContext ?? resolveEffectiveStepContext(
+                ctx,
+                definition.context,
+                step.context,
+            ),
         });
     }
 }
