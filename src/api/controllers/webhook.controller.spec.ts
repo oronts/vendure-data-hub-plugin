@@ -3,14 +3,20 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Request } from 'express';
 import { HttpStatus } from '@nestjs/common';
 import { PipelineStatus } from '../../constants';
+import { Pipeline, PipelineRevision } from '../../entities/pipeline';
+import { RateLimitBackendUnavailableError } from '../../services/rate-limit';
 import { DataHubWebhookController } from './webhook.controller';
 
-function createFixture(triggerConfig: Record<string, unknown>) {
+function createFixture(
+    triggerConfig: Record<string, unknown>,
+    status = PipelineStatus.PUBLISHED,
+) {
     const pipeline = {
         id: 1,
         code: 'orders',
         enabled: true,
-        status: PipelineStatus.PUBLISHED,
+        status,
+        currentRevisionId: 7,
         definition: {
             version: 1,
             steps: [{
@@ -20,11 +26,23 @@ function createFixture(triggerConfig: Record<string, unknown>) {
             }],
         },
     };
+    const revision = {
+        id: 7,
+        pipelineId: 1,
+        type: 'PUBLISHED',
+        definition: pipeline.definition,
+    };
     const requestContextService = {
         create: vi.fn(async () => ({ channelId: 1 })),
     };
     const connection = {
-        getRepository: vi.fn(() => ({ findOne: vi.fn(async () => pipeline) })),
+        getRepository: vi.fn((_ctx, entity) => (
+            entity === Pipeline
+                ? { findOne: vi.fn(async () => pipeline) }
+                : entity === PipelineRevision
+                    ? { find: vi.fn(async () => [revision]) }
+                    : {}
+        )),
     };
     const pipelineService = {
         startRunWithSeed: vi.fn(async () => ({ id: 8 })),
@@ -36,7 +54,7 @@ function createFixture(triggerConfig: Record<string, unknown>) {
     const secretService = { resolve: vi.fn(async () => 'signing-secret') };
     const domainEvents = { publishTriggerFired: vi.fn() };
     const rateLimitService = {
-        isRateLimited: vi.fn(() => ({ limited: false, resetAt: 0, retryAfter: 0 })),
+        isRateLimited: vi.fn(async () => ({ limited: false, resetAt: 0, retryAfter: 0 })),
     };
     const logger = {
         debug: vi.fn(),
@@ -121,7 +139,7 @@ describe('DataHubWebhookController security boundaries', () => {
 
     it('applies the source-IP limiter before context, database, and secret work', async () => {
         const fixture = createFixture({ authentication: 'HMAC' });
-        fixture.rateLimitService.isRateLimited.mockReturnValueOnce({
+        fixture.rateLimitService.isRateLimited.mockResolvedValueOnce({
             limited: true,
             resetAt: Date.now() + 60_000,
             retryAfter: 60_000,
@@ -135,6 +153,47 @@ describe('DataHubWebhookController security boundaries', () => {
         expect(fixture.requestContextService.create).not.toHaveBeenCalled();
         expect(fixture.connection.getRepository).not.toHaveBeenCalled();
         expect(fixture.secretService.resolve).not.toHaveBeenCalled();
+    });
+    it('rejects webhook admission when configured distributed rate limiting is unavailable', async () => {
+        const fixture = createFixture({ authentication: 'NONE' });
+        fixture.rateLimitService.isRateLimited.mockRejectedValueOnce(
+            new RateLimitBackendUnavailableError(),
+        );
+
+        await expect(fixture.controller.handle(
+            'orders',
+            { orderId: '42' },
+            request({}),
+        )).rejects.toMatchObject({ status: HttpStatus.SERVICE_UNAVAILABLE });
+        expect(fixture.requestContextService.create).not.toHaveBeenCalled();
+        expect(fixture.connection.getRepository).not.toHaveBeenCalled();
+        expect(fixture.pipelineService.startRunWithSeed).not.toHaveBeenCalled();
+    });
+
+
+    it('continues authenticating and running the active revision while a draft is edited', async () => {
+        const fixture = createFixture({
+            authentication: 'API_KEY',
+            apiKeySecretCode: 'orders-api-key',
+        }, PipelineStatus.DRAFT);
+
+        await expect(fixture.controller.handle(
+            'orders',
+            { orderId: '42' },
+            request({}),
+        )).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED });
+
+        await expect(fixture.controller.handle(
+            'orders',
+            { orderId: '42' },
+            request({ 'x-api-key': 'signing-secret' }),
+        )).resolves.toMatchObject({ accepted: true, duplicate: false });
+        expect(fixture.pipelineService.startRunWithSeed).toHaveBeenCalledWith(
+            expect.anything(),
+            1,
+            expect.anything(),
+            expect.objectContaining({ expectedRevisionId: 7 }),
+        );
     });
 
     it('accepts a signed, unexpired JWT with matching issuer and audience', async () => {

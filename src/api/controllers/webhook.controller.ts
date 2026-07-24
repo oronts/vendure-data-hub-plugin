@@ -3,18 +3,23 @@ import { RequestContext, RequestContextService, TransactionalConnection } from '
 import type { Request } from 'express';
 import * as crypto from 'crypto';
 import type { PipelineTrigger, PipelineDefinition, JsonValue } from '../../types/index';
-import { LOGGER_CONTEXTS, PipelineStatus, WEBHOOK, DEFAULT_WEBHOOK_CONFIG, AUTH_SCHEMES } from '../../constants';
+import { LOGGER_CONTEXTS, WEBHOOK, DEFAULT_WEBHOOK_CONFIG, AUTH_SCHEMES } from '../../constants';
 import { TriggerType as TriggerTypeEnum } from '../../constants/enums';
 import { ConnectionAuthType } from '../../../shared/types/adapter-config.types';
-import { Pipeline } from '../../entities/pipeline';
 import { PipelineService } from '../../services';
 import { SecretService } from '../../services/config/secret.service';
 import { DomainEventsService } from '../../services/events/domain-events.service';
 import { DataHubLoggerFactory, DataHubLogger } from '../../services/logger';
-import { RateLimitService } from '../../services/rate-limit';
+import {
+    RateLimitBackendUnavailableError,
+    RateLimitKey,
+    RateLimitService,
+} from '../../services/rate-limit';
 import { isValidPipelineCode, findEnabledTriggersByType } from '../../utils';
 import { PipelineRunIdempotencyConflictError } from '../../services/pipeline/pipeline-run-idempotency';
 import { getNestedValue } from '../../../shared/utils/object-path';
+import { loadRunnablePipelineDefinitionByCode } from '../../services/pipeline/active-pipeline-definitions';
+import { PipelineRevisionMismatchError } from '../../services/pipeline/pipeline-policy';
 
 const INCOMING_WEBHOOK_AUTH_TYPES = new Set([
     ConnectionAuthType.NONE,
@@ -72,14 +77,11 @@ export class DataHubWebhookController {
             (req as Request & { connection?: { remoteAddress?: string } })
                 .connection?.remoteAddress ||
             'unknown';
-        const preAuthRateLimit = this.rateLimitService.isRateLimited(
+        await this.enforceRateLimit(
             { ip, identifier: 'webhook-pre-auth' },
             WEBHOOK.PRE_AUTH_RATE_LIMIT_REQUESTS,
             WEBHOOK.PRE_AUTH_RATE_LIMIT_WINDOW_MS,
         );
-        if (preAuthRateLimit.limited) {
-            throw new HttpException('Too many webhook requests', HttpStatus.TOO_MANY_REQUESTS);
-        }
 
         const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
         const bodySize = rawBody ? rawBody.length : Buffer.byteLength(JSON.stringify(body ?? {}));
@@ -88,15 +90,14 @@ export class DataHubWebhookController {
         }
 
         const ctx = await this.requestContextService.create({ apiType: 'admin', req });
-        const repo = this.connection.getRepository(ctx, Pipeline);
-        const pipeline = await repo.findOne({ where: { code } });
+        const pipeline = await loadRunnablePipelineDefinitionByCode(
+            this.connection,
+            ctx,
+            code,
+        );
 
-        if (!pipeline || !pipeline.enabled) {
+        if (!pipeline) {
             throw new HttpException('Pipeline not found or disabled', HttpStatus.NOT_FOUND);
-        }
-
-        if (pipeline.status !== PipelineStatus.PUBLISHED) {
-            throw new HttpException('Pipeline must be published to receive webhook triggers', HttpStatus.BAD_REQUEST);
         }
 
         // Find ALL enabled webhook triggers - supports multiple webhooks per pipeline
@@ -169,14 +170,11 @@ export class DataHubWebhookController {
 
         const rateLimit = resolveIncomingWebhookRateLimit(cfg);
         if (rateLimit.maxRequests > 0) {
-            const rateLimitResult = this.rateLimitService.isRateLimited(
+            await this.enforceRateLimit(
                 { ip, pipelineCode: code },
                 rateLimit.maxRequests,
                 rateLimit.windowMs,
             );
-            if (rateLimitResult.limited) {
-                throw new HttpException('Too many webhook requests', HttpStatus.TOO_MANY_REQUESTS);
-            }
         }
 
         const idempotency = resolveIncomingWebhookIdempotency(req.headers, cfg);
@@ -186,6 +184,7 @@ export class DataHubWebhookController {
             triggerKey: authenticatedTrigger.key,
             skipPermissionCheck: true,
             triggeredBy: `webhook:${authenticatedTrigger.key}`,
+            expectedRevisionId: pipeline.revisionId,
         };
         let runResult: { run: { id: unknown }; duplicate: boolean };
         try {
@@ -216,6 +215,12 @@ export class DataHubWebhookController {
             if (error instanceof PipelineRunIdempotencyConflictError) {
                 throw new HttpException(error.message, HttpStatus.CONFLICT);
             }
+            if (error instanceof PipelineRevisionMismatchError) {
+                throw new HttpException(
+                    'Pipeline publication changed during webhook processing; retry the request',
+                    HttpStatus.CONFLICT,
+                );
+            }
             throw error;
         }
 
@@ -241,6 +246,34 @@ export class DataHubWebhookController {
             duplicate: runResult.duplicate,
             runId: String(runResult.run.id),
         };
+    }
+
+    private async enforceRateLimit(
+        key: RateLimitKey,
+        maxRequests: number,
+        windowMs: number,
+    ): Promise<void> {
+        try {
+            const result = await this.rateLimitService.isRateLimited(
+                key,
+                maxRequests,
+                windowMs,
+            );
+            if (result.limited) {
+                throw new HttpException('Too many webhook requests', HttpStatus.TOO_MANY_REQUESTS);
+            }
+        } catch (error) {
+            if (!(error instanceof RateLimitBackendUnavailableError)) {
+                throw error;
+            }
+            this.logger.error(
+                'Webhook admission rejected because the distributed rate limiter is unavailable',
+            );
+            throw new HttpException(
+                'Webhook admission is temporarily unavailable',
+                HttpStatus.SERVICE_UNAVAILABLE,
+            );
+        }
     }
 
     private async verifyApiKey(
