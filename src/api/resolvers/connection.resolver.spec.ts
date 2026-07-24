@@ -13,6 +13,7 @@ function createResolver(deleteConnection: ReturnType<typeof vi.fn>) {
         {
             createLogger: vi.fn(() => logger),
         } as unknown as DataHubLoggerFactory,
+        {} as never,
     );
     return { resolver, logger };
 }

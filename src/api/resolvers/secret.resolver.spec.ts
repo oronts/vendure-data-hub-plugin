@@ -6,7 +6,10 @@ import {
 } from '@vendure/core';
 import { SecretProvider } from '../../constants/enums';
 import { DataHubSecret } from '../../entities/config';
-import { SecretService } from '../../services/config/secret.service';
+import {
+    SecretService,
+    type SecretCodeReference,
+} from '../../services/config/secret.service';
 import { ResourceInUseError } from '../../services/config/resource-reference.service';
 import { DataHubLoggerFactory } from '../../services/logger';
 import { DataHubSecretAdminResolver } from './secret.resolver';
@@ -21,20 +24,42 @@ function createFixture() {
     secret.value = 'encrypted-old-value';
     secret.metadata = { owner: 'catalog' };
 
+    const queryBuilder = {
+        innerJoin: vi.fn(),
+        select: vi.fn(),
+        orderBy: vi.fn(),
+        andWhere: vi.fn(),
+        skip: vi.fn(),
+        take: vi.fn(),
+        getCount: vi.fn().mockResolvedValue(0),
+        getMany: vi.fn().mockResolvedValue([]),
+    };
+    queryBuilder.innerJoin.mockReturnValue(queryBuilder);
+    queryBuilder.select.mockReturnValue(queryBuilder);
+    queryBuilder.orderBy.mockReturnValue(queryBuilder);
+    queryBuilder.andWhere.mockReturnValue(queryBuilder);
+    queryBuilder.skip.mockReturnValue(queryBuilder);
+    queryBuilder.take.mockReturnValue(queryBuilder);
     const repository = {
         findOne: vi.fn(async () => secret),
         save: vi.fn(async (entity: DataHubSecret) => entity),
         remove: vi.fn(async (entity: DataHubSecret) => entity),
+        createQueryBuilder: vi.fn(() => queryBuilder),
     };
     const connection = {
         getRepository: vi.fn(() => repository),
         getEntityOrThrow: vi.fn(async () => secret),
     };
+    const listConfigReferences = vi.fn(
+        (_ctx: RequestContext, _searchTerm?: string): SecretCodeReference[] => [],
+    );
     const secretService = {
         encryptValue: vi.fn(async (value: string) => `encrypted:${value}`),
         isConfigSecret: vi.fn(() => false),
         getSecurityMode: vi.fn(() => 'ENCRYPTED' as const),
         isCodeFirstInlineAllowed: vi.fn(() => false),
+        listConfigReferences,
+        getById: vi.fn(async () => repository.findOne()),
     };
     const logger = {
         error: vi.fn(),
@@ -44,6 +69,15 @@ function createFixture() {
     };
     const resourceReferences = {
         assertSecretMutable: vi.fn(),
+        assertSecretUnassignable: vi.fn(),
+    };
+    const managedResourceChannels = {
+        assignToCurrentChannel: vi.fn(async (_ctx, value) => value),
+        prepareDelete: vi.fn(async () => ({
+            entity: secret,
+            physicallyDelete: true,
+        })),
+        removeFromActiveChannel: vi.fn(),
     };
     const resolver = new DataHubSecretAdminResolver(
         connection as unknown as TransactionalConnection,
@@ -51,6 +85,7 @@ function createFixture() {
         secretService as unknown as SecretService,
         resourceReferences as never,
         loggerFactory as unknown as DataHubLoggerFactory,
+        managedResourceChannels as never,
     );
 
     return {
@@ -60,8 +95,68 @@ function createFixture() {
         secretService,
         resourceReferences,
         logger,
+        queryBuilder,
+        managedResourceChannels,
     };
 }
+
+describe('DataHubSecretAdminResolver references', () => {
+    const ctx = {} as RequestContext;
+
+    it('paginates code-first entries before distinct database entries', async () => {
+        const fixture = createFixture();
+        const configReferences = [
+            { code: 'pimcore-api-key', provider: 'ENV', source: 'config' as const },
+            { code: 'webhook-token', provider: 'INLINE', source: 'config' as const },
+        ];
+        fixture.secretService.listConfigReferences.mockImplementation(
+            (_ctx, search = '') => configReferences.filter(reference =>
+                reference.code.includes(search.toLowerCase()),
+            ),
+        );
+        fixture.queryBuilder.getCount.mockResolvedValue(2);
+        fixture.queryBuilder.getMany.mockResolvedValue([
+            Object.assign(new DataHubSecret(), {
+                code: 'pimcore-db-token',
+                provider: SecretProvider.ENV,
+            }),
+        ]);
+
+        const result = await fixture.resolver.dataHubSecretReferences(ctx, {
+            search: 'PIMCORE',
+            skip: 0,
+            take: 2,
+        });
+
+        expect(result).toEqual({
+            items: [
+                { code: 'pimcore-api-key', provider: 'ENV', source: 'config' },
+                { code: 'pimcore-db-token', provider: 'ENV', source: 'database' },
+            ],
+            totalItems: 3,
+        });
+        expect(fixture.queryBuilder.andWhere).toHaveBeenCalledWith(
+            'LOWER(secret.code) LIKE :secretSearch',
+            { secretSearch: '%pimcore%' },
+        );
+        expect(fixture.queryBuilder.andWhere).toHaveBeenCalledWith(
+            'secret.code NOT IN (:...configSecretCodes)',
+            { configSecretCodes: ['pimcore-api-key', 'webhook-token'] },
+        );
+        expect(fixture.queryBuilder.skip).toHaveBeenCalledWith(0);
+        expect(fixture.queryBuilder.take).toHaveBeenCalledWith(1);
+    });
+
+    it('rejects unbounded reference requests', async () => {
+        const fixture = createFixture();
+
+        await expect(fixture.resolver.dataHubSecretReferences(ctx, {
+            skip: 0,
+            take: 101,
+        })).rejects.toThrow('between 1 and 100');
+        expect(fixture.repository.createQueryBuilder).not.toHaveBeenCalled();
+    });
+});
 
 describe('DataHubSecretAdminResolver updates', () => {
     const ctx = {} as RequestContext;

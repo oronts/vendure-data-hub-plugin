@@ -1,6 +1,7 @@
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Mutation, Parent, Query, ResolveField, Resolver } from '@nestjs/graphql';
 import {
     Allow,
+    Channel,
     Ctx,
     ID,
     ListQueryBuilder,
@@ -19,7 +20,11 @@ import type { JsonObject } from '../../types/index';
 import { DataHubSecret } from '../../entities/config';
 import { DataHubSecretPermission } from '../../permissions';
 import { SecretProvider } from '../../constants/enums';
-import { RESOLVER_ERROR_MESSAGES, LOGGER_CONTEXTS } from '../../constants/index';
+import {
+    RESOLVER_ERROR_MESSAGES,
+    LOGGER_CONTEXTS,
+    SECRET_REFERENCE_PAGING,
+} from '../../constants/index';
 import { getErrorMessage } from '../../utils/error.utils';
 import { isEncrypted } from '../../utils/encryption.utils';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
@@ -28,6 +33,7 @@ import {
     ResourceInUseError,
     ResourceReferenceService,
 } from '../../services/config/resource-reference.service';
+import { ManagedResourceChannelService } from '../../services/config/managed-resource-channel.service';
 
 const SUPPORTED_SECRET_PROVIDERS = [
     SecretProvider.INLINE,
@@ -61,6 +67,18 @@ interface UpdateSecretInput {
     value?: string | null;
     clearValue?: boolean | null;
     metadata?: JsonObject | null;
+}
+
+interface SecretReferenceArgs {
+    search?: string | null;
+    skip?: number | null;
+    take?: number | null;
+}
+
+interface SecretReference {
+    code: string;
+    provider: string;
+    source: 'config' | 'database';
 }
 
 function normalizeSecretProvider(
@@ -108,7 +126,7 @@ function assertValidProviderValue(
     }
 }
 
-@Resolver()
+@Resolver('DataHubSecret')
 export class DataHubSecretAdminResolver {
     private readonly logger: DataHubLogger;
 
@@ -118,6 +136,7 @@ export class DataHubSecretAdminResolver {
         private secretService: SecretService,
         private resourceReferences: ResourceReferenceService,
         loggerFactory: DataHubLoggerFactory,
+        private managedResourceChannels: ManagedResourceChannelService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.SECRET_RESOLVER);
     }
@@ -131,7 +150,7 @@ export class DataHubSecretAdminResolver {
         const qb = this.listQueryBuilder.build(
             DataHubSecret,
             args.options ?? undefined,
-            { ctx },
+            { ctx, channelId: ctx.channelId },
         );
         const [items, totalItems] = await qb.getManyAndCount();
         return {
@@ -146,9 +165,17 @@ export class DataHubSecretAdminResolver {
         @Ctx() ctx: RequestContext,
         @Args() args: { id: ID },
     ): Promise<MaskedDataHubSecret | null> {
-        const secret = await this.connection.getRepository(ctx, DataHubSecret)
-            .findOne({ where: { id: args.id } });
+        const secret = await this.secretService.getById(ctx, String(args.id));
         return secret ? this.maskSecretValue(secret) : null;
+    }
+
+    @ResolveField()
+    @Allow(DataHubSecretPermission.Read)
+    channels(
+        @Ctx() ctx: RequestContext,
+        @Parent() secret: MaskedDataHubSecret,
+    ): Promise<Channel[]> {
+        return this.channelManager.getAssignedChannels(ctx, DataHubSecret, secret.id);
     }
     @Query()
     @Allow(DataHubSecretPermission.Read)
@@ -158,6 +185,82 @@ export class DataHubSecretAdminResolver {
             inlineStorageAvailable: this.secretService.getSecurityMode() !== 'STRICT_DISABLED',
             codeFirstInlineAllowed: this.secretService.isCodeFirstInlineAllowed(),
         };
+    }
+
+    @Query()
+    @Allow(DataHubSecretPermission.Read)
+    async dataHubSecretReferences(
+        @Ctx() ctx: RequestContext,
+        @Args() args: SecretReferenceArgs,
+    ): Promise<PaginatedList<SecretReference>> {
+        const search = args.search?.trim() ?? '';
+        const skip = args.skip ?? 0;
+        const take = args.take ?? SECRET_REFERENCE_PAGING.DEFAULT_TAKE;
+        this.assertValidReferencePage(search, skip, take);
+
+        const allConfigReferences = this.secretService.listConfigReferences(ctx);
+        const configReferences = search
+            ? this.secretService.listConfigReferences(ctx, search)
+            : allConfigReferences;
+        const configPage = configReferences.slice(skip, skip + take);
+        const databaseSkip = Math.max(0, skip - configReferences.length);
+        const databaseTake = take - configPage.length;
+        const repository = this.connection.getRepository(ctx, DataHubSecret);
+        const query = repository
+            .createQueryBuilder('secret')
+            .innerJoin('secret.channels', 'channel', 'channel.id = :channelId', {
+                channelId: ctx.channelId,
+            })
+            .select(['secret.id', 'secret.code', 'secret.provider'])
+            .orderBy('secret.code', 'ASC');
+
+        if (search) {
+            query.andWhere('LOWER(secret.code) LIKE :secretSearch', {
+                secretSearch: `%${search.toLowerCase()}%`,
+            });
+        }
+        if (allConfigReferences.length > 0) {
+            query.andWhere('secret.code NOT IN (:...configSecretCodes)', {
+                configSecretCodes: allConfigReferences.map(reference => reference.code),
+            });
+        }
+
+        const databaseTotal = await query.getCount();
+        const databaseItems = databaseTake > 0
+            ? await query.skip(databaseSkip).take(databaseTake).getMany()
+            : [];
+
+        return {
+            items: [
+                ...configPage,
+                ...databaseItems.map(secret => ({
+                    code: secret.code,
+                    provider: secret.provider,
+                    source: 'database' as const,
+                })),
+            ],
+            totalItems: configReferences.length + databaseTotal,
+        };
+    }
+
+    private assertValidReferencePage(search: string, skip: number, take: number): void {
+        if (search.length > SECRET_REFERENCE_PAGING.MAX_SEARCH_LENGTH) {
+            throw new Error(
+                `Secret reference search cannot exceed ${SECRET_REFERENCE_PAGING.MAX_SEARCH_LENGTH} characters`,
+            );
+        }
+        if (!Number.isInteger(skip) || skip < 0) {
+            throw new Error('Secret reference skip must be a non-negative integer');
+        }
+        if (
+            !Number.isInteger(take)
+            || take < 1
+            || take > SECRET_REFERENCE_PAGING.MAX_TAKE
+        ) {
+            throw new Error(
+                `Secret reference take must be between 1 and ${SECRET_REFERENCE_PAGING.MAX_TAKE}`,
+            );
+        }
     }
 
 
@@ -191,6 +294,7 @@ export class DataHubSecretAdminResolver {
         entity.provider = provider;
         entity.value = storedValue;
         entity.metadata = args.input.metadata ?? null;
+        await this.managedResourceChannels.assignToCurrentChannel(ctx, entity);
 
         const saved = await this.connection.getRepository(ctx, DataHubSecret)
             .save(entity);
@@ -213,6 +317,7 @@ export class DataHubSecretAdminResolver {
             ctx,
             DataHubSecret,
             args.input.id,
+            { channelId: ctx.channelId },
         );
         const nextCode = args.input.code ?? entity.code;
         assertValidSecretCode(nextCode);
@@ -281,16 +386,33 @@ export class DataHubSecretAdminResolver {
         @Args() args: { id: ID },
     ): Promise<DeletionResponse> {
         const repo = this.connection.getRepository(ctx, DataHubSecret);
-        const entity = await repo.findOne({ where: { id: args.id } });
-        if (!entity) {
+        const visibleSecret = await this.secretService.getById(ctx, String(args.id));
+        if (!visibleSecret) {
             return {
                 result: DeletionResult.NOT_DELETED,
                 message: RESOLVER_ERROR_MESSAGES.SECRET_NOT_FOUND,
             };
         }
         try {
-            await this.resourceReferences.assertSecretMutable(ctx, entity.code);
-            await repo.remove(entity);
+            const plan = await this.managedResourceChannels.prepareDelete(
+                ctx,
+                DataHubSecret,
+                args.id,
+            );
+            if (plan.physicallyDelete) {
+                await this.resourceReferences.assertSecretMutable(ctx, plan.entity.code);
+                await repo.remove(plan.entity);
+            } else {
+                await this.resourceReferences.assertSecretUnassignable(
+                    ctx,
+                    plan.entity.code,
+                );
+                await this.managedResourceChannels.removeFromActiveChannel(
+                    ctx,
+                    DataHubSecret,
+                    args.id,
+                );
+            }
             return { result: DeletionResult.DELETED };
         } catch (error) {
             if (error instanceof ResourceInUseError) {
@@ -307,6 +429,40 @@ export class DataHubSecretAdminResolver {
                 message: RESOLVER_ERROR_MESSAGES.SECRET_DELETE_FAILED,
             };
         }
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(DataHubSecretPermission.Update)
+    assignDataHubSecretsToChannel(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { input: { secretIds: ID[]; channelId: ID } },
+    ): Promise<DataHubSecret[]> {
+        return this.channelManager.assignToChannel(
+            ctx,
+            DataHubSecret,
+            { ids: args.input.secretIds, channelId: args.input.channelId },
+            [DataHubSecretPermission.Update],
+        );
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(DataHubSecretPermission.Update)
+    removeDataHubSecretsFromChannel(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { input: { secretIds: ID[]; channelId: ID } },
+    ): Promise<DataHubSecret[]> {
+        return this.channelManager.removeFromChannel(
+            ctx,
+            DataHubSecret,
+            { ids: args.input.secretIds, channelId: args.input.channelId },
+            [DataHubSecretPermission.Update],
+        );
+    }
+
+    private get channelManager(): ManagedResourceChannelService {
+        return this.managedResourceChannels;
     }
 
     private maskSecretValue(secret: DataHubSecret): MaskedDataHubSecret {

@@ -28,6 +28,7 @@ export const schemaRegistrySchema = `
         definition: JSON!
         metadata: JSON
         usedBy: [DataHubSchemaUsage!]!
+        channels: [Channel!]!
     }
 
     type DataHubSchemaList implements PaginatedList {
@@ -47,6 +48,11 @@ export const schemaRegistrySchema = `
         id: ID!
         metadata: JSON
     }
+
+    input AssignDataHubSchemasToChannelInput {
+        schemaIds: [ID!]!
+        channelId: ID!
+    }
 `;
 
 export const schemaRegistryQueries = `
@@ -62,5 +68,7 @@ export const schemaRegistryMutations = `
         createDataHubSchema(input: CreateDataHubSchemaInput!): DataHubSchema!
         updateDataHubSchema(input: UpdateDataHubSchemaInput!): DataHubSchema!
         deleteDataHubSchema(id: ID!): DeletionResponse!
+        assignDataHubSchemasToChannel(input: AssignDataHubSchemasToChannelInput!): [DataHubSchema!]!
+        removeDataHubSchemasFromChannel(input: AssignDataHubSchemasToChannelInput!): [DataHubSchema!]!
     }
 `;

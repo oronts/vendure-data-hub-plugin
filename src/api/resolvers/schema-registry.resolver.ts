@@ -8,6 +8,7 @@ import {
 } from '@nestjs/graphql';
 import {
     Allow,
+    Channel,
     Ctx,
     ID,
     ListQueryBuilder,
@@ -31,6 +32,7 @@ import {
     SchemaRegistryService,
 } from '../../services/schema';
 import { toErrorOrUndefined } from '../../utils/error.utils';
+import { ManagedResourceChannelService } from '../../services/config/managed-resource-channel.service';
 
 @Resolver('DataHubSchema')
 export class DataHubSchemaAdminResolver {
@@ -40,6 +42,7 @@ export class DataHubSchemaAdminResolver {
         private readonly listQueryBuilder: ListQueryBuilder,
         private readonly schemas: SchemaRegistryService,
         loggerFactory: DataHubLoggerFactory,
+        private readonly managedResourceChannels: ManagedResourceChannelService,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.SCHEMA_RESOLVER);
     }
@@ -53,7 +56,7 @@ export class DataHubSchemaAdminResolver {
         const query = this.listQueryBuilder.build(
             DataHubSchema,
             args.options ?? undefined,
-            { ctx },
+            { ctx, channelId: ctx.channelId },
         );
         const [items, totalItems] = await query.getManyAndCount();
         return { items, totalItems };
@@ -75,6 +78,19 @@ export class DataHubSchemaAdminResolver {
         @Parent() schema: DataHubSchema,
     ): Promise<readonly DataHubSchemaUsage[]> {
         return this.schemas.findUsage(ctx, schema.schemaId, schema.version);
+    }
+
+    @ResolveField()
+    @Allow(DataHubSchemaPermission.Read)
+    channels(
+        @Ctx() ctx: RequestContext,
+        @Parent() schema: DataHubSchema,
+    ): Promise<Channel[]> {
+        return this.managedResourceChannels.getAssignedChannels(
+            ctx,
+            DataHubSchema,
+            schema.id,
+        );
     }
 
     @Query()
@@ -152,5 +168,35 @@ export class DataHubSchemaAdminResolver {
                 message: 'Schema version could not be deleted',
             };
         }
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(DataHubSchemaPermission.Update)
+    assignDataHubSchemasToChannel(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { input: { schemaIds: ID[]; channelId: ID } },
+    ): Promise<DataHubSchema[]> {
+        return this.managedResourceChannels.assignToChannel(
+            ctx,
+            DataHubSchema,
+            { ids: args.input.schemaIds, channelId: args.input.channelId },
+            [DataHubSchemaPermission.Update],
+        );
+    }
+
+    @Mutation()
+    @Transaction()
+    @Allow(DataHubSchemaPermission.Update)
+    removeDataHubSchemasFromChannel(
+        @Ctx() ctx: RequestContext,
+        @Args() args: { input: { schemaIds: ID[]; channelId: ID } },
+    ): Promise<DataHubSchema[]> {
+        return this.managedResourceChannels.removeFromChannel(
+            ctx,
+            DataHubSchema,
+            { ids: args.input.schemaIds, channelId: args.input.channelId },
+            [DataHubSchemaPermission.Update],
+        );
     }
 }
