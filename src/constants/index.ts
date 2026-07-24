@@ -16,6 +16,9 @@ export {
     PORTS,
     TRANSFORM_LIMITS,
     INTERNAL_TIMINGS,
+    GATE_TIMEOUT_MAINTENANCE,
+    GATE_LIMITS,
+    RUN_QUEUE_RECOVERY,
 
     // Batch processing
     BATCH,
@@ -28,6 +31,7 @@ export {
 
     // Scheduler
     SCHEDULER,
+    EVENT_TRIGGER_OUTBOX,
 
     // Webhooks
     WEBHOOK,
@@ -35,6 +39,8 @@ export {
     // Storage
     FILE_STORAGE,
     getOutputPath,
+    SECRET_SECURITY,
+    SECRET_REFERENCE_PAGING,
 
     // Security
     CODE_SECURITY,
@@ -42,6 +48,7 @@ export {
     // HTTP and network
     HTTP,
     HTTP_STATUS,
+    OUTBOUND_RESPONSE_LIMITS,
 
     // UI and display
     PAGINATION_PARAMS,
@@ -54,10 +61,13 @@ export {
     CIRCUIT_BREAKER,
     DISTRIBUTED_LOCK,
     METRICS,
+    OTLP_TELEMETRY,
     CACHE,
 
     // Runtime
     SANDBOX,
+    PARALLEL_EXECUTION,
+    OPERATOR_LIMITS,
     HOOK,
     SPAN_TRACKER,
     QUEUE,
@@ -179,7 +189,6 @@ export {
     STEP_EVENT_TYPES,
     GATE_EVENT_TYPES,
     TRIGGER_EVENT_TYPES,
-    LOG_EVENT_TYPES,
     PIPELINE_EVENT_TYPES,
     INTERNAL_EVENT_TYPES,
 } from './events';
@@ -189,6 +198,5 @@ export type {
     StepEventType,
     GateEventType,
     TriggerEventType,
-    LogEventType,
     PipelineEventType,
 } from './events';

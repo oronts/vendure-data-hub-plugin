@@ -6,6 +6,7 @@ export * from './sink-defaults';
 
 // Scheduler
 export * from './scheduler-defaults';
+export * from './event-trigger-defaults';
 
 // Webhooks
 export * from './webhook-defaults';
@@ -24,6 +25,7 @@ export * from './ui-defaults';
 
 // Reliability and performance
 export * from './reliability-defaults';
+export * from './telemetry-defaults';
 
 // Runtime execution
 export * from './runtime-defaults';

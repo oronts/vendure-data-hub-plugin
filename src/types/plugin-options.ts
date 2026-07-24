@@ -142,6 +142,39 @@ export interface SecurityConfig {
     script?: ScriptSecurityConfig;
 }
 
+/**
+ * Optional vendor-neutral OpenTelemetry export over OTLP/HTTP JSON.
+ *
+ * Export is asynchronous and bounded. The endpoint is treated as a collector
+ * base URL; /v1/metrics and /v1/traces are appended automatically.
+ */
+export interface OtlpTelemetryConfig {
+    /** Collector base URL, for example http://otel-collector:4318. */
+    endpoint: string;
+    /** Set to false to keep a shared configuration object while disabling export. */
+    enabled?: boolean;
+    /** Export cumulative in-memory metrics. @default true */
+    metrics?: boolean;
+    /** Export completed Data Hub spans. @default true */
+    traces?: boolean;
+    /** OTLP request headers, such as collector authentication. Values are never logged. */
+    headers?: Record<string, string>;
+    /** OpenTelemetry service.name resource attribute. */
+    serviceName?: string;
+    /** Optional OpenTelemetry service.version resource attribute. */
+    serviceVersion?: string;
+    /** Optional OpenTelemetry deployment.environment.name resource attribute. */
+    environment?: string;
+    /** Period between background exports in milliseconds. @default 30000 */
+    exportIntervalMs?: number;
+    /** Per-request timeout in milliseconds. @default 5000 */
+    requestTimeoutMs?: number;
+    /** Maximum completed spans waiting for export. @default 2048 */
+    maxQueueSize?: number;
+    /** Maximum spans sent in one request. @default 256 */
+    maxBatchSize?: number;
+}
+
 export interface DataHubPluginOptions {
     enabled?: boolean;
     registerBuiltinAdapters?: boolean;
@@ -160,6 +193,11 @@ export interface DataHubPluginOptions {
      * Configure SSRF protection, URL validation, and other security features
      */
     security?: SecurityConfig;
+    /**
+     * Optional OpenTelemetry metrics and trace export over OTLP/HTTP JSON.
+     * No telemetry leaves the process unless this option is configured.
+     */
+    telemetry?: OtlpTelemetryConfig;
     /**
      * Notification configuration for gate approvals and pipeline alerts
      */

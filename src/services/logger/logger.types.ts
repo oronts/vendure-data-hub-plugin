@@ -10,7 +10,7 @@ import { ID } from '@vendure/core';
  * Log context for structured logging - provides trace context
  */
 export interface LogContext {
-    /** Pipeline run ID - serves as the trace ID */
+    /** Pipeline run correlation ID */
     runId?: ID;
 
     /** Pipeline ID */
@@ -87,6 +87,9 @@ export type SpanStatus = 'ok' | 'error' | 'cancelled';
  * Span data for trace tracking
  */
 export interface SpanData {
+    /** OTLP-compatible trace identifier */
+    traceId: string;
+
     /** Unique span identifier */
     spanId: string;
 
@@ -110,6 +113,9 @@ export interface SpanData {
 
     /** Events that occurred during the span */
     events: SpanEvent[];
+
+    /** Events omitted after the per-span retention limit */
+    droppedEventsCount?: number;
 }
 
 /**

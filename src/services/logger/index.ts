@@ -5,3 +5,4 @@ export * from './error-utils';
 export * from './sanitizer';
 export * from './datahub-logger';
 export * from './execution-logger';
+export * from './otlp-exporter.service';

@@ -323,6 +323,7 @@ export { PaymentMethodLoader } from './loaders/payment-method';
 export { ALL_OPERATOR_DEFINITIONS } from './operators';
 
 export { DataHubRegistryService } from './sdk/registry.service';
+export { CURRENT_ADAPTER_API_VERSION } from './sdk/adapter-version';
 
 export { RuntimeConfigService } from './services/runtime/runtime-config.service';
 
@@ -444,7 +445,12 @@ export {
 export type { CodeSecurityConfig } from './utils/code-security.utils';
 
 // Security configuration type exports
-export type { ScriptSecurityConfig, SecurityConfig, NotificationSmtpConfig } from './types/plugin-options';
+export type {
+    ScriptSecurityConfig,
+    SecurityConfig,
+    NotificationSmtpConfig,
+    OtlpTelemetryConfig,
+} from './types/plugin-options';
 
 // Custom template registration types
 export type { CustomImportTemplate, CustomExportTemplate } from './types/plugin-options';

@@ -3,7 +3,7 @@
  * Wraps Vendure's Logger with telemetry and metrics capabilities.
  */
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ID } from '@vendure/core';
 
 import { MetricStatus, SpanStatus } from '../../constants/enums';
@@ -14,6 +14,7 @@ import { MetricsRegistry } from './metrics';
 import { SpanTracker, SpanContext } from './span-tracker';
 import { extractErrorDetails } from './error-utils';
 import { sanitizeForLog } from './sanitizer';
+import { OtlpExporterService } from './otlp-exporter.service';
 
 const LOGGER_FAILURE_EVENT = 'datahub_logger_failure';
 
@@ -686,15 +687,24 @@ export class DataHubLoggerFactory {
     private readonly loggers = new Map<string, { logger: DataHubLogger; lastAccess: number }>();
     private readonly metricsRegistry: MetricsRegistry;
 
-    constructor() {
+    constructor(
+        @Optional()
+        private readonly telemetryExporter?: OtlpExporterService,
+    ) {
         this.metricsRegistry = new MetricsRegistry();
+        this.telemetryExporter?.bindMetricsRegistry(this.metricsRegistry);
     }
 
     /**
      * Create a new logger instance with metrics support
      */
     createLogger(componentName: string, baseContext?: LogContext): DataHubLogger {
-        return new DataHubLogger(componentName, baseContext, this.metricsRegistry);
+        return new DataHubLogger(
+            componentName,
+            baseContext,
+            this.metricsRegistry,
+            this.createSpanTracker(),
+        );
     }
 
     /**
@@ -721,7 +731,12 @@ export class DataHubLoggerFactory {
             this.evictLeastRecentlyUsed();
         }
 
-        const logger = new DataHubLogger(componentName, {}, this.metricsRegistry);
+        const logger = new DataHubLogger(
+            componentName,
+            {},
+            this.metricsRegistry,
+            this.createSpanTracker(),
+        );
         this.loggers.set(componentName, { logger, lastAccess: Date.now() });
         return logger;
     }
@@ -736,6 +751,10 @@ export class DataHubLoggerFactory {
         if (oldest) {
             this.loggers.delete(oldest.key);
         }
+    }
+
+    private createSpanTracker(): SpanTracker {
+        return new SpanTracker(span => this.telemetryExporter?.enqueueSpan(span));
     }
 
     /**
