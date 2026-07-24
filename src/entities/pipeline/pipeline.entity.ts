@@ -1,13 +1,13 @@
-import { Column, Entity, Index } from 'typeorm';
-import { DeepPartial, EntityId, ID, VendureEntity } from '@vendure/core';
+import { Column, Entity, Index, JoinTable, ManyToMany, VersionColumn } from 'typeorm';
+import { Channel, ChannelAware, DeepPartial, EntityId, ID, VendureEntity } from '@vendure/core';
 import { PipelineDefinition } from '../../types/index';
-import { PipelineStatus } from '../../constants/enums';
+import { ConfigurationSource, PipelineStatus } from '../../constants/enums';
 import { TABLE_NAMES } from '../../constants/table-names';
 
 @Entity(TABLE_NAMES.PIPELINE)
 @Index(['code'])
 @Index(['status', 'enabled'])
-export class Pipeline extends VendureEntity {
+export class Pipeline extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<Pipeline>) {
         super(input);
     }
@@ -20,6 +20,17 @@ export class Pipeline extends VendureEntity {
 
     @Column({ type: 'boolean', default: true })
     enabled!: boolean;
+
+    @Column({
+        type: 'varchar',
+        length: 20,
+        default: ConfigurationSource.DATABASE,
+    })
+    configurationSource!: ConfigurationSource;
+
+    @ManyToMany(() => Channel)
+    @JoinTable()
+    channels!: Channel[];
 
     @Column({ type: 'int', default: 1 })
     version!: number;
@@ -54,4 +65,7 @@ export class Pipeline extends VendureEntity {
 
     @Column({ type: 'int', default: 0 })
     publishedVersionCount!: number;
+
+    @VersionColumn({ default: 1 })
+    rowVersion!: number;
 }

@@ -1,5 +1,5 @@
-import { Column, Entity, Index } from 'typeorm';
-import { DeepPartial, VendureEntity } from '@vendure/core';
+import { Column, Entity, Index, JoinTable, ManyToMany } from 'typeorm';
+import { Channel, ChannelAware, DeepPartial, VendureEntity } from '@vendure/core';
 import type {
     JsonObject,
     SchemaCompatibility,
@@ -9,7 +9,7 @@ import { TABLE_NAMES } from '../../constants/table-names';
 @Entity(TABLE_NAMES.SCHEMA)
 @Index(['schemaId', 'version'], { unique: true })
 @Index(['schemaId'])
-export class DataHubSchema extends VendureEntity {
+export class DataHubSchema extends VendureEntity implements ChannelAware {
     constructor(input?: DeepPartial<DataHubSchema>) {
         super(input);
     }
@@ -28,4 +28,8 @@ export class DataHubSchema extends VendureEntity {
 
     @Column({ type: 'simple-json', nullable: true })
     metadata!: JsonObject | null;
+
+    @ManyToMany(() => Channel)
+    @JoinTable()
+    channels!: Channel[];
 }
