@@ -37,6 +37,15 @@ export const schemaDetailDocument = graphql(`
             compatibility
             definition
             metadata
+            channels { id code token }
+        }
+    }
+`);
+
+export const schemaUsageDocument = graphql(`
+    query DataHubSchemaUsageApi($id: ID!) {
+        dataHubSchema(id: $id) {
+            id
             usedBy {
                 pipelineId
                 pipelineCode
@@ -94,12 +103,52 @@ export const deleteSchemaDocument = graphql(`
     }
 `);
 
+export const assignSchemasToChannelDocument = graphql(`
+    mutation AssignDataHubSchemasToChannelApi($input: AssignDataHubSchemasToChannelInput!) {
+        assignDataHubSchemasToChannel(input: $input) { id channels { id code token } }
+    }
+`);
+
+export const removeSchemasFromChannelDocument = graphql(`
+    mutation RemoveDataHubSchemasFromChannelApi($input: AssignDataHubSchemasToChannelInput!) {
+        removeDataHubSchemasFromChannel(input: $input) { id }
+    }
+`);
+
 export function useSchemas(options?: DataHubSchemaListOptions) {
     return useQuery({
         queryKey: schemaKeys.list(options),
         queryFn: () => api.query(schemasListDocument, {
             options: normalizeVendureListOptions(options),
         }).then(response => response.dataHubSchemas),
+    });
+}
+
+export function useSchema(id: string | undefined) {
+    return useQuery({
+        queryKey: schemaKeys.detail(id ?? ''),
+        queryFn: () => {
+            if (!id) {
+                return Promise.reject(new Error('Schema ID is required'));
+            }
+            return api.query(schemaDetailDocument, { id })
+                .then(response => response.dataHubSchema);
+        },
+        enabled: Boolean(id),
+    });
+}
+
+export function useSchemaUsage(id: string | undefined) {
+    return useQuery({
+        queryKey: [...schemaKeys.detail(id ?? ''), 'usage'],
+        queryFn: () => {
+            if (!id) {
+                return Promise.reject(new Error('Schema ID is required'));
+            }
+            return api.query(schemaUsageDocument, { id })
+                .then(response => response.dataHubSchema?.usedBy ?? []);
+        },
+        enabled: Boolean(id),
     });
 }
 

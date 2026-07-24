@@ -1,4 +1,10 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+    useInfiniteQuery,
+    useMutation,
+    useQuery,
+    useQueryClient,
+} from '@tanstack/react-query';
+import { useLingui } from '@lingui/react';
 import { api } from '@vendure/dashboard';
 import { graphql } from '../../gql';
 import { createMutationErrorHandler } from './mutation-helpers';
@@ -7,15 +13,27 @@ import type {
     DataHubPipelineListOptions,
 } from '../../types';
 import { runKeys } from './use-pipeline-runs';
+import {
+    asVendureListDocument,
+    normalizeVendureListOptions,
+} from '../../utils/vendure-list-document';
+import { PIPELINE_SELECTOR_PAGE_SIZE } from '../../utils/pipeline-list-options';
+import { getNextListPageOffset } from '../../utils/paginated-list';
+import { PIPELINE_DETAIL_TRANSLATION_IDS } from '../../constants';
 
 const base = createQueryKeys('pipelines');
 export const pipelineKeys = {
     ...base,
     list: (options?: DataHubPipelineListOptions) => [...base.lists(), options] as const,
+    infinite: (options?: DataHubPipelineListOptions) => [
+        ...base.lists(),
+        'infinite',
+        options,
+    ] as const,
     timeline: (id: string, limit?: number) => [...base.detail(id), 'timeline', limit] as const,
 };
 
-export const pipelinesListDocument = graphql(`
+export const pipelinesListDocument = asVendureListDocument(graphql(`
     query DataHubPipelinesForList($options: DataHubPipelineListOptions) {
         dataHubPipelines(options: $options) {
             items {
@@ -23,13 +41,18 @@ export const pipelinesListDocument = graphql(`
                 code
                 name
                 enabled
+                configurationSource
                 status
+                version
+                currentRevisionId
+                publishedVersionCount
+                createdAt
                 updatedAt
             }
             totalItems
         }
     }
-`);
+`));
 
 export const pipelineDetailDocument = graphql(`
     query DataHubPipelineDetail($id: ID!) {
@@ -40,10 +63,14 @@ export const pipelineDetailDocument = graphql(`
             code
             name
             enabled
+            configurationSource
             status
             version
+            currentRevisionId
+            publishedVersionCount
             publishedAt
             definition
+            channels { id code token }
         }
     }
 `);
@@ -76,14 +103,35 @@ export const deletePipelineDocument = graphql(`
     }
 `);
 
+export const assignPipelinesToChannelDocument = graphql(`
+    mutation AssignDataHubPipelinesToChannelApi($input: AssignDataHubPipelinesToChannelInput!) {
+        assignDataHubPipelinesToChannel(input: $input) { id channels { id code token } }
+    }
+`);
+
+export const removePipelinesFromChannelDocument = graphql(`
+    mutation RemoveDataHubPipelinesFromChannelApi($input: AssignDataHubPipelinesToChannelInput!) {
+        removeDataHubPipelinesFromChannel(input: $input) { id }
+    }
+`);
+
 const runPipelineDocument = graphql(`
-    mutation RunDataHubPipelineApi($pipelineId: ID!) {
-        startDataHubPipelineRun(pipelineId: $pipelineId) {
+    mutation RunDataHubPipelineApi($pipelineId: ID!, $expectedRevisionId: ID) {
+        startDataHubPipelineRun(
+            pipelineId: $pipelineId
+            expectedRevisionId: $expectedRevisionId
+        ) {
             id
             status
+            revisionId
         }
     }
 `);
+
+export interface RunPipelineInput {
+    pipelineId: string;
+    expectedRevisionId: string | number;
+}
 
 export const validatePipelineDefinitionDocument = graphql(`
     query ValidateDataHubPipelineDefinitionApi($definition: JSON!, $level: String) {
@@ -110,7 +158,7 @@ const dryRunPipelineDocument = graphql(`
     mutation DryRunDataHubPipelineApi($pipelineId: ID!) {
         startDataHubPipelineDryRun(pipelineId: $pipelineId) {
             metrics
-            notes
+            messages { level code detail stepKey values }
             sampleRecords { step before after }
         }
     }
@@ -183,25 +231,86 @@ const archivePipelineDocument = graphql(`
     }
 `);
 
+const reactivatePipelineDocument = graphql(`
+    mutation ReactivateDataHubPipelineApi($id: ID!) {
+        reactivateDataHubPipeline(id: $id) {
+            id
+            status
+            enabled
+        }
+    }
+`);
+
 export function usePipelines(options?: DataHubPipelineListOptions) {
     return useQuery({
         queryKey: pipelineKeys.list(options),
         queryFn: () =>
-            api.query(pipelinesListDocument, { options }).then((res) => res.dataHubPipelines),
+            api.query(pipelinesListDocument, {
+                options: normalizeVendureListOptions(options),
+            }).then((res) => res.dataHubPipelines),
+    });
+}
+
+export function usePipeline(id: string | undefined) {
+    const { i18n } = useLingui();
+
+    return useQuery({
+        queryKey: pipelineKeys.detail(id ?? ''),
+        queryFn: () => {
+            if (!id) {
+                throw new Error(i18n._(
+                    PIPELINE_DETAIL_TRANSLATION_IDS.PIPELINE_ID_REQUIRED,
+                ));
+            }
+            return api
+                .query(pipelineDetailDocument, { id })
+                .then(response => response.dataHubPipeline);
+        },
+        enabled: Boolean(id),
+    });
+}
+
+export function useInfinitePipelines(
+    options: DataHubPipelineListOptions = {},
+    enabled = true,
+) {
+    const pageSize = options.take ?? PIPELINE_SELECTOR_PAGE_SIZE;
+    const baseOptions = { ...options, take: pageSize, skip: undefined };
+
+    return useInfiniteQuery({
+        queryKey: pipelineKeys.infinite(baseOptions),
+        queryFn: ({ pageParam }) => api
+            .query(pipelinesListDocument, {
+                options: normalizeVendureListOptions({
+                    ...baseOptions,
+                    skip: pageParam,
+                }),
+            })
+            .then(response => response.dataHubPipelines),
+        initialPageParam: 0,
+        getNextPageParam: (_lastPage, pages) => getNextListPageOffset(pages),
+        enabled,
     });
 }
 
 export function useRunPipeline() {
+    const { i18n } = useLingui();
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: (pipelineId: string) =>
-            api.mutate(runPipelineDocument, { pipelineId }).then((res) => res.startDataHubPipelineRun),
-        onSuccess: (_data, pipelineId) => {
+        mutationFn: ({ pipelineId, expectedRevisionId }: RunPipelineInput) =>
+            api.mutate(runPipelineDocument, {
+                pipelineId,
+                expectedRevisionId,
+            }).then((res) => res.startDataHubPipelineRun),
+        onSuccess: (_data, { pipelineId }) => {
             queryClient.invalidateQueries({ queryKey: runKeys.lists() });
             queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(pipelineId) });
         },
-        onError: createMutationErrorHandler('run pipeline'),
+        onError: createMutationErrorHandler(
+            i18n._(PIPELINE_DETAIL_TRANSLATION_IDS.RUN_START_ERROR),
+            { showDetails: true },
+        ),
     });
 }
 
@@ -211,22 +320,30 @@ interface ValidatePipelineDefinitionInput {
 }
 
 export function useValidatePipelineDefinition() {
+    const { i18n } = useLingui();
+
     return useMutation({
         mutationFn: ({ definition, level }: ValidatePipelineDefinitionInput) =>
             api
                 .query(validatePipelineDefinitionDocument, { definition, level })
                 .then((res) => res.validateDataHubPipelineDefinition),
-        onError: createMutationErrorHandler('validate pipeline definition'),
+        onError: createMutationErrorHandler(
+            i18n._(PIPELINE_DETAIL_TRANSLATION_IDS.VALIDATION_REQUEST_ERROR),
+            { showDetails: true },
+        ),
     });
 }
 
 export function useDryRunPipeline(pipelineId: string | undefined) {
+    const { i18n } = useLingui();
     const queryClient = useQueryClient();
 
     return useMutation({
         mutationFn: () => {
             if (!pipelineId) {
-                return Promise.reject(new Error('Pipeline ID is required'));
+                return Promise.reject(new Error(i18n._(
+                    PIPELINE_DETAIL_TRANSLATION_IDS.PIPELINE_ID_REQUIRED,
+                )));
             }
             return api
                 .mutate(dryRunPipelineDocument, { pipelineId })
@@ -237,16 +354,20 @@ export function useDryRunPipeline(pipelineId: string | undefined) {
                 queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(pipelineId) });
             }
         },
-        onError: createMutationErrorHandler('dry run pipeline'),
+        onError: createMutationErrorHandler(
+            i18n._(PIPELINE_DETAIL_TRANSLATION_IDS.DRY_RUN_FAILED),
+            { showDetails: true },
+        ),
     });
 }
 
 function createPipelineStatusHook<TDoc extends Parameters<typeof api.mutate>[0]>(
     document: TDoc,
     resultKey: string,
-    actionName: string,
+    errorMessageId: string,
 ) {
     return function usePipelineStatusMutation() {
+        const { i18n } = useLingui();
         const queryClient = useQueryClient();
         return useMutation({
             mutationFn: (id: string) =>
@@ -257,23 +378,40 @@ function createPipelineStatusHook<TDoc extends Parameters<typeof api.mutate>[0]>
                     queryClient.invalidateQueries({ queryKey: pipelineKeys.detail(String(data.id)) });
                 }
             },
-            onError: createMutationErrorHandler(actionName),
+            onError: createMutationErrorHandler(i18n._(errorMessageId), {
+                showDetails: true,
+            }),
         });
     };
 }
 
 export const useSubmitPipelineForReview = createPipelineStatusHook(
-    submitPipelineForReviewDocument, 'submitDataHubPipelineForReview', 'submit pipeline for review',
+    submitPipelineForReviewDocument,
+    'submitDataHubPipelineForReview',
+    PIPELINE_DETAIL_TRANSLATION_IDS.SUBMIT_ERROR,
 );
 export const useApprovePipeline = createPipelineStatusHook(
-    approvePipelineDocument, 'approveDataHubPipeline', 'approve pipeline',
+    approvePipelineDocument,
+    'approveDataHubPipeline',
+    PIPELINE_DETAIL_TRANSLATION_IDS.APPROVE_ERROR,
 );
 export const useRejectPipeline = createPipelineStatusHook(
-    rejectPipelineDocument, 'rejectDataHubPipelineReview', 'reject pipeline',
+    rejectPipelineDocument,
+    'rejectDataHubPipelineReview',
+    PIPELINE_DETAIL_TRANSLATION_IDS.REJECT_ERROR,
 );
 export const usePublishPipeline = createPipelineStatusHook(
-    publishPipelineDocument, 'publishDataHubPipeline', 'publish pipeline',
+    publishPipelineDocument,
+    'publishDataHubPipeline',
+    PIPELINE_DETAIL_TRANSLATION_IDS.PUBLISH_ERROR,
 );
 export const useArchivePipeline = createPipelineStatusHook(
-    archivePipelineDocument, 'archiveDataHubPipeline', 'archive pipeline',
+    archivePipelineDocument,
+    'archiveDataHubPipeline',
+    PIPELINE_DETAIL_TRANSLATION_IDS.ARCHIVE_ERROR,
+);
+export const useReactivatePipeline = createPipelineStatusHook(
+    reactivatePipelineDocument,
+    'reactivateDataHubPipeline',
+    PIPELINE_DETAIL_TRANSLATION_IDS.REACTIVATE_ERROR,
 );
