@@ -41,15 +41,15 @@ A full-featured ETL (Extract, Transform, Load) plugin for [Vendure](https://www.
 - **Code-First DSL** - TypeScript API for defining pipelines programmatically
 - **13 Data Extractors** - HTTP/REST API, GraphQL, Vendure Query, uploaded or inline CSV/JSON/XML/XLSX, in-memory data, generators, Database (SQL), S3, FTP/SFTP, and CDC (Change Data Capture)
 - **24 Entity Loaders (16 entity types, 4 order operations, 1 deletion, 2 external API, 1 inventory)** - Products, Variants, Customers, Customer Groups, Collections, Facets, Facet Values, Promotions, Orders (upsert, notes, transitions, coupons), Shipping Methods, Stock Locations, Stock/Inventory, Assets, Tax Rates, Payment Methods, Channels, Entity Deletion, REST POST, GraphQL Mutation
-- **61 Transform Operators** - String (12), Date (5), Numeric (9), Logic (4), JSON (4), Data (8), Enrichment (5), Aggregation (8), Validation (2), Script (1), File (3) - **includes HTTP Lookup with caching, circuit breaker, and rate limiting**
+- **62 Transform Operators** - String (12), Date (5), Numeric (9), Logic (4), JSON (4), Data (8), Enrichment (5), Aggregation (9), Validation (2), Script (1), File (3) - **includes HTTP Lookup with caching, circuit breaker, and rate limiting**
 - **4 Feed Generators** - Google Merchant Center, Meta/Facebook Catalog, Amazon Seller Central, Custom Feed (CSV/JSON/XML/TSV)
 - **7 Search & Integration Sinks** - Elasticsearch, OpenSearch, MeiliSearch, Algolia, Typesense, Queue Producer (RabbitMQ/SQS/Redis), Webhook (with HMAC signing)
-- **24 Hook Stages** (18 for step types and 6 global) - Interceptors and scripts to modify data at any pipeline stage
+- **24 Hook Stages** (18 for step types and 6 global) - Interceptors and scripts modify records at the 18 data stages; global lifecycle/error stages are observation-only
 - **12 Canonical Connection Types** - HTTP, REST, GraphQL, S3, FTP, SFTP, PostgreSQL, MySQL, RabbitMQ, SQS, Redis, and Custom
 - **6 Trigger Types** - Manual, Scheduled (cron or interval), Webhook, Vendure Events, File Watch, **Message Queue Consumer**
 - **Bi-directional Queue Support** - Consume from and produce to RabbitMQ (AMQP), Amazon SQS, Redis Streams, and internal queue adapter
 - **Horizontal Scaling** - Distributed locks via Redis or PostgreSQL for multi-instance deployments
-- **Checkpoint Recovery** - Resume failed pipelines from last successful record
+- **Persistent Adapter Checkpoints** - File offsets, incremental cursors, file-watch state, and approval gates persist the progress they explicitly record
 - **Versioned Schema Registry** - Immutable Data Hub record contracts with compatibility checks, exact Extract/Validate bindings, version diffs, and reference impact analysis
 - **File Upload** - Drag-and-drop CSV, JSON, XML, and XLSX uploads with preview and managed processing
 - **Operational Monitoring** - Polling logs, run details, queue statistics, and dead letter records
@@ -213,7 +213,40 @@ export const config: VendureConfig = {
 | `configPath` | `string` | - | Path to external configuration file |
 | `runtime` | `RuntimeLimitsConfig` | - | Circuit-breaker, scheduler, and event-trigger timing overrides |
 | `security` | `SecurityConfig` | - | SSRF and script execution controls |
+| `telemetry` | `OtlpTelemetryConfig` | - | Optional OTLP/HTTP JSON export for process-local metrics and completed spans |
 | `debug` | `boolean` | `false` | Enable debug logging |
+
+### OpenTelemetry export
+
+Set `telemetry.endpoint` to an OpenTelemetry Collector base URL to export
+vendor-neutral OTLP/HTTP JSON. Data Hub appends `/v1/metrics` and
+`/v1/traces`; no telemetry leaves the process when this option is omitted or
+`enabled` is `false`.
+
+```typescript
+const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+
+DataHubPlugin.init({
+    ...(otlpEndpoint ? {
+        telemetry: {
+            endpoint: otlpEndpoint,
+            serviceName: 'vendure-data-hub',
+            serviceVersion: '0.1.7',
+            environment: process.env.NODE_ENV,
+            headers: process.env.OTEL_EXPORTER_OTLP_API_KEY
+                ? { 'x-api-key': process.env.OTEL_EXPORTER_OTLP_API_KEY }
+                : undefined,
+        },
+    } : {}),
+})
+```
+
+Export runs asynchronously with request timeouts, a bounded completed-span
+queue, and bounded metric label cardinality. Pipeline execution never waits for
+collector I/O. Trace attributes use a fixed operational allowlist; record
+payloads, configuration objects, user identifiers, secrets, error messages,
+and stacks are not exported. Metrics are cumulative and process-local, so
+configure every API and worker process that should be observed.
 
 ### Local output storage
 
@@ -377,13 +410,14 @@ Comparison operators (19): `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, 
 
 ### Aggregation Operators
 
-Aggregation operators include array manipulation, grouping, and data joining (8 operators).
+Aggregation operators include array manipulation, grouping, deterministic batch deduplication, and data joining (9 operators).
 
 | Operator | Description | Example |
 |----------|-------------|---------|
 | `aggregate` | Aggregate values | `{ op: 'aggregate', args: { op: 'sum', source: 'amount', target: 'total' } }` |
 | `count` | Count elements | `{ op: 'count', args: { source: 'items', target: 'itemCount' } }` |
 | `unique` | Remove duplicates | `{ op: 'unique', args: { source: 'items', by: 'id', target: 'uniqueItems' } }` |
+| `deduplicateRecords` | Resolve duplicate records by a scalar key | `{ op: 'deduplicateRecords', args: { key: 'sku', keep: 'LOWEST', priority: '_sourcePriority' } }` |
 | `flatten` | Flatten nested arrays | `{ op: 'flatten', args: { source: 'nested', target: 'flat', depth: 1 } }` |
 | `first` | Get first element | `{ op: 'first', args: { source: 'items', target: 'firstItem' } }` |
 | `last` | Get last element | `{ op: 'last', args: { source: 'items', target: 'lastItem' } }` |
@@ -588,7 +622,6 @@ const pipeline = createPipeline()
             code: `
                 return records.map(r => ({
                     ...r,
-                    extractedAt: new Date().toISOString(),
                     source: 'api',
                 }));
             `,
@@ -689,6 +722,10 @@ Chain pipelines together:
     }],
 })
 ```
+
+`TRIGGER_PIPELINE` creates and queues a pending child run. The parent does not
+wait for the child or inherit its outcome; `failOnError` covers only immediate
+child creation and queue-request failure.
 
 ---
 
@@ -861,7 +898,7 @@ Common patterns:
 **Security Features:**
 - Timing-safe comparison for all credential checks
 - Durable, conflict-detecting idempotency per pipeline and trigger
-- Configurable per-process, fixed-window rate limiting by IP and pipeline; use an ingress or shared limiter for cluster-wide limits
+- Atomic Redis fixed-window rate limiting by IP and pipeline when `DATAHUB_REDIS_URL` or `REDIS_URL` is configured; otherwise a clearly single-instance process-local fallback
 - JWT HS256 signature verification with a required valid `exp`; optional `nbf` and `iat` are validated, and configured `jwtIssuer`/`jwtAudience` claims are enforced
 
 ### Event Trigger
@@ -1010,6 +1047,13 @@ DataHubPlugin.init({
 
 For SFTP, `hostKeyFingerprintSecretCode` must resolve to the trusted server key in OpenSSH `SHA256:<base64>` format. Production connections fail closed when this reference is missing or the server presents a different key.
 
+HTTP-family base URLs must use HTTP or HTTPS and cannot contain embedded
+credentials. Secret-backed authentication requires a base URL, and default
+headers cannot contain credentials or request-routing controls. Basic usernames
+may be literal or referenced with `usernameSecretCode`; passwords and API keys
+always use Secret Codes. Published pipeline references also prevent changing a
+connection's code or type until the pipelines are updated and republished.
+
 ## Custom Adapters
 
 ### Custom Operator
@@ -1129,10 +1173,12 @@ const webhookNotify: LoaderAdapter<WebhookNotifyConfig> = {
 | `ReviewDataHubPipeline` | Review/approve pipelines |
 | `CreateDataHubSecret` | Create secrets |
 | `ReadDataHubSecret` | View secrets (values masked) |
+| `UseDataHubSecret` | Resolve referenced secrets during authorized execution, preview, or sandbox operations |
 | `UpdateDataHubSecret` | Modify secrets |
 | `DeleteDataHubSecret` | Delete secrets |
 | `ManageDataHubConnections` | Manage connections |
-| `ManageDataHubAdapters` | Configure adapters |
+| `UseDataHubConnection` | Use referenced connections during authorized execution, preview, or sandbox operations |
+| `ManageDataHubAdapters` | Open the adapter catalog and read adapter capability metadata used by pipeline editors |
 | `ViewDataHubRuns` | View execution history |
 | `ViewDataHubQuarantine` | View dead letter queue |
 | `EditDataHubQuarantine` | Manage quarantined records |
@@ -1162,6 +1208,13 @@ const exportPipeline = createPipeline()
     // ...
 ```
 
+Effective run capabilities also include referenced resources. Connection-backed
+steps require `UseDataHubConnection` and `UseDataHubSecret`; direct Secret Code
+references require `UseDataHubSecret`. The same checks protect previews and
+sandbox execution without granting resource-management access. Authenticated
+HTTP and GraphQL connections must define a
+`baseUrl`, and their credentials are restricted to that origin across redirects.
+
 ---
 
 ## Error Handling
@@ -1176,14 +1229,14 @@ const pipeline = createPipeline()
             retryDelayMs: 1000,
             maxRetryDelayMs: 30000,
             backoffMultiplier: 2,
-            deadLetterQueue: true,
-            errorThresholdPercent: 10,
         },
     })
     .build();
 ```
 
-Retry settings for external HTTP loaders are adapter-specific. See the
+Pipeline-level retry settings are defaults for the external REST and GraphQL
+mutation loaders. Queue dead-letter routing and retry limits belong to each
+MESSAGE trigger. See the
 [Loaders Reference](docs/reference/loaders.md) for the `restPost` and
 `graphqlMutation` retry fields.
 

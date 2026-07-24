@@ -282,9 +282,12 @@ Code-first configuration has two startup paths:
 1. SecretService loads and validates configured file secrets during module initialization, before watchers and other secret consumers start.
 2. Inline plugin secret options are merged after file secrets and win on cross-source code collisions.
 3. The complete immutable secret snapshot is published atomically; duplicate codes within a source or any invalid entry abort startup.
-4. ConfigSyncService later creates or updates database-backed pipelines and connections. It does not persist code-first secret values.
-5. Runtime secret resolution checks the in-memory code-first registry before the database.
-6. Same-code historical database rows remain inactive but can become active fallback after a code-first definition is removed, so removal requires an explicit row review.
+4. During application bootstrap, one API server acquires a distributed lock and validates the complete effective connection and pipeline configuration before writing any row. Inline entries override same-code file entries.
+5. Active connections and pipelines are persisted with `configurationSource: CODE_FIRST`. Unchanged definitions are not rewritten, but a matching database-owned row is adopted explicitly. Pipeline changes use the normal lifecycle service and remain non-executable until they pass the review and publish workflow.
+6. Definitions removed from deployed configuration are released to `DATABASE` ownership without deleting their rows, revision history, or runs. Dashboard and API mutations reject active `CODE_FIRST` resources; review and publication remain available for managed pipelines.
+7. Workers never write code-first database configuration. They wait until the shared database matches both the effective definition and ownership source before schedulers, message consumers, or file watchers start discovery.
+8. ConfigSyncService does not persist code-first secret values. Runtime secret resolution checks the process-local code-first registry before the database.
+9. Same-code historical secret rows remain inactive but can become active fallback after a code-first secret is removed, so secret removal requires an explicit row review.
 
 ## Security
 
@@ -297,7 +300,7 @@ Custom permissions protect operations:
 @Query()
 dataHubPipelines() { ... }
 
-@Allow(RunDataHubPipelinePermission)
+@Allow(RunDataHubPipelinePermission.Permission)
 @Mutation()
 startDataHubPipelineRun() { ... }
 ```
@@ -348,9 +351,10 @@ Records are processed in batches:
 
 ### Checkpointing
 
-Long runs save progress periodically:
-- Resume from last checkpoint on failure
-- Avoid reprocessing completed records
+Checkpoint persistence is adapter-specific. File, database, CDC, export, file
+watch, and gate components store only the offsets, cursors, or approval state
+they explicitly implement. Dirty execution state is normally persisted when a
+run finalizes; there is no generic periodic last-successful-record scheduler.
 
 ### Job Queue
 
@@ -496,7 +500,7 @@ Pipelines support multiple concurrent triggers:
 All triggers converge to the same execution engine, enabling:
 - Unified error handling
 - Consistent logging
-- Shared checkpointing
+- Persistent adapter and approval-gate checkpoint state
 - Common metrics
 
 ### Feed Generator Architecture

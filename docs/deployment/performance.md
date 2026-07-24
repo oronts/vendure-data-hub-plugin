@@ -35,7 +35,7 @@ Data Hub processes data through a multi-stage pipeline with configurable perform
 
 ### Performance Factors
 
-1. **Step Configuration** - Batch size, concurrency, rate limits
+1. **Step Configuration** - Extractor pagination, load throughput, and sink batch size
 2. **Data Volume** - Number of records, record size
 3. **Operation Complexity** - Transforms, validations, database writes
 4. **External Dependencies** - API rate limits, database performance
@@ -44,43 +44,49 @@ Data Hub processes data through a multi-stage pipeline with configurable perform
 
 ## Throughput Configuration
 
-Control processing speed and resource usage with throughput settings.
+The runtime throughput controller applies only to `LOAD` steps. A `throughput`
+object attached to an extract, transform, validate, enrich, export, feed, or sink
+step is retained in the definition but is not consumed during execution. Use
+each adapter's own pagination or batch settings for those steps.
 
-### Global Throughput
+### Pipeline Load Defaults
 
-Set defaults in pipeline context:
+Set default load batching, concurrency, and pacing in the pipeline context:
 
 ```typescript
 createPipeline()
     .context({
         throughput: {
-            batchSize: 100,        // Records per batch
-            concurrency: 4,        // Parallel batches
-            rateLimitRps: 10,      // Requests per second
+            batchSize: 100,        // Records per load batch
+            concurrency: 4,        // Parallel load batches
+            rateLimitRps: 10,      // Max load-batch starts per second
+            pauseOnErrorRate: {
+                threshold: 0.05,
+                intervalSec: 10,
+            },
             drainStrategy: 'BACKOFF',
         },
     })
 ```
 
-### Step-Level Throughput
+These context values are defaults for every load step. A load step can override
+individual values without repeating the rest of the context configuration.
 
-Override for specific steps:
+### Load-Step Throughput
+
+Override the pipeline defaults for a specific load step:
 
 ```typescript
-.extract('fetch-api', {
-    adapterCode: 'httpApi',
-    url: 'https://api.example.com/products',
-    throughput: {
-        batchSize: 50,      // Smaller batches for API
-        rateLimitRps: 5,    // Respect API rate limit
-    },
-})
-
 .load('upsert-products', {
     adapterCode: 'productUpsert',
     throughput: {
         batchSize: 20,      // Smaller batches for complex writes
         concurrency: 2,     // Limit parallel database writes
+        pauseOnErrorRate: {
+            threshold: 0.05,
+            intervalSec: 10,
+        },
+        drainStrategy: 'BACKOFF',
     },
 })
 ```
@@ -89,108 +95,91 @@ Override for specific steps:
 
 ```typescript
 interface Throughput {
-    // Records per batch (default: 100)
-    // Higher = more throughput, more memory
-    // Lower = less memory, better error isolation
+    // Records per load batch; defaults to the current input batch length
     batchSize?: number;
 
-    // Parallel batch processing (default: 1)
-    // Higher = more throughput, more CPU/memory
-    // Should be ≤ CPU cores
+    // Parallel load batches; defaults to 1
     concurrency?: number;
 
-    // Maximum requests per second (default: unlimited)
-    // Prevents overwhelming external APIs
+    // Aggregate load-batch starts per second; 0 or omitted disables the limit
     rateLimitRps?: number;
 
-    // Strategy when processing queue is full
-    drainStrategy?: 'BACKOFF' | 'SHED' | 'QUEUE';
-
-    // Pause on high error rate
+    // Evaluated across load batches completed during the rolling interval
     pauseOnErrorRate?: {
-        threshold: number;      // 0-1 (0.05 = 5%)
-        intervalSec: number;    // Check interval
+        threshold: number;      // Ratio from 0 to 1
+        intervalSec: number;    // Rolling window and recovery delay in seconds
     };
+
+    drainStrategy?: 'BACKOFF' | 'SHED' | 'QUEUE';
 }
 ```
 
+`rateLimitRps` spaces load-batch starts by at least `1000 / rateLimitRps`
+milliseconds across all concurrent workers. It does not rate-limit extractors.
+
 ### Drain Strategies
 
-```typescript
-// BACKOFF - Slow down when queue is full (default)
-drainStrategy: 'BACKOFF'  // Reduces throughput temporarily
+Drain behavior is evaluated only when a load step has `pauseOnErrorRate` and
+the failed-record ratio across batches completed during `intervalSec` reaches
+the configured threshold. It is not triggered by queue capacity.
 
-// SHED - Drop records when overloaded (use with caution)
-drainStrategy: 'SHED'     // May lose data
-
-// QUEUE - Buffer records in memory (can cause OOM)
-drainStrategy: 'QUEUE'    // Unlimited buffering
-```
+| Strategy | Current runtime behavior |
+|----------|--------------------------|
+| `BACKOFF` | Pause all new load-batch starts for at least `intervalSec`. Loader calls already running finish normally. |
+| `SHED` | Clear load batches that have not started. Batches already in flight finish normally. |
+| `QUEUE` | Move not-yet-started batches into an in-memory queue capped at 1,000 batches. After `intervalSec` (5 seconds when omitted), return deferred work to the same concurrent, rate-limited scheduler. If recovery remains unhealthy, untouched work is deferred for another interval. Queue overflow fails the step instead of dropping records. |
 
 ## Batch Processing
 
-Optimize batch sizes for different operation types.
+Choose the setting owned by each runtime component. Pipeline `throughput.batchSize`
+is a load-only control; extraction, transforms, and sinks do not inherit it.
 
-### Recommended Batch Sizes
+### Component-Specific Batch Controls
 
 ```typescript
-// File extraction - Large batches
-.extract('parse-csv', {
-    adapterCode: 'file',
-    format: 'CSV',
-    throughput: { batchSize: 1000 },
-})
-
-// API extraction - Respect pagination
+// HTTP extraction - records requested per page
 .extract('fetch-api', {
     adapterCode: 'httpApi',
-    throughput: { batchSize: 100 },
+    url: 'https://api.example.com/products',
+    pagination: {
+        type: 'PAGE',
+        limit: 100,
+    },
 })
 
-// Pure transforms - Large batches
-.transform('normalize', {
-    operators: [/* pure operations */],
-    throughput: { batchSize: 5000 },
-})
-
-// Database writes - Small batches
+// Load execution - records passed to each loader invocation
 .load('upsert-products', {
     adapterCode: 'productUpsert',
     throughput: { batchSize: 20 },
 })
 
-// Search indexing - Medium batches
+// Search sink - records sent in each bulk request
 .sink('index-search', {
     adapterCode: 'meilisearch',
-    bulkSize: 500,
+    host: 'http://localhost:7700',
+    apiKeySecretCode: 'meilisearch-api-key',
+    indexName: 'products',
+    primaryKey: 'id',
+    batchSize: 500,
 })
 ```
 
-### Dynamic Batch Sizing
+Transforms receive the records delivered by the pipeline executor. They do not
+currently expose a separate runtime batch-size or concurrency control.
 
-Adjust batch size based on data characteristics:
+### Static Load Batch Sizing
+
+Load throughput is resolved before the load runs. Hook contexts do not contain
+a mutable throughput configuration, so select the load batch size in the
+pipeline definition:
 
 ```typescript
-.hooks({
-    AFTER_EXTRACT: [{
-        type: 'INTERCEPTOR',
-        name: 'Adjust batch size',
-        code: `
-            // Larger records = smaller batches
-            const avgSize = records.reduce((sum, r) =>
-                sum + JSON.stringify(r).length, 0) / records.length;
-
-            if (avgSize > 10000) {
-                context.throughput.batchSize = 50;
-            } else if (avgSize > 5000) {
-                context.throughput.batchSize = 100;
-            } else {
-                context.throughput.batchSize = 500;
-            }
-
-            return records;
-        `,
-    }],
+.load('upsert-products', {
+    adapterCode: 'productUpsert',
+    throughput: {
+        batchSize: 50,
+        concurrency: 2,
+    },
 })
 ```
 
@@ -223,23 +212,14 @@ createPipeline()
 
 ### Concurrency Limits
 
+The graph executor can run independent steps concurrently. The `concurrency`
+inside `throughput` has a narrower meaning: it controls only parallel batches
+within a load step.
+
 ```typescript
-// CPU-bound operations (transforms, validation)
-.transform('heavy-processing', {
-    throughput: {
-        concurrency: 4,  // ≈ CPU cores
-    },
-})
-
-// I/O-bound operations (API calls, database)
-.extract('api-calls', {
-    throughput: {
-        concurrency: 16,  // Can be > CPU cores
-    },
-})
-
-// Database writes
+// Parallel loader invocations within this load step
 .load('upsert-entities', {
+    adapterCode: 'productUpsert',
     throughput: {
         concurrency: 2,  // Conservative for safety
     },
@@ -302,14 +282,14 @@ export const config: VendureConfig = {
 .extract('query-products', {
     adapterCode: 'vendureQuery',
     entity: 'PRODUCT',
-    relations: 'variants,featuredAsset',  // Only what's needed
+    relations: ['variants', 'featuredAsset'],  // Only what's needed
     batchSize: 500,
 })
 
 // Use indexes for lookups
 .load('upsert-products', {
     adapterCode: 'productUpsert',
-    matchField: 'slug',  // Indexed field
+    slugField: 'slug',  // Product identity field
 })
 ```
 
@@ -337,9 +317,14 @@ export const config: VendureConfig = {
     query: 'SELECT * FROM products WHERE updated_at > :checkpoint',
     incremental: {
         enabled: true,
-        field: 'updated_at',
+        column: 'updated_at',
+        type: 'timestamp',
     },
-    throughput: { batchSize: 1000 },
+    pagination: {
+        enabled: true,
+        type: 'OFFSET',
+        pageSize: 1000,
+    },
 })
 
 // Use indexed columns in WHERE clauses
@@ -358,19 +343,24 @@ export const config: VendureConfig = {
 
 Prevent out-of-memory errors with large datasets.
 
-### Streaming Mode
+### Large Uploaded Files
+
+Uploaded CSV, JSON, XML, and XLSX files are parsed into memory before downstream
+steps run. Load `throughput.batchSize` controls only the later loader invocations;
+putting it on the extract step does not change parsing or extraction memory use.
+Size the upload limit and worker memory together, and load-test representative
+files before raising production limits.
 
 ```typescript
-// Enable streaming for large files
 .extract('parse-large-csv', {
-    adapterCode: 'file',
-    path: '/data/large-file.csv',
-    format: 'CSV',
-    throughput: {
-        batchSize: 1000,    // Process in chunks
-    },
+    adapterCode: 'csv',
+    fileId: 'large-csv-upload-id',
 })
-// Note: Extractors use async generators (already streaming)
+
+.load('upsert-products', {
+    adapterCode: 'productUpsert',
+    throughput: { batchSize: 100 },
+})
 ```
 
 ### Memory-Efficient Operators
@@ -383,45 +373,39 @@ Prevent out-of-memory errors with large datasets.
         { op: 'rename', args: { from: 'old', to: 'new' } },
         { op: 'set', args: { path: 'status', value: 'active' } },
 
-        // Avoid: requires loading all records
-        // { op: 'deduplicate', args: { field: 'sku' } },
-        // { op: 'sort', args: { field: 'name' } },
+        // Batch-wide deduplication buffers the active batch; size it accordingly
+        // { op: 'deduplicateRecords', args: { key: 'sku' } },
+        // Sort at the source query or implement a bounded custom operator
     ],
 })
 ```
 
-### Checkpointing for Large Datasets
+### Adapter Checkpoints for Large Datasets
 
-```typescript
-.context({
-    checkpointing: {
-        enabled: true,
-        strategy: 'COUNT',
-        intervalRecords: 5000,  // Checkpoint every 5K records
-    },
-})
-```
+Checkpoint progress is adapter-specific. File extractors persist record offsets,
+database/CDC extractors persist incremental cursors, and custom SDK adapters can
+persist their own cursor with `setCheckpoint()`. The pipeline context does not
+provide a generic periodic checkpoint policy.
 
 ### Memory Monitoring
+
+Interceptor code runs in an isolated VM without Node's `process` or `global`
+objects and without a logger on `HookContext`. Monitor heap and container memory
+with the host runtime or your infrastructure telemetry. A hook can log only the
+serializable hook fields and record count through the sandbox console:
 
 ```typescript
 .hooks({
     AFTER_TRANSFORM: [{
         type: 'INTERCEPTOR',
-        name: 'Monitor memory',
+        name: 'Log transform batch',
         code: `
-            const used = process.memoryUsage();
-            const usedMB = Math.round(used.heapUsed / 1024 / 1024);
-
-            if (usedMB > 1024) {  // > 1GB
-                context.logger.warn(\`High memory usage: \${usedMB}MB\`);
-
-                // Trigger garbage collection if needed
-                if (global.gc) {
-                    global.gc();
-                }
-            }
-
+            console.log('Transform batch completed', {
+                pipelineId: context.pipelineId,
+                runId: context.runId,
+                stage: context.stage,
+                recordCount: records.length,
+            });
             return records;
         `,
     }],
@@ -435,13 +419,10 @@ Optimize network requests and API calls.
 ### Connection Reuse
 
 ```typescript
-// Use connection pooling for HTTP clients
+// Reuse centrally managed endpoint and authentication settings
 .extract('fetch-api', {
     adapterCode: 'httpApi',
-    connectionCode: 'external-api',  // Reuses HTTP agent
-    throughput: {
-        concurrency: 10,  // Reuse connections
-    },
+    connectionCode: 'external-api',
 })
 ```
 
@@ -460,21 +441,28 @@ Optimize network requests and API calls.
 
 ### Rate Limiting
 
+`rateLimitRps` paces load-batch starts, not HTTP extraction requests. The
+following configuration starts REST load batches at least 200 milliseconds
+apart across all workers:
+
 ```typescript
-// Respect API rate limits
-.extract('fetch-api', {
-    adapterCode: 'httpApi',
-    url: 'https://api.example.com/products',
+.load('push-api', {
+    adapterCode: 'restPost',
+    endpoint: 'https://api.example.com/products',
+    method: 'POST',
+    batchMode: 'array',
+    maxBatchSize: 100,
     throughput: {
-        rateLimitRps: 5,        // 5 requests/second
-        batchSize: 100,         // Request 100 items at a time
-    },
-    pagination: {
-        type: 'PAGE',
-        limit: 100,
+        batchSize: 100,
+        concurrency: 1,
+        rateLimitRps: 5,
     },
 })
 ```
+
+The built-in HTTP extractor follows pages sequentially and adaptively backs off
+after `429` or `503` responses. It does not currently expose a proactive
+requests-per-second limiter in the pipeline execution path.
 
 ### Retry with Backoff
 
@@ -482,9 +470,6 @@ Optimize network requests and API calls.
 .extract('fetch-api', {
     adapterCode: 'httpApi',
     url: 'https://api.example.com/products',
-    throughput: {
-        rateLimitRps: 10,
-    },
 })
 
 .context({
@@ -506,15 +491,15 @@ Track performance metrics and identify bottlenecks.
 Monitor via the Analytics dashboard or GraphQL API:
 
 ```graphql
-query {
+query PipelinePerformance {
   dataHubPipelinePerformance(
     pipelineId: "pipeline-1"
-    timeRange: {
-      from: "2024-01-01T00:00:00Z"
-      to: "2024-01-31T23:59:59Z"
-      intervalMinutes: 60
-    }
+    timeRange: "30d"
+    limit: 100
   ) {
+    pipelineId
+    pipelineCode
+    pipelineName
     totalRuns
     successfulRuns
     failedRuns
@@ -526,7 +511,15 @@ query {
 }
 ```
 
-### Step-Level Profiling
+`dataHubPipelinePerformance` returns a list. `timeRange` is a string such as
+`"1h"`, `"24h"`, `"7d"`, `"30d"`, or `"90d"`; it is not a date-range input
+object.
+
+### Step Boundary Diagnostics
+
+Hook contexts do not expose step start times or a logger. Use run analytics and
+persisted logs for duration measurements. For boundary diagnostics, use `LOG`
+actions or the sandbox console with the serializable `HookContext` fields:
 
 ```typescript
 .hooks({
@@ -537,13 +530,14 @@ query {
     }],
     AFTER_TRANSFORM: [{
         type: 'INTERCEPTOR',
-        name: 'Profile step',
+        name: 'Log transform completion',
         code: `
-            const duration = Date.now() - context.startTime;
-            const recordsPerSec = Math.round(records.length / (duration / 1000));
-
-            context.logger.info(\`Transform completed: \${records.length} records in \${duration}ms (\${recordsPerSec} rec/sec)\`);
-
+            console.log('Transform step completed', {
+                pipelineId: context.pipelineId,
+                runId: context.runId,
+                stage: context.stage,
+                recordCount: records.length,
+            });
             return records;
         `,
     }],
@@ -552,38 +546,61 @@ query {
 
 ### Custom Metrics
 
+Interceptor and registered-script hook contexts do not expose the Nest service
+container, `DomainEventsService`, or a pipeline code. Export custom metrics from
+host application instrumentation or an external collector; use the Analytics
+API above for Data Hub's persisted run metrics.
+
+### OTLP/OpenTelemetry Export
+
+The optional `DataHubPlugin.init({ telemetry: ... })` setting exports the
+logger's in-memory metrics and completed spans as OTLP/HTTP JSON. The configured
+endpoint is a collector base URL; Data Hub sends to `/v1/metrics` and
+`/v1/traces`.
+
 ```typescript
-import { DomainEventsService } from '@oronts/vendure-data-hub-plugin';
+const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+if (!otlpEndpoint) {
+    throw new Error('OTEL_EXPORTER_OTLP_ENDPOINT is required');
+}
 
-// Emit custom metrics
-.hooks({
-    AFTER_LOAD: [{
-        type: 'SCRIPT',
-        scriptName: 'emitMetrics',
-    }],
-})
-
-// Register script
 DataHubPlugin.init({
-    scripts: {
-        emitMetrics: async (records, context) => {
-            const events = context.services.get(DomainEventsService);
-
-            events.publish({
-                type: 'CUSTOM_METRIC',
-                payload: {
-                    pipeline: context.pipelineCode,
-                    step: context.stepKey,
-                    recordCount: records.length,
-                    timestamp: new Date(),
-                },
-            });
-
-            return records;
-        },
+    telemetry: {
+        endpoint: otlpEndpoint,
+        serviceName: 'vendure-data-hub-worker',
+        serviceVersion: '0.1.7',
+        environment: process.env.NODE_ENV,
+        exportIntervalMs: 30_000,
+        requestTimeoutMs: 5_000,
+        maxQueueSize: 2_048,
+        maxBatchSize: 256,
     },
 })
 ```
+
+Metric values are cumulative from process startup. A registry retains at most
+500 metric names. Label series remain separate, but each retained metric keeps
+at most 1,000 series and each histogram series keeps at most 1,000 recent
+samples for local percentile diagnostics. OTLP histogram summaries export
+cumulative count and sum; sliding-window quantiles are not emitted as
+process-lifetime quantiles. These values are not a cluster-wide aggregate:
+every API and worker process exports its own resource.
+
+Completed spans enter a bounded in-memory queue without network I/O. Background
+flushes send at most `maxBatchSize` spans per request. A full queue drops new
+spans. Each span retains its first 128 events and reports later events through
+OTLP `droppedEventsCount`. Retryable transport failures are requeued within the
+configured bound, while permanent HTTP failures are dropped. An OTLP
+partial-success response is reported without retrying data the collector already
+accepted. Collector timeouts, invalid responses, and non-success HTTP responses
+do not fail pipeline execution.
+
+Only allowlisted scalar operational attributes are exported. Record bodies,
+configuration objects, credentials, user identifiers, error messages, and
+stacks are excluded. Authentication headers are never written to Data Hub
+logs; load them from the deployment environment rather than committing them.
+The Dashboard's persisted run analytics remain independent of this
+process-local telemetry stream.
 
 ## Common Bottlenecks
 
@@ -601,18 +618,26 @@ Identify and resolve performance issues.
     pagination: { limit: 500 },  // Was 100
 })
 
-// 2. Use incremental extraction
-.extract('fetch-api', {
+// 2. Use incremental database extraction
+.extract('fetch-updates', {
+    adapterCode: 'database',
+    connectionCode: 'db',
+    query: 'SELECT * FROM products WHERE updated_at > :checkpoint',
     incremental: {
         enabled: true,
-        field: 'updated_at',
+        column: 'updated_at',
+        type: 'timestamp',
     },
 })
 
-// 3. Parallel API calls
+// 3. Bound pagination while profiling
 .extract('fetch-api', {
-    throughput: {
-        concurrency: 10,  // Was 1
+    adapterCode: 'httpApi',
+    url: 'https://api.example.com/products',
+    pagination: {
+        type: 'PAGE',
+        limit: 500,
+        maxPages: 20,
     },
 })
 
@@ -630,12 +655,7 @@ Identify and resolve performance issues.
 **Solutions:**
 
 ```typescript
-// 1. Increase batch size
-.transform('process', {
-    throughput: { batchSize: 5000 },  // Was 100
-})
-
-// 2. Remove unnecessary operators
+// 1. Remove unnecessary operators
 .transform('process', {
     operators: [
         // Only essential transforms
@@ -643,17 +663,13 @@ Identify and resolve performance issues.
     ],
 })
 
-// 3. Use parallel processing
-.transform('process', {
-    throughput: {
-        concurrency: 4,
-        batchSize: 1000,
-    },
-})
-
-// 4. Move complex logic to custom operator
+// 2. Move complex logic to a registered custom operator
 // (compiled code is faster than multiple small operators)
 ```
+
+Transform steps do not currently consume `throughput.batchSize` or
+`throughput.concurrency`. Use graph-level parallelism only for independent
+steps, and benchmark custom operators for CPU-heavy work.
 
 ### Symptom: Slow Database Writes
 
@@ -701,30 +717,24 @@ Identify and resolve performance issues.
 **Solutions:**
 
 ```typescript
-// 1. Reduce batch sizes
+// 1. Limit loader work in flight
 .context({
     throughput: { batchSize: 100 },  // Was 1000
 })
 
-// 2. Enable checkpointing
-.context({
-    checkpointing: {
-        enabled: true,
-        intervalRecords: 1000,
-    },
-})
-
-// 3. Reduce concurrency
+// 2. Reduce concurrency
 .context({
     throughput: { concurrency: 2 },  // Was 8
 })
 
-// 4. Avoid buffering operators
+// 3. Avoid buffering operators
 // (deduplicate, sort, groupBy)
 
-// 5. Use streaming extractors
-// (already default for file/database)
 ```
+
+Context throughput changes only loader invocation size and concurrency. The
+pipeline executor still holds extracted records in memory, so these settings do
+not turn extraction or transforms into streaming operations.
 
 ### Symptom: Rate Limit Errors
 
@@ -733,34 +743,39 @@ Identify and resolve performance issues.
 **Solutions:**
 
 ```typescript
-// 1. Add rate limiting
-.extract('fetch-api', {
+// 1. Pace outbound REST load batches
+.load('push-api', {
+    adapterCode: 'restPost',
+    endpoint: 'https://api.example.com/products',
+    method: 'POST',
+    batchMode: 'array',
     throughput: {
-        rateLimitRps: 5,  // Match API limit
+        batchSize: 100,
+        concurrency: 1,
+        rateLimitRps: 5,
     },
 })
 
-// 2. Reduce concurrency
+// 2. Configure HTTP extraction retries
 .extract('fetch-api', {
-    throughput: {
-        concurrency: 2,  // Fewer parallel requests
-    },
-})
-
-// 3. Add retry with backoff
-.context({
-    errorHandling: {
-        maxRetries: 5,
-        retryDelayMs: 2000,
+    adapterCode: 'httpApi',
+    url: 'https://api.example.com/products',
+    retry: {
+        maxAttempts: 5,
+        initialDelayMs: 2000,
+        maxDelayMs: 60000,
         backoffMultiplier: 2,
     },
 })
 
-// 4. Use pagination efficiently
+// 3. Bound each page and the total page count
 .extract('fetch-api', {
+    adapterCode: 'httpApi',
+    url: 'https://api.example.com/products',
     pagination: {
-        limit: 100,      // Larger pages
-        maxPages: 10,    // Limit total pages
+        type: 'PAGE',
+        limit: 100,
+        maxPages: 10,
     },
 })
 ```
@@ -770,7 +785,7 @@ Identify and resolve performance issues.
 ### 1. Start Conservative, Then Optimize
 
 ```typescript
-// Initial configuration (safe)
+// Initial load defaults
 .context({
     throughput: {
         batchSize: 100,
@@ -778,7 +793,7 @@ Identify and resolve performance issues.
     },
 })
 
-// After profiling, increase gradually
+// After profiling loaders, increase gradually
 .context({
     throughput: {
         batchSize: 500,      // 5x increase
@@ -801,52 +816,43 @@ Identify and resolve performance issues.
 // Review logs to find slowest steps
 ```
 
-### 3. Use Appropriate Batch Sizes
+### 3. Use the Component's Active Batch Control
 
-| Operation Type | Recommended Batch Size |
-|----------------|------------------------|
-| File parsing | 1000-5000 |
-| API extraction | 50-200 |
-| Pure transforms | 1000-5000 |
-| Database writes | 20-100 |
-| Search indexing | 500-1000 |
-| Validation | 100-500 |
+| Operation type | Active setting |
+|----------------|----------------|
+| HTTP extraction | `pagination.limit` |
+| Database extraction | `pagination.pageSize` |
+| Load execution | `throughput.batchSize` |
+| Search sinks | `batchSize` |
+| File parsing | No pipeline throughput control; the parser reads the uploaded file |
+| Transform and validation | No per-step throughput control |
 
-### 4. Enable Checkpointing for Long Runs
+### 4. Choose an Extractor with Durable Cursor Support
 
-```typescript
-.context({
-    checkpointing: {
-        enabled: true,
-        strategy: 'COUNT',
-        intervalRecords: 5000,  // Checkpoint every 5K
-    },
-})
-```
+For restartable ingestion, use an extractor that documents a persisted offset or
+incremental cursor. A checkpoint cannot avoid the initial in-memory parse of an
+uploaded CSV, JSON, XML, or XLSX file.
 
 ### 5. Monitor Error Rates
 
 ```typescript
-.context({
+.load('upsert-products', {
+    adapterCode: 'productUpsert',
     throughput: {
         pauseOnErrorRate: {
             threshold: 0.05,     // Pause at 5% error rate
             intervalSec: 60,
         },
+        drainStrategy: 'BACKOFF',
     },
 })
 ```
 
-### 6. Use Dead Letter Queue
+### 6. Configure Message Dead Letters at the Trigger
 
-```typescript
-.context({
-    errorHandling: {
-        deadLetterQueue: true,
-        alertOnDeadLetter: true,
-    },
-})
-```
+MESSAGE triggers own their retry limit and dead-letter destination. Record-level
+errors are stored for inspection and replay; alerting is built externally from
+logs, events, metrics, or webhook hooks.
 
 ### 7. Optimize for Common Case
 
@@ -892,8 +898,7 @@ Identify and resolve performance issues.
         args: {
             url: 'https://api.example.com/lookup/{{sku}}',
             target: 'enrichedData',
-            cache: true,  // Enable caching
-            cacheTtl: 3600,  // 1 hour
+            cacheTtlSec: 3600,
         },
     }],
 })
@@ -914,8 +919,9 @@ Identify and resolve performance issues.
 .extract('products', { /* ... */ })
 .enrich('fetch-prices', {
     sourceType: 'HTTP',
-    endpoint: '/prices/batch',  // Single batch request
-    matchField: 'id',
+    url: '/prices/batch',  // Single batch request
+    keyField: 'id',
+    target: 'priceData',
 })
 ```
 
@@ -923,10 +929,10 @@ Identify and resolve performance issues.
 
 Before deploying to production:
 
-- [ ] Set appropriate batch sizes for each step
-- [ ] Configure concurrency limits
-- [ ] Add rate limiting for external APIs
-- [ ] Enable checkpointing for long-running pipelines
+- [ ] Configure extractor pagination, load throughput, and sink batches separately
+- [ ] Configure graph parallelism and load-batch concurrency separately
+- [ ] Account for external API quotas; load pacing does not throttle extraction
+- [ ] Verify that long-running extractors persist the cursor needed for restart
 - [ ] Configure error handling and retries
 - [ ] Set up monitoring and alerting
 - [ ] Test with production data volumes

@@ -25,6 +25,7 @@ roles and use the smallest set required for each operator.
 | ---------- | ------- |
 | `CreateDataHubSecret` | Create a write-only secret value |
 | `ReadDataHubSecret` | Read secret metadata and value status, never the value |
+| `UseDataHubSecret` | Resolve a referenced secret during an authorized pipeline execution, preview, or sandbox |
 | `UpdateDataHubSecret` | Replace, retain, clear, or change a secret |
 | `DeleteDataHubSecret` | Delete a database-backed secret |
 
@@ -32,10 +33,11 @@ roles and use the smallest set required for each operator.
 
 | Permission | Purpose |
 | ---------- | ------- |
-| `RunDataHubPipeline` | Start, cancel, and otherwise control pipeline runs |
+| `RunDataHubPipeline` | Start, cancel, preview, sandbox, and otherwise control pipeline runs; effective pipeline capabilities are also enforced |
 | `ViewDataHubRuns` | Read run history and run details |
-| `ManageDataHubAdapters` | Read and manage adapter capabilities |
+| `ManageDataHubAdapters` | Open the adapter catalog and read adapter capability metadata used by pipeline editors |
 | `ManageDataHubConnections` | Create, read, update, and delete connections |
+| `UseDataHubConnection` | Use a referenced connection during an authorized pipeline execution, preview, or sandbox |
 | `ViewDataHubQuarantine` | Read quarantined or failed records |
 | `EditDataHubQuarantine` | Modify quarantined records, including retry payload patches |
 | `ReplayDataHubRecord` | Retry a record unchanged from its recorded failure point |
@@ -81,6 +83,27 @@ RunDataHubPipeline
 ReplayDataHubRecord
 ReadDataHubFiles
 ```
+
+Publishing, reverting, interactive execution, extract preview, hook testing,
+impact analysis, and sandbox operations enforce the effective pipeline
+capabilities in addition to their operation permission. Adapter-declared
+permissions are combined with resource references. A definition that references
+a connection requires `UseDataHubConnection` and `UseDataHubSecret`, because the
+saved connection can contain indirect Secret Codes. A direct Secret Code
+reference requires `UseDataHubSecret`. These use permissions do not grant
+connection management or secret-metadata access. Superadmins satisfy the derived
+checks.
+
+Scheduled, event, file-watch, message, and authenticated incoming-webhook
+triggers execute an already-approved published revision under the plugin's
+system context. They do not inherit a transient administrator role. The
+publication gate is therefore the capability boundary for those automated
+executions.
+
+HTTP and GraphQL authentication must be attached to a saved connection with an
+HTTP(S) `baseUrl`. A connection-backed request can use relative paths or an
+absolute URL on that same origin. Cross-origin absolute URLs and redirects are
+rejected before credentials are sent.
 
 A pipeline author commonly adds:
 
@@ -152,16 +175,40 @@ security boundary; a hidden dashboard control is only a usability measure.
 
 ## Channel Scope
 
-Pipeline, secret, connection, run, checkpoint, log, settings, and error entities
-in this plugin are not `ChannelAware`. Their services query global Data Hub
-records rather than filtering those records by `ctx.channelId`.
+Pipelines, connections, database-backed secrets, and schemas are `ChannelAware`.
+Creation assigns them to Vendure's default channel and the active request channel.
+List, detail, validation, and runtime lookup paths require an assignment to
+`ctx.channelId`. The Admin API exposes explicit bounded assign/remove mutations;
+the caller needs the resource permission in the target channel, and resources must
+already be visible in the active source channel. Resources cannot be removed from
+the default channel.
 
-Vendure evaluates a role's permission in the active channel, but that must not be
-interpreted as Data Hub record isolation between channels. An administrator who
-passes a Data Hub permission check can access the corresponding global plugin
-resource. Use globally trusted administrative roles until channel-aware entities,
-assignments, query filters, migrations, and isolation tests are implemented.
+Deleting one of these resources from a non-default active channel removes that
+channel assignment rather than deleting the database row. Default-channel deletion
+is rejected while the resource is assigned to another channel. Global code
+uniqueness is retained, so rename and physical-delete guards inspect published
+definitions and nonterminal run snapshots across all channels. Channel fields show
+all assignments only in the default channel; other channels see only themselves.
 
-Entity loaders can still target Vendure channels according to their own
-configuration and Vendure service permissions. That target-channel behavior does
-not make the Data Hub configuration records themselves channel-scoped.
+Code-first secrets are process configuration rather than database entities. They
+are visible in the default channel and only in additional channel codes explicitly
+declared with `channelCodes`. Runs, checkpoints, logs, settings, errors, export
+destinations, and feeds retain their documented channel/global contracts and are
+not made `ChannelAware` by this resource assignment model.
+
+Before user-initiated execution, dry-run, sandbox, step testing, publication, or
+revert, Data Hub resolves every statically configured target channel. This
+includes the pipeline channel token, effective `EXPLICIT` and `MULTI` channel
+IDs, step overrides, and a loader's static `channel` code. Pipeline context
+channels are resolved as Vendure tokens; loader channels are resolved as codes.
+Data Hub then uses
+Vendure's `RoleService.userHasAllPermissionsOnChannel()` to require the operation
+permission and all effective adapter/capability permissions on every target.
+Unknown targets fail before a run or revision is persisted.
+
+A loader `channelsField` selects channels from runtime records, so its complete
+target set cannot be authorized in advance. Pipelines using that option require
+`SuperAdmin` for user execution and publication. Automated schedules, event
+triggers, webhooks, file watchers, messages, and pipeline hooks execute immutable
+published revisions as trusted system work. These target checks complement, rather
+than replace, managed-resource channel assignment checks.

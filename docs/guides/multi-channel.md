@@ -19,6 +19,11 @@ Complete guide to multi-channel support in the Data Hub plugin.
 
 ---
 
+> **Scope:** This guide covers assigning Vendure catalog and configuration
+> entities to target channels. Data Hub pipelines, secrets, connections, runs,
+> logs, checkpoints, settings, and errors are global plugin records and are not
+> `ChannelAware`. They must not be used as a tenant-isolation boundary.
+
 ## Introduction
 
 ### What Are Channels?
@@ -61,12 +66,12 @@ Channels in Vendure represent different storefronts, markets, or sales channels.
 ### Step 1: Create Channels
 
 ```typescript
-import { PipelineBuilder } from '@oronts/vendure-plugin-data-hub';
+import { createPipeline } from '@oronts/vendure-data-hub-plugin';
 
-const pipeline = PipelineBuilder.create('setup-channels')
+const pipeline = createPipeline().name('Set up channels')
     .extract('channel-data', {
         adapterCode: 'csv',
-        csvPath: 'channels.csv'
+        fileId: 'channels-upload-id'
     })
     .load('create-channels', {
         adapterCode: 'channelUpsert',
@@ -92,10 +97,10 @@ uk-store,UK Store,en,"en",GBP,"GBP,EUR"
 ### Step 2: Assign Products to Channels
 
 ```typescript
-const pipeline = PipelineBuilder.create('import-products')
+const pipeline = createPipeline().name('Import products')
     .extract('product-data', {
         adapterCode: 'csv',
-        csvPath: 'products.csv'
+        fileId: 'products-upload-id'
     })
     .load('upsert-products', {
         adapterCode: 'productUpsert',
@@ -374,7 +379,7 @@ When a customer browses the "web" channel:
 - If product only has EUR price → only EUR is shown
 - **GBP, CHF** prices are ignored (not available on this channel)
 
-### Single-Currency Pricing (Legacy)
+### Single-Currency Pricing
 
 For simple use cases with one currency:
 
@@ -625,6 +630,8 @@ The following loaders support `channelsField` for dynamic per-record channel ass
 ```typescript
 .load('upsert-promotions', {
     adapterCode: 'promotionUpsert',
+    codeField: 'code',
+    actionsField: 'actions',
     channelsField: 'channels',
     translationsField: 'translations'
 })
@@ -706,10 +713,10 @@ You run a wholesale platform with multiple B2B customers. Each customer needs:
 #### Step 1: Create Tenant Channels
 
 ```typescript
-const pipeline = PipelineBuilder.create('setup-b2b-tenants')
+const pipeline = createPipeline().name('Set up B2B tenant channels')
     .extract('tenant-data', {
         adapterCode: 'csv',
-        csvPath: 'b2b-tenants.csv'
+        fileId: 'b2b-tenants-upload-id'
     })
     .load('create-tenant-channels', {
         adapterCode: 'channelUpsert',
@@ -734,10 +741,10 @@ b2b-asia,Asia Distributors,en,SGD,"{""accountManager"":""li@company.com"",""disc
 #### Step 2: Assign Products to Tenants
 
 ```typescript
-const pipeline = PipelineBuilder.create('import-b2b-products')
+const pipeline = createPipeline().name('Import B2B products')
     .extract('product-data', {
         adapterCode: 'csv',
-        csvPath: 'b2b-products.csv'
+        fileId: 'b2b-products-upload-id'
     })
     .load('upsert-products', {
         adapterCode: 'productUpsert',
@@ -762,10 +769,10 @@ PROD-PREMIUM,Premium Product,"b2b-acme,b2b-asia","{""productLine"":""premium""}"
 #### Step 3: Create Tenant-Specific Pricing
 
 ```typescript
-const pipeline = PipelineBuilder.create('import-b2b-pricing')
+const pipeline = createPipeline().name('Import B2B pricing')
     .extract('pricing-data', {
         adapterCode: 'csv',
-        csvPath: 'b2b-pricing.csv'
+        fileId: 'b2b-pricing-upload-id'
     })
     .load('upsert-variants', {
         adapterCode: 'variantUpsert',
@@ -892,10 +899,10 @@ query {
 Assign channels based on product attributes:
 
 ```typescript
-const pipeline = PipelineBuilder.create('smart-channel-assignment')
+const pipeline = createPipeline().name('Smart channel assignment')
     .extract('product-data', {
         adapterCode: 'csv',
-        csvPath: 'products.csv'
+        fileId: 'products-upload-id'
     })
     .transform('assign-channels', {
         operators: [
@@ -944,9 +951,9 @@ Move products from one channel to another:
 .transform('add-new-channel', {
     operators: [
         {
-            op: 'addField',
+            op: 'set',
             args: {
-                field: 'channels',
+                path: 'channels',
                 value: 'new-channel-code'
             }
         }
@@ -967,13 +974,12 @@ Assign channels based on external API or database lookup:
 .transform('lookup-channel-mapping', {
     operators: [
         {
-            op: 'enrichHttp',
+            op: 'httpLookup',
             args: {
-                url: 'https://api.company.com/channel-mapping',
-                lookupField: 'productCategory',
-                responseMapping: {
-                    channels: 'data.assignedChannels'
-                }
+                url: 'https://api.company.com/channel-mapping/{{productCategory}}',
+                keyField: 'productCategory',
+                target: 'channels',
+                responsePath: 'data.assignedChannels'
             }
         }
     ]
@@ -1179,12 +1185,12 @@ Final state: Product in ["default", "web", "b2b"]  ← Still in web!
 - **Multi-Language Guide:** [multi-language.md](./multi-language.md) - Combine channels with translations
 - **Multi-Currency Guide:** [multi-currency.md](./multi-currency.md) - Advanced currency handling per channel
 - **Loader Reference:** [loaders.md](../reference/loaders.md) - Full loader documentation
-- **Pipeline Examples:** [examples/](../examples/) - Real-world pipeline examples
+- **Pipeline Examples:** [Advanced recipes](../user-guide/recipes.md) - Real-world pipeline examples
 
 ---
 
 ## Need Help?
 
-- **Issue Tracker:** [GitHub Issues](https://github.com/oronts/vendure-plugin-data-hub/issues)
+- **Issue Tracker:** [GitHub Issues](https://github.com/oronts/vendure-data-hub-plugin/issues)
 - **Documentation:** [Full Documentation](../README.md)
-- **Vendure Channels:** [Vendure Channels Guide](https://docs.vendure.io/guides/core-concepts/channels/)
+- **Vendure Channels:** [Vendure Channels Guide](https://docs.vendure.io/current/core/core-concepts/channels)

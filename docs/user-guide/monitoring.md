@@ -1,268 +1,175 @@
-# Monitoring & Logs
+# Monitoring and Logs
 
-Track pipeline executions, view logs, and debug issues.
+Inspect pipeline runs, persisted logs, queue state, message consumers, and
+quarantined records from the Data Hub Dashboard.
 
 <p align="center">
   <img src="../images/05-logs-analytics.png" alt="Logs & Analytics Dashboard" width="700">
   <br>
-  <em>Analytics Dashboard - Real-time metrics and pipeline health overview</em>
+  <em>Logs & Analytics overview and pipeline log statistics</em>
 </p>
+
+## Implemented Monitoring Surfaces
+
+| Dashboard location | What it shows |
+| --- | --- |
+| **Pipelines > pipeline detail > Runs** | Paginated run history for that pipeline, status filtering, timing, metrics, errors, logs, cancel, rerun, and gate actions |
+| **Queues > Queue Overview** | Pending, running, failed, and completed-today counts; active counts by pipeline; recent failed runs |
+| **Queues > Dead Letters** | Quarantined record errors with retry and unmark actions, subject to permission |
+| **Queues > Consumers** | Message-consumer state, processed/failed counts, last message time, and start/stop actions |
+| **Logs & Analytics > Overview** | Total persisted logs, today's errors and warnings, average logged duration, counts by level, and per-pipeline log statistics |
+| **Logs & Analytics > Log Explorer** | Persisted log search, filters, detail drawer, pagination, and current-page JSON export |
+| **Logs & Analytics > Real-time Feed** | Latest persisted logs across pipelines, polled every three seconds |
+| **Settings** | Run/error/log retention fields and persisted log level |
+
+There is no separate **Runs**, **Errors**, **Analytics**, or **Alerts** route.
+Run history and record errors are scoped to a pipeline/run; queue and log
+information use the routes listed above.
 
 ## Run History
 
-### Viewing Runs
+Open **Data Hub > Pipelines**, select a pipeline, and use its **Runs** block.
+The table supports status filtering, pagination, start/finish sorting, manual
+refresh, and a run-detail drawer.
 
-1. Go to **Data Hub > Runs**
-2. See all pipeline executions
-3. Filter by:
-   - Pipeline
-   - Status (running, completed, failed)
-   - Date range
+Run details include:
 
-### Run Details
+- current status and start/finish timestamps;
+- processed, succeeded, and failed counters;
+- step counters and the persisted step summary;
+- raw run metrics and the terminal error, when present;
+- a link to Log Explorer pre-filtered by run ID;
+- record errors captured for the run;
+- cancel for active runs, rerun for a finished run, and approve/reject for a
+  paused gate when the operator has permission.
 
-Click a run to see:
+### Run Statuses
 
-- **Status** - Current state
-- **Timing** - Start, end, duration
-- **Metrics** - Records processed, failed
-- **Steps** - Per-step execution details
-- **Logs** - Execution logs
+| Status | Meaning |
+| --- | --- |
+| `PENDING` | Run record exists and is waiting for a worker |
+| `RUNNING` | A worker is executing the pipeline |
+| `PAUSED` | Execution is waiting at a gate |
+| `CANCEL_REQUESTED` | Cancellation was requested and the runner has not completed cancellation yet |
+| `COMPLETED` | Execution finished without a terminal run failure |
+| `FAILED` | Execution ended with a terminal error |
+| `TIMEOUT` | Retention cleanup marked a stale running execution as timed out |
+| `CANCELLED` | Execution acknowledged cancellation |
 
-## Run Statuses
+There is no `PARTIAL` run status. Per-record failures are represented in run
+metrics and record-error rows while the terminal run status follows the runner's
+result.
 
-| Status | Description |
-|--------|-------------|
-| Pending | Scheduled, waiting to start |
-| Running | Currently executing |
-| Completed | Finished successfully |
-| Failed | Stopped due to error |
-| Cancelled | Manually stopped |
-| Partial | Completed with some failures |
+## Persisted Logs
 
-## Execution Logs
+### Log Explorer
 
-### Viewing Logs
+Use **Data Hub > Logs & Analytics > Log Explorer**. Filters are available for:
 
-1. Open a run
-2. Click **Logs** tab
-3. View chronological log entries
+- run ID;
+- pipeline;
+- log level;
+- message text;
+- start and end date.
 
-### Log Levels
+Selecting a row opens its details. **Export** downloads only the rows on the
+currently loaded page as JSON; it is not an asynchronous full-history export.
 
-| Level | Description |
-|-------|-------------|
-| Debug | Detailed debugging information |
-| Info | General execution information |
-| Warning | Potential issues that didn't stop execution |
-| Error | Errors that caused record failures |
+The levels shown by the current runtime are `DEBUG`, `INFO`, `WARN`, and
+`ERROR`. Which messages are persisted depends on **Settings > Log Persistence
+Level**:
 
-### Filtering Logs
+- `ERROR_ONLY`: errors;
+- `PIPELINE`: pipeline lifecycle messages and errors (default);
+- `STEP`: pipeline and step lifecycle messages;
+- `DEBUG`: all supported persisted messages.
 
-Filter logs by:
-- Level (debug, info, warn, error)
-- Step (extract, transform, load, etc.)
-- Time range
-- Search text
+### Real-time Feed
 
-### Log Retention
+The Real-time Feed is polling, not a WebSocket or GraphQL subscription. It
+requests the latest 50 persisted log entries every three seconds while the tab
+is active. It therefore has the same process/database visibility and
+persistence-level limits as the log queries.
 
-Logs are retained based on plugin settings:
-- Configure in **Data Hub > Settings**
-- Default: 30 days
-- Adjust based on debugging needs and storage
+### Retention
 
-## Step Metrics
+The retention job applies `retentionDaysRuns` to finished runs and delivered
+or permanently failed EVENT outbox rows, `retentionDaysErrors` to record errors, and
+`retentionDaysLogs` to persisted pipeline logs. Each setting is an age in days;
+a positive value deletes rows older than that cutoff, while `null` or `0`
+disables deletion for that data type.
 
-Each step tracks:
+## Queue and Error Operations
 
-| Metric | Description |
-|--------|-------------|
-| Records In | Records received from previous step |
-| Records Out | Records passed to next step |
-| Records Failed | Records that failed processing |
-| Duration | Time spent in this step |
-| Throughput | Records per second |
+**Queue Overview** is an aggregate view, not a complete listing of pending and
+running run rows. Use each pipeline's Runs block for its full paginated history.
+The overview also links recent failures to a run-detail drawer.
 
-### Viewing Step Details
+The **Dead Letters** tab lists quarantined record errors. It supports retry and
+unmark; it does not provide the bulk delete workflow described by older
+documentation. In a run-detail drawer, an individual failed record can be
+retried with a JSON merge patch. Retrying creates an audited retry operation;
+fix the source or patch deliberately rather than repeatedly replaying the same
+invalid record.
 
-1. Open a run
-2. Click **Steps** tab
-3. See per-step breakdown
-4. Click a step for detailed metrics
+## Debugging and Safe Testing
 
-## Error Tracking
+Enable global debug logging in non-production environments when more diagnostic
+detail is needed:
 
-### Viewing Errors
-
-1. Go to **Data Hub > Errors**
-2. See all failed records across pipelines
-3. Filter by:
-   - Pipeline
-   - Step
-   - Error type
-   - Date range
-
-### Error Details
-
-Click an error to see:
-
-- **Record Data** - The original record that failed
-- **Error Message** - What went wrong
-- **Stack Trace** - Full error details
-- **Context** - Pipeline, step, run information
-
-### Retrying Records
-
-1. Select one or more error records
-2. Click **Retry Selected**
-3. Failed records are reprocessed
-
-Or retry from the run view:
-1. Open the failed run
-2. Click **Retry Failed Records**
-
-### Deleting Errors
-
-1. Select error records
-2. Click **Delete Selected**
-3. Confirm deletion
-
-Use this for records that cannot be fixed (bad source data).
-
-## Analytics
-
-### Dashboard Metrics
-
-Go to **Data Hub > Analytics** to see:
-
-- **Run Success Rate** - Percentage of successful runs
-- **Average Duration** - Typical run time
-- **Records Processed** - Total over time period
-- **Error Rate** - Percentage of failed records
-
-### Pipeline Performance
-
-View per-pipeline metrics:
-
-- Run history chart
-- Average records per run
-- Average duration trend
-- Error rate over time
-
-### Step Performance
-
-Identify bottlenecks:
-
-- Slowest steps across pipelines
-- Steps with highest error rates
-- Throughput by step type
-
-## Alerts
-
-### Setting Up Alerts
-
-Configure notifications for pipeline events:
-
-1. Go to **Data Hub > Settings > Alerts**
-2. Configure alert conditions:
-   - Run failed
-   - Error rate exceeds threshold
-   - Run duration exceeds threshold
-3. Set notification channels:
-   - Email
-   - Webhook
-   - Slack (via webhook)
-
-### Alert Conditions
-
-| Condition | Trigger |
-|-----------|---------|
-| Run Failed | Any run fails |
-| High Error Rate | Error rate exceeds X% |
-| Long Duration | Run exceeds X minutes |
-| No Runs | Pipeline hasn't run in X hours |
-
-## Debugging Tips
-
-### Common Issues
-
-**No records extracted:**
-1. Check extractor configuration
-2. Verify connection settings
-3. Test the data source manually
-4. Check `itemsField` path is correct
-
-**Records failing validation:**
-1. View error details
-2. Check validation rules
-3. Sample the source data
-4. Adjust validation or source data
-
-**Records not loading:**
-1. Check loader configuration
-2. Verify field mappings
-3. Check for required fields
-4. Review load strategy
-
-**Slow execution:**
-1. Check step durations
-2. Identify bottleneck steps
-3. Adjust batch sizes
-4. Review concurrency settings
-
-### Debug Mode
-
-Enable debug logging for detailed output:
-
-```typescript
+```ts
 DataHubPlugin.init({
     debug: true,
 })
 ```
 
-Or per-pipeline in the trigger configuration.
+There is no per-trigger or per-pipeline debug flag.
 
-### Dry Run
+Use the pipeline detail **Dry Run** action to execute the simulator without
+loader writes. The result shows metrics, notes, and available before/after
+sample records. Dry run is a safety aid, not proof that external credentials,
+production data volumes, or write-side constraints will succeed.
 
-Test pipelines without making changes:
+The pipeline editor also exposes a Step Tester for supported test operations.
+Availability depends on the selected step and adapter; it is not a universal
+preview for every runtime step. Extract previews require an integer record
+limit from 1 to 1,000; the Dashboard intentionally caps the interactive field
+at 100 records. Uploaded file previews reject source files larger than 10 MiB
+before reading their contents. Batch extractor extensions must provide a
+source-bounded `preview()` implementation instead of running `extractAll()`.
 
-1. Clone the pipeline
-2. Remove or disable load steps
-3. Run the copy
-4. Review what would have happened
+### Investigation Order
 
-### Sample Data
+When a run fails or produces no records:
 
-Preview data at each step:
+1. open the run details and note its status, terminal error, counters, and
+   failed step;
+2. follow **View Logs** and inspect messages for that run ID;
+3. review record errors and retry only after correcting data or applying a
+   deliberate patch;
+4. check Queue Overview and the `data-hub.run` worker when a run remains
+   pending;
+5. check Consumers for message-trigger pipelines and scheduler logs for
+   schedule-trigger pipelines;
+6. test the relevant connection or supported step in a non-production
+   environment;
+7. compare the published definition with the draft being edited.
 
-1. Open the pipeline editor
-2. Click **Preview** on a step
-3. See sample records
-4. Verify transformations
+## Alerting Boundary
 
-## Best Practices
+Data Hub does not currently provide an Alerts settings page, thresholds, email,
+Slack, or PagerDuty notification rules. Build alerting from persisted logs,
+queue/run queries, or process-local `DataHubDomainEvent` subscriptions, and send
+durable work to an external queue or monitoring system. See
+[Event Subscriptions](../developer-guide/extending/events.md) for event names
+and delivery limitations.
 
-### Regular Monitoring
+Deployments can also configure the plugin's optional OTLP/HTTP telemetry export
+for process-local metrics and completed spans. It is an infrastructure signal,
+not another Dashboard page and not a replacement for persisted run history.
+See [Performance and Scaling](../deployment/performance.md#otlpopentelemetry-export).
 
-- Check the dashboard daily
-- Review error queue weekly
-- Analyze performance monthly
-
-### Alert Configuration
-
-- Set up alerts for critical pipelines
-- Don't alert on expected failures
-- Use appropriate thresholds
-
-### Log Management
-
-- Configure appropriate retention
-- Export logs for long-term storage
-- Search logs during debugging
-
-### Error Handling
-
-- Review errors promptly
-- Categorize recurring errors
-- Fix root causes, not just symptoms
+For production, alert on sustained queue depth, runs stuck in active states,
+worker/process health, schedule circuit-breaker messages, webhook delivery
+dead letters, message-consumer inactivity, and failed-run trends. Thresholds are
+deployment-specific; the plugin does not install them automatically.

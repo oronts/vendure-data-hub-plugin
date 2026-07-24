@@ -199,8 +199,9 @@ The current value is never returned to the browser. The form only knows whether 
 3. Confirm deletion
 
 Deletion is blocked when the secret is referenced by a published pipeline, a
-saved connection, or a managed destination. The mutation returns `NOT_DELETED`
-with the blocking reference in its message. For a row marked **Code-first
+nonterminal run snapshot, saved connection, or managed destination. Renaming is
+blocked by the same references. The mutation returns `NOT_DELETED` with the
+blocking reference in its message. For a row marked **Code-first
 active**, deleting an unreferenced row removes only the inactive database
 fallback; the in-memory definition remains active.
 

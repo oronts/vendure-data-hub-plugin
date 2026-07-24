@@ -168,7 +168,9 @@ class MyHooksService implements OnModuleInit {
 }
 ```
 
-Scripts can modify records at any of the 24 hook stages (18 for step types and 6 global). They receive the records array, a `HookContext` with pipeline/run metadata, and optional `args` from the hook action config.
+Scripts can modify records at the 18 data stages. They receive the records
+array, a `HookContext` with pipeline/run metadata, and optional `args` from the
+hook action config. Lifecycle/error stages are observe-only.
 
 ### Hook Capabilities & Limitations
 
@@ -176,12 +178,12 @@ Scripts can modify records at any of the 24 hook stages (18 for step types and 6
 
 | Capability | How |
 |------------|-----|
-| Modify records at any of 24 stages | INTERCEPTOR or SCRIPT hook |
+| Modify records at any of 18 data stages | INTERCEPTOR or SCRIPT hook |
 | Access NestJS DI services (DB, APIs, Vendure services) | `HookService.registerScript()` in `onModuleInit()` — closures capture injected services |
 | Query Vendure DB for entity IDs after load | Inject `TransactionalConnection`, query by match field (sku/slug) |
 | Call external APIs | `fetch()` or inject your own HTTP client service |
 | Filter/remove records from pipeline | Return a filtered array from the hook |
-| Fail the pipeline from a hook | Throw an error with `failOnError: true` |
+| Propagate an immediate hook action failure | Set `failOnError: true`; the effect depends on the stage call site |
 | Trigger other pipelines | Use `TRIGGER_PIPELINE` hook action |
 | Configure Meilisearch index settings | Use sink config: `sortableFields`, `filterableFields`, `searchableFields` |
 
@@ -190,10 +192,10 @@ Scripts can modify records at any of the 24 hook stages (18 for step types and 6
 | | INTERCEPTOR | SCRIPT |
 |--|-------------|--------|
 | **Code location** | Inline JavaScript string in pipeline definition | Pre-registered TypeScript function |
-| **Execution** | Sandboxed Node.js `vm` — no `require`, `import`, `fetch`, `async/await`, `process` | Full Node.js process — all APIs available |
-| **DI access** | No — isolated sandbox | Yes — closures capture injected services |
+| **Execution** | Restricted Node.js `vm` globals and timeout — no `require`, `import`, `fetch`, `async/await`, `process` | Full Node.js process — all APIs available |
+| **DI access** | No direct DI access | Yes — closures capture injected services |
 | **Use case** | Simple field mapping, filtering, adding static fields | DB queries, external APIs, complex business logic |
-| **Security** | Safe for user-provided code (UI pipeline editor) | Must be registered at server startup by trusted code |
+| **Security** | Trusted-administrator code only; Node `vm` is not a hostile-code boundary | Must be registered at server startup by trusted code |
 
 #### What Hooks Cannot Do (and alternatives)
 
@@ -203,7 +205,7 @@ Scripts can modify records at any of the 24 hook stages (18 for step types and 6
 | Change Meilisearch index settings from hooks | Use sink configuration fields (`sortableFields`, etc.) or call the Meilisearch API directly from a BEFORE_SINK script |
 | Access loaded entity IDs directly in AFTER_LOAD records | Query the DB by match field (sku/slug) in a DI-injected script (records retain their pre-load shape) |
 | Use `async/await` or `fetch` in INTERCEPTOR hooks | Use a SCRIPT hook instead — INTERCEPTORs run in a sandboxed VM without async support |
-| Run hooks on global lifecycle stages (PIPELINE_STARTED, etc.) | INTERCEPTOR/SCRIPT are ignored on lifecycle stages. Use WEBHOOK, EMIT, LOG, or TRIGGER_PIPELINE actions instead |
+| Run hooks on global lifecycle stages (PIPELINE_STARTED, etc.) | Definition validation rejects INTERCEPTOR/SCRIPT on lifecycle stages. Use WEBHOOK, EMIT, LOG, or TRIGGER_PIPELINE actions instead |
 | Modify pipeline context (shared config) from hooks | Add fields to records instead — records are the mutable data carrier between steps |
 
 #### AFTER_LOAD: Getting Entity IDs
@@ -292,7 +294,7 @@ registerOperator({
 });
 ```
 
-Custom operators appear in the dashboard alongside the 61 built-in operators. See [Custom Operators](./custom-operators.md) for full details.
+Custom operators appear in the dashboard alongside the 62 built-in operators. See [Custom Operators](./custom-operators.md) for full details.
 
 #### Custom Loader Match Strategies
 
@@ -342,15 +344,23 @@ Built-in loaders also support `addCustomStrategy()` for extending the match logi
 
 #### Error & Dead Letter Hooks
 
-Three error-handling hook stages fire automatically:
+Three error-handling hook stages cover record-error transitions:
 
 | Stage | When | Example Use |
 |-------|------|-------------|
 | `ON_ERROR` | When any record fails during processing | Send Slack alert, log to external system |
-| `ON_RETRY` | When a failed record is retried | Track retry counts |
-| `ON_DEAD_LETTER` | When a record is moved to the dead letter queue | Notify support team |
+| `ON_RETRY` | When record replay begins, or a record is manually removed from dead-letter state | Track retry attempts |
+| `ON_DEAD_LETTER` | When a record is manually marked as dead letter | Notify support team |
 
 These are lifecycle-only stages — they support `WEBHOOK`, `EMIT`, `LOG`, and `TRIGGER_PIPELINE` actions (not `INTERCEPTOR`/`SCRIPT`):
+
+Broker message retries and broker DLQ publication are separate from record-error
+state and do not invoke these record-level hooks. `failOnError` propagates only
+from the immediate action invocation. `PIPELINE_STARTED` and
+`PIPELINE_COMPLETED` can therefore affect the parent run, while
+`PIPELINE_FAILED`, `ON_ERROR`, `ON_RETRY`, and `ON_DEAD_LETTER` are executed
+best-effort. For durable webhooks it covers persistence and queue handoff, not
+the later HTTP outcome.
 
 ```typescript
 .hooks({
@@ -437,9 +447,27 @@ interface BaseAdapter {
     description?: string; // Help text
     category?: string;    // UI grouping
     icon?: string;        // Icon name
-    version?: string;     // Adapter version
+    version?: string;     // Exact runtime contract pinned at publication
+    deprecated?: boolean; // Advisory lifecycle status
+    deprecatedMessage?: string; // Required migration guidance when deprecated
 }
 ```
+
+`version` and `apiVersion` form an exact runtime contract. Publication records
+both values for every adapter location, and execution rejects a different installed
+contract. Registering multiple runtime versions under one code is not supported.
+
+Before deploying an adapter upgrade, finish or cancel every nonterminal run pinned
+to the previous contract. Startup scans pending, running, paused, and
+cancellation-requested runs and refuses the upgraded process when any snapshot
+requires a different adapter version or API version. After the old runs are
+terminal, deploy the adapter and publish a new pipeline revision to bind the new
+contract.
+
+A deprecated adapter remains executable so existing pipelines keep working, but
+validation emits a warning and the dashboard displays its migration message.
+Registration rejects blank or padded versions, deprecated adapters without
+guidance, and guidance attached to an adapter that is not deprecated.
 
 ## Schema Definition
 
@@ -1126,7 +1154,7 @@ interface ExportResult {
     readonly exported?: number;
     readonly skipped?: number;
     readonly errors?: readonly ExportError[];
-    readonly outputPath?: string;   // Local file path if exported to file
+    readonly outputPath?: string;   // Relative file path under DATA_HUB_EXPORT_ROOT for local exports
     readonly outputUrl?: string;    // URL if exported to cloud storage
     readonly metadata?: JsonObject;
 }
@@ -1407,7 +1435,7 @@ DataHubPlugin.init({
 
 See complete examples in the codebase:
 
-- **Operators:** `src/operators/` - 61 built-in operators
+- **Operators:** `src/operators/` - 62 built-in operators
 - **Extractors:** `src/extractors/` - REST, GraphQL, CSV, etc.
 - **Loaders:** `src/loaders/` - Product, Customer, Order, etc.
 - **Sinks:** `src/runtime/executors/sink.executor.ts` - MeiliSearch, Elasticsearch, etc.

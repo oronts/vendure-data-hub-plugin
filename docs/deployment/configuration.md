@@ -38,6 +38,13 @@ DataHubPlugin.init({
         scheduler: { refreshIntervalMs: 60_000 },
     },
 
+    // Optional OTLP/HTTP JSON metrics and trace export
+    telemetry: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ? {
+        endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+        serviceName: 'vendure-data-hub',
+        environment: process.env.NODE_ENV,
+    } : undefined,
+
     // Security configuration
     security: {
         ssrf: { /* SSRF protection settings */ },
@@ -108,7 +115,10 @@ DataHubPlugin.init({
 | Default | `30` |
 | Description | Days to keep pipeline run history |
 
-Old runs are deleted automatically by the retention job.
+Old runs are deleted automatically by the retention job. The job runs in the
+Vendure server process under the configured distributed lock. Database work is
+bounded to 1,000 rows per statement and 10,000 rows per entity per daily cycle;
+larger backlogs continue in later cycles.
 
 ### retentionDaysErrors
 
@@ -153,8 +163,13 @@ interface CodeFirstSecret {
     provider: 'INLINE' | 'ENV';
     value: string;
     metadata?: Record<string, unknown>;
+    channelCodes?: string[];
 }
 ```
+
+Code-first secrets are always available in Vendure's default channel. Set `channelCodes`
+to explicitly make a secret available to additional channels. Database-backed secrets
+use the channel assignments managed in the Dashboard and Admin API.
 
 ENV values must be one canonical environment-variable name and must exist in every executing API server or worker. Code-first INLINE values stay plaintext in source and are rejected in production even when DATAHUB_MASTER_KEY is set. The master key encrypts database-backed INLINE values only. In non-production, code-first INLINE requires a valid master key.
 
@@ -197,6 +212,7 @@ interface AdapterDefinition {
     readonly icon?: string;
     readonly version?: string;
     readonly deprecated?: boolean;
+    readonly deprecatedMessage?: string; // Required when deprecated is true
     readonly experimental?: boolean;
     readonly entityType?: string;      // For loaders: Vendure entity type
     readonly formatType?: string;      // For exporters/feeds: output format
@@ -255,6 +271,9 @@ interface EffectiveRuntimeLimits {
         checkIntervalMs?: number;
         refreshIntervalMs?: number;
         minIntervalMs?: number;
+        maxPipelineDiscovery?: number;
+        maxTrackingEntries?: number;
+        maxConsecutiveFailures?: number;
     };
 }
 ```
@@ -271,10 +290,43 @@ DataHubPlugin.init({
         scheduler: {
             checkIntervalMs: 30_000,
             refreshIntervalMs: 60_000,
+            maxPipelineDiscovery: 1_000,
+            maxTrackingEntries: 1_000,
+            maxConsecutiveFailures: 5,
         },
     },
 })
 ```
+
+### telemetry
+
+| | |
+|---|---|
+| Type | `OtlpTelemetryConfig` |
+| Default | `undefined` |
+| Description | Optional process-local metrics and completed-span export over OTLP/HTTP JSON |
+
+| Field | Default | Valid values |
+|---|---|---|
+| `endpoint` | Required | HTTP(S) collector base URL without credentials, query, or fragment |
+| `enabled` | `true` | Boolean |
+| `metrics` | `true` | Boolean |
+| `traces` | `true` | Boolean |
+| `headers` | `{}` | Up to 32 valid HTTP header pairs |
+| `serviceName` | `@oronts/vendure-data-hub-plugin` | OpenTelemetry `service.name` |
+| `serviceVersion` | Unset | OpenTelemetry `service.version` |
+| `environment` | Unset | OpenTelemetry `deployment.environment.name` |
+| `exportIntervalMs` | `30000` | Integer from 1,000 to 300,000 |
+| `requestTimeoutMs` | `5000` | Integer from 100 to 30,000 |
+| `maxQueueSize` | `2048` | Integer from 1 to 10,000 |
+| `maxBatchSize` | `256` | Integer from 1 to 1,000 |
+
+The endpoint is a base URL; the exporter appends `/v1/metrics` and
+`/v1/traces`. Omit the option or set `enabled: false` for no background
+timer and no telemetry network requests. Header values should come from
+deployment secrets. See
+[Performance and Scaling](performance.md#otlpopentelemetry-export) for
+cardinality, queue, failure, and data-minimization behavior.
 
 ### security
 
@@ -289,7 +341,7 @@ interface SecurityConfig {
     ssrf?: UrlSecurityConfig;
     script?: {
         enabled?: boolean;
-        defaultTimeoutMs?: number;
+        defaultTimeoutMs?: number; // integer from 1 to 300000
         validation?: {
             maxCodeLength?: number;
             maxConditionLength?: number;
@@ -367,7 +419,7 @@ interface CustomImportTemplate {
     name: string;
     description: string;
     category: string;         // 'products' | 'customers' | 'inventory' | 'catalog'
-    icon?: string;            // lucide-react icon name
+    icon?: string;            // Supported lucide-react name; unknown names use the UI fallback
     requiredFields: string[];
     optionalFields?: string[];
     featured?: boolean;
@@ -513,13 +565,33 @@ DataHubPlugin.init({
 
 Relative paths resolve from the process working directory. Only .json, .yaml, and .yml are accepted, and the document root must be an object. When configPath is configured, missing, unreadable, unsupported, malformed, or invalid secret configuration aborts startup.
 
-File secrets stay in memory. They are loaded before secret consumers, then inline plugin secret options are overlaid so inline options win on cross-source codes. Duplicate codes within the file or within inline options are rejected. Connections and pipelines are synchronized separately after application bootstrap.
+File secrets stay in memory. They are loaded before secret consumers, then inline plugin secret options are overlaid so inline options win on cross-source codes. Duplicate codes within the file or within inline options are rejected.
+
+During application bootstrap, one API server validates the complete effective connection and pipeline configuration, then reconciles it under a distributed lock. Inline entries override same-code file entries, unchanged rows are not rewritten, and validation fails before any configuration row is changed. Workers perform no writes; they wait for the shared database to match before schedule, message, and file-trigger discovery starts. New or changed pipeline definitions still require the normal review and publish workflow before execution.
 
 A config file is not an encrypted secret store. Production code-first INLINE values are rejected; use ENV references.
 
 ## Environment Variables
 
 Use environment variables in configurations:
+
+### Redis coordination
+
+`DATAHUB_REDIS_URL` selects Redis for distributed locks and shared incoming
+webhook rate limits. `REDIS_URL` is accepted when the Data Hub-specific variable
+is unset. The webhook limiter uses atomic fixed-window counters with bounded
+connection and command timeouts across API instances.
+
+When neither URL is configured, webhook rate limiting remains process-local for
+local development and single-instance deployments. When a URL is configured
+but Redis becomes unavailable after startup, incoming webhook admission fails
+closed with `503` instead of silently switching to independent local counters.
+
+The same URL also auto-selects Redis for distributed locks unless
+`DATAHUB_LOCK_BACKEND` selects another valid backend. Redis lock initialization
+is intentionally fail-closed and can prevent application bootstrap. To isolate
+webhook-limiter outages from lock initialization on PostgreSQL, set
+`DATAHUB_LOCK_BACKEND=POSTGRES` explicitly.
 
 ### Server-local output
 

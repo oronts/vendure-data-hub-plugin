@@ -24,11 +24,16 @@ export const config: VendureConfig = {
 
 ## Run Migrations
 
-The plugin creates database tables for pipelines, runs, connections, secrets, and logs. Run migrations to create these tables:
+The plugin registers database tables for pipelines, runs, connections, secrets,
+schemas, destinations, feeds, logs, checkpoints, and runtime state. Generate and
+run a migration from the host Vendure application:
 
 ```bash
 npx vendure migrate
 ```
+
+Production installations must keep TypeORM synchronization disabled. See the
+[migration guide](../deployment/migrations.md) for generation and review steps.
 
 ## Verify Installation
 
@@ -80,12 +85,30 @@ DataHubPlugin.init({
 
     // Path to external config file (YAML or JSON)
     configPath: undefined,
+
+    // Optional OpenTelemetry Collector base URL.
+    // /v1/metrics and /v1/traces are appended automatically.
+    telemetry: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ? {
+        endpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+        serviceName: 'vendure-data-hub',
+        environment: process.env.NODE_ENV,
+        headers: process.env.OTEL_EXPORTER_OTLP_API_KEY
+            ? { 'x-api-key': process.env.OTEL_EXPORTER_OTLP_API_KEY }
+            : undefined,
+    } : undefined,
 })
 ```
 
+Telemetry export is disabled when `telemetry` is omitted or
+`telemetry.enabled` is `false`. It uses OTLP/HTTP JSON and native Node.js
+networking, so no telemetry SDK or vendor agent is required. Configure the same
+collector settings on every Vendure API server and worker whose process-local
+metrics and spans should be visible. Collector headers should come from
+environment variables or another deployment secret source.
+
 ## Code-First Configuration
 
-You can define pipelines, secrets, and connections directly in code. These are synced to the database on startup.
+You can define pipelines, secrets, and connections directly in code. Pipelines and connections are synced to the database on startup; code-first secrets stay in memory and take precedence during runtime resolution.
 
 ### Secrets
 
@@ -96,12 +119,15 @@ DataHubPlugin.init({
     secrets: [
         // Read from environment variable
         { code: 'supplier-api-key', provider: 'ENV', value: 'SUPPLIER_API_KEY' },
+        { code: 'supplier-db-password', provider: 'ENV', value: 'SUPPLIER_DB_PASSWORD' },
 
-        // Inline value (not recommended for production)
-        { code: 'test-secret', provider: 'INLINE', value: 'secret-value' },
+        // Environment-variable names must use A-Z, 0-9, and underscores
+        { code: 'test-secret', provider: 'ENV', value: 'TEST_SECRET' },
     ],
 })
 ```
+
+ENV values are variable names, not fallback expressions. Code-first INLINE values remain plaintext in TypeScript, JSON, or YAML and are rejected in production even when DATAHUB_MASTER_KEY is configured. Use ENV for deployed code-first configuration and provide the referenced variable to every API server and worker.
 
 ### Connections
 
@@ -112,20 +138,18 @@ DataHubPlugin.init({
     connections: [
         {
             code: 'supplier-db',
-            type: 'postgres',
-            name: 'Supplier Database',
+            type: 'POSTGRES',
             settings: {
                 host: '${DB_HOST}',        // Reads from DB_HOST env var
                 port: 5432,
                 database: 'supplier',
                 username: '${DB_USER}',
-                password: '${DB_PASSWORD}',
+                passwordSecretCode: 'supplier-db-password',
             },
         },
         {
             code: 'erp-api',
-            type: 'http',
-            name: 'ERP API',
+            type: 'HTTP',
             settings: {
                 baseUrl: 'https://erp.example.com/api',
                 timeout: 30000,
@@ -146,7 +170,7 @@ const pipeline = createPipeline()
     .name('Product Sync')
     .trigger('start', { type: 'SCHEDULE', cron: '0 2 * * *' })
     .extract('fetch', { adapterCode: 'httpApi', url: 'https://api.example.com/products' })
-    .load('import', { adapterCode: 'productUpsert', strategy: 'UPSERT', matchField: 'slug' })
+    .load('import', { adapterCode: 'productUpsert', strategy: 'UPSERT', slugField: 'slug' })
     .edge('start', 'fetch')
     .edge('fetch', 'import')
     .build();
@@ -212,28 +236,33 @@ The plugin ships with built-in templates for common scenarios (CSV imports, API 
 
 ### Connector Templates
 
-Connectors (like Pimcore) ship their own wizard templates. Built-in export templates are served automatically by the `TemplateRegistryService`. Include connector templates alongside the import defaults:
+Connectors such as Pimcore ship their own wizard templates and generated pipelines. Register the configured connector and add its explicit pipeline list:
 
 ```typescript
-import { DataHubPlugin, DEFAULT_IMPORT_TEMPLATES } from '@oronts/vendure-data-hub-plugin';
+import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
 import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
 
+const pimcore = PimcoreConnector({
+    connection: {
+        endpoint: 'https://pimcore.example.com/pimcore-graphql-webservices/shop',
+        apiKeySecretCode: 'pimcore-api-key',
+    },
+});
+
 DataHubPlugin.init({
-    importTemplates: [
-        ...DEFAULT_IMPORT_TEMPLATES,
-        ...(PimcoreConnector.importTemplates ?? []),
-    ],
-    exportTemplates: [
-        ...(PimcoreConnector.exportTemplates ?? []),
-    ],
-})
+    connectors: [pimcore],
+    pipelines: pimcore.pipelines,
+});
 ```
 
-This makes the Pimcore connector's 4 import templates (Product, Category, Asset, Facet Sync) and 1 export template appear in the wizard alongside the built-in templates.
+This registers the Pimcore runtime extractor and its three import templates
+(Product, Category, and Asset Sync), one export template, and generated
+pipelines. Connector registration never persists pipelines implicitly.
 
 ## Pipeline Scripts
 
-Register named script functions that can modify records at any hook stage:
+Register named script functions that can modify records at the 18 data-processing
+hook stages. Lifecycle and error stages accept observation actions instead:
 
 ```typescript
 import { DataHubPlugin, ScriptFunction } from '@oronts/vendure-data-hub-plugin';
@@ -267,7 +296,7 @@ const pipeline = createPipeline()
     .name('Product Import')
     .trigger('start', { type: 'MANUAL' })
     .extract('fetch', { adapterCode: 'httpApi', url: 'https://api.example.com/products' })
-    .load('import', { adapterCode: 'productUpsert', strategy: 'UPSERT', matchField: 'sku' })
+    .load('import', { adapterCode: 'productUpsert', strategy: 'UPSERT', slugField: 'slug', skuField: 'sku' })
     .hooks({
         AFTER_EXTRACT: [{ type: 'SCRIPT', scriptName: 'validate-sku' }],
         BEFORE_LOAD: [{ type: 'SCRIPT', scriptName: 'enrich-pricing' }],
@@ -288,22 +317,30 @@ DataHubPlugin.init({
 })
 ```
 
+When configPath is set, the file is required startup configuration. Missing, unreadable, unsupported, malformed, or non-object JSON/YAML aborts startup. Secrets from the file are validated and published in memory before secret consumers initialize; they are not persisted. Inline plugin secret options are applied after file secrets and therefore win on cross-source code collisions. Duplicate secret codes within either source are rejected.
+
+Do not put production INLINE secret values in this file. A master key protects database-backed INLINE values only; it cannot encrypt plaintext already stored in YAML or JSON.
+
 Example `data-hub-config.yaml`:
 
 ```yaml
 secrets:
   - code: api-key
-    provider: env
+    provider: ENV
     value: API_KEY
+  - code: supplier-db-password
+    provider: ENV
+    value: SUPPLIER_DB_PASSWORD
 
 connections:
   - code: supplier-db
-    type: postgres
-    name: Supplier Database
+    type: POSTGRES
     settings:
       host: ${DB_HOST}
       port: 5432
       database: supplier
+      username: ${DB_USER}
+      passwordSecretCode: supplier-db-password
 
 pipelines:
   - code: daily-sync
