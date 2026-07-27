@@ -4,6 +4,7 @@
     "moduleResolution": "nodenext",
     "jsx": "react-jsx",
     "target": "es2020",
+    "types": ["vite/client"],
     "lib": ["es2020", "dom", "dom.iterable"],
     "strict": true,
     "skipLibCheck": true,
@@ -13,9 +14,13 @@
     "noEmit": true,
     "paths": {
       "@/gql": ["./dashboard/gql/index.ts"],
-      "@/vdb/*": ["../../node_modules/@vendure/dashboard/src/lib/*"],
+      "@/vdb/*": ["./node_modules/@vendure/dashboard/src/lib/*"],
       "@/*": ["./dashboard/*"]
     }
   },
-  "include": ["./dashboard/**/*"]
+  "include": [
+    "./dashboard/**/*",
+    "./node_modules/@vendure/dashboard/src/lib/virtual.d.ts",
+    "./node_modules/@vendure/dashboard/src/lib/graphql/graphql-env.d.ts"
+  ]
 }

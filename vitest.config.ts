@@ -8,16 +8,27 @@ export default defineConfig({
                 parser: {
                     syntax: 'typescript',
                     decorators: true,
+                    tsx: true,
                 },
                 transform: {
                     legacyDecorator: true,
                     decoratorMetadata: true,
+                    react: {
+                        runtime: 'automatic',
+                    },
                 },
             },
         }),
     ],
     test: {
-        include: ['src/**/*.spec.ts', 'src/**/*.test.ts'],
+        include: [
+            'src/**/*.spec.ts',
+            'src/**/*.test.ts',
+            'dashboard/**/*.spec.{ts,tsx}',
+            'dev-server/**/*.spec.ts',
+            'shared/**/*.spec.ts',
+            'connectors/**/*.spec.ts',
+        ],
         exclude: ['node_modules', 'dist', 'e2e'],
         testTimeout: 10000,
     },

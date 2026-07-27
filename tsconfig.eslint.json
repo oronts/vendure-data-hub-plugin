@@ -19,7 +19,10 @@
     "e2e/**/*.ts",
     "scripts/**/*.ts",
     "vendure-config.dev.ts",
-    "codegen.ts"
+    "codegen.ts",
+    "vitest.config.ts",
+    "vite.config.mts",
+    "vite.dev.config.mts"
   ],
   "exclude": [
     "node_modules",

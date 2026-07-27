@@ -10,7 +10,10 @@ import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 
 const ENUM_MAPPING: Record<string, string> = {
+    ConfigurationSource: 'CONFIGURATION_SOURCE',
     RunStatus: 'RUN_STATUS',
+    DryRunMessageLevel: 'DRY_RUN_MESSAGE_LEVEL',
+    DryRunMessageCode: 'DRY_RUN_MESSAGE_CODE',
     StepType: 'STEP_TYPE',
     TriggerType: 'TRIGGER_TYPE',
     LoadStrategy: 'LOAD_STRATEGY',
@@ -18,7 +21,6 @@ const ENUM_MAPPING: Record<string, string> = {
     ValidationMode: 'VALIDATION_MODE',
     HookStage: 'HOOK_STAGE',
     FileFormat: 'FILE_FORMAT',
-    CheckpointStrategy: 'CHECKPOINT_STRATEGY',
     QueueType: 'QUEUE_TYPE',
     AckMode: 'ACK_MODE',
 };

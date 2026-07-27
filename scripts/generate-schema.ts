@@ -1,28 +1,27 @@
-/**
- * Generate GraphQL Schema for DataHub Plugin
- *
- * This script bootstraps a minimal Vendure server with the DataHub plugin
- * and exports the GraphQL schema to schema.graphql.
- *
- * Run with: npx ts-node scripts/generate-schema.ts
- */
-
+import type { AddressInfo } from 'net';
 import { bootstrap, mergeConfig, VendureConfig } from '@vendure/core';
-import { printSchema, GraphQLSchema } from 'graphql';
+import { buildClientSchema, getIntrospectionQuery, IntrospectionQuery, printSchema } from 'graphql';
 import * as fs from 'fs';
 import * as path from 'path';
+import { DataHubPlugin } from '../src/index';
+import { LockBackendType } from '../src/constants';
+
+const ADMIN_API_PATH = 'admin-api';
+const SCHEMA_OUTPUT_PATH = path.join(__dirname, '..', 'schema.graphql');
+
+process.env.DATAHUB_LOCK_BACKEND = LockBackendType.MEMORY;
 
 const baseConfig: VendureConfig = {
     apiOptions: {
-        port: 3199, // Use a different port to avoid conflicts
-        adminApiPath: 'admin-api',
+        port: 0,
+        adminApiPath: ADMIN_API_PATH,
         shopApiPath: 'shop-api',
     },
     authOptions: {
         tokenMethod: ['bearer', 'cookie'],
         superadminCredentials: {
-            identifier: 'superadmin',
-            password: 'superadmin',
+            identifier: 'schema-generator',
+            password: 'schema-generator',
         },
     },
     dbConnectionOptions: {
@@ -36,42 +35,44 @@ const baseConfig: VendureConfig = {
     plugins: [],
 };
 
-async function generateSchema() {
-    console.log('Bootstrapping Vendure server with DataHub plugin...');
-
-    const { DataHubPlugin } = await import('../src/index.js');
-
-    const mergedConfig = mergeConfig(baseConfig, {
-        plugins: [
-            DataHubPlugin.init({
-                enableDashboard: true,
-            }),
-        ],
+async function generateSchema(): Promise<void> {
+    const config = mergeConfig(baseConfig, {
+        plugins: [DataHubPlugin.init({})],
     });
+    const app = await bootstrap(config);
 
-    const app = await bootstrap(mergedConfig);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Vendure internal API access
-    const { schema } = (app as unknown as { get(token: string): { schema: unknown } }).get('VENDURE_GRAPHQL_ADMIN_SCHEMA');
-
-    if (!schema) {
-        console.error('Could not get GraphQL schema from server');
+    try {
+        const address = app.getHttpServer().address() as AddressInfo | string | null;
+        if (!address || typeof address === 'string') {
+            throw new Error('Schema server did not expose a TCP port');
+        }
+        const response = await fetch(`http://127.0.0.1:${address.port}/${ADMIN_API_PATH}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ query: getIntrospectionQuery() }),
+        });
+        if (!response.ok) {
+            const details = (await response.text()).trim();
+            throw new Error(
+                `Schema introspection failed with HTTP ${response.status}: ${details || response.statusText}`,
+            );
+        }
+        const result = await response.json() as {
+            data?: IntrospectionQuery;
+            errors?: Array<{ message: string }>;
+        };
+        if (!result.data) {
+            const details = result.errors?.map(error => error.message).join('; ') || 'No schema data returned';
+            throw new Error(`Schema introspection failed: ${details}`);
+        }
+        fs.writeFileSync(SCHEMA_OUTPUT_PATH, printSchema(buildClientSchema(result.data)), 'utf-8');
+    } finally {
         await app.close();
-        process.exit(1);
     }
-
-    const schemaString = printSchema(schema as GraphQLSchema);
-    const outputPath = path.join(__dirname, '..', 'schema.graphql');
-
-    fs.writeFileSync(outputPath, schemaString, 'utf-8');
-    console.log(`Schema written to ${outputPath}`);
-
-    await app.close();
-    console.log('Done!');
-    process.exit(0);
 }
 
-generateSchema().catch((err) => {
-    console.error('Failed to generate schema:', err);
-    process.exit(1);
+generateSchema().catch((error: unknown) => {
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    process.stderr.write(`Failed to generate schema: ${message}\n`);
+    process.exitCode = 1;
 });

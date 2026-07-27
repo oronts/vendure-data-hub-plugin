@@ -1,24 +1,33 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { lingui } from '@lingui/vite-plugin';
 import { resolve } from 'path';
 
 /**
  * Vite configuration for @vendure/data-hub-plugin dashboard
  *
- * This config builds the dashboard extensions as a library that can be
- * consumed by the main Vendure dashboard.
+ * This config builds the dashboard extension source as a standalone library
+ * for bundle and module-boundary verification. Vendure consumers compile the
+ * published dashboard source through vendureDashboardPlugin instead.
  *
  * Usage:
  *   npm run build:dashboard    - Production build
  *
- * For development, use vite.dev.config.mts instead:
- *   npm run build:dev          - Dev server build with HMR
+ * Vendure integration build:
+ *   npm run build:dev          - Build the complete Vendure dashboard
  */
 
 const isProduction = process.env.NODE_ENV === 'production';
 
 export default defineConfig({
-    plugins: [react()],
+    plugins: [
+        react({
+            babel: {
+                plugins: ['@lingui/babel-plugin-lingui-macro'],
+            },
+        }),
+        lingui(),
+    ],
     build: {
         outDir: resolve(__dirname, '.dashboard-build'),
         emptyOutDir: true,
@@ -43,6 +52,7 @@ export default defineConfig({
                 'sonner',
                 'lucide-react',
                 '@xyflow/react',
+                'virtual:vendure-ui-config',
                 /^@radix-ui\/.*/,
             ],
             output: {
@@ -71,8 +81,14 @@ export default defineConfig({
     resolve: {
         alias: [
             { find: '@/gql', replacement: resolve(__dirname, 'dashboard/gql/index.ts') },
-            { find: /^@\/vdb\/(.*)$/, replacement: '@vendure/dashboard/src/$1' },
             { find: '@', replacement: resolve(__dirname, 'dashboard') },
+        ],
+        dedupe: [
+            'react',
+            'react-dom',
+            '@tanstack/react-query',
+            '@tanstack/react-router',
+            '@tanstack/react-table',
         ],
     },
     // Optimize dependencies
