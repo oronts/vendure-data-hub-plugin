@@ -4,7 +4,7 @@
  * Tests nested entity modes for the Variant loader:
  * - facetValuesMode (REPLACE_ALL, MERGE, SKIP)
  * - assetsMode (REPLACE_ALL, SKIP)
- * - featuredAssetMode (SET, SKIP)
+ * - featuredAssetMode (REPLACE, SKIP)
  * - optionsMode (REPLACE_ALL, MERGE, SKIP)
  *
  * Uses ProductVariantLoader (BaseEntityLoader) which supports configurable modes
@@ -14,7 +14,7 @@
  * Vendure's constraint of requiring option groups for multiple variants
  * under the same product.
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { TransactionalConnection, ProductVariant, ID } from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { FacetHandler, FacetValueHandler } from '../../src/runtime/executors/loaders/facet-handler';
@@ -22,6 +22,12 @@ import { ProductVariantLoader } from '../../src/loaders/product-variant/product-
 import { getSuperadminContext, makeStep, LOADER_TEST_INITIAL_DATA } from './loader-test-helpers';
 import type { LoaderContext } from '../../src/types/loader-interfaces';
 import type { ProductVariantInput } from '../../src/loaders/product-variant/types';
+import * as assetDownload from '../../src/utils/asset-download.utils';
+
+const TEST_PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=',
+    'base64',
+);
 
 function makeLoaderContext(
     ctx: import('@vendure/core').RequestContext,
@@ -45,6 +51,7 @@ describe('Variant Modes', () => {
     let ctx: import('@vendure/core').RequestContext;
 
     beforeAll(async () => {
+        vi.spyOn(assetDownload, 'downloadAsset').mockResolvedValue(TEST_PNG);
         await server.init({
             initialData: LOADER_TEST_INITIAL_DATA,
             productsCsvPath: undefined,
@@ -69,6 +76,7 @@ describe('Variant Modes', () => {
 
     afterAll(async () => {
         await server.destroy();
+        vi.restoreAllMocks();
     });
 
     async function findVariantWithFacets(sku: string): Promise<ProductVariant | null> {
@@ -76,6 +84,13 @@ describe('Variant Modes', () => {
             .getRepository(ctx, ProductVariant)
             .find({ where: { sku }, relations: ['facetValues'] });
         return variants.length > 0 ? variants[0] : null;
+    }
+
+    async function findVariantWithAssets(sku: string): Promise<ProductVariant | null> {
+        const variants = await connection
+            .getRepository(ctx, ProductVariant)
+            .find({ where: { sku }, relations: ['assets', 'featuredAsset'] });
+        return variants[0] ?? null;
     }
 
     describe('facetValuesMode', () => {
@@ -117,6 +132,8 @@ describe('Variant Modes', () => {
                 facetValueCodes: ['vm-cotton'],
             }]);
             expect(result.created).toBe(1);
+            const variant = await findVariantWithFacets('VM-FV-SKIP-001');
+            expect(variant?.facetValues).toHaveLength(0);
         });
     });
 
@@ -126,40 +143,48 @@ describe('Variant Modes', () => {
                 sku: 'VM-ASSET-REPLACE-001',
                 price: 1000,
                 productName: 'VM Asset Replace Product',
+                assetUrls: ['https://assets.example.com/replace.png'],
             }]);
             expect(result.created).toBe(1);
             expect(result.failed).toBe(0);
+            expect((await findVariantWithAssets('VM-ASSET-REPLACE-001'))?.assets).toHaveLength(1);
         });
 
-        it('should create variant with MERGE assets mode', async () => {
-            const result = await loader.load(makeLoaderContext(ctx, { assetsMode: 'MERGE' }), [{
+        it('should create variant with UPSERT_BY_URL assets mode', async () => {
+            const result = await loader.load(makeLoaderContext(ctx, { assetsMode: 'UPSERT_BY_URL' }), [{
                 sku: 'VM-ASSET-MERGE-001',
                 price: 1000,
                 productName: 'VM Asset Merge Product',
+                assetUrls: ['https://assets.example.com/upsert.png'],
             }]);
             expect(result.created).toBe(1);
             expect(result.failed).toBe(0);
+            expect((await findVariantWithAssets('VM-ASSET-MERGE-001'))?.assets).toHaveLength(1);
         });
     });
 
     describe('featuredAssetMode', () => {
-        it('should create variant with SET featured asset mode', async () => {
-            const result = await loader.load(makeLoaderContext(ctx, { featuredAssetMode: 'SET' }), [{
+        it('should create variant with REPLACE featured asset mode', async () => {
+            const result = await loader.load(makeLoaderContext(ctx, { featuredAssetMode: 'REPLACE' }), [{
                 sku: 'VM-FEAT-SET-001',
                 price: 1000,
                 productName: 'VM Feat Set Product',
+                featuredAssetUrl: 'https://assets.example.com/featured.png',
             }]);
             expect(result.created).toBe(1);
             expect(result.failed).toBe(0);
+            expect((await findVariantWithAssets('VM-FEAT-SET-001'))?.featuredAsset).toBeTruthy();
         });
 
-        it('should create variant with SET mode on different product', async () => {
-            const result = await loader.load(makeLoaderContext(ctx, { featuredAssetMode: 'SET' }), [{
+        it('should create variant with REPLACE mode on different product', async () => {
+            const result = await loader.load(makeLoaderContext(ctx, { featuredAssetMode: 'REPLACE' }), [{
                 sku: 'VM-FEAT-UPDATE-001',
                 price: 1000,
                 productName: 'VM Feat Update Product',
+                featuredAssetUrl: 'https://assets.example.com/featured-second.png',
             }]);
             expect(result.created).toBe(1);
+            expect((await findVariantWithAssets('VM-FEAT-UPDATE-001'))?.featuredAsset).toBeTruthy();
         });
 
         it('should create variant with SKIP featured asset mode', async () => {
@@ -207,7 +232,7 @@ describe('Variant Modes', () => {
             const result = await loader.load(makeLoaderContext(ctx, {
                 facetValuesMode: 'REPLACE_ALL',
                 assetsMode: 'SKIP',
-                featuredAssetMode: 'SET',
+                featuredAssetMode: 'REPLACE',
                 optionsMode: 'MERGE',
             }), [{
                 sku: 'VM-COMBINED-001',

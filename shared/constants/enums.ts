@@ -15,6 +15,14 @@ export const TRIGGER_TYPE = {
 } as const;
 
 /**
+ * Identifies whether a persisted resource is owned by deployed configuration.
+ */
+export const CONFIGURATION_SOURCE = {
+    DATABASE: 'DATABASE',
+    CODE_FIRST: 'CODE_FIRST',
+} as const;
+
+/**
  * * Pipeline run execution status
  */
 export const RUN_STATUS = {
@@ -26,6 +34,23 @@ export const RUN_STATUS = {
     TIMEOUT: 'TIMEOUT',
     CANCELLED: 'CANCELLED',
     CANCEL_REQUESTED: 'CANCEL_REQUESTED',
+} as const;
+
+/** DryRunMessageLevel */
+export const DRY_RUN_MESSAGE_LEVEL = {
+    INFO: 'INFO',
+    WARNING: 'WARNING',
+    ERROR: 'ERROR',
+} as const;
+
+/** DryRunMessageCode */
+export const DRY_RUN_MESSAGE_CODE = {
+    NO_RECORDS: 'NO_RECORDS',
+    EXTRACT_ADAPTER: 'EXTRACT_ADAPTER',
+    COMPLETED: 'COMPLETED',
+    PROCESSED_RECORDS: 'PROCESSED_RECORDS',
+    RECORD_ERROR: 'RECORD_ERROR',
+    STEP_SIMULATION_SKIPPED: 'STEP_SIMULATION_SKIPPED',
 } as const;
 
 /**
@@ -116,15 +141,6 @@ export const FILE_FORMAT = {
     NDJSON: 'NDJSON',
     TSV: 'TSV',
     PARQUET: 'PARQUET',
-} as const;
-
-/**
- * * Checkpoint strategies for pipeline resumability
- */
-export const CHECKPOINT_STRATEGY = {
-    COUNT: 'COUNT',
-    INTERVAL: 'INTERVAL',
-    TIMESTAMP: 'TIMESTAMP',
 } as const;
 
 /**

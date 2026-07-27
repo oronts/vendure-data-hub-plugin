@@ -6,6 +6,7 @@
  */
 
 import type { JsonObject, JsonValue } from './json.types';
+import type { UIConnectionType } from '../constants';
 
 // EXTRACTOR CONFIGURATION
 
@@ -64,7 +65,7 @@ export interface RetryConfig {
 }
 
 export interface AuthConfig {
-    type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY' | 'OAUTH2' | 'HMAC' | 'JWT';
+    type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY';
     /** Secret code for looking up the token/password via secret resolver */
     secretCode?: string;
     /** Header name for api-key auth (defaults to 'X-API-Key') */
@@ -73,10 +74,6 @@ export interface AuthConfig {
     username?: string;
     /** Secret code for looking up username (for basic auth) */
     usernameSecretCode?: string;
-    /** Direct token value (if not using secret resolver) */
-    token?: string;
-    /** Direct password value for basic auth (if not using secret resolver) */
-    password?: string;
 }
 
 // PAGINATION SUPPORT
@@ -99,10 +96,6 @@ export interface PaginationConfig {
     /** For page pagination */
     pageParam?: string;
     pageSizeParam?: string;
-    pageSize?: number;
-
-    /** For all types: where to find records in response */
-    dataPath?: string;
 
     /** Maximum pages to fetch (safety limit) */
     maxPages?: number;
@@ -111,20 +104,12 @@ export interface PaginationConfig {
 // CONNECTION CONFIG
 
 /**
- * Connection configuration for extractor inputs.
- *
- * Canonical connection format used in extractor configurations and pipeline definitions.
- *
- * Related ConnectionConfig types:
- * - src/sdk/types/connection-types.ts ConnectionConfig - SDK format with `code` field
- * - src/utils/url-helpers.ts UrlConnectionConfig - Minimal interface for URL building
+ * Runtime connection resolved by code for extractor execution.
  */
 export interface ConnectionConfig {
-    type: 'HTTP' | 'FTP' | 'SFTP' | 'S3' | 'DATABASE';
-    baseUrl?: string;
-    headers?: Record<string, string>;
-    auth?: AuthConfig;
-    config?: JsonObject;
+    code: string;
+    type: UIConnectionType;
+    config: JsonObject;
 }
 
 // RECORD ENVELOPE
@@ -261,6 +246,14 @@ export interface StepConfigField {
     defaultValue?: JsonValue;
     placeholder?: string;
     options?: Array<{ value: string; label: string }>;
+    validation?: {
+        min?: number;
+        max?: number;
+        minLength?: number;
+        maxLength?: number;
+        pattern?: string;
+        patternMessage?: string;
+    };
     group?: string;
     dependsOn?: { field: string; value: JsonValue; operator?: 'eq' | 'ne' };
 }

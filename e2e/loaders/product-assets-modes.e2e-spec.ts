@@ -15,26 +15,34 @@
  *
  * Verifies: idempotency, duplicate prevention, edge cases, performance
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { ProductService, AssetService } from '@vendure/core';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { ProductService } from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { ProductHandler } from '../../src/runtime/executors/loaders/product-handler';
 import { getSuperadminContext, makeStep, createErrorCollector, LOADER_TEST_INITIAL_DATA } from './loader-test-helpers';
 import {
     testIdempotency,
-    testReplaceAllMode,
-    testMergeMode,
-    testSkipMode,
 } from './mode-test-helpers';
+import * as assetDownload from '../../src/utils/asset-download.utils';
+
+async function downloadTestAsset(url: string): Promise<Buffer | null> {
+    if (url.includes('not-a-valid-url') || url.includes('also://') || url.includes('httpstat.us/404')) {
+        return null;
+    }
+    return Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nWQAAAAASUVORK5CYII=',
+        'base64',
+    );
+}
 
 describe('Product Assets & Featured Asset Modes', () => {
     const { server, adminClient } = createDataHubTestEnvironment();
     let handler: ProductHandler;
     let productService: ProductService;
-    let assetService: AssetService;
     let ctx: import('@vendure/core').RequestContext;
 
     beforeAll(async () => {
+        vi.spyOn(assetDownload, 'downloadAsset').mockImplementation(downloadTestAsset);
         await server.init({
             initialData: LOADER_TEST_INITIAL_DATA,
             productsCsvPath: undefined,
@@ -42,12 +50,12 @@ describe('Product Assets & Featured Asset Modes', () => {
         await adminClient.asSuperAdmin();
         handler = server.app.get(ProductHandler);
         productService = server.app.get(ProductService);
-        assetService = server.app.get(AssetService);
         ctx = await getSuperadminContext(server.app);
     });
 
     afterAll(async () => {
         await server.destroy();
+        vi.restoreAllMocks();
     });
 
     describe('assetsMode: REPLACE_ALL', () => {
@@ -70,7 +78,7 @@ describe('Product Assets & Featured Asset Modes', () => {
                 return full?.assets?.length ?? 0;
             };
             const count = await testIdempotency(handler, ctx, step, data, getCount, 3);
-            expect(count).toBeGreaterThanOrEqual(0); // Asset download may fail; test verifies no duplication
+            expect(count).toBe(1);
         });
 
         it('should remove old assets not in new list', async () => {
@@ -119,13 +127,13 @@ describe('Product Assets & Featured Asset Modes', () => {
         });
     });
 
-    describe('assetsMode: MERGE', () => {
+    describe('assetsMode: UPSERT_BY_URL', () => {
         it('should combine existing and new assets without duplicates', async () => {
             const step = makeStep('asset-merge', {
                 strategy: 'UPSERT',
                 createVariants: false,
                 assetsField: 'assets',
-                assetsMode: 'MERGE',
+                assetsMode: 'UPSERT_BY_URL',
             });
             await handler.execute(ctx, step, [{
                 name: 'Asset Merge Product',
@@ -145,7 +153,7 @@ describe('Product Assets & Featured Asset Modes', () => {
                 strategy: 'UPSERT',
                 createVariants: false,
                 assetsField: 'assets',
-                assetsMode: 'MERGE',
+                assetsMode: 'UPSERT_BY_URL',
             });
             const data = [{
                 name: 'Asset Merge Idemp',
@@ -160,7 +168,7 @@ describe('Product Assets & Featured Asset Modes', () => {
             };
             const count = await testIdempotency(handler, ctx, step, data, getCount, 3);
             // Count should remain stable (no duplicates on re-run)
-            expect(count).toBeGreaterThanOrEqual(0);
+            expect(count).toBe(1);
         });
 
         it('should match assets by URL to prevent duplicates', async () => {
@@ -168,7 +176,7 @@ describe('Product Assets & Featured Asset Modes', () => {
                 strategy: 'UPSERT',
                 createVariants: false,
                 assetsField: 'assets',
-                assetsMode: 'MERGE',
+                assetsMode: 'UPSERT_BY_URL',
             });
             const url = 'https://via.placeholder.com/100x100.png?text=SameURL';
             await handler.execute(ctx, step, [{
@@ -189,9 +197,8 @@ describe('Product Assets & Featured Asset Modes', () => {
         });
     });
 
-    describe('assetsMode: REMOVE', () => {
-        it('should remove specified assets', async () => {
-            // Setup with REPLACE_ALL, then remove specific
+    describe('assetsMode: APPEND_ONLY', () => {
+        it('appends new assets to existing assets', async () => {
             const setupStep = makeStep('asset-remove-setup', {
                 strategy: 'UPSERT',
                 createVariants: false,
@@ -204,26 +211,29 @@ describe('Product Assets & Featured Asset Modes', () => {
                 assets: ['https://via.placeholder.com/100x100.png?text=KeepA'],
             }]);
 
-            const removeStep = makeStep('asset-remove', {
+            const appendStep = makeStep('asset-append', {
                 strategy: 'UPSERT',
                 createVariants: false,
                 assetsField: 'assets',
-                assetsMode: 'REMOVE',
+                assetsMode: 'APPEND_ONLY',
             });
-            const result = await handler.execute(ctx, removeStep, [{
+            const result = await handler.execute(ctx, appendStep, [{
                 name: 'Asset Remove Product',
                 slug: 'asset-remove-product',
-                assets: ['https://via.placeholder.com/100x100.png?text=KeepA'],
+                assets: ['https://via.placeholder.com/100x100.png?text=NewB'],
             }]);
             expect(result.ok).toBe(1);
+            const product = await productService.findOneBySlug(ctx, 'asset-remove-product');
+            const full = await productService.findOne(ctx, product!.id);
+            expect(full?.assets).toHaveLength(2);
         });
 
-        it('should ignore non-existent assets', async () => {
+        it('creates an asset for a newly created product', async () => {
             const step = makeStep('asset-remove-noexist', {
                 strategy: 'UPSERT',
                 createVariants: false,
                 assetsField: 'assets',
-                assetsMode: 'REMOVE',
+                assetsMode: 'APPEND_ONLY',
             });
             const result = await handler.execute(ctx, step, [{
                 name: 'Asset Remove NoExist',
@@ -231,6 +241,9 @@ describe('Product Assets & Featured Asset Modes', () => {
                 assets: ['https://via.placeholder.com/100x100.png?text=DoesNotExist'],
             }]);
             expect(result.ok).toBe(1);
+            const product = await productService.findOneBySlug(ctx, 'asset-remove-noexist');
+            const full = await productService.findOne(ctx, product!.id);
+            expect(full?.assets).toHaveLength(1);
         });
     });
 
@@ -264,13 +277,13 @@ describe('Product Assets & Featured Asset Modes', () => {
         });
     });
 
-    describe('featuredAssetMode: SET', () => {
+    describe('featuredAssetMode: REPLACE', () => {
         it('should set featured asset', async () => {
             const step = makeStep('feat-set', {
                 strategy: 'UPSERT',
                 createVariants: false,
                 featuredAssetField: 'featuredAsset',
-                featuredAssetMode: 'SET',
+                featuredAssetMode: 'REPLACE',
             });
             const result = await handler.execute(ctx, step, [{
                 name: 'Featured Set Product',
@@ -285,7 +298,7 @@ describe('Product Assets & Featured Asset Modes', () => {
                 strategy: 'UPSERT',
                 createVariants: false,
                 featuredAssetField: 'featuredAsset',
-                featuredAssetMode: 'SET',
+                featuredAssetMode: 'REPLACE',
             });
             await handler.execute(ctx, step, [{
                 name: 'Featured Update Product',
@@ -305,7 +318,7 @@ describe('Product Assets & Featured Asset Modes', () => {
                 strategy: 'UPSERT',
                 createVariants: false,
                 featuredAssetField: 'featuredAsset',
-                featuredAssetMode: 'SET',
+                featuredAssetMode: 'REPLACE',
             });
             const result = await handler.execute(ctx, step, [{
                 name: 'Featured Create Product',
@@ -349,7 +362,7 @@ describe('Product Assets & Featured Asset Modes', () => {
                 strategy: 'UPSERT',
                 createVariants: false,
                 assetsField: 'assets',
-                assetsMode: 'MERGE',
+                assetsMode: 'UPSERT_BY_URL',
             });
             const result = await handler.execute(ctx, step, [{
                 name: 'Asset No Field Product',
@@ -373,8 +386,7 @@ describe('Product Assets & Featured Asset Modes', () => {
                 slug: 'asset-bad-url',
                 assets: ['not-a-valid-url', 'also://broken'],
             }], collector.callback);
-            // Product may still be created, but asset processing may fail
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
         });
 
         it('should handle asset download failures', async () => {
@@ -390,8 +402,7 @@ describe('Product Assets & Featured Asset Modes', () => {
                 slug: 'asset-404-product',
                 assets: ['https://httpstat.us/404'],
             }], collector.callback);
-            // Product may be created even if asset download fails
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
         });
     });
 

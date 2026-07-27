@@ -5,6 +5,9 @@ import path from 'path';
 import fs from 'fs';
 import { DataHubPlugin } from '../src/data-hub.plugin';
 
+process.env.DATAHUB_LOCK_BACKEND ??= 'MEMORY';
+process.env.DATAHUB_MASTER_KEY ??= 'data-hub-e2e-master-key-32-chars';
+
 const dataPath = path.join(__dirname, '__data__');
 
 // Ensure data directory exists

@@ -162,6 +162,8 @@ export interface PipelineStepDefinition {
     concurrency?: number;
     /** Throughput/rate limiting configuration */
     throughput?: Throughput;
+    /** Per-step execution context overrides */
+    context?: StepContextOverride;
     /** Number of retry attempts */
     retries?: number;
     /** Delay between retries in milliseconds */
@@ -250,7 +252,7 @@ export interface StepContextOverride {
     channelStrategy?: ChannelStrategy;
     channelIds?: string[];
     validationMode?: ValidationModeType;
-    runMode?: 'SYNC' | 'ASYNC' | 'BATCH';
+    throughput?: Throughput;
 }
 
 /**

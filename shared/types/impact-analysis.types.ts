@@ -180,7 +180,7 @@ export interface ImpactAnalysis {
     /** Duration estimate */
     estimatedDuration: DurationEstimate;
     /** Resource usage estimate */
-    resourceUsage: ResourceEstimate;
+    resourceUsage: ResourceEstimate | null;
     /** When the analysis was performed */
     analyzedAt: Date;
     /** Sample size used for analysis */
@@ -222,10 +222,10 @@ export interface RecordDetail {
     /** Entity type */
     entityType: string;
     /** Operation to be performed - matches GraphQL DataHubRecordOperation enum */
-    operation: 'CREATE' | 'UPDATE' | 'DELETE' | 'SKIP';
+    operation: 'CREATE' | 'UPDATE' | 'DELETE' | 'SKIP' | 'ERROR' | 'UNKNOWN';
     /** Current state in database (for updates) */
     currentState: unknown | null;
-    /** Proposed new state */
+    /** Proposed loader input preview */
     proposedState: unknown;
     /** Field-level diff for updates */
     diff: Record<string, { before: unknown; after: unknown }> | null;

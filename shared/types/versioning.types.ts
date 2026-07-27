@@ -41,7 +41,7 @@ export interface RevisionDiff {
  */
 export interface TimelineEntry {
     revision: {
-        id: number;
+        id: string | number;
         createdAt: Date;
         version: number;
         type: 'DRAFT' | 'PUBLISHED';
@@ -63,7 +63,7 @@ export interface TimelineEntry {
  * Options for saving a draft revision
  */
 export interface SaveDraftOptions {
-    pipelineId: number;
+    pipelineId: string | number;
     definition: PipelineDefinition;
     authorUserId?: string;
     authorName?: string;
@@ -73,8 +73,8 @@ export interface SaveDraftOptions {
  * Options for publishing a new version
  */
 export interface PublishVersionOptions {
-    pipelineId: number;
-    commitMessage: string;
+    pipelineId: string | number;
+    commitMessage?: string;
     definition?: PipelineDefinition;
     authorUserId?: string;
     authorName?: string;
@@ -84,7 +84,7 @@ export interface PublishVersionOptions {
  * Options for reverting to a previous revision
  */
 export interface RevertOptions {
-    revisionId: number;
+    revisionId: string | number;
     commitMessage?: string;
     authorUserId?: string;
     authorName?: string;

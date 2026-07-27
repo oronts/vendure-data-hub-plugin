@@ -14,9 +14,6 @@ import { PromotionHandler } from '../../src/runtime/executors/loaders/promotion-
 import { getSuperadminContext, makeStep, createErrorCollector, LOADER_TEST_INITIAL_DATA } from './loader-test-helpers';
 import {
     testIdempotency,
-    testReplaceAllMode,
-    testMergeMode,
-    testSkipMode,
 } from './mode-test-helpers';
 
 describe('Promotion Modes', () => {
@@ -297,7 +294,7 @@ describe('Promotion Modes', () => {
                 expect(result.ok).toBe(1);
             });
 
-            it('should handle empty actions array (remove all)', async () => {
+            it('rejects removing every promotion action', async () => {
                 const step = makeStep('promo-act-empty', {
                     strategy: 'UPSERT',
                     codeField: 'code',
@@ -310,15 +307,16 @@ describe('Promotion Modes', () => {
                     name: 'Promo Act Empty',
                     actions: [{ code: 'order_percentage_discount', arguments: [{ name: 'discount', value: '10' }] }],
                 }]);
-                // Empty actions - may cause error since promotions typically require at least one action
                 const collector = createErrorCollector();
                 const result = await handler.execute(ctx, step, [{
                     code: 'PROMO-ACT-EMPTY',
                     name: 'Promo Act Empty',
                     actions: [],
                 }], collector.callback);
-                // Either succeeds (removes all actions) or fails (actions required)
-                expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+                expect(result).toMatchObject({ ok: 0, fail: 1 });
+                expect(collector.errors[0]?.message).toContain(
+                    'Promotion requires at least one action',
+                );
             });
         });
 
@@ -489,7 +487,7 @@ describe('Promotion Modes', () => {
             expect(result.ok).toBe(1);
         });
 
-        it('should handle missing actionsField', async () => {
+        it('rejects creation without actions', async () => {
             const step = makeStep('promo-no-act', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -503,11 +501,13 @@ describe('Promotion Modes', () => {
                 name: 'Promo No Act',
                 // No actions field
             }], collector.callback);
-            // Promotions may require actions; this could succeed or fail depending on Vendure validation
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
+            expect(collector.errors[0]?.message).toContain(
+                'Promotion requires at least one action',
+            );
         });
 
-        it('should handle invalid condition configurations', async () => {
+        it('rejects unknown condition handlers', async () => {
             const step = makeStep('promo-bad-cond', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -523,11 +523,11 @@ describe('Promotion Modes', () => {
                 conditions: [{ code: 'nonexistent_condition_handler', arguments: [] }],
                 actions: [{ code: 'order_percentage_discount', arguments: [{ name: 'discount', value: '10' }] }],
             }], collector.callback);
-            // Invalid condition may cause error
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
+            expect(collector.errors).toHaveLength(1);
         });
 
-        it('should handle invalid action configurations', async () => {
+        it('rejects unknown action handlers', async () => {
             const step = makeStep('promo-bad-act', {
                 strategy: 'UPSERT',
                 codeField: 'code',
@@ -541,8 +541,8 @@ describe('Promotion Modes', () => {
                 name: 'Promo Bad Act',
                 actions: [{ code: 'nonexistent_action_handler', arguments: [] }],
             }], collector.callback);
-            // Invalid action may cause error
-            expect(result.ok + result.fail).toBeGreaterThanOrEqual(1);
+            expect(result).toMatchObject({ ok: 0, fail: 1 });
+            expect(collector.errors).toHaveLength(1);
         });
     });
 

@@ -9,38 +9,6 @@ import type { PipelineDefinition } from './pipeline.types';
 import type { JsonObject } from './json.types';
 
 /**
- * Runtime configuration for batch processing
- */
-export interface BatchConfig {
-    /** Default batch size for processing (default: 50) */
-    size?: number;
-    /** Bulk operation size (default: 100) */
-    bulkSize?: number;
-    /** Maximum concurrent operations (default: 5) */
-    maxInFlight?: number;
-    /** Rate limit - requests per second (default: 10) */
-    rateLimitRps?: number;
-}
-
-/**
- * Runtime configuration for HTTP operations
- */
-export interface HttpConfig {
-    /** Request timeout in milliseconds (default: 30000) */
-    timeoutMs?: number;
-    /** Maximum retry attempts (default: 3) */
-    maxRetries?: number;
-    /** Initial retry delay in milliseconds (default: 1000) */
-    retryDelayMs?: number;
-    /** Maximum retry delay in milliseconds (default: 30000) */
-    retryMaxDelayMs?: number;
-    /** Enable exponential backoff (default: true) */
-    exponentialBackoff?: boolean;
-    /** Backoff multiplier (default: 2) */
-    backoffMultiplier?: number;
-}
-
-/**
  * Circuit breaker configuration for external calls
  */
 export interface CircuitBreakerConfig {
@@ -57,32 +25,6 @@ export interface CircuitBreakerConfig {
 }
 
 /**
- * Connection pool configuration
- */
-export interface ConnectionPoolConfig {
-    /** Minimum connections (default: 1) */
-    min?: number;
-    /** Maximum connections (default: 10) */
-    max?: number;
-    /** Idle timeout in milliseconds (default: 30000) */
-    idleTimeoutMs?: number;
-    /** Acquire timeout in milliseconds (default: 10000) */
-    acquireTimeoutMs?: number;
-}
-
-/**
- * Runtime pagination configuration
- */
-export interface RuntimePaginationConfig {
-    /** Maximum pages to fetch from paginated APIs (default: 100) */
-    maxPages?: number;
-    /** Default page size for data extraction (default: 100) */
-    pageSize?: number;
-    /** Database page size (default: 1000) */
-    databasePageSize?: number;
-}
-
-/**
  * Scheduler configuration for pipeline scheduling
  */
 export interface SchedulerConfig {
@@ -92,34 +34,23 @@ export interface SchedulerConfig {
     refreshIntervalMs?: number;
     /** Minimum allowed interval in milliseconds - safety limit (default: 1000) */
     minIntervalMs?: number;
+    /** Maximum enabled, published pipelines inspected per refresh (default/max: 1000) */
+    maxPipelineDiscovery?: number;
+    /** Maximum active schedules and tracking entries (default/max: 1000) */
+    maxTrackingEntries?: number;
+    /** Consecutive trigger failures before pausing a schedule (default: 5, max: 100) */
+    maxConsecutiveFailures?: number;
 }
 
-/**
- * Event trigger service configuration for pipeline cache management
- */
-export interface EventTriggerServiceConfig {
-    /** Interval for refreshing pipeline cache in milliseconds (default: 60000) */
-    cacheRefreshIntervalMs?: number;
-}
 
 /**
  * Runtime limits configuration - all configurable via plugin options
  */
 export interface RuntimeLimitsConfig {
-    /** Batch processing configuration */
-    batch?: BatchConfig;
-    /** HTTP configuration */
-    http?: HttpConfig;
     /** Circuit breaker configuration */
     circuitBreaker?: CircuitBreakerConfig;
-    /** Connection pool configuration */
-    connectionPool?: ConnectionPoolConfig;
-    /** Pagination configuration */
-    pagination?: RuntimePaginationConfig;
     /** Scheduler configuration for pipeline scheduling */
     scheduler?: SchedulerConfig;
-    /** Event trigger service configuration */
-    eventTrigger?: EventTriggerServiceConfig;
 }
 
 /**
@@ -153,6 +84,8 @@ export interface CodeFirstSecret {
     value: string;
     /** Optional metadata */
     metadata?: JsonObject;
+    /** Additional channel codes that may resolve this secret. The default channel always has access. */
+    channelCodes?: readonly string[];
 }
 
 /**
@@ -164,8 +97,6 @@ export interface CodeFirstConnection {
     code: string;
     /** Connection type (e.g., 'postgres', 'mysql', 'rest', 's3') */
     type: string;
-    /** Human-readable name */
-    name: string;
     /** Connection settings - supports env var references like ${DB_HOST} */
     settings: JsonObject;
 }

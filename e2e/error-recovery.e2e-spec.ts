@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createDataHubTestEnvironment } from './test-config';
+import { publishPipeline } from './pipeline-lifecycle';
 import gql from 'graphql-tag';
 import { StepType } from '../src/constants/enums';
 
@@ -48,6 +49,7 @@ describe('DataHub Error Recovery', () => {
                 },
             });
             pipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, pipelineId);
         });
 
         afterAll(async () => {
@@ -99,6 +101,7 @@ describe('DataHub Error Recovery', () => {
                 },
             });
             retryTestPipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, retryTestPipelineId);
 
             const { startDataHubPipelineRun } = await adminClient.query(gql`
                 mutation RunPipeline($id: ID!) {
@@ -124,13 +127,21 @@ describe('DataHub Error Recovery', () => {
             const { dataHubRunErrors } = await adminClient.query(gql`
                 query RunErrors($runId: ID!) {
                     dataHubRunErrors(runId: $runId) {
-                        id
-                        message
+                        items {
+                            id
+                            message
+                        }
+                        totalItems
+                        hasNextPage
+                        endCursor
                     }
                 }
             `, { runId: retryTestRunId });
 
-            expect(Array.isArray(dataHubRunErrors)).toBe(true);
+            expect(Array.isArray(dataHubRunErrors.items)).toBe(true);
+            expect(dataHubRunErrors.totalItems).toBeGreaterThanOrEqual(
+                dataHubRunErrors.items.length,
+            );
         });
 
         // "retries failed records" test removed: requires a deliberately failing pipeline
@@ -255,14 +266,22 @@ describe('DataHub Error Recovery', () => {
             const { dataHubDeadLetters } = await adminClient.query(gql`
                 query {
                     dataHubDeadLetters {
-                        id
-                        message
-                        stepKey
+                        items {
+                            id
+                            message
+                            stepKey
+                        }
+                        totalItems
+                        hasNextPage
+                        endCursor
                     }
                 }
             `);
 
-            expect(Array.isArray(dataHubDeadLetters)).toBe(true);
+            expect(Array.isArray(dataHubDeadLetters.items)).toBe(true);
+            expect(dataHubDeadLetters.totalItems).toBeGreaterThanOrEqual(
+                dataHubDeadLetters.items.length,
+            );
         });
 
         // "marks error as dead letter" test removed: requires run errors from a deliberately
@@ -371,6 +390,7 @@ describe('DataHub Error Recovery', () => {
                 },
             });
             logsTestPipelineId = createDataHubPipeline.id;
+            await publishPipeline(adminClient, logsTestPipelineId);
 
             const { startDataHubPipelineRun } = await adminClient.query(gql`
                 mutation RunPipeline($id: ID!) {

@@ -6,7 +6,7 @@
  * not-found handling, and variant-only deletion.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { ProductService, ProductVariantService } from '@vendure/core';
+import { ProductService } from '@vendure/core';
 import { createDataHubTestEnvironment } from '../test-config';
 import { ProductHandler } from '../../src/runtime/executors/loaders/product-handler';
 import { DeletionHandler } from '../../src/runtime/executors/loaders/deletion-handler';
@@ -17,7 +17,6 @@ describe('DeletionHandler e2e', () => {
     let productHandler: ProductHandler;
     let deletionHandler: DeletionHandler;
     let productService: ProductService;
-    let variantService: ProductVariantService;
     let ctx: import('@vendure/core').RequestContext;
 
     beforeAll(async () => {
@@ -29,7 +28,6 @@ describe('DeletionHandler e2e', () => {
         productHandler = server.app.get(ProductHandler);
         deletionHandler = server.app.get(DeletionHandler);
         productService = server.app.get(ProductService);
-        variantService = server.app.get(ProductVariantService);
         ctx = await getSuperadminContext(server.app);
 
         // Create test products for deletion tests

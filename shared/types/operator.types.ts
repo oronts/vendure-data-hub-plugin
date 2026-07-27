@@ -212,6 +212,8 @@ export interface JoinOperatorConfig extends BaseOperatorConfig {
     prefix?: string;
     /** Which right-side fields to include (default: all) */
     select?: string[];
+    /** Maximum records emitted by this join (default: 10,000; maximum: 100,000) */
+    maxOutputRecords?: number;
 }
 
 /**

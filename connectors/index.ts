@@ -6,17 +6,16 @@
  *
  * @example
  * ```typescript
+ * import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
  * import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
  *
+ * const pimcore = PimcoreConnector({
+ *   connectionCode: 'pimcore-graphql',
+ * });
+ *
  * DataHubPlugin.init({
- *   connectors: [
- *     PimcoreConnector({
- *       connection: {
- *         endpoint: 'https://pimcore.company.com/pimcore-datahub-webservices/shop',
- *         apiKeySecretCode: 'pimcore-api-key',
- *       },
- *     }),
- *   ],
+ *   connectors: [pimcore],
+ *   pipelines: pimcore.pipelines,
  * });
  * ```
  */

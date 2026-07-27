@@ -6,6 +6,8 @@ import { StepType } from '../src/constants/enums';
 
 describe('DataHub Pipeline Execution', () => {
     const { server, adminClient } = createDataHubTestEnvironment();
+    let defaultChannelToken: string;
+    let isolationChannelToken: string;
 
     beforeAll(async () => {
         await server.init({
@@ -16,6 +18,52 @@ describe('DataHub Pipeline Execution', () => {
             productsCsvPath: undefined,
         });
         await adminClient.asSuperAdmin();
+        const { activeChannel, zones } = await adminClient.query(gql`
+            query ActiveChannelForRunIsolation {
+                activeChannel {
+                    token
+                    defaultLanguageCode
+                    defaultCurrencyCode
+                    defaultTaxZone { id }
+                    defaultShippingZone { id }
+                }
+                zones(options: { take: 1 }) { items { id } }
+            }
+        `);
+        defaultChannelToken = activeChannel.token;
+        let zoneId = activeChannel.defaultTaxZone?.id
+            ?? activeChannel.defaultShippingZone?.id
+            ?? zones.items[0]?.id;
+        if (!zoneId) {
+            const { createZone } = await adminClient.query(gql`
+                mutation CreateRunIsolationZone {
+                    createZone(input: { name: "Run isolation" }) { id }
+                }
+            `);
+            zoneId = createZone.id;
+        }
+        const { createChannel } = await adminClient.query(gql`
+            mutation CreateRunIsolationChannel($input: CreateChannelInput!) {
+                createChannel(input: $input) {
+                    ... on Channel { token }
+                    ... on ErrorResult { errorCode message }
+                }
+            }
+        `, {
+            input: {
+                code: 'run-isolation',
+                token: 'run-isolation',
+                defaultLanguageCode: activeChannel.defaultLanguageCode,
+                defaultCurrencyCode: activeChannel.defaultCurrencyCode,
+                defaultTaxZoneId: zoneId,
+                defaultShippingZoneId: zoneId,
+                pricesIncludeTax: false,
+            },
+        });
+        if (!createChannel.token) {
+            throw new Error(`Failed to create run isolation channel: ${createChannel.message}`);
+        }
+        isolationChannelToken = createChannel.token;
     });
 
     afterAll(async () => {
@@ -116,6 +164,39 @@ describe('DataHub Pipeline Execution', () => {
 
             expect(dataHubPipelineRun.id).toBe(runId);
             expect(dataHubPipelineRun.status).toBeDefined();
+        });
+
+        it('does not expose or mutate a run from another active channel', async () => {
+            adminClient.setChannelToken(isolationChannelToken);
+            try {
+                const { dataHubPipelineRuns, dataHubPipelineRun } = await adminClient.query(gql`
+                    query CrossChannelRunAccess($pipelineId: ID!, $runId: ID!) {
+                        dataHubPipelineRuns(pipelineId: $pipelineId) {
+                            items { id }
+                            totalItems
+                        }
+                        dataHubPipelineRun(id: $runId) { id }
+                    }
+                `, { pipelineId, runId });
+
+                expect(dataHubPipelineRuns.items).toEqual([]);
+                expect(dataHubPipelineRuns.totalItems).toBe(0);
+                expect(dataHubPipelineRun).toBeNull();
+                await expect(adminClient.query(gql`
+                    mutation CrossChannelRunCancel($runId: ID!) {
+                        cancelDataHubPipelineRun(id: $runId) { id status }
+                    }
+                `, { runId })).rejects.toThrow();
+            } finally {
+                adminClient.setChannelToken(defaultChannelToken);
+            }
+
+            const { dataHubPipelineRun } = await adminClient.query(gql`
+                query OriginalRunAfterDeniedAccess($runId: ID!) {
+                    dataHubPipelineRun(id: $runId) { id }
+                }
+            `, { runId });
+            expect(dataHubPipelineRun.id).toBe(runId);
         });
     });
 
