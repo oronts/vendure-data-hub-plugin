@@ -62,13 +62,14 @@ To use Data Hub, your admin role needs these permissions:
 | Run pipelines | `RunDataHubPipeline` |
 | View run history | `ViewDataHubRuns` |
 | Manage connections | `ManageDataHubConnections` |
-| Manage secrets | `CreateDataHubSecret`, `ReadDataHubSecret` |
+| Manage secrets | `CreateDataHubSecret`, `ReadDataHubSecret`, `UpdateDataHubSecret`, `DeleteDataHubSecret` |
+| Run pipelines that reference connections or secrets | `UseDataHubConnection`, `UseDataHubSecret` as required by the definition |
+| View/retry quarantined records unchanged | `ViewDataHubQuarantine`, `ReplayDataHubRecord` |
+| Retry quarantined records with a payload patch | `ViewDataHubQuarantine`, `ReplayDataHubRecord`, `EditDataHubQuarantine` |
+| Configure settings | `UpdateDataHubSettings` |
 | View schema versions | `ReadDataHubSchema` |
 | Create schema versions | `CreateDataHubSchema` |
 | Edit schema metadata | `UpdateDataHubSchema` |
 | Delete unused schema versions | `DeleteDataHubSchema` |
-| View/retry quarantined records unchanged | `ViewDataHubQuarantine`, `ReplayDataHubRecord` |
-| Retry quarantined records with a payload patch | `ViewDataHubQuarantine`, `ReplayDataHubRecord`, `EditDataHubQuarantine` |
-| Configure settings | `UpdateDataHubSettings` |
 
 Ask your administrator to assign these permissions if you don't have access.

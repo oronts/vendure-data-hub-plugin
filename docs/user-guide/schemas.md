@@ -12,6 +12,11 @@ not silently change the pipeline contract.
 4. Enter a Data Hub schema definition as JSON.
 5. Create the version, then select it from an Extract or Validate step.
 
+From an existing version, select **Create version** to open its dedicated
+version-creation route and carry its schema ID,
+compatibility mode, definition, and metadata into the form. Enter a new version
+label before creating the immutable copy.
+
 Schema IDs start with a letter and may contain letters, numbers, dots, hyphens,
 and underscores. Version labels may contain letters, numbers, dots, hyphens,
 underscores, and plus signs. A schema ID/version pair is unique.
@@ -72,10 +77,12 @@ same schema ID.
 Definitions and compatibility modes cannot be edited. Create a new version for
 every contract change. Metadata is the only mutable field.
 
-The detail page shows working pipeline definitions, immutable revisions, and
-run snapshots that reference the version. Deletion is blocked while any of
-those references exists. Historical run snapshots are included so deleting a
-contract cannot make an audit record impossible to interpret.
+The detail page loads the contract independently from its impact analysis, so a
+bounded impact-discovery failure does not prevent viewing or editing metadata.
+Impact includes working pipeline definitions, immutable revisions, and run
+snapshots that reference the version. Deletion is blocked while any of those
+references exists. Historical run snapshots are included so deleting a contract
+cannot make an audit record impossible to interpret.
 
 ## Permissions
 

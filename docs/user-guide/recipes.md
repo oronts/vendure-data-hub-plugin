@@ -57,37 +57,13 @@ const multiSourceProductSync = createPipeline()
         timezone: 'UTC',
     })
 
-    // Extract from all three sources in parallel
+    // Extract the authoritative product records
     .extract('erp-products', {
         adapterCode: 'httpApi',
         connectionCode: 'erp-api',
         url: '/products',
         dataPath: 'data.products',
-        incremental: {
-            enabled: true,
-            field: 'updated_at',
-            operator: '>',
-        },
         throughput: { batchSize: 200 },
-    })
-
-    .extract('pim-descriptions', {
-        adapterCode: 'httpApi',
-        connectionCode: 'pim-api',
-        url: '/product-content',
-        dataPath: 'items',
-        incremental: {
-            enabled: true,
-            field: 'last_modified',
-            operator: '>=',
-        },
-    })
-
-    .extract('pricing-data', {
-        adapterCode: 'httpApi',
-        connectionCode: 'pricing-api',
-        url: '/prices',
-        dataPath: 'prices',
     })
 
     // Normalize field names from each source
@@ -95,45 +71,48 @@ const multiSourceProductSync = createPipeline()
         operators: [
             { op: 'rename', args: { from: 'product_id', to: 'sku' } },
             { op: 'rename', args: { from: 'product_name', to: 'name' } },
-            { op: 'set', args: { path: '_source', value: 'erp' } },
         ],
     })
 
-    .transform('normalize-pim', {
-        operators: [
-            { op: 'rename', args: { from: 'product_code', to: 'sku' } },
-            { op: 'rename', args: { from: 'long_description', to: 'description' } },
-            { op: 'rename', args: { from: 'marketing_text', to: 'marketingDescription' } },
-            { op: 'set', args: { path: '_source', value: 'pim' } },
-        ],
-    })
-
-    .transform('normalize-pricing', {
-        operators: [
-            { op: 'rename', args: { from: 'product_sku', to: 'sku' } },
-            { op: 'rename', args: { from: 'unit_price', to: 'price' } },
-            { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100' } },
-            { op: 'set', args: { path: '_source', value: 'pricing' } },
-        ],
-    })
-
-    // Merge all sources by SKU
-    .transform('merge-sources', {
+    // Enrich each product from the PIM and pricing APIs
+    .transform('enrich-pim', {
         operators: [
             {
-                op: 'groupBy',
+                op: 'httpLookup',
                 args: {
-                    field: 'sku',
-                    aggregations: {
-                        name: 'first',
-                        description: 'first',
-                        marketingDescription: 'first',
-                        price: 'first',
-                        stock: 'sum',
-                        categories: 'unique',
-                    },
+                    connectionCode: 'pim-api',
+                    url: 'https://pim.example.com/product-content/{{sku}}',
+                    keyField: 'sku',
+                    target: 'pim',
+                    bearerTokenSecretCode: 'pim-api-token',
                 },
             },
+        ],
+    })
+
+    .transform('enrich-pricing', {
+        operators: [
+            {
+                op: 'httpLookup',
+                args: {
+                    connectionCode: 'pricing-api',
+                    url: 'https://pricing.example.com/prices/{{sku}}',
+                    keyField: 'sku',
+                    target: 'pricing',
+                    bearerTokenSecretCode: 'pricing-api-token',
+                },
+            },
+        ],
+    })
+
+    .transform('merge-source-fields', {
+        operators: [
+            { op: 'copy', args: { source: 'pim.long_description', target: 'description' } },
+            { op: 'copy', args: { source: 'pim.marketing_text', target: 'marketingDescription' } },
+            { op: 'copy', args: { source: 'pricing.unit_price', target: 'price' } },
+            { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100', target: 'price' } },
+            { op: 'remove', args: { path: 'pim' } },
+            { op: 'remove', args: { path: 'pricing' } },
         ],
     })
 
@@ -184,14 +163,16 @@ const multiSourceProductSync = createPipeline()
     .load('upsert-high-value', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'sku',
+        slugField: 'slug',
+        skuField: 'sku',
         conflictStrategy: 'MERGE',
     })
 
     .load('upsert-standard', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'sku',
+        slugField: 'slug',
+        skuField: 'sku',
         conflictStrategy: 'SOURCE_WINS',
         throughput: { batchSize: 50, concurrency: 2 },
     })
@@ -208,15 +189,11 @@ const multiSourceProductSync = createPipeline()
 
     // Define data flow
     .edge('schedule', 'erp-products')
-    .edge('schedule', 'pim-descriptions')
-    .edge('schedule', 'pricing-data')
     .edge('erp-products', 'normalize-erp')
-    .edge('pim-descriptions', 'normalize-pim')
-    .edge('pricing-data', 'normalize-pricing')
-    .edge('normalize-erp', 'merge-sources')
-    .edge('normalize-pim', 'merge-sources')
-    .edge('normalize-pricing', 'merge-sources')
-    .edge('merge-sources', 'add-computed-fields')
+    .edge('normalize-erp', 'enrich-pim')
+    .edge('enrich-pim', 'enrich-pricing')
+    .edge('enrich-pricing', 'merge-source-fields')
+    .edge('merge-source-fields', 'add-computed-fields')
     .edge('add-computed-fields', 'check-required-fields')
     .edge('check-required-fields', 'by-price')
     .edge('by-price', 'review-high-value', 'high-value')
@@ -277,14 +254,8 @@ const inventorySync = createPipeline()
     .version(1)
 
     .context({
-        checkpointing: {
-            enabled: true,
-            strategy: 'TIMESTAMP',
-            field: 'updated_at',
-        },
         errorHandling: {
             maxRetries: 3,
-            deadLetterQueue: true,
         },
     })
 
@@ -383,10 +354,10 @@ const inventorySync = createPipeline()
 
     // Update Vendure inventory
     .load('update-inventory', {
-        adapterCode: 'inventoryUpsert',
+        adapterCode: 'inventoryAdjust',
         strategy: 'UPDATE',
-        matchField: 'sku',
-        stockLocationField: 'location_code',
+        skuField: 'sku',
+        stockLocationNameField: 'location_code',
         stockOnHandField: 'stockOnHand',
     })
 
@@ -406,7 +377,7 @@ const inventorySync = createPipeline()
 ### Key Techniques
 
 - **Incremental Extraction**: Only queries records updated since last run
-- **Checkpointing**: Automatic resume on failure
+- **Incremental cursor**: The database extractor persists the incremental field value it explicitly records
 - **Math Operations**: Calculate available stock
 - **Conditional Routing**: Different flows for different stock levels
 - **Alerting**: Webhook notifications for critical events
@@ -450,6 +421,7 @@ const customerEnrichment = createPipeline()
             {
                 op: 'httpLookup',
                 args: {
+                    connectionCode: 'clearbit-api',
                     url: 'https://person.clearbit.com/v2/combined/find?email={{emailAddress}}',
                     target: 'demographics',
                     bearerTokenSecretCode: 'clearbit-api-key',
@@ -659,22 +631,18 @@ const orderProcessing = createPipeline()
         ],
     })
 
-    // Check inventory for all line items
+    // Check inventory for the order through a batched inventory endpoint
     .transform('check-inventory', {
         operators: [
             {
-                op: 'forEach',
+                op: 'httpLookup',
                 args: {
-                    source: 'lines',
-                    operator: {
-                        op: 'vendureLookup',
-                        args: {
-                            entity: 'PRODUCT_VARIANT',
-                            matchField: 'productVariant.sku',
-                            select: 'stockOnHand',
-                            target: 'availableStock',
-                        },
-                    },
+                    connectionCode: 'inventory-api',
+                    url: 'https://inventory.example.com/check-order',
+                    method: 'POST',
+                    bodyField: 'lines',
+                    target: 'inventoryCheck',
+                    bearerTokenSecretCode: 'inventory-api-token',
                 },
             },
         ],
@@ -753,16 +721,19 @@ const orderProcessing = createPipeline()
         template: 'order-confirmation',
     })
 
-    // Update order status
-    .load('update-order-status', {
-        adapterCode: 'orderUpdate',
-        matchField: 'code',
-        config: {
-            customFields: {
-                sentToFulfillment: true,
-                fulfillmentProvider: 'shipstation',
-            },
-        },
+    .transform('prepare-fulfillment-note', {
+        operators: [{
+            op: 'set',
+            args: { path: 'fulfillmentNote', value: 'Sent to ShipStation' },
+        }],
+    })
+
+    // Add an auditable note to the order
+    .load('record-fulfillment', {
+        adapterCode: 'orderNote',
+        orderCodeField: 'orderNumber',
+        noteField: 'fulfillmentNote',
+        isPrivate: true,
     })
 
     // Edges
@@ -774,7 +745,8 @@ const orderProcessing = createPipeline()
     .edge('by-shipping-method', 'format-for-shipstation', 'standard')
     .edge('format-for-shipstation', 'send-to-shipstation')
     .edge('send-to-shipstation', 'send-confirmation')
-    .edge('send-confirmation', 'update-order-status')
+    .edge('send-confirmation', 'prepare-fulfillment-note')
+    .edge('prepare-fulfillment-note', 'record-fulfillment')
 
     .hooks({
         ON_ERROR: [{
@@ -791,9 +763,9 @@ const orderProcessing = createPipeline()
 - **Webhook Trigger**: Real-time processing
 - **Idempotency**: Prevents duplicate processing
 - **Fail-Fast Validation**: Critical orders stop immediately on error
-- **Inventory Lookup**: Vendure entity lookup for stock
+- **Inventory Lookup**: Batched authenticated inventory check
 - **Complex Mapping**: Nested object transformation
-- **Multi-Step Flow**: Fulfillment → Email → Status update
+- **Multi-Step Flow**: Fulfillment → Email → Audit note
 
 ---
 
@@ -838,12 +810,15 @@ const multiChannelPricing = createPipeline()
     .transform('create-channel-copies', {
         operators: [
             {
-                op: 'fanOut',
+                op: 'set',
                 args: {
-                    dimension: 'channel',
-                    values: ['us-channel', 'eu-channel', 'uk-channel'],
+                    path: 'channels',
+                    value: ['us-channel', 'eu-channel', 'uk-channel'],
                 },
             },
+            { op: 'expand', args: { path: 'channels', mergeParent: true } },
+            { op: 'copy', args: { source: '_item', target: 'channel' } },
+            { op: 'remove', args: { path: '_item' } },
         ],
     })
 
@@ -869,7 +844,7 @@ const multiChannelPricing = createPipeline()
         operators: [
             { op: 'math', args: { operation: 'multiply', source: 'price', operand: '1.2' } },
             { op: 'math', args: { operation: 'multiply', source: 'price', operand: '0.92' } },  // USD to EUR
-            { op: 'round', args: { source: 'price', precision: 0 } },
+            { op: 'round', args: { source: 'price', decimals: 0 } },
             { op: 'set', args: { path: 'currencyCode', value: 'EUR' } },
         ],
     })
@@ -879,52 +854,28 @@ const multiChannelPricing = createPipeline()
         operators: [
             { op: 'math', args: { operation: 'multiply', source: 'price', operand: '1.15' } },
             { op: 'math', args: { operation: 'multiply', source: 'price', operand: '0.79' } },  // USD to GBP
-            { op: 'round', args: { source: 'price', precision: 0 } },
+            { op: 'round', args: { source: 'price', decimals: 0 } },
             { op: 'set', args: { path: 'currencyCode', value: 'GBP' } },
-        ],
-    })
-
-    // Merge channels back
-    .transform('merge-channels', {
-        operators: [
-            { op: 'identity' },  // Passthrough
         ],
     })
 
     // Apply promotional discounts
     .enrich('apply-promotions', {
         sourceType: 'HTTP',
-        endpoint: 'https://api.example.com/promotions/active',
-        matchField: 'sku',
-        targetField: 'promotion',
+        url: 'https://api.example.com/promotions/active',
+        keyField: 'sku',
+        target: 'promotion',
     })
 
     .transform('calculate-discounted-price', {
         operators: [
             {
-                op: 'conditional',
+                op: 'math',
                 args: {
-                    if: { field: 'promotion.discount', cmp: 'exists' },
-                    then: [
-                        {
-                            op: 'math',
-                            args: {
-                                operation: 'multiply',
-                                source: 'price',
-                                operand: '{{promotion.discountPercent}}',
-                                target: 'discountAmount',
-                            },
-                        },
-                        {
-                            op: 'math',
-                            args: {
-                                operation: 'subtract',
-                                source: 'price',
-                                operand: 'discountAmount',
-                                target: 'price',
-                            },
-                        },
-                    ],
+                    operation: 'multiply',
+                    source: 'price',
+                    operand: '$promotion.discountMultiplier',
+                    target: 'price',
                 },
             },
         ],
@@ -932,10 +883,11 @@ const multiChannelPricing = createPipeline()
 
     // Update variant prices in each channel
     .load('update-prices', {
-        adapterCode: 'variantPriceUpdate',
-        matchField: 'sku',
+        adapterCode: 'variantUpsert',
+        strategy: 'UPDATE',
+        skuField: 'sku',
         priceField: 'price',
-        channelStrategy: 'EXPLICIT',
+        channelsField: 'channel',
     })
 
     // Edges
@@ -944,10 +896,9 @@ const multiChannelPricing = createPipeline()
     .edge('by-channel', 'apply-us-pricing', 'us')
     .edge('by-channel', 'apply-eu-pricing', 'eu')
     .edge('by-channel', 'apply-uk-pricing', 'uk')
-    .edge('apply-us-pricing', 'merge-channels')
-    .edge('apply-eu-pricing', 'merge-channels')
-    .edge('apply-uk-pricing', 'merge-channels')
-    .edge('merge-channels', 'apply-promotions')
+    .edge('apply-us-pricing', 'apply-promotions')
+    .edge('apply-eu-pricing', 'apply-promotions')
+    .edge('apply-uk-pricing', 'apply-promotions')
     .edge('apply-promotions', 'calculate-discounted-price')
     .edge('calculate-discounted-price', 'update-prices')
 
@@ -1000,8 +951,13 @@ const productFeedGeneration = createPipeline()
     // Filter enabled products
     .transform('filter-active', {
         operators: [
-            { op: 'filter', args: { field: 'enabled', value: true } },
-            { op: 'filter', args: { field: 'variants.enabled', value: true } },
+            {
+                op: 'when',
+                args: {
+                    conditions: [{ field: 'enabled', cmp: 'eq', value: true }],
+                    action: 'keep',
+                },
+            },
         ],
     })
 
@@ -1011,9 +967,15 @@ const productFeedGeneration = createPipeline()
             {
                 op: 'expand',
                 args: {
-                    source: 'variants',
-                    preserveParent: true,
-                    parentAlias: 'product',
+                    path: 'variants',
+                    mergeParent: true,
+                },
+            },
+            {
+                op: 'when',
+                args: {
+                    conditions: [{ field: 'enabled', cmp: 'eq', value: true }],
+                    action: 'keep',
                 },
             },
         ],
@@ -1180,23 +1142,19 @@ const dataWarehouseSync = createPipeline()
         method: 'APPEND',
     })
 
-    // Handle updates - SCD Type 2
-    .transform('prepare-scd-update', {
-        operators: [
-            // Expire current record
-            {
-                op: 'sql',
-                args: {
-                    query: `
-                        UPDATE ANALYTICS.DIM.PRODUCT
-                        SET effective_to = CURRENT_TIMESTAMP(),
-                            is_current = FALSE
-                        WHERE product_key = :product_key
-                          AND is_current = TRUE
-                    `,
-                },
-            },
-        ],
+    // Handle updates - expire the current version through the custom exporter
+    .export('expire-current-version', {
+        adapterCode: 'snowflake-export',
+        connectionCode: 'snowflake',
+        database: 'ANALYTICS',
+        schema: 'DIM',
+        table: 'PRODUCT',
+        method: 'UPDATE',
+        updateFields: {
+            effective_to: '{{_cdc.timestamp}}',
+            is_current: false,
+        },
+        matchField: 'product_key',
     })
 
     .export('load-update', {
@@ -1228,9 +1186,9 @@ const dataWarehouseSync = createPipeline()
     .edge('parse-cdc', 'to-warehouse-schema')
     .edge('to-warehouse-schema', 'by-operation')
     .edge('by-operation', 'load-insert', 'insert')
-    .edge('by-operation', 'prepare-scd-update', 'update')
+    .edge('by-operation', 'expire-current-version', 'update')
     .edge('by-operation', 'load-delete', 'delete')
-    .edge('prepare-scd-update', 'load-update')
+    .edge('expire-current-version', 'load-update')
 
     .build();
 ```
@@ -1331,6 +1289,7 @@ const dlqRecovery = createPipeline()
         rules: [
             { type: 'business', spec: { field: 'sku', required: true } },
             { type: 'business', spec: { field: 'name', required: true } },
+            { type: 'business', spec: { field: 'slug', required: true } },
         ],
     })
 
@@ -1338,7 +1297,8 @@ const dlqRecovery = createPipeline()
     .load('retry-load', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
-        matchField: 'sku',
+        slugField: 'slug',
+        skuField: 'sku',
     })
 
     // Remove from DLQ on success
@@ -1377,7 +1337,7 @@ const dlqRecovery = createPipeline()
         PIPELINE_COMPLETED: [{
             type: 'LOG',
             level: 'INFO',
-            message: 'DLQ recovery completed: {{stats.resolved}} resolved, {{stats.failed}} still failing',
+            message: 'DLQ recovery pipeline completed',
         }],
     })
 
@@ -1396,13 +1356,12 @@ const dlqRecovery = createPipeline()
 
 ## 9. Multi-Stage Approval Workflow
 
-Complex approval workflow with multiple gates and escalation.
+Complex approval workflow with multiple gates and value-based routing.
 
 ### Scenario
 
 - Import high-value products
 - Route through approval stages
-- Escalate on timeout
 - Track approval history
 
 ### Pipeline
@@ -1464,7 +1423,6 @@ const approvalWorkflow = createPipeline()
     .gate('manager-approval', {
         approvalType: 'MANUAL',
         notifyEmail: 'product-manager@example.com',
-        timeoutSeconds: 86400,  // 24 hours
     })
 
     .load('create-medium', {
@@ -1476,13 +1434,11 @@ const approvalWorkflow = createPipeline()
     .gate('buyer-approval', {
         approvalType: 'MANUAL',
         notifyEmail: 'buyer@example.com',
-        timeoutSeconds: 43200,  // 12 hours
     })
 
     .gate('director-approval', {
         approvalType: 'THRESHOLD',
         errorThresholdPercent: 0,  // No errors allowed
-        timeoutSeconds: 86400,      // 24 hours
         notifyEmail: 'director@example.com',
     })
 
@@ -1519,13 +1475,6 @@ const approvalWorkflow = createPipeline()
     .edge('create-medium', 'log-approval')
     .edge('create-high', 'log-approval')
 
-    .hooks({
-        GATE_TIMEOUT: [{
-            type: 'WEBHOOK',
-            url: 'https://alerts.example.com/approval-timeout',
-        }],
-    })
-
     .build();
 ```
 
@@ -1533,7 +1482,6 @@ const approvalWorkflow = createPipeline()
 
 - **Multi-Stage Gates**: Sequential approval steps
 - **Value-Based Routing**: Different flows by value
-- **Timeout Handling**: Auto-escalation
 - **Audit Trail**: Log all approvals
 - **Threshold Gates**: Auto-approve on quality
 

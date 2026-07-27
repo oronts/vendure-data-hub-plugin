@@ -115,12 +115,18 @@ DataHubPlugin.init({
 });
 ```
 
-`accountId` is required when the adapter constructs the queue URL. To target one
-queue directly, set `queueUrl` instead. For an SQS-compatible service, set
-`endpoint` together with `accountId`. Configure the access-key and secret-key
-Secret Codes together, or omit both to use the AWS SDK credential chain.
+`queueUrl` is a direct URL for one queue: its decoded final path segment must
+match the queue name requested by the trigger or publisher. When another queue
+is requested, including a `deadLetterQueue`, the adapter constructs a distinct
+URL from `accountId` and either `region` or the optional SQS-compatible
+`endpoint`. If `accountId` is unavailable, the adapter rejects the publish
+instead of reusing the direct URL. Configure the access-key and secret-key Secret
+Codes together, or omit both to use the AWS SDK credential chain.
 
 ### Redis Streams
+
+Redis 6.2 or newer is required for bounded stale-delivery recovery with
+`XAUTOCLAIM`.
 
 ```typescript
 DataHubPlugin.init({
@@ -209,7 +215,7 @@ const orderProcessor = createPipeline()
 | `ackMode` | 'MANUAL' | Acknowledge only after the correlated pipeline run completes successfully |
 | `consumerGroup` | string | Redis Streams consumer group; rejected for other queue types |
 | `maxRetries` | number | Enqueue retries after the initial failure; default 3, range 0-10 |
-| `deadLetterQueue` | string | DLQ for enqueue failures, terminal run failures, and consumer wait expiry |
+| `deadLetterQueue` | string | DLQ for exhausted enqueue failures and terminal run failures |
 
 ## Producing to Queues
 
@@ -377,15 +383,19 @@ const productChangeFanout = createPipeline()
 
 ### Retry and dead-letter behavior
 
-Message triggers require `MANUAL` acknowledgment. Each delivery creates or reuses an idempotent correlated pipeline run, and the broker delivery is acknowledged only after that run reaches `COMPLETED`. `FAILED`, `TIMEOUT`, and `CANCELLED` runs follow the dead-letter and negative-acknowledgment path. A run that remains non-terminal for four minutes is treated as a bounded consumer processing timeout, keeping the decision within the built-in broker delivery leases.
+Message triggers require `MANUAL` acknowledgment. Each delivery creates or reuses an idempotent correlated pipeline run, and the broker delivery is acknowledged only after that run reaches `COMPLETED`. `FAILED`, `TIMEOUT`, and `CANCELLED` runs follow the dead-letter and negative-acknowledgment path. SQS and Redis Streams renew delivery ownership before and after pipeline enqueue and after each four-minute observation window; the internal adapter retains its in-process delivery. RabbitMQ AMQP has no broker command that extends an unacknowledged delivery, so an active delivery is requeued after the observation window and the redelivery keeps observing the same correlated run. Configure RabbitMQ's consumer acknowledgement timeout above the maximum expected enqueue duration plus the observation window.
+
+A custom adapter may implement `renewLease`. Renewal must extend ownership beyond the next observation window and retain the delivery state required by later `ack` or `nack` calls. Message IDs must remain stable across redelivery so the idempotency key finds the existing run. An adapter without renewal support falls back to negative acknowledgment with requeue.
 
 `maxRetries` controls immediate retries of pipeline-run creation after the initial enqueue failure. The default is 3 and the accepted range is 0 through 10. Producers should provide stable, unique message IDs and pipeline effects should remain idempotent because an uncertain broker or database response can still lead to redelivery.
 
-After retries are exhausted or the correlated run ends unsuccessfully, a configured `deadLetterQueue` is published first. The original manual delivery is rejected without requeue only when the adapter returns exactly one matching successful publish result. A thrown publish, an empty or mismatched result, or `success: false` causes the original manual delivery to be requeued. Without a DLQ, the failed manual delivery is rejected without requeue.
+After retries are exhausted or the correlated run ends unsuccessfully, a configured `deadLetterQueue` is published first. For SQS connections that set a direct `queueUrl`, also configure `accountId` (and `endpoint` for an SQS-compatible service) so the adapter can construct a distinct DLQ URL. The original manual delivery is rejected without requeue only when the adapter returns exactly one matching successful publish result. A thrown publish, an empty or mismatched result, or `success: false` causes the original manual delivery to be requeued. Without a DLQ, the failed manual delivery is rejected without requeue.
 
 `AUTO` is rejected for message-triggered pipelines because it acknowledges before the run outcome is known. The RabbitMQ HTTP adapter therefore remains producer/direct-adapter functionality only; use `RABBITMQ_AMQP` for reliable message triggers. A failed manual acknowledgment after a successful run is logged and is never copied to the DLQ, preventing the acknowledgment failure from being misreported as a processing failure.
 
 `consumerGroup` is passed to Redis Streams and rejected for every other built-in queue type.
+
+Consumer discovery refreshes every 60 seconds and suppresses overlapping refreshes. A changed trigger configuration is stopped before its replacement starts. Stop and reconfiguration fence successful acknowledgment, dead-letter publication, and metrics, wait up to one shared 30-second drain window, and release unsettled manual deliveries with negative acknowledgment and requeue. Graceful shutdown then closes every queue adapter and its pooled clients. Ownership is per published pipeline code and trigger key, so replicas provide failover and can distribute different triggers, while one trigger remains single-owned.
 
 ### Dead Letter Queue
 
@@ -475,6 +485,7 @@ query {
     }
     dataHubConsumers {
         pipelineCode
+        triggerKey
         queueName
         isActive
         messagesProcessed
@@ -528,17 +539,18 @@ message: {
     queueType: 'RABBITMQ_AMQP',
     connectionCode: 'rabbitmq-main',
     queueName: 'high-volume-events',
-    batchSize: 100,  // Process 100 messages at once
+    batchSize: 100,  // Request up to 100; active work is also capped by concurrency
+    concurrency: 16,
 }
 ```
 
 ### Manual acknowledgment
 
-For adapters that support individual acknowledgments, select manual mode explicitly. `RABBITMQ` (the HTTP adapter) rejects manual mode; use `RABBITMQ_AMQP` when the broker delivery must remain unsettled until enqueue succeeds:
+For adapters that support individual acknowledgments, select manual mode explicitly. `RABBITMQ` (the HTTP adapter) rejects manual mode; use `RABBITMQ_AMQP` when the broker delivery must remain unsettled until the correlated pipeline run completes:
 
 ```typescript
 message: {
-    ackMode: 'MANUAL',  // Ack after the pipeline run is enqueued
+    ackMode: 'MANUAL',  // Ack only after the correlated run reaches COMPLETED
 }
 ```
 
@@ -562,5 +574,5 @@ message: {
 
 1. Increase `batchSize` for throughput
 2. Check pipeline performance
-3. Scale consumers horizontally
+3. Increase the trigger's `concurrency`; replicas provide failover for the same trigger
 4. Optimize transform operations

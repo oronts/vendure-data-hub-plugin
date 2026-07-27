@@ -319,6 +319,10 @@ mutation CreateCatalogFeed {
 
 Feed codes are unique within a channel. The request's active channel is
 authoritative; `channelToken` is accepted only when it matches that channel.
+Every built-in format requires `options.baseUrl` so product, image, and feed
+links use the real storefront origin. Data Hub rejects a missing or invalid URL
+instead of publishing placeholder links. Custom generators may omit it when
+their own output has no storefront URLs.
 Schedules use standard five-field cron expressions and optional IANA timezone
 names. Distributed locking prevents two instances from claiming the same feed
 minute when a shared lock backend is configured.

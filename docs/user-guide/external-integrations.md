@@ -111,6 +111,7 @@ Enrich records by fetching data from external APIs during transformation.
         {
             op: 'httpLookup',
             args: {
+                connectionCode: 'inventory-api',
                 url: 'https://api.inventory.com/stock/{{sku}}',
                 target: 'stockLevel',
                 responsePath: 'data.available',
@@ -130,6 +131,7 @@ Enrich records by fetching data from external APIs during transformation.
 | Option | Description |
 |--------|-------------|
 | `url` | Endpoint URL with `{{field}}` placeholders |
+| `connectionCode` | Saved HTTP connection; required for Secret-backed authentication |
 | `method` | GET or POST |
 | `target` | Field to store response |
 | `responsePath` | JSON path to extract |
@@ -140,6 +142,10 @@ Enrich records by fetching data from external APIs during transformation.
 | `bearerTokenSecretCode` | Bearer token secret |
 | `apiKeySecretCode` | API key secret |
 | `default` | Value if lookup fails |
+
+The saved connection `baseUrl` is the credential boundary. URLs and redirects
+to another origin are rejected. Public lookups without authentication do not
+need a saved connection.
 
 ## Best Practices
 
