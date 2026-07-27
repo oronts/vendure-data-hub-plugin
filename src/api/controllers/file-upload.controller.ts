@@ -15,12 +15,11 @@
 
 import { Controller, Post, Get, Delete, Param, Query, Req, Res, HttpStatus } from '@nestjs/common';
 import { Request, Response } from 'express';
-import multer from 'multer';
-
-/** Multer error type with code property */
-interface MulterErrorLike extends Error {
-    code?: string;
-}
+import {
+    fileUploadMiddleware,
+    MulterErrorLike,
+    resolveUploadExpiry,
+} from './file-upload.config';
 import {
     Ctx,
     RequestContext,
@@ -34,34 +33,6 @@ import { detectFormat, isValidFileId, formatFileResponse, detectMimeType } from 
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { toErrorOrUndefined } from '../../utils/error.utils';
 
-
-/** Multer configuration for file uploads */
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-        fileSize: FILE_STORAGE.MAX_FILE_SIZE_BYTES,
-        files: FILE_STORAGE.FILE_MAX_FILES,
-    },
-    fileFilter: (_req, file, cb) => {
-        // Allow common data file types
-        const allowedMimeTypes = [
-            CONTENT_TYPES.CSV,
-            CONTENT_TYPES.PLAIN,
-            CONTENT_TYPES.JSON,
-            CONTENT_TYPES.XML,
-            'text/xml',
-            'application/vnd.ms-excel',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            CONTENT_TYPES.OCTET_STREAM, // For files without specific mime type
-        ];
-
-        if (allowedMimeTypes.includes(file.mimetype) || file.originalname.match(/\.(csv|json|xml|xlsx|xls|txt)$/i)) {
-            cb(null, true);
-        } else {
-            cb(new Error(`Unsupported file type: ${file.mimetype}. Allowed: CSV, JSON, XML, XLSX, XLS, TXT`));
-        }
-    },
-});
 
 @Controller('data-hub')
 export class DataHubFileUploadController {
@@ -120,13 +91,14 @@ export class DataHubFileUploadController {
     @Get('files')
     @Allow(ReadDataHubFilesPermission.Permission)
     async listFiles(
+        @Ctx() ctx: RequestContext,
         @Query('limit') limit?: string,
         @Query('offset') offset?: string,
         @Query('mimeType') mimeType?: string,
     ) {
         const parsedLimit = limit ? parseInt(limit, 10) : NaN;
         const parsedOffset = offset ? parseInt(offset, 10) : NaN;
-        const result = await this.fileStorage.listFiles({
+        const result = await this.fileStorage.listFiles(ctx, {
             limit: Math.min(PAGINATION.MAX_QUERY_LIMIT, Math.max(1, isNaN(parsedLimit) ? PAGINATION.LIST_PAGE_SIZE : parsedLimit)),
             offset: Math.max(0, isNaN(parsedOffset) ? 0 : parsedOffset),
             filter: mimeType ? { mimeType } : undefined,
@@ -144,6 +116,7 @@ export class DataHubFileUploadController {
     @Get('files/:id')
     @Allow(ReadDataHubFilesPermission.Permission)
     async getFile(
+        @Ctx() ctx: RequestContext,
         @Param('id') fileId: string,
         @Res() res: Response,
     ) {
@@ -154,7 +127,7 @@ export class DataHubFileUploadController {
             });
         }
 
-        const file = await this.fileStorage.getFile(fileId);
+        const file = await this.fileStorage.getFile(ctx, fileId);
 
         if (!file) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -177,6 +150,7 @@ export class DataHubFileUploadController {
     @Get('files/:id/download')
     @Allow(ReadDataHubFilesPermission.Permission)
     async downloadFile(
+        @Ctx() ctx: RequestContext,
         @Param('id') fileId: string,
         @Res() res: Response,
     ) {
@@ -187,7 +161,7 @@ export class DataHubFileUploadController {
             });
         }
 
-        const file = await this.fileStorage.getFile(fileId);
+        const file = await this.fileStorage.getFile(ctx, fileId);
 
         if (!file) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -196,7 +170,7 @@ export class DataHubFileUploadController {
             });
         }
 
-        const content = await this.fileStorage.readFile(fileId);
+        const content = await this.fileStorage.readFile(ctx, fileId);
 
         if (!content) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -223,6 +197,7 @@ export class DataHubFileUploadController {
     @Get('files/:id/preview')
     @Allow(ReadDataHubFilesPermission.Permission)
     async previewFile(
+        @Ctx() ctx: RequestContext,
         @Param('id') fileId: string,
         @Res() res: Response,
         @Query('rows') rows?: string,
@@ -234,7 +209,7 @@ export class DataHubFileUploadController {
             });
         }
 
-        const file = await this.fileStorage.getFile(fileId);
+        const file = await this.fileStorage.getFile(ctx, fileId);
 
         if (!file) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -243,7 +218,14 @@ export class DataHubFileUploadController {
             });
         }
 
-        const content = await this.fileStorage.readFileAsString(fileId);
+        if (file.size > PAGINATION.FILE_PREVIEW_MAX_BYTES) {
+            return res.status(HttpStatus.BAD_REQUEST).json({
+                success: false,
+                error: `File preview source exceeds ${PAGINATION.FILE_PREVIEW_MAX_BYTES} bytes`,
+            });
+        }
+
+        const content = await this.fileStorage.readFile(ctx, fileId);
 
         if (!content) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -288,6 +270,7 @@ export class DataHubFileUploadController {
     @Delete('files/:id')
     @Allow(ManageDataHubFilesPermission.Permission)
     async deleteFile(
+        @Ctx() ctx: RequestContext,
         @Param('id') fileId: string,
         @Res() res: Response,
     ) {
@@ -298,7 +281,7 @@ export class DataHubFileUploadController {
             });
         }
 
-        const deleted = await this.fileStorage.deleteFile(fileId);
+        const deleted = await this.fileStorage.deleteFile(ctx, fileId);
 
         if (!deleted) {
             return res.status(HttpStatus.NOT_FOUND).json({
@@ -320,8 +303,8 @@ export class DataHubFileUploadController {
      */
     @Get('storage/stats')
     @Allow(ReadDataHubFilesPermission.Permission)
-    async getStorageStats() {
-        return this.fileStorage.getStorageStats();
+    async getStorageStats(@Ctx() ctx: RequestContext) {
+        return this.fileStorage.getStorageStats(ctx);
     }
 
     // HELPER METHODS
@@ -335,7 +318,7 @@ export class DataHubFileUploadController {
         res: Response,
     ): Promise<void> {
         return new Promise((resolve) => {
-            const singleUpload = upload.single('file');
+            const singleUpload = fileUploadMiddleware.single('file');
 
             // multer callback signature differs from Express NextFunction
             const multerCallback = async (err: MulterErrorLike | null): Promise<void> => {
@@ -377,7 +360,7 @@ export class DataHubFileUploadController {
                         file.buffer,
                         file.originalname,
                         file.mimetype || detectMimeType(file.originalname),
-                        { expiresInMinutes: FILE_STORAGE.EXPIRY_MINUTES },
+                        { expiresInMinutes: resolveUploadExpiry(req.body as unknown) },
                     );
 
                     if (result.success && result.file) {
@@ -416,8 +399,9 @@ export class DataHubFileUploadController {
         res: Response,
     ): Promise<void> {
         try {
-            const body: Record<string, unknown> = (req as any).body && typeof (req as any).body === 'object'
-                ? (req as any).body
+            const requestBody: unknown = req.body;
+            const body: Record<string, unknown> = requestBody && typeof requestBody === 'object' && !Array.isArray(requestBody)
+                ? requestBody as Record<string, unknown>
                 : await this.readJsonBody(req);
 
             if (!body.content || !body.filename || typeof body.filename !== 'string') {
@@ -445,12 +429,15 @@ export class DataHubFileUploadController {
                 return;
             }
 
+            const mimeType = typeof body.mimeType === 'string'
+                ? body.mimeType
+                : detectMimeType(body.filename);
             const result = await this.fileStorage.storeBase64(
                 ctx,
                 body.content,
-                body.filename as string,
-                (body.mimeType as string) || detectMimeType(body.filename as string),
-                { expiresInMinutes: Math.max(1, Math.min(Number(body.expiresInMinutes) || FILE_STORAGE.EXPIRY_MINUTES, FILE_STORAGE.EXPIRY_MINUTES * 10)) },
+                body.filename,
+                mimeType,
+                { expiresInMinutes: resolveUploadExpiry(body) },
             );
 
             if (result.success && result.file) {
