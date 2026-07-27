@@ -1,6 +1,7 @@
 import { LockBackend, LockState, LockStatus } from './lock-backend.interface';
 import { DataHubLogger } from '../../logger';
 import { DISTRIBUTED_LOCK } from '../../../constants/index';
+import { sanitizeUrlForLogging } from '../../../utils/url-sanitize.utils';
 
 /**
  * Redis client interface for lock operations
@@ -16,6 +17,7 @@ interface RedisClient {
     eval(script: string, numKeys: number, ...args: (string | number)[]): Promise<number>;
     scan(cursor: string, mode: 'MATCH', pattern: string, countMode: 'COUNT', count: number): Promise<[string, string[]]>;
     quit(): Promise<void>;
+    disconnect(reconnect?: boolean): void;
 }
 
 /**
@@ -67,6 +69,9 @@ export class RedisLockBackend implements LockBackend {
         // since ioredis is an optional peer dependency
         const ioredisModule = await import('ioredis') as { default?: unknown; [key: string]: unknown };
         const Redis = (ioredisModule.default || ioredisModule) as new (url: string, options: {
+            commandTimeout: number;
+            connectTimeout: number;
+            enableOfflineQueue: boolean;
             maxRetriesPerRequest: number;
             retryStrategy: (times: number) => number | null;
             lazyConnect: boolean;
@@ -74,20 +79,31 @@ export class RedisLockBackend implements LockBackend {
 
         // Create Redis client with retry strategy
         const client = new Redis(url, {
+            commandTimeout: DISTRIBUTED_LOCK.REDIS_COMMAND_TIMEOUT_MS,
+            connectTimeout: DISTRIBUTED_LOCK.REDIS_CONNECT_TIMEOUT_MS,
+            enableOfflineQueue: false,
             maxRetriesPerRequest: DISTRIBUTED_LOCK.MAX_RETRIES_PER_REQUEST,
             retryStrategy: (times: number) => {
                 if (times > DISTRIBUTED_LOCK.MAX_RETRIES_PER_REQUEST) return null;
-                return Math.min(times * 100, DISTRIBUTED_LOCK.MAX_RETRY_DELAY_MS);
+                return Math.min(
+                    times * DISTRIBUTED_LOCK.REDIS_RETRY_DELAY_MS,
+                    DISTRIBUTED_LOCK.MAX_RETRY_DELAY_MS,
+                );
             },
             lazyConnect: true,
         });
 
-        // Test connection
-        await client.connect();
-        await client.ping();
+        try {
+            await client.connect();
+            await client.ping();
+        } catch (error) {
+            client.disconnect(false);
+            throw error;
+        }
 
-        const safeUrl = (() => { try { const u = new URL(url); u.password = ''; u.username = ''; return u.toString(); } catch { return '[invalid-url]'; } })();
-        logger.info('Connected to Redis for distributed locking', { url: safeUrl });
+        logger.info('Connected to Redis for distributed locking', {
+            url: sanitizeUrlForLogging(url),
+        });
 
         return new RedisLockBackend(client, logger);
     }

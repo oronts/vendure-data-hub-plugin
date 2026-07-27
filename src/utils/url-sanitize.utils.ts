@@ -43,7 +43,8 @@ export function sanitizeUrlForLogging(url: string, options?: SanitizeUrlOptions)
         }
 
         if (opts.stripQueryParams) {
-            return parsed.origin + parsed.pathname;
+            parsed.search = '';
+            parsed.hash = '';
         }
 
         return parsed.toString();

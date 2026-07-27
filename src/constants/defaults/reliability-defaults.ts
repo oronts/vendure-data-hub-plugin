@@ -82,6 +82,12 @@ export const DISTRIBUTED_LOCK = {
     CONFIG_SYNC_READINESS_POLL_INTERVAL_MS: 1_000,
     /** Default Redis URL for auto-detection */
     DEFAULT_REDIS_URL: 'redis://localhost:6379',
+    /** Maximum time to establish the Redis lock connection */
+    REDIS_CONNECT_TIMEOUT_MS: 3_000,
+    /** Maximum duration of one Redis lock command */
+    REDIS_COMMAND_TIMEOUT_MS: 2_000,
+    /** Base delay between bounded Redis reconnect attempts */
+    REDIS_RETRY_DELAY_MS: 100,
     /** Maximum retries per Redis request */
     MAX_RETRIES_PER_REQUEST: 3,
     /** Maximum retry delay for Redis connection */
