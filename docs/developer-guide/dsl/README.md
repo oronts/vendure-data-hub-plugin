@@ -18,7 +18,7 @@ const pipeline = createPipeline()
     .trigger('start', { type: 'MANUAL' })
     .extract('fetch', { adapterCode: 'httpApi', url: 'https://api.example.com/products' })
     .transform('process', { operators: [...] })
-    .load('save', { adapterCode: 'productUpsert', strategy: 'UPSERT', matchField: 'slug' })
+    .load('save', { adapterCode: 'productUpsert', strategy: 'UPSERT', slugField: 'slug' })
     .edge('start', 'fetch')
     .edge('fetch', 'process')
     .edge('process', 'save')
@@ -80,7 +80,7 @@ Each step type has specific configuration:
 .load('save', {
     adapterCode: 'productUpsert',
     strategy: 'UPSERT',
-    matchField: 'slug',
+    slugField: 'slug',
 })
 ```
 

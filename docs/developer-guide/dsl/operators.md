@@ -144,14 +144,13 @@ Generate a cryptographic hash of field value(s):
 
 ```typescript
 { op: 'hash', args: { source: 'email', target: 'emailHash' } }
-{ op: 'hash', args: { source: 'email', target: 'emailHash', algorithm: 'md5' } }
 { op: 'hash', args: { source: ['sku', 'name', 'price'], target: 'contentHash', algorithm: 'sha256' } }
 { op: 'hash', args: { source: 'payload', target: 'signature', algorithm: 'sha512', encoding: 'base64' } }
 ```
 
 - `source` (required): Single field path or array of paths to hash together
 - `target` (required): Field path for the hash result
-- `algorithm`: `md5`, `sha1`, `sha256`, `sha512` (default: `sha256`)
+- `algorithm`: `sha256`, `sha512` (default: `sha256`)
 - `encoding`: `hex`, `base64` (default: `hex`)
 
 ### uuid
@@ -359,7 +358,7 @@ Convert floats to minor units (for Vendure price handling):
 
 ### unit
 
-Convert units (weight and length):
+Convert units within the weight, length, or volume category:
 
 ```typescript
 { op: 'unit', args: { source: 'weightG', target: 'weightKg', from: 'g', to: 'kg' } }
@@ -397,10 +396,10 @@ Format a number as a localized string with optional currency or percent formatti
 - `source` (required): Source field path containing the number
 - `target` (required): Target field path for the formatted string
 - `locale`: Locale for formatting (e.g., `en-US`, `de-DE`). Default: `en-US`
-- `decimals`: Number of decimal places
-- `style`: Format style -- `decimal`, `currency`, `percent`
-- `currency`: Currency code (e.g., `USD`, `EUR`). Required when style is `currency`
-- `useGrouping`: Whether to use thousand separators
+- `decimals`: Sets both minimum and maximum fraction digits; otherwise Intl style defaults apply
+- `style`: `decimal`, `currency`, or `percent`. Default: `decimal`
+- `currency`: Currency code used with `currency` style; a missing code falls back to decimal formatting
+- `useGrouping`: Whether to use grouping separators. Default: `true`
 
 ### toCents
 
@@ -440,7 +439,7 @@ Parse a string to a date:
 
 ```typescript
 { op: 'dateParse', args: { source: 'dateStr', target: 'date', format: 'YYYY-MM-DD' } }
-{ op: 'dateParse', args: { source: 'timestamp', target: 'date', format: 'MM/DD/YYYY', timezone: 'UTC' } }
+{ op: 'dateParse', args: { source: 'timestamp', target: 'date', format: 'MM/DD/YYYY' } }
 ```
 
 ### dateFormat
@@ -449,7 +448,7 @@ Format a date to a string:
 
 ```typescript
 { op: 'dateFormat', args: { source: 'createdAt', target: 'dateStr', format: 'YYYY-MM-DD' } }
-{ op: 'dateFormat', args: { source: 'date', target: 'formatted', format: 'DD/MM/YYYY HH:mm', timezone: 'Europe/London' } }
+{ op: 'dateFormat', args: { source: 'date', target: 'formatted', format: 'DD/MM/YYYY HH:mm' } }
 ```
 
 ### dateAdd
@@ -479,6 +478,10 @@ Calculate the difference between two dates in a specified unit:
 - `unit` (required): Result unit -- `seconds`, `minutes`, `hours`, `days`, `weeks`, `months`, `years`
 - `absolute`: Return absolute value (no negative numbers). Default: `false`
 
+`months` and `years` divide elapsed milliseconds by 30.44 and 365.25 days,
+respectively. They are approximations, not calendar-month or anniversary
+calculations.
+
 ### now
 
 Set the current timestamp on a field:
@@ -487,12 +490,11 @@ Set the current timestamp on a field:
 { op: 'now', args: { target: 'importedAt' } }
 { op: 'now', args: { target: 'syncDate', format: 'date' } }
 { op: 'now', args: { target: 'timestamp', format: 'timestamp' } }
-{ op: 'now', args: { target: 'lastUpdated', format: 'datetime', timezone: 'Europe/Berlin' } }
+{ op: 'now', args: { target: 'lastUpdated', format: 'datetime' } }
 ```
 
 - `target` (required): Target field path for the current timestamp
 - `format`: Output format -- `ISO` (default, e.g., `2024-01-15T10:30:00.000Z`), `timestamp` (Unix ms), `date` (`YYYY-MM-DD`), `datetime` (`YYYY-MM-DD HH:mm:ss`), or a custom format string
-- `timezone`: Timezone (e.g., `UTC`, `Europe/London`, `America/New_York`). Default: `UTC`
 
 ---
 
@@ -692,6 +694,43 @@ Compute aggregates over records:
 
 Operations: `count`, `sum`, `avg`, `min`, `max`, `first`, `last`
 
+### deduplicateRecords
+
+Deduplicate an active record batch by a scalar key with deterministic source
+precedence:
+
+```typescript
+{ op: 'deduplicateRecords', args: { key: 'sku' } }
+{ op: 'deduplicateRecords', args: {
+    key: 'sku',
+    keep: 'LOWEST',
+    priority: '_sourcePriority',
+} }
+```
+
+`keep` supports `FIRST`, `LAST`, `LOWEST`, and `HIGHEST`. Ordered strategies
+require finite numeric priorities. Key matching is type-strict; invalid or
+non-scalar keys remain separate records.
+
+### multiJoin
+
+Join the active records with a bounded inline reference dataset:
+
+```typescript
+{ op: 'multiJoin', args: {
+    leftKey: 'categoryId',
+    rightKey: 'id',
+    rightData: [{ id: 'c1', label: 'Featured' }],
+    type: 'LEFT',
+    prefix: 'category',
+    maxOutputRecords: 10000,
+} }
+```
+
+Join types are `INNER`, `LEFT`, `RIGHT`, and `FULL`. Keys are type-strict
+scalars, `rightData` is limited to 10,000 objects, and output fails rather
+than truncating when it exceeds the configured ceiling.
+
 ### expand
 
 Expand an array field into multiple records. Each array element becomes a separate record with optional parent field inheritance:
@@ -712,6 +751,12 @@ Expand an array field into multiple records. Each array element becomes a separa
 - `path` (required): Path to the array field to expand (e.g., `variants` or `lines`)
 - `mergeParent`: Include all parent (non-array) fields in each expanded record
 - `parentFields`: Map of specific parent fields to include -- `{ targetField: sourceFieldPath }`
+
+Object elements become output records directly; primitive elements are written
+to `_item`. With the default `mergeParent: false`, a missing, non-array, or
+empty value emits no records. With `mergeParent: true`, it emits the unchanged
+parent. Expanded object fields overwrite same-named parent fields when the
+parent is merged.
 
 ---
 
@@ -738,6 +783,7 @@ Enrich records by fetching data from external HTTP endpoints. Supports caching, 
 
 // POST with authentication and caching
 { op: 'httpLookup', args: {
+    connectionCode: 'external-api',
     url: 'https://api.example.com/enrich',
     method: 'POST',
     bodyField: 'lookupPayload',
@@ -759,6 +805,7 @@ Enrich records by fetching data from external HTTP endpoints. Supports caching, 
 ```
 
 - `url` (required): HTTP endpoint URL. Use `{{field}}` for dynamic values from the record
+- `connectionCode`: Saved HTTP connection. Required for Secret-backed authentication and binds credentials and redirects to the connection origin
 - `target` (required): Field path to store the response data
 - `method`: HTTP method -- `GET` or `POST`. Default: `GET`
 - `responsePath`: JSON path to extract from response (e.g., `data.result`)
@@ -779,13 +826,21 @@ Enrich records by fetching data from external HTTP endpoints. Supports caching, 
 - `batchSize`: Process this many records in parallel. Default: `50`
 - `rateLimitPerSecond`: Max requests per second per domain. Default: `100`
 
+Public unauthenticated lookups may omit `connectionCode`. Any lookup using a
+Secret Code must reference a saved HTTP, REST, or GraphQL connection with a
+`baseUrl`; cross-origin URLs and redirects are rejected.
+
 ---
 
 ## Script Operators
 
 ### script
 
-Execute inline JavaScript code for complex transformations that cannot be expressed with standard operators. Code runs in a secure sandboxed VM with timeout enforcement:
+Execute inline JavaScript code for complex transformations that cannot be
+expressed with standard operators. Code receives restricted globals and timeout
+enforcement, but Node's `vm` is not a hostile-code isolation boundary. Only
+trusted administrators may author or publish scripts; disable script execution
+when that trust model is not acceptable.
 
 ```typescript
 // Single-record mode (default): receives record, index, context
@@ -822,7 +877,7 @@ Execute inline JavaScript code for complex transformations that cannot be expres
 - `code` (required): JavaScript code to execute. In single-record mode: receives `record`, `index`, `context`. In batch mode: receives `records`, `context`. Must return the transformed result
 - `batch`: If `true`, processes all records at once. If `false` (default), processes one record at a time
 - `timeout`: Maximum execution time in milliseconds. Default: `5000`
-- `failOnError`: If `true`, errors fail the entire step. If `false` (default), errors are logged and records skipped
+- `failOnError`: If `true`, errors fail the step. If `false` (default), errors are logged and the original record or batch is preserved
 - `context`: Optional JSON data passed to the script as `context.data`
 
 ---

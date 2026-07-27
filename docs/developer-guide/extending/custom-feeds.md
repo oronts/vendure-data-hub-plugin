@@ -64,7 +64,8 @@ export const myMarketplaceFeed: CustomFeedGenerator = {
 
     async generate(context: FeedGeneratorContext): Promise<CustomFeedResult> {
         const { products, config, moneyPrecision } = context;
-        const baseUrl = config.options?.baseUrl || 'https://example.com';
+        const baseUrl = config.options?.baseUrl;
+        if (!baseUrl) throw new Error('baseUrl is required');
 
         const items = products.map(variant => ({
             sku: variant.sku,
@@ -131,7 +132,8 @@ function mapVariantToAmazon(
 ): AmazonItem {
     const customFields = variant.customFields || {};
     const productCustomFields = variant.product?.customFields || {};
-    const baseUrl = config.options?.baseUrl || '';
+    const baseUrl = config.options?.baseUrl;
+    if (!baseUrl) throw new Error('baseUrl is required');
 
     // Get images
     const images = [
@@ -266,7 +268,8 @@ export const pinterestFeed: CustomFeedGenerator = {
 
     async generate(context: FeedGeneratorContext): Promise<CustomFeedResult> {
         const { products, config, moneyPrecision } = context;
-        const baseUrl = config.options?.baseUrl || '';
+        const baseUrl = config.options?.baseUrl;
+        if (!baseUrl) throw new Error('baseUrl is required');
         const currency = config.options?.currency || 'USD';
 
         const items: PinterestItem[] = products.map(variant => {

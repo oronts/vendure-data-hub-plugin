@@ -532,6 +532,9 @@ the complete supported database-type values.
 | `pagination.maxPages` | number | No | Safety limit for pages per run |
 | `incremental.enabled` | boolean | No | Append a greater-than filter using the saved checkpoint |
 | `incremental.column` | string | Conditional | Required when incremental extraction is enabled |
+| `queryTimeoutMs` | number | No | PostgreSQL/MySQL query timeout from 1 to 300000 milliseconds; unsupported for SQLite |
+| `pool.max` | number | No | Maximum PostgreSQL/MySQL connections in the extractor pool (1-10; default: 10) |
+| `pool.idleTimeoutMs` | number | No | Close idle PostgreSQL/MySQL connections after 1-300000 milliseconds (default: 30000) |
 
 ### Example
 

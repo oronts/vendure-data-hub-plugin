@@ -18,6 +18,7 @@ query {
             code
             name
             enabled
+            configurationSource
             createdAt
             updatedAt
         }
@@ -37,6 +38,7 @@ query GetPipeline($id: ID!) {
         code
         name
         enabled
+        configurationSource
         definition
         createdAt
         updatedAt
@@ -55,12 +57,18 @@ query {
             id
             code
             type
+            configurationSource
             createdAt
         }
         totalItems
     }
 }
 ```
+
+`configurationSource` is `DATABASE` for Dashboard-managed resources and
+`CODE_FIRST` for active deployed definitions. Update, delete, lifecycle, draft,
+and restore mutations reject active code-first resources. Pipeline review,
+publication, execution, export, history, and comparison remain available.
 
 ### dataHubSecrets
 
@@ -81,9 +89,34 @@ query {
 }
 ```
 
+### dataHubSecretReferences
+
+List secret codes that can be referenced by pipelines, connections, triggers, and
+destinations. This read-only query includes both code-first and database-managed
+secrets but never returns secret values. Results are filtered on the server;
+`take` must be between 1 and 100.
+
+```graphql
+query SecretReferences($search: String, $skip: Int = 0, $take: Int = 25) {
+    dataHubSecretReferences(search: $search, skip: $skip, take: $take) {
+        items {
+            code
+            provider
+            source
+        }
+        totalItems
+    }
+}
+```
+
+Code-first results are returned first in code order, followed by distinct
+database results in code order. The query requires `ReadDataHubSecret`.
+
 ### dataHubAdapters
 
 List available adapters:
+
+Requires `ManageDataHubAdapters`.
 
 ```graphql
 query {
@@ -93,6 +126,9 @@ query {
         type
         category
         description
+        version
+        deprecated
+        deprecatedMessage
         schema {
             fields {
                 key
@@ -371,6 +407,15 @@ Pipeline lifecycle transitions are enforced by the service and revision layers:
 - revision reversion is allowed only for `PUBLISHED` pipelines and creates a new validated published revision
 Draft, review, and archived pipelines cannot bypass the review workflow through revision reversion. Reactivation does not create a new revision.
 
+Publication uses the saved `REVIEW` definition and fails closed. It performs
+full structural, semantic, adapter, dependency, resource, and hook validation;
+inability to verify a dependency, connection, secret, hook script, or target
+pipeline blocks publication. It also rejects reachable cycles across
+`dependsOn` and `TRIGGER_PIPELINE` references and verifies the effective adapter
+and operator permissions. The standalone validation query is advisory:
+`isValid` excludes warnings and does not include every publication-only cycle,
+permission, or concurrent-change check.
+
 ```graphql
 mutation ReactivatePipeline($id: ID!) {
     reactivateDataHubPipeline(id: $id) {
@@ -443,8 +488,16 @@ Validate a pipeline definition:
 query Validate($definition: JSON!) {
     validateDataHubPipelineDefinition(definition: $definition) {
         isValid
+        level
         issues {
             stepKey
+            field
+            message
+            reason
+        }
+        warnings {
+            stepKey
+            field
             message
             reason
         }
@@ -452,9 +505,15 @@ query Validate($definition: JSON!) {
 }
 ```
 
+Requires `ReadDataHubPipeline`. `reason` is a nullable technical code supplied
+when the validator can classify an issue; unexpected failures can be
+message-only.
+
 ### createDataHubConnection
 
 Create a connection:
+
+Requires `ManageDataHubConnections`.
 
 ```graphql
 mutation CreateConnection($input: CreateDataHubConnectionInput!) {
@@ -470,6 +529,8 @@ mutation CreateConnection($input: CreateDataHubConnectionInput!) {
 
 Update a connection:
 
+Requires `ManageDataHubConnections`.
+
 ```graphql
 mutation UpdateConnection($input: UpdateDataHubConnectionInput!) {
     updateDataHubConnection(input: $input) {
@@ -483,17 +544,25 @@ mutation UpdateConnection($input: UpdateDataHubConnectionInput!) {
 
 Delete a connection:
 
+Requires `ManageDataHubConnections`.
+
 ```graphql
 mutation DeleteConnection($id: ID!) {
     deleteDataHubConnection(id: $id) {
         result
+        message
     }
 }
 ```
 
+Inspect both fields. `NOT_DELETED` includes a missing-resource, dependency, or
+persistence failure reason in `message`.
+
 ### createDataHubSecret
 
 Create a secret:
+
+Requires `CreateDataHubSecret`.
 
 ```graphql
 mutation CreateSecret($input: CreateDataHubSecretInput!) {
@@ -521,6 +590,8 @@ Variables:
 
 Update a secret:
 
+Requires `UpdateDataHubSecret`.
+
 ```graphql
 mutation UpdateSecret($input: UpdateDataHubSecretInput!) {
     updateDataHubSecret(input: $input) {
@@ -544,13 +615,20 @@ Secret queries and mutation responses expose `hasValue`; the stored value is nev
 
 Delete a secret:
 
+Requires `DeleteDataHubSecret`.
+
 ```graphql
 mutation DeleteSecret($id: ID!) {
     deleteDataHubSecret(id: $id) {
         result
+        message
     }
 }
 ```
+
+Tracked references from published pipelines, saved connections, or managed
+destinations prevent deletion and return `NOT_DELETED` with a reason.
+Missing secrets also return `NOT_DELETED` with `Secret not found`.
 
 ### retryDataHubRecord
 
@@ -622,7 +700,10 @@ const result = await adminClient.mutate({
 
 ## Error Handling
 
-GraphQL errors follow Vendure patterns:
+Authorization, lookup, duplicate-code, and create/update validation failures are
+returned through the GraphQL `errors` array. The exact `extensions.code` depends
+on the originating Vendure or resolver error and is not guaranteed for every
+validation path:
 
 ```typescript
 try {
@@ -637,8 +718,5 @@ try {
 }
 ```
 
-Common error codes:
-- `FORBIDDEN` - Missing required permission
-- `NOT_FOUND` - Entity not found
-- `VALIDATION_ERROR` - Invalid input
-- `PIPELINE_RUNNING` - Pipeline already running
+Delete mutations use Vendure's `DeletionResponse`; inspect `result` and
+`message` even when the GraphQL request itself succeeds.

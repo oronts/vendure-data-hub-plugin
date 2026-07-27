@@ -36,6 +36,11 @@ interface LoadContext {
 }
 ```
 
+For `EXPLICIT` and `MULTI` execution, the runtime invokes the loader once per
+target channel. In each invocation, `context.ctx.channelId`, `context.channels`,
+and `context.pipelineContext.channelIds` identify that one target channel. The
+runtime aggregates the returned counts across all target channels.
+
 ## Basic Example
 
 ```typescript

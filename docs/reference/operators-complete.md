@@ -2,13 +2,13 @@
 
 **Auto-generated from OPERATOR_REGISTRY**
 
-Total operators: **61**
+Total operators: **62**
 
 This is the definitive reference for all built-in transform operators in the Data Hub plugin.
 
 ## Table of Contents
 
-### [Aggregation Operators](#aggregation)
+### [Aggregation Operators](#aggregation-operators)
 - [aggregate](#aggregate) - Compute a simple aggregate over records and set a field on each record.
 - [count](#count) - Count elements in an array or characters in a string.
 - [unique](#unique) - Remove duplicate values from an array field.
@@ -16,52 +16,53 @@ This is the definitive reference for all built-in transform operators in the Dat
 - [first](#first) - Get the first element of an array.
 - [last](#last) - Get the last element of an array.
 - [expand](#expand) - Expand an array field into multiple records. Each array element becomes a separate record with optional parent field inheritance.
+- [deduplicateRecords](#deduplicaterecords) - Deduplicate a record batch by a scalar key with deterministic conflict resolution.
 - [multiJoin](#multijoin) - Join two datasets by matching key fields. Supports INNER, LEFT, RIGHT, and FULL OUTER join types.
 
-### [File Operators](#file)
+### [File Operators](#file-operators)
 - [imageResize](#imageresize) - Resize images referenced in record fields (base64-encoded)
 - [imageConvert](#imageconvert) - Convert image format (JPEG, PNG, WebP, AVIF, GIF)
-- [pdfGenerate](#pdfgenerate) - Generate PDF from HTML template with record data
+- [pdfGenerate](#pdfgenerate) - Generate a multi-page plain-text PDF from record data
 
-### [Data Operators](#data)
+### [Data Operators](#data-operators)
 - [map](#map) - Transform records via field mapping. Provide a JSON object of dst -> src dot-paths.
 - [set](#set) - Set a static value at a specified path.
 - [remove](#remove) - Remove a field at a specified path.
 - [rename](#rename) - Rename a field from one path to another.
 - [copy](#copy) - Copy a field value to another path.
 - [template](#template) - Render a string template and set it at target path.
-- [hash](#hash) - Generate a cryptographic hash (MD5, SHA1, SHA256, SHA512) of field value(s).
+- [hash](#hash) - Generate a SHA-256 or SHA-512 hash of field value(s).
 - [uuid](#uuid) - Generate a UUID for each record. Supports v4 (random) and v5 (namespace-based deterministic).
 - [validateRequired](#validaterequired) - Mark records as invalid if required fields are missing.
 - [validateFormat](#validateformat) - Validate field format using regex.
 
-### [Date Operators](#date)
+### [Date Operators](#date-operators)
 - [dateFormat](#dateformat) - Format a date field to a string.
 - [dateParse](#dateparse) - Parse a string to a date.
 - [dateAdd](#dateadd) - Add or subtract time from a date.
 - [dateDiff](#datediff) - Calculate the difference between two dates in a specified unit.
 - [now](#now) - Set the current timestamp on a field. Useful for adding created/updated timestamps.
 
-### [Enrichment Operators](#enrichment)
+### [Enrichment Operators](#enrichment-operators)
 - [lookup](#lookup) - Lookup value from a map and set to target field.
 - [coalesce](#coalesce) - Return the first non-null value from a list of field paths.
 - [enrich](#enrich) - Enrich or default fields on records. 
 - [default](#default) - Set a default value if field is null or undefined.
 - [httpLookup](#httplookup) - Enrich records by fetching data from external HTTP endpoints with caching, authentication, and error handling.
 
-### [JSON Operators](#json)
+### [JSON Operators](#json-operators)
 - [parseJson](#parsejson) - Parse a JSON string field into an object.
 - [stringifyJson](#stringifyjson) - Stringify an object field to a JSON string.
 - [pick](#pick) - Pick specific fields from a record, discarding others.
 - [omit](#omit) - Omit specific fields from a record.
 
-### [Logic Operators](#logic)
+### [Logic Operators](#logic-operators)
 - [when](#when) - Filter records by conditions. Action: keep or drop.
 - [ifThenElse](#ifthenelse) - Set a value based on a condition.
 - [switch](#switch) - Set a value based on multiple conditions (like a switch statement).
-- [deltaFilter](#deltafilter) - Filter out unchanged records using a stable hash stored in checkpoint. Keeps only changed/new based on idPath.
+- [deltaFilter](#deltafilter) - Detect likely record changes with a checkpointed, non-cryptographic 32-bit hash. Hash collisions are possible.
 
-### [Numeric Operators](#numeric)
+### [Numeric Operators](#numeric-operators)
 - [math](#math) - Perform math operations on numeric fields.
 - [currency](#currency) - Convert floats to minor units or re-map currency fields.
 - [unit](#unit) - Convert units (e.g. g<->kg, cm<->m)
@@ -72,7 +73,7 @@ This is the definitive reference for all built-in transform operators in the Dat
 - [toCents](#tocents) - Convert a decimal amount to cents (minor currency units). Multiplies by 100 and rounds.
 - [round](#round) - Round a number to a specified number of decimal places.
 
-### [String Operators](#string)
+### [String Operators](#string-operators)
 - [split](#split) - Split a string field into an array by delimiter.
 - [join](#join) - Join an array field into a string.
 - [trim](#trim) - Trim whitespace from a string field.
@@ -86,7 +87,7 @@ This is the definitive reference for all built-in transform operators in the Dat
 - [stripHtml](#striphtml) - Remove HTML tags from a string field, preserving text content.
 - [truncate](#truncate) - Truncate a string to a maximum length, optionally adding a suffix.
 
-### [Scripting Operators](#scripting)
+### [Scripting Operators](#scripting-operators)
 - [script](#script) - Execute inline JavaScript code to transform records. Use for complex logic that cannot be expressed with standard operators.
 
 ---
@@ -205,37 +206,81 @@ Expand an array field into multiple records. Each array element becomes a separa
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `path` | string | Yes | Path to the array to expand (e.g.,  |
-| `mergeParent` | boolean | No | Include all parent fields in expanded records |
-| `parentFields` | json | No | Map of target field names to source paths (e.g., { |
+| `path` | string | Yes | Path to the array to expand, such as `variants` or `lines` |
+| `mergeParent` | boolean | No | Include the parent record (without the expanded array) in each result; default: `false` |
+| `parentFields` | json | No | Map target field names to parent source paths; used when `mergeParent` is `false` |
 
 **Example:**
 
 ```typescript
 { op: 'expand', args: {
-  "path": "sourceField"
+  "path": "variants",
+  "parentFields": { "productId": "id" }
 } }
 ```
 
+Object elements become output records directly. Primitive elements are placed
+in `_item`. A missing, non-array, or empty value emits no records unless
+`mergeParent` is `true`, in which case the unchanged parent record is emitted.
+
+### deduplicateRecords
+
+Deduplicate the current record batch by a type-strict scalar key.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `key` | string | Yes | Scalar key field path |
+| `keep` | select | No | `FIRST`, `LAST`, `LOWEST`, or `HIGHEST`; default `FIRST` |
+| `priority` | string | Conditional | Finite numeric field path required by `LOWEST` and `HIGHEST` |
+
+**Example:**
+
+```typescript
+{ op: 'deduplicateRecords', args: {
+  key: 'sku',
+  keep: 'LOWEST',
+  priority: '_sourcePriority',
+} }
+```
+
+The first appearance of a key determines its output position. Missing and
+non-scalar keys are retained as separate records. Ordered strategies reject
+missing and non-finite priorities.
+
 ### multiJoin
 
-Join two datasets by matching key fields. Supports INNER, LEFT, RIGHT, and FULL OUTER join types.
+Join the current records to an inline reference dataset using type-strict scalar keys.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `leftKey` | string | Yes | Field path in left (primary) records to join on |
 | `rightKey` | string | Yes | Field path in right records to join on |
-| `type` | select | Yes | Join type |
+| `rightData` | JSON array | Yes | Inline right-side objects; maximum 10,000 records |
+| `type` | select | No | `INNER`, `LEFT`, `RIGHT`, or `FULL`; default `LEFT` |
+| `prefix` | string | No | Prefix for emitted right-side fields |
+| `select` | JSON array | No | Right-side fields to emit; omitted or empty selects all fields |
+| `maxOutputRecords` | number | No | Output ceiling; default 10,000, maximum 100,000 |
 
 **Example:**
 
 ```typescript
 { op: 'multiJoin', args: {
-  "leftKey": "value",
-  "rightKey": "value",
-  "type": "value"
+  leftKey: 'productId',
+  rightKey: 'id',
+  rightData: [
+    { id: 'p1', price: 1999 },
+    { id: 'p2', price: 2499 },
+  ],
+  type: 'LEFT',
+  prefix: 'price',
+  maxOutputRecords: 10000,
 } }
 ```
+
+Only strings, booleans, and finite numbers match, and their types must be the
+same. Null, missing, array, object, and non-finite keys remain unmatched. RIGHT
+and FULL joins emit unmatched right records in input order. Output exceeding
+the configured ceiling fails instead of being truncated.
 
 ## File Operators
 
@@ -261,13 +306,32 @@ Convert image format (JPEG, PNG, WebP, AVIF, GIF)
 
 ### pdfGenerate
 
-Generate PDF from HTML template with record data
+Generate a multi-page plain-text PDF from a static template or a template read
+from a record field. The operator replaces nested-path `{{field.path}}`
+placeholders, converts common block/line-break tags to newlines, and strips the
+remaining HTML-like tags. It does not render HTML or CSS.
+
+| Argument | Type | Required | Description |
+|----------|------|----------|-------------|
+| `template` | string | No | Static template; used when `templateField` is absent or resolves to `undefined` |
+| `templateField` | string | No | Record field path containing the template |
+| `targetField` | string | Yes | Field path for the base64-encoded PDF |
+| `pageSize` | select | No | `A4`, `LETTER`, or `A3`; default: `A4` |
+| `orientation` | select | No | `PORTRAIT` or `LANDSCAPE`; default: `PORTRAIT` |
 
 **Example:**
 
 ```typescript
-{ op: 'pdfGenerate', args: {} }
+{ op: 'pdfGenerate', args: {
+  "template": "Invoice {{order.code}}\nTotal: {{order.total}}",
+  "targetField": "documents.invoice",
+  "pageSize": "A4"
+} }
 ```
+
+Text wraps with standard Helvetica and continues on additional pages. `pdf-lib`
+is a direct runtime dependency. A record-level rendering error preserves that
+record, omits the target field, and is returned as an operator error.
 
 ## Data Operators
 
@@ -379,13 +443,13 @@ Render a string template and set it at target path.
 
 ### hash
 
-Generate a cryptographic hash (MD5, SHA1, SHA256, SHA512) of field value(s).
+Generate a SHA-256 or SHA-512 hash of field value(s).
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `source` | json | Yes | Single path string or array of paths to hash together |
 | `target` | string | Yes | Path where the hash will be stored |
-| `algorithm` | select | No | Default: sha256 |
+| `algorithm` | select | No | `sha256` or `sha512`; default: `sha256` |
 | `encoding` | select | No | Default: hex |
 
 **Example:**
@@ -463,7 +527,6 @@ Format a date field to a string.
 | `target` | string | Yes | Target field path |
 | `format` | string | Yes | e.g. YYYY-MM-DD, DD/MM/YYYY HH:mm |
 | `inputFormat` | string | No | If source is string, specify its format |
-| `timezone` | string | No | e.g. UTC, Europe/London |
 
 **Example:**
 
@@ -484,7 +547,6 @@ Parse a string to a date.
 | `source` | string | Yes | Source field path |
 | `target` | string | Yes | Target field path |
 | `format` | string | Yes | Format of the source string |
-| `timezone` | string | No | Timezone |
 
 **Example:**
 
@@ -530,8 +592,12 @@ Calculate the difference between two dates in a specified unit.
 | `endDate` | string | Yes | End date field path |
 | `target` | string | Yes | Target field path |
 | `unit` | select | Yes | Result unit: `seconds`, `minutes`, `hours`, `days`, `weeks`, `months`, `years` |
+| `absolute` | boolean | No | Return a non-negative result; default: `false` |
 
 > **Important:** Unit strings must be plural: `"days"`, `"hours"`, `"minutes"`, `"seconds"`, `"weeks"`, `"months"`, `"years"`. Singular forms like `"day"` are not supported.
+
+Months and years are elapsed-time approximations of 30.44 and 365.25 days,
+respectively; they are not calendar-month or anniversary calculations.
 
 **Example:**
 
@@ -642,35 +708,47 @@ Enrich records by fetching data from external HTTP endpoints with caching, authe
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
+| `connectionCode` | connection | No | Saved HTTP connection. Required when authentication is configured and used to bind credentials and redirects to one origin. |
 | `url` | string | Yes | HTTP endpoint URL. Use {{field}} for dynamic values. |
 | `method` | select | No | HTTP Method |
 | `target` | string | Yes | Field path to store the response data. |
 | `responsePath` | string | No | JSON path to extract from response (optional). |
-| `keyField` | string | No | Field to use as cache key. If not set, URL is used. |
+| `keyField` | string | No | Optional record value included in the opaque full-request cache identity. |
 | `default` | json | No | Value to use if lookup fails or returns 404. |
-| `timeoutMs` | number | No | Request timeout in milliseconds. |
-| `cacheTtlSec` | number | No | Cache time-to-live in seconds. Set to 0 to disable. |
-| `headers` | json | No | Static HTTP headers as JSON object. |
-| `bearerTokenSecretCode` | string | No | Secret code for Bearer token authentication. |
-| `apiKeySecretCode` | string | No | Secret code for API key authentication. |
-| `apiKeyHeader` | string | No | Header name for API key. |
-| `basicAuthSecretCode` | string | No | Secret code for Basic auth (username:password). |
+| `timeoutMs` | number | No | Integer from 1 to 300000 milliseconds. |
+| `cacheTtlSec` | number | No | Integer from 0 to 604800 seconds. Set to 0 to disable. |
+| `headers` | json | No | Non-sensitive static headers only. Credential, cookie, signature, Host, and hop-by-hop headers are rejected. |
+| `bearerTokenSecretCode` | string | No | Secret Code for Bearer authentication. Missing or empty values fail before any request. |
+| `apiKeySecretCode` | string | No | Secret Code for API key authentication. Missing or empty values fail before any request. |
+| `apiKeyHeader` | string | No | Valid request header name for the resolved API key. Requires `apiKeySecretCode`. |
+| `basicAuthSecretCode` | string | No | Secret Code resolving to `username:password`. Missing or empty values fail before any request. |
 | `bodyField` | string | No | Field path for POST body (uses record value at this path). |
 | `body` | json | No | Static POST body (JSON object). |
 | `skipOn404` | boolean | No | Skip record if endpoint returns 404. |
 | `failOnError` | boolean | No | Fail pipeline if HTTP request fails. |
-| `maxRetries` | number | No | Maximum retry attempts on transient errors. |
-| `batchSize` | number | No | Process this many records in parallel (default: 50). |
-| `rateLimitPerSecond` | number | No | Max requests per second per domain (default: 100). |
+| `maxRetries` | number | No | Integer from 0 to 10. |
+| `batchSize` | number | No | Integer from 1 to 500 (default: 50). |
+| `rateLimitPerSecond` | number | No | Integer from 1 to 10000 requests per second per domain. |
+
+Cache entries are isolated by channel/pipeline step and by an opaque HMAC of the
+complete request configuration and resolved credentials. Cache statistics expose
+only the entry count, never request material, credential values, or cache keys.
 
 **Example:**
 
 ```typescript
 { op: 'httpLookup', args: {
-  "url": "value",
-  "target": "targetField"
+  "connectionCode": "external-api",
+  "url": "https://api.example.com/products/{{sku}}",
+  "target": "externalProduct",
+  "headers": { "Accept": "application/json" },
+  "bearerTokenSecretCode": "external-api-token"
 } }
 ```
+
+Public unauthenticated lookups can omit `connectionCode`. Secret-backed
+authentication requires a saved HTTP-family connection with `baseUrl` and is
+restricted to that exact origin across redirects.
 
 ## JSON Operators
 
@@ -803,7 +881,9 @@ Set a value based on multiple conditions (like a switch statement).
 
 ### deltaFilter
 
-Filter out unchanged records using a stable hash stored in checkpoint. Keeps only changed/new based on idPath.
+Detect likely changes by storing a non-cryptographic 32-bit record hash in the
+checkpoint for each `idPath` value. A hash collision can suppress a changed
+record, so do not use this operator as a correctness or security boundary.
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
@@ -867,6 +947,7 @@ Convert units (e.g. g<->kg, cm<->m)
 | `source` | string | Yes | Source field path |
 | `target` | string | Yes | Target field path |
 | `from` | select | Yes | From unit |
+| `to` | select | Yes | Target unit; must be in the same weight, length, or volume category as `from` |
 
 **Example:**
 
@@ -874,7 +955,8 @@ Convert units (e.g. g<->kg, cm<->m)
 { op: 'unit', args: {
   "source": "sourceField",
   "target": "targetField",
-  "from": "value"
+  "from": "g",
+  "to": "kg"
 } }
 ```
 
@@ -940,9 +1022,11 @@ Format a number as a localized string with optional currency or percent formatti
 |----------|------|----------|-------------|
 | `source` | string | Yes | Source field path |
 | `target` | string | Yes | Target field path |
-| `locale` | string | No | e.g.,  |
-| `decimals` | number | No | Decimal places |
-| `style` | select | No | Format style |
+| `locale` | string | No | Intl locale; default: `en-US` |
+| `decimals` | number | No | Sets both minimum and maximum fraction digits; otherwise Intl style defaults apply |
+| `style` | select | No | `decimal`, `currency`, or `percent`; default: `decimal` |
+| `currency` | string | No | Currency code used with `currency` style; a missing code falls back to decimal formatting |
+| `useGrouping` | boolean | No | Use grouping separators; default: `true` |
 
 **Example:**
 
@@ -1232,8 +1316,8 @@ Execute inline JavaScript code to transform records. Use for complex logic that 
 |----------|------|----------|-------------|
 | `code` | code | Yes | JavaScript code to execute. In single-record mode: receives `record`, `index`, `context`. In batch mode: receives `records`, `context`. Must return the transformed result. |
 | `batch` | boolean | No | If true, processes all records at once. If false (default), processes one record at a time. |
-| `timeout` | number | No | Maximum execution time in milliseconds (default: 5000) |
-| `failOnError` | boolean | No | If true, errors fail the entire step. If false, errors are logged and records skipped. |
+| `timeout` | number | No | Integer from 1 to 300000 milliseconds (default: 5000) |
+| `failOnError` | boolean | No | If true, errors fail the step. If false, errors are logged and the original record or batch is preserved. |
 | `context` | json | No | Optional JSON data passed to the script as context.data |
 
 **Example:**

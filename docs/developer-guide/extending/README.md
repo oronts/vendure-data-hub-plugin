@@ -25,7 +25,7 @@ Create custom adapters when you need to:
 - Add specialized transformations
 - Index to custom search engines
 - Generate marketplace-specific feeds
-- Trigger pipelines from message queues
+- Integrate source systems through the supported trigger types
 
 ## Extension Points
 
@@ -36,10 +36,13 @@ Create custom adapters when you need to:
 | Loader | Load to Vendure entities | `LoaderAdapter` | [Guide](./custom-loaders.md) |
 | Sink | Index to search engines | `SinkAdapter` | [Guide](./custom-sinks.md) |
 | Feed Generator | Create product feeds | `FeedAdapter` | [Guide](./custom-feeds.md) |
-| Trigger | Start pipelines from events | `TriggerAdapter` | [Guide](./custom-triggers.md) |
 | Validator | Validate records | `ValidatorAdapter` | [Guide](#validator-adapters) |
 | Enricher | Enrich with external data | `EnricherAdapter` | [Guide](#enricher-adapters) |
 | Exporter | Export to external targets | `ExporterAdapter` | [Guide](#exporter-adapters) |
+
+Trigger integrations use the built-in `WEBHOOK`, `MESSAGE`, `EVENT`, `FILE`,
+`SCHEDULE`, and `MANUAL` trigger types. There is no custom trigger runtime
+adapter contract; see [Trigger integrations](./custom-triggers.md).
 
 ## Quick Registration
 
@@ -853,8 +856,20 @@ export const schemaValidator: ValidatorAdapter<SchemaValidatorConfig> = {
 ```typescript
 DataHubPlugin.init({
     adapters: [schemaValidator],
-})
+});
+
+const pipeline = createPipeline()
+    .validate('validate-products', {
+        adapterCode: 'schema-validator',
+        rules: productRules,
+        errorHandlingMode: 'ACCUMULATE',
+    })
+    .build();
 ```
+
+The runtime invokes the registered validator when a `VALIDATE` step selects its
+adapter code. `FAIL_FAST` rejects the batch after the first reported invalid
+record; `ACCUMULATE` reports every invalid record and forwards `result.valid`.
 
 ---
 
@@ -1097,8 +1112,21 @@ export const dbLookupEnricher: EnricherAdapter<DbLookupConfig> = {
 ```typescript
 DataHubPlugin.init({
     adapters: [apiLookupEnricher, dbLookupEnricher],
-})
+});
+
+const pipeline = createPipeline()
+    .enrich('lookup-catalog-data', {
+        adapterCode: 'api-lookup',
+        lookupField: 'sku',
+        targetField: 'catalogData',
+        apiUrl: 'https://api.example.com/lookup/{{value}}',
+    })
+    .build();
 ```
+
+The runtime invokes the registered enricher when an `ENRICH` step selects its
+adapter code and supplies channel-aware request context, secret resolution, and
+runtime-resolved connection configuration.
 
 ---
 

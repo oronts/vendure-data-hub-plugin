@@ -196,8 +196,8 @@ Control how records flow through steps:
     throughput: {
         batchSize: 100,         // Process 100 records at a time
         concurrency: 4,         // Process 4 batches in parallel
-        rateLimitRps: 10,       // Max 10 requests per second
-        pauseOnErrorRate: { threshold: 0.5, intervalSec: 60 },  // Pause if error rate exceeds 50%
+        rateLimitRps: 10,       // Max 10 aggregate load-batch starts per second
+        pauseOnErrorRate: { threshold: 0.5, intervalSec: 60 },  // React at 50% failures in the rolling 60-second window
         drainStrategy: 'BACKOFF', // 'BACKOFF' | 'SHED' | 'QUEUE'
     }
 }

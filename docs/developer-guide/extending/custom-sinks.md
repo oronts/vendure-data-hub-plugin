@@ -381,7 +381,7 @@ const searchSyncPipeline = createPipeline()
     .extract('products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'translations,featuredAsset',
+        relations: ['translations', 'featuredAsset'],
     })
     .transform('prepare', {
         operators: [
@@ -537,6 +537,7 @@ const pipeline = createPipeline()
         indexName: 'products',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meili-key',
+        primaryKey: 'id',
     })
     .hooks({
         BEFORE_SINK: [{
@@ -601,7 +602,7 @@ BEFORE_SINK: [{
             return {
                 ...r,
                 searchText: r.name.toLowerCase(),
-                updatedAt: new Date().toISOString(),
+                updatedAtEpochMs: Date.now(),
             };
         });
     `,

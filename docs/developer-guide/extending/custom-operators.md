@@ -15,6 +15,8 @@ interface SingleRecordOperator<TConfig = JsonObject> {
     schema: StepConfigSchema;
     icon?: string;
     version?: string;
+    deprecated?: boolean;
+    deprecatedMessage?: string;
 
     applyOne(
         record: JsonObject,
@@ -28,6 +30,12 @@ interface AdapterOperatorHelpers {
     set(record: JsonObject, path: string, value: unknown): void;
 }
 ```
+
+Adapter `version` and `apiVersion` values are exact runtime constraints recorded
+when a pipeline is published. Finish or cancel nonterminal runs before deploying a
+new operator contract, then publish a new pipeline revision. Set `deprecated: true`
+together with a non-empty `deprecatedMessage` to keep the installed operator
+executable while warning pipeline authors about its replacement.
 
 ## Basic Example
 
@@ -179,7 +187,7 @@ export const customPipeline = createPipeline()
         ],
     })
 
-    .load('save', { adapterCode: 'productUpsert', strategy: 'UPSERT', matchField: 'slug' })
+    .load('save', { adapterCode: 'productUpsert', strategy: 'UPSERT', slugField: 'slug' })
 
     .edge('start', 'fetch')
     .edge('fetch', 'custom-step')

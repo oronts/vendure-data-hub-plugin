@@ -234,19 +234,16 @@ DataHubPlugin.init({
 
 The plugin ships with built-in templates for common scenarios (CSV imports, API syncs, Google Shopping feeds, etc.). Custom templates are merged with built-in ones and shown in the wizard UI.
 
-### Connector Templates
+### Connector Pipelines
 
-Connectors such as Pimcore ship their own wizard templates and generated pipelines. Register the configured connector and add its explicit pipeline list:
+Pimcore imports use configuration-aware generated pipelines rather than generic import-wizard cards. Register the configured connector and add its explicit pipeline list. The `connectionCode` must match a saved `GRAPHQL` connection declared in the plugin's `connections` option:
 
 ```typescript
 import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
 import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
 
 const pimcore = PimcoreConnector({
-    connection: {
-        endpoint: 'https://pimcore.example.com/pimcore-graphql-webservices/shop',
-        apiKeySecretCode: 'pimcore-api-key',
-    },
+    connectionCode: 'pimcore-graphql',
 });
 
 DataHubPlugin.init({
@@ -255,9 +252,9 @@ DataHubPlugin.init({
 });
 ```
 
-This registers the Pimcore runtime extractor and its three import templates
-(Product, Category, and Asset Sync), one export template, and generated
-pipelines. Connector registration never persists pipelines implicitly.
+This registers the Pimcore runtime extractor, its enabled generated import
+pipelines (Product, Category, and Asset Sync), and one export template.
+Connector registration never persists pipelines implicitly.
 
 ## Pipeline Scripts
 

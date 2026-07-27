@@ -227,9 +227,8 @@ addressMatchFields: 'streetLine1'  // ⚠️ Too broad
 | Mode | Behavior |
 |------|----------|
 | `UPSERT_BY_MATCH` | Match by fields, update existing or create new (default, **recommended**) |
-| `REPLACE_ALL` | Delete all addresses, create new from source |
+| `REPLACE_ALL` | Create all replacement addresses, then delete the previous set |
 | `APPEND_ONLY` | Always create new (allows duplicates - rare) |
-| `UPDATE_BY_ID` | Update by Vendure ID, create if no ID |
 | `SKIP` | Don't modify addresses |
 
 **Configuration:**
@@ -383,8 +382,8 @@ Add comments explaining why you chose each mode:
     // PIM controls all facet assignments - replace completely
     facetValuesMode: 'REPLACE_ALL',
 
-    // Images come from multiple sources - merge them
-    assetsMode: 'MERGE',
+    // Reuse assets by source URL and add missing URLs
+    assetsMode: 'UPSERT_BY_URL',
 })
 ```
 
@@ -394,8 +393,24 @@ Add comments explaining why you chose each mode:
 
 Always test mode configuration before production:
 
-```bash
-npm run pipeline:run my-pipeline --dry-run
+```graphql
+mutation DryRun($pipelineId: ID!) {
+    startDataHubPipelineDryRun(pipelineId: $pipelineId) {
+        metrics
+        messages {
+            level
+            code
+            detail
+            stepKey
+            values
+        }
+        sampleRecords {
+            step
+            before
+            after
+        }
+    }
+}
 ```
 
 ---
@@ -424,8 +439,10 @@ linesMode: 'MERGE_BY_SKU'  // Updates quantities intelligently
 ### Example 1: Product Catalog from Multiple Sources
 
 ```typescript
+import { createPipeline } from '@oronts/vendure-data-hub-plugin';
+
 // Step 1: Import base products from PIM
-PipelineBuilder.create('import-from-pim')
+createPipeline().name('Import products from PIM')
     .extract('pim-products', {
         adapterCode: 'httpApi',
         url: 'https://pim.example.com/api/products'
@@ -438,10 +455,10 @@ PipelineBuilder.create('import-from-pim')
     })
 
 // Step 2: Enrich with additional facets from admin
-PipelineBuilder.create('enrich-from-admin')
+createPipeline().name('Enrich products from admin data')
     .extract('admin-enrichment', {
         adapterCode: 'csv',
-        filePath: 'admin-facets.csv'
+        fileId: 'admin-facets-upload-id'
     })
     .load('add-facets', {
         adapterCode: 'productUpsert',
@@ -456,7 +473,9 @@ PipelineBuilder.create('enrich-from-admin')
 ### Example 2: Order Migration with Line Management
 
 ```typescript
-PipelineBuilder.create('migrate-legacy-orders')
+import { createPipeline } from '@oronts/vendure-data-hub-plugin';
+
+createPipeline().name('Migrate legacy orders')
     .extract('legacy-orders', {
         adapterCode: 'database',
         query: 'SELECT * FROM legacy_orders'
@@ -482,12 +501,16 @@ PipelineBuilder.create('migrate-legacy-orders')
 ### Example 3: Incremental Product Updates
 
 ```typescript
+import { createPipeline } from '@oronts/vendure-data-hub-plugin';
+
 // Daily price updates - don't touch anything else
-PipelineBuilder.create('update-prices-daily')
+createPipeline().name('Update prices daily')
     .extract('price-feed', {
         adapterCode: 'ftp',
-        host: 'ftp.supplier.com',
-        path: '/prices/daily.csv'
+        connectionCode: 'supplier-sftp',
+        remotePath: '/prices',
+        filePattern: 'daily.csv',
+        format: 'CSV'
     })
     .load('update-prices', {
         adapterCode: 'variantUpsert',
@@ -577,8 +600,24 @@ linesMode: 'MERGE_BY_SKU'       // for smart order line merging
 
 **Step 2**: Test with dry run
 
-```bash
-npm run pipeline:run my-pipeline --dry-run
+```graphql
+mutation DryRun($pipelineId: ID!) {
+    startDataHubPipelineDryRun(pipelineId: $pipelineId) {
+        metrics
+        messages {
+            level
+            code
+            detail
+            stepKey
+            values
+        }
+        sampleRecords {
+            step
+            before
+            after
+        }
+    }
+}
 ```
 
 **Step 3**: Deploy to production

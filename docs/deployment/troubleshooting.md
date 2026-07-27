@@ -445,7 +445,6 @@ backup, deployment, and rollback procedures.
 
 2. **Check header name:**
    - X-Signature-256 (HMAC-SHA256)
-   - X-Signature-1 (HMAC-SHA1)
    - Custom header if configured
 
 3. **Verify secret storage:**
@@ -614,7 +613,7 @@ Uploaded files are currently parsed into memory before downstream batches execut
 - Split oversized source files before uploading them.
 - Keep the upload size limit aligned with available worker memory.
 - Load-test CSV, JSON, XML, and XLSX independently because their memory overhead differs.
-- Keep checkpointing enabled for resumable record offsets. A resumed run still parses the uploaded file before applying its saved offset.
+- File extractors persist record offsets automatically. A later run still parses the uploaded file before applying its saved offset; set `resetCheckpoint: true` on the extractor to start from the beginning.
 
 ## API Integration Issues
 
@@ -788,13 +787,21 @@ Uploaded files are currently parsed into memory before downstream batches execut
    timeoutSeconds: 3600  // 1 hour
    ```
 
-2. **Check scheduler is running:**
-   - Timeout checking runs periodically
-   - Verify scheduler service
+   `timeoutSeconds` must be an integer between 1 and 31,536,000 and is required
+   when `approvalType` is `TIMEOUT`.
+
+2. **Check gate maintenance on the server process:**
+   - Timeout checking runs independently of Vendure scheduled tasks
+   - Due rows are polled every 30 seconds in batches of 100
+   - Verify the host migration added `gateStepKey`, `gateTimeoutAt`,
+     `gateTimeoutLeaseToken`, and `gateTimeoutLeaseExpiresAt` plus both status
+     indexes to `data_hub_pipeline_run`
 
 3. **Review gate status:**
    - May be approved manually before timeout
-   - Check approval logs
+   - Inspect the run's gate key and deadline through `dataHubPipelineRun`
+   - A failed timeout attempt is retried after its 60-second lease expires
+   - Check approval and timeout logs
 
 ## Custom Adapter Issues
 
@@ -980,23 +987,22 @@ WHERE pipeline_id = 'pipeline-id';
 
 ### Profile Performance
 
+Hook contexts are recreated at every stage, so values written to `context` in a
+before hook are not available to its matching after hook. Use persisted log
+timestamps and run analytics for duration measurements; hooks can add boundary
+markers:
+
 ```typescript
 .hooks({
     BEFORE_TRANSFORM: [{
-        type: 'INTERCEPTOR',
-        code: `
-            context.startTime = Date.now();
-            return records;
-        `,
+        type: 'LOG',
+        level: 'INFO',
+        message: 'Transform step started',
     }],
     AFTER_TRANSFORM: [{
-        type: 'INTERCEPTOR',
-        code: `
-            const duration = Date.now() - context.startTime;
-            const rps = Math.round(records.length / (duration / 1000));
-            console.log(\`Transform: \${duration}ms, \${rps} rec/sec\`);
-            return records;
-        `,
+        type: 'LOG',
+        level: 'INFO',
+        message: 'Transform step completed',
     }],
 })
 ```
@@ -1024,7 +1030,8 @@ WHERE pipeline_id = 'pipeline-id';
    - pause the trigger source;
    - stop the affected worker through the deployment's process manager;
    - inspect the run and Vendure job state before restarting; and
-   - decide whether to resume from a checkpoint or start a new run.
+   - inspect the adapter-specific checkpoint before starting a new run; use an
+     adapter reset option where one is documented.
 
    A forced process termination can leave a run marked `RUNNING`; it is not a
    substitute for cancellation and recovery.

@@ -91,7 +91,7 @@ Complete reference documentation for all adapters and operators.
 |------|---------------|
 | Install the plugin | [Installation](./getting-started/installation.md) |
 | Create your first pipeline | [Quick Start](./getting-started/quick-start.md) |
-| Import products from API | [REST API Extractor](./reference/extractors.md#rest-api-extractor) |
+| Import products from API | [HTTP API Extractor](./reference/extractors.md#http-api-extractor) |
 | Use import/export wizards | [Wizards Guide](./user-guide/wizards.md) |
 | Real-world pipeline examples | [Advanced Recipes](./user-guide/recipes.md) |
 | Sync to search engine | [Search Sinks](./reference/sinks.md) |

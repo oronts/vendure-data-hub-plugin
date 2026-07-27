@@ -21,6 +21,11 @@ interface ExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
 // Alternative: batch extraction
 interface BatchExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     extractAll(context: ExtractContext, config: TConfig): Promise<ExtractResult>;
+    preview(
+        context: ExtractContext,
+        config: TConfig,
+        limit: number,
+    ): Promise<ExtractorPreviewResult>;
 }
 
 interface ExtractContext {
@@ -39,6 +44,10 @@ interface RecordEnvelope {
     meta?: RecordMeta;
 }
 ```
+
+Batch extractors must implement `preview()` and apply `limit` at the source.
+Registration fails when a batch extractor exposes only `extractAll()`, because
+running the full batch and slicing afterward would not be a bounded preview.
 
 ## Basic Example
 
@@ -91,7 +100,7 @@ export class MyApiExtractor implements ExtractorAdapter<MyApiConfig> {
                 yield { data: item };
             }
 
-            // Update checkpoint for resumability
+            // Stage the latest cursor for persistence after successful finalization
             context.setCheckpoint({ lastPage: page });
 
             hasMore = data.items.length === pageSize;
@@ -179,7 +188,9 @@ interface ExtractContext {
 
 ### Using Checkpoints
 
-Resume from last position:
+Resume from the last persisted position. `setCheckpoint()` updates the current
+execution's in-memory cursor; the runtime persists the staged cursor after the
+run finalizes successfully, not every time this method is called.
 
 ```typescript
 async *extract(context, config) {
@@ -191,10 +202,10 @@ async *extract(context, config) {
     for (const item of items) {
         yield { data: item };
 
-        // Update checkpoint periodically for resumability
+        // Stage a newer resume cursor without writing on every record
         if (item.id % 100 === 0) {
             context.setCheckpoint({ lastId: item.id });
-            logger.debug(`Checkpoint saved at ID ${item.id}`);
+            logger.debug(`Checkpoint staged at ID ${item.id}`);
         }
     }
 }

@@ -436,18 +436,16 @@ interface CustomImportTemplate {
 }
 ```
 
-#### Including Connector Templates
+#### Including Connector Features
 
-Connectors such as Pimcore ship templates, adapters, and pipeline factories. Register the configured connector and pass its generated pipelines explicitly:
+Connectors can ship templates, adapters, and pipeline factories. Pimcore imports use its configuration-aware generated pipelines rather than generic import-wizard cards. Register the configured connector and pass its generated pipelines explicitly. The `connectionCode` must match a saved `GRAPHQL` connection declared in the plugin's `connections` option:
 
 ```typescript
+import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
 import { PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors/pimcore';
 
 const pimcore = PimcoreConnector({
-    connection: {
-        endpoint: 'https://pimcore.example.com/pimcore-graphql-webservices/shop',
-        apiKeySecretCode: 'pimcore-api-key',
-    },
+    connectionCode: 'pimcore-graphql',
 });
 
 DataHubPlugin.init({
@@ -459,14 +457,12 @@ DataHubPlugin.init({
 If using `ConnectorRegistry` with multiple connectors:
 
 ```typescript
+import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
 import { ConnectorRegistry, PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors';
 
 const registry = new ConnectorRegistry();
 registry.register(PimcoreConnector, {
-    connection: {
-        endpoint: 'https://pimcore.example.com/pimcore-graphql-webservices/shop',
-        apiKeySecretCode: 'pimcore-api-key',
-    },
+    connectionCode: 'pimcore-graphql',
 });
 
 DataHubPlugin.init({
@@ -749,8 +745,10 @@ export const config: VendureConfig = {
 | `data-hub.event-trigger-outbox` | Durable Vendure event handoff jobs |
 | `data-hub.webhook-retry` | Durable outgoing webhook delivery jobs |
 
-Schedule checking uses process timers plus distributed locks. Scheduled starts
-are enqueued on `data-hub.run`; no separate schedule queue is required.
+Schedule checking uses process timers plus occurrence-scoped distributed
+leases. A cron minute or fixed-interval bucket is claimed once across API
+processes. Scheduled starts are enqueued on `data-hub.run`; no separate schedule
+queue is required.
 
 ### Worker Scaling
 

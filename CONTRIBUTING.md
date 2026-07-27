@@ -12,8 +12,8 @@ Thank you for your interest in contributing to the Data Hub plugin for Vendure!
 
 ### Prerequisites
 
-- Node.js >= 18.0.0
-- npm or yarn
+- Node.js >= 20.0.0
+- npm
 - Git
 
 ### Development Setup
