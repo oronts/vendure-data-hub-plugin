@@ -13,29 +13,26 @@
  * - Email notifications: Send email via SMTP when gate is reached
  */
 
-import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
-import { TransactionalConnection, RequestContext } from '@vendure/core';
+import { Injectable, Inject } from '@nestjs/common';
+import { RequestContext } from '@vendure/core';
 import * as nodemailer from 'nodemailer';
 import { PipelineStepDefinition, PipelineContext, JsonValue, JsonObject } from '../../types/index';
 import type { DataHubPluginOptions } from '../../types/index';
 import { RecordObject, ExecutorContext } from '../executor-types';
-import { DATAHUB_PLUGIN_OPTIONS, HTTP_HEADERS, CONTENT_TYPES, INTERNAL_TIMINGS, TIME, LOGGER_CONTEXTS } from '../../constants/index';
-import { RunStatus } from '../../constants/enums';
-import { validateUrlSafety } from '../../utils/url-security.utils';
+import {
+    CONTENT_TYPES,
+    DATAHUB_PLUGIN_OPTIONS,
+    GATE_LIMITS,
+    HTTP,
+    HTTP_HEADERS,
+    LOGGER_CONTEXTS,
+} from '../../constants/index';
+import { secureFetch } from '../../utils/secure-fetch.utils';
 import { getErrorMessage } from '../../utils/error.utils';
 import { deepClone } from '../../utils/object-path.utils';
-import { PipelineRun } from '../../entities/pipeline/pipeline-run.entity';
-import { DataHubCheckpoint } from '../../entities/data';
-import { PipelineService } from '../../services/pipeline/pipeline.service';
 import { DomainEventsService } from '../../services/events/domain-events.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
-
-/** Default number of records to include in the gate preview */
-const DEFAULT_PREVIEW_COUNT = 10;
-
-/** Checkpoint key prefix for gate timeout entries */
-const GATE_TIMEOUT_PREFIX = '__gateTimeout:';
+import { getGateCheckpointKeys } from '../gate-checkpoint';
 
 export interface GateStepConfig {
     approvalType: 'MANUAL' | 'THRESHOLD' | 'TIMEOUT';
@@ -54,39 +51,61 @@ export interface GateResult {
     config: GateStepConfig;
 }
 
+function resolvePreviewCount(config: GateStepConfig): number {
+    const previewCount = config.previewCount ?? GATE_LIMITS.DEFAULT_PREVIEW_COUNT;
+    if (
+        !Number.isSafeInteger(previewCount)
+        || previewCount < 1
+        || previewCount > GATE_LIMITS.MAX_PREVIEW_COUNT
+    ) {
+        throw new Error(
+            `GATE previewCount must be an integer between 1 and ${GATE_LIMITS.MAX_PREVIEW_COUNT}`,
+        );
+    }
+    return previewCount;
+}
+
+function assertExecutableGateConfig(config: GateStepConfig): void {
+    if (config.approvalType === 'MANUAL') return;
+    if (config.approvalType === 'THRESHOLD') {
+        const threshold = config.errorThresholdPercent;
+        if (
+            typeof threshold !== 'number'
+            || !Number.isFinite(threshold)
+            || threshold < 0
+            || threshold > 100
+        ) {
+            throw new Error('GATE errorThresholdPercent must be between 0 and 100');
+        }
+        return;
+    }
+    if (config.approvalType === 'TIMEOUT') {
+        const timeoutSeconds = config.timeoutSeconds;
+        if (
+            typeof timeoutSeconds !== 'number'
+            || !Number.isSafeInteger(timeoutSeconds)
+            || timeoutSeconds < GATE_LIMITS.MIN_TIMEOUT_SECONDS
+            || timeoutSeconds > GATE_LIMITS.MAX_TIMEOUT_SECONDS
+        ) {
+            throw new Error(
+                `GATE timeoutSeconds must be an integer between ${GATE_LIMITS.MIN_TIMEOUT_SECONDS} and ${GATE_LIMITS.MAX_TIMEOUT_SECONDS}`,
+            );
+        }
+        return;
+    }
+    throw new Error(`Unsupported GATE approval type: ${String(config.approvalType)}`);
+}
+
 @Injectable()
-export class GateExecutor implements OnModuleInit, OnModuleDestroy {
+export class GateExecutor {
     private readonly logger: DataHubLogger;
-    private timeoutCheckHandle: ReturnType<typeof setInterval> | null = null;
-    private pipelineService: PipelineService | null = null;
 
     constructor(
-        private moduleRef: ModuleRef,
-        private connection: TransactionalConnection,
         @Inject(DATAHUB_PLUGIN_OPTIONS) private options: DataHubPluginOptions,
         private domainEvents: DomainEventsService,
         loggerFactory: DataHubLoggerFactory,
     ) {
         this.logger = loggerFactory.createLogger(LOGGER_CONTEXTS.GATE_EXECUTOR);
-    }
-
-    onModuleInit(): void {
-        // Lazily resolve PipelineService via ModuleRef to avoid circular DI
-        // (PipelineService → AdapterRuntime → GateExecutor)
-        try {
-            this.pipelineService = this.moduleRef.get(PipelineService, { strict: false });
-        } catch {
-            this.logger.debug('PipelineService not available for gate timeout auto-approval');
-        }
-
-        this.startTimeoutChecker();
-    }
-
-    onModuleDestroy(): void {
-        if (this.timeoutCheckHandle) {
-            clearInterval(this.timeoutCheckHandle);
-            this.timeoutCheckHandle = null;
-        }
     }
 
     /**
@@ -96,13 +115,13 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
      * the pipeline should pause for approval or auto-approve and continue.
      *
      * Auto-approve conditions:
-     * - THRESHOLD mode: auto-approves if no error threshold is configured,
-     *   or if the current error rate is below the configured threshold.
+     * - THRESHOLD mode: auto-approves when the current error rate is below the
+     *   configured threshold.
      *
      * For MANUAL mode the pipeline always pauses.
      *
-     * TIMEOUT mode: stores expiry in checkpoint. A background checker
-     * periodically scans for expired timeouts and auto-approves them.
+     * TIMEOUT mode pauses the pipeline. The runner persists the selected gate's
+     * deadline for bounded background processing.
      */
     async execute(
         _ctx: RequestContext,
@@ -112,24 +131,23 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         _pipelineContext?: PipelineContext,
     ): Promise<GateResult> {
         const config = (step.config ?? {}) as unknown as GateStepConfig;
-        const previewCount = config.previewCount ?? DEFAULT_PREVIEW_COUNT;
+        assertExecutableGateConfig(config);
+        const previewCount = resolvePreviewCount(config);
 
         // Check if gate was already approved (resuming after gate approval)
-        const approvalKey = `__gateApproved:${step.key}`;
+        const gateKeys = getGateCheckpointKeys(executorCtx.runId, step.key);
+        const approvalKey = gateKeys.approved;
         if (executorCtx.cpData?.[approvalKey]) {
             this.logger.info(`GATE step "${step.key}": already approved, continuing pipeline`);
             // Recover saved records from gate checkpoint. Avoids returning empty input
             // when an exhausted file extractor produces 0 records on resume.
-            const gateKey = `__gate:${step.key}`;
+            const gateKey = gateKeys.pending;
             const gateData = executorCtx.cpData[gateKey] as { pendingRecords?: JsonValue } | undefined;
             const savedRecords = Array.isArray(gateData?.pendingRecords)
                 ? (gateData!.pendingRecords as unknown as RecordObject[])
                 : input;
             delete executorCtx.cpData[approvalKey];
             delete executorCtx.cpData[gateKey];
-            // Clean up stale timeout key to prevent the background checker
-            // from re-scanning an already-approved gate
-            delete executorCtx.cpData[`${GATE_TIMEOUT_PREFIX}${step.key}`];
             executorCtx.markCheckpointDirty();
             return {
                 paused: false,
@@ -154,13 +172,6 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
                 };
             }
             // Threshold exceeded or stats unavailable -> pause (safe default)
-        }
-
-        // TIMEOUT mode: save expiry checkpoint for the background checker
-        if (config.approvalType === 'TIMEOUT' && config.timeoutSeconds) {
-            const expiresAt = new Date(Date.now() + config.timeoutSeconds * TIME.SECOND).toISOString();
-            this.saveTimeoutToCheckpoint(step.key, expiresAt, executorCtx);
-            this.logger.info(`GATE "${step.key}": TIMEOUT mode, will auto-approve at ${expiresAt}`);
         }
 
         // Save checkpoint for paused gate
@@ -207,19 +218,8 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         config: GateStepConfig,
         records: RecordObject[],
     ): Promise<void> {
-        const safety = await validateUrlSafety(url);
-        if (!safety.safe) {
-            this.logger.warn(`GATE "${stepKey}": webhook blocked by SSRF protection: ${safety.reason}`);
-            return;
-        }
 
-        const fetchImpl = (globalThis as { fetch?: typeof fetch }).fetch;
-        if (!fetchImpl) {
-            this.logger.warn(`GATE "${stepKey}": fetch API not available, skipping webhook`);
-            return;
-        }
-
-        const previewCount = config.previewCount ?? DEFAULT_PREVIEW_COUNT;
+        const previewCount = config.previewCount ?? GATE_LIMITS.DEFAULT_PREVIEW_COUNT;
         const payload = {
             event: 'gate.reached',
             stepKey,
@@ -229,12 +229,14 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
             timestamp: new Date().toISOString(),
         };
 
-        const response = await fetchImpl(url, {
+        const response = await secureFetch(url, {
             method: 'POST',
             headers: { [HTTP_HEADERS.CONTENT_TYPE]: CONTENT_TYPES.JSON },
             body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(HTTP.TIMEOUT_MS),
         });
 
+        await response.body?.cancel().catch(() => undefined);
         this.logger.info(`GATE "${stepKey}": webhook notification sent (status=${response.status})`);
     }
 
@@ -267,7 +269,7 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
             } : undefined,
         });
 
-        const previewCount = config.previewCount ?? DEFAULT_PREVIEW_COUNT;
+        const previewCount = config.previewCount ?? GATE_LIMITS.DEFAULT_PREVIEW_COUNT;
         const previewJson = JSON.stringify(records.slice(0, previewCount), null, 2);
 
         try {
@@ -296,102 +298,6 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
     }
 
     // ──────────────────────────────────────────────────────────────
-    // TIMEOUT auto-approval
-    // ──────────────────────────────────────────────────────────────
-
-    /**
-     * Start the periodic checker for expired gate timeouts.
-     */
-    private startTimeoutChecker(): void {
-        this.timeoutCheckHandle = setInterval(() => {
-            this.checkExpiredGates().catch(err =>
-                this.logger.warn(`Gate timeout check failed: ${getErrorMessage(err)}`),
-            );
-        }, INTERNAL_TIMINGS.GATE_TIMEOUT_CHECK_INTERVAL_MS);
-
-        // Don't prevent Node process from exiting
-        if (this.timeoutCheckHandle.unref) {
-            this.timeoutCheckHandle.unref();
-        }
-
-        this.logger.debug('Gate timeout checker started', {
-            intervalMs: INTERNAL_TIMINGS.GATE_TIMEOUT_CHECK_INTERVAL_MS,
-        });
-    }
-
-    /**
-     * Scan PAUSED pipeline runs for expired gate timeouts and auto-approve them.
-     *
-     * This checker runs on a periodic interval, so there is eventual consistency
-     * between when a timeout expires and when the gate is auto-approved. The
-     * actual approval time may lag behind the configured timeout by up to one
-     * check interval (GATE_TIMEOUT_CHECK_INTERVAL_MS).
-     */
-    private async checkExpiredGates(): Promise<void> {
-        if (!this.pipelineService) return;
-
-        const ctx = RequestContext.empty();
-        const runRepo = this.connection.getRepository(ctx, PipelineRun);
-        const cpRepo = this.connection.getRepository(ctx, DataHubCheckpoint);
-
-        // Load PAUSED runs with pipelineId (timeout data is in DataHubCheckpoint, not run.checkpoint)
-        const pausedRuns = await runRepo.find({
-            where: { status: RunStatus.PAUSED },
-            select: ['id', 'pipelineId'],
-        });
-
-        if (pausedRuns.length === 0) return;
-
-        const now = Date.now();
-
-        for (const run of pausedRuns) {
-            if (!run.pipelineId) continue;
-
-            // Timeout data is persisted to DataHubCheckpoint (keyed by pipelineId)
-            const checkpoint = await cpRepo.findOne({
-                where: { pipeline: { id: run.pipelineId } },
-                order: { createdAt: 'DESC' },
-            });
-            if (!checkpoint?.data) continue;
-
-            for (const [key, value] of Object.entries(checkpoint.data)) {
-                if (!key.startsWith(GATE_TIMEOUT_PREFIX)) continue;
-
-                const data = value as Record<string, JsonValue>;
-                const expiresAt = data?.expiresAt as string | undefined;
-                if (!expiresAt) continue;
-
-                const expiresAtMs = new Date(expiresAt).getTime();
-                if (expiresAtMs <= now) {
-                    const stepKey = data.stepKey as string;
-                    const delayMs = now - expiresAtMs;
-                    this.logger.info(
-                        `GATE "${stepKey}": TIMEOUT expired, auto-approving run ${run.id} ` +
-                        `(expected=${expiresAt}, actual delay=${delayMs}ms)`,
-                    );
-                    try {
-                        this.domainEvents.publishGateTimeout(
-                            undefined,
-                            String(run.id),
-                            stepKey,
-                        );
-                    } catch {
-                        // Gate timeout event is non-critical
-                    }
-                    try {
-                        await this.pipelineService.approveGate(ctx, run.id, stepKey);
-                        // Remove timeout key from checkpoint to prevent re-scanning
-                        delete (checkpoint.data as Record<string, unknown>)[key];
-                        await cpRepo.save(checkpoint);
-                    } catch (err) {
-                        this.logger.warn(`GATE "${stepKey}": auto-approval failed for run ${run.id}: ${getErrorMessage(err)}`);
-                    }
-                }
-            }
-        }
-    }
-
-    // ──────────────────────────────────────────────────────────────
     // Threshold evaluation
     // ──────────────────────────────────────────────────────────────
 
@@ -402,13 +308,12 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
      * (stored by previous steps). If stats are available, computes the error
      * rate and compares against the configured threshold.
      *
-     * If no threshold is configured, or no error stats are available, returns
-     * true (auto-approve) as a pragmatic default when there is nothing to block on.
+     * If no error stats are available, returns false so the gate pauses.
      */
     private evaluateThreshold(config: GateStepConfig, executorCtx: ExecutorContext): boolean {
-        // No threshold configured: auto-approve
-        if (config.errorThresholdPercent === undefined) {
-            return true;
+        const threshold = config.errorThresholdPercent;
+        if (typeof threshold !== 'number') {
+            throw new Error('GATE errorThresholdPercent is required for THRESHOLD approval');
         }
 
         // Try to read error/success counts from checkpoint data
@@ -437,11 +342,11 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         const errorRate = (errorCount / totalCount) * 100;
         this.logger.info(
             `GATE THRESHOLD evaluation: errorRate=${errorRate.toFixed(2)}%, ` +
-            `threshold=${config.errorThresholdPercent}%, ` +
+            `threshold=${threshold}%, ` +
             `errors=${errorCount}, successes=${successCount}`,
         );
 
-        return errorRate < config.errorThresholdPercent;
+        return errorRate < threshold;
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -460,7 +365,9 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         if (!executorCtx.cpData) {
             executorCtx.cpData = {};
         }
-        executorCtx.cpData[`__gate:${stepKey}`] = {
+        const key = getGateCheckpointKeys(executorCtx.runId, stepKey).pending;
+        executorCtx.cpData[key] = {
+            runId: executorCtx.runId == null ? 'sandbox' : String(executorCtx.runId),
             stepKey,
             approvalType: config.approvalType,
             pendingRecordCount: records.length,
@@ -470,22 +377,4 @@ export class GateExecutor implements OnModuleInit, OnModuleDestroy {
         executorCtx.markCheckpointDirty();
     }
 
-    /**
-     * Save timeout expiry to checkpoint for the background timeout checker.
-     */
-    private saveTimeoutToCheckpoint(
-        stepKey: string,
-        expiresAt: string,
-        executorCtx: ExecutorContext,
-    ): void {
-        if (!executorCtx.cpData) {
-            executorCtx.cpData = {};
-        }
-        executorCtx.cpData[`__gateTimeout:${stepKey}`] = {
-            stepKey,
-            expiresAt,
-            createdAt: new Date().toISOString(),
-        } as Record<string, JsonValue>;
-        executorCtx.markCheckpointDirty();
-    }
 }
