@@ -1,16 +1,15 @@
-import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { JsonObject, JsonValue } from '../types/index';
 import { RecordObject } from './executor-types';
-import { UNIT_CONVERSIONS } from '../constants/index';
+import { UNIT_CONVERSIONS, VALIDATION_PATTERNS } from '../constants/index';
 import { slugify } from '../operators/helpers';
 import { evaluateCondition } from '../operators/logic/helpers';
 import { ComparisonOperator } from '../../shared/types';
 import { getErrorMessage } from '../utils/error.utils';
 import { validateRegexSafety } from '../utils/safe-regex.utils';
+import { getPath as getPathValue } from './path.utils';
 import {
-    getNestedValue,
     setNestedValue,
     removeNestedValue,
     deepClone as deepCloneUtil,
@@ -125,29 +124,6 @@ export function evalCondition(rec: JsonObject, cond: EvalConditionSpec | null | 
     return evaluateCondition(rec, { field: cond.field, cmp: cond.cmp as ComparisonOperator, value: cond.value });
 }
 
-/**
- * Picks specific paths from an object for hashing, or excludes specific paths
- */
-export function pickForHash(obj: JsonObject, includePaths: string[], excludePaths: string[]): JsonObject {
-    try {
-        if (includePaths && includePaths.length) {
-            const out: JsonObject = {};
-            for (const p of includePaths) {
-                setPath(out, p, getPath(obj, p));
-            }
-            return out;
-        }
-        if (excludePaths && excludePaths.length) {
-            const clone = deepCloneUtil(obj);
-            for (const p of excludePaths) removePath(clone, p);
-            return clone;
-        }
-        return obj;
-    } catch {
-        // Path manipulation failed - return original object
-        return obj;
-    }
-}
 
 /**
  * Convenience alias for {@link setNestedValue} from object-path.utils.
@@ -166,31 +142,11 @@ export function removePath(obj: JsonObject, pathStr: string): void {
 }
 
 /**
- * Creates a stable hash of an object for change detection
- */
-export function hashStable(value: JsonValue): string {
-    const json = stableStringify(value);
-    return crypto.createHash('sha256').update(json).digest('hex');
-}
-
-/**
- * Creates a stable JSON string representation of a value
- */
-export function stableStringify(value: JsonValue): string {
-    if (value == null) return 'null';
-    if (typeof value !== 'object') return JSON.stringify(value);
-    if (Array.isArray(value)) return `[${value.map(v => stableStringify(v)).join(',')}]`;
-    const keys = Object.keys(value).sort();
-    const entries = keys.map(k => `${JSON.stringify(k)}:${stableStringify((value as JsonObject)[k])}`);
-    return `{${entries.join(',')}}`;
-}
-
-/**
  * Convenience alias for {@link getNestedValue} from object-path.utils.
  * Kept to avoid renaming 79+ call sites across executors/strategies.
  */
 export function getPath(obj: JsonObject, pathStr: string): JsonValue {
-    return getNestedValue(obj, pathStr ?? '') as JsonValue;
+    return getPathValue(obj, pathStr);
 }
 
 /** Field specification for validateAgainstSimpleSpec */
@@ -203,6 +159,7 @@ export interface FieldSpec {
     minLength?: number;
     maxLength?: number;
     pattern?: string;
+    error?: string;
 }
 
 /**
@@ -214,9 +171,10 @@ export function validateAgainstSimpleSpec(
 ): string[] {
     const errors: string[] = [];
     for (const [key, spec] of Object.entries(fields)) {
+        const firstFieldError = errors.length;
         const value = getPath(rec, key);
         if (spec.required && (value === undefined || value === null || value === '')) {
-            errors.push(`${key} is required`);
+            errors.push(spec.error || `${key} is required`);
             continue;
         }
         if (value != null && spec.type) {
@@ -249,22 +207,14 @@ export function validateAgainstSimpleSpec(
                 }
             }
         }
+        if (spec.error && errors.length > firstFieldError) {
+            errors.splice(firstFieldError, errors.length - firstFieldError, spec.error);
+        }
     }
     return errors;
 }
 
-/**
- * Splits an array into chunks of a given size
- */
-export function chunk<T>(arr: T[], size: number): T[][] {
-    if (size <= 0) return arr.length ? [arr] : [];
-    const out: T[][] = [];
-    for (let i = 0; i < arr.length; i += size) {
-        out.push(arr.slice(i, i + size));
-    }
-    return out;
-}
-
+export { chunk } from '../utils/array.utils';
 export { sleep } from '../utils/retry.utils';
 
 /** Re-exported from object-path.utils for runtime module convenience */
@@ -273,8 +223,8 @@ export { deepCloneUtil as deepClone };
 /**
  * Escapes a value for CSV output
  */
-export function csvEscape(val: string, delimiter: string): string {
-    if (val.includes(delimiter) || val.includes('"') || val.includes('\n') || val.includes('\r')) {
+export function csvEscape(val: string, delimiter: string, forceQuote = false): string {
+    if (forceQuote || val.includes(delimiter) || val.includes('"') || val.includes('\n') || val.includes('\r')) {
         return `"${val.replace(/"/g, '""')}"`;
     }
     return val;
@@ -289,19 +239,35 @@ export const xmlEscape = escapeXml;
 /**
  * Converts an array of records to CSV format
  */
-export function recordsToCsv(records: RecordObject[], delimiter: string, includeHeader: boolean): string {
+export type CsvFormulaMode = 'SPREADSHEET_SAFE' | 'PRESERVE';
+
+const CSV_FORMULA_PREFIX_PATTERN = /^[=+\-@\t\r\n＝＋－＠]/;
+
+function serializeCsvCell(value: string, delimiter: string, formulaMode: CsvFormulaMode): string {
+    if (formulaMode === 'SPREADSHEET_SAFE' && CSV_FORMULA_PREFIX_PATTERN.test(value)) {
+        return csvEscape(`\t${value}`, delimiter, true);
+    }
+    return csvEscape(value, delimiter);
+}
+
+export function recordsToCsv(
+    records: RecordObject[],
+    delimiter: string,
+    includeHeader: boolean,
+    formulaMode: CsvFormulaMode = 'PRESERVE',
+): string {
     if (records.length === 0) return '';
     const keys = Object.keys(records[0]);
     const lines: string[] = [];
     if (includeHeader) {
-        lines.push(keys.map(k => csvEscape(k, delimiter)).join(delimiter));
+        lines.push(keys.map(k => serializeCsvCell(k, delimiter, formulaMode)).join(delimiter));
     }
     for (const rec of records) {
         const vals = keys.map(k => {
             const v = rec[k];
-            if (v === null || v === undefined) return csvEscape('', delimiter);
-            if (typeof v === 'object') return csvEscape(JSON.stringify(v), delimiter);
-            return csvEscape(String(v), delimiter);
+            if (v === null || v === undefined) return serializeCsvCell('', delimiter, formulaMode);
+            if (typeof v === 'object') return serializeCsvCell(JSON.stringify(v), delimiter, formulaMode);
+            return serializeCsvCell(String(v), delimiter, formulaMode);
         });
         lines.push(vals.join(delimiter));
     }
@@ -319,21 +285,35 @@ function toXmlElementName(key: string): string {
     return name || '_field';
 }
 
+export function assertXmlElementName(value: string, optionName: string): string {
+    if (!VALIDATION_PATTERNS.XML_ELEMENT_NAME.test(value)) {
+        throw new Error(`${optionName} must be a valid XML element name`);
+    }
+    return value;
+}
+
 /**
  * Converts an array of records to XML format
  */
-export function recordsToXml(records: JsonObject[], rootElement: string, itemElement: string): string {
-    let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
-    xml += `<${toXmlElementName(rootElement)}>\n`;
+export function recordsToXml(
+    records: JsonObject[],
+    rootElement: string,
+    itemElement: string,
+    declaration: boolean = true,
+): string {
+    const safeRootElement = assertXmlElementName(rootElement, 'rootElement');
+    const safeItemElement = assertXmlElementName(itemElement, 'itemElement');
+    let xml = declaration ? '<?xml version="1.0" encoding="UTF-8"?>\n' : '';
+    xml += `<${safeRootElement}>\n`;
     for (const rec of records) {
-        xml += `  <${toXmlElementName(itemElement)}>\n`;
+        xml += `  <${safeItemElement}>\n`;
         for (const [k, v] of Object.entries(rec)) {
             const tag = toXmlElementName(k);
             const textValue = (v != null && typeof v === 'object') ? JSON.stringify(v) : String(v ?? '');
             xml += `    <${tag}>${xmlEscape(textValue)}</${tag}>\n`;
         }
-        xml += `  </${toXmlElementName(itemElement)}>\n`;
+        xml += `  </${safeItemElement}>\n`;
     }
-    xml += `</${toXmlElementName(rootElement)}>`;
+    xml += `</${safeRootElement}>`;
     return xml;
 }

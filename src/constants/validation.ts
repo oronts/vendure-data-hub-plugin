@@ -9,6 +9,7 @@ import {
     SLUG_PATTERN,
     PHONE_PATTERN,
     SQL_IDENTIFIER_PATTERN,
+    XML_ELEMENT_NAME_PATTERN,
 } from './patterns';
 import { CONFIDENCE_THRESHOLDS } from '../../shared/constants';
 
@@ -33,6 +34,9 @@ export const VALIDATION_PATTERNS = {
 
     /** SQL identifier (table/column name) */
     SQL_IDENTIFIER: SQL_IDENTIFIER_PATTERN,
+
+    /** XML element name accepted by configurable exporters */
+    XML_ELEMENT_NAME: XML_ELEMENT_NAME_PATTERN,
 } as const;
 
 /**

@@ -94,7 +94,7 @@ Global execution settings that apply to all steps unless overridden.
 
 ```typescript
 interface PipelineContext {
-    /** Default channel code */
+    /** Default Vendure channel token */
     channel?: string;
 
     /** Default language code for translatable content */
@@ -103,7 +103,7 @@ interface PipelineContext {
     /** Channel handling strategy */
     channelStrategy?: 'EXPLICIT' | 'INHERIT' | 'MULTI';
 
-    /** Specific channel IDs to operate on (for MULTI strategy) */
+    /** Specific channel IDs to operate on (for EXPLICIT or MULTI strategy) */
     channelIds?: string[];
 
     /** Validation strictness */
@@ -111,9 +111,6 @@ interface PipelineContext {
 
     /** Field to use as idempotency key */
     idempotencyKeyField?: string;
-
-    /** Execution mode */
-    runMode?: 'SYNC' | 'ASYNC' | 'BATCH';
 
     /** Default throughput configuration */
     throughput?: Throughput;
@@ -156,7 +153,7 @@ interface ParallelExecutionConfig {
     /** Enable parallel step execution */
     enabled?: boolean;
 
-    /** Maximum concurrent steps (2-16, default: 4) */
+    /** Maximum concurrent steps (1-16, default: 4) */
     maxConcurrentSteps?: number; // Integer from 1 to 16; default 4
 
     /** Error handling policy */
@@ -187,6 +184,17 @@ interface PipelineStepDefinition {
 
     /** Whether step is disabled */
     disabled?: boolean;
+
+    /** Overrides the pipeline context for this step */
+    context?: StepContextOverride;
+}
+
+interface StepContextOverride {
+    contentLanguage?: string;
+    channelStrategy?: 'EXPLICIT' | 'INHERIT' | 'MULTI';
+    channelIds?: string[];
+    validationMode?: 'STRICT' | 'LENIENT';
+    throughput?: Throughput;
 }
 
 type StepType =
@@ -202,6 +210,16 @@ type StepType =
     | 'SINK'
     | 'GATE';
 ```
+
+The effective context is resolved field by field. A step override takes
+precedence over the pipeline context, which takes precedence over the active
+Vendure request context. Missing channel IDs and content language inherit the
+active request channel and language. `channelStrategy` and `validationMode`
+default to `INHERIT` and `STRICT`. Throughput objects are
+merged so a step can override one limit without discarding the pipeline
+defaults. `EXPLICIT` and `MULTI` require at least one effective channel ID.
+The pipeline-level `channel` value is a Vendure channel token, while
+`channelIds` contains Vendure channel IDs.
 
 ### Trigger Step
 
@@ -631,7 +649,7 @@ interface EnrichStepConfig {
     computed?: Record<string, string>;
 
     // HTTP lookup
-    /** Lookup endpoint URL */
+    /** Required HTTP endpoint URL; supports {{field.path}} placeholders */
     url?: string;
     /** Record field used in cache identity */
     keyField?: string;
@@ -639,16 +657,24 @@ interface EnrichStepConfig {
     target?: string;
 
     // Vendure lookup
-    /** Entity type to lookup */
-    entity?: VendureEntityType;
-
-    /** Additional config */
-    config?: JsonObject;
+    /** Required registered loader entity type */
+    entityType?: string;
+    /** Required input record field */
+    sourceField?: string;
+    /** Required Vendure lookup field */
+    lookupField?: string;
+    /** Optional entity-field to output-field mappings */
+    targetFields?: Record<string, string>;
 
     /** Throughput configuration */
     throughput?: Throughput;
 }
 ```
+
+When `adapterCode` is absent, STATIC requires a non-empty `defaults`, `set`, or
+`computed` object; HTTP requires `url`; and VENDURE requires `entityType`,
+`sourceField`, and `lookupField`. Invalid built-in configurations fail validation
+and runtime execution rather than passing records through unchanged.
 
 ### Route Step
 
@@ -819,6 +845,8 @@ interface ExportStepConfig {
     delimiter?: string;
     /** Include header row */
     includeHeader?: boolean;
+    /** Spreadsheet formula handling; defaults to SPREADSHEET_SAFE */
+    formulaMode?: 'SPREADSHEET_SAFE' | 'PRESERVE';
     /** Pretty-print JSON */
     pretty?: boolean;
 
@@ -954,10 +982,10 @@ interface GateStepConfig {
     /** Approval type */
     approvalType: 'MANUAL' | 'THRESHOLD' | 'TIMEOUT';
 
-    /** Auto-approve timeout (seconds) */
+    /** Required for TIMEOUT; integer seconds in the range 1-31,536,000 */
     timeoutSeconds?: number;
 
-    /** Error threshold percent (0-100) */
+    /** Required for THRESHOLD; finite percent in the range 0-100 */
     errorThresholdPercent?: number;
 
     /** Webhook notification URL */
@@ -966,10 +994,14 @@ interface GateStepConfig {
     /** Email notification address */
     notifyEmail?: string;
 
-    /** Number of records to preview */
+    /** Integer records to preview, 1-100; defaults to 10 */
     previewCount?: number;
 }
 ```
+
+THRESHOLD uses a strict comparison: equality pauses. TIMEOUT persists its
+deadline and lease metadata on `PipelineRun`; pending records and the approval
+marker remain in the pipeline checkpoint.
 
 ## Common Configuration Types
 
@@ -979,27 +1011,31 @@ Rate limiting and performance tuning.
 
 ```typescript
 interface Throughput {
-    /** Records per batch */
+    /** Records per batch; positive integer */
     batchSize?: number;
 
-    /** Parallel batch processing */
+    /** Parallel batch processing; positive integer */
     concurrency?: number;
 
-    /** Maximum requests per second */
+    /** Maximum aggregate load-batch starts per second; finite and >= 0 */
     rateLimitRps?: number;
 
-    /** Drain strategy when queue is full */
+    /** Behavior when the rolling failed-record ratio reaches the threshold */
     drainStrategy?: 'BACKOFF' | 'SHED' | 'QUEUE';
 
     /** Pause on high error rate */
     pauseOnErrorRate?: {
         /** Error rate threshold (0-1) */
         threshold: number;
-        /** Check interval (seconds) */
+        /** Rolling error window and recovery delay (seconds) */
         intervalSec: number;
     };
 }
 ```
+
+Throughput applies to load-batch execution. It does not rate-limit extractors.
+The error threshold must be between `0` and `1`, and `intervalSec` must be a
+finite value greater than zero.
 
 ### VendureEntityType
 
@@ -1234,7 +1270,6 @@ const pipeline = createPipeline()
         contentLanguage: 'en',
         channelStrategy: 'EXPLICIT',
         validationMode: 'STRICT',
-        runMode: 'BATCH',
         throughput: {
             batchSize: 100,
             concurrency: 4,

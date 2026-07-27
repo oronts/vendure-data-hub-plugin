@@ -11,48 +11,22 @@
  * See src/types/shared/index.ts for the full list of canonical field names.
  */
 
-import { JsonObject, JsonValue, Throughput } from '../../types/index';
+import {
+    JsonObject,
+    JsonValue,
+    PipelineTrigger,
+    SchemaReference,
+    Throughput,
+} from '../../types/index';
 import type { OperatorConfig } from '../../types/step-configs';
-import { LoadStrategy, ChannelStrategy, LanguageStrategyValue, ValidationModeType, ConflictStrategyValue, TriggerType, FeedFormat, FeedType, SinkType } from '../types/index';
+import { LoadStrategy, ChannelStrategy, LanguageStrategyValue, ValidationModeType, ConflictStrategyValue, FeedFormat, FeedType } from '../types/index';
 import { RouteOperator } from '../constants';
 import { ConnectionAuthType, ExportFormatType } from '../../constants/enums';
 
 // TRIGGER CONFIG
 
-/**
- * Trigger configuration interface
- *
- * FIELD NAMES:
- * - `cron`: Cron expression for schedule triggers
- * - `webhookCode`: Code for webhook lookup (backend)
- * - `path`: Webhook path/endpoint (UI display, same as webhookPath)
- */
-export interface TriggerConfig {
-    type: TriggerType;
-    // Webhook specific
-    /** Webhook path (UI display) */
-    path?: string;
-    /** Webhook code (backend reference) */
-    webhookCode?: string;
-    signature?: 'none' | 'hmac-sha256';
-    idempotencyKey?: string;
-    // Schedule specific
-    /** Cron expression (5 fields: minute hour day month weekday) */
-    cron?: string;
-    /** Timezone for schedule evaluation */
-    timezone?: string;
-    // Event specific
-    event?: string;
-    filter?: JsonObject;
-    // File specific
-    source?: 's3' | 'fs' | 'sftp';
-    pattern?: string;
-    // Message specific
-    topic?: string;
-    subscription?: string;
-    // Allow custom properties
-    [key: string]: unknown;
-}
+/** Canonical trigger contract shared with validation and runtime discovery. */
+export type TriggerConfig = PipelineTrigger;
 
 // EXTRACT STEP CONFIG
 
@@ -60,31 +34,32 @@ export interface ExtractStepConfig {
     adapterCode: string;
     // REST extractor
     url?: string;
-    endpoint?: string;
     method?: 'GET' | 'POST';
     headers?: Record<string, string>;
-    query?: JsonObject;
+    query?: JsonObject | string;
     body?: JsonObject;
     pagination?: JsonObject;
-    pageParam?: string;
-    itemsField?: string;
-    nextPageField?: string;
-    maxPages?: number;
-    // CSV extractor
+    dataPath?: string;
+    // Uploaded or inline file extractors
+    fileId?: string;
     csvText?: string;
-    csvPath?: string;
+    jsonText?: string;
+    xmlText?: string;
+    itemsPath?: string;
+    recordPath?: string;
+    attributePrefix?: string;
+    sheetName?: string | number;
     delimiter?: string;
     hasHeader?: boolean;
     rows?: JsonValue[];
     // GraphQL extractor
-    graphqlQuery?: string;
     variables?: JsonObject;
     // Generator extractor (custom)
     count?: number;
     template?: JsonObject;
     // Vendure Query options
     entity?: string;
-    relations?: string;
+    relations?: string[];
     flattenTranslations?: boolean;
     languageCode?: string;
     includeFields?: string[];
@@ -97,6 +72,8 @@ export interface ExtractStepConfig {
     mapFields?: Record<string, string>;
     throughput?: Throughput;
     async?: boolean;
+    /** Validate extracted records against this immutable registry version. */
+    schemaRef?: SchemaReference;
     // Allow custom properties
     [key: string]: unknown;
 }
@@ -123,14 +100,12 @@ export type { OperatorConfig };
 export interface ValidateStepConfig {
     /** Error handling mode: FAIL_FAST stops on first error, ACCUMULATE collects all errors */
     errorHandlingMode?: 'FAIL_FAST' | 'ACCUMULATE';
-    /** Validation mode: STRICT requires all rules to pass, LENIENT allows warnings */
-    validationMode?: 'STRICT' | 'LENIENT';
     /** Validation rules to apply */
     rules?: ValidationRuleConfig[];
-    /** Reference to a schema for schema-based validation */
-    schemaRef?: SchemaRefConfig;
     /** Throughput configuration */
     throughput?: Throughput;
+    /** Use a named registry schema instead of or alongside inline rules. */
+    schemaRef?: SchemaReference;
 }
 
 export interface ValidationRuleConfig {
@@ -145,22 +120,22 @@ export interface ValidationRuleSpec {
     field: string;
     /** Whether the field is required */
     required?: boolean;
+    /** Primitive value type */
+    type?: 'string' | 'number' | 'boolean';
     /** Minimum value for numbers */
     min?: number;
     /** Maximum value for numbers */
     max?: number;
+    /** Minimum string length */
+    minLength?: number;
+    /** Maximum string length */
+    maxLength?: number;
     /** Regex pattern for string validation */
     pattern?: string;
+    /** Allowed values */
+    enum?: JsonValue[];
     /** Custom error message */
     error?: string;
-    /** Additional validation parameters */
-    [key: string]: unknown;
-}
-
-export interface SchemaRefConfig {
-    schemaId: string;
-    version: string;
-    compatibility?: 'strict' | 'backward' | 'permissive';
 }
 
 // ENRICH STEP CONFIG
@@ -178,7 +153,7 @@ export interface EnrichStepConfig {
     sourceType?: 'STATIC' | 'HTTP' | 'VENDURE';
 
     // ── HTTP enrichment ─────────────────────────────────────────────────
-    /** HTTP endpoint URL. Use ${record.field} for dynamic values. */
+    /** HTTP endpoint URL. Use {{field.path}} for dynamic values. */
     url?: string;
     /** HTTP method (default: GET) */
     method?: 'GET' | 'POST';
@@ -269,7 +244,6 @@ export interface LoadStepConfig {
     skuField?: string;
     priceField?: string;
     emailField?: string;
-    matchField?: string;
     firstNameField?: string;
     lastNameField?: string;
     phoneNumberField?: string;
@@ -309,38 +283,63 @@ export interface LoadStepConfig {
 
 // EXPORT STEP CONFIG
 
-type ExportTarget = 'file' | 'api' | 'webhook' | 's3' | 'sftp' | 'email';
+type ExportDestinationType = 'LOCAL' | 'HTTP' | 'S3' | 'SFTP' | 'FTP' | 'EMAIL';
 
 export interface ExportStepConfig {
     adapterCode: string;
-    // Target settings
-    target?: ExportTarget;
+    // Destination settings
+    destinationType?: ExportDestinationType;
     format?: ExportFormatType;
     // File output
     path?: string;
     filenamePattern?: string;
     compress?: boolean | 'gzip' | 'zip';
-    // API/Webhook output
-    endpoint?: string;
+    // HTTP output
+    url?: string;
     method?: 'POST' | 'PUT' | 'PATCH';
+    /** Non-sensitive static headers. Credentials must use auth or headerSecretCodes. */
     headers?: Record<string, string>;
+    /** Maps HTTP header names to Data Hub Secret Codes. */
+    headerSecretCodes?: Record<string, string>;
+    auth?: {
+        type: 'NONE' | 'BASIC' | 'BEARER' | 'API_KEY';
+        secretCode?: string;
+        headerName?: string;
+        username?: string;
+        usernameSecretCode?: string;
+    };
     // S3 output
     bucket?: string;
     region?: string;
     prefix?: string;
+    accessKeyIdSecretCode?: string;
+    secretAccessKeySecretCode?: string;
+    acl?: 'private' | 'public-read';
     // SFTP output
     host?: string;
     port?: number;
     username?: string;
     passwordSecretCode?: string;
+    privateKeySecretCode?: string;
+    passphraseSecretCode?: string;
+    hostKeyFingerprintSecretCode?: string;
     remotePath?: string;
     // Email output
     to?: string | string[];
     subject?: string;
     attachFilename?: string;
+    smtp?: {
+        host: string;
+        port: number;
+        secure?: boolean;
+        username?: string;
+        usernameSecretCode?: string;
+        passwordSecretCode?: string;
+    };
     // CSV options
     delimiter?: string;
     includeHeader?: boolean;
+    formulaMode?: 'SPREADSHEET_SAFE' | 'PRESERVE';
     quoteStrings?: boolean;
     // XML options
     rootElement?: string;
@@ -407,6 +406,8 @@ export interface FeedStepConfig {
     titleField?: string;
     descriptionField?: string;
     priceField?: string;
+    /** Unit stored in priceField; built-in feeds default to Vendure-native minor units. */
+    priceUnit?: 'MINOR' | 'MAJOR';
     salePriceField?: string;
     imageField?: string;
     linkField?: string;
@@ -416,8 +417,8 @@ export interface FeedStepConfig {
     categoryField?: string;
     availabilityField?: string;
     conditionField?: string;
-    // Custom fields for custom feed type
-    customFields?: Record<string, string>;
+    /** Custom feed output field to source record path mapping. */
+    fieldMapping?: Record<string, string>;
     // Scheduling (for hosted feeds)
     refreshIntervalMinutes?: number;
     // Localization
@@ -455,24 +456,17 @@ export interface GateStepConfig {
 
 export interface SinkStepConfig {
     adapterCode: string;
-    sinkType?: SinkType;
 
     defaultOperation?: 'UPSERT' | 'DELETE';
-    // Connection
+    // Search service connection
     host?: string;
-    hosts?: string[];
     /** Elasticsearch/OpenSearch node URL (e.g., http://localhost:9200) */
     node?: string;
     port?: number;
     protocol?: 'http' | 'https';
-    // Index settings
+    // Search index settings
     indexName?: string;
-    indexPrefix?: string;
-    // Elasticsearch/OpenSearch specific
-    pipeline?: string;
-    refresh?: boolean | 'wait_for';
     // Algolia specific
-    applicationId?: string;
     appId?: string;
     // Meilisearch specific
     primaryKey?: string;
@@ -483,17 +477,11 @@ export interface SinkStepConfig {
     collectionName?: string;
     // Document settings
     idField?: string;
-    routing?: string;
     // Bulk options
-    bulkSize?: number;
-    flushIntervalMs?: number;
+    batchSize?: number;
     // Field handling
     fields?: string[];
     excludeFields?: string[];
-    fieldMapping?: Record<string, string>;
-    // Actions
-    deleteOnMissing?: boolean;
-    upsert?: boolean;
     // Localization
     languageCode?: string;
     translationsField?: string;
@@ -502,7 +490,25 @@ export interface SinkStepConfig {
     // Secrets
     connectionCode?: string;
     apiKeySecretCode?: string;
-    basicSecretCode?: string;
+    usernameSecretCode?: string;
+    passwordSecretCode?: string;
+    // Message queue sinks
+    queueType?: 'RABBITMQ' | 'RABBITMQ_AMQP' | 'SQS' | 'REDIS_STREAMS';
+    queueName?: string;
+    routingKey?: string;
+    headers?: Record<string, string>;
+    persistent?: boolean;
+    priority?: number;
+    ttlMs?: number;
+    // Webhook sinks
+    url?: string;
+    method?: 'POST' | 'PUT' | 'PATCH';
+    bearerTokenSecretCode?: string;
+    apiKeyHeader?: string;
+    hmacSecretCode?: string;
+    signatureHeaderName?: string;
+    timeoutMs?: number;
+    retries?: number;
     // Additional config
     config?: JsonObject;
     throughput?: Throughput;

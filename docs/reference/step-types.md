@@ -46,7 +46,7 @@ See [Extractors Reference](./extractors.md) for all extractor adapters and their
 
 ## TRANSFORM
 
-Modifies records using one or more operators. Supports 61 built-in operators
+Modifies records using one or more operators. Supports 62 built-in operators
 across 11 categories (data, string, numeric, date, logic, JSON, enrichment,
 aggregation, file, validation, and scripting).
 
@@ -98,7 +98,7 @@ Creates, updates, or deletes Vendure entities. Supports 24 loader codes
 including products, variants, customers, collections, facets, orders (upsert, notes, transitions, coupons),
 promotions, assets, inventory, entity deletion, and more.
 
-**Strategies:** `CREATE`, `UPDATE`, `UPSERT`, `MERGE`, `SOFT_DELETE`, `HARD_DELETE`
+**Strategies:** `CREATE`, `UPDATE`, `UPSERT`
 
 See [Loaders Reference](./loaders.md) for all loader adapters and their configuration.
 
@@ -106,11 +106,12 @@ See [Loaders Reference](./loaders.md) for all loader adapters and their configur
 
 ## EXPORT
 
-Sends data to external destinations including files, S3, SFTP, HTTP, and email.
+Formats records and delivers them to local storage, S3, SFTP, FTP/FTPS, HTTP,
+or email.
 
-**Formats:** `CSV`, `JSON`, `XML`, `XLSX`, `NDJSON`, `PARQUET`
+**Formats:** `CSV`, `JSON`, `XML`, `NDJSON`
 
-**Targets:** `FILE`, `API`, `WEBHOOK`, `S3`, `SFTP`, `EMAIL`
+**Destinations:** `LOCAL`, `HTTP`, `S3`, `SFTP`, `FTP`, `EMAIL`
 
 See [Pipeline Builder - export](../developer-guide/dsl/pipeline-builder.md#export) for configuration.
 
@@ -130,7 +131,7 @@ See [Feed Generators Reference](./feeds.md) for all feed adapters and their conf
 
 Indexes data to search engines and publishes to message queues.
 
-**Sink types:** `ELASTICSEARCH`, `OPENSEARCH`, `MEILISEARCH`, `ALGOLIA`, `TYPESENSE`, `WEBHOOK`, `CUSTOM`
+**Sink types:** `ELASTICSEARCH`, `OPENSEARCH`, `MEILISEARCH`, `ALGOLIA`, `TYPESENSE`, `QUEUE_PRODUCER`, `WEBHOOK`
 
 See [Sinks Reference](./sinks.md) for all sink adapters and their configuration.
 
@@ -158,11 +159,11 @@ into Vendure, especially for large or high-risk imports.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `approvalType` | string | Yes | Approval mode (see below) |
-| `timeoutSeconds` | number | No | Auto-approve after N seconds (`TIMEOUT` mode) |
-| `errorThresholdPercent` | number | No | Auto-approve if error rate below threshold, 0-100 (`THRESHOLD` mode) |
-| `notifyWebhook` | string | No | Webhook URL to call when gate is reached |
-| `notifyEmail` | string | No | Email address to notify when gate is reached |
-| `previewCount` | number | No | Number of records to include in the gate preview (default: 10) |
+| `timeoutSeconds` | integer | TIMEOUT | Auto-approve after 1-31,536,000 seconds |
+| `errorThresholdPercent` | number | THRESHOLD | Auto-approve only when the error rate is strictly below 0-100 percent |
+| `notifyWebhook` | string | No | Absolute HTTP or HTTPS URL to call when the gate is reached |
+| `notifyEmail` | string | No | Valid email address to notify when the gate is reached |
+| `previewCount` | integer | No | Records included in the gate preview, 1-100 (default: 10) |
 
 ### Approval Types
 
@@ -171,6 +172,12 @@ into Vendure, especially for large or high-risk imports.
 | `MANUAL` | Pipeline pauses until a user explicitly approves or rejects via the dashboard or API |
 | `THRESHOLD` | Auto-approves if the upstream error rate is below `errorThresholdPercent`; otherwise pauses for manual review |
 | `TIMEOUT` | Auto-approves after `timeoutSeconds` if no manual action is taken |
+
+At the threshold boundary, equality pauses: an error rate of 5 percent does not
+auto-approve a threshold of 5. TIMEOUT deadlines are persisted on the run when
+it enters `PAUSED`; the server processes due rows in bounded 30-second polling
+cycles, so approval can occur shortly after the exact deadline. Manual approval
+or rejection wins atomically and prevents later timeout processing.
 
 ### Examples
 
@@ -219,7 +226,7 @@ createPipeline()
         notifyEmail: 'data-team@example.com',
         previewCount: 20,
     })
-    .load('upsert-products', { adapterCode: 'productUpsert', strategy: 'UPSERT', matchField: 'slug' })
+    .load('upsert-products', { adapterCode: 'productUpsert', strategy: 'UPSERT', slugField: 'slug' })
     .edge('start', 'fetch-erp')
     .edge('fetch-erp', 'map-fields')
     .edge('map-fields', 'check-data')

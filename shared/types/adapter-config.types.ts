@@ -215,112 +215,6 @@ export type TypedExtractorConfig =
     | CdcExtractorConfig
     | GenericExtractorConfig;
 
-// OPERATOR (TRANSFORM) CONFIGS
-
-/** Map Operator - Field mapping/renaming */
-export interface MapOperatorConfig {
-    adapterCode: 'map';
-    /** Mapping object: { targetField: 'sourceField' } */
-    mapping: Record<string, string>;
-    /** Include unmapped fields in output */
-    passthrough?: boolean;
-}
-
-/** Template Operator - String templating */
-export interface TemplateOperatorConfig {
-    adapterCode: 'template';
-    /** Template strings: { field: 'Hello {{name}}' } */
-    templates: Record<string, string>;
-}
-
-/** Filter Operator - Filter records */
-export interface FilterOperatorConfig {
-    adapterCode: 'filter';
-    /** Filter expression (JavaScript) */
-    expression: string;
-}
-
-/** When Operator - Conditional transformation */
-export interface WhenOperatorConfig {
-    adapterCode: 'when';
-    /** Condition expression */
-    condition: string;
-    /** Fields to set when true */
-    thenSet?: Record<string, unknown>;
-    /** Fields to set when false */
-    elseSet?: Record<string, unknown>;
-}
-
-/** Lookup Operator - Enrich from external source */
-export interface LookupOperatorConfig {
-    adapterCode: 'lookup';
-    /** Source type */
-    sourceType: 'VENDURE' | 'HTTP' | 'STATIC';
-    /** Field to match on */
-    matchField: string;
-    /** Fields to add from lookup */
-    selectFields: string[];
-    /** Entity for Vendure lookups */
-    entity?: string;
-    /** Endpoint for HTTP lookups */
-    endpoint?: string;
-    /** Static data for static lookups */
-    data?: Record<string, unknown>[];
-}
-
-/** Aggregate Operator - Group and aggregate */
-export interface AggregateOperatorConfig {
-    adapterCode: 'aggregate';
-    /** Group by fields */
-    groupBy: string[];
-    /** Aggregations: { field: 'sum' | 'count' | 'avg' | 'min' | 'max' } */
-    aggregations: Record<string, 'sum' | 'count' | 'avg' | 'min' | 'max' | 'first' | 'last'>;
-}
-
-/** Dedupe Operator - Remove duplicates */
-export interface DedupeOperatorConfig {
-    adapterCode: 'dedupe';
-    /** Fields to check for duplicates */
-    keyFields: string[];
-    /** Keep first or last duplicate */
-    keep?: 'first' | 'last';
-}
-
-/** Coerce Operator - Type coercion */
-export interface CoerceOperatorConfig {
-    adapterCode: 'coerce';
-    /** Field type mappings */
-    types: Record<string, 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object'>;
-}
-
-/** Enrich Operator - Add default values */
-export interface EnrichOperatorConfig {
-    adapterCode: 'enrich';
-    /** Default values to add if missing */
-    defaults?: Record<string, unknown>;
-    /** Computed values (expressions) */
-    computed?: Record<string, string>;
-}
-
-/** Generic config for custom operator adapters */
-export interface GenericOperatorConfig {
-    adapterCode: string;
-    [key: string]: unknown;
-}
-
-/** Union of all operator configs */
-export type TypedOperatorConfig =
-    | MapOperatorConfig
-    | TemplateOperatorConfig
-    | FilterOperatorConfig
-    | WhenOperatorConfig
-    | LookupOperatorConfig
-    | AggregateOperatorConfig
-    | DedupeOperatorConfig
-    | CoerceOperatorConfig
-    | EnrichOperatorConfig
-    | GenericOperatorConfig;
-
 // LOADER CONFIGS
 
 
@@ -375,8 +269,12 @@ export interface ProductUpsertLoaderConfig extends CreateDuplicateHandlingConfig
     facetValuesMode?: FacetValuesMode;
     /** How to handle product assets on update */
     assetsMode?: AssetsMode;
+    /** Record field containing an array of product asset URLs (default: assetUrls) */
+    assetsField?: string;
     /** How to handle product featured asset on update */
     featuredAssetMode?: FeaturedAssetMode;
+    /** Record field containing the product featured asset URL (default: featuredAssetUrl) */
+    featuredAssetField?: string;
 }
 
 /** Variant Upsert Loader */
@@ -423,8 +321,12 @@ export interface VariantUpsertLoaderConfig extends CreateDuplicateHandlingConfig
     facetValuesMode?: FacetValuesMode;
     /** How to handle variant assets on update */
     assetsMode?: AssetsMode;
+    /** Record field containing an array of variant asset URLs (default: assetUrls) */
+    assetsField?: string;
     /** How to handle variant featured asset on update */
     featuredAssetMode?: FeaturedAssetMode;
+    /** Record field containing the variant featured asset URL (default: featuredAssetUrl) */
+    featuredAssetField?: string;
     /** How to handle variant options on update */
     optionsMode?: OptionsMode;
 }
@@ -671,8 +573,8 @@ export interface PromotionUpsertLoaderConfig extends CreateDuplicateHandlingConf
     conditionsField?: string;
     /** How to handle promotion conditions on update */
     conditionsMode?: ConditionsMode;
-    /** Field containing actions */
-    actionsField?: string;
+    /** Field containing actions. Creation requires at least one valid action. */
+    actionsField: string;
     /** How to handle promotion actions on update */
     actionsMode?: ActionsMode;
     /** Channel code */
@@ -979,6 +881,8 @@ export interface CsvExportConfig {
     includeHeader?: boolean;
     /** Column delimiter */
     delimiter?: ',' | ';' | '\t' | '|';
+    /** Neutralize spreadsheet formulas by default; PRESERVE keeps exact values for machine consumers. */
+    formulaMode?: 'SPREADSHEET_SAFE' | 'PRESERVE';
     /** Columns configuration */
     columns?: Array<{ field: string; header?: string }>;
     /** Encoding */
@@ -1117,20 +1021,6 @@ export type TypedFeedConfig =
     | AmazonFeedConfig
     | CustomFeedConfig
     | GenericFeedConfig;
-
-// VALIDATOR CONFIGS
-
-/** Schema Validator */
-export interface SchemaValidatorConfig {
-    /** Schema code to validate against */
-    schemaCode: string;
-    /** Validation mode */
-    mode?: 'STRICT' | 'LENIENT';
-    /** Action on error */
-    onError?: 'SKIP' | 'FAIL' | 'COLLECT';
-    /** Collect errors for reporting */
-    collectErrors?: boolean;
-}
 
 // ROUTE CONFIGS
 

@@ -9,6 +9,7 @@ import { ConnectionAuthType } from '../../shared/types/adapter-config.types';
 import type { OptionValue, TypedOptionValue } from './enum-metadata';
 import { QUEUE } from './defaults/runtime-defaults';
 import { DEFAULT_WEBHOOK_CONFIG } from './trigger-adapters';
+import { GATE_LIMITS } from './defaults/core-defaults';
 import { LOAD_STRATEGY_METADATA, CONFLICT_STRATEGY_METADATA } from './enum-metadata';
 
 /** Load strategy select options for loader adapter schemas (auto-derived from metadata; excludes delete strategies) */
@@ -187,6 +188,11 @@ export const CSV_DELIMITER_OPTIONS = [
     { value: '\t', label: 'Tab' },
     { value: '|', label: 'Pipe (|)' },
 ];
+
+export const CSV_FORMULA_MODE_OPTIONS = [
+    { value: 'SPREADSHEET_SAFE', label: 'Spreadsheet-safe' },
+    { value: 'PRESERVE', label: 'Preserve values' },
+] as const;
 
 /** Boolean select options (string values for schema forms) */
 export const BOOLEAN_SELECT_OPTIONS = [
@@ -496,7 +502,7 @@ export const DESTINATION_TYPES: OptionValue[] = [
 const GATE_COMMON_FIELDS: TypedOptionValue['fields'] = [
     { key: 'notifyWebhook', label: 'Notify Webhook', type: 'string', placeholder: 'https://hooks.example.com/gate-notify', description: 'Webhook URL to call when the gate is reached (optional)' },
     { key: 'notifyEmail', label: 'Notify Email', type: 'string', placeholder: 'approver@example.com', description: 'Email address to notify when the gate is reached (optional)' },
-    { key: 'previewCount', label: 'Preview Count', type: 'number', placeholder: '10', description: 'Number of records to include in the gate preview (default: 10)' },
+    { key: 'previewCount', label: 'Preview Count', type: 'number', placeholder: String(GATE_LIMITS.DEFAULT_PREVIEW_COUNT), min: 1, max: GATE_LIMITS.MAX_PREVIEW_COUNT, description: `Number of records to include in the gate preview (default: ${GATE_LIMITS.DEFAULT_PREVIEW_COUNT})` },
 ];
 
 /** Approval type options for gate steps (with per-type field schemas) */
@@ -512,7 +518,7 @@ export const APPROVAL_TYPES: TypedOptionValue[] = [
         label: 'Threshold',
         description: 'Auto-approve if error rate is below threshold',
         fields: [
-            { key: 'errorThresholdPercent', label: 'Error Threshold (%)', type: 'number', placeholder: '10', description: 'Auto-approve if error rate is below this percentage (0-100)' },
+            { key: 'errorThresholdPercent', label: 'Error Threshold (%)', type: 'number', required: true, placeholder: '10', min: 0, max: 100, description: 'Auto-approve if error rate is below this percentage (0-100)' },
             ...GATE_COMMON_FIELDS,
         ],
     },
@@ -521,7 +527,7 @@ export const APPROVAL_TYPES: TypedOptionValue[] = [
         label: 'Timeout',
         description: 'Auto-approve after a timeout period',
         fields: [
-            { key: 'timeoutSeconds', label: 'Timeout (seconds)', type: 'number', placeholder: '300', description: 'Number of seconds to wait before auto-approving' },
+            { key: 'timeoutSeconds', label: 'Timeout (seconds)', type: 'number', required: true, placeholder: '300', min: GATE_LIMITS.MIN_TIMEOUT_SECONDS, max: GATE_LIMITS.MAX_TIMEOUT_SECONDS, description: 'Number of seconds to wait before auto-approving' },
             ...GATE_COMMON_FIELDS,
         ],
     },
@@ -621,7 +627,7 @@ export const TRIGGER_TYPE_SCHEMAS: TypedOptionValue[] = [
         description: 'Watch for new files',
         icon: 'folder-open',
         fields: [
-            { key: 'connectionCode', label: 'Connection Code', type: 'string', required: true, placeholder: 'my-sftp-connection' },
+            { key: 'connectionCode', label: 'Connection Code', type: 'connection', required: true, placeholder: 'my-sftp-connection' },
             { key: 'path', label: 'Watch Path', type: 'string', required: true, placeholder: '/incoming/*.csv', description: 'Glob patterns supported (e.g., *.csv, **/*.json)' },
         ],
         configKeyMap: { connectionCode: 'fileWatch.connectionCode', path: 'fileWatch.path' },
@@ -634,7 +640,7 @@ export const TRIGGER_TYPE_SCHEMAS: TypedOptionValue[] = [
         icon: 'message-square',
         fields: [
             { key: 'queueType', label: 'Queue Type', type: 'select', required: true, optionsRef: 'queueTypes' },
-            { key: 'connectionCode', label: 'Connection Code', type: 'string', placeholder: 'my-queue-connection', description: 'Required for every queue type except INTERNAL' },
+            { key: 'connectionCode', label: 'Connection Code', type: 'connection', placeholder: 'my-queue-connection', description: 'Required for every queue type except INTERNAL' },
             { key: 'queueName', label: 'Queue Name', type: 'string', required: true, placeholder: 'my-queue' },
             { key: 'batchSize', label: 'Batch Size', type: 'number', defaultValue: QUEUE.DEFAULT_MESSAGE_BATCH_SIZE, min: QUEUE.MIN_MESSAGE_BATCH_SIZE, max: QUEUE.MAX_MESSAGE_BATCH_SIZE, description: `Messages per poll (${QUEUE.MIN_MESSAGE_BATCH_SIZE}-${QUEUE.MAX_MESSAGE_BATCH_SIZE})` },
             { key: 'concurrency', label: 'Concurrency', type: 'number', defaultValue: QUEUE.DEFAULT_MESSAGE_CONCURRENCY, min: QUEUE.MIN_MESSAGE_CONCURRENCY, max: QUEUE.MAX_MESSAGE_CONCURRENCY, description: `Parallel message deliveries (${QUEUE.MIN_MESSAGE_CONCURRENCY}-${QUEUE.MAX_MESSAGE_CONCURRENCY})` },
@@ -679,7 +685,7 @@ export const ENRICHMENT_SOURCE_TYPES: TypedOptionValue[] = [
         label: 'HTTP',
         description: 'Fetch enrichment data from an HTTP endpoint',
         fields: [
-            { key: 'url', label: 'URL', type: 'string', required: true, placeholder: 'https://api.example.com/lookup/${record.id}', description: 'URL to fetch enrichment data. Use ${record.field} for dynamic values.' },
+            { key: 'url', label: 'URL', type: 'string', required: true, placeholder: 'https://api.example.com/lookup/{{id}}', description: 'URL to fetch enrichment data. Use {{field.path}} for dynamic values.' },
             { key: 'keyField', label: 'Key Field', type: 'string', placeholder: 'sku', description: 'Record field to use as the lookup cache key' },
             { key: 'target', label: 'Target Field', type: 'string', placeholder: 'enrichment', description: 'Field name to store the enrichment result on each record' },
             { key: 'responsePath', label: 'Response Path', type: 'string', placeholder: 'data', description: 'JSON path to extract from the HTTP response (e.g. data.items)' },
@@ -719,7 +725,6 @@ export const WIZARD_STRATEGY_MAPPINGS: Array<{
 export const QUERY_TYPE_OPTIONS: OptionValue[] = [
     { value: 'all', label: 'All Records', description: 'Export all records of the selected entity' },
     { value: 'query', label: 'With Filters', description: 'Apply filter conditions to select records' },
-    { value: 'graphql', label: 'Custom GraphQL', description: 'Write custom GraphQL query' },
 ];
 
 /** Validation rule type options with field schemas for validate steps */

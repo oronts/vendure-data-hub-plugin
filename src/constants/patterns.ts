@@ -37,3 +37,6 @@ export const PHONE_PATTERN = /^\+?[0-9\s\-().]{7,}$/;
  * SQL identifier (table/column name).
  */
 export const SQL_IDENTIFIER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+/** Conservative ASCII XML element names used by configurable exporters. */
+export const XML_ELEMENT_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9._-]*$/;

@@ -6,6 +6,31 @@ The `createPipeline()` function returns a builder for constructing pipelines.
 
 ```typescript
 import { createPipeline } from '@oronts/vendure-data-hub-plugin';
+## Typed Loader Factories
+
+The typed factories expose every built-in loader under its canonical adapter
+code and enforce each loader's required configuration fields.
+
+```typescript
+import {
+    Loaders,
+    deriveCapabilities,
+    loadStep,
+} from '@oronts/vendure-data-hub-plugin';
+
+const steps = [
+    loadStep('products', Loaders.productUpsert({
+        strategy: 'UPSERT',
+        skuField: 'sku',
+        nameField: 'name',
+    })),
+];
+
+const capabilities = deriveCapabilities(steps);
+// { requires: ['UpdateCatalog'], writes: ['CATALOG'] }
+```
+
+Factory names match the adapter codes in the [Loaders Reference](../../reference/loaders.md).
 ```
 
 ## Builder Methods
@@ -29,17 +54,24 @@ createPipeline()
 
 ```typescript
 .context({
-    channel: 'default',
+    channel: '__default_channel__', // Vendure channel token
     contentLanguage: 'en',
     channelStrategy: 'EXPLICIT',  // 'EXPLICIT' | 'INHERIT' | 'MULTI'
     validationMode: 'STRICT',     // 'STRICT' | 'LENIENT'
-    runMode: 'BATCH',             // 'SYNC' | 'ASYNC' | 'BATCH'
 })
 .capabilities({
     writes: ['CATALOG'],     // 'CATALOG' | 'CUSTOMERS' | 'ORDERS' | 'PROMOTIONS' | 'INVENTORY' | 'CUSTOM'
     requires: [],            // Required permissions
 })
 ```
+
+Pipeline context values are defaults. Each step may define a `context` object
+with `contentLanguage`, `channelStrategy`, `channelIds`, `validationMode`, or
+`throughput` overrides. Resolution is step, then pipeline, then
+the active Vendure request context. Missing validation and execution values
+default to `STRICT`.
+`EXPLICIT` and `MULTI` channel strategies require at least one effective
+`channelIds` entry.
 
 ### .parallel(config)
 
@@ -232,6 +264,7 @@ Pull data from external sources:
     // Adapter-specific options...
     throughput?: Throughput,
     async?: boolean,
+    schemaRef?: { schemaId: string; version: string },
 })
 ```
 
@@ -278,6 +311,7 @@ can be forwarded.
     fileId: 'products-upload-id',
     delimiter: ',',
     hasHeader: true,
+    schemaRef: { schemaId: 'catalog.product', version: '1.0.0' },
 })
 ```
 
@@ -352,6 +386,7 @@ Validate records:
     errorHandlingMode: 'FAIL_FAST' | 'ACCUMULATE',
     rules: ValidationRuleConfig[],
     throughput?: Throughput,
+    schemaRef?: { schemaId: string; version: string },
 })
 ```
 
@@ -359,12 +394,17 @@ Validate records:
 ```typescript
 .validate('check-data', {
     errorHandlingMode: 'ACCUMULATE',
+    schemaRef: { schemaId: 'catalog.product', version: '1.0.0' },
     rules: [
         { type: 'business', spec: { field: 'sku', required: true } },
         { type: 'business', spec: { field: 'price', min: 0 } },
     ],
 })
 ```
+
+`schemaRef` is stored on the pipeline step, not inside the adapter configuration.
+The referenced version must exist before publication. Dry runs, step tests, and
+live execution resolve the same immutable version.
 
 ### enrich
 
@@ -377,13 +417,19 @@ Add data from external lookups or static enrichment:
     set?: Record<string, JsonValue>,        // Always overwrite these fields
     computed?: Record<string, string>,      // Template expressions: '${field1} ${field2}'
     sourceType?: 'STATIC' | 'HTTP' | 'VENDURE',
-    url?: string,                  // HTTP endpoint URL (for HTTP source type)
+    url?: string,                  // Required for HTTP; supports {{field.path}}
     keyField?: string,             // Record field used in cache identity
     target?: string,               // Field receiving the response
-    entity?: string,               // Vendure entity type (for VENDURE source type)
-    config?: JsonObject,           // Additional adapter config
+    entityType?: string,           // Required registered loader entity type
+    sourceField?: string,          // Required input record field
+    lookupField?: string,          // Required Vendure entity lookup field
+    targetFields?: Record<string, string>,
 })
 ```
+
+Without `adapterCode`, STATIC requires a non-empty `defaults`, `set`, or
+`computed` object. HTTP requires `url`. VENDURE requires `entityType`,
+`sourceField`, and `lookupField`.
 
 **Static Enrichment (no adapter needed):**
 ```typescript
@@ -494,8 +540,13 @@ Send data to external destinations:
     destinationType: 'LOCAL',
     directory: 'catalog',
     filenamePattern: 'products.csv',
+    formulaMode: 'SPREADSHEET_SAFE',
 })
 ```
+
+CSV exports default to `SPREADSHEET_SAFE`, which prefixes formula-like cells
+for human viewing in spreadsheet applications. Use `PRESERVE` only for
+machine-to-machine exports that require byte-equivalent field values.
 
 For local exports, `directory` is relative to `DATA_HUB_EXPORT_ROOT`; feed
 `outputPath` uses the same root-relative contract. The root defaults to
@@ -589,11 +640,15 @@ threshold, or after a timeout.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `approvalType` | string | Yes | `'MANUAL'` \| `'THRESHOLD'` \| `'TIMEOUT'` |
-| `timeoutSeconds` | number | No | Auto-approve after N seconds (`TIMEOUT` mode) |
-| `errorThresholdPercent` | number | No | Auto-approve if error rate below threshold, 0-100 (`THRESHOLD` mode) |
-| `notifyWebhook` | string | No | Webhook URL for gate notifications |
-| `notifyEmail` | string | No | Email address for gate notifications |
-| `previewCount` | number | No | Number of records to preview (default: 10) |
+| `timeoutSeconds` | integer | TIMEOUT | Auto-approve after 1-31,536,000 seconds |
+| `errorThresholdPercent` | number | THRESHOLD | Auto-approve only when the error rate is strictly below 0-100 percent |
+| `notifyWebhook` | string | No | Absolute HTTP or HTTPS notification URL |
+| `notifyEmail` | string | No | Valid notification email address |
+| `previewCount` | integer | No | Records to preview, 1-100 (default: 10) |
+
+A threshold equal to the observed error rate pauses. Timeout approval is durable
+and is processed by the server's bounded gate maintenance cycle after the saved
+deadline.
 
 **Manual Gate:**
 ```typescript
@@ -664,11 +719,11 @@ Control execution performance:
     throughput: {
         batchSize: 100,         // Records per batch
         concurrency: 4,         // Parallel batches
-        rateLimitRps: 10,       // Max requests per second
+        rateLimitRps: 10,       // Max aggregate load-batch starts per second
         drainStrategy: 'BACKOFF',  // 'BACKOFF' | 'SHED' | 'QUEUE'
         pauseOnErrorRate: {
-            threshold: 0.5,     // Pause if error rate exceeds 50%
-            intervalSec: 60,    // Check interval
+            threshold: 0.5,     // React at 50% failed records
+            intervalSec: 60,    // Rolling error window and recovery delay
         },
     },
     // Retry configuration (step-level, not in throughput)
