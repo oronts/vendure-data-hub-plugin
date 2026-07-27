@@ -1,8 +1,9 @@
 import * as React from 'react';
+import { useLingui } from '@lingui/react';
 import { Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { VENDURE_ENTITY_SCHEMAS } from '../../../../shared';
-import type { EnhancedFieldDefinition } from '../../../types';
+import type { ParsedData } from '../../../types';
 import type { ImportWizardProps, ImportConfiguration, FieldMapping } from './types';
 import { WIZARD_STEPS, WIZARD_STEPS_FROM_TEMPLATE, IMPORT_STEP_ID, DEFAULT_IMPORT_STRATEGIES } from './constants';
 import { TemplateStep } from './TemplateStep';
@@ -15,7 +16,14 @@ import { StrategyStep } from './StrategyStep';
 import { TriggerStep } from './TriggerStep';
 import { ReviewStep } from './ReviewStep';
 import { WizardProgressBar, WizardFooter, ValidationErrorDisplay } from '../../shared';
-import { UI_LIMITS, TRIGGER_TYPE, FILE_FORMAT, SOURCE_TYPE, TOAST_WIZARD, formatParseError, formatParsedRecords, FILE_FORMAT_REGISTRY } from '../../../constants';
+import {
+    FILE_FORMAT,
+    FILE_FORMAT_REGISTRY,
+    IMPORT_WIZARD_TRANSLATION_IDS,
+    SOURCE_TYPE,
+    TRIGGER_TYPE,
+    UI_LIMITS,
+} from '../../../constants';
 import type { FileParseOptions } from '../../../constants/file-format-registry';
 import { detectFileFormat } from '../../../constants/file-format-registry';
 import { normalizeString, validateImportWizardStep } from '../../../utils';
@@ -26,26 +34,93 @@ import { useEntityFieldSchemas } from '../../../hooks/api/use-entity-field-schem
 import { useTriggerTypeSchemas } from '../../../hooks/api/use-config-options';
 import { useWizardNavigation } from '../../../hooks/use-wizard-navigation';
 
-export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting }: ImportWizardProps) {
-    const { templates, categories } = useImportTemplates();
+import { uploadDataHubFile } from '../../../utils/file-upload';
+import {
+    createDefaultImportSource,
+    isImportSourceAvailable,
+    mergeFileSourceConfig,
+} from './source-config';
+import {
+    getFileParseErrorMessage,
+    getFileUploadErrorMessage,
+} from './file-error-messages';
+import { buildImportTargetSchema } from './target-schema';
+import { localizeImportWizardValidation } from './localize-validation';
+
+export function ImportWizard({
+    onComplete,
+    onCancel,
+    canManageFiles,
+    initialConfig,
+    isSubmitting,
+}: ImportWizardProps) {
+    const { i18n } = useLingui();
+    const {
+        templates,
+        categories,
+        isLoading: templatesLoading,
+        isError: templatesFailed,
+        error: templatesError,
+        refetch: refetchTemplates,
+    } = useImportTemplates();
     const { data: extractors } = useAdaptersByType('EXTRACTOR');
     const { getFields: getBackendFields } = useEntityFieldSchemas();
     const { schemas: triggerSchemas } = useTriggerTypeSchemas();
+    const availableTemplates = React.useMemo(
+        () => templates.filter(template =>
+            isImportSourceAvailable(template.definition?.sourceType, canManageFiles)),
+        [canManageFiles, templates],
+    );
+    const availableCategories = React.useMemo(
+        () => categories
+            .map(category => ({
+                ...category,
+                count: availableTemplates.filter(
+                    template => template.category === category.category,
+                ).length,
+            }))
+            .filter(category => category.count > 0),
+        [availableTemplates, categories],
+    );
 
     const [selectedTemplate, setSelectedTemplate] = React.useState<ImportTemplate | null>(null);
     const [templateApplied, setTemplateApplied] = React.useState(false);
     const [startedFromScratch, setStartedFromScratch] = React.useState(false);
 
-    const activeSteps = React.useMemo(() => {
-        if (templateApplied || startedFromScratch) {
-            return WIZARD_STEPS_FROM_TEMPLATE;
-        }
-        return WIZARD_STEPS;
-    }, [templateApplied, startedFromScratch]);
+    const steps = templateApplied || startedFromScratch
+        ? WIZARD_STEPS_FROM_TEMPLATE
+        : WIZARD_STEPS;
+    const activeSteps = steps.map(step => ({
+        ...step,
+        label: i18n._(step.label),
+    }));
 
     const [uploadedFile, setUploadedFile] = React.useState<File | null>(null);
-    const [parsedData, setParsedData] = React.useState<{ headers: string[]; rows: Record<string, unknown>[] } | null>(null);
+    const [parsedData, setParsedData] = React.useState<ParsedData | null>(null);
     const [isParsing, setIsParsing] = React.useState(false);
+    const [isUploading, setIsUploading] = React.useState(false);
+    const initialWizardConfig = React.useMemo<Partial<ImportConfiguration>>(() => {
+        const defaultSource = createDefaultImportSource(canManageFiles);
+        if (!initialConfig) {
+            return {
+                name: '',
+                source: defaultSource,
+                targetEntity: '',
+                mappings: [],
+                strategies: { ...DEFAULT_IMPORT_STRATEGIES },
+                trigger: { type: TRIGGER_TYPE.MANUAL },
+                transformations: [],
+            };
+        }
+
+        return {
+            ...initialConfig,
+            source: initialConfig.source
+                && isImportSourceAvailable(initialConfig.source.type, canManageFiles)
+                ? initialConfig.source
+                : defaultSource,
+        };
+    }, [canManageFiles, initialConfig]);
 
     const validateStep = React.useCallback((stepId: string, cfg: Partial<ImportConfiguration>) => {
         // Template step is always valid (user can proceed or select)
@@ -59,12 +134,33 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
             && !extractors) {
             return {
                 isValid: false,
-                errors: [{ field: 'adapters', message: 'Loading adapter configuration, please wait...', type: 'required' as const }],
-                errorsByField: { adapters: 'Loading adapter configuration, please wait...' },
+                errors: [{ field: 'adapters', message: i18n._(IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_LOADING_ADAPTERS), type: 'required' as const }],
+                errorsByField: { adapters: i18n._(IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_LOADING_ADAPTERS) },
             };
         }
-        return validateImportWizardStep(stepId, cfg, uploadedFile, extractors, triggerSchemas);
-    }, [uploadedFile, extractors, triggerSchemas]);
+        if (stepId === IMPORT_STEP_ID.SOURCE
+            && cfg.source?.type === SOURCE_TYPE.FILE
+            && uploadedFile
+            && !cfg.source.fileConfig?.fileId) {
+            return {
+                isValid: false,
+                errors: [{ field: 'file', message: i18n._(IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_UPLOADING_FILE), type: 'required' as const }],
+                errorsByField: { file: i18n._(IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_UPLOADING_FILE) },
+            };
+        }
+        const result = validateImportWizardStep(
+            stepId,
+            cfg,
+            uploadedFile,
+            extractors,
+            triggerSchemas,
+        );
+        return localizeImportWizardValidation(
+            result,
+            { stepId, config: cfg, adapterSchemas: extractors, triggerSchemas },
+            (id, values) => i18n._(id, values),
+        );
+    }, [i18n, uploadedFile, extractors, triggerSchemas]);
 
     const {
         config,
@@ -83,18 +179,10 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
         canProceed,
     } = useWizardNavigation<Partial<ImportConfiguration>>({
         steps: activeSteps,
-        initialConfig: initialConfig ?? {
-            name: '',
-            source: { type: SOURCE_TYPE.FILE, fileConfig: { format: FILE_FORMAT.CSV, hasHeaders: true } },
-            targetEntity: '',
-            mappings: [],
-            strategies: { ...DEFAULT_IMPORT_STRATEGIES },
-            trigger: { type: TRIGGER_TYPE.MANUAL },
-            transformations: [],
-        },
+        initialConfig: initialWizardConfig,
         validateStep,
         onComplete: onComplete as (config: Partial<ImportConfiguration>) => void,
-        nameRequiredMessage: TOAST_WIZARD.IMPORT_NAME_REQUIRED,
+        nameRequiredMessage: i18n._(IMPORT_WIZARD_TRANSLATION_IDS.VALIDATION_NAME_REQUIRED),
         isSubmitting,
     });
 
@@ -108,10 +196,17 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
         const def = template.definition;
         setConfig(prev => ({
             ...prev,
-            name: `${template.name} Import`,
+            name: template.name,
             ...(def?.sourceType ? { source: { type: def.sourceType, fileConfig: { format: def.fileFormat ?? 'CSV', hasHeaders: true } } } : {}),
             ...(def?.targetEntity ? { targetEntity: def.targetEntity } : {}),
-            ...(def?.existingRecords ? { strategies: { ...prev.strategies, existingRecords: def.existingRecords, lookupFields: def.lookupFields ?? [] } } : {}),
+            ...(def?.existingRecords ? {
+                strategies: {
+                    ...DEFAULT_IMPORT_STRATEGIES,
+                    ...prev.strategies,
+                    existingRecords: def.existingRecords,
+                    lookupFields: def.lookupFields ?? [],
+                },
+            } : {}),
             ...(def?.fieldMappings?.length ? {
                 mappings: def.fieldMappings.map(fm => ({
                     sourceField: fm.sourceField,
@@ -123,8 +218,8 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
         }));
         // Move to first step after template (source step)
         setCurrentStep(0);
-        toast.success(TOAST_WIZARD.TEMPLATE_SELECTED);
-    }, [setConfig, setCurrentStep]);
+        toast.success(i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TOAST_TEMPLATE_SELECTED));
+    }, [i18n, setConfig, setCurrentStep]);
 
     const handleStartFromScratch = React.useCallback(() => {
         setStartedFromScratch(true);
@@ -150,9 +245,9 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
             const format = fileFormatRef.current;
             const entry = FILE_FORMAT_REGISTRY.get(format);
 
-            let newParsedData: { headers: string[]; rows: Record<string, unknown>[] } | null = null;
+            let newParsedData: ParsedData | null = null;
 
-            if (entry) {
+            if (entry?.parse) {
                 const options: FileParseOptions = {
                     delimiter: delimiterRef.current,
                     hasHeaders: hasHeadersRef.current,
@@ -160,67 +255,115 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
                 };
                 newParsedData = await entry.parse(file, options);
             }
-
-            setParsedData(newParsedData);
-            toast.success(formatParsedRecords(newParsedData?.rows.length ?? 0));
-        } catch (error) {
-            toast.error(formatParseError(error));
+            return newParsedData;
         } finally {
             setIsParsing(false);
         }
-    }, []); // No dependencies - uses refs for config values
+    }, []);
 
     React.useEffect(() => {
-        if (uploadedFile) {
-            // Auto-detect format from file extension via registry
-            const detectedFormat = detectFileFormat(uploadedFile.name) ?? undefined;
+        if (!uploadedFile) return;
 
+        let cancelled = false;
+        const prepareFile = async () => {
+            const detectedFormat = detectFileFormat(uploadedFile.name) ?? undefined;
             if (detectedFormat && detectedFormat !== fileFormatRef.current) {
                 fileFormatRef.current = detectedFormat;
                 setConfig(prev => ({
                     ...prev,
-                    source: { ...prev.source!, fileConfig: { ...prev.source?.fileConfig!, format: detectedFormat } },
+                    source: mergeFileSourceConfig(prev.source, { format: detectedFormat }),
                 }));
             }
-            parseFile(uploadedFile);
-        }
-    }, [uploadedFile, parseFile, setConfig]);
+
+            let parsedData: ParsedData | null;
+            try {
+                parsedData = await parseFile(uploadedFile);
+            } catch (error) {
+                if (!cancelled) {
+                    toast.error(i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TOAST_PARSE_FAILED), {
+                        description: getFileParseErrorMessage(
+                            error,
+                            (id, values) => i18n._(id, values),
+                        ),
+                    });
+                    setUploadedFile(null);
+                    setParsedData(null);
+                }
+                return;
+            }
+
+            if (cancelled) return;
+            setParsedData(parsedData);
+            if (parsedData) {
+                toast.success(i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TOAST_PARSED_RECORDS, {
+                    count: parsedData.rows.length,
+                }));
+            }
+
+            setIsUploading(true);
+            try {
+                const storedFile = await uploadDataHubFile(uploadedFile, {
+                    persistent: true,
+                });
+                if (cancelled) return;
+                setConfig(prev => ({
+                    ...prev,
+                    source: mergeFileSourceConfig(prev.source, { fileId: storedFile.id }),
+                }));
+            } catch (error) {
+                if (!cancelled) {
+                    toast.error(
+                        i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TOAST_UPLOAD_FAILED),
+                        {
+                            description: getFileUploadErrorMessage(
+                                error,
+                                (id, values) => i18n._(id, values),
+                            ),
+                        },
+                    );
+                    setUploadedFile(null);
+                    setParsedData(null);
+                }
+            } finally {
+                if (!cancelled) setIsUploading(false);
+            }
+        };
+
+        void prepareFile();
+        return () => {
+            cancelled = true;
+        };
+    }, [i18n, uploadedFile, parseFile, setConfig]);
+
+    const handleUploadedFileChange = React.useCallback((file: File | null) => {
+        setUploadedFile(file);
+        setConfig(prev => ({
+            ...prev,
+            source: mergeFileSourceConfig(prev.source, { fileId: undefined }),
+        }));
+        if (!file) setParsedData(null);
+    }, [setConfig]);
 
     React.useEffect(() => {
         if (config.targetEntity && parsedData) {
             // Use backend fields as primary source, fall back to static schemas during loading
             const backendFields = getBackendFields(config.targetEntity);
             const staticSchema = VENDURE_ENTITY_SCHEMAS[config.targetEntity];
+            const targetSchema = buildImportTargetSchema(
+                config.targetEntity,
+                backendFields,
+                staticSchema,
+            );
 
-            // Build a unified field list: prefer backend data, fall back to static
-            const fieldEntries: { name: string; required: boolean }[] = backendFields.length > 0
-                ? backendFields.map(f => ({ name: f.key, required: f.required }))
-                : staticSchema
-                    ? Object.entries(staticSchema.fields).map(([name, def]) => ({
-                        name,
-                        required: (def as EnhancedFieldDefinition).required ?? false,
-                    }))
-                    : [];
+            const fieldEntries = targetSchema
+                ? Object.entries(targetSchema.fields).map(([name, definition]) => ({
+                    name,
+                    required: definition.required ?? false,
+                }))
+                : [];
 
             if (fieldEntries.length === 0) return;
 
-            // If mappings already exist (e.g. from template), enhance them with preview data
-            if (config.mappings && config.mappings.length > 0) {
-                const enhancedMappings = config.mappings.map(mapping => ({
-                    ...mapping,
-                    preview: mapping.sourceField && parsedData.headers.includes(mapping.sourceField)
-                        ? parsedData.rows.slice(0, 3).map(r => r[mapping.sourceField])
-                        : mapping.preview,
-                }));
-                setConfig(prev => ({
-                    ...prev,
-                    mappings: enhancedMappings,
-                    targetSchema: staticSchema,
-                }));
-                return;
-            }
-
-            // Otherwise, auto-map from fields + parsed headers
             const autoMappings: FieldMapping[] = [];
 
             for (const { name: fieldName, required } of fieldEntries) {
@@ -244,18 +387,34 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
                 }
             }
 
-            // Use functional setState to avoid stale closure with config.strategies
-            setConfig(prev => ({
-                ...prev,
-                mappings: autoMappings,
-                targetSchema: staticSchema,
-                strategies: {
-                    ...(prev.strategies ?? {}),
-                    lookupFields: staticSchema?.primaryKey
-                        ? (Array.isArray(staticSchema.primaryKey) ? staticSchema.primaryKey : [staticSchema.primaryKey])
-                        : [],
-                },
-            }));
+            setConfig(prev => {
+                const existingMappings = prev.mappings ?? [];
+                if (existingMappings.length > 0) {
+                    return {
+                        ...prev,
+                        mappings: existingMappings.map(mapping => ({
+                            ...mapping,
+                            preview: mapping.sourceField && parsedData.headers.includes(mapping.sourceField)
+                                ? parsedData.rows.slice(0, 3).map(r => r[mapping.sourceField])
+                                : mapping.preview,
+                        })),
+                        targetSchema,
+                    };
+                }
+
+                return {
+                    ...prev,
+                    mappings: autoMappings,
+                    targetSchema,
+                    strategies: {
+                        ...DEFAULT_IMPORT_STRATEGIES,
+                        ...(prev.strategies ?? {}),
+                        lookupFields: targetSchema?.primaryKey
+                            ? (Array.isArray(targetSchema.primaryKey) ? targetSchema.primaryKey : [targetSchema.primaryKey])
+                            : [],
+                    },
+                };
+            });
             setStepErrors({});
             setAttemptedNext(false);
         }
@@ -264,20 +423,24 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
     const currentStepId = activeSteps[currentStep]?.id;
 
     return (
-        <div className="flex flex-col h-full" data-testid="datahub-importwizard-wizard">
+        <div className="flex h-full min-w-0 max-w-full flex-col overflow-hidden" data-testid="datahub-importwizard-wizard">
             <WizardProgressBar
                 steps={activeSteps}
                 currentStep={currentStep}
                 onStepClick={handleStepClick}
             />
 
-            <div className="flex-1 overflow-auto p-6" data-testid="datahub-importwizard-steps">
+            <div className="min-w-0 flex-1 overflow-auto p-4 sm:p-6" data-testid="datahub-importwizard-steps">
                 <ValidationErrorDisplay errors={stepErrors} show={attemptedNext} />
 
                 {currentStepId === IMPORT_STEP_ID.TEMPLATE && (
                     <TemplateStep
-                        templates={templates}
-                        categories={categories}
+                        templates={availableTemplates}
+                        categories={availableCategories}
+                        isLoading={templatesLoading}
+                        isError={templatesFailed}
+                        error={templatesError}
+                        onRetry={() => void refetchTemplates()}
                         selectedTemplate={selectedTemplate}
                         onSelectTemplate={handleSelectTemplate}
                         onUseTemplate={handleUseTemplate}
@@ -290,9 +453,10 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
                         config={config}
                         updateConfig={updateConfig}
                         uploadedFile={uploadedFile}
-                        setUploadedFile={setUploadedFile}
-                        isParsing={isParsing}
+                        setUploadedFile={handleUploadedFileChange}
+                        isParsing={isParsing || isUploading}
                         errors={attemptedNext ? stepErrors : {}}
+                        canManageFiles={canManageFiles}
                     />
                 )}
 
@@ -338,7 +502,7 @@ export function ImportWizard({ onComplete, onCancel, initialConfig, isSubmitting
                 onNext={handleNext}
                 onComplete={handleComplete}
                 onCancel={onCancel}
-                completeLabel="Create Import"
+                completeLabel={i18n._(IMPORT_WIZARD_TRANSLATION_IDS.CREATE_IMPORT)}
                 completeIcon={Play}
                 isSubmitting={isSubmitting}
             />

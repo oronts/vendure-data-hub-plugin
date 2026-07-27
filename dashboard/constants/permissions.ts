@@ -8,6 +8,7 @@ export const DATAHUB_PERMISSIONS = {
     // Secret CRUD permissions
     CREATE_SECRET: 'CreateDataHubSecret',
     READ_SECRET: 'ReadDataHubSecret',
+    USE_SECRET: 'UseDataHubSecret',
     UPDATE_SECRET: 'UpdateDataHubSecret',
     DELETE_SECRET: 'DeleteDataHubSecret',
 
@@ -20,6 +21,7 @@ export const DATAHUB_PERMISSIONS = {
     // Configuration management permissions
     MANAGE_ADAPTERS: 'ManageDataHubAdapters',
     MANAGE_CONNECTIONS: 'ManageDataHubConnections',
+    USE_CONNECTION: 'UseDataHubConnection',
     UPDATE_SETTINGS: 'UpdateDataHubSettings',
 
     // Quarantine/error handling permissions (using consistent naming)

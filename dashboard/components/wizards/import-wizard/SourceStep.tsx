@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useLingui } from '@lingui/react';
 import {
     Button,
     Card,
@@ -28,11 +29,16 @@ import { SelectableCard, SelectableCardGrid } from '../../shared/selectable-card
 import { FileDropzone } from '../../shared/file-dropzone';
 import { STEP_CONTENT, IMPORT_PLACEHOLDERS } from './constants';
 import { getErrorMessage } from '../../../../shared';
-import { TOAST_WIZARD, TOAST_CONNECTION, TEST_STATUS } from '../../../constants';
-import { useOptionValues } from '../../../hooks/api/use-config-options';
+import {
+    IMPORT_WIZARD_TRANSLATION_IDS,
+    TEST_STATUS,
+} from '../../../constants';
+import { FILE_FORMAT_REGISTRY } from '../../../constants/file-format-registry';
+import { useFileFormats, useOptionValues } from '../../../hooks/api/use-config-options';
+import { previewExtract } from '../../../hooks/api/use-step-tester';
 import { validateUrl } from '../../../utils/form-validation';
-import { useConnections } from '../../../hooks/api/use-connections';
 import { useAdaptersByType } from '../../../hooks/api/use-adapters';
+import { useAdapterCatalog } from '../../../hooks/use-adapter-catalog';
 import { SchemaFormRenderer } from '../../shared/schema-form/SchemaFormRenderer';
 import type {
     ImportConfiguration,
@@ -40,11 +46,24 @@ import type {
     FileFormat,
     ApiMethod,
 } from './types';
+import {
+    isImportSourceAvailable,
+    mergeApiSourceConfig,
+    mergeFileSourceConfig,
+} from './source-config';
 
 /** Smart sources with custom, hand-built UIs (FILE has FileDropzone, API has HeadersEditor). */
 const SMART_SOURCES = [
-    { id: 'FILE', label: 'File Upload', description: 'CSV, Excel, JSON, XML' },
-    { id: 'API', label: 'REST API', description: 'Fetch from HTTP endpoint' },
+    {
+        id: 'FILE',
+        label: IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_FILE_UPLOAD,
+        description: IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_FILE_UPLOAD_DESCRIPTION,
+    },
+    {
+        id: 'API',
+        label: IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_REST_API,
+        description: IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_REST_API_DESCRIPTION,
+    },
 ] as const;
 
 /**
@@ -60,7 +79,7 @@ const SMART_SOURCE_ICONS: Record<string, LucideIcon> = {
  * Extractor adapter codes that map to the smart source UIs above.
  * 'file' extractor is handled by the FILE smart source (FileDropzone + format selection).
  */
-const SMART_SOURCE_CODES = new Set(['csv', 'json', 'httpApi', 'file']);
+const SMART_SOURCE_CODES = new Set(['csv', 'json', 'xml', 'xlsx', 'httpApi', 'file']);
 
 /**
  * Resolve the backend extractor adapter code for a given wizard source type.
@@ -82,6 +101,7 @@ interface SourceStepProps {
     setUploadedFile: (file: File | null) => void;
     isParsing: boolean;
     errors?: Record<string, string>;
+    canManageFiles: boolean;
 }
 
 /** Timeout in milliseconds for the API connection test. */
@@ -89,6 +109,17 @@ const API_TEST_TIMEOUT_MS = 10_000;
 
 /** Number of placeholder cards shown while extractors are loading. */
 const LOADING_CARD_COUNT = 6;
+
+const FILE_SOURCE_FIELD_IDS = {
+    FORMAT_LABEL: 'import-source-file-format-label',
+    DELIMITER: 'import-source-file-delimiter',
+    CSV_HEADERS: 'import-source-file-csv-headers',
+    ITEMS_PATH: 'import-source-file-items-path',
+    RECORD_PATH: 'import-source-file-record-path',
+    ATTRIBUTE_PREFIX: 'import-source-file-attribute-prefix',
+    SHEET: 'import-source-file-sheet',
+    XLSX_HEADERS: 'import-source-file-xlsx-headers',
+} as const;
 
 /**
  * Resolve the display icon for a source type.
@@ -115,8 +146,15 @@ export function SourceStep({
     setUploadedFile,
     isParsing,
     errors = {},
+    canManageFiles,
 }: SourceStepProps) {
+    const { i18n } = useLingui();
     const { data: extractors, isLoading: isLoadingExtractors } = useAdaptersByType('EXTRACTOR');
+    const smartSources = React.useMemo(
+        () => SMART_SOURCES.filter(source =>
+            isImportSourceAvailable(source.id, canManageFiles)),
+        [canManageFiles],
+    );
 
     // Dynamic sources from backend (everything except smart sources and wizard-hidden extractors).
     // Each dynamic source carries its backend-provided icon name resolved via resolveIconName().
@@ -125,7 +163,7 @@ export function SourceStep({
         return extractors
             .filter(e => !SMART_SOURCE_CODES.has(e.code) && e.wizardHidden !== true)
             .map(e => ({
-                id: e.code.toUpperCase(),
+                id: e.code,
                 label: e.name ?? e.code,
                 description: e.description ?? '',
                 iconName: e.icon ?? undefined,
@@ -134,29 +172,35 @@ export function SourceStep({
 
     const allSources = React.useMemo(
         () => [
-            ...SMART_SOURCES.map(s => ({ ...s, iconName: undefined as string | undefined })),
+            ...smartSources.map(source => ({
+                ...source,
+                label: i18n._(source.label),
+                description: i18n._(source.description),
+                iconName: undefined as string | undefined,
+            })),
             ...dynamicSources,
         ],
-        [dynamicSources],
+        [dynamicSources, i18n, smartSources],
     );
 
-    const isSchemaSource = config.source?.type
-        && config.source.type !== SOURCE_TYPE.FILE
-        && config.source.type !== SOURCE_TYPE.API;
+    const schemaSourceType = config.source?.type;
+    const isSchemaSource = schemaSourceType
+        && schemaSourceType !== SOURCE_TYPE.FILE
+        && schemaSourceType !== SOURCE_TYPE.API;
 
     return (
         <WizardStepContainer
-            title={STEP_CONTENT.source.title}
-            description={STEP_CONTENT.source.description}
+            title={i18n._(STEP_CONTENT.source.title)}
+            description={i18n._(STEP_CONTENT.source.description)}
         >
             {isLoadingExtractors ? (
                 <SelectableCardGrid columns={4}>
-                    {SMART_SOURCES.map(type => (
+                    {smartSources.map(type => (
                         <SelectableCard
                             key={type.id}
                             icon={SMART_SOURCE_ICONS[type.id] ?? Database}
-                            title={type.label}
-                            description={type.description}
+                            title={i18n._(type.label)}
+                            description={i18n._(type.description)}
                             selected={config.source?.type === type.id}
                             onClick={() => updateConfig({
                                 source: { type: type.id as SourceType },
@@ -191,7 +235,7 @@ export function SourceStep({
                 </SelectableCardGrid>
             )}
 
-            {config.source?.type === SOURCE_TYPE.FILE && (
+            {canManageFiles && config.source?.type === SOURCE_TYPE.FILE && (
                 <FileUploadConfig
                     config={config}
                     updateConfig={updateConfig}
@@ -205,12 +249,12 @@ export function SourceStep({
                 <ApiConfig config={config} updateConfig={updateConfig} />
             )}
 
-            {isSchemaSource && (
+            {isSchemaSource && schemaSourceType && (
                 <AdapterConfigForm
-                    adapterCode={getAdapterCodeForSourceType(config.source!.type!, extractors)}
+                    adapterCode={getAdapterCodeForSourceType(schemaSourceType, extractors)}
                     config={config}
                     updateConfig={updateConfig}
-                    configKey={`${config.source!.type!.toLowerCase()}Config`}
+                    configKey={`${schemaSourceType.toLowerCase()}Config`}
                     errors={errors}
                 />
             )}
@@ -233,22 +277,39 @@ function FileUploadConfig({
     setUploadedFile,
     isParsing,
 }: FileUploadConfigProps) {
+    const { i18n } = useLingui();
     const { options: delimiterOptions } = useOptionValues('csvDelimiters');
-    const { options: fileFormats } = useOptionValues('fileFormats');
+    const { options: fileFormats } = useFileFormats();
     const allowedFileTypes = React.useMemo(
-        () => fileFormats.length > 0 ? fileFormats.map(f => f.value) : Object.values(FILE_FORMAT),
+        () => fileFormats.length > 0
+            ? fileFormats
+                .map(format => format.value)
+                .filter(value => FILE_FORMAT_REGISTRY.has(value))
+            : Array.from(FILE_FORMAT_REGISTRY.keys()),
         [fileFormats],
+    );
+    const updateFileConfig = React.useCallback(
+        (updates: Parameters<typeof mergeFileSourceConfig>[1]) => {
+            updateConfig({ source: mergeFileSourceConfig(config.source, updates) });
+        },
+        [config.source, updateConfig],
     );
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>File Configuration</CardTitle>
+                <CardTitle>{i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_FILE_CONFIGURATION)}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
                 <div>
-                    <Label className="mb-2 block">File Format</Label>
-                    <div className="flex gap-2">
+                    <Label id={FILE_SOURCE_FIELD_IDS.FORMAT_LABEL} className="mb-2 block">
+                        {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_FILE_FORMAT)}
+                    </Label>
+                    <div
+                        className="flex gap-2"
+                        role="group"
+                        aria-labelledby={FILE_SOURCE_FIELD_IDS.FORMAT_LABEL}
+                    >
                         {fileFormats.map(format => {
                             const Icon = resolveIconName(format.icon) ?? FileText;
                             const isSelected = config.source?.fileConfig?.format === format.value;
@@ -257,15 +318,9 @@ function FileUploadConfig({
                                 <Button
                                     key={format.value}
                                     variant={isSelected ? 'default' : 'outline'}
-                                    onClick={() => updateConfig({
-                                        source: {
-                                            ...config.source!,
-                                            fileConfig: {
-                                                ...config.source?.fileConfig,
-                                                format: format.value as FileFormat,
-                                                hasHeaders: true,
-                                            },
-                                        },
+                                    onClick={() => updateFileConfig({
+                                        format: format.value as FileFormat,
+                                        hasHeaders: true,
                                     })}
                                 >
                                     <Icon className="w-4 h-4 mr-2" />
@@ -277,19 +332,16 @@ function FileUploadConfig({
                 </div>
 
                 {config.source?.fileConfig?.format === FILE_FORMAT.CSV && (
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
-                            <Label>Delimiter</Label>
+                            <Label htmlFor={FILE_SOURCE_FIELD_IDS.DELIMITER}>
+                                {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_DELIMITER)}
+                            </Label>
                             <Select
                                 value={config.source.fileConfig.delimiter ?? ','}
-                                onValueChange={delimiter => updateConfig({
-                                    source: {
-                                        ...config.source!,
-                                        fileConfig: { ...config.source?.fileConfig!, delimiter },
-                                    },
-                                })}
+                                onValueChange={delimiter => updateFileConfig({ delimiter })}
                             >
-                                <SelectTrigger>
+                                <SelectTrigger id={FILE_SOURCE_FIELD_IDS.DELIMITER}>
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -301,19 +353,83 @@ function FileUploadConfig({
                         </div>
                         <div className="flex items-center gap-3">
                             <Switch
+                                id={FILE_SOURCE_FIELD_IDS.CSV_HEADERS}
                                 checked={config.source.fileConfig.hasHeaders ?? true}
-                                onCheckedChange={hasHeaders => updateConfig({
-                                    source: {
-                                        ...config.source!,
-                                        fileConfig: { ...config.source?.fileConfig!, hasHeaders },
-                                    },
-                                })}
+                                onCheckedChange={hasHeaders => updateFileConfig({ hasHeaders })}
                             />
-                            <Label>First row contains headers</Label>
+                            <Label htmlFor={FILE_SOURCE_FIELD_IDS.CSV_HEADERS}>
+                                {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_FIRST_ROW_HEADERS)}
+                            </Label>
                         </div>
                     </div>
                 )}
 
+                {config.source?.fileConfig?.format === FILE_FORMAT.JSON && (
+                    <div>
+                        <Label htmlFor={FILE_SOURCE_FIELD_IDS.ITEMS_PATH}>
+                            {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_ITEMS_PATH)}
+                        </Label>
+                        <Input
+                            id={FILE_SOURCE_FIELD_IDS.ITEMS_PATH}
+                            value={config.source.fileConfig.itemsPath ?? ''}
+                            onChange={event => updateFileConfig({ itemsPath: event.target.value })}
+                            placeholder={IMPORT_PLACEHOLDERS.jsonItemsPath}
+                        />
+                    </div>
+                )}
+
+                {config.source?.fileConfig?.format === FILE_FORMAT.XML && (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <Label htmlFor={FILE_SOURCE_FIELD_IDS.RECORD_PATH}>
+                                {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_RECORD_PATH)}
+                            </Label>
+                            <Input
+                                id={FILE_SOURCE_FIELD_IDS.RECORD_PATH}
+                                value={config.source.fileConfig.recordPath ?? ''}
+                                onChange={event => updateFileConfig({ recordPath: event.target.value })}
+                                placeholder={IMPORT_PLACEHOLDERS.xmlRecordPath}
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor={FILE_SOURCE_FIELD_IDS.ATTRIBUTE_PREFIX}>
+                                {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_ATTRIBUTE_PREFIX)}
+                            </Label>
+                            <Input
+                                id={FILE_SOURCE_FIELD_IDS.ATTRIBUTE_PREFIX}
+                                value={config.source.fileConfig.attributePrefix ?? ''}
+                                onChange={event => updateFileConfig({ attributePrefix: event.target.value })}
+                                placeholder={IMPORT_PLACEHOLDERS.xmlAttributePrefix}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {config.source?.fileConfig?.format === FILE_FORMAT.XLSX && (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <Label htmlFor={FILE_SOURCE_FIELD_IDS.SHEET}>
+                                {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_SHEET_NAME_OR_INDEX)}
+                            </Label>
+                            <Input
+                                id={FILE_SOURCE_FIELD_IDS.SHEET}
+                                value={config.source.fileConfig.sheetName ?? ''}
+                                onChange={event => updateFileConfig({ sheetName: event.target.value })}
+                                placeholder={IMPORT_PLACEHOLDERS.xlsxSheet}
+                            />
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <Switch
+                                id={FILE_SOURCE_FIELD_IDS.XLSX_HEADERS}
+                                checked={config.source.fileConfig.hasHeaders ?? true}
+                                onCheckedChange={hasHeaders => updateFileConfig({ hasHeaders })}
+                            />
+                            <Label htmlFor={FILE_SOURCE_FIELD_IDS.XLSX_HEADERS}>
+                                {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_FIRST_ROW_HEADERS)}
+                            </Label>
+                        </div>
+                    </div>
+                )}
                 <FileDropzone
                     onFileSelect={setUploadedFile}
                     allowedTypes={allowedFileTypes}
@@ -336,82 +452,64 @@ interface SourceConfigProps {
 type ApiConfigProps = SourceConfigProps;
 
 function ApiConfig({ config, updateConfig }: ApiConfigProps) {
+    const { i18n } = useLingui();
     const { options: methods } = useOptionValues('httpMethods');
     const [testStatus, setTestStatus] = React.useState<typeof TEST_STATUS[keyof typeof TEST_STATUS]>(TEST_STATUS.IDLE);
+    const updateApiConfig = React.useCallback(
+        (updates: Parameters<typeof mergeApiSourceConfig>[1]) => {
+            updateConfig({ source: mergeApiSourceConfig(config.source, updates) });
+        },
+        [config.source, updateConfig],
+    );
 
     const handleTestConnection = async () => {
         const url = config.source?.apiConfig?.url;
         if (!url) {
-            toast.error(TOAST_WIZARD.URL_REQUIRED);
+            toast.error(i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TOAST_URL_REQUIRED));
             return;
         }
 
-        const urlError = validateUrl(url, 'API URL');
+        const urlError = validateUrl(url, i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_URL));
         if (urlError) {
-            toast.error(urlError.message);
+            toast.error(i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TOAST_INVALID_URL));
             return;
         }
 
         setTestStatus(TEST_STATUS.TESTING);
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), API_TEST_TIMEOUT_MS);
         try {
-            const method = config.source?.apiConfig?.method ?? 'GET';
-            const headers = config.source?.apiConfig?.headers ?? {};
-
-            const response = await fetch(url, {
-                method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...headers,
+            await previewExtract({
+                config: {
+                    adapterCode: 'httpApi',
+                    ...config.source?.apiConfig,
+                    timeoutMs: API_TEST_TIMEOUT_MS,
                 },
-                mode: 'cors',
-                signal: controller.signal,
-            });
-
-            if (response.ok) {
-                setTestStatus(TEST_STATUS.SUCCESS);
-                toast.success(TOAST_CONNECTION.TEST_SUCCESS);
-            } else {
-                setTestStatus(TEST_STATUS.ERROR);
-                toast.error(TOAST_CONNECTION.TEST_FAILED, {
-                    description: `${response.status} ${response.statusText}`,
-                });
-            }
+            }, 1);
+            setTestStatus(TEST_STATUS.SUCCESS);
+            toast.success(i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TOAST_CONNECTION_SUCCESS));
         } catch (err) {
             setTestStatus(TEST_STATUS.ERROR);
-            const message = err instanceof DOMException && err.name === 'AbortError'
-                ? `Request timed out after ${API_TEST_TIMEOUT_MS / 1000} seconds`
-                : err instanceof TypeError
-                    ? 'Network error - this may be caused by CORS restrictions on the target server'
-                    : getErrorMessage(err);
-            toast.error(TOAST_CONNECTION.TEST_FAILED, {
-                description: message,
+            toast.error(i18n._(IMPORT_WIZARD_TRANSLATION_IDS.TOAST_CONNECTION_FAILED), {
+                description: getErrorMessage(err),
             });
-        } finally {
-            clearTimeout(timeoutId);
         }
     };
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>API Configuration</CardTitle>
+                <CardTitle>{i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_API_CONFIGURATION)}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                     <div>
-                        <Label>Method</Label>
+                        <Label htmlFor="import-source-api-method">
+                            {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_METHOD)}
+                        </Label>
                         <Select
                             value={config.source?.apiConfig?.method ?? 'GET'}
-                            onValueChange={method => updateConfig({
-                                source: {
-                                    ...config.source!,
-                                    apiConfig: { ...config.source?.apiConfig, method: method as ApiMethod, url: config.source?.apiConfig?.url ?? '' },
-                                },
-                            })}
+                            onValueChange={method => updateApiConfig({ method: method as ApiMethod })}
                         >
-                            <SelectTrigger>
+                            <SelectTrigger id="import-source-api-method">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -421,16 +519,15 @@ function ApiConfig({ config, updateConfig }: ApiConfigProps) {
                             </SelectContent>
                         </Select>
                     </div>
-                    <div className="col-span-3">
-                        <Label>URL</Label>
+                    <div className="md:col-span-3">
+                        <Label htmlFor="import-source-api-url">
+                            {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_URL)}
+                        </Label>
                         <Input
+                            id="import-source-api-url"
+                            type="url"
                             value={config.source?.apiConfig?.url ?? ''}
-                            onChange={e => updateConfig({
-                                source: {
-                                    ...config.source!,
-                                    apiConfig: { ...config.source?.apiConfig, url: e.target.value, method: config.source?.apiConfig?.method ?? 'GET' },
-                                },
-                            })}
+                            onChange={e => updateApiConfig({ url: e.target.value })}
                             placeholder={IMPORT_PLACEHOLDERS.apiUrl}
                         />
                     </div>
@@ -438,12 +535,7 @@ function ApiConfig({ config, updateConfig }: ApiConfigProps) {
 
                 <HeadersEditor
                     headers={config.source?.apiConfig?.headers ?? {}}
-                    onChange={(headers) => updateConfig({
-                        source: {
-                            ...config.source!,
-                            apiConfig: { ...config.source?.apiConfig!, headers },
-                        },
-                    })}
+                    onChange={headers => updateApiConfig({ headers })}
                 />
 
                 <Button
@@ -460,7 +552,9 @@ function ApiConfig({ config, updateConfig }: ApiConfigProps) {
                     ) : (
                         <Play className="w-4 h-4 mr-2" />
                     )}
-                    {testStatus === TEST_STATUS.TESTING ? 'Testing...' : 'Test Connection'}
+                    {testStatus === TEST_STATUS.TESTING
+                        ? i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_TESTING)
+                        : i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_TEST_CONNECTION)}
                 </Button>
             </CardContent>
         </Card>
@@ -470,7 +564,7 @@ function ApiConfig({ config, updateConfig }: ApiConfigProps) {
 /**
  * Generic adapter config form driven by the backend adapter schema.
  * Used for DATABASE, CDC, WEBHOOK, and any future extractor types.
- * The schema comes from the backend registry via `useAdaptersByType('EXTRACTOR')`.
+ * The schema comes from the normalized backend adapter catalog.
  */
 function AdapterConfigForm({ adapterCode, config, updateConfig, configKey, errors = {} }: {
     adapterCode: string;
@@ -479,17 +573,16 @@ function AdapterConfigForm({ adapterCode, config, updateConfig, configKey, error
     configKey: string;
     errors?: Record<string, string>;
 }) {
-    const { data: extractors } = useAdaptersByType('EXTRACTOR');
-    const { data: connectionsData } = useConnections();
+    const { i18n } = useLingui();
+    const {
+        adapters,
+        isLoading,
+        error,
+    } = useAdapterCatalog();
 
     const adapter = React.useMemo(
-        () => extractors?.find(a => a.code === adapterCode),
-        [extractors, adapterCode]
-    );
-
-    const connectionCodes = React.useMemo(
-        () => (connectionsData?.items ?? []).map(c => c.code),
-        [connectionsData]
+        () => adapters.find(candidate => candidate.type === 'EXTRACTOR' && candidate.code === adapterCode),
+        [adapters, adapterCode],
     );
 
     const values = ((config.source as Record<string, unknown> | undefined)?.[configKey] ?? {}) as Record<string, unknown>;
@@ -503,11 +596,21 @@ function AdapterConfigForm({ adapterCode, config, updateConfig, configKey, error
         });
     }, [config.source, configKey, updateConfig]);
 
-    if (!adapter?.schema) {
+    if (isLoading) {
         return (
             <Card>
                 <CardContent className="py-8 text-center text-muted-foreground">
-                    Loading adapter configuration...
+                    {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_LOADING_ADAPTER_CONFIGURATION)}
+                </CardContent>
+            </Card>
+        );
+    }
+
+    if (error || !adapter) {
+        return (
+            <Card>
+                <CardContent className="py-8 text-center text-destructive">
+                    {i18n._(IMPORT_WIZARD_TRANSLATION_IDS.SOURCE_ADAPTER_CONFIGURATION_ERROR)}
                 </CardContent>
             </Card>
         );
@@ -526,7 +629,6 @@ function AdapterConfigForm({ adapterCode, config, updateConfig, configKey, error
                     schema={adapter.schema}
                     values={values}
                     onChange={handleChange}
-                    connectionCodes={connectionCodes}
                     errors={errors}
                 />
             </CardContent>
