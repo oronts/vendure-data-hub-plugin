@@ -1,20 +1,26 @@
-import { Injectable, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
+import { Injectable, OnApplicationBootstrap, OnModuleDestroy, Optional } from '@nestjs/common';
 import { RequestContextService, TransactionalConnection, ID } from '@vendure/core';
 import { In } from 'typeorm';
-import { Pipeline, PipelineRun } from '../../entities/pipeline';
+import { PipelineRun } from '../../entities/pipeline';
 import { PipelineService } from '../../services/pipeline/pipeline.service';
 import { RuntimeConfigService } from '../../services/runtime/runtime-config.service';
 import { DistributedLockService } from '../../services/runtime/distributed-lock.service';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { DomainEventsService } from '../../services/events/domain-events.service';
-import { LOGGER_CONTEXTS, DISTRIBUTED_LOCK } from '../../constants/index';
+import { LOGGER_CONTEXTS } from '../../constants/index';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { RunStatus, PipelineDefinition, JsonObject } from '../../types/index';
-import { PipelineStatus, TriggerType, TIMER_TYPE, TimerType } from '../../constants/enums';
+import { TriggerType, TIMER_TYPE, TimerType } from '../../constants/enums';
 import { findEnabledTriggersByType } from '../../utils';
 import { ScheduledTimer } from '../types';
 import { cronMatches, isValidTimezone } from '../processors/cron-processor';
 import type { SchedulerConfig } from '../../types/plugin-options';
+import { ConfigSyncService } from '../../bootstrap/seed-data';
+import {
+    type ActivePipelineDefinition,
+    loadRunnablePipelineDefinitions,
+} from '../../services/pipeline/active-pipeline-definitions';
+import { PipelineRevisionMismatchError } from '../../services/pipeline/pipeline-policy';
 
 interface ScheduleTriggerConfigParsed {
     type: typeof TriggerType.SCHEDULE;
@@ -39,6 +45,33 @@ interface LogMetadata {
     [key: string]: string | number | boolean | undefined;
 }
 
+interface ScheduleOccurrence {
+    readonly key: string;
+    readonly leaseTtlMs: number;
+}
+
+const CRON_OCCURRENCE_MS = 60_000;
+
+function getScheduleOccurrence(
+    triggerType: Exclude<TimerType, typeof TIMER_TYPE.REFRESH>,
+    occurredAtMs: number,
+    intervalMs?: number,
+): ScheduleOccurrence {
+    const durationMs = triggerType === TIMER_TYPE.CRON
+        ? CRON_OCCURRENCE_MS
+        : intervalMs;
+    if (!durationMs || durationMs < 1 || !Number.isFinite(durationMs)) {
+        throw new Error('A finite positive interval is required for interval schedule occurrences');
+    }
+
+    const bucket = Math.floor(occurredAtMs / durationMs);
+    const occurrenceEndsAt = (bucket + 1) * durationMs;
+    return {
+        key: `${triggerType.toLowerCase()}:${bucket}`,
+        leaseTtlMs: Math.max(1, occurrenceEndsAt - occurredAtMs),
+    };
+}
+
 /**
  * DataHub Schedule Handler
  *
@@ -50,7 +83,7 @@ interface LogMetadata {
  * - Preventing concurrent runs of the same pipeline (concurrency control)
  */
 @Injectable()
-export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
+export class DataHubScheduleHandler implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly logger: DataHubLogger;
     private readonly schedulerConfig: Required<SchedulerConfig>;
     private timers: ScheduledTimer[] = [];
@@ -61,16 +94,13 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
     private isDestroying = false;
     /** Track consecutive failures per pipeline for circuit breaker pattern */
     private failureCountByPipeline = new Map<string, number>();
-    /** Maximum consecutive failures before pausing a pipeline's schedule */
-    private readonly maxConsecutiveFailures = 5;
-    /** Safety cap for tracking maps to prevent unbounded memory growth */
-    private readonly maxTrackingEntries = 1000;
 
     constructor(
         private connection: TransactionalConnection,
         private requestContextService: RequestContextService,
         private pipelineService: PipelineService,
         private runtimeConfigService: RuntimeConfigService,
+        private configSync: ConfigSyncService,
         private domainEvents: DomainEventsService,
         loggerFactory: DataHubLoggerFactory,
         @Optional() private distributedLock?: DistributedLockService,
@@ -79,11 +109,15 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         this.schedulerConfig = this.runtimeConfigService.getSchedulerConfig();
     }
 
-    async onModuleInit(): Promise<void> {
+    async onApplicationBootstrap(): Promise<void> {
+        await this.configSync.ensureSynchronized();
         const initMetadata: LogMetadata = {
             checkIntervalMs: this.schedulerConfig.checkIntervalMs,
             refreshIntervalMs: this.schedulerConfig.refreshIntervalMs,
             minIntervalMs: this.schedulerConfig.minIntervalMs,
+            maxPipelineDiscovery: this.schedulerConfig.maxPipelineDiscovery,
+            maxTrackingEntries: this.schedulerConfig.maxTrackingEntries,
+            maxConsecutiveFailures: this.schedulerConfig.maxConsecutiveFailures,
         };
         this.logger.info('Initializing schedule handler', initMetadata);
         try {
@@ -147,33 +181,32 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
 
         try {
             const existingCount = this.timers.filter(t => t.type !== TIMER_TYPE.REFRESH).length;
-
-            for (const timer of this.timers.filter(t => t.type !== TIMER_TYPE.REFRESH)) {
-                clearInterval(timer.handle);
-            }
-            this.timers = this.timers.filter(t => t.type === TIMER_TYPE.REFRESH);
-
             const ctx = await this.requestContextService.create({ apiType: 'admin' });
-            const repo = this.connection.getRepository(ctx, Pipeline);
-            const allPipelines = await repo.find();
+            const allPipelines = await loadRunnablePipelineDefinitions(
+                this.connection,
+                ctx,
+                this.schedulerConfig.maxPipelineDiscovery,
+            );
 
             let scheduledCount = 0;
             let skippedDueToFailures = 0;
+            let skippedDueToTrackingLimit = 0;
+            const desiredTimerKeys = new Set<string>();
+            const activatedPipelineCodes = new Set<string>();
+            const retainedFailureCodes = new Set<string>();
 
             for (const pipeline of allPipelines) {
-                if (!pipeline.enabled) continue;
-                if (pipeline.status !== PipelineStatus.PUBLISHED) continue;
-
                 const definition = pipeline.definition as PipelineDefinition;
                 const scheduleTriggers = findEnabledTriggersByType(definition, TriggerType.SCHEDULE);
                 if (scheduleTriggers.length === 0) continue;
 
                 const failureCount = this.failureCountByPipeline.get(pipeline.code) ?? 0;
-                if (failureCount >= this.maxConsecutiveFailures) {
+                if (failureCount >= this.schedulerConfig.maxConsecutiveFailures) {
+                    retainedFailureCodes.add(pipeline.code);
                     const circuitBreakerMetadata: LogMetadata = {
                         pipelineCode: pipeline.code,
                         failureCount,
-                        maxAllowed: this.maxConsecutiveFailures,
+                        maxAllowed: this.schedulerConfig.maxConsecutiveFailures,
                     };
                     this.logger.warn('Pipeline schedule paused due to consecutive failures (circuit breaker)', circuitBreakerMetadata);
                     skippedDueToFailures++;
@@ -189,35 +222,110 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                     const hasCron = config.cron !== null && config.cron.trim().length > 0;
 
                     if (hasInterval && hasCron) {
-                        const warnMetadata: LogMetadata = { pipelineCode: pipeline.code, triggerKey };
-                        this.logger.warn('Schedule trigger has both interval and cron configured, using cron only', warnMetadata);
-                        this.setupCronSchedule(pipeline, config, triggerKey);
-                        scheduledCount++;
+                        this.logger.error('Schedule trigger has both interval and cron configured and was not activated', undefined, {
+                            pipelineCode: pipeline.code,
+                            triggerKey,
+                        });
                     } else if (hasInterval) {
-                        this.setupIntervalSchedule(pipeline, config, triggerKey);
+                        const effectiveIntervalMs = this.getEffectiveIntervalMs(config);
+                        const signature = [
+                            pipeline.id,
+                            pipeline.revisionId,
+                            TIMER_TYPE.INTERVAL,
+                            effectiveIntervalMs,
+                        ].join(':');
+                        const timerKey = this.getTimerKey(
+                            pipeline.code,
+                            triggerKey,
+                            TIMER_TYPE.INTERVAL,
+                        );
+                        if (!this.reserveScheduleSlot(desiredTimerKeys, timerKey)) {
+                            skippedDueToTrackingLimit++;
+                            continue;
+                        }
+                        retainedFailureCodes.add(pipeline.code);
+                        if (!this.hasTimer(timerKey, signature)) {
+                            this.removeTimer(timerKey);
+                            this.setupIntervalSchedule(
+                                pipeline,
+                                config,
+                                triggerKey,
+                                signature,
+                            );
+                            activatedPipelineCodes.add(pipeline.code);
+                        }
                         scheduledCount++;
                     } else if (hasCron) {
-                        this.setupCronSchedule(pipeline, config, triggerKey);
-                        scheduledCount++;
+                        const signature = [
+                            pipeline.id,
+                            pipeline.revisionId,
+                            TIMER_TYPE.CRON,
+                            config.cron,
+                            config.timezone,
+                            this.schedulerConfig.checkIntervalMs,
+                        ].join(':');
+                        const timerKey = this.getTimerKey(
+                            pipeline.code,
+                            triggerKey,
+                            TIMER_TYPE.CRON,
+                        );
+                        if (!this.reserveScheduleSlot(desiredTimerKeys, timerKey)) {
+                            skippedDueToTrackingLimit++;
+                            continue;
+                        }
+                        retainedFailureCodes.add(pipeline.code);
+                        if (this.hasTimer(timerKey, signature)) {
+                            scheduledCount++;
+                        } else {
+                            this.removeTimer(timerKey);
+                            if (this.setupCronSchedule(
+                                pipeline,
+                                config,
+                                triggerKey,
+                                signature,
+                            )) {
+                                activatedPipelineCodes.add(pipeline.code);
+                                scheduledCount++;
+                            } else {
+                                desiredTimerKeys.delete(timerKey);
+                            }
+                        }
+                    } else {
+                        this.logger.error('Schedule trigger has no executable cron or interval', undefined, {
+                            pipelineCode: pipeline.code,
+                            triggerKey,
+                        });
                     }
                 }
             }
 
+            for (const timer of [...this.timers]) {
+                if (timer.type === TIMER_TYPE.REFRESH) continue;
+                const timerKey = this.getTimerKey(
+                    timer.code,
+                    timer.triggerKey,
+                    timer.type,
+                );
+                if (!desiredTimerKeys.has(timerKey)) {
+                    clearInterval(timer.handle);
+                    this.timers = this.timers.filter(candidate => candidate !== timer);
+                }
+            }
+
             const activeTimers = this.timers.filter(t => t.type !== TIMER_TYPE.REFRESH);
-            const activePipelineCodes = new Set<string>(activeTimers.map(t => t.code));
             const activeCronKeys = new Set<string>(
                 activeTimers
                     .filter(t => t.type === TIMER_TYPE.CRON && t.triggerKey)
                     .map(t => `${t.code}:${t.triggerKey}`)
             );
             const cleanedCronKeys = this.cleanupStaleCronKeys(activeCronKeys);
-            const cleanedFailureCounts = this.cleanupStaleFailureCounts(activePipelineCodes);
+            const cleanedFailureCounts = this.cleanupStaleFailureCounts(retainedFailureCodes);
 
             const refreshDurationMs = Date.now() - refreshStartTime;
 
             // Publish ScheduleActivated for newly scheduled pipelines (one per unique pipeline code)
-            if (scheduledCount > 0 && scheduledCount !== existingCount) {
-                for (const code of activePipelineCodes) {
+            if (activatedPipelineCodes.size > 0) {
+                for (const code of activatedPipelineCodes) {
                     this.domainEvents.publishScheduleActivated(
                         undefined,
                         code,
@@ -226,10 +334,28 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                 }
             }
 
-            if (scheduledCount > 0 || existingCount > 0 || cleanedCronKeys > 0 || skippedDueToFailures > 0) {
+            if (skippedDueToTrackingLimit > 0) {
+                this.logger.error(
+                    'Schedule tracking limit reached; excess schedules were not activated',
+                    undefined,
+                    {
+                        maxTrackingEntries: this.schedulerConfig.maxTrackingEntries,
+                        skippedSchedules: skippedDueToTrackingLimit,
+                    },
+                );
+            }
+
+            if (
+                scheduledCount > 0
+                || existingCount > 0
+                || cleanedCronKeys > 0
+                || skippedDueToFailures > 0
+                || skippedDueToTrackingLimit > 0
+            ) {
                 const refreshMetadata: LogMetadata = {
                     recordCount: scheduledCount,
                     skippedDueToCircuitBreaker: skippedDueToFailures,
+                    skippedDueToTrackingLimit,
                     cleanedCronKeys,
                     cleanedFailureCounts,
                     activeCronKeyCount: this.lastCronKeyByPipeline.size,
@@ -303,7 +429,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
 
         const activeRun = await runRepo.findOne({
             where: {
-                pipelineId: Number(pipelineId),
+                pipelineId,
                 status: In([RunStatus.RUNNING, RunStatus.PENDING, RunStatus.PAUSED]),
             },
         });
@@ -311,9 +437,90 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         return !!activeRun;
     }
 
-    private setupIntervalSchedule(pipeline: Pipeline, config: ScheduleTriggerConfigParsed, triggerKey: string): void {
+    private getEffectiveIntervalMs(config: ScheduleTriggerConfigParsed): number {
         const intervalSec = Math.max(1, config.intervalSec ?? 1);
-        const effectiveIntervalMs = Math.max(this.schedulerConfig.minIntervalMs, intervalSec * 1000);
+        return Math.max(this.schedulerConfig.minIntervalMs, intervalSec * 1000);
+    }
+
+    private getTimerKey(
+        code: string,
+        triggerKey: string | undefined,
+        type: TimerType,
+    ): string {
+        return `${code}:${triggerKey ?? ''}:${type}`;
+    }
+
+    private hasTimer(timerKey: string, signature: string): boolean {
+        return this.timers.some(timer => (
+            timer.type !== TIMER_TYPE.REFRESH
+            && this.getTimerKey(timer.code, timer.triggerKey, timer.type) === timerKey
+            && timer.signature === signature
+        ));
+    }
+
+    private removeTimer(timerKey: string): void {
+        for (const timer of [...this.timers]) {
+            if (
+                timer.type !== TIMER_TYPE.REFRESH
+                && this.getTimerKey(timer.code, timer.triggerKey, timer.type) === timerKey
+            ) {
+                clearInterval(timer.handle);
+                this.timers = this.timers.filter(candidate => candidate !== timer);
+            }
+        }
+    }
+
+    private removePipelineTimers(code: string): void {
+        for (const timer of [...this.timers]) {
+            if (timer.type !== TIMER_TYPE.REFRESH && timer.code === code) {
+                clearInterval(timer.handle);
+                this.timers = this.timers.filter(candidate => candidate !== timer);
+            }
+        }
+    }
+
+    private reserveScheduleSlot(
+        desiredTimerKeys: Set<string>,
+        timerKey: string,
+    ): boolean {
+        if (desiredTimerKeys.has(timerKey)) return true;
+        if (desiredTimerKeys.size >= this.schedulerConfig.maxTrackingEntries) {
+            return false;
+        }
+        desiredTimerKeys.add(timerKey);
+        return true;
+    }
+
+    private recordCronMinute(cronTrackingKey: string, minuteKey: string): boolean {
+        if (
+            !this.lastCronKeyByPipeline.has(cronTrackingKey)
+            && this.lastCronKeyByPipeline.size >= this.schedulerConfig.maxTrackingEntries
+        ) {
+            return false;
+        }
+        this.lastCronKeyByPipeline.set(cronTrackingKey, minuteKey);
+        return true;
+    }
+
+    private recordPipelineFailure(pipelineCode: string, failureCount: number): boolean {
+        if (
+            !this.failureCountByPipeline.has(pipelineCode)
+            && this.failureCountByPipeline.size >= this.schedulerConfig.maxTrackingEntries
+        ) {
+            return false;
+        }
+        this.failureCountByPipeline.set(pipelineCode, failureCount);
+        return true;
+    }
+
+    private setupIntervalSchedule(
+        pipeline: ActivePipelineDefinition,
+        config: ScheduleTriggerConfigParsed,
+        triggerKey: string,
+        signature: string,
+    ): void {
+        const intervalSec = Math.max(1, config.intervalSec ?? 1);
+        const effectiveIntervalMs = this.getEffectiveIntervalMs(config);
 
         const intervalMetadata: LogMetadata = {
             pipelineCode: pipeline.code,
@@ -326,7 +533,17 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         const handle = setInterval(
             async () => {
                 try {
-                    await this.triggerPipeline(pipeline, TIMER_TYPE.INTERVAL, triggerKey);
+                    const occurrence = getScheduleOccurrence(
+                        TIMER_TYPE.INTERVAL,
+                        Date.now(),
+                        effectiveIntervalMs,
+                    );
+                    await this.triggerPipeline(
+                        pipeline,
+                        TIMER_TYPE.INTERVAL,
+                        triggerKey,
+                        occurrence,
+                    );
                 } catch (error) {
                     this.logger.error('Interval schedule callback failed', toErrorOrUndefined(error), {
                         pipelineCode: pipeline.code,
@@ -343,44 +560,46 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             triggerKey,
             handle,
             type: TIMER_TYPE.INTERVAL,
+            signature,
         });
     }
 
-    private setupCronSchedule(pipeline: Pipeline, config: ScheduleTriggerConfigParsed, triggerKey: string): void {
+    private setupCronSchedule(
+        pipeline: ActivePipelineDefinition,
+        config: ScheduleTriggerConfigParsed,
+        triggerKey: string,
+        signature: string,
+    ): boolean {
         const cronExpr = config.cron ?? '';
         const timezone = config.timezone;
-        const hasValidTimezone = timezone !== null && isValidTimezone(timezone);
+        if (timezone && !isValidTimezone(timezone)) {
+            this.logger.error('Schedule trigger has an invalid timezone and was not activated', undefined, {
+                pipelineCode: pipeline.code,
+                triggerKey,
+                cronExpr,
+                invalidTimezone: timezone,
+            });
+            return false;
+        }
 
         if (timezone) {
-            if (hasValidTimezone) {
-                const tzMetadata: LogMetadata = {
-                    pipelineCode: pipeline.code,
-                    triggerKey,
-                    cronExpr,
-                    timezone,
-                    checkIntervalMs: this.schedulerConfig.checkIntervalMs,
-                };
-                this.logger.debug('Scheduling cron pipeline with timezone', tzMetadata);
-            } else {
-                const invalidTzMetadata: LogMetadata = {
-                    pipelineCode: pipeline.code,
-                    triggerKey,
-                    cronExpr,
-                    invalidTimezone: timezone,
-                };
-                this.logger.warn('Invalid timezone specified, falling back to server time', invalidTzMetadata);
-            }
+            this.logger.debug('Scheduling cron pipeline with timezone', {
+                pipelineCode: pipeline.code,
+                triggerKey,
+                cronExpr,
+                timezone,
+                checkIntervalMs: this.schedulerConfig.checkIntervalMs,
+            });
         } else {
-            const serverTzMetadata: LogMetadata = {
+            this.logger.debug('Scheduling cron pipeline (server timezone)', {
                 pipelineCode: pipeline.code,
                 triggerKey,
                 cronExpr,
                 checkIntervalMs: this.schedulerConfig.checkIntervalMs,
-            };
-            this.logger.debug('Scheduling cron pipeline (server timezone)', serverTzMetadata);
+            });
         }
 
-        const effectiveTimezone = hasValidTimezone ? timezone : undefined;
+        const effectiveTimezone = timezone ?? undefined;
 
         const cronTrackingKey = `${pipeline.code}:${triggerKey}`;
 
@@ -389,14 +608,37 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                 try {
                     const now = new Date();
                     if (cronMatches(now, String(cronExpr), effectiveTimezone)) {
-                        const minuteKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}`;
+                        const occurrence = getScheduleOccurrence(
+                            TIMER_TYPE.CRON,
+                            now.getTime(),
+                        );
+                        const minuteKey = occurrence.key;
                         const lastKey = this.lastCronKeyByPipeline.get(cronTrackingKey);
 
                         if (lastKey !== minuteKey) {
-                            await this.triggerPipeline(pipeline, TIMER_TYPE.CRON, triggerKey);
-                            if (this.lastCronKeyByPipeline.size < this.maxTrackingEntries) {
-                                this.lastCronKeyByPipeline.set(cronTrackingKey, minuteKey);
+                            if (!this.recordCronMinute(cronTrackingKey, minuteKey)) {
+                                this.removeTimer(this.getTimerKey(
+                                    pipeline.code,
+                                    triggerKey,
+                                    TIMER_TYPE.CRON,
+                                ));
+                                this.logger.error(
+                                    'Cron schedule disabled because its execution cannot be tracked safely',
+                                    undefined,
+                                    {
+                                        pipelineCode: pipeline.code,
+                                        triggerKey,
+                                        maxTrackingEntries: this.schedulerConfig.maxTrackingEntries,
+                                    },
+                                );
+                                return;
                             }
+                            await this.triggerPipeline(
+                                pipeline,
+                                TIMER_TYPE.CRON,
+                                triggerKey,
+                                occurrence,
+                            );
                         }
                     }
                 } catch (error) {
@@ -417,14 +659,17 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             triggerKey,
             handle,
             type: TIMER_TYPE.CRON,
+            signature,
         });
+        return true;
     }
 
-    /** Uses distributed locks to prevent simultaneous runs across instances */
+    /** Claims one deterministic occurrence across all instances before starting a run. */
     private async triggerPipeline(
-        pipeline: Pipeline,
+        pipeline: ActivePipelineDefinition,
         triggerType: Exclude<TimerType, typeof TIMER_TYPE.REFRESH>,
-        triggerKey?: string,
+        triggerKey: string | undefined,
+        occurrence: ScheduleOccurrence,
     ): Promise<void> {
         if (this.isDestroying) {
             this.logger.debug('Skipping pipeline trigger - module is being destroyed', {
@@ -433,15 +678,18 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        const lockKey = `schedule-trigger:${pipeline.id}:${triggerKey ?? 'default'}`;
-        let lockToken: string | undefined;
+        const lockKey = [
+            'schedule-trigger',
+            pipeline.id,
+            triggerKey ?? 'default',
+            occurrence.key,
+        ].join(':');
 
         try {
-            // Acquire distributed lock to prevent race conditions in multi-instance deployments
             if (this.distributedLock) {
                 const lockResult = await this.distributedLock.acquire(lockKey, {
-                    ttlMs: DISTRIBUTED_LOCK.SCHEDULER_LOCK_TTL_MS,
-                    waitForLock: false, // Don't wait - another instance is handling it
+                    ttlMs: occurrence.leaseTtlMs,
+                    waitForLock: false,
                 });
 
                 if (!lockResult.acquired) {
@@ -452,7 +700,6 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                     });
                     return;
                 }
-                lockToken = lockResult.token;
             }
 
             const isRunning = await this.isPipelineRunning(pipeline.id);
@@ -475,7 +722,11 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
             this.logger.debug('Triggering scheduled pipeline run', triggerMetadata);
 
             const triggeredBy = triggerKey ? `schedule:${triggerKey}` : 'schedule';
-            await this.pipelineService.startRun(ctx, pipeline.id, { skipPermissionCheck: true, triggeredBy });
+            await this.pipelineService.startRun(ctx, pipeline.id, {
+                skipPermissionCheck: true,
+                triggeredBy,
+                expectedRevisionId: pipeline.revisionId,
+            });
 
             this.domainEvents.publishTriggerFired(
                 String(pipeline.id),
@@ -490,10 +741,33 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                 });
             }
         } catch (error) {
+            if (error instanceof PipelineRevisionMismatchError) {
+                this.removePipelineTimers(pipeline.code);
+                this.logger.info('Refreshing schedules after published revision changed', {
+                    pipelineCode: pipeline.code,
+                    triggerKey,
+                });
+                await this.refresh();
+                return;
+            }
             const currentFailures = this.failureCountByPipeline.get(pipeline.code) ?? 0;
             const newFailureCount = currentFailures + 1;
-            if (this.failureCountByPipeline.size < this.maxTrackingEntries || this.failureCountByPipeline.has(pipeline.code)) {
-                this.failureCountByPipeline.set(pipeline.code, newFailureCount);
+            if (!this.recordPipelineFailure(pipeline.code, newFailureCount)) {
+                this.removePipelineTimers(pipeline.code);
+                this.logger.error(
+                    'Pipeline schedule disabled because its failures cannot be tracked safely',
+                    undefined,
+                    {
+                        pipelineCode: pipeline.code,
+                        maxTrackingEntries: this.schedulerConfig.maxTrackingEntries,
+                    },
+                );
+                this.domainEvents.publishScheduleDeactivated(
+                    String(pipeline.id),
+                    pipeline.code,
+                    'Scheduler failure tracking capacity exhausted',
+                );
+                return;
             }
 
             this.logger.error(
@@ -503,11 +777,12 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                     pipelineCode: pipeline.code,
                     triggerType,
                     consecutiveFailures: newFailureCount,
-                    willPauseSchedule: newFailureCount >= this.maxConsecutiveFailures,
+                    willPauseSchedule: newFailureCount >= this.schedulerConfig.maxConsecutiveFailures,
                 },
             );
 
-            if (newFailureCount >= this.maxConsecutiveFailures) {
+            if (newFailureCount >= this.schedulerConfig.maxConsecutiveFailures) {
+                this.removePipelineTimers(pipeline.code);
                 this.domainEvents.publishScheduleDeactivated(
                     String(pipeline.id),
                     pipeline.code,
@@ -515,21 +790,9 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
                 );
                 const pauseMetadata: LogMetadata = {
                     pipelineCode: pipeline.code,
-                    maxConsecutiveFailures: this.maxConsecutiveFailures,
+                    maxConsecutiveFailures: this.schedulerConfig.maxConsecutiveFailures,
                 };
                 this.logger.warn('Pipeline schedule will be paused - exceeded max consecutive failures', pauseMetadata);
-            }
-        } finally {
-            // Release the distributed lock
-            if (this.distributedLock && lockToken) {
-                try {
-                    await this.distributedLock.release(lockKey, lockToken);
-                } catch (lockError) {
-                    this.logger.warn('Failed to release scheduler lock', {
-                        lockKey,
-                        error: getErrorMessage(lockError),
-                    });
-                }
             }
         }
     }
@@ -586,7 +849,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
         for (const [code, count] of this.failureCountByPipeline.entries()) {
             status.set(code, {
                 failureCount: count,
-                isPaused: count >= this.maxConsecutiveFailures,
+                isPaused: count >= this.schedulerConfig.maxConsecutiveFailures,
             });
         }
         return status;
@@ -602,7 +865,7 @@ export class DataHubScheduleHandler implements OnModuleInit, OnModuleDestroy {
     } {
         let pausedCount = 0;
         for (const count of this.failureCountByPipeline.values()) {
-            if (count >= this.maxConsecutiveFailures) {
+            if (count >= this.schedulerConfig.maxConsecutiveFailures) {
                 pausedCount++;
             }
         }

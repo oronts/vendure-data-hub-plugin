@@ -165,8 +165,9 @@ bootstrapWorker({
     });
 ```
 
-The scheduler uses process timers and distributed locks. Scheduled starts are
-handed to `data-hub.run`.
+The scheduler uses process timers and occurrence-scoped distributed leases.
+Each cron minute or fixed-interval bucket is claimed once across Data Hub processes,
+and scheduled starts are handed to `data-hub.run`.
 
 ## Database Considerations
 

@@ -111,7 +111,7 @@ export class DistributedLockService implements OnModuleInit, OnModuleDestroy {
             const now = Date.now();
             // First pass: remove all expired entries
             for (const [k, entry] of this.memoryLocks) {
-                if (entry.expiresAt < now) {
+                if (entry.expiresAt <= now) {
                     this.memoryLocks.delete(k);
                 }
             }
