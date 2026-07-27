@@ -36,7 +36,7 @@ export const interceptorHooksPipeline = createPipeline()
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'product,stockLevels',
+        relations: ['product', 'stockLevels'],
         batchSize: 50,
     })
 
@@ -127,7 +127,7 @@ export const interceptorHooksPipeline = createPipeline()
                     return records.filter(record => {
                         // Skip records missing required fields
                         if (!record.sku || !record.name) {
-                            console.warn('Skipping record with missing sku or name:', record);
+                            console.warn('Skipping record: sku or name is missing', record);
                             return false;
                         }
                         return true;
@@ -187,7 +187,7 @@ export const scriptHooksPipeline = createPipeline()
     .extract('fetch-customers', {
         adapterCode: 'vendureQuery',
         entity: 'CUSTOMER',
-        relations: 'orders',
+        relations: ['orders'],
         batchSize: 100,
     })
 
@@ -272,7 +272,7 @@ export const scriptOperatorPipeline = createPipeline()
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants',
+        relations: ['variants'],
         batchSize: 50,
     })
 
@@ -397,7 +397,7 @@ export const advancedValidationPipeline = createPipeline()
     .extract('fetch-orders', {
         adapterCode: 'vendureQuery',
         entity: 'ORDER',
-        relations: 'customer,lines,payments',
+        relations: ['customer', 'lines', 'payments'],
         batchSize: 50,
     })
 
@@ -594,7 +594,7 @@ export const allHookStagesPipeline = createPipeline()
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'product,stockLevels',
+        relations: ['product', 'stockLevels'],
         batchSize: 50,
     })
 
@@ -651,6 +651,7 @@ export const allHookStagesPipeline = createPipeline()
                 type: 'TRIGGER_PIPELINE',
                 name: 'Trigger follow-up pipeline',
                 pipelineCode: 'post-processing-pipeline',
+                triggerKey: 'hook',
             },
         ],
 

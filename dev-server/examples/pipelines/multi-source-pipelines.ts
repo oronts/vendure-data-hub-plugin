@@ -22,16 +22,19 @@
  */
 
 import { createPipeline } from '../../../src';
-import { MOCK_PORTS, mockUrl } from '../../ports';
+import { getMockApiUrl } from '../../ports';
+import {
+    PIMCORE_API_CONNECTION_CODE,
+    PIMCORE_API_URL,
+} from '../../pimcore-api';
 
 // ── External API URLs ───────────────────────────────────────────────────────
-const PIMCORE_API_URL = process.env.PIMCORE_API_URL || mockUrl(MOCK_PORTS.PIMCORE);
-const MAGENTO_API_URL = process.env.MAGENTO_API_URL || mockUrl(MOCK_PORTS.MAGENTO);
-const SHOPIFY_API_URL = process.env.SHOPIFY_API_URL || mockUrl(MOCK_PORTS.SHOPIFY);
+const MAGENTO_API_URL = getMockApiUrl('MAGENTO');
+const SHOPIFY_API_URL = getMockApiUrl('SHOPIFY');
 
 // =============================================================================
 // MS-1: MULTI-SOURCE PRODUCT AGGREGATION
-// Parallel Pimcore + Magento extraction → normalize → dedup → enrich → load → sink → export
+// Parallel Pimcore + Magento extraction → normalize → deduplicate → validate → enrich → load → sink → export
 // =============================================================================
 
 /**
@@ -39,13 +42,13 @@ const SHOPIFY_API_URL = process.env.SHOPIFY_API_URL || mockUrl(MOCK_PORTS.SHOPIF
  *
  * Graph topology:
  *   trigger → extract-pimcore → normalize-pimcore ─┐
- *                                                    ├→ dedup-by-sku → enrich-categories → load-products → sink-meili-unified → export-report
+ *                                                    ├→ deduplicate-skus → validate-merged → enrich-categories → load-products → sink-meili-unified → export-report
  *   trigger → extract-magento → normalize-magento ──┘
  *
  * Features:
  * - Parallel extraction from 2 different API formats (Pimcore REST + Magento REST)
  * - Per-source normalization (field mapping to unified schema)
- * - Deduplication by SKU via `unique` operator (Pimcore preferred over Magento)
+ * - SKU conflicts are resolved deterministically in favor of Pimcore records
  * - Category enrichment via Vendure collection lookup
  * - UPSERT to Vendure with SOURCE_WINS conflict strategy
  * - Meilisearch indexing with custom `products-unified` index
@@ -53,7 +56,7 @@ const SHOPIFY_API_URL = process.env.SHOPIFY_API_URL || mockUrl(MOCK_PORTS.SHOPIF
  */
 export const multiSourceProductAggregation = createPipeline()
     .name('Multi-Source Product Aggregation')
-    .description('Parallel extraction from Pimcore + Magento, normalize, dedup by SKU, load to Vendure, sink to Meilisearch')
+    .description('Parallel extraction from Pimcore + Magento, deduplicate by SKU, load to Vendure, sink to Meilisearch')
     .capabilities({ requires: ['UpdateCatalog'] })
     .parallel({ maxConcurrentSteps: 4, errorPolicy: 'CONTINUE' })
 
@@ -62,21 +65,28 @@ export const multiSourceProductAggregation = createPipeline()
 
     // ── Branch A: Pimcore extraction ────────────────────────────────────────
     .extract('extract-pimcore', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
 
     // Enrich with product detail (to get variant-level prices)
     .transform('enrich-pimcore-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_detail',
                     cacheTtlSec: 300,
                 },
@@ -121,10 +131,8 @@ export const multiSourceProductAggregation = createPipeline()
                         if (variants.length > 0) {
                             const firstVariant = variants[0];
                             record.price = firstVariant.price?.EUR || 0;
-                            record.priceInCents = Math.round((firstVariant.price?.EUR || 0) * 100);
                         } else {
                             record.price = 0;
-                            record.priceInCents = 0;
                         }
 
                         record._source = 'pimcore';
@@ -144,13 +152,13 @@ export const multiSourceProductAggregation = createPipeline()
         adapterCode: 'httpApi',
         url: `${MAGENTO_API_URL}/rest/V1/products`,
         method: 'GET',
-        bearerTokenSecretCode: 'magento-bearer-token',
-        itemsField: 'items',
+        auth: { type: 'BEARER', secretCode: 'magento-bearer-token' },
+        dataPath: 'items',
         pagination: {
-            type: 'offset',
+            type: 'PAGE',
             pageParam: 'searchCriteria[currentPage]',
             pageSizeParam: 'searchCriteria[pageSize]',
-            pageSize: 50,
+            limit: 50,
             maxPages: 2, // Limit to 100 products for testing
         },
     })
@@ -174,7 +182,6 @@ export const multiSourceProductAggregation = createPipeline()
                         // Map to unified format
                         record.description = record._attr_description || record._attr_short_description || '';
                         record.name_de = record.name; // Magento is single-locale in this mock
-                        record.priceInCents = Math.round((record.price || 0) * 100);
                         record.enabled = record.status === 1;
                         record.categoryCode = '';
 
@@ -209,10 +216,12 @@ export const multiSourceProductAggregation = createPipeline()
         ],
     })
 
-    // ── Fan-in: Deduplicate by SKU ──────────────────────────────────────────
-    .transform('dedup-by-sku', {
+    .transform('deduplicate-skus', {
         operators: [
-            { op: 'unique', args: { byKey: 'sku' } },
+            {
+                op: 'deduplicateRecords',
+                args: { key: 'sku', keep: 'LOWEST', priority: '_sourcePriority' },
+            },
         ],
     })
 
@@ -249,13 +258,12 @@ export const multiSourceProductAggregation = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
         enabledField: 'enabled',
         skuField: 'sku',
-        priceField: 'priceInCents',
+        priceField: 'price',
     })
 
     // ── Sink to Meilisearch ─────────────────────────────────────────────────
@@ -265,7 +273,7 @@ export const multiSourceProductAggregation = createPipeline()
         primaryKey: 'sku',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meilisearch-api-key',
-        bulkSize: 100,
+        batchSize: 100,
         languageCode: 'en',
         searchableFields: ['name', 'description', 'sku', 'categoryCode'],
         filterableFields: ['_source', 'enabled', 'categoryCode'],
@@ -287,14 +295,14 @@ export const multiSourceProductAggregation = createPipeline()
     // Pimcore branch
     .edge('extract-pimcore', 'enrich-pimcore-detail')
     .edge('enrich-pimcore-detail', 'normalize-pimcore')
-    .edge('normalize-pimcore', 'dedup-by-sku')
+    .edge('normalize-pimcore', 'deduplicate-skus')
 
     // Magento branch
     .edge('extract-magento', 'normalize-magento')
-    .edge('normalize-magento', 'dedup-by-sku')
+    .edge('normalize-magento', 'deduplicate-skus')
 
     // Fan-in to pipeline tail
-    .edge('dedup-by-sku', 'validate-merged')
+    .edge('deduplicate-skus', 'validate-merged')
     .edge('validate-merged', 'enrich-categories')
     .edge('enrich-categories', 'load-products')
     .edge('load-products', 'sink-meili-unified')
@@ -337,10 +345,12 @@ export const webhookMultiApiEnrichment = createPipeline()
     .transform('enrich-pimcore', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_pimcoreProducts',
                     cacheTtlSec: 60,
                 },
@@ -452,7 +462,6 @@ export const webhookMultiApiEnrichment = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         enabledField: 'enabled',
@@ -467,7 +476,7 @@ export const webhookMultiApiEnrichment = createPipeline()
         primaryKey: 'sku',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meilisearch-api-key',
-        bulkSize: 10,
+        batchSize: 10,
         languageCode: 'en',
         searchableFields: ['name', 'sku'],
         filterableFields: ['categoryCode', 'enrichedFrom'],
@@ -513,11 +522,16 @@ export const crossSystemOrderSync = createPipeline()
 
     // Extract orders from Pimcore
     .extract('extract-orders', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/orders`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'orders',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/orders`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'orders',
     })
 
     // Enrich with Shopify customer data (lookup by email)
@@ -676,21 +690,28 @@ export const biDirectionalSyncA = createPipeline()
 
     // Extract products from Pimcore
     .extract('extract-products', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
 
     // Enrich with detail
     .transform('enrich-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_detail',
                     cacheTtlSec: 300,
                 },
@@ -731,7 +752,6 @@ export const biDirectionalSyncA = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
@@ -800,7 +820,7 @@ export const biDirectionalSyncB = createPipeline()
         primaryKey: 'objectID',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meilisearch-api-key',
-        bulkSize: 50,
+        batchSize: 50,
         languageCode: 'en',
         searchableFields: ['name', 'description', 'slug'],
         filterableFields: ['syncSource', 'enabled'],
@@ -844,21 +864,28 @@ export const multiSinkFanOut = createPipeline()
 
     // Extract products from Pimcore
     .extract('extract-products', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
 
     // Enrich with product detail for complete data
     .transform('enrich-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_detail',
                     cacheTtlSec: 300,
                 },
@@ -912,7 +939,7 @@ export const multiSinkFanOut = createPipeline()
         primaryKey: 'sku',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meilisearch-api-key',
-        bulkSize: 50,
+        batchSize: 50,
         languageCode: 'en',
         searchableFields: ['name', 'description', 'sku'],
         filterableFields: ['category', 'enabled', 'source'],

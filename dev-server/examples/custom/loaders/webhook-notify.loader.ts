@@ -1,4 +1,4 @@
-import { JsonObject, LoaderAdapter, LoadContext, LoadResult, StepConfigSchema, BATCH, HTTP, WEBHOOK, SINK, sleep } from '../../../../src';
+import { CURRENT_ADAPTER_API_VERSION, JsonObject, LoaderAdapter, LoadContext, LoadResult, StepConfigSchema, HTTP, WEBHOOK, SINK, sleep } from '../../../../src';
 
 export const webhookNotifySchema: StepConfigSchema = {
     fields: [
@@ -104,6 +104,7 @@ export const webhookNotifyLoader: LoaderAdapter<WebhookNotifyConfig> = {
     schema: webhookNotifySchema,
     icon: 'webhook',
     version: '1.0.0',
+    apiVersion: CURRENT_ADAPTER_API_VERSION,
 
     async load(context: LoadContext, config: WebhookNotifyConfig, records: readonly JsonObject[]): Promise<LoadResult> {
         const { endpoint, method = 'POST', headers, batchMode = 'single', maxBatchSize = SINK.WEBHOOK_BATCH_SIZE, retries = HTTP.MAX_RETRIES, timeoutMs = WEBHOOK.TIMEOUT_MS } = config;

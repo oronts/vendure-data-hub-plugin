@@ -4,7 +4,7 @@
  * Populates a fresh database with minimum required Vendure entities
  * (zones, countries, tax rates, etc.)
  */
-import { InitialData, LanguageCode, CurrencyCode } from '@vendure/core';
+import { InitialData, LanguageCode } from '@vendure/core';
 
 export const initialData: InitialData = {
     defaultLanguage: LanguageCode.en,

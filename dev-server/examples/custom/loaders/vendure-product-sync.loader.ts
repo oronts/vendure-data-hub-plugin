@@ -5,7 +5,7 @@
  * In demo mode, it logs what would be synced. In a real implementation,
  * this would use Vendure's admin API to create/update products.
  */
-import { JsonObject, LoaderAdapter, LoadContext, LoadResult, StepConfigSchema } from '../../../../src';
+import { CURRENT_ADAPTER_API_VERSION, JsonObject, LoaderAdapter, LoadContext, LoadResult, StepConfigSchema } from '../../../../src';
 
 export const vendureProductSyncSchema: StepConfigSchema = {
     fields: [
@@ -42,6 +42,7 @@ export const vendureProductSyncLoader: LoaderAdapter<VendureProductSyncConfig> =
     schema: vendureProductSyncSchema,
     icon: 'refresh',
     version: '1.0.0',
+    apiVersion: CURRENT_ADAPTER_API_VERSION,
 
     async load(context: LoadContext, config: VendureProductSyncConfig, records: readonly JsonObject[]): Promise<LoadResult> {
         const {

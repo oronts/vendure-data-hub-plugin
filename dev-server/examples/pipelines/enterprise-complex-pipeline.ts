@@ -32,10 +32,11 @@
  */
 
 import { createPipeline } from '../../../src';
-import { MOCK_PORTS, mockUrl } from '../../ports';
+import {
+    PIMCORE_API_CONNECTION_CODE,
+    PIMCORE_API_URL,
+} from '../../pimcore-api';
 
-const PIMCORE_API_URL = process.env.PIMCORE_API_URL || mockUrl(MOCK_PORTS.PIMCORE);
-const PIMCORE_API_KEY = process.env.PIMCORE_API_KEY || 'test-pimcore-api-key';
 
 // =============================================================================
 // ENTERPRISE COMPLEX PIPELINE
@@ -87,11 +88,16 @@ export const enterpriseComplexPipeline = createPipeline()
     // Tests: multi-lang facet names, exhaustive value lists
     // =========================================================================
     .extract('extract-facets', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/facets?includeTranslations=true`,
-        method: 'GET',
-        headers: { apiKey: PIMCORE_API_KEY },
-        itemsField: 'facets',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/facets?includeTranslations=true`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'facets',
     })
     .transform('map-facets', {
         operators: [
@@ -135,11 +141,16 @@ export const enterpriseComplexPipeline = createPipeline()
     // Tests: deep category tree, parentSlug-based hierarchy construction
     // =========================================================================
     .extract('extract-categories', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/categories?includeTranslations=true`,
-        method: 'GET',
-        headers: { apiKey: PIMCORE_API_KEY },
-        itemsField: 'categories',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/categories?includeTranslations=true`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'categories',
     })
     .transform('map-categories', {
         operators: [
@@ -188,17 +199,21 @@ export const enterpriseComplexPipeline = createPipeline()
     // Step 3j: Delete discontinued variants
     // =========================================================================
     .extract('extract-products', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?limit=100&includeTranslations=true`,
-        method: 'GET',
-        headers: { apiKey: PIMCORE_API_KEY },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?limit=100&includeTranslations=true`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
         pagination: {
-            type: 'page',
+            type: 'PAGE',
             pageParam: 'page',
             pageSizeParam: 'limit',
-            pageSize: 100,
-            totalItemsField: 'pagination.total',
+            limit: 100,
         },
     })
 
@@ -206,10 +221,12 @@ export const enterpriseComplexPipeline = createPipeline()
     .transform('enrich-product-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
-                    headers: { apiKey: PIMCORE_API_KEY },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_detail',
                     cacheTtlSec: 300,
                 },
@@ -316,7 +333,6 @@ export const enterpriseComplexPipeline = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
@@ -407,7 +423,6 @@ export const enterpriseComplexPipeline = createPipeline()
     .load('upsert-variants', {
         adapterCode: 'variantUpsert',
         strategy: 'UPSERT',
-        conflictStrategy: 'SOURCE_WINS',
         skuField: 'sku',
         nameField: 'name',
         priceField: 'priceValue',
@@ -452,11 +467,16 @@ export const enterpriseComplexPipeline = createPipeline()
     // BRANCH 4: Promotions
     // =========================================================================
     .extract('extract-promotions', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/promotions?includeTranslations=true`,
-        method: 'GET',
-        headers: { apiKey: PIMCORE_API_KEY },
-        itemsField: 'promotions',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/promotions?includeTranslations=true`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'promotions',
     })
     .transform('map-promotions', {
         operators: [
@@ -519,11 +539,16 @@ export const enterpriseComplexPipeline = createPipeline()
     // BRANCH 6: Inventory Levels (depends on variants + locations)
     // =========================================================================
     .extract('extract-stock', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/stock`,
-        method: 'GET',
-        headers: { apiKey: PIMCORE_API_KEY },
-        itemsField: 'stock',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/stock`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'stock',
     })
     .transform('map-stock', {
         operators: [

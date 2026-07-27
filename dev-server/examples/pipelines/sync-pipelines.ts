@@ -31,7 +31,7 @@ export const googleShoppingFeed = createPipeline()
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,featuredAsset,stockLevels,facetValues',
+        relations: ['translations', 'product', 'featuredAsset', 'stockLevels', 'facetValues'],
         languageCode: 'en',
         batchSize: 100,
     })
@@ -64,7 +64,7 @@ export const googleShoppingFeed = createPipeline()
                         description: 'product.description',
                         imageUrl: 'featuredAsset.preview',
                         productImageUrl: 'product.featuredAsset.preview',
-                        priceRaw: 'priceWithTax',
+                        price: 'priceWithTax',
                         stockOnHand: 'stockLevels.0.stockOnHand',
                         brandFacet: 'facetValues',
                     },
@@ -105,22 +105,6 @@ export const googleShoppingFeed = createPipeline()
                 },
             },
 
-            // Format price (Google requires "19.99 USD" format)
-            {
-                op: 'currency',
-                args: {
-                    source: 'priceRaw',
-                    target: 'priceFormatted',
-                    decimals: 2,
-                },
-            },
-            {
-                op: 'template',
-                args: {
-                    template: '${priceFormatted} USD',
-                    target: 'price',
-                },
-            },
 
             // Determine availability
             {
@@ -287,7 +271,7 @@ export const facebookCatalogFeed = createPipeline()
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,featuredAsset,stockLevels',
+        relations: ['translations', 'product', 'featuredAsset', 'stockLevels'],
         languageCode: 'en',
         batchSize: 100,
     })
@@ -316,7 +300,7 @@ export const facebookCatalogFeed = createPipeline()
                         id: 'sku',
                         title: 'product.name',
                         description: 'product.description',
-                        priceRaw: 'priceWithTax',
+                        price: 'priceWithTax',
                         stockOnHand: 'stockLevels.0.stockOnHand',
                         imageUrl: 'featuredAsset.preview',
                     },
@@ -339,22 +323,6 @@ export const facebookCatalogFeed = createPipeline()
                 },
             },
 
-            // Format price (Facebook: "19.99 USD")
-            {
-                op: 'currency',
-                args: {
-                    source: 'priceRaw',
-                    target: 'priceValue',
-                    decimals: 2,
-                },
-            },
-            {
-                op: 'template',
-                args: {
-                    template: '${priceValue} USD',
-                    target: 'price',
-                },
-            },
 
             // Availability (Facebook uses: in stock, out of stock, preorder, available for order)
             {
@@ -466,12 +434,16 @@ export const restApiImport = createPipeline()
             'X-API-Version': '2024-01',
         },
         // Bearer token authentication using secret
-        bearerTokenSecretCode: 'supplier-api-token',
+        auth: { type: 'BEARER', secretCode: 'supplier-api-token' },
         // Pagination configuration
-        pageParam: 'page',
-        itemsField: 'data.products',
-        nextPageField: 'data.pagination.next_page',
-        maxPages: 100,
+        dataPath: 'data.products',
+        pagination: {
+            type: 'PAGE',
+            pageParam: 'page',
+            pageSizeParam: 'per_page',
+            limit: 100,
+            maxPages: 100,
+        },
         // Query parameters
         query: {
             per_page: 100,

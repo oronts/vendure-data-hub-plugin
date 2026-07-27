@@ -9,9 +9,11 @@
  */
 
 import { createPipeline } from '../../../src';
-import { MOCK_PORTS, mockUrl } from '../../ports';
-
-const PIMCORE_API_URL = process.env.PIMCORE_API_URL || mockUrl(MOCK_PORTS.PIMCORE);
+import { getMockApiUrl, getMockEndpoint, MOCK_ROUTES } from '../../ports';
+import {
+    PIMCORE_API_CONNECTION_CODE,
+    PIMCORE_API_URL,
+} from '../../pimcore-api';
 
 // =============================================================================
 // P7: CDC PRODUCT SYNC - Near-real-time CDC with deletion support
@@ -64,7 +66,6 @@ export const cdcProductSync = createPipeline()
             { op: 'trim', args: { path: 'name' } },
             { op: 'slugify', args: { source: 'name', target: 'slug' } },
             { op: 'toNumber', args: { source: 'price' } },
-            { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100', target: 'priceInCents' } },
         ],
     })
 
@@ -73,12 +74,11 @@ export const cdcProductSync = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
         skuField: 'sku',
-        priceField: 'priceInCents',
+        priceField: 'price',
         enabledField: 'enabled',
     })
 
@@ -122,25 +122,27 @@ export const eventStockAlert = createPipeline()
     .description('Event-driven stock level check with HTTP enrichment, alerting, and export')
     .capabilities({ requires: ['ReadCatalog', 'UpdateDataHubSettings'] })
 
-    .trigger('on-variant-update', {
+    .trigger('on-variant-change', {
         type: 'EVENT',
-        event: 'ProductVariantEvent.updated',
+        event: 'ProductVariantEvent',
     })
 
     .extract('query-variants', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'product,stockLevels',
+        relations: ['product', 'stockLevels'],
         batchSize: 10,
     })
 
     .transform('enrich-with-warehouse', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: PIMCORE_API_URL + '/api/stock?sku={{sku}}',
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: PIMCORE_API_URL + '/api/stock?sku={{sku}}',
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_warehouseData',
                     cacheTtlSec: 60,
                 },
@@ -177,7 +179,7 @@ export const eventStockAlert = createPipeline()
 
     .load('send-alert', {
         adapterCode: 'graphqlMutation',
-        endpoint: 'http://localhost:4100/api/graphql',
+        endpoint: getMockEndpoint('EDGE_CASE', MOCK_ROUTES.EDGE_GRAPHQL),
         mutation: 'mutation CreateAlert($input: AlertInput!) { createAlert(input: $input) { id } }',
         variableMapping: {
             'input.sku': 'sku',
@@ -194,7 +196,7 @@ export const eventStockAlert = createPipeline()
     })
 
     // Linear graph
-    .edge('on-variant-update', 'query-variants')
+    .edge('on-variant-change', 'query-variants')
     .edge('query-variants', 'enrich-with-warehouse')
     .edge('enrich-with-warehouse', 'compute-alert')
     .edge('compute-alert', 'filter-critical')
@@ -223,7 +225,7 @@ export const customerAnalyticsExport = createPipeline()
     .extract('query-orders', {
         adapterCode: 'vendureQuery',
         entity: 'ORDER',
-        relations: 'customer,lines,surcharges',
+        relations: ['customer', 'lines', 'surcharges'],
         batchSize: 100,
     })
 
@@ -231,17 +233,22 @@ export const customerAnalyticsExport = createPipeline()
     .extract('query-customers', {
         adapterCode: 'vendureQuery',
         entity: 'CUSTOMER',
-        relations: 'groups,addresses',
+        relations: ['groups', 'addresses'],
         batchSize: 100,
     })
 
     // Source 3: Tax rates from external API
     .extract('fetch-tax-config', {
-        adapterCode: 'httpApi',
-        url: PIMCORE_API_URL + '/api/tax-rates',
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'taxRates',
+       adapterCode: 'httpApi',
+      url: PIMCORE_API_URL + '/api/tax-rates',
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'taxRates',
     })
 
     .transform('compute-metrics', {
@@ -296,7 +303,6 @@ export const customerAnalyticsExport = createPipeline()
         strategy: 'UPDATE',
         emailField: 'customer.emailAddress',
         groupsField: 'segment',
-        dryRun: true,
     })
 
     .export('analytics-report', {
@@ -354,11 +360,16 @@ export const entityLifecycleOps = createPipeline()
     // Branch 1: Shipping Methods
     // =========================================================================
     .extract('fetch-shipping', {
-        adapterCode: 'httpApi',
-        url: PIMCORE_API_URL + '/api/shipping-methods?includeTranslations=true',
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'shippingMethods',
+       adapterCode: 'httpApi',
+      url: PIMCORE_API_URL + '/api/shipping-methods?includeTranslations=true',
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'shippingMethods',
     })
 
     .transform('map-shipping', {
@@ -390,11 +401,16 @@ export const entityLifecycleOps = createPipeline()
     // Branch 2: Payment Methods
     // =========================================================================
     .extract('fetch-payments', {
-        adapterCode: 'httpApi',
-        url: PIMCORE_API_URL + '/api/payment-methods?includeTranslations=true',
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'paymentMethods',
+       adapterCode: 'httpApi',
+      url: PIMCORE_API_URL + '/api/payment-methods?includeTranslations=true',
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'paymentMethods',
     })
 
     .transform('map-payments', {
@@ -424,11 +440,16 @@ export const entityLifecycleOps = createPipeline()
     // Branch 3: Channels
     // =========================================================================
     .extract('fetch-channels', {
-        adapterCode: 'httpApi',
-        url: PIMCORE_API_URL + '/api/channels',
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'channels',
+       adapterCode: 'httpApi',
+      url: PIMCORE_API_URL + '/api/channels',
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'channels',
     })
 
     .load('upsert-channels', {
@@ -463,11 +484,16 @@ export const entityLifecycleOps = createPipeline()
     // Branch 5: Assets
     // =========================================================================
     .extract('fetch-assets', {
-        adapterCode: 'httpApi',
-        url: PIMCORE_API_URL + '/api/assets',
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'assets',
+       adapterCode: 'httpApi',
+      url: PIMCORE_API_URL + '/api/assets',
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'assets',
     })
 
     .transform('map-assets', {
@@ -488,11 +514,16 @@ export const entityLifecycleOps = createPipeline()
     // Branch 6: Deletions (fan-out by entity type via ROUTE)
     // =========================================================================
     .extract('fetch-deletions', {
-        adapterCode: 'httpApi',
-        url: PIMCORE_API_URL + '/api/deletions',
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'deletions',
+       adapterCode: 'httpApi',
+      url: PIMCORE_API_URL + '/api/deletions',
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'deletions',
     })
 
     .transform('prep-deletion', {
@@ -696,11 +727,16 @@ export const pimCustomerSync = createPipeline()
 
     // Branch 1: Customer groups
     .extract('fetch-groups', {
-        adapterCode: 'httpApi',
-        url: PIMCORE_API_URL + '/api/customer-groups',
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'customerGroups',
+       adapterCode: 'httpApi',
+      url: PIMCORE_API_URL + '/api/customer-groups',
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'customerGroups',
     })
 
     .load('upsert-groups', {
@@ -711,11 +747,16 @@ export const pimCustomerSync = createPipeline()
 
     // Branch 2: Customers with addresses
     .extract('fetch-customers', {
-        adapterCode: 'httpApi',
-        url: PIMCORE_API_URL + '/api/customers?includeTranslations=true',
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'customers',
+       adapterCode: 'httpApi',
+      url: PIMCORE_API_URL + '/api/customers?includeTranslations=true',
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'customers',
     })
 
     .validate('check-customers', {
@@ -801,11 +842,16 @@ export const pimOrderImport = createPipeline()
     .trigger('manual', { type: 'MANUAL' })
 
     .extract('fetch-orders', {
-        adapterCode: 'httpApi',
-        url: PIMCORE_API_URL + '/api/orders',
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'orders',
+       adapterCode: 'httpApi',
+      url: PIMCORE_API_URL + '/api/orders',
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'orders',
     })
 
     .validate('check-orders', {
@@ -880,7 +926,7 @@ export const pimOrderImport = createPipeline()
 // P15: MAGENTO CUSTOMER MIGRATION — One-time customer import from Magento
 // =============================================================================
 
-const MAGENTO_API_URL = process.env.MAGENTO_API_URL || mockUrl(MOCK_PORTS.MAGENTO);
+const MAGENTO_API_URL = getMockApiUrl('MAGENTO');
 
 export const magentoCustomerMigration = createPipeline()
     .name('Magento Customer Migration')
@@ -891,10 +937,16 @@ export const magentoCustomerMigration = createPipeline()
 
     .extract('fetch-magento-customers', {
         adapterCode: 'httpApi',
-        url: MAGENTO_API_URL + '/rest/V1/customers/search?searchCriteria[pageSize]=100&searchCriteria[currentPage]=1',
+        url: `${MAGENTO_API_URL}/rest/V1/customers/search`,
         method: 'GET',
-        bearerTokenSecretCode: 'magento-bearer-token',
-        itemsField: 'items',
+        auth: { type: 'BEARER', secretCode: 'magento-bearer-token' },
+        dataPath: 'items',
+        pagination: {
+            type: 'PAGE',
+            pageParam: 'searchCriteria[currentPage]',
+            pageSizeParam: 'searchCriteria[pageSize]',
+            limit: 50,
+        },
     })
 
     .validate('check-customer-data', {
@@ -973,7 +1025,7 @@ export const magentoCustomerMigration = createPipeline()
 // P16: RESILIENCE TEST — Edge case API with failure simulation
 // =============================================================================
 
-const EDGE_API_URL = process.env.EDGE_API_URL || mockUrl(MOCK_PORTS.EDGE_CASE);
+const EDGE_API_URL = getMockApiUrl('EDGE_CASE');
 
 export const resilienceTest = createPipeline()
     .name('Resilience Test Pipeline')
@@ -987,7 +1039,7 @@ export const resilienceTest = createPipeline()
         adapterCode: 'httpApi',
         url: EDGE_API_URL + '/api/products?partialFail=0.3',
         method: 'GET',
-        itemsField: 'data',
+        dataPath: 'data',
     })
 
     .validate('check-products', {
@@ -1009,7 +1061,6 @@ export const resilienceTest = createPipeline()
         operators: [
             { op: 'slugify', args: { source: 'name', target: 'slug' } },
             { op: 'toNumber', args: { source: 'price' } },
-            { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100', target: 'priceInCents' } },
         ],
     })
 
@@ -1018,12 +1069,11 @@ export const resilienceTest = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
         skuField: 'sku',
-        priceField: 'priceInCents',
+        priceField: 'price',
     })
 
     .export('error-report', {
@@ -1037,7 +1087,7 @@ export const resilienceTest = createPipeline()
         adapterCode: 'httpApi',
         url: EDGE_API_URL + '/api/products/bulk?count=200',
         method: 'GET',
-        itemsField: 'data',
+        dataPath: 'data',
     })
 
     .transform('map-bulk', {
@@ -1058,11 +1108,10 @@ export const resilienceTest = createPipeline()
         adapterCode: 'httpApi',
         url: EDGE_API_URL + '/api/products/paginated?limit=25',
         method: 'GET',
-        itemsField: 'data',
+        dataPath: 'data',
         pagination: {
             type: 'OFFSET',
-            pageSize: 25,
-            totalPath: 'meta.total',
+            limit: 25,
             offsetParam: 'offset',
             limitParam: 'limit',
         },

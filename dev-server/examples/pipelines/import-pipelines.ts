@@ -36,7 +36,18 @@ export const productImportCsv = createPipeline()
 
     .extract('read-csv', {
         adapterCode: 'csv',
-        csvPath: './imports/products.csv',
+        rows: [{
+            name: 'Example Product',
+            sku: 'EXAMPLE-001',
+            description: 'Inline development import record',
+            price: '29.99',
+            category: 'Electronics',
+            brand: 'Example',
+            weight: '1.2',
+            weight_unit: 'kg',
+            image_url: 'https://example.com/product.jpg',
+            tags: 'example,development',
+        }],
         delimiter: ',',
         hasHeader: true,
     })
@@ -105,9 +116,8 @@ export const productImportCsv = createPipeline()
             // Generate slug from name
             { op: 'slugify', args: { source: 'name', target: 'slug' } },
 
-            // Convert price from string to cents
+            // Normalize price to major units; the loader converts once at the Vendure boundary.
             { op: 'toNumber', args: { source: 'price' } },
-            { op: 'currency', args: { source: 'price', target: 'priceInCents', decimals: 2 } },
 
             // Convert weight to grams if needed
             { op: 'toNumber', args: { source: 'weight' } },
@@ -154,9 +164,9 @@ export const productImportCsv = createPipeline()
         // Computed fields based on record data
         computed: {
             // Calculate discount eligibility based on price
-            eligibleForDiscount: 'record.priceInCents > 5000',
+            eligibleForDiscount: 'record.price > 50',
             // Determine if premium product
-            isPremium: 'record.priceInCents > 10000',
+            isPremium: 'record.price > 100',
             // Generate canonical URL
             canonicalUrl: '"https://store.example.com/products/" + record.slug',
         },
@@ -172,7 +182,7 @@ export const productImportCsv = createPipeline()
                         slug: 'slug',
                         description: 'description',
                         sku: 'sku',
-                        price: 'priceInCents',
+                        price: 'price',
                         facetValueCodes: 'facetValueCode',
                         assetUrls: 'image_url',
                         trackInventory: 'trackInventory',
@@ -236,7 +246,17 @@ export const customerImportCsv = createPipeline()
 
     .extract('read-csv', {
         adapterCode: 'csv',
-        csvPath: './imports/customers.csv',
+        rows: [{
+            email: 'customer@example.com',
+            first_name: 'Example',
+            last_name: 'Customer',
+            phone: '+49-30-1234567',
+            address_line1: 'Example Street 1',
+            city: 'Berlin',
+            postal_code: '10115',
+            country: 'DE',
+            customer_group: 'retail',
+        }],
         delimiter: ',',
         hasHeader: true,
     })
@@ -441,7 +461,7 @@ export const stockUpdateCsv = createPipeline()
 
     .extract('read-csv', {
         adapterCode: 'csv',
-        csvPath: './imports/stock-update.csv',
+        rows: [{ sku: 'SKU-STOCK-1', stock_quantity: 24, location: 'default', reorder_point: 5 }],
         delimiter: ',',
         hasHeader: true,
     })
@@ -659,7 +679,7 @@ export const priceUpdateCsv = createPipeline()
 
     .extract('read-csv', {
         adapterCode: 'csv',
-        csvPath: './imports/price-update.csv',
+        rows: [{ sku: 'SKU-PRICE-1', price: '29.99', currency: 'USD', sale_price: '24.99' }],
         delimiter: ',',
         hasHeader: true,
     })
@@ -712,44 +732,16 @@ export const priceUpdateCsv = createPipeline()
             { op: 'copy', args: { source: 'price', target: 'priceClean' } },
             { op: 'toNumber', args: { source: 'priceClean' } },
 
-            // Convert to cents using currency operator
-            {
-                op: 'currency',
-                args: { source: 'priceClean', target: 'priceInCents', decimals: 2 },
-            },
 
-            // Handle sale price if present
-            {
-                op: 'when',
-                args: {
-                    conditions: [{ field: 'sale_price', cmp: 'exists', value: true }],
-                    action: 'keep',
-                },
-            },
-            {
-                op: 'replaceRegex',
-                args: {
-                    path: 'sale_price',
-                    pattern: '[^0-9.]',
-                    replacement: '',
-                },
-            },
-            { op: 'copy', args: { source: 'sale_price', target: 'salePriceClean' } },
-            { op: 'toNumber', args: { source: 'salePriceClean' } },
-            {
-                op: 'currency',
-                args: { source: 'salePriceClean', target: 'salePriceInCents', decimals: 2 },
-            },
 
-            // Build price by currency map for multi-currency support
             {
-                op: 'enrich',
+                op: 'script',
                 args: {
-                    set: {
-                        priceByCurrency: {
-                            '${currency}': '${priceInCents}',
-                        },
-                    },
+                    code: `
+                        const currency = String(record.currency || 'USD').toUpperCase();
+                        record.priceByCurrency = { [currency]: record.priceClean };
+                        return record;
+                    `,
                 },
             },
         ],
@@ -762,8 +754,6 @@ export const priceUpdateCsv = createPipeline()
                 args: {
                     mapping: {
                         sku: 'sku',
-                        price: 'priceInCents',
-                        salePrice: 'salePriceInCents',
                         priceByCurrency: 'priceByCurrency',
                     },
                 },
@@ -774,8 +764,8 @@ export const priceUpdateCsv = createPipeline()
     .load('update-prices', {
         adapterCode: 'variantUpsert',
         channel: '__default_channel__',
+        strategy: 'UPDATE',
         skuField: 'sku',
-        priceField: 'price',
         priceByCurrencyField: 'priceByCurrency',
     })
 

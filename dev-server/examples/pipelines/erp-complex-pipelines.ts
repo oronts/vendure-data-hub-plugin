@@ -20,9 +20,10 @@
  */
 
 import { createPipeline } from '../../../src';
-import { MOCK_PORTS, mockUrl } from '../../ports';
-
-const PIMCORE_API_URL = process.env.PIMCORE_API_URL || mockUrl(MOCK_PORTS.PIMCORE);
+import {
+    PIMCORE_API_CONNECTION_CODE,
+    PIMCORE_API_URL,
+} from '../../pimcore-api';
 
 // =============================================================================
 // ERP-1: FULL ERP PRODUCT IMPORT
@@ -55,11 +56,16 @@ export const erpFullProductImport = createPipeline()
 
     // ── Extract: product listing with translation headers ──────────────────────
     .extract('fetch-products', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?includeTranslations=true&limit=100`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
 
     // ── Validate: require itemNumber ───────────────────────────────────────────
@@ -74,10 +80,12 @@ export const erpFullProductImport = createPipeline()
     .transform('enrich-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products/{{itemNumber}}?includeTranslations=true`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products/{{itemNumber}}?includeTranslations=true`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_detail',
                     cacheTtlSec: 300,
                 },
@@ -139,7 +147,6 @@ export const erpFullProductImport = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
@@ -241,11 +248,16 @@ export const erpCustomerSync = createPipeline()
 
     // ── Extract: customer groups first (ensures groups exist before assignment) ──
     .extract('fetch-groups', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/customer-groups`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'customerGroups',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/customer-groups`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'customerGroups',
     })
 
     .load('upsert-groups', {
@@ -256,11 +268,16 @@ export const erpCustomerSync = createPipeline()
 
     // ── Extract: all customers including inactive ──────────────────────────────
     .extract('fetch-customers', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/customers?activeOnly=false&includeTranslations=false`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'customers',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/customers?activeOnly=false&includeTranslations=false`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'customers',
     })
 
     // ── Validate: email required + format ────────────────────────────────────
@@ -392,11 +409,16 @@ export const erpOrderImport = createPipeline()
 
     // ── Extract: orders from ERP ──────────────────────────────────────────────
     .extract('fetch-orders', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/orders`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'orders',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/orders`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'orders',
     })
 
     // ── Validate: order code + email + lines ──────────────────────────────────
@@ -485,8 +507,13 @@ export const erpOrderImport = createPipeline()
         lookupFields: 'code',
         state: 'PaymentSettled',
         orderPlacedAtField: 'orderPlacedAt',
-        couponCodeField: 'couponCode',
         customFieldsField: 'customFields',
+    })
+
+    .load('apply-order-coupon', {
+        adapterCode: 'applyCoupon',
+        orderCodeField: 'code',
+        couponField: 'couponCode',
     })
 
     // ── Load: create orders without coupon (branch: no-coupon) ───────────────
@@ -528,7 +555,8 @@ export const erpOrderImport = createPipeline()
     .edge('prepare-orders', 'has-coupon')
     .edge('has-coupon', 'create-orders-with-coupon', 'with-coupon')
     .edge('has-coupon', 'create-orders-no-coupon', 'no-coupon')
-    .edge('create-orders-with-coupon', 'add-notes')
+    .edge('create-orders-with-coupon', 'apply-order-coupon')
+    .edge('apply-order-coupon', 'add-notes')
     .edge('create-orders-no-coupon', 'add-notes')
     .edge('add-notes', 'transition-state')
     .edge('transition-state', 'order-report')
@@ -569,11 +597,16 @@ export const erpDeltaSyncPipeline = createPipeline()
 
     // ── Extract: change feed since last run ───────────────────────────────────
     .extract('fetch-changes', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/changes`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'changes',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/changes`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'changes',
     })
 
     // ── Validate: type and action required ────────────────────────────────────
@@ -660,10 +693,12 @@ export const erpDeltaSyncPipeline = createPipeline()
     .transform('fetch-product-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products/{{entityIdentifier}}?includeTranslations=true`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products/{{entityIdentifier}}?includeTranslations=true`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_productDetail',
                     cacheTtlSec: 60,
                 },
@@ -693,7 +728,6 @@ export const erpDeltaSyncPipeline = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
@@ -706,10 +740,12 @@ export const erpDeltaSyncPipeline = createPipeline()
     .transform('fetch-customer-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/customers/{{entityIdentifier}}`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/customers/{{entityIdentifier}}`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_customerDetail',
                     cacheTtlSec: 60,
                 },
@@ -821,20 +857,27 @@ export const erpChannelSpecificCatalog = createPipeline()
 
     // ── Branch 1: UK Store channel products ───────────────────────────────────
     .extract('fetch-uk-products', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?channel=uk-store&includeTranslations=true`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?channel=uk-store&includeTranslations=true`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
 
     .transform('enrich-uk-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products/{{itemNumber}}?includeTranslations=true`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products/{{itemNumber}}?includeTranslations=true`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_detail',
                     cacheTtlSec: 300,
                 },
@@ -883,7 +926,6 @@ export const erpChannelSpecificCatalog = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: 'uk-store',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
@@ -911,11 +953,16 @@ export const erpChannelSpecificCatalog = createPipeline()
 
     // ── Branch 2: B2B channel products ────────────────────────────────────────
     .extract('fetch-b2b-products', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?channel=b2b&includeTranslations=true`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?channel=b2b&includeTranslations=true`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
 
     .transform('map-b2b-products', {
@@ -944,7 +991,6 @@ export const erpChannelSpecificCatalog = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: 'b2b',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         enabledField: 'enabled',

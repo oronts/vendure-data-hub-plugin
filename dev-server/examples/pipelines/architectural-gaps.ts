@@ -2,7 +2,7 @@
  * Architectural Gap Pipelines - Examples covering 7 missing capabilities
  *
  * These pipelines demonstrate:
- * 1. Multi-source join (multiJoin operator)
+ * 1. Reference-data join (multiJoin operator)
  * 2. Parallel execution (concurrent steps)
  * 3. Per-record retry with exponential backoff
  * 4. GATE approval workflow
@@ -15,32 +15,22 @@ import { createPipeline } from '../../../src';
 import { ConnectionAuthType } from '../../../src';
 
 // =============================================================================
-// 1. MULTI-SOURCE JOIN - Join prices to products by productId
+// 1. REFERENCE-DATA JOIN - Join price metadata to products by productId
 // =============================================================================
 
 /**
- * Demonstrates the multiJoin operator to merge data from two extract steps.
- * Products are extracted from the Vendure catalog, prices from an external
- * pricing API, then joined on productId before loading.
+ * Demonstrates the multiJoin operator with an inline reference dataset.
  */
 export const joinDemoPipeline = createPipeline()
-    .name('Multi-Source Join Demo')
-    .description('Join external price data to products using multiJoin operator')
+    .name('Reference Data Join Demo')
+    .description('Join reference price metadata to products using multiJoin')
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('extract-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants',
+        relations: ['variants'],
         batchSize: 200,
-    })
-    .extract('extract-prices', {
-        adapterCode: 'httpApi',
-        url: 'https://pricing.example.com/api/v1/prices',
-        method: 'GET',
-        headers: { Accept: 'application/json' },
-        bearerTokenSecretCode: 'demo-api-key',
-        itemsField: 'data.prices',
     })
     .transform('join-prices', {
         operators: [
@@ -49,7 +39,9 @@ export const joinDemoPipeline = createPipeline()
                 args: {
                     leftKey: 'id',
                     rightKey: 'productId',
-                    rightDataPath: 'extract-prices',
+                    rightData: [
+                        { productId: 'T_1', wholesale: 1200, retail: 1600, currency: 'EUR' },
+                    ],
                     type: 'LEFT',
                     prefix: 'ext_',
                     select: ['wholesale', 'retail', 'currency'],
@@ -57,7 +49,6 @@ export const joinDemoPipeline = createPipeline()
             },
             { op: 'coalesce', args: { paths: ['ext_retail', 'price'], target: 'finalPrice' } },
             { op: 'toNumber', args: { source: 'finalPrice' } },
-            { op: 'toCents', args: { source: 'finalPrice', target: 'priceInCents' } },
         ],
     })
     .load('save-products', {
@@ -67,11 +58,10 @@ export const joinDemoPipeline = createPipeline()
         conflictStrategy: 'SOURCE_WINS',
         nameField: 'name',
         slugField: 'slug',
+        priceField: 'finalPrice',
     })
     .edge('start', 'extract-products')
-    .edge('start', 'extract-prices')
     .edge('extract-products', 'join-prices')
-    .edge('extract-prices', 'join-prices')
     .edge('join-prices', 'save-products')
     .build();
 
@@ -92,7 +82,7 @@ export const parallelDemoPipeline = createPipeline()
     .extract('fetch-catalog', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants,featuredAsset',
+        relations: ['variants', 'featuredAsset'],
         batchSize: 100,
     })
     .transform('normalize-names', {
@@ -182,15 +172,14 @@ export const retryDemoPipeline = createPipeline()
                     target: 'availability',
                 },
             },
-            { op: 'toCents', args: { source: 'price', target: 'priceInCents' } },
         ],
     })
     .load('upsert-products', {
         adapterCode: 'variantUpsert',
         channel: '__default_channel__',
-        conflictStrategy: 'SOURCE_WINS',
+        strategy: 'UPSERT',
         skuField: 'sku',
-        priceField: 'priceInCents',
+        priceField: 'price',
     })
     .edge('start', 'fetch-skus')
     .edge('fetch-skus', 'enrich-with-retry')
@@ -222,7 +211,6 @@ export const gateDemoPipeline = createPipeline()
     .transform('prepare', {
         operators: [
             { op: 'toNumber', args: { source: 'price' } },
-            { op: 'toCents', args: { source: 'price', target: 'priceInCents' } },
             { op: 'slugify', args: { source: 'name', target: 'slug' } },
             { op: 'set', args: { path: 'enabled', value: true } },
         ],
@@ -283,7 +271,6 @@ export const cdcDemoPipeline = createPipeline()
             { op: 'trim', args: { path: 'name' } },
             { op: 'trim', args: { path: 'sku' } },
             { op: 'toNumber', args: { source: 'price' } },
-            { op: 'toCents', args: { source: 'price', target: 'priceInCents' } },
             { op: 'slugify', args: { source: 'name', target: 'slug' } },
             {
                 op: 'ifThenElse',
@@ -294,7 +281,7 @@ export const cdcDemoPipeline = createPipeline()
                     target: 'enabled',
                 },
             },
-            { op: 'now', args: { target: 'syncedAt', format: 'ISO', timezone: 'UTC' } },
+            { op: 'now', args: { target: 'syncedAt', format: 'ISO' } },
         ],
     })
     .load('sync-to-vendure', {
@@ -330,7 +317,7 @@ export const graphqlMutationDemoPipeline = createPipeline()
     .extract('query-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'variants,featuredAsset',
+        relations: ['variants', 'featuredAsset'],
         batchSize: 50,
     })
     .transform('prepare-for-graphql', {
@@ -392,7 +379,7 @@ export const fileTransformDemoPipeline = createPipeline()
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'featuredAsset,variants',
+        relations: ['featuredAsset', 'variants'],
         batchSize: 20,
     })
     .transform('process-images', {

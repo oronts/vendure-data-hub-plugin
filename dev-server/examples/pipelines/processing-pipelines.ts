@@ -28,7 +28,7 @@ export const productEnrichment = createPipeline()
     .extract('fetch-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,facetValues',
+        relations: ['translations', 'product', 'facetValues'],
         languageCode: 'en',
         batchSize: 50,
     })
@@ -175,6 +175,7 @@ export const productEnrichment = createPipeline()
 
     .load('update-variants', {
         adapterCode: 'variantUpsert',
+        strategy: 'UPDATE',
         skuField: 'sku',
     })
 
@@ -244,7 +245,7 @@ export const orderAnalytics = createPipeline()
     .extract('fetch-orders', {
         adapterCode: 'vendureQuery',
         entity: 'ORDER',
-        relations: 'customer,lines,channels',
+        relations: ['customer', 'lines', 'channels'],
         batchSize: 100,
     })
 
@@ -435,7 +436,7 @@ export const customerSegmentation = createPipeline()
     .extract('fetch-customers', {
         adapterCode: 'vendureQuery',
         entity: 'CUSTOMER',
-        relations: 'orders,groups',
+        relations: ['orders', 'groups'],
         batchSize: 100,
     })
 

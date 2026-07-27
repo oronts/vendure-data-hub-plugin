@@ -114,22 +114,20 @@ export const customOperatorsPipelineExample = createPipeline()
     .build();
 
 /**
- * Pipeline using custom generator extractor
+ * Pipeline using custom batch extractor
  */
 export const customExtractorsPipelineExample = createPipeline()
     .name('Custom Extractors Demo')
-    .description('Generate test data with custom extractor')
+    .description('Read inline demo data with a custom batch extractor')
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'MANUAL' })
-    .extract('generate', {
-        adapterCode: 'generator',
-        count: 50,
-        template: {
-            id: '{{index}}',
-            name: 'Product {{index}}',
-            sku: 'GEN-{{index}}',
-            price: '{{random 1000 9000}}',
-        },
+    .extract('sample-data', {
+        adapterCode: 'demoInMemory',
+        data: [
+            { id: '1', name: 'Demo Product 1', sku: 'DEMO-1', price: '1500' },
+            { id: '2', name: 'Demo Product 2', sku: 'DEMO-2', price: '2500' },
+        ],
+        failOnEmpty: true,
     })
     .transform('prepare', {
         operators: [
@@ -145,8 +143,8 @@ export const customExtractorsPipelineExample = createPipeline()
         skuField: 'sku',
         priceField: 'price',
     })
-    .edge('start', 'generate')
-    .edge('generate', 'prepare')
+    .edge('start', 'sample-data')
+    .edge('sample-data', 'prepare')
     .edge('prepare', 'upsert')
     .build();
 
@@ -160,7 +158,7 @@ export const customLoadersPipelineExample = createPipeline()
     .extract('query', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT',
-        relations: 'translations',
+        relations: ['translations'],
         batchSize: 100,
     })
     .transform('prepare', {
@@ -192,7 +190,7 @@ export const customAdapterPipelineExample = createPipeline()
     .capabilities({ requires: ['UpdateCatalog'] })
     .trigger('start', { type: 'MANUAL' })
     .extract('generate', {
-        adapterCode: 'generator',
+        adapterCode: 'demoGenerator',
         count: 20,
         template: {
             id: '{{index}}',

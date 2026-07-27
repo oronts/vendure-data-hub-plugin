@@ -46,11 +46,15 @@ export const dailyStockSync = createPipeline()
             'Accept': 'application/json',
             'X-ERP-Version': '2024.1',
         },
-        bearerTokenSecretCode: 'erp-api-token',
-        itemsField: 'data.inventory_items',
-        pageParam: 'page',
-        nextPageField: 'meta.next_page',
-        maxPages: 50,
+        auth: { type: 'BEARER', secretCode: 'erp-api-token' },
+        dataPath: 'data.inventory_items',
+        pagination: {
+            type: 'PAGE',
+            pageParam: 'page',
+            pageSizeParam: 'per_page',
+            limit: 500,
+            maxPages: 50,
+        },
         query: {
             per_page: 500,
             updated_since: '${checkpoint.lastSyncTime}',  // Incremental since last sync
@@ -232,8 +236,8 @@ export const hourlyPriceSync = createPipeline()
         adapterCode: 'httpApi',
         url: 'https://pricing.company.com/api/v1/prices',
         method: 'GET',
-        bearerTokenSecretCode: 'pricing-api-token',
-        itemsField: 'prices',
+        auth: { type: 'BEARER', secretCode: 'pricing-api-token' },
+        dataPath: 'prices',
         query: {
             updated_since: '${checkpoint.lastRun}',
             currency: 'USD',
@@ -250,18 +254,16 @@ export const hourlyPriceSync = createPipeline()
                     includePaths: ['price', 'sale_price', 'currency'],
                 },
             },
-            // Convert to cents
+            // Normalize the source value; the loader performs the single major-to-minor conversion.
             { op: 'toNumber', args: { source: 'price' } },
-            { op: 'toCents', args: { source: 'price', target: 'priceInCents' } },
-            { op: 'toNumber', args: { source: 'sale_price' } },
-            { op: 'toCents', args: { source: 'sale_price', target: 'salePriceInCents' } },
         ],
     })
 
     .load('update-prices', {
         adapterCode: 'variantUpsert',
+        strategy: 'UPDATE',
         skuField: 'sku',
-        priceField: 'priceInCents',
+        priceField: 'price',
     })
 
     .edge('start', 'fetch-prices')
@@ -286,7 +288,7 @@ export const weeklyCustomerCleanup = createPipeline()
     .extract('fetch-customers', {
         adapterCode: 'vendureQuery',
         entity: 'CUSTOMER',
-        relations: 'orders',
+        relations: ['orders'],
         batchSize: 100,
     })
 
@@ -359,7 +361,6 @@ export const webhookOrderSync = createPipeline()
     .capabilities({ requires: ['UpdateOrder', 'UpdateCustomer'] })
     .trigger('start', {
         type: 'WEBHOOK',
-        webhookCode: 'external-orders',
         // Authentication: HMAC-SHA256 signature verification
         authentication: 'HMAC',
         secretCode: 'webhook-hmac-secret',  // Reference to DataHub Secret
@@ -465,17 +466,14 @@ export const lowStockAlert = createPipeline()
     .capabilities({ requires: ['ReadCatalog'] })
     .trigger('start', {
         type: 'EVENT',
-        event: 'ProductVariantEvent.updated',
-        filter: {
-            'stockOnHand': { '$lt': '${outOfStockThreshold}' },
-        },
+        event: 'ProductVariantEvent',
     })
 
     // Note: Deep relations like stockLevels.stockLocation don't work with TypeORM
     .extract('get-variant-details', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'product,stockLevels',
+        relations: ['product', 'stockLevels'],
         batchSize: 1,
     })
 
@@ -533,7 +531,6 @@ export const webhookApiKeyAuth = createPipeline()
     .capabilities({ requires: ['ReadCatalog'] })
     .trigger('start', {
         type: 'WEBHOOK',
-        webhookCode: 'api-key-webhook',
         // Authentication: API Key in header
         authentication: 'API_KEY',
         apiKeySecretCode: 'webhook-api-key',  // Reference to DataHub Secret
@@ -574,7 +571,6 @@ export const webhookJwtAuth = createPipeline()
     .capabilities({ requires: ['ReadCatalog'] })
     .trigger('start', {
         type: 'WEBHOOK',
-        webhookCode: 'jwt-webhook',
         // Authentication: JWT Bearer token
         authentication: 'JWT',
         jwtSecretCode: 'webhook-jwt-secret',  // Reference to DataHub Secret (HS256 key)
@@ -615,7 +611,6 @@ export const webhookBasicAuth = createPipeline()
     .capabilities({ requires: ['ReadCatalog'] })
     .trigger('start', {
         type: 'WEBHOOK',
-        webhookCode: 'basic-auth-webhook',
         // Authentication: HTTP Basic Auth
         authentication: 'BASIC',
         basicSecretCode: 'webhook-basic-creds',  // Secret contains "username:password"
@@ -712,14 +707,14 @@ export const multiTriggerPipeline = createPipeline()
         adapterCode: 'httpApi',
         url: 'https://primary.erp.com/api/inventory',
         method: 'GET',
-        bearerTokenSecretCode: 'primary-erp-token',
+        auth: { type: 'BEARER', secretCode: 'primary-erp-token' },
     })
 
     .extract('fetch-secondary', {
         adapterCode: 'httpApi',
         url: 'https://secondary.erp.com/api/inventory',
         method: 'GET',
-        bearerTokenSecretCode: 'secondary-erp-token',
+        auth: { type: 'BEARER', secretCode: 'secondary-erp-token' },
     })
 
     .transform('merge-and-normalize', {
@@ -738,9 +733,10 @@ export const multiTriggerPipeline = createPipeline()
     })
 
     .load('update-inventory', {
-        adapterCode: 'stockAdjust',
-        strategy: 'UPSERT',
-        locationStrategy: 'default',
+        adapterCode: 'inventoryAdjust',
+        strategy: 'UPDATE',
+        skuField: 'sku',
+        stockOnHandField: 'quantity',
     })
 
     // Load to multiple destinations (parallel when enabled)
@@ -836,7 +832,7 @@ export const customerImportWithValidationAndEnrichment = createPipeline()
     .load('create-customers', {
         adapterCode: 'customerUpsert',
         strategy: 'UPSERT',
-        lookupField: 'emailAddress',
+        emailField: 'emailAddress',
     })
 
     .edge('manual-trigger', 'load-csv')
@@ -865,14 +861,18 @@ export const productCatalogEnrichment = createPipeline()
 
     .trigger('webhook', {
         type: 'WEBHOOK',
-        webhookCode: 'product-enrichment',
+        authentication: 'HMAC',
+        secretCode: 'product-enrichment-webhook-secret',
+        hmacAlgorithm: 'SHA256',
+        requireIdempotencyKey: true,
+        idempotencyKeyHeader: 'x-idempotency-key',
     })
 
     .extract('fetch-products', {
         adapterCode: 'httpApi',
         url: 'https://pim.company.com/api/products',
         method: 'GET',
-        itemsField: 'products',
+        dataPath: 'products',
     })
 
     // First enrich with computed SEO fields
@@ -909,14 +909,14 @@ export const productCatalogEnrichment = createPipeline()
     .transform('format-price', {
         operators: [
             { op: 'toNumber', args: { source: 'price' } },
-            { op: 'math', args: { operation: 'multiply', source: 'price', operand: '100', target: 'priceInCents' } },
         ],
     })
 
     .load('upsert-products', {
         adapterCode: 'productUpsert',
+        channel: '__default_channel__',
         strategy: 'UPSERT',
-        lookupField: 'slug',
+        conflictStrategy: 'SOURCE_WINS',
     })
 
     .edge('webhook', 'fetch-products')

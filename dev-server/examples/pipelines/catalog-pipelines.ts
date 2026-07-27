@@ -8,12 +8,19 @@
  */
 
 import { createPipeline } from '../../../src';
-import { MOCK_PORTS, mockUrl } from '../../ports';
+import {
+    getMockApiUrl,
+    getMockEndpoint,
+    MOCK_ROUTES,
+} from '../../ports';
+import {
+    PIMCORE_API_CONNECTION_CODE,
+    PIMCORE_API_URL,
+} from '../../pimcore-api';
 
 // ── External API URLs ───────────────────────────────────────────────────────
-const PIMCORE_API_URL = process.env.PIMCORE_API_URL || mockUrl(MOCK_PORTS.PIMCORE);
-const MAGENTO_API_URL = process.env.MAGENTO_API_URL || mockUrl(MOCK_PORTS.MAGENTO);
-const SHOPIFY_API_URL = process.env.SHOPIFY_API_URL || mockUrl(MOCK_PORTS.SHOPIFY);
+const MAGENTO_API_URL = getMockApiUrl('MAGENTO');
+const SHOPIFY_API_URL = getMockApiUrl('SHOPIFY');
 
 // =============================================================================
 // P1: PIM CATALOG SYNC — Full enterprise catalog sync from Pimcore mock API
@@ -45,11 +52,16 @@ export const pimCatalogSync = createPipeline()
 
     // Branch 1: Facets + Facet Values
     .extract('extract-facets', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/facets?includeTranslations=true`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'facets',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/facets?includeTranslations=true`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'facets',
     })
     .transform('map-facets', {
         operators: [
@@ -79,6 +91,12 @@ export const pimCatalogSync = createPipeline()
             { op: 'pick', args: { fields: ['facetCode', 'valueCode', 'valueName', 'translations'] } },
         ],
     })
+    .transform('filter-fv-records', {
+        operators: [
+            { op: 'when', args: { conditions: [{ field: 'valueCode', cmp: 'exists' }], action: 'keep' } },
+            { op: 'when', args: { conditions: [{ field: 'facetCode', cmp: 'exists' }], action: 'keep' } },
+        ],
+    })
     .load('upsert-fv', {
         adapterCode: 'facetValueUpsert',
         strategy: 'UPSERT',
@@ -90,11 +108,16 @@ export const pimCatalogSync = createPipeline()
 
     // Branch 2: Categories → Collections
     .extract('extract-categories', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/categories?includeTranslations=true`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'categories',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/categories?includeTranslations=true`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'categories',
     })
     .transform('map-categories', {
         operators: [
@@ -119,19 +142,26 @@ export const pimCatalogSync = createPipeline()
 
     // Branch 3: Products + Variants (with option groups)
     .extract('extract-products', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/products?limit=100&includeTranslations=true`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'products',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/products?limit=100&includeTranslations=true`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'products',
     })
     .transform('enrich-detail', {
         operators: [
             {
-                op: 'httpLookup',
-                args: {
-                    url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
-                    headers: { apiKey: 'test-pimcore-api-key' },
+               op: 'httpLookup',
+               args: {
+                  url: `${PIMCORE_API_URL}/api/products/{{id}}?includeTranslations=true`,
+                    connectionCode: PIMCORE_API_CONNECTION_CODE,
+                  apiKeySecretCode: 'pimcore-api-key',
+                  apiKeyHeader: 'apiKey',
                     target: '_detail',
                     cacheTtlSec: 300,
                 },
@@ -162,6 +192,7 @@ export const pimCatalogSync = createPipeline()
                             'web': '__default_channel__',
                             'b2b': '__default_channel__',
                             'uk': 'uk-store',
+                            'uk-store': 'uk-store',
                             'de': '__default_channel__',
                         };
                         const pimcoreChannels = record._detail?.product?.channels || [];
@@ -181,12 +212,17 @@ export const pimCatalogSync = createPipeline()
             { op: 'omit', args: { fields: ['_detail', '_enName', 'id', 'type', 'variantCount', 'modifiedAt', 'categoryCode'] } },
         ],
     })
+    .transform('filter-product-records', {
+        operators: [
+            { op: 'when', args: { conditions: [{ field: 'name', cmp: 'exists' }], action: 'keep' } },
+            { op: 'when', args: { conditions: [{ field: 'slug', cmp: 'exists' }], action: 'keep' } },
+        ],
+    })
     .load('upsert-products', {
         adapterCode: 'productUpsert',
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'slug',
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
@@ -194,12 +230,22 @@ export const pimCatalogSync = createPipeline()
         translationsField: 'translations',
         customFieldsField: 'customFields',
         channelsField: 'channels',
-        facetValueCodesField: 'facetValueCodes',
+        facetValuesField: 'facetValueCodes',
         createVariants: false,
     })
     .transform('expand-variants', {
         operators: [
-            { op: 'expand', args: { path: '_variants', parentFields: { productSlug: 'slug', productName: 'name' } } },
+            {
+                op: 'expand',
+                args: {
+                    path: '_variants',
+                    parentFields: {
+                        productSlug: 'slug',
+                        productName: 'name',
+                        channels: 'channels',
+                    },
+                },
+            },
         ],
     })
     .transform('map-variants', {
@@ -208,10 +254,15 @@ export const pimCatalogSync = createPipeline()
             { op: 'copy', args: { source: 'title', target: 'name' } },
             { op: 'copy', args: { source: 'attributes', target: 'options' } },
             { op: 'copy', args: { source: 'translations', target: 'translations' } },
-            { op: 'copy', args: { source: 'price.EUR', target: 'priceValue' } },
             { op: 'copy', args: { source: 'price', target: 'priceByCurrency' } },
             { op: 'validateRequired', args: { fields: ['sku'] } },
-            { op: 'pick', args: { fields: ['sku', 'name', 'productSlug', 'productName', 'priceValue', 'options', 'translations', 'priceByCurrency'] } },
+            { op: 'pick', args: { fields: ['sku', 'name', 'productSlug', 'productName', 'options', 'translations', 'priceByCurrency', 'channels'] } },
+        ],
+    })
+    .transform('filter-variant-records', {
+        operators: [
+            { op: 'when', args: { conditions: [{ field: 'sku', cmp: 'exists' }], action: 'keep' } },
+            { op: 'when', args: { conditions: [{ field: 'productSlug', cmp: 'exists' }], action: 'keep' } },
         ],
     })
     .load('upsert-variants', {
@@ -219,19 +270,24 @@ export const pimCatalogSync = createPipeline()
         strategy: 'UPSERT',
         skuField: 'sku',
         nameField: 'name',
-        priceField: 'priceValue',
         priceByCurrencyField: 'priceByCurrency',
         optionGroupsField: 'options',
         translationsField: 'translations',
+        channelsField: 'channels',
     })
 
     // Branch 4: Promotions
     .extract('extract-promotions', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/promotions?includeTranslations=true`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'promotions',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/promotions?includeTranslations=true`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'promotions',
     })
     .transform('map-promotions', {
         operators: [
@@ -290,11 +346,16 @@ export const pimCatalogSync = createPipeline()
 
     // Branch 6: Inventory Levels
     .extract('extract-stock', {
-        adapterCode: 'httpApi',
-        url: `${PIMCORE_API_URL}/api/stock`,
-        method: 'GET',
-        headers: { apiKey: 'test-pimcore-api-key' },
-        itemsField: 'stock',
+       adapterCode: 'httpApi',
+      url: `${PIMCORE_API_URL}/api/stock`,
+      method: 'GET',
+        connectionCode: PIMCORE_API_CONNECTION_CODE,
+      auth: {
+          type: 'API_KEY',
+           secretCode: 'pimcore-api-key',
+            headerName: 'apiKey',
+        },
+        dataPath: 'stock',
     })
     .transform('map-stock', {
         operators: [
@@ -342,19 +403,23 @@ export const pimCatalogSync = createPipeline()
     .edge('map-facets', 'upsert-facets')
     .edge('map-facets', 'expand-fv')
     .edge('expand-fv', 'map-fv')
-    .edge('map-fv', 'upsert-fv')
-    .edge('upsert-facets', 'upsert-fv')
+    .edge('map-fv', 'filter-fv-records')
+    .edge('upsert-facets', 'filter-fv-records')
+    .edge('filter-fv-records', 'upsert-fv')
     // Categories
     .edge('extract-categories', 'map-categories')
     .edge('map-categories', 'upsert-collections')
     // Products + Variants
     .edge('extract-products', 'enrich-detail')
     .edge('enrich-detail', 'map-products')
-    .edge('map-products', 'upsert-products')
+    .edge('map-products', 'filter-product-records')
+    .edge('upsert-fv', 'filter-product-records')
+    .edge('filter-product-records', 'upsert-products')
     .edge('map-products', 'expand-variants')
     .edge('expand-variants', 'map-variants')
-    .edge('map-variants', 'upsert-variants')
-    .edge('upsert-products', 'upsert-variants')
+    .edge('map-variants', 'filter-variant-records')
+    .edge('upsert-products', 'filter-variant-records')
+    .edge('filter-variant-records', 'upsert-variants')
     // Promotions
     .edge('extract-promotions', 'map-promotions')
     .edge('map-promotions', 'upsert-promotions')
@@ -401,13 +466,13 @@ export const magentoProductMigration = createPipeline()
         adapterCode: 'httpApi',
         url: `${MAGENTO_API_URL}/rest/V1/products`,
         method: 'GET',
-        bearerTokenSecretCode: 'magento-bearer-token',
-        itemsField: 'items',
+        auth: { type: 'BEARER', secretCode: 'magento-bearer-token' },
+        dataPath: 'items',
         pagination: {
-            type: 'offset',
+            type: 'PAGE',
             pageParam: 'searchCriteria[currentPage]',
             pageSizeParam: 'searchCriteria[pageSize]',
-            pageSize: 50,
+            limit: 50,
         },
     })
 
@@ -439,7 +504,6 @@ export const magentoProductMigration = createPipeline()
                 },
             },
             { op: 'toNumber', args: { source: 'price' } },
-            { op: 'math', args: { source: 'price', operation: 'multiply', operand: '100', target: 'priceInCents' } },
             { op: 'slugify', args: { source: 'name', target: 'slug' } },
             { op: 'template', args: { template: 'Imported from Magento: ${name}', target: 'importNote' } },
         ],
@@ -471,7 +535,6 @@ export const magentoProductMigration = createPipeline()
         operators: [
             { op: 'copy', args: { source: 'sku', target: 'sku' } },
             { op: 'copy', args: { source: 'name', target: 'productName' } },
-            { op: 'copy', args: { source: 'priceInCents', target: 'price' } },
             { op: 'copy', args: { source: 'slug', target: 'productSlug' } },
             { op: 'copy', args: { source: 'description', target: 'productDescription' } },
             { op: 'pick', args: { fields: ['sku', 'productName', 'price', 'productSlug', 'productDescription', 'enabled', 'importSource', 'taxCategoryName'] } },
@@ -484,7 +547,6 @@ export const magentoProductMigration = createPipeline()
         strategy: 'UPSERT',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'productSlug',
         nameField: 'productName',
         slugField: 'productSlug',
         descriptionField: 'productDescription',
@@ -550,19 +612,17 @@ export const shopifyInventorySync = createPipeline()
         headers: {
             'X-Shopify-Access-Token': 'shpat_test_mock_access_token_123456',
         },
-        itemsField: 'products',
+        dataPath: 'products',
         pagination: {
-            type: 'cursor',
-            nextPageField: 'next_page_info',
-            pageSize: 50,
+            type: 'LINK_HEADER',
+            limit: 50,
         },
     })
 
-    // Validate required fields
-    .validate('check-required', {
+    // Validate the product envelope before expanding variants
+    .validate('check-products', {
         errorHandlingMode: 'ACCUMULATE',
         rules: [
-            { type: 'business', spec: { field: 'sku', required: true, error: 'SKU is required' } },
             { type: 'business', spec: { field: 'variants', required: true, error: 'Variants are required' } },
         ],
     })
@@ -573,6 +633,15 @@ export const shopifyInventorySync = createPipeline()
             { op: 'expand', args: { path: 'variants', parentFields: { productTitle: 'title' } } },
             { op: 'toNumber', args: { source: 'inventory_quantity', target: 'stockOnHand' } },
             { op: 'pick', args: { fields: ['sku', 'stockOnHand', 'productTitle', 'inventory_item_id'] } },
+        ],
+    })
+
+    // Shopify product SKUs live on variants, so validate after expansion.
+    .validate('check-variants', {
+        errorHandlingMode: 'ACCUMULATE',
+        rules: [
+            { type: 'business', spec: { field: 'sku', required: true, error: 'Variant SKU is required' } },
+            { type: 'business', spec: { field: 'stockOnHand', required: true, min: 0, error: 'Variant stock is required' } },
         ],
     })
 
@@ -608,7 +677,7 @@ export const shopifyInventorySync = createPipeline()
     // Alert webhook for low-stock items
     .load('alert-low-stock', {
         adapterCode: 'restPost',
-        endpoint: 'http://localhost:4100/api/webhook',
+        endpoint: getMockEndpoint('EDGE_CASE', MOCK_ROUTES.EDGE_WEBHOOK),
         method: 'POST',
         batchMode: 'single',
     })
@@ -622,9 +691,10 @@ export const shopifyInventorySync = createPipeline()
 
     // Graph edges
     .edge('schedule', 'fetch-products')
-    .edge('fetch-products', 'check-required')
-    .edge('check-required', 'prepare-stock')
-    .edge('prepare-stock', 'stock-level-route')
+    .edge('fetch-products', 'check-products')
+    .edge('check-products', 'prepare-stock')
+    .edge('prepare-stock', 'check-variants')
+    .edge('check-variants', 'stock-level-route')
     .edge('stock-level-route', 'adjust-stock', 'normal-stock')
     .edge('stock-level-route', 'adjust-stock', 'low-stock')
     .edge('stock-level-route', 'alert-low-stock', 'low-stock')

@@ -177,7 +177,7 @@ export const interceptorHookDemo = createPipeline()
     .extract('inline-data', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,product.translations',
+        relations: ['translations', 'product', 'product.translations'],
         batchSize: 10,
     })
 
@@ -246,7 +246,7 @@ export const scriptHookDemo = createPipeline()
     .extract('query-variants', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,product.translations,productVariantPrices',
+        relations: ['translations', 'product', 'product.translations', 'productVariantPrices'],
         batchSize: 20,
     })
 
@@ -300,7 +300,7 @@ export const searchEnrichmentHookDemo = createPipeline()
     .extract('query-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,product.translations,featuredAsset,facetValues',
+        relations: ['translations', 'product', 'product.translations', 'featuredAsset', 'facetValues'],
         batchSize: 50,
     })
 
@@ -321,7 +321,7 @@ export const searchEnrichmentHookDemo = createPipeline()
         primaryKey: 'objectID',
         host: 'http://localhost:7700',
         apiKeySecretCode: 'meilisearch-api-key',
-        bulkSize: 50,
+        batchSize: 50,
         languageCode: 'en',
         // Sink config controls index settings (not hooks)
         searchableFields: ['name', 'description', 'sku', 'searchText'],
@@ -373,7 +373,7 @@ export const multiHookChainDemo = createPipeline()
     .extract('query-products', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,product.translations',
+        relations: ['translations', 'product', 'product.translations'],
         batchSize: 10,
     })
 
@@ -390,7 +390,6 @@ export const multiHookChainDemo = createPipeline()
         strategy: 'UPDATE',
         conflictStrategy: 'SOURCE_WINS',
         channel: '__default_channel__',
-        matchField: 'sku',
         nameField: 'name',
         slugField: 'slug',
     })
@@ -506,7 +505,7 @@ export const allStagesHookDemo = createPipeline()
     .extract('query-data', {
         adapterCode: 'vendureQuery',
         entity: 'PRODUCT_VARIANT',
-        relations: 'translations,product,product.translations',
+        relations: ['translations', 'product', 'product.translations'],
         batchSize: 10,
     })
 

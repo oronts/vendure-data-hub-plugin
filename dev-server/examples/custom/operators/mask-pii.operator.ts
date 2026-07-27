@@ -1,4 +1,4 @@
-import { JsonObject, SingleRecordOperator, AdapterOperatorHelpers, StepConfigSchema } from '../../../../src';
+import { CURRENT_ADAPTER_API_VERSION, JsonObject, SingleRecordOperator, AdapterOperatorHelpers, StepConfigSchema } from '../../../../src';
 
 export const maskPiiSchema: StepConfigSchema = {
     fields: [
@@ -71,6 +71,7 @@ export const maskPiiOperator: SingleRecordOperator<MaskPiiConfig> = {
     schema: maskPiiSchema,
     icon: 'shield-check',
     version: '1.0.0',
+    apiVersion: CURRENT_ADAPTER_API_VERSION,
 
     applyOne(record: JsonObject, config: MaskPiiConfig, helpers: AdapterOperatorHelpers): JsonObject | null {
         const { field, type, maskChar = '*' } = config;

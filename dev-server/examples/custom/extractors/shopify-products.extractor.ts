@@ -5,7 +5,7 @@
  * custom SDK adapters. In a real implementation, this would
  * connect to Shopify's GraphQL API.
  */
-import { JsonObject, ExtractorAdapter, ExtractContext, RecordEnvelope, StepConfigSchema } from '../../../../src';
+import { CURRENT_ADAPTER_API_VERSION, JsonObject, ExtractorAdapter, ExtractContext, RecordEnvelope, StepConfigSchema } from '../../../../src';
 
 export const shopifyProductsSchema: StepConfigSchema = {
     fields: [
@@ -116,6 +116,7 @@ export const shopifyProductsExtractor: ExtractorAdapter<ShopifyProductsConfig> =
     schema: shopifyProductsSchema,
     icon: 'shopping-bag',
     version: '1.0.0',
+    apiVersion: CURRENT_ADAPTER_API_VERSION,
     batchable: true,
 
     async *extract(context: ExtractContext, config: ShopifyProductsConfig): AsyncGenerator<RecordEnvelope, void, undefined> {

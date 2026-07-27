@@ -93,6 +93,32 @@ describe('mock HTTP contracts', () => {
         })).status).toBe(200);
     });
 
+    it('limits Pimcore stock to variants from published products', async () => {
+        const headers = { apiKey: DEFAULT_DEV_PIMCORE_API_KEY };
+        const [productsResponse, stockResponse] = await Promise.all([
+            fetch(`${pimcore.baseUrl}/api/products?limit=100`, { headers }),
+            fetch(`${pimcore.baseUrl}/api/stock`, { headers }),
+        ]);
+        const productsBody = await productsResponse.json() as {
+            products: Array<{ id: number }>;
+        };
+        const productDetails = await Promise.all(productsBody.products.map(async product => {
+            const response = await fetch(`${pimcore.baseUrl}/api/products/${product.id}`, { headers });
+            return response.json() as Promise<{
+                variants: Array<{ itemNumber: string; published: boolean }>;
+            }>;
+        }));
+        const stockBody = await stockResponse.json() as {
+            stock: Array<{ sku: string }>;
+        };
+        const publishedSkus = new Set(productDetails.flatMap(detail => detail.variants
+            .filter(variant => variant.published)
+            .map(variant => variant.itemNumber)));
+
+        expect(stockBody.stock).not.toHaveLength(0);
+        expect(stockBody.stock.every(item => publishedSkus.has(item.sku))).toBe(true);
+    });
+
     it('exposes Shopify readiness without consuming an API rate-limit token', async () => {
         const health = await fetch(`${shopify.baseUrl}${MOCK_ROUTES.HEALTH}`);
         const body = await health.json() as {
