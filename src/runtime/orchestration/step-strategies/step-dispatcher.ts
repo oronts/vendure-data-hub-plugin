@@ -45,6 +45,7 @@ import { GateStepStrategy } from './gate-step.strategy';
 import { LOGGER_CONTEXTS } from '../../../constants/core';
 import { DataHubLoggerFactory } from '../../../services/logger';
 import type { SeededInputMode } from '../seeded-graph';
+import { resolveEffectiveStepContext } from '../effective-context';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.STEP_DISPATCHER);
 
@@ -131,9 +132,6 @@ export class StepDispatcher {
                 return this.executeSeededInput(step, key, input, params.seedMode !== undefined);
 
             case StepType.EXTRACT:
-                if (params.seedMode === 'RECORDS') {
-                    return this.executeSeededInput(step, key, input, true);
-                }
                 return this.executeWithStrategy(this.extractStrategy, context);
 
             case StepType.TRANSFORM:
@@ -176,6 +174,11 @@ export class StepDispatcher {
             ctx: params.ctx,
             definition: params.definition,
             step: params.step,
+            pipelineContext: resolveEffectiveStepContext(
+                params.ctx,
+                params.definition.context,
+                params.step.context,
+            ),
             records: params.input,
             executorCtx: params.executorCtx,
             hookService: params.hookService,

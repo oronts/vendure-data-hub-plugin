@@ -228,8 +228,6 @@ export type {
     SinkAdapter,
     SinkContext,
     SinkType,
-    TriggerAdapter,
-    TriggerContext,
     AdapterOperatorHelpers,
     AdapterFormatHelpers,
     ConversionHelpers,

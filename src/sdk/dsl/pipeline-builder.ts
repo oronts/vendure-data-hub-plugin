@@ -7,7 +7,7 @@
  *   .name('Product Import')
  *   .description('Import products from CSV')
  *   .trigger('start', { type: 'MANUAL' })
- *   .extract('csv', { adapterCode: 'file', path: '/data/products.csv', format: 'CSV' })
+ *   .extract('csv', { adapterCode: 'csv', csvText: 'sku,name\\nSKU-1,Product' })
  *   .transform('map', {
  *     operators: [
  *       operators.map({ 'SKU': 'sku', 'Name': 'name' }),
@@ -33,6 +33,7 @@ import {
 } from '../../types/index';
 import type { StepType } from '../../../shared/types';
 import { STEP_TYPE } from '../../../shared/constants/enums';
+import { validateEnrichmentConfig } from '../../validation/enrichment-config.validator';
 import {
     TriggerConfig,
     ExtractStepConfig,
@@ -87,7 +88,13 @@ function createStep(
     config: JsonObject,
     extras?: Partial<Omit<PipelineStepDefinition, 'key' | 'type' | 'config'>>,
 ): PipelineStepDefinition {
-    return { key, type, config, ...(extras ?? {}) } as PipelineStepDefinition;
+    const step: Record<string, unknown> = { key, type, config };
+    for (const [field, value] of Object.entries(extras ?? {})) {
+        if (value !== undefined) {
+            step[field] = value;
+        }
+    }
+    return step as unknown as PipelineStepDefinition;
 }
 
 function createEdge(from: string, to: string, options?: { branch?: string; dependencyOnly?: boolean }): PipelineEdge {
@@ -248,10 +255,13 @@ export function createPipeline(): PipelineBuilder {
         enrich(key: string, config: EnrichStepConfig) {
             validateNonEmptyString(key, 'Step key');
             validateUniqueKey(state.steps, key);
-            // adapterCode is optional - enrichment can use built-in config (defaults, set, computed, sourceType)
-            const hasBuiltInConfig = config.defaults || config.set || config.computed || config.sourceType;
-            if (!config.adapterCode && !hasBuiltInConfig) {
-                throw new Error('Enrich step requires either adapterCode or built-in config (defaults, set, computed, or sourceType)');
+            if (!config.adapterCode) {
+                const result = validateEnrichmentConfig(config);
+                if (result.issues.length > 0) {
+                    throw new Error(
+                        `Invalid ENRICH configuration: ${result.issues.map(issue => issue.message).join('; ')}`,
+                    );
+                }
             }
             const { adapterCode, ...rest } = config;
             state.steps.push(createStep(key, STEP_TYPE.ENRICH, rest as unknown as JsonObject, adapterCode ? { adapterCode } : undefined));
@@ -323,15 +333,6 @@ export function createPipeline(): PipelineBuilder {
                 throw new Error('Pipeline must have at least one step');
             }
 
-            // Warn if no trigger is defined (MANUAL trigger is the implicit default)
-            const hasTrigger = state.steps.some(s => s.type === STEP_TYPE.TRIGGER);
-            if (!hasTrigger) {
-                // eslint-disable-next-line no-console
-                console.warn(
-                    `[DataHub] Pipeline "${state.name}" has no trigger step defined. It will only be runnable manually.`,
-                );
-            }
-
             // Validate edge references
             const stepKeys = new Set(state.steps.map(s => s.key));
             for (const e of state.edges) {
@@ -351,48 +352,22 @@ export function createPipeline(): PipelineBuilder {
                 }
             }
 
-            // Warn about unreachable steps in graph mode
-            const warnings: string[] = [];
-            if (state.edges.length > 0) {
-                const reachable = new Set<string>();
-                const triggerKeys = state.steps.filter(s => s.type === STEP_TYPE.TRIGGER).map(s => s.key);
-                const queue = [...triggerKeys];
-                // Also add steps with no incoming edges as entry points
-                const hasIncoming = new Set(state.edges.map(e => e.to));
-                state.steps.forEach(s => {
-                    if (!hasIncoming.has(s.key) && s.type !== STEP_TYPE.TRIGGER) {
-                        queue.push(s.key);
-                    }
-                });
-                while (queue.length) {
-                    const key = queue.shift()!;
-                    if (reachable.has(key)) continue;
-                    reachable.add(key);
-                    state.edges.filter(e => e.from === key).forEach(e => {
-                        if (!reachable.has(e.to)) queue.push(e.to);
-                    });
-                }
-                const unreachable = state.steps.filter(s => !reachable.has(s.key));
-                if (unreachable.length > 0) {
-                    warnings.push(`Unreachable steps in graph: ${unreachable.map(s => s.key).join(', ')}. These steps will never execute.`);
-                }
-            }
-
-            if (warnings.length > 0) {
-                // eslint-disable-next-line no-console
-                console.warn(`[DataHub] Pipeline "${state.name}": ${warnings.join('; ')}`);
-            }
-
             return {
                 version: state.version,
                 name: state.name,
-                description: state.description,
+                ...(state.description !== undefined
+                    ? { description: state.description }
+                    : {}),
                 steps: state.steps,
-                edges: state.edges.length > 0 ? state.edges : undefined,
-                dependsOn: state.dependsOn,
-                capabilities: state.capabilities,
-                context: state.context,
-                hooks: state.hooks,
+                ...(state.edges.length > 0 ? { edges: state.edges } : {}),
+                ...(state.dependsOn !== undefined
+                    ? { dependsOn: state.dependsOn }
+                    : {}),
+                ...(state.capabilities !== undefined
+                    ? { capabilities: state.capabilities }
+                    : {}),
+                ...(state.context !== undefined ? { context: state.context } : {}),
+                ...(state.hooks !== undefined ? { hooks: state.hooks } : {}),
             };
         },
     };

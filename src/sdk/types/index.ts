@@ -53,9 +53,6 @@ export {
     SinkContext,
     SinkAdapter,
     TriggerType,
-    TriggerContext,
-    TriggerPayload,
-    TriggerAdapter,
     DataHubAdapter,
     AdapterRegistration,
 } from './adapter-types';

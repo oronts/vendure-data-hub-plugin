@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 import { Injectable, Optional } from '@nestjs/common';
-import { RequestContext } from '@vendure/core';
+import { ID, RequestContext } from '@vendure/core';
 import { JsonObject, JsonValue, PipelineStepDefinition, PipelineContext, VendureEntityType } from '../../types/index';
 import { DataHubLogger, DataHubLoggerFactory } from '../../services/logger';
 import { LOGGER_CONTEXTS, ValidationMode } from '../../constants/index';
@@ -14,7 +14,17 @@ import {
     validateAgainstSimpleSpec,
 } from '../utils';
 import { DataHubRegistryService } from '../../sdk/registry.service';
-import { OperatorAdapter, SingleRecordOperator, AdapterOperatorHelpers, OperatorContext } from '../../sdk/types';
+import {
+    AdapterOperatorHelpers,
+    EnrichContext,
+    EnricherAdapter,
+    OperatorAdapter,
+    OperatorContext,
+    SingleRecordOperator,
+    SdkValidationError,
+    ValidateContext,
+    ValidatorAdapter,
+} from '../../sdk/types';
 import { getOperatorRuntime, getCustomOperatorRuntime } from '../../operators/operator-runtime-registry';
 import { OperatorSecretResolver } from '../../sdk/types/transform-types';
 import { SecretService } from '../../services/config/secret.service';
@@ -22,11 +32,16 @@ import { ConnectionService } from '../../services/config/connection.service';
 import { SchemaRegistryService } from '../../services/schema/schema-registry.service';
 import { formatSchemaValidationIssues } from '../../services/schema/schema-definition';
 import { LoaderRegistryService } from '../../loaders/registry';
-import { createConnectionsAdapter } from './context-adapters';
+import {
+    createConnectionsAdapter,
+    createLoggerAdapter,
+    createSecretsAdapter,
+} from './context-adapters';
 import { applyHttpLookupBatch } from '../../operators/enrichment/helpers';
 import type { HttpLookupOperatorConfig } from '../../operators/enrichment/types';
 import { getErrorMessage, toErrorOrUndefined } from '../../utils/error.utils';
 import { sleep, calculateSimpleBackoff } from '../../utils/retry.utils';
+import { validateEnrichmentConfig } from '../../validation/enrichment-config.validator';
 import {
     getAdapterCode,
     isTransformStepConfig,
@@ -54,6 +69,16 @@ export class OperatorNotFoundError extends Error {
         super(`Operator '${operatorCode}' not found in registry. Step: ${stepKey}. ` +
             `Ensure the operator is properly registered. Available operators can be queried via the DataHub API.`);
         this.name = 'OperatorNotFoundError';
+    }
+}
+
+export class EnrichmentConfigurationError extends Error {
+    constructor(
+        public readonly stepKey: string,
+        public readonly reasons: readonly string[],
+    ) {
+        super(`Invalid ENRICH configuration for step "${stepKey}": ${reasons.join('; ')}`);
+        this.name = 'EnrichmentConfigurationError';
     }
 }
 
@@ -85,6 +110,7 @@ export class TransformExecutor {
         input: RecordObject[],
         executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
+        pipelineId?: ID,
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;
         const adapterCode = getAdapterCode(step);
@@ -101,7 +127,15 @@ export class TransformExecutor {
 
         // Handle multi-operator array format
         if (operatorsArray && operatorsArray.length > 0) {
-            return await this.executeOperatorsArray(ctx, step, input, operatorsArray, executorCtx, pipelineContext);
+            return await this.executeOperatorsArray(
+                ctx,
+                step,
+                input,
+                operatorsArray,
+                executorCtx,
+                pipelineContext,
+                pipelineId,
+            );
         }
 
         // Handle single operator format
@@ -110,7 +144,17 @@ export class TransformExecutor {
             return input;
         }
 
-        return await this.executeSingleOperator(ctx, step, input, adapterCode, cfg, executorCtx, pipelineContext);
+        return await this.executeSingleOperator(
+            ctx,
+            step,
+            input,
+            adapterCode,
+            cfg,
+            executorCtx,
+            pipelineContext,
+            `single:${adapterCode}`,
+            pipelineId,
+        );
     }
 
     /**
@@ -126,6 +170,7 @@ export class TransformExecutor {
         executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
         operatorStateKey = `single:${adapterCode}`,
+        pipelineId?: ID,
     ): Promise<RecordObject[]> {
         // Try built-in first
         let operator: OperatorAdapter<unknown> | SingleRecordOperator<unknown> | undefined =
@@ -151,6 +196,7 @@ export class TransformExecutor {
             executorCtx,
             operatorStateKey,
             pipelineContext,
+            pipelineId,
         );
     }
 
@@ -166,6 +212,7 @@ export class TransformExecutor {
         operators: OperatorConfig[],
         executorCtx: ExecutorContext,
         pipelineContext?: PipelineContext,
+        pipelineId?: ID,
     ): Promise<RecordObject[]> {
         let currentRecords = input;
 
@@ -194,6 +241,7 @@ export class TransformExecutor {
                 executorCtx,
                 pipelineContext,
                 `array:${i}:${opCode}`,
+                pipelineId,
             );
         }
 
@@ -207,10 +255,11 @@ export class TransformExecutor {
         ctx: RequestContext,
         step: PipelineStepDefinition,
         pipelineContext?: PipelineContext,
+        pipelineId?: ID,
     ): OperatorContext {
         return {
             ctx,
-            pipelineId: SANDBOX_PIPELINE_ID,
+            pipelineId: pipelineId ?? SANDBOX_PIPELINE_ID,
             stepKey: step.key,
             pipelineContext: pipelineContext ?? {} as PipelineContext,
             logger: {
@@ -502,10 +551,16 @@ export class TransformExecutor {
         executorCtx: ExecutorContext,
         operatorStateKey: string,
         pipelineContext?: PipelineContext,
+        pipelineId?: ID,
     ): Promise<RecordObject[]> {
         const cfg = step.config as JsonObject;
 
-        const operatorCtx = this.prepareCustomContext(ctx, step, pipelineContext);
+        const operatorCtx = this.prepareCustomContext(
+            ctx,
+            step,
+            pipelineContext,
+            pipelineId,
+        );
 
         const helpers = this.loadCustomOperator(ctx, operatorCtx, executorCtx, operatorStateKey);
 
@@ -531,6 +586,8 @@ export class TransformExecutor {
         step: PipelineStepDefinition,
         input: RecordObject[],
         onRecordError?: OnRecordErrorCallback,
+        pipelineContext?: PipelineContext,
+        pipelineId?: ID,
     ): Promise<RecordObject[]> {
         const cfg = (step.config ?? {}) as {
             fields?: Record<string, unknown>;
@@ -538,8 +595,21 @@ export class TransformExecutor {
             errorHandlingMode?: string;
         };
 
-        // Convert rules to fields format if rules are provided
         const mode = (cfg.errorHandlingMode as string | undefined) ?? ValidationMode.FAIL_FAST;
+        const adapterCode = getAdapterCode(step);
+        if (adapterCode) {
+            return this.executeCustomValidator(
+                ctx,
+                step,
+                input,
+                adapterCode,
+                mode === ValidationMode.ACCUMULATE ? 'ACCUMULATE' : 'FAIL_FAST',
+                onRecordError,
+                pipelineContext,
+                pipelineId,
+            );
+        }
+
         let validatedInput = input;
         if (step.schemaRef) {
             if (!this.schemaRegistry) {
@@ -574,6 +644,7 @@ export class TransformExecutor {
             }
         }
 
+        // Convert rules to fields format if rules are provided
         let fields: Record<string, import('../utils').FieldSpec> = {};
 
         if (cfg.rules && Array.isArray(cfg.rules)) {
@@ -623,41 +694,102 @@ export class TransformExecutor {
         return out;
     }
 
+    private async executeCustomValidator(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        input: RecordObject[],
+        adapterCode: string,
+        mode: ValidateContext['mode'],
+        onRecordError?: OnRecordErrorCallback,
+        pipelineContext?: PipelineContext,
+        pipelineId?: ID,
+    ): Promise<RecordObject[]> {
+        const adapter = this.registry?.getRuntime('VALIDATOR', adapterCode) as
+            | ValidatorAdapter<unknown>
+            | undefined;
+        if (!adapter || typeof adapter.validate !== 'function') {
+            throw new Error(`Validator adapter '${adapterCode}' is not registered for runtime execution`);
+        }
+
+        const context: ValidateContext = {
+            ctx,
+            pipelineId: pipelineId ?? SANDBOX_PIPELINE_ID,
+            stepKey: step.key,
+            pipelineContext: pipelineContext ?? {} as PipelineContext,
+            mode,
+            logger: createLoggerAdapter(this.logger),
+        };
+
+        const result = await adapter.validate(
+            context,
+            step.config ?? {},
+            input,
+        );
+        if (!Array.isArray(result.valid) || !Array.isArray(result.invalid)) {
+            throw new Error(`Validator adapter '${adapterCode}' returned an invalid result`);
+        }
+
+        const invalid = mode === 'FAIL_FAST'
+            ? result.invalid.slice(0, 1)
+            : result.invalid;
+        for (const item of invalid) {
+            const message = item.errors.length > 0
+                ? item.errors.map((error: SdkValidationError) => error.message).join('; ')
+                : `Validator '${adapterCode}' rejected the record`;
+            if (onRecordError) {
+                await onRecordError(step.key, message, item.record);
+            }
+        }
+
+        return mode === 'FAIL_FAST' && result.invalid.length > 0
+            ? []
+            : result.valid as RecordObject[];
+    }
+
     /**
      * Execute an enrich step on the input records using built-in enrichment config.
      * Supports:
      * - defaults: Static default values to add to records
      * - computed: Computed field expressions (template syntax)
      * - sourceType: STATIC (inline defaults), HTTP (external API), VENDURE (entity lookup)
-     * If adapterCode is provided, falls back to executeOperator for custom enrichers.
+     * If adapterCode is provided, dispatches the registered enricher runtime.
      */
     async executeEnrich(
         ctx: RequestContext,
         step: PipelineStepDefinition,
         input: RecordObject[],
-        executorCtx?: ExecutorContext,
+        _executorCtx?: ExecutorContext,
+        pipelineContext?: PipelineContext,
+        pipelineId?: ID,
     ): Promise<RecordObject[]> {
-        const cfg = (step.config ?? {}) as {
-            adapterCode?: string;
-            defaults?: Record<string, unknown>;
-            computed?: Record<string, string>;
-            sourceType?: 'STATIC' | 'HTTP' | 'VENDURE';
-            set?: Record<string, unknown>;
-        };
+        const cfg = (step.config ?? {}) as Record<string, unknown>;
+        const adapterCode = getAdapterCode(step);
 
-        // If adapterCode is provided, use the operator system
-        if (cfg.adapterCode && executorCtx) {
-            return this.executeOperator(ctx, step, input, executorCtx);
+        if (adapterCode) {
+            return this.executeCustomEnricher(
+                ctx,
+                step,
+                input,
+                adapterCode,
+                pipelineContext,
+                pipelineId,
+            );
         }
 
-        // Handle built-in enrichment based on sourceType or defaults
-        const sourceType = cfg.sourceType || 'STATIC';
+        const validation = validateEnrichmentConfig(cfg);
+        if (!validation.sourceType || validation.issues.length > 0) {
+            throw new EnrichmentConfigurationError(
+                step.key,
+                validation.issues.map(issue => issue.message),
+            );
+        }
+        const sourceType = validation.sourceType;
 
         if (sourceType === 'STATIC') {
             // Apply static defaults/set values to each record
-            const defaults = cfg.defaults || {};
-            const setValues = cfg.set || {};
-            const computed = cfg.computed || {};
+            const defaults = cfg.defaults as Record<string, unknown> | undefined ?? {};
+            const setValues = cfg.set as Record<string, unknown> | undefined ?? {};
+            const computed = cfg.computed as Record<string, string> | undefined ?? {};
 
             return input.map(record => {
                 const enriched = { ...record };
@@ -689,15 +821,58 @@ export class TransformExecutor {
         }
 
         if (sourceType === 'HTTP') {
-            return this.executeEnrichHttp(ctx, step, input, executorCtx);
+            return this.executeEnrichHttp(ctx, step, input, _executorCtx);
         }
 
         if (sourceType === 'VENDURE') {
             return this.executeEnrichVendure(ctx, step, input);
         }
 
-        this.logger.warn(`ENRICH source type "${sourceType}" is not supported for step "${step.key}" - records passed through unchanged`);
-        return input;
+        throw new EnrichmentConfigurationError(step.key, [
+            `Unsupported sourceType ${String(sourceType)}`,
+        ]);
+    }
+
+    private async executeCustomEnricher(
+        ctx: RequestContext,
+        step: PipelineStepDefinition,
+        input: RecordObject[],
+        adapterCode: string,
+        pipelineContext?: PipelineContext,
+        pipelineId?: ID,
+    ): Promise<RecordObject[]> {
+        const adapter = this.registry?.getRuntime('ENRICHER', adapterCode) as
+            | EnricherAdapter<unknown>
+            | undefined;
+        if (!adapter || typeof adapter.enrich !== 'function') {
+            throw new Error(`Enricher adapter '${adapterCode}' is not registered for runtime execution`);
+        }
+        if (!this.secretService || !this.connectionService) {
+            throw new Error(`Enricher adapter '${adapterCode}' requires secret and connection services`);
+        }
+
+        const context: EnrichContext = {
+            ctx,
+            pipelineId: pipelineId ?? SANDBOX_PIPELINE_ID,
+            stepKey: step.key,
+            pipelineContext: pipelineContext ?? {} as PipelineContext,
+            secrets: createSecretsAdapter(this.secretService, ctx),
+            connections: createConnectionsAdapter(this.connectionService, ctx),
+            logger: createLoggerAdapter(this.logger),
+        };
+        const result = await adapter.enrich(context, step.config ?? {}, input);
+        if (!Array.isArray(result.records)) {
+            throw new Error(`Enricher adapter '${adapterCode}' returned an invalid result`);
+        }
+        if (result.errors && result.errors.length > 0) {
+            this.logger.warn('Custom enricher completed with record errors', {
+                adapterCode,
+                stepKey: step.key,
+                errorCount: result.errors.length,
+                firstError: result.errors[0].message,
+            });
+        }
+        return result.records as RecordObject[];
     }
 
     /**
@@ -715,8 +890,7 @@ export class TransformExecutor {
 
         const url = cfg.url as string | undefined;
         if (!url) {
-            this.logger.warn(`ENRICH HTTP step "${step.key}" has no URL configured - records passed through unchanged`);
-            return input;
+            throw new EnrichmentConfigurationError(step.key, ['url must be a non-empty string']);
         }
 
         const httpConfig: HttpLookupOperatorConfig = {
@@ -783,25 +957,22 @@ export class TransformExecutor {
         const target = (cfg.target as string) || 'vendureData';
 
         if (!entityType || !sourceField || !lookupField) {
-            this.logger.warn(
-                `ENRICH VENDURE step "${step.key}" missing required config (entityType, sourceField, lookupField) - records passed through unchanged`,
-            );
-            return input;
+            throw new EnrichmentConfigurationError(step.key, [
+                'entityType, sourceField, and lookupField must be non-empty strings',
+            ]);
         }
 
         if (!this.loaderRegistry) {
-            this.logger.warn(
-                `ENRICH VENDURE step "${step.key}" - LoaderRegistryService not available`,
-            );
-            return input;
+            throw new EnrichmentConfigurationError(step.key, [
+                'LoaderRegistryService is not available',
+            ]);
         }
 
         const loader = this.loaderRegistry.get(entityType as VendureEntityType);
         if (!loader) {
-            this.logger.warn(
-                `ENRICH VENDURE step "${step.key}" - no loader found for entity type "${entityType}"`,
-            );
-            return input;
+            throw new EnrichmentConfigurationError(step.key, [
+                `No loader is registered for entity type "${entityType}"`,
+            ]);
         }
 
         const results: RecordObject[] = [];

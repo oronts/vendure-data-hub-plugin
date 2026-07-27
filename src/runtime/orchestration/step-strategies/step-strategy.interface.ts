@@ -6,7 +6,11 @@
  */
 
 import { RequestContext, ID } from '@vendure/core';
-import { PipelineDefinition, PipelineStepDefinition } from '../../../types/index';
+import {
+    PipelineContext,
+    PipelineDefinition,
+    PipelineStepDefinition,
+} from '../../../types/index';
 import { RecordObject, OnRecordErrorCallback, ExecutorContext } from '../../executor-types';
 import { HookService } from '../../../services/events/hook.service';
 import { DomainEventsService } from '../../../services/events/domain-events.service';
@@ -25,6 +29,8 @@ export interface StepExecutionContext {
     definition: PipelineDefinition;
     /** Current step to execute */
     step: PipelineStepDefinition;
+    /** Pipeline defaults merged with per-step and request-context defaults */
+    pipelineContext: PipelineContext;
     /** Input records for the step */
     records: RecordObject[];
     /** Executor context with checkpoint data */

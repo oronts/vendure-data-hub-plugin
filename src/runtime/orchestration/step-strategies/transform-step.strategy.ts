@@ -22,7 +22,7 @@ export class TransformStepStrategy implements StepStrategy {
     constructor(private readonly transformExecutor: TransformExecutor) {}
 
     async execute(context: StepExecutionContext): Promise<StepStrategyResult> {
-        const { ctx, step, records, executorCtx } = context;
+        const { ctx, step, records, executorCtx, pipelineContext, pipelineId } = context;
         const adapterCode = getAdapterCode(step);
         const recordsIn = records.length;
         const sampleInput = records[0] as RecordObject | undefined;
@@ -31,7 +31,14 @@ export class TransformStepStrategy implements StepStrategy {
         await this.logStepStart(context, recordsIn);
         const afterBeforeHook = await this.runBeforeHook(context, records);
 
-        const out = await this.transformExecutor.executeOperator(ctx, step, afterBeforeHook, executorCtx);
+        const out = await this.transformExecutor.executeOperator(
+            ctx,
+            step,
+            afterBeforeHook,
+            executorCtx,
+            pipelineContext,
+            pipelineId,
+        );
         const durationMs = Date.now() - t0;
 
         const afterAfterHook = await this.runAfterHook(context, out);
@@ -115,7 +122,7 @@ export class ValidateStepStrategy implements StepStrategy {
     constructor(private readonly transformExecutor: TransformExecutor) {}
 
     async execute(context: StepExecutionContext): Promise<StepStrategyResult> {
-        const { ctx, step, records, onRecordError } = context;
+        const { ctx, step, records, onRecordError, pipelineContext, pipelineId } = context;
         const adapterCode = getAdapterCode(step);
         const recordsIn = records.length;
         const t0 = Date.now();
@@ -123,7 +130,14 @@ export class ValidateStepStrategy implements StepStrategy {
         await this.logStepStart(context, recordsIn);
         const afterBeforeHook = await this.runBeforeHook(context, records);
 
-        const out = await this.transformExecutor.executeValidate(ctx, step, afterBeforeHook, onRecordError);
+        const out = await this.transformExecutor.executeValidate(
+            ctx,
+            step,
+            afterBeforeHook,
+            onRecordError,
+            pipelineContext,
+            pipelineId,
+        );
         const durationMs = Date.now() - t0;
         const failedCount = afterBeforeHook.length - out.length;
 
@@ -194,7 +208,7 @@ export class EnrichStepStrategy implements StepStrategy {
     constructor(private readonly transformExecutor: TransformExecutor) {}
 
     async execute(context: StepExecutionContext): Promise<StepStrategyResult> {
-        const { ctx, step, records, executorCtx } = context;
+        const { ctx, step, records, executorCtx, pipelineContext, pipelineId } = context;
         const adapterCode = getAdapterCode(step);
         const recordsIn = records.length;
         const t0 = Date.now();
@@ -203,7 +217,14 @@ export class EnrichStepStrategy implements StepStrategy {
         const afterBeforeHook = await this.runBeforeHook(context, records);
 
         // Use executeEnrich which handles both built-in config and custom adapters
-        const out = await this.transformExecutor.executeEnrich(ctx, step, afterBeforeHook, executorCtx);
+        const out = await this.transformExecutor.executeEnrich(
+            ctx,
+            step,
+            afterBeforeHook,
+            executorCtx,
+            pipelineContext,
+            pipelineId,
+        );
         const durationMs = Date.now() - t0;
 
         const afterAfterHook = await this.runAfterHook(context, out);

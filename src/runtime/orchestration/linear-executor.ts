@@ -48,6 +48,7 @@ import { GateStepStrategy } from './step-strategies/gate-step.strategy';
 import { getErrorMessage } from '../../utils/error.utils';
 import { LOGGER_CONTEXTS } from '../../constants/core';
 import { DataHubLoggerFactory } from '../../services/logger';
+import { resolveEffectiveStepContext } from './effective-context';
 
 const logger = DataHubLoggerFactory.create(LOGGER_CONTEXTS.LINEAR_EXECUTOR);
 
@@ -195,6 +196,11 @@ function buildStepContext(
         ctx: params.ctx,
         definition: params.definition,
         step,
+        pipelineContext: resolveEffectiveStepContext(
+            params.ctx,
+            params.definition.context,
+            step.context,
+        ),
         records,
         executorCtx: params.executorCtx,
         hookService: params.hookService,

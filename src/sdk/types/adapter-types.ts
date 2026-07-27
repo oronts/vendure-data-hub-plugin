@@ -17,12 +17,12 @@ import { ExportFormatType } from '../../constants/enums';
 import {
     AdapterType,
     AdapterCategory,
-    TriggerType,
     ChannelStrategy,
     LanguageStrategyValue,
     ValidationModeType,
     ConflictStrategyValue,
     FeedType,
+    ExtractorPreviewResult,
 } from '../../../shared/types';
 import { LOAD_STRATEGY } from '../../../shared/constants/enums';
 
@@ -63,6 +63,8 @@ export interface BaseAdapter<TConfig = JsonObject> {
     readonly color?: string;
     /** Adapter version */
     readonly version?: string;
+    /** Data Hub adapter API contract version */
+    readonly apiVersion?: number;
     /** Whether the adapter is deprecated */
     readonly deprecated?: boolean;
     /** Message explaining deprecation and migration path */
@@ -96,8 +98,8 @@ export interface BaseAdapter<TConfig = JsonObject> {
  *
  * Parallel definition exists in shared/types/adapter.types.ts with a different
  * shape: mutable fields, required `name`, `tags[]`, uses AdapterSchema instead
- * of StepConfigSchema, and omits SDK-specific fields (requires, version,
- * deprecatedMessage, experimentalMessage). The shared version is used for
+ * of StepConfigSchema, and omits SDK-specific runtime fields such as `requires`
+ * and `experimentalMessage`. The shared version is used for
  * pipeline definitions and API serialization.
  */
 export interface AdapterDefinition {
@@ -114,6 +116,7 @@ export interface AdapterDefinition {
     readonly icon?: string;
     readonly color?: string;
     readonly version?: string;
+    readonly apiVersion?: number;
     readonly deprecated?: boolean;
     readonly deprecatedMessage?: string;
     /** Whether the adapter is experimental/beta and may change */
@@ -209,6 +212,11 @@ export interface ExtractContext {
 export interface ExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'EXTRACTOR';
     extract(context: ExtractContext, config: TConfig): AsyncGenerator<RecordEnvelope, void, undefined>;
+    preview?(
+        context: ExtractContext,
+        config: TConfig,
+        limit: number,
+    ): Promise<ExtractorPreviewResult>;
 }
 
 /**
@@ -217,6 +225,11 @@ export interface ExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TCon
 export interface BatchExtractorAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
     readonly type: 'EXTRACTOR';
     extractAll(context: ExtractContext, config: TConfig): Promise<ExtractResult>;
+    preview(
+        context: ExtractContext,
+        config: TConfig,
+        limit: number,
+    ): Promise<ExtractorPreviewResult>;
 }
 
 // OPERATOR ADAPTER
@@ -475,6 +488,10 @@ export type SinkType =
     | 'MEILISEARCH'
     | 'ALGOLIA'
     | 'TYPESENSE'
+    | 'RABBITMQ'
+    | 'RABBITMQ_AMQP'
+    | 'SQS'
+    | 'REDIS_STREAMS'
     | 'WEBHOOK'
     | 'CUSTOM';
 
@@ -511,48 +528,6 @@ export interface SinkAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> 
     refresh?(context: SinkContext, config: TConfig): Promise<void>;
 }
 
-// TRIGGER ADAPTER
-// TriggerType is imported from shared/types at the top of this file
-
-/**
- * Context provided to trigger adapters
- */
-export interface TriggerContext {
-    /** Vendure request context */
-    readonly ctx: RequestContext;
-    /** Pipeline ID */
-    readonly pipelineId: ID;
-    /** Pipeline code */
-    readonly pipelineCode: string;
-    /** Logger for the adapter */
-    readonly logger: AdapterLogger;
-}
-
-/**
- * Payload from a trigger event
- */
-export interface TriggerPayload {
-    /** Trigger type */
-    readonly type: TriggerType;
-    /** Trigger timestamp */
-    readonly timestamp: string;
-    /** Trigger data */
-    readonly data?: JsonObject;
-    /** Trigger metadata */
-    readonly meta?: JsonObject;
-}
-
-/**
- * Trigger adapter for initiating pipelines
- */
-export interface TriggerAdapter<TConfig = JsonObject> extends BaseAdapter<TConfig> {
-    readonly type: 'TRIGGER';
-    readonly triggerType: TriggerType;
-    initialize?(context: TriggerContext, config: TConfig): Promise<void>;
-    shutdown?(): Promise<void>;
-    shouldTrigger?(context: TriggerContext, config: TConfig, payload: TriggerPayload): Promise<boolean>;
-}
-
 // UNIFIED ADAPTER TYPE
 
 /**
@@ -568,8 +543,7 @@ export type DataHubAdapter =
     | EnricherAdapter
     | ExporterAdapter
     | FeedAdapter
-    | SinkAdapter
-    | TriggerAdapter;
+    | SinkAdapter;
 
 /**
  * Adapter registration with priority
