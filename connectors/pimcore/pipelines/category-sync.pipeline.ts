@@ -5,19 +5,19 @@ import { LOADER_CODE } from '../../../src/constants/adapters';
 import { TRANSFORM_OPERATOR, HOOK_ACTION, ROUTE_OPERATOR } from '../../../src/sdk/constants';
 import { pimcoreGraphQLExtractor } from '../extractors/pimcore-graphql.extractor';
 import { PimcoreConnectorConfig } from '../types';
-import { PIMCORE_API_KEY_SECRET, PIMCORE_WEBHOOK_KEY_SECRET, PIMCORE_WEBHOOK_SIGNATURE } from '../index';
+import { PIMCORE_WEBHOOK_KEY_SECRET } from '../constants';
 import { buildSafePathFilter } from '../utils/security.utils';
 import { DEFAULT_CHANNEL_CODE } from '../../../shared/constants';
+import { createPimcoreExtractorConfig } from './extractor-config';
+import { createPimcoreCategoryQuery } from '../extractors/query-builder';
 
 export function createCategorySyncPipeline(config: PimcoreConnectorConfig): PipelineDefinition {
     const {
-        connection,
         sync,
         mapping,
         pipelines,
         vendureChannel = DEFAULT_CHANNEL_CODE,
         defaultLanguage = 'en',
-        languages = ['en'],
     } = config;
 
     const pipelineConfig = pipelines?.categorySync ?? {};
@@ -43,21 +43,22 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
     pipeline.trigger(TRIGGER_TYPE.MANUAL, { type: TRIGGER_TYPE.MANUAL, enabled: true });
     pipeline.trigger(TRIGGER_TYPE.WEBHOOK, {
         type: TRIGGER_TYPE.WEBHOOK,
-        webhookCode: 'pimcore-category-sync',
-        signature: PIMCORE_WEBHOOK_SIGNATURE,
-        hmacSecretCode: PIMCORE_WEBHOOK_KEY_SECRET,
+        authentication: 'HMAC',
+        secretCode: PIMCORE_WEBHOOK_KEY_SECRET,
+        hmacAlgorithm: 'SHA256',
+        requireIdempotencyKey: true,
         rateLimit: 50,
     });
 
     const pathFilter = buildSafePathFilter(pipelineConfig.rootPath ?? sync?.pathFilter);
 
     pipeline.extract('fetch-categories', {
+        ...createPimcoreExtractorConfig(config, 'category', 200),
         adapterCode: pimcoreGraphQLExtractor.code,
-        'connection.endpoint': connection.endpoint,
-        'connection.apiKeySecretCode': connection.apiKeySecretCode ?? PIMCORE_API_KEY_SECRET,
-        entityType: 'category',
-        first: sync?.batchSize ?? 200,
+        query: createPimcoreCategoryQuery(mapping?.category),
         filter: pathFilter,
+        sortBy: 'fullpath',
+        sortOrder: 'ASC',
         defaultLanguage,
     });
 
@@ -70,18 +71,16 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
     });
 
     const nameField = mapping?.category?.nameField ?? 'name';
-    const nameTemplate = languages.length > 1
-        ? `\${${nameField}.${defaultLanguage} || ${nameField}}`
-        : `\${${nameField}}`;
+    const parentField = mapping?.category?.parentField ?? 'parent';
 
     pipeline.transform('transform-categories', {
         operators: [
-            { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: nameTemplate, target: '_name' } },
+            { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: [`${nameField}.${defaultLanguage}`, nameField, 'key'], target: '_name' } },
             { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: [mapping?.category?.slugField ?? 'slug', 'key'], target: '_slugSource' } },
             { op: TRANSFORM_OPERATOR.SLUGIFY, args: { source: '_slugSource', target: '_slug' } },
             { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: 'pimcore:category:${id}', target: 'externalId' } },
-            { op: TRANSFORM_OPERATOR.IF_THEN_ELSE, args: { condition: { field: `${mapping?.category?.parentField ?? 'parent'}.id`, cmp: ROUTE_OPERATOR.NE, value: null }, thenValue: true, elseValue: false, target: '_hasParent' } },
-            { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: 'pimcore:category:${parent.id}', target: 'parentExternalId', skipIfEmpty: true } },
+            { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: [`${parentField}.slug.${defaultLanguage}`, `${parentField}.slug`, `${parentField}.key`], target: '_parentSlugSource' } },
+            { op: TRANSFORM_OPERATOR.SLUGIFY, args: { source: '_parentSlugSource', target: 'parentSlug' } },
             { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: [mapping?.category?.positionField ?? 'position', 'index'], target: '_position' } },
             { op: TRANSFORM_OPERATOR.TO_NUMBER, args: { source: '_position' } },
             {
@@ -92,11 +91,11 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
                         name: '_name',
                         slug: '_slug',
                         description: mapping?.category?.descriptionField ?? 'description',
-                        parentExternalId: 'parentExternalId',
+                        parentSlug: 'parentSlug',
                         position: '_position',
                         isPrivate: 'published',
                         pimcoreId: 'id',
-                        pimcorePath: 'fullPath',
+                        pimcorePath: 'fullpath',
                     },
                 },
             },
@@ -115,7 +114,7 @@ export function createCategorySyncPipeline(config: PimcoreConnectorConfig): Pipe
         channel: vendureChannel,
         slugField: 'slug',
         nameField: 'name',
-        parentSlugField: 'parentExternalId',
+        parentSlugField: 'parentSlug',
         descriptionField: 'description',
     });
 

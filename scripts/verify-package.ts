@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -15,6 +15,38 @@ const packagePaths = [
     `${packageName}/connectors/pimcore`,
 ] as const;
 const commandOptions = { maxBuffer: 50 * 1024 * 1024 } as const;
+const forbiddenPackagePaths = [
+    'dist/dashboard/assets/',
+    'dist/dashboard/index.html',
+] as const;
+
+interface PackResult {
+    filename?: string;
+    files?: Array<{ path: string }>;
+}
+
+function parsePackResults(output: string): PackResult[] {
+    const lines = output.split(/\r?\n/);
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+        if (lines[index]?.trim() !== '[') continue;
+        try {
+            return JSON.parse(lines.slice(index).join('\n')) as PackResult[];
+        } catch {
+            continue;
+        }
+    }
+    throw new Error('npm pack did not return a JSON result');
+}
+
+function assertPackageContents(packResult: PackResult): void {
+    const paths = packResult.files?.map(file => file.path) ?? [];
+    const forbiddenPath = paths.find(path => forbiddenPackagePaths.some(forbidden => (
+        forbidden.endsWith('/') ? path.startsWith(forbidden) : path === forbidden
+    )));
+    if (forbiddenPath) {
+        throw new Error(`Generated development dashboard asset entered the package: ${forbiddenPath}`);
+    }
+}
 
 function runtimeCheck(moduleSyntax: 'require' | 'import'): string {
     const checks = packagePaths.map(path => moduleSyntax === 'require'
@@ -37,13 +69,14 @@ async function verifyPackage(): Promise<void> {
         const pack = await execFileAsync('npm', [
             'pack',
             '--json',
-            '--ignore-scripts',
             '--pack-destination',
             temporaryRoot,
         ], { cwd: packageRoot, ...commandOptions });
-        const packResult = JSON.parse(pack.stdout) as Array<{ filename?: string }>;
-        const filename = packResult[0]?.filename;
+        const packResult = parsePackResults(pack.stdout);
+        const packageManifest = packResult[0];
+        const filename = packageManifest?.filename;
         if (!filename) throw new Error('npm pack did not return a tarball filename');
+        assertPackageContents(packageManifest);
 
         await mkdir(consumerDirectory);
         await writeFile(join(consumerDirectory, 'package.json'), JSON.stringify({
@@ -61,10 +94,38 @@ async function verifyPackage(): Promise<void> {
             'typescript@5.9.3',
         ], { cwd: consumerDirectory, ...commandOptions });
 
+        await access(join(
+            consumerDirectory,
+            'node_modules',
+            packageName,
+            'dist',
+            'dashboard',
+            'styles.css',
+        ));
+        await access(join(
+            consumerDirectory,
+            'node_modules',
+            packageName,
+            'dist',
+            'dashboard',
+            'i18n',
+            'en.po',
+        ));
+        await access(join(
+            consumerDirectory,
+            'node_modules',
+            packageName,
+            'dist',
+            'dashboard',
+            'i18n',
+            'de.po',
+        ));
+
         await writeFile(join(consumerDirectory, 'consumer.cjs'), runtimeCheck('require'));
         await writeFile(join(consumerDirectory, 'consumer.mjs'), runtimeCheck('import'));
         await writeFile(join(consumerDirectory, 'consumer.ts'), `
 import { DataHubPlugin, createPipeline } from '${packageName}';
+import type { DataHubPluginOptions } from '${packageName}';
 import {
     createPipeline as createSdkPipeline,
     queueAdapterRegistry,
@@ -77,13 +138,18 @@ import { PimcoreConnector } from '${packageName}/connectors/pimcore';
 const plugin: typeof DataHubPlugin = DataHubPlugin;
 const pipelineFactory: typeof createPipeline = createSdkPipeline;
 const adapters: readonly QueueAdapter[] = queueAdapterRegistry.getAll();
+const pimcore = PimcoreConnector({ connectionCode: 'pimcore-graphql' });
+const pluginOptions: DataHubPluginOptions = {
+    connectors: [pimcore],
+    pipelines: pimcore.pipelines,
+};
 type Definition = PipelineDefinition;
 void plugin;
 void pipelineFactory;
 void adapters;
+void pluginOptions;
 void (undefined as unknown as Definition);
 void defineConnector;
-void PimcoreConnector;
 `);
         await writeFile(join(consumerDirectory, 'tsconfig.json'), JSON.stringify({
             compilerOptions: {

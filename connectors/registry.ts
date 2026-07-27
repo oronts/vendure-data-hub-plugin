@@ -9,10 +9,11 @@ import {
     ConnectorInstance,
     ConnectorRegistrationResult,
     BaseConnectorConfig,
+    ConnectorFactory,
 } from './types';
-import { PipelineDefinition } from '../src/types';
 import { ExtractorAdapter, LoaderAdapter } from '../src/sdk/types';
 import { getErrorMessage } from '../src/utils/error.utils';
+import type { CodeFirstPipeline } from '../shared/types';
 
 /**
  * Deep merge two config objects. Arrays and non-plain-object values in overrides
@@ -63,9 +64,12 @@ export class ConnectorRegistry {
      * Register a connector with its configuration
      */
     register<TConfig extends BaseConnectorConfig>(
-        connector: ConnectorDefinition<TConfig>,
+        connectorSource: ConnectorDefinition<TConfig> | ConnectorFactory<TConfig>,
         config: TConfig,
     ): ConnectorRegistrationResult {
+        const connector = typeof connectorSource === 'function'
+            ? connectorSource.definition
+            : connectorSource;
         // Enforce size limit to prevent unbounded memory growth
         if (!this.connectors.has(connector.code) && this.connectors.size >= MAX_CONNECTORS) {
             return {
@@ -102,7 +106,7 @@ export class ConnectorRegistry {
         }
 
         // Generate pipelines
-        let pipelines: PipelineDefinition[] = [];
+        let pipelines: CodeFirstPipeline[] = [];
         try {
             pipelines = connector.createPipelines(mergedConfig);
         } catch (err) {
@@ -175,8 +179,8 @@ export class ConnectorRegistry {
     /**
      * Get all pipelines from all connectors
      */
-    getAllPipelines(): PipelineDefinition[] {
-        const pipelines: PipelineDefinition[] = [];
+    getAllPipelines(): CodeFirstPipeline[] {
+        const pipelines: CodeFirstPipeline[] = [];
         for (const instance of this.connectors.values()) {
             pipelines.push(...instance.pipelines);
         }
@@ -186,7 +190,7 @@ export class ConnectorRegistry {
     /**
      * Get pipelines for a specific connector
      */
-    getPipelines(connectorCode: string): PipelineDefinition[] {
+    getPipelines(connectorCode: string): CodeFirstPipeline[] {
         const instance = this.connectors.get(connectorCode);
         return instance?.pipelines ?? [];
     }
@@ -302,9 +306,35 @@ export class ConnectorRegistry {
  */
 export function defineConnector<TConfig extends BaseConnectorConfig>(
     definition: ConnectorDefinition<TConfig>,
-): (config: TConfig) => { definition: ConnectorDefinition<TConfig>; config: TConfig } {
-    return (config: TConfig) => ({
-        definition,
-        config,
+): ConnectorFactory<TConfig> {
+    const configure = (config: TConfig) => {
+        const resolvedConfig = deepMergeConfig(
+            (definition.defaultConfig ?? {}) as Record<string, unknown>,
+            config as Record<string, unknown>,
+        ) as TConfig;
+        const validation = definition.validateConfig?.(resolvedConfig);
+        if (validation && !validation.valid) {
+            throw new Error(
+                `Invalid ${definition.name} configuration: ${validation.errors.join('; ')}`,
+            );
+        }
+        return {
+            definition,
+            config: resolvedConfig,
+            pipelines: definition.createPipelines(resolvedConfig),
+        };
+    };
+    const factory = ((config: TConfig) => configure(config)) as ConnectorFactory<TConfig>;
+
+    Object.defineProperties(factory, {
+        definition: { value: definition, enumerable: true },
+        importTemplates: { value: definition.importTemplates ?? [], enumerable: true },
+        exportTemplates: { value: definition.exportTemplates ?? [], enumerable: true },
+        createPipelines: {
+            value: (config: TConfig) => configure(config).pipelines,
+            enumerable: true,
+        },
     });
+
+    return factory;
 }

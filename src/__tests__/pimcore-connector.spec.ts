@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProductSyncPipeline } from '../../connectors/pimcore/pipelines/product-sync.pipeline';
 import { createCategorySyncPipeline } from '../../connectors/pimcore/pipelines/category-sync.pipeline';
 import { pimcoreGraphQLExtractor } from '../../connectors/pimcore/extractors/pimcore-graphql.extractor';
-import { pimcoreConnectorDefinition } from '../../connectors/pimcore';
+import { PimcoreConnector, pimcoreConnectorDefinition } from '../../connectors/pimcore';
 import type { PimcoreConnectorConfig } from '../../connectors/pimcore/types';
 import { assertUrlSafe } from '../utils/url-security.utils';
 import { getOperatorRuntime } from '../operators/operator-runtime-registry';
@@ -62,6 +62,11 @@ const connectorConfig: PimcoreConnectorConfig = {
 };
 
 describe('Pimcore connector pipelines', () => {
+    it('does not advertise generic wizard imports for configuration-dependent syncs', () => {
+        expect(pimcoreConnectorDefinition.importTemplates).toBeUndefined();
+        expect(PimcoreConnector.importTemplates).toEqual([]);
+    });
+
     it('propagates bounded extraction settings to every generated pipeline', () => {
         const configured: PimcoreConnectorConfig = {
             ...connectorConfig,
@@ -74,8 +79,8 @@ describe('Pimcore connector pipelines', () => {
             },
         };
 
-        const definitions = pimcoreConnectorDefinition.createPipelines(configured);
-        const extractConfigs = definitions.map(definition => {
+        const registrations = pimcoreConnectorDefinition.createPipelines(configured);
+        const extractConfigs = registrations.map(({ definition }) => {
             const extractStep = definition.steps.find(step => step.type === 'EXTRACT');
             if (!extractStep) throw new Error(`Missing extract step in ${definition.name}`);
             return extractStep.config;
@@ -95,6 +100,32 @@ describe('Pimcore connector pipelines', () => {
                 expect(config).toMatchObject({ includeUnpublished: true });
             }
         }
+    });
+
+    it('returns stable code-first registrations for each enabled pipeline kind', () => {
+        const configured = PimcoreConnector({
+            ...connectorConfig,
+            pipelines: {
+                productSync: { enabled: false },
+                categorySync: { enabled: true, name: 'Pimcore Taxonomy Sync' },
+                assetSync: { enabled: true },
+            },
+        });
+
+        expect(configured.pipelines).toMatchObject([
+            {
+                code: 'pimcore-category-sync',
+                name: 'Pimcore Taxonomy Sync',
+                enabled: true,
+                definition: { name: 'Pimcore Taxonomy Sync' },
+            },
+            {
+                code: 'pimcore-asset-sync',
+                name: 'Pimcore Asset Sync',
+                enabled: true,
+                definition: { name: 'Pimcore Asset Sync' },
+            },
+        ]);
     });
 
     it('preserves variants, propagates product identity, and keeps prices in major units', async () => {

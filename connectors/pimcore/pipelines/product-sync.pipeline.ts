@@ -5,22 +5,25 @@ import { LOADER_CODE } from '../../../src/constants/adapters';
 import { TRANSFORM_OPERATOR, HOOK_ACTION, ROUTE_OPERATOR } from '../../../src/sdk/constants';
 import { pimcoreGraphQLExtractor } from '../extractors/pimcore-graphql.extractor';
 import { PimcoreConnectorConfig } from '../types';
-import { PIMCORE_API_KEY_SECRET, PIMCORE_WEBHOOK_KEY_SECRET, PIMCORE_WEBHOOK_SIGNATURE } from '../index';
+import { PIMCORE_WEBHOOK_KEY_SECRET } from '../constants';
 import { buildSafePathFilter } from '../utils/security.utils';
 import { DEFAULT_CHANNEL_CODE } from '../../../shared/constants';
+import { createPimcoreExtractorConfig } from './extractor-config';
+import { createPimcoreProductQuery } from '../extractors/query-builder';
 
 export function createProductSyncPipeline(config: PimcoreConnectorConfig): PipelineDefinition {
     const {
-        connection,
         sync,
         mapping,
         pipelines,
         vendureChannel = DEFAULT_CHANNEL_CODE,
         defaultLanguage = 'en',
-        languages = ['en'],
     } = config;
 
     const pipelineConfig = pipelines?.productSync ?? {};
+    const variantsField = mapping?.product?.variantsField ?? 'variants';
+    const enabledField = mapping?.product?.enabledField ?? 'published';
+    const syncVariants = pipelineConfig.syncVariants !== false && sync?.includeVariants !== false;
 
     if (pipelineConfig.enabled === false) {
         return createPipeline()
@@ -43,18 +46,17 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
     pipeline.trigger(TRIGGER_TYPE.MANUAL, { type: TRIGGER_TYPE.MANUAL, enabled: true });
     pipeline.trigger(TRIGGER_TYPE.WEBHOOK, {
         type: TRIGGER_TYPE.WEBHOOK,
-        webhookCode: 'pimcore-product-sync',
-        signature: PIMCORE_WEBHOOK_SIGNATURE,
-        hmacSecretCode: PIMCORE_WEBHOOK_KEY_SECRET,
+        authentication: 'HMAC',
+        secretCode: PIMCORE_WEBHOOK_KEY_SECRET,
+        hmacAlgorithm: 'SHA256',
+        requireIdempotencyKey: true,
         rateLimit: 100,
     });
 
     pipeline.extract('fetch-products', {
+        ...createPimcoreExtractorConfig(config, 'product', 100),
         adapterCode: pimcoreGraphQLExtractor.code,
-        'connection.endpoint': connection.endpoint,
-        'connection.apiKeySecretCode': connection.apiKeySecretCode ?? PIMCORE_API_KEY_SECRET,
-        entityType: 'product',
-        first: sync?.batchSize ?? 100,
+        query: createPimcoreProductQuery(mapping?.product, syncVariants),
         filter: buildSafePathFilter(sync?.pathFilter),
         defaultLanguage,
     });
@@ -69,18 +71,16 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
     });
 
     const nameField = mapping?.product?.nameField ?? 'name';
-    const nameTemplate = languages.length > 1
-        ? `\${${nameField}.${defaultLanguage} || ${nameField}}`
-        : `\${${nameField}}`;
+    const namePaths = [`${nameField}.${defaultLanguage}`, nameField, 'key'];
 
     pipeline.transform('transform-products', {
         operators: [
-            { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: nameTemplate, target: '_name' } },
+            { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: namePaths, target: '_name' } },
             { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: [mapping?.product?.skuField ?? 'sku', 'itemNumber', 'key'], target: '_sku' } },
-            { op: TRANSFORM_OPERATOR.SLUGIFY, args: { source: mapping?.product?.slugField ?? '_name', target: '_slug' } },
+            { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: [mapping?.product?.slugField ?? 'slug', 'urlKey', '_name'], target: '_slugSource' } },
+            { op: TRANSFORM_OPERATOR.SLUGIFY, args: { source: '_slugSource', target: '_slug' } },
             { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: 'pimcore:product:${id}', target: 'externalId' } },
-            { op: TRANSFORM_OPERATOR.SET, args: { path: 'enabled', value: true } },
-            { op: TRANSFORM_OPERATOR.IF_THEN_ELSE, args: { condition: { field: 'published', operator: ROUTE_OPERATOR.EQ, value: false }, thenValue: false, elseValue: true, target: 'enabled' } },
+            { op: TRANSFORM_OPERATOR.IF_THEN_ELSE, args: { condition: { field: enabledField, operator: ROUTE_OPERATOR.EQ, value: false }, thenValue: false, elseValue: true, target: 'enabled' } },
             {
                 op: TRANSFORM_OPERATOR.MAP,
                 args: {
@@ -92,8 +92,9 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
                         description: mapping?.product?.descriptionField ?? 'description',
                         enabled: 'enabled',
                         pimcoreId: 'id',
-                        pimcorePath: 'fullPath',
+                        pimcorePath: 'fullpath',
                     },
+                    passthrough: true,
                 },
             },
         ],
@@ -112,7 +113,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
                 op: TRANSFORM_OPERATOR.DELTA_FILTER,
                 args: {
                     idPath: 'externalId',
-                    includePaths: ['name', 'slug', 'description', 'enabled', 'sku'],
+                    includePaths: ['name', 'slug', 'description', 'enabled', 'sku', 'price', variantsField],
                     excludePaths: ['syncedAt', 'modificationDate'],
                 },
             }],
@@ -128,24 +129,30 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
         nameField: 'name',
         slugField: 'slug',
         descriptionField: 'description',
+        createVariants: !syncVariants,
     });
 
-    if (pipelineConfig.syncVariants !== false && sync?.includeVariants !== false) {
+    if (syncVariants) {
         pipeline.transform('extract-variants', {
             operators: [{
-                op: TRANSFORM_OPERATOR.FLATTEN,
-                args: { source: mapping?.product?.variantsField ?? 'variants', preserveParent: true, parentFields: ['_sku', 'externalId'] },
+                op: TRANSFORM_OPERATOR.EXPAND,
+                args: {
+                    path: variantsField,
+                    parentFields: {
+                        productSlug: 'slug',
+                        productName: 'name',
+                        productSku: 'sku',
+                    },
+                },
             }],
         });
 
         pipeline.transform('transform-variants', {
             operators: [
-                { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: ['sku', 'itemNumber', 'key'], target: 'variantSku' } },
-                { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: '${_parent._sku || _sku}-${variantSku || id}', target: 'variantSku' } },
-                { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: 'pimcore:variant:${id}', target: 'variantExternalId' } },
+                { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: ['sku', 'itemNumber', 'key', 'id'], target: 'variantSku' } },
+                { op: TRANSFORM_OPERATOR.TEMPLATE, args: { template: '${productSku}-${variantSku}', target: 'variantSku' } },
                 { op: TRANSFORM_OPERATOR.TO_NUMBER, args: { source: 'price' } },
-                { op: TRANSFORM_OPERATOR.MATH, args: { operation: 'multiply', source: 'price', operand: '100', target: 'priceInCents' } },
-                { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: ['name', 'key', 'variantSku'], target: 'variantName' } },
+                { op: TRANSFORM_OPERATOR.COALESCE, args: { paths: [`name.${defaultLanguage}`, 'name', 'key', 'variantSku'], target: 'variantName' } },
             ],
         });
 
@@ -154,7 +161,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
             strategy: LOAD_STRATEGY.UPSERT,
             skuField: 'variantSku',
             nameField: 'variantName',
-            priceField: 'priceInCents',
+            priceField: 'price',
             stockField: 'stockQuantity',
             enabledField: 'published',
         });
@@ -174,7 +181,7 @@ export function createProductSyncPipeline(config: PimcoreConnectorConfig): Pipel
         pipeline.edge('enrich-products', 'upsert-products');
     }
 
-    if (pipelineConfig.syncVariants !== false && sync?.includeVariants !== false) {
+    if (syncVariants) {
         pipeline.edge('upsert-products', 'extract-variants');
         pipeline.edge('extract-variants', 'transform-variants');
         pipeline.edge('transform-variants', 'upsert-variants');

@@ -13,6 +13,7 @@ import {
     readResponseText,
 } from '../../../src/utils/secure-response-body.utils';
 import { OUTBOUND_RESPONSE_LIMITS } from '../../../src/constants';
+import { CURRENT_ADAPTER_API_VERSION } from '../../../src/sdk/adapter-version';
 import { PimcoreObjectListing } from '../types';
 import {
     PIMCORE_EXTRACTOR_LIMITS,
@@ -73,6 +74,8 @@ export const pimcoreGraphQLExtractor: ExtractorAdapter<PimcoreGraphQLExtractorCo
     code: 'pimcoreGraphQL',
     name: 'Pimcore DataHub GraphQL',
     description: 'Extract data from Pimcore DataHub GraphQL API',
+    version: '1.0.0',
+    apiVersion: CURRENT_ADAPTER_API_VERSION,
     schema: {
         fields: [
             {

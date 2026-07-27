@@ -5,6 +5,8 @@ import {
     PimcoreVariant,
     PimcoreLocalizedField,
     PimcoreMappingConfig,
+    PimcoreProductTransformMappingConfig,
+    PimcoreAssetTransformMappingConfig,
     VendureProductInput,
     VendureVariantInput,
     VendureCategoryInput,
@@ -96,7 +98,6 @@ const DEFAULT_PRODUCT_MAPPING = {
     slugField: 'slug',
     descriptionField: 'description',
     assetsField: 'images',
-    categoriesField: 'categories',
     variantsField: 'variants',
     enabledField: 'published',
 };
@@ -110,7 +111,7 @@ const DEFAULT_CATEGORY_MAPPING = {
 };
 
 const DEFAULT_ASSET_MAPPING = {
-    urlField: 'fullPath',
+    urlField: 'fullpath',
     altField: 'filename',
     filenameField: 'filename',
 };
@@ -175,7 +176,7 @@ export function generateSlug(text: string): string {
 
 export function transformProduct(
     pimcoreProduct: PimcoreProduct,
-    mapping?: PimcoreMappingConfig['product'],
+    mapping?: PimcoreProductTransformMappingConfig,
     defaultLanguage = 'en',
     languages: string[] = ['en'],
 ): VendureProductInput {
@@ -338,7 +339,7 @@ export function transformCategory(
 
 export function transformAsset(
     pimcoreAsset: PimcoreAsset,
-    mapping?: PimcoreMappingConfig['asset'],
+    mapping?: PimcoreAssetTransformMappingConfig,
     baseUrl?: string,
 ): JsonObject {
     const mapping_ = { ...DEFAULT_ASSET_MAPPING, ...mapping };
@@ -359,8 +360,8 @@ export function transformAsset(
 
     const result: JsonObject = {
         externalId: `pimcore:asset:${pimcoreAsset.id}`,
-        url: url ?? pimcoreAsset.fullPath,
-        filename: pimcoreAsset.filename,
+        url: url ?? pimcoreAsset.fullpath,
+        filename: String(getNestedValue(pimcoreAsset, mapping_.filenameField) ?? pimcoreAsset.filename),
         alt: metaAlt ?? alt ?? pimcoreAsset.filename,
     };
     if (pimcoreAsset.mimetype) result.mimeType = pimcoreAsset.mimetype;

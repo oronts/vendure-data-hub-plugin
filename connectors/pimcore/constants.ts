@@ -14,3 +14,18 @@ export const PIMCORE_EXTRACTOR_LIMITS = {
 
 export const PIMCORE_WEBHOOK_KEY_SECRET = 'pimcore-webhook-key';
 export const PIMCORE_SOURCE_ORIGIN_FIELD = '_pimcoreSourceOrigin';
+
+export const PIMCORE_PIPELINE_METADATA = {
+    PRODUCT_SYNC: {
+        code: 'pimcore-product-sync',
+        name: 'Pimcore Product Sync',
+    },
+    CATEGORY_SYNC: {
+        code: 'pimcore-category-sync',
+        name: 'Pimcore Category Sync',
+    },
+    ASSET_SYNC: {
+        code: 'pimcore-asset-sync',
+        name: 'Pimcore Asset Sync',
+    },
+} as const;

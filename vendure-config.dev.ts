@@ -9,10 +9,11 @@ import { DashboardPlugin } from '@vendure/dashboard/plugin';
 import path from 'path';
 
 import { DataHubPlugin } from './src';
-import { pimcoreConnectorDefinition, PimcoreConnectorConfig, pimcoreGraphQLExtractor } from './connectors/pimcore';
+import { PimcoreConnector, PimcoreConnectorConfig, pimcoreGraphQLExtractor } from './connectors/pimcore';
 import {
     DEFAULT_DEV_MASTER_KEY,
     DEFAULT_DEV_PIMCORE_API_KEY,
+    DEFAULT_DEV_WEBHOOK_BASIC_CREDENTIALS,
 } from './dev-server/dev-credentials';
 import {
     PIMCORE_API_CONNECTION_CODE,
@@ -108,22 +109,7 @@ const pimcoreConfig: PimcoreConnectorConfig = {
     },
 };
 
-const pimcorePipelineRegistrations = pimcoreConnectorDefinition
-    .createPipelines(pimcoreConfig)
-    .map((definition, index) => ({
-        code: [
-            'pimcore-product-sync',
-            'pimcore-category-sync',
-            'pimcore-asset-sync',
-        ][index],
-        name: [
-            'Pimcore Product Sync',
-            'Pimcore Category Sync',
-            'Pimcore Asset Sync',
-        ][index],
-        definition,
-        enabled: true,
-    }));
+const pimcoreConnector = PimcoreConnector(pimcoreConfig);
 
 export const config: VendureConfig = {
     apiOptions: {
@@ -172,9 +158,7 @@ export const config: VendureConfig = {
                 ssrf: { disableSsrfProtection: true }, // Allow localhost for mock APIs in dev
             },
 
-            connectors: [
-                { definition: pimcoreConnectorDefinition, config: pimcoreConfig },
-            ],
+            connectors: [pimcoreConnector],
 
             adapters: [...allCustomAdapters, pimcoreGraphQLExtractor],
 
@@ -266,13 +250,14 @@ export const config: VendureConfig = {
                 // =================================================================
                 // PIMCORE CONNECTOR PIPELINES (3)
                 // =================================================================
-                ...pimcorePipelineRegistrations,
+                ...pimcoreConnector.pipelines,
             ],
 
             secrets: [
                 { code: 'demo-api-key', provider: 'INLINE', value: 'demo-key-12345' },
                 { code: 'crm-api-key', provider: 'INLINE', value: 'crm-demo-key-67890' },
                 { code: 'webhook-api-key', provider: 'INLINE', value: 'webhook-secret-abcdef' },
+                { code: 'webhook-basic-creds', provider: 'INLINE', value: DEFAULT_DEV_WEBHOOK_BASIC_CREDENTIALS },
                 { code: 'webhook-hmac-secret', provider: 'INLINE', value: 'hmac-shared-secret-xyz' },
                 { code: 'google-merchant-key', provider: 'INLINE', value: 'google-merchant-demo-key' },
                 { code: 'facebook-catalog-key', provider: 'INLINE', value: 'fb-catalog-demo-key' },

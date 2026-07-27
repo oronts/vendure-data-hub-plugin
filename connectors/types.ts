@@ -4,8 +4,8 @@
  * Defines the contract for all DataHub connectors (Pimcore, SAP, Akeneo, etc.)
  */
 
-import { PipelineDefinition } from '../src/types';
 import { ExtractorAdapter, LoaderAdapter } from '../src/sdk/types';
+import type { CodeFirstPipeline } from '../shared/types';
 
 /**
  * Base configuration that all connectors share
@@ -141,7 +141,7 @@ export interface ConnectorDefinition<TConfig extends BaseConnectorConfig = BaseC
     }>;
 
     /** Pipeline factory function */
-    createPipelines: (config: TConfig) => PipelineDefinition[];
+    createPipelines: (config: TConfig) => CodeFirstPipeline[];
 
     /** Validation function for config */
     validateConfig?: (config: TConfig) => { valid: boolean; errors: string[] };
@@ -159,7 +159,27 @@ export interface ConnectorInstance<TConfig extends BaseConnectorConfig = BaseCon
     /** Resolved configuration */
     config: TConfig;
     /** Generated pipelines */
-    pipelines: PipelineDefinition[];
+    pipelines: CodeFirstPipeline[];
+}
+
+/**
+ * Connector configuration prepared for DataHubPlugin.init().
+ * Generated pipelines are explicit because connector registration only bridges
+ * templates and adapters; it does not persist pipeline definitions.
+ */
+export interface ConfiguredConnector<TConfig extends BaseConnectorConfig = BaseConnectorConfig> {
+    definition: ConnectorDefinition<TConfig>;
+    config: TConfig;
+    pipelines: CodeFirstPipeline[];
+}
+
+/** Callable connector factory with discoverable definition metadata. */
+export interface ConnectorFactory<TConfig extends BaseConnectorConfig = BaseConnectorConfig> {
+    (config: TConfig): ConfiguredConnector<TConfig>;
+    readonly definition: ConnectorDefinition<TConfig>;
+    readonly importTemplates: NonNullable<ConnectorDefinition<TConfig>['importTemplates']>;
+    readonly exportTemplates: NonNullable<ConnectorDefinition<TConfig>['exportTemplates']>;
+    createPipelines(config: TConfig): CodeFirstPipeline[];
 }
 
 /**
@@ -173,4 +193,3 @@ export interface ConnectorRegistrationResult {
     loaderCount: number;
     errors?: string[];
 }
-

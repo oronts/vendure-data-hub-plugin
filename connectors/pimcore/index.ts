@@ -1,7 +1,8 @@
 import { ConnectorDefinition } from '../types';
 import { defineConnector } from '../registry';
 import { PimcoreConnectorConfig } from './types';
-import { PipelineDefinition } from '../../src/types';
+import type { PipelineDefinition } from '../../src/types';
+import type { CodeFirstPipeline } from '../../shared/types';
 import { pimcoreGraphQLExtractor } from './extractors/pimcore-graphql.extractor';
 import {
     createProductSyncPipeline,
@@ -9,7 +10,7 @@ import {
     createAssetSyncPipeline,
 } from './pipelines';
 import { DEFAULT_CHANNEL_CODE } from '../../shared/constants';
-import { PIMCORE_EXTRACTOR_LIMITS } from './constants';
+import { PIMCORE_EXTRACTOR_LIMITS, PIMCORE_PIPELINE_METADATA } from './constants';
 import { validateGraphQLFieldName } from './extractors/query-builder';
 
 export * from './types';
@@ -29,77 +30,6 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
 
     extractors: [pimcoreGraphQLExtractor],
     loaders: [],
-
-    importTemplates: [
-        {
-            id: 'pimcore-product-sync',
-            name: 'Pimcore Product Sync',
-            description: 'Sync products from Pimcore PIM via GraphQL DataHub API. Maps Pimcore product objects and variants to Vendure catalog records.',
-            category: 'products',
-            icon: 'database',
-            requiredFields: ['name', 'sku', 'price'],
-            optionalFields: ['description', 'slug', 'variants', 'enabled'],
-            featured: true,
-            tags: ['pimcore', 'pim', 'sync', 'api'],
-            formats: ['API'],
-            definition: {
-                sourceType: 'API',
-                targetEntity: 'Product',
-                existingRecords: 'UPDATE',
-                lookupFields: ['sku'],
-                fieldMappings: [
-                    { sourceField: 'name', targetField: 'name' },
-                    { sourceField: 'sku', targetField: 'sku' },
-                    { sourceField: 'price', targetField: 'price' },
-                    { sourceField: 'description', targetField: 'description' },
-                    { sourceField: 'slug', targetField: 'slug' },
-                ],
-            },
-        },
-        {
-            id: 'pimcore-category-sync',
-            name: 'Pimcore Category Sync',
-            description: 'Sync categories from Pimcore to Vendure collections while preserving parent-child hierarchy.',
-            category: 'catalog',
-            icon: 'folder-tree',
-            requiredFields: ['name'],
-            optionalFields: ['slug', 'description', 'parent', 'position'],
-            tags: ['pimcore', 'pim', 'sync', 'api'],
-            formats: ['API'],
-            definition: {
-                sourceType: 'API',
-                targetEntity: 'Collection',
-                existingRecords: 'UPDATE',
-                lookupFields: ['name'],
-                fieldMappings: [
-                    { sourceField: 'name', targetField: 'name' },
-                    { sourceField: 'slug', targetField: 'slug' },
-                    { sourceField: 'description', targetField: 'description' },
-                ],
-            },
-        },
-        {
-            id: 'pimcore-asset-sync',
-            name: 'Pimcore Asset Sync',
-            description: 'Sync digital assets from Pimcore DAM to Vendure from configured folders and MIME types.',
-            category: 'catalog',
-            icon: 'image',
-            requiredFields: ['filename', 'fullpath'],
-            optionalFields: ['mimetype'],
-            tags: ['pimcore', 'dam', 'assets', 'media'],
-            formats: ['API'],
-            definition: {
-                sourceType: 'API',
-                targetEntity: 'Asset',
-                existingRecords: 'UPDATE',
-                lookupFields: ['filename'],
-                fieldMappings: [
-                    { sourceField: 'filename', targetField: 'filename' },
-                    { sourceField: 'fullpath', targetField: 'source' },
-                ],
-            },
-        },
-    ],
 
     exportTemplates: [
         {
@@ -266,23 +196,45 @@ export const pimcoreConnectorDefinition: ConnectorDefinition<PimcoreConnectorCon
         return { valid: errors.length === 0, errors };
     },
 
-    createPipelines(config: PimcoreConnectorConfig): PipelineDefinition[] {
-        const pipelines: PipelineDefinition[] = [];
+    createPipelines(config: PimcoreConnectorConfig): CodeFirstPipeline[] {
+        const pipelines: CodeFirstPipeline[] = [];
 
         if (config.pipelines?.productSync?.enabled !== false) {
-            pipelines.push(createProductSyncPipeline(config));
+            pipelines.push(createPipelineRegistration(
+                PIMCORE_PIPELINE_METADATA.PRODUCT_SYNC,
+                createProductSyncPipeline(config),
+            ));
         }
         if (config.pipelines?.categorySync?.enabled !== false) {
-            pipelines.push(createCategorySyncPipeline(config));
+            pipelines.push(createPipelineRegistration(
+                PIMCORE_PIPELINE_METADATA.CATEGORY_SYNC,
+                createCategorySyncPipeline(config),
+            ));
         }
         if (config.pipelines?.assetSync?.enabled !== false) {
-            pipelines.push(createAssetSyncPipeline(config));
+            pipelines.push(createPipelineRegistration(
+                PIMCORE_PIPELINE_METADATA.ASSET_SYNC,
+                createAssetSyncPipeline(config),
+            ));
         }
         return pipelines;
     },
 };
 
 export const PimcoreConnector = defineConnector(pimcoreConnectorDefinition);
+
+function createPipelineRegistration(
+    metadata: { readonly code: string; readonly name: string },
+    definition: PipelineDefinition,
+): CodeFirstPipeline {
+    return {
+        code: metadata.code,
+        name: definition.name ?? metadata.name,
+        description: definition.description,
+        enabled: true,
+        definition,
+    };
+}
 
 function validateOptionalInteger(
     errors: string[],

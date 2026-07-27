@@ -195,9 +195,11 @@ Bulk imports images and documents from Pimcore DAM to Vendure.
 - Folder path filtering
 - Configurable URL and filename source fields
 
-## Wizard Templates
+## Dashboard Templates and Pipelines
 
-The Pimcore connector ships 3 import templates and 1 export template for the import/export wizards. Passing the configured connector through `connectors` registers these templates automatically:
+Pimcore imports use the connector's generated pipelines instead of generic import-wizard templates. The generated definitions carry the configured saved connection, GraphQL queries, validation, transformations, delta filtering, and webhook security. A generic API template cannot safely reproduce that contract.
+
+Pass both the configured connector and its pipelines to the plugin:
 
 ```typescript
 import { DataHubPlugin } from '@oronts/vendure-data-hub-plugin';
@@ -213,15 +215,9 @@ DataHubPlugin.init({
 });
 ```
 
-### Available Import Templates
+By default, the enabled generated imports appear in the Pipelines area as Pimcore Product Sync, Pimcore Category Sync, and Pimcore Asset Sync. They are not shown as import-wizard cards.
 
-| Template | Category | Description |
-|----------|----------|-------------|
-| Pimcore Product Sync | products | Sync products via GraphQL DataHub API with variants, pricing, and assets |
-| Pimcore Category Sync | catalog | Sync categories to Vendure collections with hierarchy preservation |
-| Pimcore Asset Sync | catalog | Import images and media from Pimcore DAM with metadata |
-
-### Available Export Templates
+### Available Export Template
 
 | Template | Format | Description |
 |----------|--------|-------------|
@@ -229,7 +225,7 @@ DataHubPlugin.init({
 
 ### Using ConnectorRegistry
 
-If you use `ConnectorRegistry` to manage multiple connectors, use `getPluginTemplates()` for convenience:
+If you use `ConnectorRegistry` to manage multiple connectors, pass its configured connector instances and generated pipelines to the plugin:
 
 ```typescript
 import { ConnectorRegistry, PimcoreConnector } from '@oronts/vendure-data-hub-plugin/connectors';
@@ -237,11 +233,12 @@ import { ConnectorRegistry, PimcoreConnector } from '@oronts/vendure-data-hub-pl
 const registry = new ConnectorRegistry();
 registry.register(PimcoreConnector, pimcoreConfig);
 
-const connectorTemplates = registry.getPluginTemplates();
-
 DataHubPlugin.init({
-    importTemplates: [...DEFAULT_IMPORT_TEMPLATES, ...connectorTemplates.importTemplates],
-    exportTemplates: connectorTemplates.exportTemplates,
+    connectors: registry.getConnectors().map(({ connector, config }) => ({
+        definition: connector,
+        config,
+    })),
+    pipelines: registry.getAllPipelines(),
 });
 ```
 
