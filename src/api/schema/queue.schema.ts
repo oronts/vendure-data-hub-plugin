@@ -32,6 +32,7 @@ export const queueSchema = `
     """
     type DataHubConsumerStatus {
         pipelineCode: String!
+        triggerKey: String!
         queueName: String!
         isActive: Boolean!
         messagesProcessed: Int!
@@ -83,7 +84,7 @@ export const queueQueries = `
 export const queueMutations = `
     extend type Mutation {
         updateDataHubSettings(input: DataHubSettingsInput!): DataHubSettings!
-        startDataHubConsumer(pipelineCode: String!): Boolean!
-        stopDataHubConsumer(pipelineCode: String!): Boolean!
+        startDataHubConsumer(pipelineCode: String!, triggerKey: String): Boolean!
+        stopDataHubConsumer(pipelineCode: String!, triggerKey: String): Boolean!
     }
 `;
